@@ -1,8 +1,17 @@
 # Brand assets
 
-The mark is the pin: a vertical stroke with a filled circular head, standing in
-a disc. The specification is
-[`design/09-brand-direction.md`](../../design/09-brand-direction.md) section 9.
+The owner's `SD_brand.png` and
+[`design/15-design-system-standard.md`](../../design/15-design-system-standard.md)
+are the visual authority. The existing pin geometry is retained; its disc is
+Iris, its pin is Obsidian, and native/browser backgrounds use Paper and
+Obsidian. Interface icons remain Phosphor. The brand image's icon experiments
+are not a replacement interface icon family.
+
+The application values live in `BrandPalette` in
+`packages/specimen_ui/lib/src/foundation/palette.dart`. The raster generator
+reads those exact seeds rather than storing a second palette. The SVG and
+platform configuration are checked against the runtime values by
+`test/theme/brand_assets_test.dart`.
 
 Everything in this directory is generated from one geometry, stated once at the
 24 dp mark and scaled from there. Nothing here is loaded at runtime, so there is
@@ -11,7 +20,8 @@ platform generators read, plus the reference renderings.
 
 ## The vector source
 
-`pin.svg` is the source of truth for anyone working outside Flutter. It carries
+`pin.svg` is the vector representation for use outside Flutter; its colours
+follow the shared BrandPalette. It carries
 the derivation of the two coordinates that are not printed in 09: the head's
 centre at y 5.5 and the shaft's end at y 18, both of which fall out of the
 1 dp optical rise.
@@ -59,11 +69,29 @@ Every run also checks that `flutter_launcher_icons.yaml`,
 `flutter_native_splash.yaml`, `web/index.html` and `web/manifest.json` still
 carry the palette, and exits non zero naming anything that drifted.
 
-Two generated files are one hook away from what the generators write: the
-repository's `trailing-whitespace` hook strips a trailing space from a comment
-line in `android/app/src/main/res/values-v31/styles.xml` and its night
-counterpart. Re-running the generator reintroduces it and the hook removes it
-again.
+Run the regression checks after generation:
+
+```bash
+flutter test test/theme/brand_assets_test.dart
+cd packages/specimen_ui
+flutter test test/foundation/brand_test.dart
+```
+
+The first checks every active source, Android, iOS and web PNG for the current
+Iris/Obsidian roles and rejects the removed yellow-green hue family. It also
+checks Paper/Obsidian launch backgrounds and configuration consistency. The
+package test checks the exact brand seeds and rejects retired values in active
+code, SVGs and platform sources. Historical screenshots and golden baselines
+are intentionally outside the generated-asset scan.
+
+**Generator caveat:** `flutter_launcher_icons` 0.14.4 can rewrite
+`ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS` from its boolean
+value to `AppIcon`. Preserve the original `YES`/`NO` value when regenerating;
+the asset regression test fails if a nonboolean remains. Do not carry this
+unrelated Xcode build-setting change in an icon update. The tools can also
+reformat `Info.plist`, omit the redundant web-manifest `purpose: any` entries,
+and remove final newlines. Keep unrelated metadata intact. Strip trailing
+whitespace in generated Android XML before the repository whitespace check.
 
 ## Drawing
 

@@ -10,8 +10,8 @@
 # accent and its pin are one value in both (09 section 3.4).
 
 flutter_native_splash:
-  color: "#F6F6F4"
-  color_dark: "#0E0F11"
+  color: "#FAF9F6"
+  color_dark: "#0E0E11"
   image: assets/brand/splash-mark-1024.png
   image_dark: assets/brand/splash-mark-1024.png
 
@@ -28,8 +28,8 @@ flutter_native_splash:
   android_12:
     image: assets/brand/splash-mark-android12-1024.png
     image_dark: assets/brand/splash-mark-android12-1024.png
-    icon_background_color: "#F6F6F4"
-    icon_background_color_dark: "#0E0F11"
+    icon_background_color: "#FAF9F6"
+    icon_background_color_dark: "#0E0E11"
 
   android: true
   ios: true

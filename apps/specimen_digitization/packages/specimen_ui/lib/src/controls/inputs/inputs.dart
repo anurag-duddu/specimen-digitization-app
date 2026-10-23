@@ -6,10 +6,23 @@
 /// class documentation.
 library;
 
+export 'crop_editor.dart';
+
+export 'extended_inputs.dart';
+
+export 'range_slider.dart';
+export 'date_range_picker.dart';
+export 'combobox.dart';
+
+export 'selection_card.dart';
+
 export 'checkbox.dart';
+export 'date_picker.dart';
 export 'field.dart';
+export 'file_upload.dart';
 export 'radio.dart';
 export 'search_field.dart';
 export 'select.dart';
+export 'slider.dart';
 export 'switch.dart';
 export 'text_area.dart';

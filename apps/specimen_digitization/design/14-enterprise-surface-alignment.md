@@ -1,80 +1,73 @@
 # Enterprise surface alignment
 
-Status: **approved runtime direction, implemented 2026-09-23.** This document
-supersedes the atmospheric field and default glass rules in 09 sections 1,
-2.1, 2.2, 3.2, 3.3, 8 and 11. The underlying primitives remain available for
-the component gallery and for a future explicitly reviewed use. Typography,
-Phosphor icons, superellipse geometry, semantic status colours, density,
-accessibility and reduced-motion requirements do not change.
+Status: active surface guidance, updated 2026-10-22. The owner's `SD_brand.png`
+and [15-design-system-standard.md](15-design-system-standard.md) govern brand
+identity. [09-brand-direction.md](09-brand-direction.md) records the current
+colour, type, icon and component application rules. This document governs
+working surfaces; it does not prohibit the approved hero gradient.
 
-## 1. Reference in words
+## 1. Working surfaces
 
-The application is a formal collection-work instrument. Its canvas is a quiet
-soft neutral. Working panes are white in light mode and use the established
-neutral dark ramp in dark mode. Structure comes from spacing, thin hairlines
-and small tonal steps. Evidence, collection metadata and decisions are the
-visual hierarchy. The shell does not compete with them.
+The application is a collection-work instrument. Its working canvas uses warm
+Paper in light mode and Obsidian in dark mode. Panes, fields and tables use
+solid neutral surfaces. Spacing, restrained edges and tonal steps establish
+structure. Photographs, label crops, collection metadata and review decisions
+remain the visual hierarchy.
 
-This rejects an atmospheric or consumer-product treatment in the runtime
-application: no colourful backdrop, no decorative gradient, no glow, no
-stacked translucent cards and no blur used merely to make chrome feel richer.
+The Amber-to-Iris gradient is a deliberate brand region on welcome,
+introduction and empty-state compositions. Use `UiBrandHero` or
+`UiBrandAccent`; readable copy and actions have a separate solid surface.
+The gradient never tints evidence or communicates record state.
 
 ## 2. Fields
 
-`UiFields` remains the only tokenized source for a radial field, and
-`FieldPainter` remains the only gradient painter. Both runtime themes suppress
-all `sky.home` and `sky.work` placements by default, so `FieldLayer` resolves
-to the mode's solid `ground` colour.
+Runtime themes suppress `sky.home` and `sky.work`. `FieldLayer` therefore
+resolves to the solid mode-aware ground. The legacy `decorativeFields` theme
+argument remains accepted for source compatibility and does not reactivate
+runtime placements.
 
-An explicit `decorativeFields: true` is allowed only in the design-system
-gallery or in a separately approved experiment. A product screen must not set
-it locally. This keeps the former treatment inspectable without allowing an
-ambient gradient to return by accident.
+The retained field recipes now contain only Amber, Iris and Mist. New catalog
+code reads the canonical `ui.field.brandFields`; old field names are aliases,
+not a second palette. No former backdrop may return by toggling a preference.
 
 ## 3. Glass and elevation
 
-Both runtime themes default to `GlassQuality.off`. A `GlassSurface` therefore
-draws as opaque `paper`, retains its thin edge, and omits blur, top-highlight
-gradient and shadow. This is the normal form for shell chrome, action bars,
-menus, sheets and dialogs.
-
-Glass is an explicit hierarchy tool. A caller may opt a complete theme into
-`full` or `reduced` quality only when blur explains a real overlay relationship
-that solid paper and a scrim cannot. If enabled, floating and modal shadows use
-the restrained 4 dp and 8 dp offsets in the token table. Repeated rows, cells
-and chips remain ineligible.
+Standard themes use `GlassQuality.off`. Structural surfaces remain opaque;
+menus, sheets, dialogs and action bars retain their edges without decorative
+blur, highlight gradients or shadows. Retained quality preferences do not
+make the standard recipes transparent. Repeated rows, cells and chips are
+solid. Scrims explain modal relationships. Evidence is never blurred.
 
 ## 4. Shell
 
-The application shell uses the solid neutral `FieldLayer` result and the
-monochrome product mark. Navigation, collection selection and account actions
-retain their existing layout, keyboard, semantics and responsive behavior.
-The shell adds no screen-specific component family.
+The shell uses neutral ground and the monochrome product mark. Navigation,
+collection selection and account actions retain shared keyboard, semantics
+and responsive behaviour. Compact headers use the workspace form of
+`UiTopBar`, with solid paper and matching safe-inset treatment. The compact
+tab bar covers the lower safe inset. Wider layouts adapt to available space
+without changing component identity.
 
-Amended 2026-10-17: the compact shell's header is `UiTopBar` in its workspace
-form (10 section 4.4), solid `paper` as section 3 says shell chrome is, and
-the ground covers the top safe inset as well as the bar, so the status strip
-and the bar are one surface on every tab. The compact tab bar does the same
-under the bottom inset.
+Brand regions can be composed within a screen when they help orientation;
+never reintroduce a colourful atmosphere behind the whole working shell.
 
 ## 5. Invariants
 
-- `ground`, `paper` and `matte` stay mode-aware and tokenized.
-- Semantic status triples are unchanged and remain the only data-bearing
-  colour system.
-- Geist, Geist Mono and Phosphor remain the shipped type and icon families.
-- Spacing, touch targets and window-class changes continue to resolve from
-  tokens. No local geometry is introduced by this alignment.
-- Reduced motion remains authoritative. Removing the default field transition
-  removes motion; it does not add a replacement transition.
-- Text and meaningful edges keep the existing WCAG 2.2 contrast gates in both
-  modes.
+- Ground, paper and photograph mattes are mode-aware neutral tokens.
+- Status meanings are unchanged. Their colour families are consolidated as
+  defined in 09 and 15; labels and Phosphor icons preserve distinctions.
+- Geist and Geist Mono remain the bundled implementation faces. Söhne is
+  identified as the unbundled brand reference, not silently substituted.
+- Shared geometry, 48 dp targets, focus behaviour, density and text scaling
+  apply across all supported platforms.
+- Reduced motion remains authoritative; brand regions are static.
+- Text and meaningful edges meet the existing WCAG contrast gates in both
+  modes, including the retained compatibility recipes.
 
 ## 6. Evidence
 
-The default-shell golden is captured at 390 by 844 and 1180 by 820, in light
-and dark mode. The routed application test repeats the contract at 390 by 844
-and 1440 by 900 and asserts that the runtime shell contains no `FieldPainter`
-or `BackdropFilter`, uses `GlassQuality.off`, and draws the monochrome mark.
-The primitive test separately proves that blur and decorative fields still
-work only after an explicit opt-in.
+Tests distinguish the neutral working shell from explicit hero components.
+Routed application checks cover responsive navigation and inspect runtime
+surfaces. Component tests exercise readable hero copy and operable actions at
+narrow widths, larger text, RTL and both themes. Source and generated-asset
+checks prevent the rejected palette returning outside Flutter. Historical
+screenshots remain historical; new local renders are not live acceptance.

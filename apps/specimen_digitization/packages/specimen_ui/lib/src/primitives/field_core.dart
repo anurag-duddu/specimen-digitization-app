@@ -1,7 +1,7 @@
-/// Text editing, and nothing else (10 section 3; 11 section 4).
+/// Native text editing and selection infrastructure (10 section 3; 11 section 4).
 ///
 /// This is the one file in `primitives/` allowed to import `material.dart`,
-/// and it imports it for `TextField` alone: the selection toolbar, the
+/// and it imports it for text editing and selection: the selection toolbar, the
 /// magnifier, autofill, spell check, the IME and the semantics of a text
 /// field are thousands of lines that `EditableText` on its own does not give
 /// (10 section 1.3).
@@ -19,12 +19,58 @@
 /// in the inputs family, and the ring belongs to the box.
 library;
 
-// The one Material import in primitives, for TextField's editing behaviour.
-import 'package:flutter/material.dart' show Material, MaterialType, TextField;
+// The one Material import in primitives, for platform editing/selection behaviour.
+import 'package:flutter/material.dart'
+    show Material, MaterialType, SelectableText, SelectionArea, TextField;
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../foundation/theme.dart';
+
+/// A selectable region with native handles, magnifier and context menu.
+///
+/// The adapter draws no component chrome. The caller retains its text styles
+/// and explicit copy actions; users may also select ranges with touch or mouse.
+class UiSelectionArea extends StatelessWidget {
+  /// Enables selection across the text descendants of [child].
+  const UiSelectionArea({super.key, required this.child});
+
+  /// The styled, read-only evidence or content subtree.
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => SelectionArea(child: child);
+}
+
+/// Read-only text using the platform's selection and copy interactions.
+///
+/// Like [FieldCore], this adapter uses Material only for editing infrastructure;
+/// its type and colour come from the product theme and it draws no chrome.
+class UiSelectableText extends StatelessWidget {
+  /// Makes [text] selectable without presenting an editable form field.
+  const UiSelectableText(
+    this.text, {
+    super.key,
+    this.style,
+    this.semanticsLabel,
+  });
+
+  /// Literal text, never evaluated as markup or code.
+  final String text;
+
+  /// Optional product text role.
+  final TextStyle? style;
+
+  /// An accessible description when the visual text needs context.
+  final String? semanticsLabel;
+
+  @override
+  Widget build(BuildContext context) => SelectableText(
+    text,
+    style: style ?? context.ui.defaultTextStyle,
+    semanticsLabel: semanticsLabel,
+  );
+}
 
 /// A text input with no chrome of its own.
 class FieldCore extends StatefulWidget {

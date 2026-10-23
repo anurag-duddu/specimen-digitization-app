@@ -13,6 +13,10 @@ import 'package:flutter/widgets.dart';
 
 import '../../specimen_ui.dart';
 import 'pages/actions_page.dart';
+import 'pages/advanced_inputs_page.dart';
+import 'pages/brand_overview_page.dart';
+import 'pages/content_patterns_page.dart';
+import 'pages/data_patterns_page.dart';
 import 'pages/colour_page.dart';
 import 'pages/control_states_page.dart';
 import 'pages/composition_page.dart';
@@ -128,9 +132,13 @@ const List<GalleryPage> familyPages = <GalleryPage>[
 /// that is not true of it. The Composition page is the same shape of thing for
 /// 13 section 3: it draws a whole screen out of four families at once.
 const List<GalleryPage> galleryPages = <GalleryPage>[
+  brandOverviewPage,
   ...foundationPages,
   ...familyPages,
   controlStatesPage,
+  advancedInputsPage,
+  dataPatternsPage,
+  contentPatternsPage,
   fitPage,
   compositionPage,
 ];
@@ -182,25 +190,31 @@ class _UiGalleryState extends State<UiGallery> {
     // source for the one thing that document gives one source.
     return FieldLayer(
       preset: SkyPreset.home,
-      child: sidebar
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                _PageList(pages: _pages, selected: selected, onSelect: _select),
-                Expanded(child: _PageView(page: page)),
-              ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                _PageSelect(
-                  pages: _pages,
-                  selected: selected,
-                  onSelect: _select,
-                ),
-                Expanded(child: _PageView(page: page, compact: true)),
-              ],
-            ),
+      child: SafeArea(
+        child: sidebar
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  _PageList(
+                    pages: _pages,
+                    selected: selected,
+                    onSelect: _select,
+                  ),
+                  Expanded(child: _PageView(page: page)),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  _PageSelect(
+                    pages: _pages,
+                    selected: selected,
+                    onSelect: _select,
+                  ),
+                  Expanded(child: _PageView(page: page, compact: true)),
+                ],
+              ),
+      ),
     );
   }
 }

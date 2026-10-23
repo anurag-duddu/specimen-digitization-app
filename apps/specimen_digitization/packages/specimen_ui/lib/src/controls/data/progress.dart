@@ -8,7 +8,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
 
-/// The three ring diameters 10 section 4.5 names.
+/// Base ring diameters from section 4.5 plus standalone loading.
 enum UiProgressSize {
   /// 16. Inside a button's leading slot, or beside a `label.small`.
   small(16),
@@ -17,7 +17,10 @@ enum UiProgressSize {
   medium(24),
 
   /// 40. The one on a pane that has nothing else on it yet.
-  large(40);
+  large(40),
+
+  /// 64. A standalone loading state.
+  extraLarge(64);
 
   const UiProgressSize(this.diameter);
 
@@ -483,4 +486,386 @@ class _RingPainter extends CustomPainter {
       oldDelegate.stroke != stroke ||
       oldDelegate.start != start ||
       oldDelegate.sweep != sweep;
+}
+
+/// Presentation of a measured metric, as a bar, circle or half circle.
+enum UiProgressDisplayForm {
+  /// A horizontal progress track.
+  bar,
+
+  /// A complete circular track.
+  circle,
+
+  /// A semicircular track.
+  halfCircle,
+}
+
+/// Where the reported percentage is displayed relative to its track.
+enum UiProgressLabelPosition {
+  /// No visible numeric value.
+  none,
+
+  /// The value follows the track.
+  trailing,
+
+  /// The bottom treatment.
+  bottom,
+
+  /// The value follows progress above the track.
+  topFloating,
+
+  /// The value follows progress below the track.
+  bottomFloating,
+
+  /// The value is centered inside a circular track.
+  center,
+}
+
+/// A labeled, controlled progress metric.
+///
+/// [value] is rendered exactly as reported; corrections can move backwards.
+/// Use [UiProgress] for monotonic transfer progress. No completion is inferred.
+/// Floating labels stay within the track allocation, including at 0/100%.
+class UiProgressDisplay extends StatelessWidget {
+  /// Creates the component with explicit caller-owned configuration.
+  const UiProgressDisplay({
+    super.key,
+    required this.label,
+    required this.value,
+    this.form = UiProgressDisplayForm.bar,
+    this.labelPosition = UiProgressLabelPosition.trailing,
+    this.diameter = 120,
+    this.valueLabel,
+    this.supporting,
+  }) : assert(value >= 0 && value <= 1),
+       assert(diameter >= 48);
+
+  /// The visible and accessible name of the control.
+  final String label;
+
+  /// The current value accepted by the host.
+  final double value;
+
+  /// The geometry used to display progress.
+  final UiProgressDisplayForm form;
+
+  /// The placement of the visible value relative to its shape.
+  final UiProgressLabelPosition labelPosition;
+
+  /// The preferred circle diameter, constrained by available width.
+  final double diameter;
+
+  /// The optional human-readable value or value formatter.
+  final String? valueLabel;
+
+  /// The optional explanatory text accompanying the primary label.
+  final String? supporting;
+
+  @override
+  Widget build(BuildContext context) {
+    final ui = context.ui;
+    final text = valueLabel ?? '${(value * 100).round()}%';
+    final metric = Text(
+      text,
+      style: ui.type.label.copyWith(color: ui.color.ink),
+    );
+    Widget body;
+    if (form == UiProgressDisplayForm.bar) {
+      final track = SizedBox(
+        height: ui.space.s2,
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: ui.color.hairline,
+                borderRadius: BorderRadius.circular(ui.shape.inner),
+              ),
+            ),
+            FractionallySizedBox(
+              alignment: AlignmentDirectional.centerStart,
+              widthFactor: value,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: ui.brand.secondary.content,
+                  borderRadius: BorderRadius.circular(ui.shape.inner),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      final floating = Align(
+        alignment: AlignmentDirectional(value * 2 - 1, 0),
+        child: metric,
+      );
+      body = labelPosition == UiProgressLabelPosition.trailing
+          ? Row(
+              children: <Widget>[
+                Expanded(child: track),
+                SizedBox(width: ui.space.s3),
+                metric,
+              ],
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                if (labelPosition == UiProgressLabelPosition.topFloating) ...[
+                  floating,
+                  SizedBox(height: ui.space.s2),
+                ],
+                track,
+                if (labelPosition != UiProgressLabelPosition.none &&
+                    labelPosition != UiProgressLabelPosition.topFloating) ...[
+                  SizedBox(height: ui.space.s2),
+                  labelPosition == UiProgressLabelPosition.bottomFloating
+                      ? floating
+                      : metric,
+                ],
+              ],
+            );
+    } else {
+      final half = form == UiProgressDisplayForm.halfCircle;
+      body = LayoutBuilder(
+        builder: (context, constraints) {
+          final width = math.min(
+            diameter,
+            constraints.hasBoundedWidth ? constraints.maxWidth : diameter,
+          );
+          final height = half ? width / 2 + ui.space.s2 : width;
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              SizedBox(
+                width: width,
+                height: height,
+                child: Stack(
+                  alignment: half ? Alignment.bottomCenter : Alignment.center,
+                  children: <Widget>[
+                    Positioned.fill(
+                      child: CustomPaint(
+                        painter: _MetricArcPainter(
+                          fraction: value,
+                          half: half,
+                          color: ui.brand.secondary.content,
+                          track: ui.color.hairline,
+                          stroke: ui.space.s2,
+                        ),
+                      ),
+                    ),
+                    if (labelPosition == UiProgressLabelPosition.center)
+                      Padding(
+                        padding: EdgeInsets.all(ui.space.s3),
+                        child: metric,
+                      ),
+                  ],
+                ),
+              ),
+              if (labelPosition != UiProgressLabelPosition.none &&
+                  labelPosition != UiProgressLabelPosition.center) ...[
+                SizedBox(height: ui.space.s2),
+                metric,
+              ],
+            ],
+          );
+        },
+      );
+    }
+    return Semantics(
+      label: [label, ?supporting].join('. '),
+      value: text,
+      excludeSemantics: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(label, style: ui.type.label),
+          SizedBox(height: ui.space.s2),
+          body,
+          if (supporting != null) ...[
+            SizedBox(height: ui.space.s2),
+            Text(supporting!, style: ui.type.bodySmall),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricArcPainter extends CustomPainter {
+  const _MetricArcPainter({
+    required this.fraction,
+    required this.half,
+    required this.color,
+    required this.track,
+    required this.stroke,
+  });
+  final double fraction;
+  final bool half;
+  final Color color;
+  final Color track;
+  final double stroke;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bounds = Rect.fromLTWH(
+      stroke / 2,
+      stroke / 2,
+      size.width - stroke,
+      size.width - stroke,
+    );
+    final sweep = half ? math.pi : 2 * math.pi;
+    final start = half ? math.pi : -math.pi / 2;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = track;
+    canvas.drawArc(bounds, start, sweep, false, paint);
+    if (fraction > 0) {
+      canvas.drawArc(
+        bounds,
+        start,
+        sweep * fraction,
+        false,
+        paint..color = color,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_MetricArcPainter old) =>
+      old.fraction != fraction ||
+      old.half != half ||
+      old.color != color ||
+      old.track != track ||
+      old.stroke != stroke;
+}
+
+/// Visual shapes for indeterminate loading, without implying a percentage.
+enum UiLoadingIndicatorStyle {
+  /// A continuous rotating ring.
+  line,
+
+  /// Radial rotating spokes.
+  spokes,
+
+  /// A sequence of pulsing dots.
+  dots,
+}
+
+/// A loading indicator using one ticker, frozen under reduced motion.
+class UiLoadingIndicator extends StatefulWidget {
+  /// Creates the component with explicit caller-owned configuration.
+  const UiLoadingIndicator({
+    super.key,
+    required this.label,
+    this.style = UiLoadingIndicatorStyle.line,
+    this.size = UiProgressSize.medium,
+  });
+
+  /// The visible and accessible name of the control.
+  final String label;
+
+  /// The visual form of the waiting indicator.
+  final UiLoadingIndicatorStyle style;
+
+  /// The visual size; interactive targets retain their accessible minimum.
+  final UiProgressSize size;
+  @override
+  State<UiLoadingIndicator> createState() => _UiLoadingIndicatorState();
+}
+
+class _UiLoadingIndicatorState extends State<UiLoadingIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _cycle = AnimationController(
+    vsync: this,
+    duration: MotionTokens.slowRaw * 2,
+  );
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (context.ui.motion.reduced) {
+      _cycle.stop();
+    } else {
+      _cycle.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    _cycle.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.style == UiLoadingIndicatorStyle.line) {
+      return UiProgress.ring(
+        semanticsLabel: widget.label,
+        size: widget.size,
+        cycle: _cycle,
+      );
+    }
+    return Semantics(
+      label: widget.label,
+      excludeSemantics: true,
+      child: SizedBox.square(
+        dimension: widget.size.diameter,
+        child: AnimatedBuilder(
+          animation: _cycle,
+          builder: (context, child) => CustomPaint(
+            painter: _LoadingMarksPainter(
+              turn: context.ui.motion.reduced ? 0 : _cycle.value,
+              dots: widget.style == UiLoadingIndicatorStyle.dots,
+              color: context.ui.color.ink,
+              stroke: context.ui.shape.stroke.emphasis,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadingMarksPainter extends CustomPainter {
+  const _LoadingMarksPainter({
+    required this.turn,
+    required this.dots,
+    required this.color,
+    required this.stroke,
+  });
+  final double turn;
+  final bool dots;
+  final Color color;
+  final double stroke;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final radius = size.shortestSide / 2 - stroke * 2;
+    for (int i = 0; i < 8; i++) {
+      final angle = (i / 8 + turn) * math.pi * 2;
+      final vector = Offset(math.cos(angle), math.sin(angle));
+      final paint = Paint()
+        ..color = color.withValues(alpha: .25 + .75 * i / 7)
+        ..strokeWidth = stroke
+        ..strokeCap = StrokeCap.round;
+      if (dots) {
+        canvas.drawCircle(center + vector * radius, stroke, paint);
+      } else {
+        canvas.drawLine(
+          center + vector * radius * .6,
+          center + vector * radius,
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_LoadingMarksPainter old) =>
+      old.turn != turn ||
+      old.dots != dots ||
+      old.color != color ||
+      old.stroke != stroke;
 }

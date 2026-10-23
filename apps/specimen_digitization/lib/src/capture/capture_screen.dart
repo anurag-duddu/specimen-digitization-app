@@ -1044,11 +1044,10 @@ class _CaptureScreenState extends State<CaptureScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Text('Photo ${_acceptedCount + 1}', style: ui.type.title),
-                  SizedBox(height: ui.space.s2),
-                  Text(
-                    'All labels sharp and in frame?',
-                    style: ui.type.body.copyWith(color: ui.color.ink),
+                  UiSectionHeader(
+                    title: 'Photo ${_acceptedCount + 1}',
+                    role: UiSectionHeaderRole.card,
+                    supporting: 'All labels sharp and in frame?',
                   ),
                   if (_editError != null) ...<Widget>[
                     SizedBox(height: ui.space.s3),
@@ -1074,7 +1073,9 @@ class _CaptureScreenState extends State<CaptureScreen>
                       ),
                     )
                   else ...<Widget>[
-                    Row(
+                    Wrap(
+                      spacing: ui.space.s2,
+                      runSpacing: ui.space.s2,
                       children: <Widget>[
                         UiButton(
                           key: const ValueKey<String>('capture-rotate'),
@@ -1083,7 +1084,6 @@ class _CaptureScreenState extends State<CaptureScreen>
                           leading: UiIcons.rotateView,
                           onPressed: _editing ? null : _rotate,
                         ),
-                        SizedBox(width: ui.space.s2),
                         UiButton(
                           key: const ValueKey<String>('capture-crop'),
                           label: 'Crop',

@@ -12,7 +12,7 @@
       head centre  y = 3 + 5 / 2       = 5.5
       shaft end    y = 19 - 2 / 2      = 18, carried to 19 by the round cap
   -->
-  <circle cx="12" cy="12" r="12" fill="#E8FF47"/>
-  <circle cx="12" cy="5.5" r="2.5" fill="#111214"/>
-  <line x1="12" y1="5.5" x2="12" y2="18" stroke="#111214" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="12" cy="12" r="12" fill="#7B61FF"/>
+  <circle cx="12" cy="5.5" r="2.5" fill="#0E0E11"/>
+  <line x1="12" y1="5.5" x2="12" y2="18" stroke="#0E0E11" stroke-width="2" stroke-linecap="round"/>
 </svg>

@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 flutter_root="$repo_root/apps/specimen_digitization"
 design_system_root="$flutter_root/packages/specimen_ui"
+widgetbook_root="$repo_root/apps/specimen_widgetbook"
 firebase_options="$flutter_root/lib/firebase_options.dart"
 ci_firebase_options="$flutter_root/lib/firebase_options.ci.dart"
 created_ci_options=0
@@ -65,6 +66,15 @@ cd "$design_system_root"
 flutter pub get
 flutter analyze --fatal-infos
 flutter test
+
+# The standalone catalog documents the same package, but has its own locked
+# dependencies, interactions and web entry point to validate.
+cd "$widgetbook_root"
+flutter pub get --enforce-lockfile
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze --fatal-infos
+flutter test
+flutter build web --release
 
 cd "$flutter_root"
 flutter pub get --enforce-lockfile

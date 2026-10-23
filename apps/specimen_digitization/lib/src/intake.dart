@@ -932,32 +932,14 @@ class _IntakeScreenState extends State<IntakeScreen> {
     onDismiss: () => setState(() => _error = null),
   );
 
-  Widget _batchHeader(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      Focus(
-        focusNode: _headingFocus,
-        includeSemantics: false,
-        child: Semantics(
-          header: true,
-          child: Text(
-            intakeTitle,
-            style: context.ui.type.headline.copyWith(
-              color: context.ui.color.ink,
-            ),
-          ),
-        ),
-      ),
-      if (_entries.isEmpty) ...[
-        SizedBox(height: context.ui.space.s2),
-        Text(
-          intakePurpose,
-          style: context.ui.type.body.copyWith(
-            color: context.ui.color.inkSecondary,
-          ),
-        ),
-      ],
-    ],
+  Widget _batchHeader(BuildContext context) => Focus(
+    focusNode: _headingFocus,
+    includeSemantics: false,
+    child: UiSectionHeader(
+      title: intakeTitle,
+      role: UiSectionHeaderRole.page,
+      supporting: _entries.isEmpty ? intakePurpose : null,
+    ),
   );
 
   Widget _sensitivityControl(BuildContext context) => Align(
@@ -1176,9 +1158,9 @@ class _IntakeScreenState extends State<IntakeScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               SizedBox(height: layout.sectionGap),
-                              Semantics(
-                                header: true,
-                                child: Text('Photos', style: ui.type.title),
+                              const UiSectionHeader(
+                                title: 'Photos',
+                                role: UiSectionHeaderRole.card,
                               ),
                               SizedBox(height: ui.space.s2),
                               Align(

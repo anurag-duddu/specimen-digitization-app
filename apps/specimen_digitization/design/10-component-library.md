@@ -127,7 +127,7 @@ five family barrels and is written once in the foundation step.
 |---|---|---|
 | `MaterialApp.router` | `main.dart` | Localizations, `Overlay`, `Router`, `ScrollBehavior`, text selection defaults, `Theme` inheritance. It has no look of its own once every component widget is gone. |
 | `ThemeData` | built by `UiThemeData.toThemeData()` | The carrier `MaterialApp` expects. Its `colorScheme` and `textTheme` are derived from `UiThemeData`, never edited directly. |
-| `TextField` with `InputDecoration.collapsed` | `primitives/field_core.dart` only | Selection toolbar, magnifier, autofill, spell check, IME and the semantics of a text field are thousands of lines that `EditableText` alone does not give. The decoration is stripped; all chrome is ours. |
+| `TextField(decoration: null)`, `SelectableText`, `SelectionArea` | `primitives/field_core.dart` only | Native selection toolbar, handles, magnifier, autofill, spell check and IME. `FieldCore`, `UiSelectableText` and `UiSelectionArea` expose owned adapters. Form decoration is absent; visible component chrome stays ours. |
 | `PageTransitionsTheme` | `main.dart` | Per-platform route transitions (05 section 5). |
 | `Tooltip`'s semantics strings via `MaterialLocalizations` | `controls/overlays/tooltip.dart` | Localised "dismiss" and similar strings, not the widget. |
 

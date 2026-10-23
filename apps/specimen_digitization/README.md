@@ -57,15 +57,28 @@ over it for a credential free local build; never commit the real one.
 
 ### The gallery
 
-Visit `/gallery`. It renders every token and every control in every variant,
-state, size, density and mode, and it needs no session: the route is mounted
+The managed component catalog now lives in
+[`../specimen_widgetbook`](../specimen_widgetbook/README.md). Run it independently
+with `flutter run -d chrome` from that directory. It documents the actual shared
+package with live component stories, appearance and viewport controls, text
+scaling, RTL, density and reduced motion. It requires no app session or backend.
+
+Visit `/gallery` for the reference sheets. It renders the registered token and
+component families and needs no session: the route is mounted
 whenever `kReleaseMode` is false and is absent from a release build, so it is
 what a reviewer looks at and not what a museum sees.
 
-Twelve pages: six foundation, five families and Fit, which draws every control
+The reference sheets include foundations, component families and Fit, which draws every control
 that declares a compact variant at 480, 360, 280 and 200 dp. Narrow the window
 below 600 dp and the page list becomes a select above the content, because the
 gallery shell chooses its arrangement by window class like any other screen.
+
+For an isolated native preview in this app host, use
+`flutter run -t tool/design_system_preview.dart -d <simulator-id>`. This entry
+point supplies no session or repository and never initializes Firebase. Native
+compilation still requires the ignored platform configuration files; use the
+nonsecret templates in `scripts/ci/build_mobile.sh` for a credential-free checkout.
+Never overwrite an existing developer configuration.
 
 ## The gates
 
@@ -117,9 +130,9 @@ Three sets of checked-in binaries, answering three different questions.
 
 | Set | Count | Question it answers |
 |---|---|---|
-| `test/golden/images/` | 121 | What does each screen look like at 390x844, 768x1024, 1180x820 and 1440x900, in both modes, with the record screen and intake also at 200 percent text |
-| `packages/specimen_ui/test/gallery/goldens/` | 48 | What does each family of controls look like at one comfortable window. This is the taste review |
-| `packages/specimen_ui/test/gallery/goldens/matrix/` | 288 | What does each gallery page do at the four window classes, at text scales 1.0, 1.3 and 2.0, in both modes. This is the fit review |
+| `test/golden/images/` | 199 | What does each screen look like at 390x844, 768x1024, 1180x820 and 1440x900, in both modes, with the record screen and intake also at 200 percent text |
+| `packages/specimen_ui/test/gallery/goldens/` | 54 | What does each family of controls look like at one comfortable window. This is the taste review |
+| `packages/specimen_ui/test/gallery/goldens/matrix/` | 432 | What does each gallery page do at the four window classes, at text scales 1.0, 1.3 and 2.0, in both modes. This is the fit review |
 | `test/accessibility/fixtures/` | 8 | What does a screen reader hear on each top level surface |
 
 **Goldens are generated on macOS.** Off macOS the test still builds the screen,

@@ -19,16 +19,19 @@ Widget buildFieldsPage(BuildContext context) {
       for (final SkyPreset preset in SkyPreset.values)
         GallerySection(
           title: 'sky.${preset.name}',
-          child: SizedBox(height: 220, child: _Preset(preset: preset)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 220),
+            child: _Preset(preset: preset),
+          ),
         ),
       GallerySection(
-        title: 'The five fields at their centre alpha',
+        title: 'The three brand fields at their centre alpha',
         child: Wrap(
           spacing: ui.space.s3,
           runSpacing: ui.space.s3,
           children: <Widget>[
             for (final MapEntry<String, UiFieldStyle> field
-                in ui.field.all.entries)
+                in ui.field.brandFields.entries)
               GallerySpecimen(
                 label: 'field.${field.key}',
                 note: 'alpha ${field.value.centreAlpha}',
@@ -62,9 +65,8 @@ class _Preset extends StatelessWidget {
     return Squircle.clip(
       radius: ui.shape.tile,
       child: Stack(
-        fit: StackFit.expand,
         children: <Widget>[
-          FieldLayer(preset: preset),
+          Positioned.fill(child: FieldLayer(preset: preset)),
           Padding(
             padding: EdgeInsetsDirectional.all(ui.space.s4),
             child: Wrap(

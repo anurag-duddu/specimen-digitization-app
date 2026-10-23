@@ -1,0 +1,1910 @@
+{
+  "referenceFileId": "fIfKyBB3UUanoV9lZoTBx9",
+  "status": "implemented_pending_integrated_qa",
+  "brandAdaptation": "Original Specimen tokens and Phosphor; reference anatomy and variant coverage, no Untitled pixel-parity claim.",
+  "visualEvidenceLimit": "Metadata audited for all 15 pages. Button group Figma context/screenshot plus browser screenshots of selection cards, avatar groups, selected dropdown tags, range sliders, dual-date ranges and compound inputs reviewed. Remaining family screenshots and final integrated visual/device acceptance are tracked separately from implementation.",
+  "families": [
+    {
+      "family": "buttons",
+      "pageId": "1:1183",
+      "variantAxes": {
+        "Size": [
+          "md",
+          "lg",
+          "xl",
+          "2xl",
+          "sm"
+        ],
+        "Hierarchy": [
+          "Primary",
+          "Secondary color",
+          "Link color",
+          "Link gray",
+          "Tertiary color",
+          "Tertiary gray",
+          "Secondary gray"
+        ],
+        "Icon": [
+          "Dot leading",
+          "Default",
+          "Only"
+        ],
+        "Destructive": [
+          "False",
+          "True"
+        ],
+        "State": [
+          "Default",
+          "Disabled",
+          "Focused",
+          "Hover"
+        ],
+        "Social": [
+          "Facebook",
+          "Google",
+          "Apple",
+          "Figma",
+          "Dribbble",
+          "Twitter"
+        ],
+        "Supporting text": [
+          "True",
+          "False"
+        ],
+        "Theme": [
+          "Brand",
+          "Color with brand",
+          "Color",
+          "Light",
+          "Dark"
+        ],
+        "Style": [
+          "Buttons",
+          "Icons",
+          "Black outline",
+          "White outline",
+          "Brand"
+        ],
+        "Store": [
+          "Google Play",
+          "App Store",
+          "Galaxy Store",
+          "AppGallery",
+          "F-Droid"
+        ],
+        "Color": [
+          "Primary",
+          "Gray"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "3287:427074",
+          "name": "Button"
+        },
+        {
+          "id": "1256:130788",
+          "name": "Social button"
+        },
+        {
+          "id": "1256:132638",
+          "name": "Social button groups"
+        },
+        {
+          "id": "1303:2162",
+          "name": "Mobile app store badge"
+        },
+        {
+          "id": "1532:357715",
+          "name": "Notes and documentation"
+        },
+        {
+          "id": "1532:357717",
+          "name": "Section"
+        },
+        {
+          "id": "3956:470983",
+          "name": "Rich text"
+        },
+        {
+          "id": "3956:470986",
+          "name": "Image wrap"
+        },
+        {
+          "id": "3956:470987",
+          "name": "Buttons"
+        },
+        {
+          "id": "3956:470988",
+          "name": "Button"
+        },
+        {
+          "id": "3956:470989",
+          "name": "_Button base"
+        },
+        {
+          "id": "3956:470991",
+          "name": "Button"
+        },
+        {
+          "id": "3956:470992",
+          "name": "_Button base"
+        },
+        {
+          "id": "3956:470994",
+          "name": "Button"
+        },
+        {
+          "id": "3956:470995",
+          "name": "_Button base"
+        },
+        {
+          "id": "3956:470998",
+          "name": "Image wrap"
+        },
+        {
+          "id": "3956:470999",
+          "name": "Buttons"
+        },
+        {
+          "id": "3956:471000",
+          "name": "Button"
+        },
+        {
+          "id": "3956:471001",
+          "name": "_Button base"
+        },
+        {
+          "id": "3956:471003",
+          "name": "Button"
+        },
+        {
+          "id": "3956:471005",
+          "name": "_Button base"
+        },
+        {
+          "id": "3956:471013",
+          "name": "Image wrap"
+        },
+        {
+          "id": "3956:471014",
+          "name": "Buttons"
+        },
+        {
+          "id": "3956:471015",
+          "name": "Actions"
+        },
+        {
+          "id": "3956:471020",
+          "name": "Buttons"
+        },
+        {
+          "id": "3956:471021",
+          "name": "Actions"
+        },
+        {
+          "id": "3956:471027",
+          "name": "Image wrap"
+        },
+        {
+          "id": "3956:471028",
+          "name": "Buttons"
+        },
+        {
+          "id": "3956:471029",
+          "name": "Actions"
+        },
+        {
+          "id": "3956:471037",
+          "name": "Image wrap"
+        },
+        {
+          "id": "3956:471038",
+          "name": "Modal"
+        },
+        {
+          "id": "3956:471040",
+          "name": "Image wrap"
+        },
+        {
+          "id": "3956:471041",
+          "name": "Modal"
+        },
+        {
+          "id": "3956:471043",
+          "name": "Image wrap"
+        },
+        {
+          "id": "3956:471044",
+          "name": "Modal"
+        },
+        {
+          "id": "2763:420129",
+          "name": "Button close X"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/buttons.json",
+      "requiredCapabilities": [
+        "Seven reference hierarchy treatments map to independent filled/outline/subtle/link emphasis plus neutral/brand/destructive tone.",
+        "Five visual sizes; leading dot/icon, trailing icon, icon-only, busy and disabled actions.",
+        "Provider and store anatomy includes explicit artwork slots, text/icon-only, supporting captions, paper/ink treatments and host-owned callbacks."
+      ],
+      "implementations": [
+        "UiButton",
+        "UiIconButton",
+        "UiActionButton",
+        "UiProviderButton",
+        "UiStoreBadge",
+        "UiGoogleSignInButton"
+      ],
+      "catalogPaths": [
+        "actions/uibutton",
+        "actions/uigooglesigninbutton",
+        "actions/uiiconbutton",
+        "shared-patterns/uiactionbutton",
+        "shared-patterns/uiproviderbutton",
+        "shared-patterns/uistorebadge"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Size": "Mapped to explicit size enums where anatomical; density and text scaling remain global. Touch targets remain at least 48 dp regardless of smaller visual artwork.",
+        "Hierarchy": "Primary=filled neutral; secondary color/gray=outline brand/neutral; tertiary color/gray=subtle brand/neutral; link color/gray=link brand/neutral.",
+        "Icon": "Slots accept Phosphor icons or supplied identity artwork; dot/icon-only/leading/trailing/removal variants keep complete labels and separate actions where needed.",
+        "Destructive": "UiActionTone.destructive uses the semantic blocked/error role independently of emphasis.",
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets.",
+        "Social": "UiProviderButton provides the same provider action anatomy through approved caller-supplied marks; UiGoogleSignInButton supplies the existing Google-specific implementation. This library does not enable additional sign-in providers.",
+        "Supporting text": "Optional supporting text remains separately styled and part of the full accessible description.",
+        "Theme": "Light/dark environment plus explicit paper/ink emphasis; third-party artwork comes from the caller and is not recolored into invented logos.",
+        "Style": "Reference provider/store treatments map to supplied artwork plus neutral paper/ink surfaces, preserving original Specimen brand restrictions.",
+        "Store": "UiStoreBadge supports the listed stores through approved supplied artwork, explicit caption/name and a real host callback. It neither fabricates store logos nor configures store distribution.",
+        "Color": "Reference ornamental color families collapse to Specimen neutral, Iris secondary and meaningful functional status tokens. Amber\u2013Iris remains the hero; acid yellow is not a supported role."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=1-1183",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/actions.dart",
+        "apps/specimen_widgetbook/lib/catalog/shared_patterns.dart"
+      ],
+      "status": "implemented_pending_integrated_qa"
+    },
+    {
+      "family": "buttonGroups",
+      "pageId": "16:399",
+      "variantAxes": {
+        "Current": [
+          "False",
+          "True"
+        ],
+        "Icon": [
+          "False",
+          "Only",
+          "Leading",
+          "Dot"
+        ],
+        "State": [
+          "Default",
+          "Focused",
+          "Disabled",
+          "Hover"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "1046:9312",
+          "name": "_Button group base"
+        },
+        {
+          "id": "1046:10171",
+          "name": "Button group"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/buttonGroups.json",
+      "requiredCapabilities": [
+        "Joined text/icon/dot commands with independent selection, availability and disabled reasons.",
+        "Arrow/Home/End focus navigation; activation remains separate; narrow groups stack instead of clipping."
+      ],
+      "implementations": [
+        "UiButtonGroup",
+        "UiSegmented"
+      ],
+      "catalogPaths": [
+        "actions/uisegmented",
+        "shared-patterns/uibuttongroup"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_interaction_regressions_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Current": "Controlled selected/current state independent of command activation.",
+        "Icon": "Slots accept Phosphor icons or supplied identity artwork; dot/icon-only/leading/trailing/removal variants keep complete labels and separate actions where needed.",
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=16-399",
+      "visualEvidence": "Figma get_design_context 1046:10171 (prior agent review)",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/actions.dart",
+        "apps/specimen_widgetbook/lib/catalog/shared_patterns.dart"
+      ],
+      "status": "implemented_pending_integrated_qa"
+    },
+    {
+      "family": "badges",
+      "pageId": "12:539",
+      "variantAxes": {
+        "Size": [
+          "sm",
+          "md",
+          "lg"
+        ],
+        "Type": [
+          "Pill color",
+          "Pill outline",
+          "Badge color",
+          "Badge modern",
+          "Square",
+          "Rounded"
+        ],
+        "Icon": [
+          "False",
+          "Dot",
+          "X close",
+          "Icon trailing",
+          "Icon leading",
+          "Only",
+          "Country",
+          "Avatar"
+        ],
+        "Color": [
+          "Primary",
+          "Warning",
+          "Success",
+          "Gray blue",
+          "Blue gray",
+          "Blue light",
+          "Indigo",
+          "Purple",
+          "Blue",
+          "Pink",
+          "Orange",
+          "Error",
+          "Gray"
+        ],
+        "Badge": [
+          "Leading",
+          "Trailing"
+        ],
+        "Theme": [
+          "Light",
+          "Modern",
+          "Dark",
+          "Outline"
+        ],
+        "State": [
+          "Default",
+          "Hover"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "1046:3819",
+          "name": "Badge"
+        },
+        {
+          "id": "1046:8088",
+          "name": "Badge group"
+        },
+        {
+          "id": "4824:404158",
+          "name": "_Badge close X"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/badges.json",
+      "requiredCapabilities": [
+        "Pill, rounded, modern and square shapes; soft, outline and solid emphasis; three visual sizes.",
+        "Leading/trailing identity, icon-only semantics, independent removal and leading/trailing badge-group callouts."
+      ],
+      "implementations": [
+        "UiStatusBadge",
+        "UiBadgeGroup",
+        "UiBadge"
+      ],
+      "catalogPaths": [
+        "actions/uibadge",
+        "shared-patterns/uibadgegroup",
+        "shared-patterns/uistatusbadge"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Size": "Mapped to explicit size enums where anatomical; density and text scaling remain global. Touch targets remain at least 48 dp regardless of smaller visual artwork.",
+        "Type": "Mapped to the named anatomical capabilities and public implementations for this family.",
+        "Icon": "Slots accept Phosphor icons or supplied identity artwork; dot/icon-only/leading/trailing/removal variants keep complete labels and separate actions where needed.",
+        "Color": "Reference ornamental color families collapse to Specimen neutral, Iris secondary and meaningful functional status tokens. Amber\u2013Iris remains the hero; acid yellow is not a supported role.",
+        "Badge": "UiBadgeGroup.badgeTrailing chooses before/after announcement anatomy.",
+        "Theme": "Light/dark environment plus explicit paper/ink emphasis; third-party artwork comes from the caller and is not recolored into invented logos.",
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=12-539",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/actions.dart",
+        "apps/specimen_widgetbook/lib/catalog/shared_patterns.dart"
+      ],
+      "status": "implemented_pending_integrated_qa"
+    },
+    {
+      "family": "tags",
+      "pageId": "3306:403749",
+      "variantAxes": {
+        "Size": [
+          "sm",
+          "md",
+          "lg"
+        ],
+        "Icon": [
+          "False",
+          "Dot",
+          "Country",
+          "Avatar"
+        ],
+        "Action": [
+          "Text only",
+          "X close",
+          "Count"
+        ],
+        "Checkbox": [
+          "False",
+          "True"
+        ],
+        "State": [
+          "Default",
+          "Hover",
+          "Disbaled",
+          "Focused"
+        ],
+        "Checked": [
+          "False",
+          "True"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "3307:417515",
+          "name": "Tag"
+        },
+        {
+          "id": "3307:417672",
+          "name": "_Tag close X"
+        },
+        {
+          "id": "3307:417827",
+          "name": "_Tag count"
+        },
+        {
+          "id": "3308:406033",
+          "name": "_Tag checkbox"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/tags.json",
+      "requiredCapabilities": [
+        "Three visual sizes, optional leading identity, independent checkbox, count and remove actions.",
+        "Disabled selection/removal retain anatomy and reason."
+      ],
+      "implementations": [
+        "UiTag",
+        "UiChip"
+      ],
+      "catalogPaths": [
+        "actions/uichip",
+        "shared-patterns/uitag"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Size": "Mapped to explicit size enums where anatomical; density and text scaling remain global. Touch targets remain at least 48 dp regardless of smaller visual artwork.",
+        "Icon": "Slots accept Phosphor icons or supplied identity artwork; dot/icon-only/leading/trailing/removal variants keep complete labels and separate actions where needed.",
+        "Action": "Text-only, count and independent close actions are UiTag options; UiStatusBadge also supports its own independent close action.",
+        "Checkbox": "UiTag.selected/onSelected and UiCombobox.multiple provide explicit checkbox selections.",
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets.",
+        "Checked": "Controlled checked state; UiCheckbox also exposes mixed state."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=3306-403749",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/actions.dart",
+        "apps/specimen_widgetbook/lib/catalog/shared_patterns.dart"
+      ],
+      "status": "implemented_pending_integrated_qa"
+    },
+    {
+      "family": "dropdowns",
+      "pageId": "18:0",
+      "variantAxes": {
+        "Icon": [
+          "True",
+          "False"
+        ],
+        "Checkbox": [
+          "False",
+          "True"
+        ],
+        "State": [
+          "Focus",
+          "Disabled",
+          "Hover",
+          "Default",
+          "Placeholder",
+          "Focused",
+          "Open"
+        ],
+        "Type": [
+          "Avatar group",
+          "Header",
+          "Icon",
+          "Button",
+          "Avatar",
+          "Default",
+          "Icon leading",
+          "Avatar leading",
+          "Dot leading",
+          "Search",
+          "Tags"
+        ],
+        "Open": [
+          "True",
+          "False"
+        ],
+        "Selected": [
+          "False",
+          "True"
+        ],
+        "Length": [
+          "25%",
+          "50%",
+          "75%"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "3281:382793",
+          "name": "_Dropdown list item"
+        },
+        {
+          "id": "3281:382878",
+          "name": "_Dropdown list header"
+        },
+        {
+          "id": "3281:383083",
+          "name": "Dropdown"
+        },
+        {
+          "id": "3281:380429",
+          "name": "_Input dropdown menu item"
+        },
+        {
+          "id": "1096:4559",
+          "name": "_Scroll bar"
+        },
+        {
+          "id": "3281:377673",
+          "name": "Input dropdown"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/dropdowns.json",
+      "requiredCapabilities": [
+        "Searchable single/multiple selection, tags with identity, grouped options and supporting details, trigger identity slot and optional header.",
+        "Disabled options, loading and empty states, keyboard search/results, Escape dismissal and guarded closure when host disables an open menu."
+      ],
+      "implementations": [
+        "UiCombobox",
+        "UiSelect",
+        "UiPopoverMenu",
+        "UiMenuTrigger"
+      ],
+      "catalogPaths": [
+        "feedback/uipopovermenu-and-uimenutrigger",
+        "forms/uiselect",
+        "shared-patterns/uicombobox"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_interaction_regressions_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Icon": "Slots accept Phosphor icons or supplied identity artwork; dot/icon-only/leading/trailing/removal variants keep complete labels and separate actions where needed.",
+        "Checkbox": "UiTag.selected/onSelected and UiCombobox.multiple provide explicit checkbox selections.",
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets.",
+        "Type": "Mapped to the named anatomical capabilities and public implementations for this family.",
+        "Open": "PopoverController owns transient overlay visibility; keyboard/touch/pointer interactions open and dismiss.",
+        "Selected": "Host-controlled value/selected sets remain authoritative.",
+        "Length": "Viewport-constrained overlay sizing replaces arbitrary percentage variants; search results scroll within the available height."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=18-0",
+      "visualEvidence": "/private/tmp/untitled-ui-reference/browser/dropdown-tags.png",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/actions.dart",
+        "apps/specimen_widgetbook/lib/catalog/shared_patterns.dart"
+      ],
+      "status": "implemented_pending_integrated_qa"
+    },
+    {
+      "family": "inputs",
+      "pageId": "85:1269",
+      "variantAxes": {
+        "Size": [
+          "md",
+          "sm",
+          "lg"
+        ],
+        "Type": [
+          "Icon leading",
+          "Payment input",
+          "Default",
+          "Tags",
+          "Leading dropdown",
+          "Leading text",
+          "Trailing button",
+          "Trailing dropdown",
+          "Bold",
+          "Italic",
+          "H1",
+          "H2",
+          "Quote",
+          "Link",
+          "Photo",
+          "List bullet",
+          "List numbers"
+        ],
+        "Destructive": [
+          "False",
+          "True"
+        ],
+        "State": [
+          "Placeholder",
+          "Disabled",
+          "Filled",
+          "Focused",
+          "Default"
+        ],
+        "Digits": [
+          "4",
+          "6"
+        ],
+        "Active": [
+          "False",
+          "True"
+        ],
+        "Theme": [
+          "Light",
+          "Dark"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile",
+          "Default"
+        ],
+        "Arrow": [
+          "Center",
+          "Left",
+          "Right"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "1090:57817",
+          "name": "Input field"
+        },
+        {
+          "id": "1106:66560",
+          "name": "_Mega input field base"
+        },
+        {
+          "id": "1106:66757",
+          "name": "Verification code input field"
+        },
+        {
+          "id": "1238:278",
+          "name": "Textarea input field"
+        },
+        {
+          "id": "1705:454356",
+          "name": "_WYSIWYG editor icon"
+        },
+        {
+          "id": "1705:454581",
+          "name": "WYSIWYG toolbar"
+        },
+        {
+          "id": "1706:438373",
+          "name": "WYSIWYG tooltip"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/inputs.json",
+      "requiredCapabilities": [
+        "Static prefix/suffix affixes and independently focusable leading/trailing control groups.",
+        "Four/six digit OTP with paste, autofill, keyboard deletion, controlled reset and completion callback.",
+        "Unique tag entry, native telephone editing with explicit country selection and formatting toolbar commands for bold/italic/underline/H1/H2/quote/link/image/lists."
+      ],
+      "implementations": [
+        "UiField",
+        "UiTextArea",
+        "UiSearchField",
+        "UiInputGroup",
+        "UiVerificationCode",
+        "UiTagField",
+        "UiPhoneField",
+        "UiTextToolbar"
+      ],
+      "catalogPaths": [
+        "forms/uifield",
+        "forms/uisearchfield",
+        "forms/uitextarea",
+        "shared-patterns/uiinputgroup",
+        "shared-patterns/uiphonefield",
+        "shared-patterns/uitagfield",
+        "shared-patterns/uitexttoolbar",
+        "shared-patterns/uiverificationcode"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Size": "Mapped to explicit size enums where anatomical; density and text scaling remain global. Touch targets remain at least 48 dp regardless of smaller visual artwork.",
+        "Type": "Mapped to the named anatomical capabilities and public implementations for this family.",
+        "Destructive": "UiActionTone.destructive uses the semantic blocked/error role independently of emphasis.",
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets.",
+        "Digits": "UiVerificationCode.length accepts four or six digits with the same input behavior.",
+        "Active": "UiTextToolbar.active is host-owned; commands are emitted to the editing host rather than silently mutating a separate document.",
+        "Theme": "Light/dark environment plus explicit paper/ink emphasis; third-party artwork comes from the caller and is not recolored into invented logos.",
+        "Breakpoint": "Responsive layout and shared environment controls cover narrow phones, tablets and desktop widths with 200% text and RTL.",
+        "Arrow": "Specimen deliberately uses an arrowless pane. All four functional placements remain; reference triangle orientation/alignment variants map to their corresponding placement, keeping compact surfaces consistent with the existing Popover primitive."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=85-1269",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/inputs.dart",
+        "apps/specimen_widgetbook/lib/catalog/shared_patterns.dart"
+      ],
+      "status": "implemented_pending_integrated_qa",
+      "visualEvidence": "/private/tmp/untitled-ui-reference/browser/input.png"
+    },
+    {
+      "family": "toggles",
+      "pageId": "1102:4631",
+      "variantAxes": {
+        "Pressed": [
+          "True",
+          "False"
+        ],
+        "Size": [
+          "md",
+          "sm"
+        ],
+        "Theme": [
+          "Dark",
+          "Light"
+        ],
+        "State": [
+          "Focus",
+          "Hover",
+          "Default",
+          "Disabled"
+        ],
+        "Text": [
+          "False",
+          "True"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "122:3294",
+          "name": "_Toggle base"
+        },
+        {
+          "id": "1102:4208",
+          "name": "Toggle"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/toggles.json",
+      "requiredCapabilities": [
+        "Supporting text and hidden-label anatomy with compact/default visual sizes.",
+        "Controlled on/off and focus/hover/disabled states preserve minimum interactive target."
+      ],
+      "implementations": [
+        "UiSwitch"
+      ],
+      "catalogPaths": [
+        "forms/uiswitch"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/switch_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Pressed": "UiSwitch.value controls the persistent on/off state; pointer pressed feedback stays transient.",
+        "Size": "Mapped to explicit size enums where anatomical; density and text scaling remain global. Touch targets remain at least 48 dp regardless of smaller visual artwork.",
+        "Theme": "Light/dark environment plus explicit paper/ink emphasis; third-party artwork comes from the caller and is not recolored into invented logos.",
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets.",
+        "Text": "showLabel controls visual labels while the complete semantic name is retained; avatars keep the supplied identity."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=1102-4631",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/inputs.dart"
+      ],
+      "status": "implemented_pending_integrated_qa"
+    },
+    {
+      "family": "checkboxes",
+      "pageId": "1097:63638",
+      "variantAxes": {
+        "Checked": [
+          "True",
+          "False"
+        ],
+        "Indeterminate": [
+          "False",
+          "True"
+        ],
+        "Size": [
+          "sm",
+          "md"
+        ],
+        "Type": [
+          "Checkbox",
+          "Radio",
+          "Check circle"
+        ],
+        "Text": [
+          "True",
+          "False"
+        ],
+        "State": [
+          "Focused",
+          "Disabled",
+          "Hover",
+          "Default",
+          "Disbaled"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "1097:63652",
+          "name": "Checkbox"
+        },
+        {
+          "id": "1097:63886",
+          "name": "_Checkbox base"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/checkboxes.json",
+      "requiredCapabilities": [
+        "Checkbox/radio/check-circle with explicit label visibility, supporting text and compact/default visual sizes.",
+        "Checked, unchecked, mixed, focused, hovered and disabled native accessible states."
+      ],
+      "implementations": [
+        "UiCheckbox",
+        "UiRadio",
+        "UiRadioGroup"
+      ],
+      "catalogPaths": [
+        "forms/uicheckbox",
+        "forms/uiradiogroup"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/checkbox_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/radio_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Checked": "Controlled checked state; UiCheckbox also exposes mixed state.",
+        "Indeterminate": "UiCheckbox value null is the mixed state; activating it proposes checked.",
+        "Size": "Mapped to explicit size enums where anatomical; density and text scaling remain global. Touch targets remain at least 48 dp regardless of smaller visual artwork.",
+        "Type": "Mapped to the named anatomical capabilities and public implementations for this family.",
+        "Text": "showLabel controls visual labels while the complete semantic name is retained; avatars keep the supplied identity.",
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=1097-63638",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/inputs.dart"
+      ],
+      "status": "implemented_pending_integrated_qa"
+    },
+    {
+      "family": "checkboxGroups",
+      "pageId": "122:3484",
+      "variantAxes": {
+        "Selected": [
+          "True",
+          "False"
+        ],
+        "Size": [
+          "sm",
+          "md"
+        ],
+        "Type": [
+          "Radio button",
+          "Checkbox",
+          "Icon simple",
+          "Avatar",
+          "Payment icon",
+          "Icon card"
+        ],
+        "State": [
+          "Focused",
+          "Hover",
+          "Default",
+          "Disabled"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "124:2838",
+          "name": "Checkbox group item"
+        },
+        {
+          "id": "1142:87213",
+          "name": "Checkbox group"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/checkboxGroups.json",
+      "requiredCapabilities": [
+        "Single- and multiple-selection cards with title, supporting content, decorative icon/avatar/payment/artwork slots and trailing details.",
+        "Full-card accessible state, disabled reasons, arrow navigation, narrow/large-text wrapping."
+      ],
+      "implementations": [
+        "UiSelectionCards"
+      ],
+      "catalogPaths": [
+        "shared-patterns/uiselectioncards"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Selected": "Host-controlled value/selected sets remain authoritative.",
+        "Size": "Mapped to explicit size enums where anatomical; density and text scaling remain global. Touch targets remain at least 48 dp regardless of smaller visual artwork.",
+        "Type": "Mapped to the named anatomical capabilities and public implementations for this family.",
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets.",
+        "Breakpoint": "Responsive layout and shared environment controls cover narrow phones, tablets and desktop widths with 200% text and RTL."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=122-3484",
+      "visualEvidence": "/private/tmp/untitled-ui-reference/browser/checkbox-card-selected.png",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/actions.dart",
+        "apps/specimen_widgetbook/lib/catalog/shared_patterns.dart"
+      ],
+      "status": "implemented_pending_integrated_qa"
+    },
+    {
+      "family": "avatars",
+      "pageId": "18:1350",
+      "variantAxes": {
+        "Show source": [
+          "True"
+        ],
+        "Type": [
+          "Square",
+          "Portrait"
+        ],
+        "Size": [
+          "xs",
+          "sm",
+          "md",
+          "lg",
+          "xl",
+          "2xl",
+          "3xl",
+          "4xl"
+        ],
+        "Online": [
+          "False",
+          "True"
+        ],
+        "Status icon": [
+          "Online indicator",
+          "Company",
+          "Verified",
+          "False"
+        ],
+        "State": [
+          "Focus",
+          "Hover",
+          "Default",
+          "Focused",
+          "Disabled"
+        ],
+        "Placeholder": [
+          "False",
+          "True"
+        ],
+        "Text": [
+          "True",
+          "False"
+        ],
+        "Weight": [
+          "Heavy",
+          "Regular",
+          "Light"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "1030:34389",
+          "name": "Avatar users"
+        },
+        {
+          "id": "4877:417031",
+          "name": "Rows"
+        },
+        {
+          "id": "1030:34390",
+          "name": "Row"
+        },
+        {
+          "id": "2156:440709",
+          "name": "Row"
+        },
+        {
+          "id": "4833:413701",
+          "name": "Row"
+        },
+        {
+          "id": "4877:417033",
+          "name": "Rows"
+        },
+        {
+          "id": "1033:255",
+          "name": "Row"
+        },
+        {
+          "id": "2156:440823",
+          "name": "Row"
+        },
+        {
+          "id": "4834:413842",
+          "name": "Row"
+        },
+        {
+          "id": "4877:417035",
+          "name": "Rows"
+        },
+        {
+          "id": "1033:147",
+          "name": "Row"
+        },
+        {
+          "id": "2156:440937",
+          "name": "Row"
+        },
+        {
+          "id": "4834:413899",
+          "name": "Row"
+        },
+        {
+          "id": "4877:417037",
+          "name": "Rows"
+        },
+        {
+          "id": "4877:416465",
+          "name": "Row"
+        },
+        {
+          "id": "4875:410321",
+          "name": "Row"
+        },
+        {
+          "id": "4878:417619",
+          "name": "Row"
+        },
+        {
+          "id": "4877:417039",
+          "name": "Rows"
+        },
+        {
+          "id": "4875:410337",
+          "name": "Row"
+        },
+        {
+          "id": "4877:416481",
+          "name": "Row"
+        },
+        {
+          "id": "4878:417635",
+          "name": "Row"
+        },
+        {
+          "id": "4877:417041",
+          "name": "Rows"
+        },
+        {
+          "id": "4875:410353",
+          "name": "Row"
+        },
+        {
+          "id": "4877:416497",
+          "name": "Row"
+        },
+        {
+          "id": "4878:417651",
+          "name": "Row"
+        },
+        {
+          "id": "4877:417043",
+          "name": "Rows"
+        },
+        {
+          "id": "4875:410369",
+          "name": "Row"
+        },
+        {
+          "id": "4877:416513",
+          "name": "Row"
+        },
+        {
+          "id": "4878:417667",
+          "name": "Row"
+        },
+        {
+          "id": "4877:417045",
+          "name": "Rows"
+        },
+        {
+          "id": "4875:410385",
+          "name": "Row"
+        },
+        {
+          "id": "4877:416529",
+          "name": "Row"
+        },
+        {
+          "id": "4878:417683",
+          "name": "Row"
+        },
+        {
+          "id": "4877:417047",
+          "name": "Rows"
+        },
+        {
+          "id": "4875:410401",
+          "name": "Row"
+        },
+        {
+          "id": "4877:416545",
+          "name": "Row"
+        },
+        {
+          "id": "4878:417699",
+          "name": "Row"
+        },
+        {
+          "id": "4878:417050",
+          "name": "Row"
+        },
+        {
+          "id": "4878:417066",
+          "name": "Row"
+        },
+        {
+          "id": "933:30268",
+          "name": "_Avatar image"
+        },
+        {
+          "id": "19:1038",
+          "name": "_Avatar online indicator"
+        },
+        {
+          "id": "82:2793",
+          "name": "Avatar label group"
+        },
+        {
+          "id": "19:1012",
+          "name": "Avatar"
+        },
+        {
+          "id": "1036:4",
+          "name": "_Avatar company icon"
+        },
+        {
+          "id": "1102:4864",
+          "name": "_Avatar add button"
+        },
+        {
+          "id": "1217:108477",
+          "name": "Avatar profile photo"
+        },
+        {
+          "id": "1274:812",
+          "name": "Avatar group"
+        },
+        {
+          "id": "1538:269471",
+          "name": "Notes and documentation"
+        },
+        {
+          "id": "1538:269473",
+          "name": "Section"
+        },
+        {
+          "id": "3956:471232",
+          "name": "Content"
+        },
+        {
+          "id": "3956:471235",
+          "name": "Image wrap"
+        },
+        {
+          "id": "3956:471241",
+          "name": "Image wrap"
+        },
+        {
+          "id": "3956:471244",
+          "name": "Image wrap"
+        },
+        {
+          "id": "3956:471248",
+          "name": "Image wrap"
+        },
+        {
+          "id": "3956:471251",
+          "name": "Image wrap"
+        },
+        {
+          "id": "3302:418803",
+          "name": "Verified tick"
+        },
+        {
+          "id": "4826:408589",
+          "name": "_Avatar contrast inner border"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/avatars.json",
+      "requiredCapabilities": [
+        "Eight visual/profile sizes, source-image fallback, online/offline/verified/company badge anatomy.",
+        "Overlapping groups with responsive overflow, complete identity semantics and separate add-person action.",
+        "Labeled identity and supporting text."
+      ],
+      "implementations": [
+        "UiAvatar",
+        "UiAvatarGroup",
+        "UiAvatarLabel"
+      ],
+      "catalogPaths": [
+        "data/avatar",
+        "shared-patterns/uiavatargroup",
+        "shared-patterns/uiavatarlabel"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/avatar_hairline_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Show source": "Caller-provided ImageProvider remains the image source; the design system does not bundle the reference\u2019s photo dataset.",
+        "Type": "Mapped to the named anatomical capabilities and public implementations for this family.",
+        "Size": "Mapped to explicit size enums where anatomical; density and text scaling remain global. Touch targets remain at least 48 dp regardless of smaller visual artwork.",
+        "Online": "Explicit UiAvatarStatus online/offline state; no presence inferred from an image.",
+        "Status icon": "UiAvatar.status and badge/statusLabel cover online, company and verified identity.",
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets.",
+        "Placeholder": "Absent/failed image uses Unicode-safe initials; empty value fields display their prompt.",
+        "Text": "showLabel controls visual labels while the complete semantic name is retained; avatars keep the supplied identity.",
+        "Weight": "Brand typography and Phosphor conventions supply consistent identity weight; reference placeholder artwork weight variants are consolidated into those tokens."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=18-1350",
+      "visualEvidence": "/private/tmp/untitled-ui-reference/browser/avatar-group.png",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/shared_patterns.dart"
+      ],
+      "status": "implemented_pending_integrated_qa"
+    },
+    {
+      "family": "tooltips",
+      "pageId": "1052:485",
+      "variantAxes": {
+        "Supporting text": [
+          "True",
+          "False"
+        ],
+        "Theme": [
+          "Light",
+          "Dark"
+        ],
+        "Arrow": [
+          "Bottom center",
+          "None",
+          "Top center",
+          "Bottom left",
+          "Left",
+          "Right",
+          "Bottom right"
+        ],
+        "Open": [
+          "False",
+          "True"
+        ],
+        "Tooltip": [
+          "Top no arrow",
+          "Top arrow",
+          "Top right",
+          "Top left",
+          "Bottom",
+          "Right",
+          "Left"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "1052:489",
+          "name": "Tooltip"
+        },
+        {
+          "id": "1054:13",
+          "name": "Help icon"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/tooltips.json",
+      "requiredCapabilities": [
+        "Supporting body and paper/inverse surfaces with above/below/start/end placements plus automatic flip.",
+        "Hover delay, long press, keyboard focus reveal, Escape dismissal and disabled-reason carrier.",
+        "Preferred directional placement flips and clamps at viewport edges using measured content; four-edge behavior is tested at 200% text in both reading directions."
+      ],
+      "implementations": [
+        "UiTooltip"
+      ],
+      "catalogPaths": [
+        "feedback/uitooltip"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/overlays/tooltip_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Supporting text": "Optional supporting text remains separately styled and part of the full accessible description.",
+        "Theme": "Light/dark environment plus explicit paper/ink emphasis; third-party artwork comes from the caller and is not recolored into invented logos.",
+        "Arrow": "Specimen deliberately uses an arrowless pane. All four functional placements remain; reference triangle orientation/alignment variants map to their corresponding placement, keeping compact surfaces consistent with the existing Popover primitive.",
+        "Open": "PopoverController owns transient overlay visibility; keyboard/touch/pointer interactions open and dismiss.",
+        "Tooltip": "Top/bottom/reading-start/reading-end map to UiTooltip.placement; top-left/top-right arrow subvariants are consolidated into the brand\u2019s arrowless anchored pane."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=1052-485",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/shared_patterns.dart"
+      ],
+      "status": "implemented_pending_integrated_qa"
+    },
+    {
+      "family": "progress",
+      "pageId": "1154:89940",
+      "variantAxes": {
+        "Progress": [
+          "0%",
+          "10%",
+          "20%",
+          "30%",
+          "40%",
+          "50%",
+          "60%",
+          "70%",
+          "80%",
+          "90%",
+          "100%"
+        ],
+        "Label": [
+          "Right",
+          "Bottom",
+          "Top floating",
+          "Bottom floating",
+          "False",
+          "True"
+        ],
+        "Size": [
+          "md",
+          "lg",
+          "sm",
+          "xs",
+          "xxs"
+        ],
+        "Shape": [
+          "Circle",
+          "Half circle"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "1085:57382",
+          "name": "Progress bar"
+        },
+        {
+          "id": "1154:89981",
+          "name": "Progress circle"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/progress.json",
+      "requiredCapabilities": [
+        "Labeled bar, circle and half-circle metrics covering none/trailing/below/center/top-floating/bottom-floating values.",
+        "Exact reported values, including corrections backwards, and configurable circle diameter.",
+        "Ring/spoke/dot indeterminate waiting with reduced-motion freeze."
+      ],
+      "implementations": [
+        "UiProgress",
+        "UiProgressDisplay",
+        "UiLoadingIndicator"
+      ],
+      "catalogPaths": [
+        "data/progress",
+        "shared-patterns/uiloadingindicator",
+        "shared-patterns/uiprogressdisplay"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Progress": "A bounded reported fraction maps continuously from 0 to 1, including all sampled ten-percent reference steps.",
+        "Label": "UiProgressLabelPosition or UiRangeLabelPosition selects fixed/floating/hidden values; labels avoid viewport clipping and range collisions.",
+        "Size": "Mapped to explicit size enums where anatomical; density and text scaling remain global. Touch targets remain at least 48 dp regardless of smaller visual artwork.",
+        "Shape": "UiProgressDisplayForm circle/halfCircle (plus bar)."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=1154-89940",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/shared_patterns.dart"
+      ],
+      "status": "implemented_pending_integrated_qa"
+    },
+    {
+      "family": "sliders",
+      "pageId": "1086:1423",
+      "variantAxes": {
+        "Label": [
+          "Bottom",
+          "Top floating",
+          "False"
+        ],
+        "Right control": [
+          "25%",
+          "50%",
+          "75%",
+          "100%"
+        ],
+        "Left control": [
+          "0%",
+          "25%",
+          "50%",
+          "75%"
+        ],
+        "State": [
+          "Default",
+          "Hover",
+          "Focused"
+        ],
+        "Type": [
+          "Text",
+          "False",
+          "Tooltip"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "1086:534",
+          "name": "Slider"
+        },
+        {
+          "id": "3287:442783",
+          "name": "_Control handle"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/sliders.json",
+      "requiredCapabilities": [
+        "One- and two-thumb controls with fixed/floating labels above or below, collision merging and hidden-label presentation.",
+        "Pointer/touch, RTL-aware arrow/Home/End/Page and semantic adjustment; thumbs cannot cross and disabled state cannot change."
+      ],
+      "implementations": [
+        "UiSlider",
+        "UiRangeSlider"
+      ],
+      "catalogPaths": [
+        "forms/uislider",
+        "shared-patterns/uirangeslider"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_interaction_regressions_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Label": "UiProgressLabelPosition or UiRangeLabelPosition selects fixed/floating/hidden values; labels avoid viewport clipping and range collisions.",
+        "Right control": "UiRangeValues.end supports the full bounded range with no crossing.",
+        "Left control": "UiRangeValues.start supports the full bounded range with no crossing.",
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets.",
+        "Type": "Mapped to the named anatomical capabilities and public implementations for this family."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=1086-1423",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/advanced_forms.dart",
+        "apps/specimen_widgetbook/lib/catalog/shared_patterns.dart"
+      ],
+      "status": "implemented_pending_integrated_qa",
+      "visualEvidence": "/private/tmp/untitled-ui-reference/browser/range-slider.png"
+    },
+    {
+      "family": "datepickers",
+      "pageId": "1143:85678",
+      "variantAxes": {
+        "Selected": [
+          "False",
+          "True"
+        ],
+        "State": [
+          "Focused",
+          "Hover",
+          "Default",
+          "Disabled",
+          "Placeholder",
+          "Active"
+        ],
+        "Active dot": [
+          "False",
+          "True"
+        ],
+        "Type": [
+          "Inactive",
+          "Today&#39;s date",
+          "Active",
+          "Pre-set ranges",
+          "Dual dates",
+          "Single date"
+        ],
+        "Position": [
+          "Leading/trailing",
+          "Middle"
+        ],
+        "Actions": [
+          "True",
+          "False"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Opened": [
+          "True",
+          "False"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "1150:62",
+          "name": "_Date picker list item"
+        },
+        {
+          "id": "1150:442",
+          "name": "_Calendar cell"
+        },
+        {
+          "id": "1150:1925",
+          "name": "_Date picker menu"
+        },
+        {
+          "id": "1150:16803",
+          "name": "Date picker dropdown"
+        },
+        {
+          "id": "1547:269867",
+          "name": "Date picker modal"
+        },
+        {
+          "id": "3317:432786",
+          "name": "Desktop"
+        },
+        {
+          "id": "3317:432788",
+          "name": "Mobile"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/datepickers.json",
+      "requiredCapabilities": [
+        "Single/range selection, bounded adjacent calendars, preset ranges, direct or apply/cancel transactions and adaptive modal field.",
+        "Date-only UTC normalization, reversed endpoint normalization, host-reported today/activity markers and native keyboard calendar navigation.",
+        "Typed YYYY-MM-DD endpoints validate real dates, inclusive bounds and endpoint ordering; calendars/presets/cancel synchronize the draft, and incomplete or invalid values cannot be applied.",
+        "Controlled displayed months keep adjacent calendars coordinated independently of endpoint selection; host values, typed endpoints, presets and Cancel reveal the relevant month pair."
+      ],
+      "implementations": [
+        "UiDatePicker",
+        "UiDateRangePicker",
+        "UiDateRangeField"
+      ],
+      "catalogPaths": [
+        "forms/uidatepicker",
+        "shared-patterns/uidaterangefield",
+        "shared-patterns/uidaterangepicker"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/advanced_inputs_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_interaction_regressions_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "Selected": "Host-controlled value/selected sets remain authoritative.",
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets.",
+        "Active dot": "UiDatePicker.markedDates carries explicit activity; currentDate decorates a caller-reported today.",
+        "Type": "Mapped to the named anatomical capabilities and public implementations for this family. Typed endpoints and activity dots were verified against the browser reference and implemented.",
+        "Position": "UiDatePicker.rangeStart/rangeEnd distinguish endpoints from inclusive interior dates.",
+        "Actions": "UiDateRangePicker.showActions selects direct commit or Apply/Cancel drafts.",
+        "Breakpoint": "Responsive layout and shared environment controls cover narrow phones, tablets and desktop widths with 200% text and RTL.",
+        "Opened": "UiDateRangeField opens the shared adaptive modal route; accepted state changes only on Apply."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=1143-85678",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/advanced_forms.dart",
+        "apps/specimen_widgetbook/lib/catalog/shared_patterns.dart"
+      ],
+      "status": "implemented_pending_integrated_qa",
+      "visualEvidence": "/private/tmp/untitled-ui-reference/browser/date-range.png"
+    },
+    {
+      "family": "upload",
+      "pageId": "1157:90306",
+      "variantAxes": {
+        "State": [
+          "Default",
+          "Disabled",
+          "Hover",
+          "In progress",
+          "Error",
+          "Complete"
+        ],
+        "Type": [
+          "Progress bar",
+          "Progress fill"
+        ],
+        "Icon": [
+          "File type",
+          "Simple"
+        ],
+        "Files queued": [
+          "True",
+          "False"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "referenceFrames": [
+        {
+          "id": "1175:100312",
+          "name": "_File upload base"
+        },
+        {
+          "id": "1175:100366",
+          "name": "_File upload item base"
+        },
+        {
+          "id": "1175:101149",
+          "name": "File upload"
+        }
+      ],
+      "rawMetadata": "/private/tmp/untitled-ui-reference/shared/upload.json",
+      "requiredCapabilities": [
+        "Reported queued/uploading/complete/error rows, choose/drop adapter, retry/remove callbacks, optional file-type identity.",
+        "Separate bar or progress-fill anatomy with mobile wrapping; no synthetic transfer completion or domain acceptance."
+      ],
+      "implementations": [
+        "UiFileUpload"
+      ],
+      "catalogPaths": [
+        "forms/uifileupload"
+      ],
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_components_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/shared_edge_cases_test.dart",
+        "apps/specimen_widgetbook/test/shared_patterns_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/inputs/advanced_inputs_test.dart"
+      ],
+      "remainingGaps": [],
+      "variantMapping": {
+        "State": "Native Pressable/editor/focus states and host-controlled enabled/error/loading values; focused/hovered cases are interaction states, not duplicate inert widgets.",
+        "Type": "Mapped to the named anatomical capabilities and public implementations for this family.",
+        "Icon": "Slots accept Phosphor icons or supplied identity artwork; dot/icon-only/leading/trailing/removal variants keep complete labels and separate actions where needed.",
+        "Files queued": "UiFileUpload.files contains actual host-reported queued and transferring rows; empty collections retain the chooser.",
+        "Breakpoint": "Responsive layout and shared environment controls cover narrow phones, tablets and desktop widths with 200% text and RTL."
+      },
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask."
+      ],
+      "referenceUrl": "https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9/?node-id=1157-90306",
+      "catalogSources": [
+        "apps/specimen_widgetbook/lib/catalog/advanced_forms.dart"
+      ],
+      "status": "implemented_pending_integrated_qa"
+    }
+  ],
+  "updated": "2026-10-22",
+  "scope": "15 shared component pages. Functional/anatomical equivalents use the Specimen brand; this is not a claim of identical reference pixels, every asset, or all Cartesian state combinations.",
+  "validationSummary": {
+    "packageTests": 98,
+    "packageResult": "passed",
+    "packageCommand": "Dart MCP run_tests: shared_components_test.dart, shared_edge_cases_test.dart, tooltip_test.dart, advanced_inputs_test.dart, checkbox_test.dart, radio_test.dart, switch_test.dart, avatar_hairline_test.dart",
+    "catalogResult": "passed",
+    "catalogCommand": "Dart MCP run_tests: apps/specimen_widgetbook/test/shared_patterns_test.dart",
+    "catalogScope": "Every shared-pattern, existing-input and advanced-input story at default knobs in 320px/200%/dark/RTL/touch and 1180px/default/light/LTR/pointer. This is a layout/compile test, not a screenshot acceptance claim.",
+    "analysis": "Final absolute-path Dart MCP scoped analysis passed after strict typed date endpoint additions.",
+    "regressionChecks": {
+      "completedAtUtc": "2026-10-23T01:10:09Z",
+      "appTests": 46,
+      "appSuites": [
+        "test/capture_viewfinder_ux_test.dart",
+        "test/app/window_arrangement_test.dart",
+        "test/theme/no_dashes_test.dart"
+      ],
+      "focusedPackageTests": 61,
+      "focusedPackageSuites": [
+        "test/controls/actions/icon_button_test.dart",
+        "test/controls/overlays/tooltip_test.dart",
+        "test/controls/overlays/popover_menu_test.dart",
+        "test/controls/inputs/shared_edge_cases_test.dart",
+        "test/gates/no_literal_geometry_test.dart"
+      ],
+      "additionalTooltipRun": "11 passed after adding a four-edge 200% LTR/RTL tooltip position test; overlaps the prior focused package run.",
+      "analysis": "Absolute-path Dart MCP analysis of all regression-edited source/tests passed.",
+      "scope": "Local component and app integration checks. Full app/catalog and visual acceptance remain coordinator-owned.",
+      "catalogResult": "Shared/input/advanced two-environment Widgetbook sweep passed again after regression source fixes.",
+      "tooltipMetadataCorrection": {
+        "contract": "Only explicitly supplied tooltip metadata is published; the label fallback is visual guidance only. Opening the pane never duplicates the control label or tooltip metadata.",
+        "packageTests": 13,
+        "result": "passed",
+        "analysis": "Scoped absolute-path analysis passed.",
+        "appVerification": "Complete application verification confirmed 3,657 passing tests and seven predeclared live skips; all 199 app goldens remained unchanged in this expansion, and application analysis was clean."
+      }
+    },
+    "independentReviewFixChecks": {
+      "completedAtUtc": "2026-10-23T01:30:57Z",
+      "packageTests": 69,
+      "result": "passed",
+      "suites": [
+        "test/controls/inputs/shared_interaction_regressions_test.dart",
+        "test/controls/inputs/shared_components_test.dart",
+        "test/controls/inputs/shared_edge_cases_test.dart",
+        "test/controls/inputs/advanced_inputs_test.dart",
+        "test/gates/no_literal_geometry_test.dart"
+      ],
+      "scope": "15 new interaction regression tests plus existing shared/advanced checks. Source and test analysis passed; source frozen for coordinator-owned full app/catalog/native verification.",
+      "fixes": [
+        "Collapsed range thumb selection uses logical pointer side or first drag direction, then locks the thumb for that gesture.",
+        "Group arrows/Home/End skip unfocusable commands while preserving discoverable disabled reasons.",
+        "Combobox restores its actual trigger after pointer-open dismissal, guarded for disabled/detached state.",
+        "Date range owns adjacent displayed months separately from selection; standalone date selection still reveals its month."
+      ]
+    },
+    "coordinatorValidation": {
+      "evidenceSource": "Coordinator-confirmed integrated checks; not separately rerun by the shared-controls subtask.",
+      "package": "All 1,597 package tests passed after the four independent-review interaction fixes.",
+      "catalog": "All 29 catalog checks passed, including all 911 registered use cases across five environments.",
+      "application": "3,657 tests passed with seven predeclared live skips; all 199 app goldens remained unchanged in this expansion; application analysis was clean.",
+      "iPadSimulator": "Final paired-calendar flow selected 15 September through 10 October and committed the range. Light and dark simulator checks reported no runtime errors.",
+      "iPhoneAndAndroid": "Both final-source builds compiled. Native hero touch-callback smoke checks passed through a temporary isolated host.",
+      "limits": "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed. These checks do not establish exact reference pixels, every variant combination, or production release."
+    }
+  },
+  "publicWidgetCatalogPaths": {
+    "UiActionButton": "shared-patterns/uiactionbutton",
+    "UiButtonGroup": "shared-patterns/uibuttongroup",
+    "UiStatusBadge": "shared-patterns/uistatusbadge",
+    "UiBadgeGroup": "shared-patterns/uibadgegroup",
+    "UiTag": "shared-patterns/uitag",
+    "UiProviderButton": "shared-patterns/uiproviderbutton",
+    "UiStoreBadge": "shared-patterns/uistorebadge",
+    "UiCombobox": "shared-patterns/uicombobox",
+    "UiSelectionCards": "shared-patterns/uiselectioncards",
+    "UiVerificationCode": "shared-patterns/uiverificationcode",
+    "UiTagField": "shared-patterns/uitagfield",
+    "UiInputGroup": "shared-patterns/uiinputgroup",
+    "UiPhoneField": "shared-patterns/uiphonefield",
+    "UiTextToolbar": "shared-patterns/uitexttoolbar",
+    "UiRangeSlider": "shared-patterns/uirangeslider",
+    "UiDateRangePicker": "shared-patterns/uidaterangepicker",
+    "UiDateRangeField": "shared-patterns/uidaterangefield",
+    "UiAvatarGroup": "shared-patterns/uiavatargroup",
+    "UiAvatarLabel": "shared-patterns/uiavatarlabel",
+    "UiProgressDisplay": "shared-patterns/uiprogressdisplay",
+    "UiLoadingIndicator": "shared-patterns/uiloadingindicator"
+  },
+  "adaptationDecisions": [
+    "Reference decorative palette variants intentionally collapse to user-approved Specimen colors rather than reintroducing a broad accent palette.",
+    "Arrowed tooltip variants consolidate to the brand arrowless pane; directional placement, supporting body and interactive behavior are implemented.",
+    "Reference social/store/provider/flag/photography identity assets are supplied through explicit slots; no invented brand marks or new remote service integrations.",
+    "Formatting controls expose every reference command including separate H1/H2, while the app\u2019s editing host owns document semantics and persistence."
+  ]
+}

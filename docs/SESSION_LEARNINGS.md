@@ -24299,3 +24299,261 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   contract, release web build and route/security-header smoke passed again.
   Ready to commit the fixture-only correction, renew exact-head review and run
   hosted CI again; production release remains not confirmed.
+
+
+## 2026-10-22 — Brand restoration and Widgetbook design-system standard
+
+- Task: `01a161f6-9906-75f1-bc98-e9c3ebeca013`; branch
+  `codex/design-system-standard`; worktree
+  `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`.
+  Starting commit: `473b48ea93258b9ea9c26b71f152c732087441e4`.
+  Implementation remains uncommitted. Commit/PR/hosted checks: Not confirmed;
+  no push, merge or deployment was performed. Full `scripts/ci/verify.sh`
+  was not run in this session; it remains required before a subsequent push.
+- Outcome: restored the owner's `SD_brand.png` as active visual authority;
+  added the missing application component families, a dedicated Widgetbook
+  catalog with interactive states and an explicit public-control manifest;
+  integrated shared tokens, headers, brand and selection primitives throughout
+  the existing app. The plan, scope, ownership, coverage, app adoption and
+  limitations are in `apps/specimen_digitization/design/15-design-system-standard.md`.
+- Brand constraint: Obsidian `#0E0E11`, Paper `#FAF9F6`, Amber `#F5A45B`,
+  Iris `#7B61FF`, Mist `#E6E6EA`; Amber-to-Iris is the hero, Iris is the
+  secondary brand colour. Functional status roles remain distinct without a
+  decorative hue per provenance category. Phosphor is retained. The rejected
+  yellow/green direction is removed from executable tokens, generated native/web
+  identity assets and active guidance. Tests reject the old seed and saturated
+  hue-family regressions in source and raster assets. Historical verification
+  prose is marked non-authoritative rather than rewritten as current evidence.
+- Font constraint: the reference names Söhne, but no licensed asset was supplied
+  or found during the audit. Bundled Geist/Geist Mono is the explicitly documented
+  fallback. Do not claim it is Söhne or import an unlicensed substitute.
+- Reference: Figma MCP inspected Untitled UI file
+  `fIfKyBB3UUanoV9lZoTBx9`, page `1480:0`, page inventory, button/input variant
+  metadata, and table/header nodes `2218:468696` / `2218:468697` including design
+  context and screenshots. Two component-master context requests failed; metadata
+  alone was not treated as pixel evidence. Component anatomy and coverage informed
+  the implementation; Specimen's own identity governs appearance.
+- Added controlled advanced inputs (slider, date picker, upload presentation,
+  command menu), section headers, table/pagination/chart, breadcrumbs/steps and
+  activity/message/code patterns. Existing owned primitives remain the base.
+  Preserve caller-owned values, lazy cursor lists, partial historical dates,
+  missing-versus-zero/currency semantics, file/camera integration and authoritative
+  final Queue disposition. New bounded tables and finite pagination do not replace
+  unbounded collections. Upload presentation never admits a record into Queue.
+- Native behavior: calendar values use UTC civil year/month/day normalization
+  so local DST changes cannot skip dates; native selection uses Flutter's adaptive
+  infrastructure behind the allowed adapter. Widgetbook modal scopes inherit the
+  preview environment; the application retains root-navigator behavior. SafeArea
+  covers native gallery insets without duplicating an existing ancestor inset.
+  Identical icon/navigation label+tooltip pairs caused duplicate iOS accessibility
+  announcements; the label remains authoritative, distinct guidance and disabled
+  explanations remain available, and visual overlays do not reannounce the label.
+- Widgetbook uses the installed-SDK-compatible 3.23.0 package rather than upgrading
+  Flutter just to install 3.25. It provides nine family folders, device widths
+  320/390/768/1180/1440, theme/density/text scale/RTL/reduced-motion controls,
+  real callbacks and composition examples. Its tests load the real fonts.
+  Default-knob smoke coverage is not a Cartesian proof of every knob combination;
+  focused component tests cover behavioral boundaries separately.
+- Validation environment: Flutter 3.38.5, Dart 3.10.4, macOS 27.0.1 arm64.
+  Dart MCP analysis clean for app/package/Widgetbook; Dart MCP formatting applied;
+  `git diff --check` clean. Full app suite: **3,657 passed, seven predeclared
+  live-HTTP skips**. Final full shared package suite after all native/semantics
+  repairs: **1,467 passed**. Final Widgetbook suite: **six passed**, including
+  every registered case in five environments, modal inheritance, ownership
+  inventory and real composition interactions. The affected app semantics suites
+  passed **22 checks again** after the final icon/navigation changes. JSON evidence:
+  `/private/tmp/specimen-app-final-tests.jsonl`,
+  `/private/tmp/specimen-ui-final-tests.jsonl`,
+  `/private/tmp/specimen-widgetbook-final-tests.jsonl`.
+- Rendering evidence: independent isolated baseline archives at the starting
+  commit passed **398 package golden checks** and **275 selected app checks**
+  under the same renderer/fonts/reference bytes. Thus initial candidate diffs
+  were not dismissed as environmental failures. Reviewed all 18 package families
+  in light/dark/narrow 200% RTL at top/middle/bottom and all 230 changed app images
+  (54 app contact sheets). Adopted **396 changed + 96 new package images** and
+  **230 changed app images**, deleting none. Normal comparisons passed
+  **494 package + 241 app checks**; final full suites also passed those checks.
+  Review/manifests remain in `/tmp/specimen-brand-golden-review/`,
+  `/private/tmp/specimen-app-brand-review/`, and baseline directories
+  `/private/tmp/specimen-ui-baseline-473b48ea-q3_furur` and
+  `/private/tmp/specimen-app-baseline-473b48ea-gs8ppz_e`.
+- Failed approaches and corrections: initial rendering exposed tall capsule-toast
+  clipping, status-strip glyph columns at narrow widths, glass-example clipping
+  and bidi hex labels; fix geometry before adopting references. Short sign-in
+  viewports required spacing changes without replacing the focused form subtree.
+  A glossary routing test needed to scroll to the lazy content. Date review found
+  selected-state contrast and controlled same-month reveal defects; both repaired.
+  Advanced date checks also passed under America/Chicago and Pacific/Auckland.
+  Generated failure PNGs were cleaned after evidence review, not committed.
+- Independent adversarial review (GPT-6-astra) cleared the repaired calendar,
+  selection and modal contracts and subsequently the toast/status/gallery repairs.
+  It independently passed 30 final visual-repair tests plus earlier focused checks.
+  Final source/test review found no actionable issue in icon/navigation semantics:
+  six fixtures remove only 32 total redundant tooltip attributes, preserving roles,
+  labels, selection, actions and disabled hints. This is scoped local review, not
+  a release approval or blanket approval of uninspected production behavior.
+- CI integration: after reading `docs/DEPLOYMENT.md`, the CI agent added locked
+  Widgetbook dependency/format/fatal-info analysis/test/web-build checks inside the
+  existing Flutter gate and local verify script. No deployment permissions,
+  triggers, environments or release settings changed. Bash syntax, shellcheck,
+  actionlint and **583 deployment-policy Python tests** passed; mocked-tool
+  ordering, failure-stop behavior and cleanup were checked.
+- Builds/previews: final `flutter build web --release` for Widgetbook passed;
+  `flutter build apk --debug` for the app passed. Native app-gallery entrypoint
+  `tool/design_system_preview.dart` rejects release mode and does not initialize
+  Firebase, repositories or a user session. It compiled and ran on isolated
+  iPhone and iPad simulators. CUA verified software-keyboard filtering, page
+  switching, tablet layout, safe areas, calendar October-to-November navigation,
+  and post-fix single icon labels in the iPad accessibility tree. Generic iOS
+  multiarch simulator build failed in debug_unpack_ios/lipo with this SDK/Xcode;
+  targeting the concrete arm64 simulators resolved it. Runs emitted an SdkRoot
+  native-assets warning but built, launched and rendered successfully. Native
+  build inputs use task-created ignored nonsecret CI-template Firebase placeholders,
+  not live credentials. No physical-device or provider acceptance is claimed.
+- Deliverable: local Widgetbook server at `http://127.0.0.1:5199`, final browser
+  action callback exercised. Preview captures are under
+  `/Users/anuragduddu/.codex/visualizations/2026/10/22/01a161f6-9906-75f1-bc98-e9c3ebeca013/`
+  (`specimen-widgetbook-brand.png`, `specimen-tablet-brand.png`,
+  `specimen-tablet-advanced.png`). The HTTP server and isolated preview devices
+  are local review aids, not deployed infrastructure.
+- Remaining acceptance boundaries: licensed Söhne substitution, physical
+  iPhone/Android/tablet review, manual VoiceOver/TalkBack use, actual camera/file
+  picking and production-connected flows are Not confirmed by this work.
+  Any later release must run canonical verify, use a PR, meet current independent
+  review/required-check policy and follow the three documented main workflows.
+
+
+## 2026-10-22 — Resumed marketing design-system implementation
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subtask `finish_marketing`; branch
+  `codex/design-system-standard`, worktree `cea9/specimen-digitization-app`; base
+  `473b48ea93258b9ea9c26b71f152c732087441e4`. Changes remain uncommitted. PR: Not confirmed.
+- Continued original Specimen marketing/shared-page controls, preserving the
+  approved brand and Phosphor. Added grid/featured/sidebar/carousel editorial
+  layouts, adaptive horizontal/portrait-panel profiles, and controlled location
+  detail which never substitutes another location for an unknown selected ID.
+  Expanded composed landing/pricing/about/contact examples.
+- Fixed pointer-open mega-menu focus restoration and compact-menu Escape.
+  A pointer tap need not focus UiButton; Popover snapshots primary focus, so an
+  owned trigger node restores focus after the popup focus scope is removed.
+  Auth validation now attaches errors to fields and focuses the first invalid
+  field in reading order; passwords remain unmodified and stale async stage
+  responses remain ignored.
+- Validation actually run: absolute scoped Dart MCP analysis clean; 20 package
+  marketing contracts passed; 4 marketing catalog tests passed including every
+  registered use case across 320/390/768/1180/1440 width, with large-text, RTL
+  and dark representatives. This is local synthetic evidence, not release or
+  email-client acceptance.
+- Reconciled 11 actual Figma example-page metadata inventories into concrete
+  section-to-widget mappings in `design/coverage/marketing-components.json`.
+  Contact and pricing reference browser captures inspected. Remaining reference
+  visual review, rendered browser/native review and independent approval are
+  Not confirmed; coordinator owns integration and the release process.
+
+## 2026-10-22 — Independent expanded-component adversarial review
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subtask `coverage_review`;
+  branch `codex/design-system-standard`, worktree `cea9/specimen-digitization-app`.
+  Reviewed uncommitted source at base `473b48ea93258b9ea9c26b71f152c732087441e4`;
+  exact integrated head and PR: Not confirmed.
+- Independently read shared/marketing coverage and raw modal reference metadata,
+  inspected the reference Filters slideout browser capture, and traced notice,
+  modal, drawer, tabs, crop, navigation and representative marketing recipes.
+- Three targeted Dart MCP probes failed: valid sub-one-percent right-edge crop
+  resize throws `ArgumentError`; 320x280 drawer with 200% text/search header and
+  action footer overflows by 226 pixels; upload recipe add/add/remove-first/add
+  violates the component's unique-file-ID assertion. Temporary reproduction
+  tests were left for coordinator-owned fix validation.
+- Reference `_Modal actions` variants are currently catalogued as complete modal
+  recipes with an identical action row; image payment variant has no extra image;
+  filter recipe search has no filtering callback. Catalog name coverage alone
+  cannot establish component-anatomy or interaction equivalence.
+- Shell Flutter was blocked by SDK cache write restrictions; Dart MCP ran the
+  probes successfully. No implementation, golden, deployment or CI edits by this
+  reviewer. Findings handed to coordinator; fixes, integrated checks, complete
+  visual reference review, physical-device/accessibility and release approval
+  remain Not confirmed by this review.
+
+### 2026-10-22 — Expanded-component review follow-up
+
+- Correction/addendum to the `coverage_review` entry immediately above: two
+  additional Dart MCP reproduction tests failed. Radar labels at 320 dp/200%
+  text can exceed the fixed plot height and produce a negative clamp upper
+  bound during painting. Replacing a message composer's draft controller while
+  a send is pending leaves the new draft blocked by the previous delivery.
+  Both cases were added to the retained reviewer probe for coordinator fixes.
+- The review treats approved palette, Phosphor, owned media and responsive
+  consolidation as valid brand adaptations. The reported coverage gaps concern
+  missing action/media/filter anatomy or nonfunctional controls, not ornamental
+  pixel parity. No full-reference, exact-head, production or device approval is
+  implied; concurrent implementation remained in progress.
+
+### 2026-10-22 — Complete interrupted shared-control expansion
+
+- Task: `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subagent `/root/finish_shared`; branch `codex/design-system-standard`, worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`. Shared uncommitted tree; no commit, PR or release created by this subtask.
+- Outcome: completed the 15-family shared-control audit and 21 public component slots in `catalog/shared_patterns.dart`, with actual Widgetbook navigation mappings in `design/coverage/shared-components.json`. Added size/anatomy variants, provider/store identity slots, joined-command dots, rich selected identities, numeric range label collision handling, explicit calendar today/activity markers, OTP/tag/phone/formatting controls, richer tooltips and supporting-label stories. Brand adaptations are explicit: restricted Specimen semantic colors; arrowless tooltips retain all four functional placements; third-party artwork is supplied, never fabricated.
+- Durable behavior: an OverlayPortal cannot close synchronously from a widget's update/build phase. The combobox now defers closure with mounted/current-availability guards. A controlled OTP String cannot represent holes: middle deletion normalizes displayed cells to the reported String; a host reset clears completion deduplication. Separate tag selection/removal and badge close actions retain distinct accessible actions.
+- Validation: 94 focused package tests passed across shared controls, their edge cases, tooltip, advanced inputs, checkbox/radio/switch, and avatar/hairline. The Widgetbook shared/input/advanced story sweep passed at 320 px/200%/dark/RTL/touch and 1180 px/default/light/LTR/pointer. Absolute-path scoped Dart MCP analysis passed. This is controlled local evidence only; integrated five-environment QA, screenshot acceptance, physical-device acceptance, independent approval and production release are Not confirmed by this subtask.
+- Failed approaches: guessed per-widget test paths did not exist (the calendar/upload tests live in `advanced_inputs_test.dart`); corrected to actual suites. One catalog run collided with an in-progress root drawer edit; rerun after the root repair passed. Existing two-size avatar expectation was updated to the now-required eight-size contract and still verifies every rendered diameter.
+- Follow-ups: root owns global coverage reconciliation, remaining reference screenshots, app integration, complete validation, independent review and approved release workflow. No shared-control implementation gap remains in this audit; pending visual/acceptance evidence stays explicit in each family row.
+
+### 2026-10-22 — Resume application-data design-system expansion
+
+- Task: `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subagent `/root/finish_data`; branch `codex/design-system-standard`, worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`, baseline `473b48ea93258b9ea9c26b71f152c732087441e4`. Changes remain in the shared uncommitted tree. Commit, PR and release: Not confirmed by this subtask.
+- Outcome: reconciled 20 reference pages (17 data/content families plus three application example pages), containing 945 metadata symbols, into `design/coverage/application-data.json`. Reviewed supplied browser captures of line/donut charts, attachment messages, banner headings, dashboards, settings and informational table pages. Extended real table anatomy with avatar groups, badges, provider marks, null/fractional/controlled ratings, and text/icon/menu row commands. Added striped/plain table treatments, three empty/step sizes, connected steps, true joined-command divider/footer stories, and complete local application templates with desktop navigation or compact modal navigation.
+- Validation: 32 package tests passed across expanded data, baseline data patterns and empty states; three Widgetbook tests passed, including every expanded data story at 320 px/200%/dark/RTL and 1180 px/default/light/LTR, plus working directory search/selection/detail and settings edit/reset/navigation. An additional 11-test focused run included the independent radar/composer reproduction probes. Absolute-path scoped Dart MCP analysis reported no errors for owned controls and catalogs. Integrated physical-device, visual, live-app and production acceptance remain Not confirmed.
+- Reviewer fixes: radar axis labels now use numbered plot markers with a fully wrapping category key and exact accessible values; plot text never relies on a negative clamp or overlaps arbitrarily long category names. Composer sends carry generations: replacing the draft controller immediately starts a fresh context, and stale async completion cannot clear, error or unlock a newer pending send. Regression tests cover every radar plot size at 200% RTL and old failure completing during a newer send.
+- Failed approaches: a catalog assertion initially counted both the search field and matching table text; narrowed it to the data cell and retained selection checks. Relative Dart MCP paths are insufficient evidence for analysis; all final analysis used absolute owning paths. Shared-tree compilation briefly encountered an independently owned crop constructor edit, then passed after its owner repaired it.
+- Follow-ups: root owns global catalog inventory, integrated visual/device review, gap reconciliation, live app adoption and approved PR/release. Reference metadata records scope; it does not prove that every combinatorial Figma instance was compared pixel by pixel. Original brand surfaces, Phosphor and host-owned media are the intended adaptations.
+
+### 2026-10-22 — Shared-control reference correction and final verification
+
+- Correction to “Complete interrupted shared-control expansion” above, same task/branch/worktree and subagent: the subsequently available exact date-range screenshot exposed typed start/end inputs beyond the original metadata-based anatomy. Added those before handoff. Entries parse explicit YYYY-MM-DD civil dates, reject nonexistent/out-of-bounds/reversed dates, synchronize calendar/preset/Cancel edits, and commit only a valid complete range. Immediate mode avoids duplicate proposals on submit/blur. A 320 px/200%/RTL adaptive-modal interaction test confirms typed dates can be applied and the route dismissed.
+- Final verification supersedes the earlier 94-test count: **98 focused package tests passed**, the shared/input/advanced Widgetbook narrow-and-desktop sweep passed, and scoped analysis passed. Additional exact reference screenshots for range sliders, dual-date ranges and compound inputs were visually reviewed and added to the family audit. Full application, integrated visual/device, independent review and live release remain root-owned and Not confirmed by this subtask.
+
+### 2026-10-22 — Shared-control application regression reconciliation
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, `/root/finish_shared`, same `codex/design-system-standard` / `cea9` shared worktree. No commit, PR or release performed. This entry follows the shared-control verification above; integrated application testing exposed additional compatibility failures after the focused pass.
+- Restored the longstanding icon-button semantics metadata contract after comparing the task diff with the baseline. Both default and explicit tooltip phrases remain in `Semantics.tooltip`; the visible tooltip pane stays excluded from semantics so reveal does not duplicate the label or description. No camera-specific wrapper, assertion waiver or app source change was needed.
+- Added opt-in measured viewport-edge fallback to `Popover`, enabled for tooltips. A requested side remains preferred, but an edge tooltip flips and clamps inside the safe area so a keyboard-focused docked-rail control can reveal its complete message. Other popovers retain existing positioning. A dedicated 200% text test checks all four edges in both reading directions.
+- Replaced verification-code cell geometry with target/type tokens, and replaced date/range dash copy with readable “to”. The global geometry guard and app no-dash guard remain unchanged.
+- Validation: 46 app tests passed across capture viewfinder UX, window arrangement and no-dash suites. 61 focused package tests passed across icon buttons, tooltips, menus, shared edge cases and the geometry gate. The subsequent tooltip-only run passed 11 tests, including the new edge-position test (overlaps the 61-test run). Final scoped absolute-path analysis passed. Verification completed at 2026-10-23 01:10:09 UTC. The initial new edge test accidentally nested two tooltip gesture recognizers; corrected its test trigger to an ordinary button, with no production change. Full app/catalog, visual/device and release acceptance remain coordinator-owned and Not confirmed by this subtask.
+- Post-regression shared/input/advanced Widgetbook sweep also passed at the previously documented narrow and desktop settings.
+
+### 2026-10-22 — Explicit tooltip metadata correction
+
+- Correction to the preceding shared-control application reconciliation, same task, branch/worktree and subagent: the full app run exposed six checked-in semantic-fixture differences when the fallback visual label also became semantic tooltip metadata. Final contract distinguishes caller intent: explicit `tooltip` is preserved (including camera close), while omitted `tooltip` uses the control label visually without adding redundant semantic metadata. The pane stays excluded from semantics on reveal. No app-source workaround, semantic-fixture update or golden update was made.
+- The 13 focused icon-button tests passed, including omitted, explicit-identical and explicit-distinct tooltip cases before/after reveal and disabled reason behavior. Absolute-path scoped analysis passed. Source frozen; `/root/finish_data` owns the targeted semantic/capture and full app reruns. Their results and final integrated acceptance are Not confirmed by this subtask at handoff.
+
+
+### 2026-10-22 — Full application design-system integration validation
+
+- Task: `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subagent `/root/finish_data`; branch `codex/design-system-standard`, worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`, baseline `473b48ea93258b9ea9c26b71f152c732087441e4`. Shared uncommitted tree. No commit, PR, release or dependency update by this phase.
+- Production audit: all 161 application Dart files consume the local `specimen_ui` package and shared theme bridge; source scans found no raw color constructors/Colors, Material control constructors or overlay APIs, raw Icons, or retired acid-yellow names/seeds. The shared light/dark tokens, density and motion scopes already enclose app routes and overlays. No unrelated catalog components were injected into product workflows.
+- Final validation: Dart MCP full app suite passed **3,657 tests with seven existing opt-in live HTTP/backend tests skipped**, including pixel goldens, checked-in accessibility trees, capture/workbench behavior, token guards and native/browser asset hue checks. The targeted camera/accessibility run also passed all 53 tests. JSON reporter: `/private/tmp/app-design-integration-verified-tests.json`. SHA-256 comparison confirmed all 199 preexisting app golden image references unchanged through validation. No assertions, semantic fixtures, goldens or tolerances were weakened or regenerated.
+- Regression diagnosis and repairs: the first run overlapped a shared date-picker edit and hit 43 compile-load failures; that run is diagnostic only. All 50 pixel mismatches were a 16 px upward shift of the default tab underline, caused by natural-height Row replacing an expanding Center. Root restored full horizontal tab height. Shared fixed the narrow keyboard tooltip layout, missing date-input import and forbidden dash literals. Icon tooltips now keep visual label fallback separate from explicit accessibility tooltip metadata; otherwise default names are repeated. The remaining `UiTopBarAction` wrapper unconditionally forwarded its label as explicit tooltip metadata; this phase removed that one redundant forwarding argument, retaining explicit caller tooltip metadata elsewhere. All corresponding app assertions now pass unchanged.
+- Analysis: the whole app-root analyzer was clean before the final independent modal probe was added. The final app-root recheck had no production diagnostics and only two child-last info lints in the new reviewer-owned `modal_panel_short_height_test.dart`; its owner was notified for correction. Root owns the subsequent package/catalog validation and integrated closeout.
+- Limits: these are local app tests against the shared source/reference tree, not live-backend, manual assistive-technology, physical-device or production-release acceptance. The seven live tests require their explicit backend test configuration. No production state was changed.
+
+- Final analysis follow-up for the integration validation entry above: after the independent modal-probe owner corrected both test-only lints, a fresh full app-root Dart MCP analysis reported **No errors**.
+
+### 2026-10-22 — Independent shared-interaction review fixes
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, `/root/finish_shared`, `codex/design-system-standard` in `cea9/specimen-digitization-app`. No commit, PR or release performed by this subtask. Root's independent reviewer found four interaction defects after prior focused checks, all repaired before source freeze at 2026-10-23 01:30:57 UTC.
+- Collapsed range pointers choose the lower or upper logical side, and a drag starting on the shared hit target waits for direction rather than inheriting old thumb focus. The chosen thumb remains fixed for that gesture, including reversal. New tests include both reading directions, retained focus after either thumb collapses, 33.3 (pixel roundoff), limits and one completion callback.
+- Joined-command Arrow/Home/End traversal now scans a bounded number of nodes for actual `canRequestFocus`, preserving disabled-with-reason discoverability while skipping unavailable commands without reasons. Combobox dismissal restores its actual trigger after the overlay scope leaves, guarded for mounted, available and attached state; pointer activation does not itself imply focus ownership.
+- A range's visible month is separate from its selected dates. `UiDatePicker.displayedMonth` and `onDisplayedMonthChanged` let the range coordinate adjacent months for pointer and keyboard navigation without both panes jumping to a shared anchor. Standalone controlled-value reveal remains unchanged. External values, presets, typed complete endpoints and Cancel reveal the relevant pair. Tests verify start in either pane, cross-month selection, keyboard month crossing, selected focus and host updates.
+- Validation: 69 tests passed across 15 new interaction regressions, shared components, prior shared edge cases, advanced inputs and the no-literal geometry gate. Absolute-path scoped source/test analysis passed after a test-only braces correction. The initial test compile rejected a const group whose constructor asserts list length; the test now uses a runtime group with constant items. No assertions, semantic fixtures or goldens were weakened or replaced. Coordinator owns full app/catalog/native and final independent acceptance; those remain Not confirmed by this subtask.
+
+### 2026-10-22 — Comprehensive design-system continuation and local closeout
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, coordinator `/root`; branch `codex/design-system-standard`, worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`, base `473b48ea93258b9ea9c26b71f152c732087441e4`. This entry closes the interrupted implementation and supersedes blanket pending integration claims in preceding subtask entries. Local implementation and review are distinct from production acceptance; no PR, push, merge or production deployment was performed.
+- Outcome: reconciled all 95 actual supplied Untitled UI Figma pages (83 content, 12 setup/section/separator) with 157 public controls, 193 Widgetbook groups and 911 reachable examples. Includes advanced forms, table anatomy, chart families, 61 modal/slideout recipes, navigation/feedback, marketing, shared assets, page templates and annotations. Source capabilities and purposeful brand adaptations remain explicit in family audits; page registration is not exhaustive visual parity.
+- Brand: owner-approved Obsidian/Paper/Amber/Iris/Mist, Amber-to-Iris hero and Iris secondary, neutral evidence surfaces, Phosphor icons. Active source and shipped raster hue guards reject the retired yellow-green direction. Söhne is not supplied; bundled Geist/Geist Mono remain the declared fallback. The current user request authorizes implementation/catalog work, not merging or deployment.
+- Integration/review: repaired the reproduced crop, short-overlay, upload identity, radar, stale async-composer, modal anatomy, tab-placement and tooltip semantics defects without changing existing app assertions or accessibility fixtures. Final independent review additionally reproduced and cleared collapsed range-thumb selection/locking, nonfocusable grouped-command traversal, combobox dismissal focus and paired-calendar month coordination. Retained regression tests cover these behaviors. Independent review found no further missing-capability blocker in its final reference composition sample.
+- Native/browser evidence: actual expanded Widgetbook rendered in isolated iPad and iPhone simulators and an Android emulator. iPad light/dark and cross-month range selection/Apply were inspected through Dart MCP; no runtime errors were reported. CLI Flutter Driver on the exact iPhone/Android devices verified hero rendering, real button tap and callback receipt with reviewed screenshots. These native runs precede the final weekday-label-only change. Browser checks covered hero callbacks, range preset/Apply, annual pricing, narrow marketing and invitation modal typing/Escape/reopen/submit, with no console errors. Isolated test devices were shut down; the localhost Widgetbook server remains available.
+- Failed approaches: the temporary iOS host required iOS15 and the app's UIScene setup for SDK27; corrected only the temporary host. The Dart MCP retained an old driver attachment, so exact-device CLI Flutter Driver supplied the phone/Android evidence. A generated driver first used an invalid tree getter/overbroad text lookup; changed the probe to wait for the exact receipt. A first browser reload retained an old service-worker build; a second ordinary reload exposed 193 groups/911 examples.
+- Canonical gate repairs: public Figma reference IDs, bare metadata digests, UI-label property names and a synthetic OTP were scanner false positives. Corrected representation/naming to `referenceFileId`, algorithm-qualified `metadataDigest`, local UI label constants and a different synthetic filtering character. All 20 original metadata digests were independently verified against the same raw bytes. No scanner exclusion, baseline, threshold or policy was changed. UI-writing rejected two-letter `We`; default weekdays now read Mon through Sun.
+- Golden evidence: 44 earlier intentional icon/progress-size changes were individually reviewed on six contact sheets. The weekday change affected exactly 12 advanced-input images, all differences confined to 11/13 px header text bands; coordinator and independent reviewer inspected every baseline/current/difference crop. Adopted only those exact images, preserving old/new hashes in `/private/tmp/specimen-weekday-comparison/adopted-images.json`. No tolerance or assertion weakening. All 199 existing app reference images remained unchanged during this resumed expansion (initial brand restoration is a separate, earlier phase).
+- Final local validation: all gates defined by `scripts/ci/verify.sh` passed across sequential segments. The original run passed all-file pre-commit/security/policy, frozen dependencies, all 19,295 collected Python tests exactly once (19,245 passed/50 skipped), UI writing and all 1,597 exact-macOS package tests. It stopped on three Widgetbook formatting drifts; standard `dart format` fixed them. Unchanged remaining gates passed Widgetbook formatting/analyze, 29 checks covering all 911 examples across five environments, its release web build, app analysis, 3,657 app tests (seven existing live-backend skips), and the actual dart2js/Chrome OAuth origin/source/state/lifecycle contract. App formatting then found eight additional formatting-only files; standard formatting and the unchanged final gates passed 691-file formatting, app release build and all 11 declared routes with five security headers. No gate, script, assertion or tolerance was removed or weakened. This is completed gate coverage, not one uninterrupted verifier invocation. Logs: `/private/tmp/specimen-design-system-verify-final.log`, `/private/tmp/specimen-design-system-verify-remaining.log`, `/private/tmp/specimen-design-system-verify-build.log`. Final browser refresh confirmed193 groups/911examples and real hero callback; console errors empty.
+- Limits: representative reference visual review and all registered examples at default knobs do not establish every combinatorial variant, manual assistive-technology use, physical-device behavior or production release acceptance. Coverage manifests retain `coverageLevel: page_and_story_registration` and `parityStatus: not_approved`. No backend, payment, email or account action is connected to synthetic catalog examples.

@@ -1,0 +1,1740 @@
+{
+  "schemaVersion": 1,
+  "referenceFileId": "fIfKyBB3UUanoV9lZoTBx9",
+  "sourceInventory": "reference-pages.json",
+  "updated": "2026-10-22",
+  "coverageLevel": "page_and_story_registration",
+  "parityStatus": "not_approved",
+  "scope": "All 95 source pages: 83 component or example pages and 12 explicit reference-file setup, section-label or separator pages. Registered components may represent on-brand adaptations, not every reference instance.",
+  "auditFiles": [
+    "application-data.json",
+    "foundations.json",
+    "marketing-components.json",
+    "navigation-feedback.json",
+    "shared-components.json"
+  ],
+  "variantInventory": "marketing-reference-inventory.json",
+  "limitations": [
+    "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity.",
+    "Family audit links preserve their stated source evidence, adaptations, remaining gaps and pending validation. A passing reconciliation test only verifies identifiers, page accounting, declarations and reachable catalog paths."
+  ],
+  "pages": [
+    {
+      "pageId": "1480:0",
+      "pageName": "Getting started (you can delete this)",
+      "kind": "file_setup",
+      "structuralStatus": "not_applicable",
+      "visualParity": "not_applicable",
+      "auditRefs": [],
+      "catalogPaths": [],
+      "reason": "Reference file setup or preview metadata; not a component or example page."
+    },
+    {
+      "pageId": "2210:441096",
+      "pageName": "Thumbnail",
+      "kind": "file_setup",
+      "structuralStatus": "not_applicable",
+      "visualParity": "not_applicable",
+      "auditRefs": [],
+      "catalogPaths": [],
+      "reason": "Reference file setup or preview metadata; not a component or example page."
+    },
+    {
+      "pageId": "1624:431457",
+      "pageName": "––––––––––",
+      "kind": "separator",
+      "structuralStatus": "not_applicable",
+      "visualParity": "not_applicable",
+      "auditRefs": [],
+      "catalogPaths": [],
+      "reason": "Reference file navigation separator; contains no component family."
+    },
+    {
+      "pageId": "925:34508",
+      "pageName": "FOUNDATIONS",
+      "kind": "section_label",
+      "structuralStatus": "not_applicable",
+      "visualParity": "not_applicable",
+      "auditRefs": [],
+      "catalogPaths": [],
+      "reason": "Reference file section label; its individual component and example pages are reconciled separately."
+    },
+    {
+      "pageId": "1023:36350",
+      "pageName": "↳ Colors ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "foundations.json#colors"
+      ],
+      "catalogPaths": [
+        "foundations/brand-accent",
+        "foundations/brand-hero",
+        "foundations/colour"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "18:1951",
+      "pageName": "↳ Typography",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "foundations.json#typography"
+      ],
+      "catalogPaths": [
+        "foundations/typography"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1083:118533",
+      "pageName": "↳ Logos",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "foundations.json#logos"
+      ],
+      "catalogPaths": [
+        "foundations/brand-hero",
+        "foundations/identity-and-portfolio",
+        "marketing/uisocialproofsection"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "3463:407484",
+      "pageName": "↳ Icons",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "foundations.json#icons"
+      ],
+      "catalogPaths": [
+        "foundations/phosphor-icons"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1025:31781",
+      "pageName": "↳ Misc icons ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "foundations.json#misc-icons"
+      ],
+      "catalogPaths": [
+        "data/uirating",
+        "foundations/uifeaturedicon",
+        "foundations/uifiletypeicon",
+        "foundations/uipaymentmark",
+        "shared-patterns/uiproviderbutton"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1030:33573",
+      "pageName": "↳ Shadows & blurs",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "foundations.json#shadows"
+      ],
+      "catalogPaths": [
+        "foundations/shape-and-surfaces"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1051:0",
+      "pageName": "↳ Grids & spacing",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "foundations.json#grids"
+      ],
+      "catalogPaths": [
+        "foundations/spacing-and-density",
+        "marketing/uimarketingsection",
+        "marketing/uisectiongrid"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1053:41971",
+      "pageName": "↳ Portfolio mockups",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "foundations.json#portfolio"
+      ],
+      "catalogPaths": [
+        "foundations/identity-and-portfolio",
+        "marketing/uidevicemockup"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1054:557",
+      "pageName": "↳ Design annotations",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "foundations.json#annotations"
+      ],
+      "catalogPaths": [
+        "actions/uikeycap",
+        "foundations/design-annotations",
+        "foundations/uidesignpointer",
+        "foundations/uimeasurement"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1030:33572",
+      "pageName": "SHARED COMPONENTS",
+      "kind": "section_label",
+      "structuralStatus": "not_applicable",
+      "visualParity": "not_applicable",
+      "auditRefs": [],
+      "catalogPaths": [],
+      "reason": "Reference file section label; its individual component and example pages are reconciled separately."
+    },
+    {
+      "pageId": "1:1183",
+      "pageName": "↳ Buttons",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#buttons"
+      ],
+      "catalogPaths": [
+        "actions/uibutton",
+        "actions/uigooglesigninbutton",
+        "actions/uiiconbutton",
+        "shared-patterns/uiactionbutton",
+        "shared-patterns/uiproviderbutton",
+        "shared-patterns/uistorebadge"
+      ],
+      "pendingValidation": [
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask.",
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "16:399",
+      "pageName": "↳ Button groups",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#buttonGroups"
+      ],
+      "catalogPaths": [
+        "actions/uisegmented",
+        "shared-patterns/uibuttongroup"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "12:539",
+      "pageName": "↳ Badges ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#badges"
+      ],
+      "catalogPaths": [
+        "actions/uibadge",
+        "shared-patterns/uibadgegroup",
+        "shared-patterns/uistatusbadge"
+      ],
+      "pendingValidation": [
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask.",
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "3306:403749",
+      "pageName": "↳ Tags",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#tags"
+      ],
+      "catalogPaths": [
+        "actions/uichip",
+        "shared-patterns/uitag"
+      ],
+      "pendingValidation": [
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask.",
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "18:0",
+      "pageName": "↳ Dropdowns",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#dropdowns"
+      ],
+      "catalogPaths": [
+        "feedback/uipopovermenu-and-uimenutrigger",
+        "forms/uiselect",
+        "shared-patterns/uicombobox"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "85:1269",
+      "pageName": "↳ Inputs",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#inputs"
+      ],
+      "catalogPaths": [
+        "forms/uifield",
+        "forms/uisearchfield",
+        "forms/uitextarea",
+        "shared-patterns/uiinputgroup",
+        "shared-patterns/uiphonefield",
+        "shared-patterns/uitagfield",
+        "shared-patterns/uitexttoolbar",
+        "shared-patterns/uiverificationcode"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1102:4631",
+      "pageName": "↳ Toggles",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#toggles"
+      ],
+      "catalogPaths": [
+        "forms/uiswitch"
+      ],
+      "pendingValidation": [
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask.",
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1097:63638",
+      "pageName": "↳ Checkboxes",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#checkboxes"
+      ],
+      "catalogPaths": [
+        "forms/uicheckbox",
+        "forms/uiradiogroup"
+      ],
+      "pendingValidation": [
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask.",
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "122:3484",
+      "pageName": "↳ Checkbox groups",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#checkboxGroups"
+      ],
+      "catalogPaths": [
+        "shared-patterns/uiselectioncards"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "18:1350",
+      "pageName": "↳ Avatars ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#avatars"
+      ],
+      "catalogPaths": [
+        "data/avatar",
+        "shared-patterns/uiavatargroup",
+        "shared-patterns/uiavatarlabel"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1052:485",
+      "pageName": "↳ Tooltips",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#tooltips"
+      ],
+      "catalogPaths": [
+        "feedback/uitooltip"
+      ],
+      "pendingValidation": [
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask.",
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1154:89940",
+      "pageName": "↳ Progress indicators",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#progress"
+      ],
+      "catalogPaths": [
+        "data/progress",
+        "shared-patterns/uiloadingindicator",
+        "shared-patterns/uiprogressdisplay"
+      ],
+      "pendingValidation": [
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask.",
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1086:1423",
+      "pageName": "↳ Sliders",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#sliders"
+      ],
+      "catalogPaths": [
+        "forms/uislider",
+        "shared-patterns/uirangeslider"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1238:52",
+      "pageName": "SHARED ASSETS",
+      "kind": "section_label",
+      "structuralStatus": "not_applicable",
+      "visualParity": "not_applicable",
+      "auditRefs": [],
+      "catalogPaths": [],
+      "reason": "Reference file section label; its individual component and example pages are reconciled separately."
+    },
+    {
+      "pageId": "134:3146",
+      "pageName": "↳ Log in and sign up pages  ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#auth"
+      ],
+      "catalogPaths": [
+        "marketing/uiauthform",
+        "marketing/uiauthlayout"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1176:99947",
+      "pageName": "↳ 404 pages  ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#error"
+      ],
+      "catalogPaths": [
+        "marketing/uierrorpage"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1226:360",
+      "pageName": "↳ Email templates",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#email"
+      ],
+      "catalogPaths": [
+        "marketing/uiemailtemplate"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1291:157819",
+      "pageName": "↳ Miscellaneous assets",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#assets"
+      ],
+      "catalogPaths": [
+        "marketing/uibrandpattern",
+        "marketing/uidevicemockup",
+        "marketing/uimediaplayer",
+        "marketing/uipaymentcardmockup"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "4938:371336",
+      "pageName": "↳ Background elements ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#backgrounds"
+      ],
+      "catalogPaths": [
+        "marketing/uibrandpattern"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1624:431456",
+      "pageName": "––––––––––",
+      "kind": "separator",
+      "structuralStatus": "not_applicable",
+      "visualParity": "not_applicable",
+      "auditRefs": [],
+      "catalogPaths": [],
+      "reason": "Reference file navigation separator; contains no component family."
+    },
+    {
+      "pageId": "1622:261458",
+      "pageName": "✨ MARKETING WEBSITE EXAMPLES (you can move to a separate file)",
+      "kind": "section_label",
+      "structuralStatus": "not_applicable",
+      "visualParity": "not_applicable",
+      "auditRefs": [],
+      "catalogPaths": [],
+      "reason": "Reference file section label; its individual component and example pages are reconciled separately."
+    },
+    {
+      "pageId": "1622:261460",
+      "pageName": "✨ Landing pages",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#landing",
+        "marketing-components.json#press-mentions"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/landing",
+        "marketing/uipressmentionssection"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1622:261461",
+      "pageName": "✨ Pricing pages",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#pricingExamples"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/pricing"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1622:261459",
+      "pageName": "✨ Blogs",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#blogs"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/blog"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1631:330597",
+      "pageName": "✨ Blog posts",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#posts"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/article"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1622:261463",
+      "pageName": "✨ About pages",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#about"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/about"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1622:261464",
+      "pageName": "✨ Contact pages",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#contactExamples"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/contact"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1639:514589",
+      "pageName": "✨ Team pages",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#teamExamples"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/team"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1622:261466",
+      "pageName": "✨ Legal pages",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#legal"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/legal"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1622:261465",
+      "pageName": "✨ FAQ pages",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#faqExamples"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/faq"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1623:261469",
+      "pageName": "✨ Log in and sign up pages",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#authExamples"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/authentication"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1623:261468",
+      "pageName": "✨ 404 pages",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#errorExamples"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/not-found"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Example-page metadata and composed catalog examples are mapped; every source page instance has not been individually visually compared.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1622:261457",
+      "pageName": "MARKETING WEBSITE COMPONENTS",
+      "kind": "section_label",
+      "structuralStatus": "not_applicable",
+      "visualParity": "not_applicable",
+      "auditRefs": [],
+      "catalogPaths": [],
+      "reason": "Reference file section label; its individual component and example pages are reconciled separately."
+    },
+    {
+      "pageId": "683:17952",
+      "pageName": "↳ Header navigation",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#header"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingheader",
+        "marketing/uimegamenucontent"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "739:496",
+      "pageName": "↳ Header sections",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#hero"
+      ],
+      "catalogPaths": [
+        "marketing/uibrandpattern",
+        "marketing/uidevicemockup",
+        "marketing/uiherosection"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "736:22481",
+      "pageName": "↳ Features sections",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#features"
+      ],
+      "catalogPaths": [
+        "marketing/uifeaturecard",
+        "marketing/uifeaturesection",
+        "marketing/uifeatureshowcase"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "708:20673",
+      "pageName": "↳ Pricing sections",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#pricing"
+      ],
+      "catalogPaths": [
+        "marketing/uipricingcard",
+        "marketing/uipricingcomparison",
+        "marketing/uipricingsection"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "645:15070",
+      "pageName": "↳ CTA sections",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#cta"
+      ],
+      "catalogPaths": [
+        "marketing/uicalltoactionsection"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "291:164",
+      "pageName": "↳ Metrics sections",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#metrics"
+      ],
+      "catalogPaths": [
+        "marketing/uimetricssection"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "641:15058",
+      "pageName": "↳ Newsletter CTA sections",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#newsletter"
+      ],
+      "catalogPaths": [
+        "marketing/uiemailcapture",
+        "marketing/uinewslettersection"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "648:16272",
+      "pageName": "↳ Testimonial sections",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#testimonials"
+      ],
+      "catalogPaths": [
+        "marketing/uitestimonialsection"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "286:15521",
+      "pageName": "↳ Social proof sections",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#social"
+      ],
+      "catalogPaths": [
+        "marketing/uisocialproofsection"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "665:1107",
+      "pageName": "↳ Blog sections ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#blog"
+      ],
+      "catalogPaths": [
+        "marketing/uiarticlecard",
+        "marketing/uiblogsection"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "647:15097",
+      "pageName": "↳ Content",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#content"
+      ],
+      "catalogPaths": [
+        "marketing/uicontentsection",
+        "marketing/uieditorialfigure",
+        "marketing/uieditorialquote"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "673:20368",
+      "pageName": "↳ Contact sections",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#contact"
+      ],
+      "catalogPaths": [
+        "marketing/uicontactform",
+        "marketing/uicontactlocations",
+        "marketing/uicontactsection"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "673:16258",
+      "pageName": "↳ Team sections",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#team"
+      ],
+      "catalogPaths": [
+        "marketing/uiteammembercard",
+        "marketing/uiteamsection"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1458:239246",
+      "pageName": "↳ Careers sections",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#careers"
+      ],
+      "catalogPaths": [
+        "marketing/uicareercard",
+        "marketing/uicareerssection"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "282:168",
+      "pageName": "↳ FAQ sections",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#faq"
+      ],
+      "catalogPaths": [
+        "marketing/uifaqsection"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "278:13503",
+      "pageName": "↳ Footers",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#footer"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingfooter"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1624:424681",
+      "pageName": "↳ Banners",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "marketing-components.json#banner"
+      ],
+      "catalogPaths": [
+        "marketing/uiannouncementbanner"
+      ],
+      "pendingValidation": [
+        "An exact-family screenshot comparison is not recorded in this audit; selected representative source review does not establish exhaustive visual parity.",
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1624:431458",
+      "pageName": "––––––––––",
+      "kind": "separator",
+      "structuralStatus": "not_applicable",
+      "visualParity": "not_applicable",
+      "auditRefs": [],
+      "catalogPaths": [],
+      "reason": "Reference file navigation separator; contains no component family."
+    },
+    {
+      "pageId": "1664:398801",
+      "pageName": "✨ APPLICATION EXAMPLES (you can move to a separate file)",
+      "kind": "section_label",
+      "structuralStatus": "not_applicable",
+      "visualParity": "not_applicable",
+      "auditRefs": [],
+      "catalogPaths": [],
+      "reason": "Reference file section label; its individual component and example pages are reconciled separately."
+    },
+    {
+      "pageId": "1686:419019",
+      "pageName": "✨ Dashboards",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#dashboards"
+      ],
+      "catalogPaths": [
+        "data/application-templates/dashboard"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1664:398802",
+      "pageName": "✨ Settings pages",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#settings"
+      ],
+      "catalogPaths": [
+        "data/application-templates/settings"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1686:419020",
+      "pageName": "✨ Informational pages",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#informational"
+      ],
+      "catalogPaths": [
+        "data/application-templates/informational-directory"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1215:104942",
+      "pageName": "APPLICATION COMPONENTS",
+      "kind": "section_label",
+      "structuralStatus": "not_applicable",
+      "visualParity": "not_applicable",
+      "auditRefs": [],
+      "catalogPaths": [],
+      "reason": "Reference file section label; its individual component and example pages are reconciled separately."
+    },
+    {
+      "pageId": "185:2718",
+      "pageName": "↳ Page headers",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#headers"
+      ],
+      "catalogPaths": [
+        "data/uipageheader"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "223:8525",
+      "pageName": "↳ Card headers",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#cards"
+      ],
+      "catalogPaths": [
+        "data/section-header"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "190:4871",
+      "pageName": "↳ Section headers ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#sections"
+      ],
+      "catalogPaths": [
+        "data/section-header"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "3275:371793",
+      "pageName": "↳ Section footers",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#footers"
+      ],
+      "catalogPaths": [
+        "data/uicontentfooter"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "82:1862",
+      "pageName": "↳ Application navigation",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "navigation-feedback.json#application-navigation"
+      ],
+      "catalogPaths": [
+        "application-patterns/uinavigationmenu",
+        "navigation/uirail",
+        "navigation/uisidebar",
+        "navigation/uitopbar"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "172:4293",
+      "pageName": "↳ Modals ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "navigation-feedback.json#modals"
+      ],
+      "catalogPaths": [
+        "application-patterns/modal-recipes",
+        "application-patterns/uicropeditor",
+        "application-patterns/uimodalpanel",
+        "feedback/uidialog"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "3307:403757",
+      "pageName": "↳ Command menus ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "navigation-feedback.json#command-menus"
+      ],
+      "catalogPaths": [
+        "application-patterns/uicommandmenu-rich-content",
+        "forms/uicommandmenu"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1050:146949",
+      "pageName": "↳ Charts ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#charts"
+      ],
+      "catalogPaths": [
+        "data/chart",
+        "data/progress",
+        "data/uidatavisualization"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "185:279",
+      "pageName": "↳ Metrics ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#metrics"
+      ],
+      "catalogPaths": [
+        "data/uimetriccard"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "231:922",
+      "pageName": "↳ Slideout menus",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "navigation-feedback.json#slideout-menus"
+      ],
+      "catalogPaths": [
+        "application-patterns/slideout-recipes",
+        "application-patterns/uidrawer"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "127:2907",
+      "pageName": "↳ Inline CTAs",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#cta"
+      ],
+      "catalogPaths": [
+        "data/uiinlinecta"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "225:7288",
+      "pageName": "↳ Pagination",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#pagination"
+      ],
+      "catalogPaths": [
+        "data/pagination",
+        "data/uicarousel",
+        "data/uipageindicator",
+        "data/uipagination-variants"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "53:1288",
+      "pageName": "↳ Progress steps ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#steps"
+      ],
+      "catalogPaths": [
+        "data/uisteps-sizes",
+        "data/uisteps-variants"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "253:14231",
+      "pageName": "↳ Activity feeds ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#activity"
+      ],
+      "catalogPaths": [
+        "content/uiactivityfeed"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1251:12271",
+      "pageName": "↳ Messaging",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#messaging"
+      ],
+      "catalogPaths": [
+        "content/uimessage",
+        "data/uimessagecomposer"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "43:0",
+      "pageName": "↳ Tabs ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "navigation-feedback.json#tabs"
+      ],
+      "catalogPaths": [
+        "application-patterns/uitabs-variants",
+        "compositions/uitabview",
+        "feedback/uitabs"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "214:0",
+      "pageName": "↳ Tables",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#tables"
+      ],
+      "catalogPaths": [
+        "data/data-table",
+        "data/uidatatable-treatments",
+        "data/uirating",
+        "data/uitableactions",
+        "data/uitablecell"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "43:3087",
+      "pageName": "↳ Breadcrumbs",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#breadcrumbs"
+      ],
+      "catalogPaths": [
+        "data/uibreadcrumbs-variants"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "176:4256",
+      "pageName": "↳ Alerts & notifications ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "navigation-feedback.json#alerts-notifications"
+      ],
+      "catalogPaths": [
+        "application-patterns/uinotice",
+        "feedback/uibanner",
+        "feedback/uitoast-and-uitoasthost"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1143:85678",
+      "pageName": "↳ Date pickers",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#datepickers"
+      ],
+      "catalogPaths": [
+        "forms/uidatepicker",
+        "shared-patterns/uidaterangefield",
+        "shared-patterns/uidaterangepicker"
+      ],
+      "pendingValidation": [
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1157:90306",
+      "pageName": "↳ File upload ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "shared-components.json#upload"
+      ],
+      "catalogPaths": [
+        "forms/uifileupload"
+      ],
+      "pendingValidation": [
+        "Family metadata was audited; exact family screenshot review not claimed by this shared-controls subtask.",
+        "Full combinatorial visual review, manual assistive technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "780:0",
+      "pageName": "↳ Content dividers",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#dividers"
+      ],
+      "catalogPaths": [
+        "data/hairline",
+        "data/uicontentdivider"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1172:32",
+      "pageName": "↳ Loading indicators",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#loading"
+      ],
+      "catalogPaths": [
+        "data/progress",
+        "data/uiloadingstate"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1172:31",
+      "pageName": "↳ Empty states ✨ NEW ✨",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#empty"
+      ],
+      "catalogPaths": [
+        "data/empty-state",
+        "data/uiemptystate-sizes"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    },
+    {
+      "pageId": "1221:106300",
+      "pageName": "↳ Code snippets",
+      "kind": "component_or_example",
+      "structuralStatus": "mapped",
+      "visualParity": "not_approved",
+      "auditRefs": [
+        "application-data.json#code"
+      ],
+      "catalogPaths": [
+        "content/uicodesnippet"
+      ],
+      "pendingValidation": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed.",
+        "Page and story registration does not establish complete variant, interaction, visual, assistive technology or physical device parity."
+      ]
+    }
+  ],
+  "validationEvidence": [
+    "Integrated Widgetbook validation passed 29 checks, including all 911 examples at default knobs across five environments. This does not exercise every knob combination.",
+    "Representative source and implementation review found no further capability blocker. Reviewed sources included pricing, contact, press mentions, settings, dashboards and informational examples; this is not visual comparison of every reference instance.",
+    "Isolated iPad and iPhone simulator and Android emulator catalog checks and reviewed screenshots passed. iPad evidence includes paired-calendar range selection; iPhone and Android smoke checks cover the brand hero, a real tap and its callback receipt.",
+    "Native checks predate the final calendar weekday copy change to Mon through Sun. All 12 affected weekday-header goldens were subsequently independently reviewed: labels remain distinct, centered and unclipped in light and dark modes.",
+    "All local gates defined in scripts/ci/verify.sh passed after the weekday copy change, in segments resumed at unchanged remaining gates after formatter-only corrections. Independent source and representative visual review cleared reported findings. No physical-device, manual assistive-technology or production approval is claimed."
+  ]
+}

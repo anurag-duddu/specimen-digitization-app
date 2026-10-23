@@ -5,7 +5,8 @@ Run from the application root:
 
     uv run --with pillow python tool/brand/render_mark.py
 
-The mark is the pin (`design/09-brand-direction.md` section 9): a vertical
+The retained mark geometry is the pin (see `design/09-brand-direction.md`
+section 9 and the current authority in `design/15-design-system-standard.md`): a vertical
 `ink` stroke with a filled circular head, standing in a disc of `accent`.
 Every number below is stated once, at the 24 dp mark 09 specifies, and every
 raster scales from it. Nothing here is hand placed, so a change to the
@@ -42,14 +43,33 @@ from PIL import Image, ImageDraw
 
 APP_ROOT = Path(__file__).resolve().parents[2]
 
-# Colour, 09 section 3. The roles, not the values, are what the product reads;
-# these literals exist here because a PNG cannot look a token up.
-ACCENT = (0xE8, 0xFF, 0x47)
-ON_ACCENT = (0x11, 0x12, 0x14)
-INK = (0x11, 0x12, 0x14)
+# Read the same identity seeds as Flutter. A source edit cannot regenerate
+# platform artwork from a forgotten palette copy.
+PALETTE_PATH = APP_ROOT / "packages/specimen_ui/lib/src/foundation/palette.dart"
+
+
+def brand_seed(name: str) -> tuple[int, int, int]:
+    """Read one exact opaque seed from Flutter's BrandPalette, failing closed."""
+    source = PALETTE_PATH.read_text(encoding="utf-8")
+    table = re.search(r"class BrandPalette\s*\{(.*?)\n\}", source, flags=re.DOTALL)
+    if table is None:
+        raise ValueError("BrandPalette is missing from the Flutter palette")
+    matches = re.findall(
+        rf"static const Color {re.escape(name)} = Color\(0xFF([0-9A-Fa-f]{{6}})\);",
+        table.group(1),
+    )
+    if len(matches) != 1:
+        raise ValueError(f"Expected one opaque BrandPalette.{name} seed")
+    value = matches[0]
+    return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
+
+
+ACCENT = brand_seed("iris")
+ON_ACCENT = brand_seed("obsidian")
+INK = ON_ACCENT
 PAPER = (0xFF, 0xFF, 0xFF)
-GROUND_LIGHT = (0xF6, 0xF6, 0xF4)
-GROUND_DARK = (0x0E, 0x0F, 0x11)
+GROUND_LIGHT = brand_seed("paper")
+GROUND_DARK = brand_seed("obsidian")
 
 # Geometry, 09 section 9, stated at the 24 dp mark.
 MARK_BOX = 24.0
@@ -263,7 +283,7 @@ def maskable_icon(size: int) -> Plate:
 
 
 def render_sources() -> list[Path]:
-    """The six brand rasters the two generators read."""
+    """The seven brand rasters the two generators read."""
     brand = APP_ROOT / "assets" / "brand"
     written: list[Path] = []
     for name, plate, opaque in (

@@ -258,6 +258,8 @@ class UiFieldBox extends StatelessWidget {
     required this.child,
     this.leading,
     this.trailing,
+    this.prefixText,
+    this.suffixText,
     this.focusRing = false,
     this.multiline = false,
     this.semantics,
@@ -274,6 +276,12 @@ class UiFieldBox extends StatelessWidget {
 
   /// A glyph at the start, drawn at 20.
   final IconSpec? leading;
+
+  /// Short noneditable text before the value, such as a currency symbol.
+  final String? prefixText;
+
+  /// Short noneditable text after the value, such as measurement units.
+  final String? suffixText;
 
   /// An action at the end. It is given its own 48 dp hit box.
   final Widget? trailing;
@@ -370,7 +378,36 @@ class UiFieldBox extends StatelessWidget {
                 ),
                 SizedBox(width: ui.space.s2),
               ],
-              Expanded(child: child),
+              if (prefixText != null) ...[
+                Flexible(
+                  child: ExcludeSemantics(
+                    child: Text(
+                      prefixText!,
+                      style: style.text.copyWith(
+                        color: style.glyph.resolve(states),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: ui.space.s2),
+              ],
+              Expanded(
+                flex: prefixText != null || suffixText != null ? 3 : 1,
+                child: child,
+              ),
+              if (suffixText != null) ...[
+                SizedBox(width: ui.space.s2),
+                Flexible(
+                  child: ExcludeSemantics(
+                    child: Text(
+                      suffixText!,
+                      style: style.text.copyWith(
+                        color: style.glyph.resolve(states),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               if (trailing != null) const SizedBox(width: UiDensity.hitBox),
             ],
           ),
@@ -409,6 +446,8 @@ class UiField extends StatefulWidget {
     this.errorText,
     this.leading,
     this.trailing,
+    this.prefixText,
+    this.suffixText,
     this.onClear,
     this.clearLabel,
     this.onChanged,
@@ -463,6 +502,12 @@ class UiField extends StatefulWidget {
 
   /// A glyph at the start of the field, drawn at 20.
   final IconSpec? leading;
+
+  /// Short noneditable text before the value, such as a currency symbol.
+  final String? prefixText;
+
+  /// Short noneditable text after the value, such as measurement units.
+  final String? suffixText;
 
   /// An action at the end of the field. It brings its own 48 dp hit box.
   final Widget? trailing;
@@ -643,6 +688,8 @@ class _UiFieldState extends State<UiField> {
         style: style,
         states: states,
         leading: widget.leading,
+        prefixText: widget.prefixText,
+        suffixText: widget.suffixText,
         trailing: trailing,
         // Any focus, pointer or keyboard: a focused field is being edited.
         focusRing: _focused,
@@ -672,7 +719,13 @@ class _UiFieldState extends State<UiField> {
       textField: true,
       label: widget.semanticsLabel ?? widget.label,
       hint: widget.enabled
-          ? (footer ?? widget.hintText)
+          ? (widget.prefixText == null && widget.suffixText == null
+                ? (footer ?? widget.hintText)
+                : [
+                    ?(footer ?? widget.hintText),
+                    ?widget.prefixText,
+                    ?widget.suffixText,
+                  ].join('. '))
           : widget.disabledReason,
       enabled: widget.enabled,
       readOnly: widget.readOnly,

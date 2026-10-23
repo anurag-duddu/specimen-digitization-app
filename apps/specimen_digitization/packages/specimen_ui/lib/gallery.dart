@@ -8,3 +8,7 @@ library;
 export 'src/gallery/gallery_shell.dart';
 
 export 'src/gallery/pages/control_states_page.dart';
+export 'src/gallery/pages/brand_overview_page.dart';
+export 'src/gallery/pages/content_patterns_page.dart';
+export 'src/gallery/pages/advanced_inputs_page.dart';
+export 'src/gallery/pages/data_patterns_page.dart';

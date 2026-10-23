@@ -20,7 +20,7 @@ flutter_launcher_icons:
   # 3.38.5. The package would otherwise assume 21 and write an extra set of
   # legacy icons for API levels this application does not support.
   min_sdk_android: 24
-  adaptive_icon_background: "#E8FF47"
+  adaptive_icon_background: "#7B61FF"
   adaptive_icon_foreground: "assets/brand/icon-foreground-1024.png"
   # The foreground is already drawn for the safe zone: the pin is 44 percent
   # of the central 66 percent of the canvas, which is the icon a launcher mask
@@ -36,5 +36,5 @@ flutter_launcher_icons:
   web:
     generate: true
     image_path: "assets/brand/icon-1024.png"
-    background_color: "#F6F6F4"
-    theme_color: "#F6F6F4"
+    background_color: "#FAF9F6"
+    theme_color: "#FAF9F6"

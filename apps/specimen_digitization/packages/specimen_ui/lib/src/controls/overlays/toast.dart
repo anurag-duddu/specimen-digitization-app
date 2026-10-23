@@ -121,13 +121,13 @@ class UiToastStyle {
   static const double entranceRise = 8;
 }
 
-/// A transient message in a floating capsule.
+/// A transient message on a floating surface.
 ///
 /// Retires `SnackBar` and `ScaffoldMessenger`. Normally raised through
 /// [UiToasts.show] rather than built directly; it is public so a caller can
 /// render one in place, which is what the gallery does.
 class UiToast extends StatelessWidget {
-  /// Draws [data] as a capsule.
+  /// Draws [data] on a rounded surface that can grow with its text.
   const UiToast({super.key, required this.data, this.onDismissed, this.style});
 
   /// The message, its glyph and its action.
@@ -182,7 +182,10 @@ class UiToast extends StatelessWidget {
       constraints: BoxConstraints(maxWidth: paint.maxWidth),
       child: GlassSurface(
         level: GlassLevel.floating,
-        capsule: true,
+        // A tall capsule clips wrapped copy and the ends of a stacked action
+        // at large text sizes. A fixed token radius keeps that content usable
+        // at every allocation without changing the message or hit target.
+        radius: ui.shape.tile,
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: paint.minHeight),
           child: Padding(

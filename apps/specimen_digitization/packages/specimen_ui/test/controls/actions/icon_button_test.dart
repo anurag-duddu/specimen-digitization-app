@@ -76,27 +76,32 @@ void main() {
     );
   });
 
-  testWidgets('the tooltip defaults to the label, so the two never disagree', (
-    WidgetTester tester,
-  ) async {
-    final SemanticsHandle handle = tester.ensureSemantics();
-    await tester.pumpWidget(
-      uiHarness(
-        child: UiIconButton(
-          icon: UiIcons.rotateView,
-          semanticsLabel: 'Rotate the view',
-          onPressed: () {},
+  testWidgets(
+    'the visual tooltip defaults to the label without repeating metadata',
+    (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        uiHarness(
+          child: UiIconButton(
+            icon: UiIcons.rotateView,
+            semanticsLabel: 'Rotate the view',
+            onPressed: () {},
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    final SemanticsData data = tester
-        .getSemantics(find.bySemanticsLabel('Rotate the view'))
-        .getSemanticsData();
-    expect(data.tooltip, 'Rotate the view');
-    expect(data.label, 'Rotate the view');
-    handle.dispose();
-  });
+      );
+      await tester.pumpAndSettle();
+      final SemanticsData data = tester
+          .getSemantics(find.bySemanticsLabel('Rotate the view'))
+          .getSemanticsData();
+      expect(data.tooltip, isEmpty);
+      expect(data.label, 'Rotate the view');
+      expect(
+        tester.widget<UiTooltip>(find.byType(UiTooltip)).message,
+        'Rotate the view',
+      );
+      handle.dispose();
+    },
+  );
 
   testWidgets('a tooltip may say more than the label', (
     WidgetTester tester,
@@ -117,6 +122,96 @@ void main() {
         .getSemantics(find.bySemanticsLabel('Retry processing'))
         .getSemanticsData();
     expect(data.tooltip, 'Retry processing from the last checkpoint');
+    handle.dispose();
+  });
+
+  testWidgets(
+    'opening an icon tooltip never duplicates the name or extra description',
+    (WidgetTester tester) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      const String label = 'Retry processing';
+      const String detail = 'Retry processing from the last checkpoint';
+      for (final String? tooltip in <String?>[null, label, detail]) {
+        int activations = 0;
+        await tester.pumpWidget(
+          uiHarness(
+            child: UiIconButton(
+              icon: UiIcons.retry,
+              semanticsLabel: label,
+              tooltip: tooltip,
+              onPressed: () => activations++,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        void expectSingleName() {
+          final SemanticsData data = tester
+              .getSemantics(find.bySemanticsLabel(label))
+              .getSemanticsData();
+          expect(data.label, label);
+          expect(data.tooltip, tooltip ?? '');
+          expect(data.hasAction(SemanticsAction.tap), isTrue);
+        }
+
+        expectSingleName();
+        await tester.longPress(find.byType(UiIconButton));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(
+          find.text(tooltip ?? label),
+          findsOneWidget,
+          reason: 'Visual guidance remains available.',
+        );
+        expectSingleName();
+        expect(
+          activations,
+          0,
+          reason: 'Inspecting the tooltip does not activate the command.',
+        );
+        await tester.pump(UiTooltipStyle.touchDuration);
+        await tester.pumpAndSettle();
+        expectSingleName();
+        await tester.tap(find.byType(UiIconButton));
+        expect(activations, 1);
+        await tester.pumpWidget(const SizedBox());
+      }
+      handle.dispose();
+    },
+  );
+
+  testWidgets('a revealed disabled reason stays a single hint on its button', (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    const String label = 'Remove specimen photograph';
+    const String reason = 'Wait until the transfer finishes.';
+    await tester.pumpWidget(
+      uiHarness(
+        child: const UiIconButton(
+          icon: UiIcons.remove,
+          semanticsLabel: label,
+          tooltip: label,
+          disabledReason: reason,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    void expectSingleReason() {
+      final SemanticsData data = tester
+          .getSemantics(find.bySemanticsLabel(label))
+          .getSemanticsData();
+      expect(data.label, label);
+      expect(data.hint, reason);
+      expect(data.tooltip, label);
+      expect(data.hasAction(SemanticsAction.tap), isFalse);
+    }
+
+    expectSingleReason();
+    await tester.tap(find.byType(UiIconButton));
+    await tester.pumpAndSettle();
+    expect(find.text(reason), findsOneWidget);
+    expectSingleReason();
+    await tester.pumpWidget(const SizedBox());
     handle.dispose();
   });
 

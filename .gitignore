@@ -58,6 +58,8 @@ ui-debug.log*
 .flutter_tool_state
 build/
 coverage/
+# Authored reference coverage matrices are source, not generated test coverage.
+!apps/specimen_digitization/design/coverage/
 doc/api/
 **/generated_plugin_registrant.dart
 

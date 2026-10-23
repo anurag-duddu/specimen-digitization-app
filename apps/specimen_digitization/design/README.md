@@ -2,11 +2,14 @@
 
 This folder is the single source of truth for how the Specimen Digitization
 client should look, read, move and adapt. Every document is written for a senior
-designer and a senior Flutter engineer reading together. Read them in order the
-first time; afterwards, go straight to the one that covers your change.
+designer and a senior Flutter engineer reading together. Start with [15-design-system-standard.md](15-design-system-standard.md) and
+[09-brand-direction.md](09-brand-direction.md) for current brand and catalog
+authority. Earlier verification reports describe historical builds; their
+palettes and screenshots are not instructions to restore retired treatments.
 
 | File | What it settles | Read before |
 |---|---|---|
+| [15-design-system-standard.md](15-design-system-standard.md) | Current owner authority, Untitled UI reference audit, complete component coverage, Widgetbook, app integration and validation | Any design-system or brand change |
 | [00-north-star.md](00-north-star.md) | The one goal statement, the experience we are building, the bar we hold ourselves to, and the sequencing of the redesign | Any front-end work |
 | [01-usability-heuristics-audit.md](01-usability-heuristics-audit.md) | Nielsen Norman Group ten-heuristic audit of the current app: what works, what fails, severity, and pass criteria for the redesign | Changing any flow |
 | [02-ux-writing-guidelines.md](02-ux-writing-guidelines.md) | Voice, tone, vocabulary, pattern rules, before and after rewrites, and the checklist every user-facing string must pass | Writing or editing any string |
@@ -16,7 +19,7 @@ first time; afterwards, go straight to the one that covers your change.
 | [06-accessibility.md](06-accessibility.md) | WCAG 2.2 AA commitment, audit of current semantics, requirements by principle, and the testing plan | Every UI pull request |
 | [07-screen-blueprints.md](07-screen-blueprints.md) | The redesigned information architecture and a blueprint for every screen, with what changes from today and why. **Defers to 10** for component anatomy, which its preamble still sends to 03, and **to 13** for how a screen is composed from those components, which 13 enforces and wins | Building any screen |
 | [08-verification-report.md](08-verification-report.md) | The independent re-audit of the rebuilt client: every pass criterion and every dimension of the bar marked Pass, Partial or Fail with its evidence, the ranked remaining defects with their exact fixes, and the gate results | Picking up any remaining defect, or claiming a criterion now passes |
-| [09-brand-direction.md](09-brand-direction.md) | The 2026-09-16 refactor direction and the retained Geist, Phosphor, shape, colour and mark foundations. **Defers to 14** for runtime fields, glass, elevation and shell atmosphere | Any front-end work from the refactor on |
+| [09-brand-direction.md](09-brand-direction.md) | The approved 2026-10-22 identity: Amber-to-Iris hero, Iris secondary, Obsidian, Paper, Mist, Phosphor and the explicit Geist fallback. Supersedes earlier brand palettes | Any front-end work from the refactor on |
 | [10-component-library.md](10-component-library.md) | What makes the design system strong and how each property is enforced; the `specimen_ui` package: layers, the control contract, every primitive and control, the gallery, the gates, the definition of done; supersedes sections 7 and 8 of 03 | Adding or changing any component |
 | [11-fit-and-scale.md](11-fit-and-scale.md) | Units (what Flutter has for `px` and `rem`), text scale, window classes, the fit policy of every control, the one edge field anatomy, the one text style source, contract clauses 13 to 15, waves F and G | Any sizing, responsive or field work |
 | [12-verification-report-v2.md](12-verification-report-v2.md) | The re-audit of the rebuilt client after the refactor: the eight dimensions of the bar re-measured, the fit matrix at three text scales, the reduced motion and dark mode passes, the glass measurement that chooses `GlassQuality`, the device captures, and six new defects with their file and line | Picking up a defect from the refactor, or claiming a dimension of the bar is met |

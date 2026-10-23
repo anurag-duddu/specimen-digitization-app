@@ -7,12 +7,25 @@ import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
 import '../actions/button.dart';
 
-/// An absence, named, with at most one way out of it.
+/// Scale of the decorative artwork and surrounding empty-state spacing.
+enum UiEmptyStateSize {
+  /// A compact cell or card absence.
+  small,
+
+  /// A section-level absence.
+  medium,
+
+  /// A page-level absence.
+  large,
+}
+
+/// An absence, named, with explicit next actions.
 ///
 /// Carried from the v1 `EmptyState`. Three parts in this order: a title
-/// naming the absence, one sentence saying what would fill it, and one button
-/// that does it (02 section 4.6). A state with nothing to do has no button,
-/// and a state with two things to do is two states.
+/// naming the absence, one sentence saying what would fill it, and a primary action
+/// that does it. A secondary action may offer a distinct recovery path, such
+/// as clearing filters instead of importing. A state with no next step has no
+/// action.
 ///
 /// It sits on the sky with no glass of its own: an empty screen is already
 /// one object, and a pane around nothing is a pane around nothing.
@@ -24,6 +37,10 @@ class UiEmptyState extends StatelessWidget {
     required this.title,
     required this.body,
     this.action,
+    this.secondaryAction,
+    this.media,
+    this.compact = false,
+    this.size,
   });
 
   /// The glyph, drawn at 40.
@@ -39,13 +56,24 @@ class UiEmptyState extends StatelessWidget {
   /// One sentence saying what would fill the absence.
   final String body;
 
-  /// The single action. Typed as a button rather than as a slot, because
-  /// "at most one `UiButton`" is the rule and a type states it.
+  /// The primary action, typed as a button to preserve its control contract.
   ///
   /// It does something: a button with no `onPressed` is refused, as the v1
   /// `EmptyState` refused a label without a callback. A state whose way out
   /// is unavailable for now passes no button.
   final UiButton? action;
+
+  /// Optional alternative, for example clearing filters rather than importing.
+  final UiButton? secondaryAction;
+
+  /// Optional file preview or illustration, replacing the default Phosphor icon.
+  final Widget? media;
+
+  /// Compact padding for a table/card rather than a full page.
+  final bool compact;
+
+  /// Optional explicit scale; null retains the legacy [compact] behavior.
+  final UiEmptyStateSize? size;
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +91,12 @@ class UiEmptyState extends StatelessWidget {
           child: Padding(
             padding: EdgeInsetsDirectional.symmetric(
               horizontal: ui.space.s6,
-              vertical: ui.space.s12,
+              vertical: switch (size) {
+                UiEmptyStateSize.small => ui.space.s6,
+                UiEmptyStateSize.medium => ui.space.s8,
+                UiEmptyStateSize.large => ui.space.s12,
+                null => compact ? ui.space.s6 : ui.space.s12,
+              },
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -71,11 +104,15 @@ class UiEmptyState extends StatelessWidget {
                 // The glyph repeats the title and adds nothing a screen
                 // reader can act on.
                 ExcludeSemantics(
-                  child: UiIcon(
-                    icon,
-                    size: UiIconSize.display,
-                    color: ui.color.inkSecondary,
-                  ),
+                  child:
+                      media ??
+                      UiIcon(
+                        icon,
+                        size: size == UiEmptyStateSize.small
+                            ? UiIconSize.action
+                            : UiIconSize.display,
+                        color: ui.color.inkSecondary,
+                      ),
                 ),
                 SizedBox(height: ui.space.s4),
                 Text(
@@ -91,8 +128,18 @@ class UiEmptyState extends StatelessWidget {
                 ),
                 if (button != null) ...<Widget>[
                   SizedBox(height: ui.space.s6),
-                  button,
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: ui.space.s2,
+                    runSpacing: ui.space.s2,
+                    children: [?secondaryAction, button],
+                  ),
                 ],
+                if (button == null && secondaryAction != null)
+                  Padding(
+                    padding: EdgeInsets.only(top: ui.space.s6),
+                    child: secondaryAction,
+                  ),
               ],
             ),
           ),
