@@ -1,105 +1,189 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/intake_auth_session_io.dart';
 
+const _channel = MethodChannel('specimen/intake_auth');
+const _url = 'https://provider.example/authorize?state=expected-state';
+
 void main() {
-  testWidgets(
-    'expired native consent releases links and permits a fresh retry',
-    (tester) async {
-      const links = MethodChannel('com.llfbandit.app_links/events');
-      const launcher = MethodChannel('plugins.flutter.io/url_launcher');
-      final messenger = tester.binding.defaultBinaryMessenger;
-      final linkCalls = <String>[];
-      final launched = <String>[];
-      messenger.setMockMethodCallHandler(links, (call) async {
-        linkCalls.add(call.method);
-        return null;
-      });
-      messenger.setMockMethodCallHandler(launcher, (call) async {
-        expect(call.method, 'launch');
-        launched.add((call.arguments as Map)['url'] as String);
-        return true;
-      });
-      addTearDown(() {
-        messenger.setMockMethodCallHandler(links, null);
-        messenger.setMockMethodCallHandler(launcher, null);
-      });
+  late List<MethodCall> calls;
+  late List<Completer<String?>> launches;
 
-      final expired = IntakeAuthSession();
-      Object? failure;
-      Json? response;
-      expired
-          .authenticate(
-            'https://provider.example/authorize?state=expired-state',
-          )
-          .then(
-            (value) {
-              response = value;
-            },
-            onError: (Object error) {
-              failure = error;
-            },
-          );
-      await tester.pump();
-      await tester.pump();
-      expect(linkCalls, ['listen']);
-      await tester.pump(const Duration(minutes: 9, seconds: 59));
-      expect(failure, isNull);
-      expect(response, isNull);
-      await tester.pump(const Duration(seconds: 1));
-      await tester.pump();
-      // Platform-channel cancellation completes outside the fake timer zone.
-      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-      await tester.pump();
-      expect(linkCalls, ['listen', 'cancel']);
-      expect(failure, isA<ApiFailure>());
-      final problem = failure! as ApiFailure;
-      expect(problem.code, 'connection_expired');
-      expect(
-        problem.message,
-        'Connection expired. Connect again to finish authorizing this account.',
+  setUp(() {
+    calls = [];
+    launches = [];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, (call) {
+          calls.add(call);
+          if (call.method == 'cancel') return null;
+          final launch = Completer<String?>();
+          launches.add(launch);
+          return launch.future;
+        });
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_channel, null);
+  });
+
+  testWidgets('valid callback returns server-bound fields', (tester) async {
+    final session = IntakeAuthSession();
+    final future = session.authenticate(_url);
+    await tester.pump();
+    expect(calls.single.method, 'authenticate');
+    final args = Map<String, String>.from(calls.single.arguments as Map);
+    expect(args['state'], 'expected-state');
+    expect(args['url'], _url);
+    expect(args['id'], matches(RegExp(r'^[0-9a-f]{32}$')));
+    launches.single.complete(
+      'specimenintake://oauth/callback#state=expected-state&code=abc&picked_file_ids=file-1',
+    );
+    await tester.pump();
+    expect(await future, {
+      'state': 'expected-state',
+      'code': 'abc',
+      'picked_file_ids': 'file-1',
+    });
+    session.close();
+  });
+
+  testWidgets('close settles immediately and ignores a late callback', (
+    tester,
+  ) async {
+    final session = IntakeAuthSession();
+    final future = session.authenticate(_url);
+    final failure = expectLater(
+      future,
+      throwsA(
+        isA<ApiFailure>().having(
+          (e) => e.code,
+          'code',
+          'authorization_cancelled',
+        ),
+      ),
+    );
+    await tester.pump();
+    final oldId = (calls.single.arguments as Map)['id'];
+    session.close();
+    await tester.pump();
+    await failure;
+    expect(calls.last.method, 'cancel');
+    expect((calls.last.arguments as Map)['id'], oldId);
+    launches.single.complete(
+      'specimenintake://oauth/callback#state=expected-state&code=stale',
+    );
+    await tester.pump();
+    final retry = IntakeAuthSession();
+    final next = retry.authenticate(_url);
+    await tester.pump();
+    expect((calls.last.arguments as Map)['id'], isNot(oldId));
+    launches.last.complete(
+      'specimenintake://oauth/callback#state=expected-state&code=fresh',
+    );
+    await tester.pump();
+    expect((await next)['code'], 'fresh');
+    retry.close();
+  });
+
+  testWidgets('native dismissal becomes authorization_cancelled', (
+    tester,
+  ) async {
+    final session = IntakeAuthSession();
+    final future = session.authenticate(_url);
+    final failure = expectLater(
+      future,
+      throwsA(
+        isA<ApiFailure>().having(
+          (e) => e.code,
+          'code',
+          'authorization_cancelled',
+        ),
+      ),
+    );
+    await tester.pump();
+    launches.single.completeError(PlatformException(code: 'cancelled'));
+    await tester.pump();
+    await failure;
+    session.close();
+  });
+
+  testWidgets('launch failure settles without waiting for expiry', (
+    tester,
+  ) async {
+    final session = IntakeAuthSession();
+    final future = session.authenticate(_url);
+    final failure = expectLater(
+      future,
+      throwsA(
+        isA<ApiFailure>().having((e) => e.code, 'code', 'browser_unavailable'),
+      ),
+    );
+    await tester.pump();
+    launches.single.completeError(PlatformException(code: 'unavailable'));
+    await tester.pump();
+    await failure;
+    session.close();
+  });
+
+  testWidgets('expired attempt cancels native tab and permits fresh retry', (
+    tester,
+  ) async {
+    final session = IntakeAuthSession(timeout: const Duration(seconds: 1));
+    final future = session.authenticate(_url);
+    final failure = expectLater(
+      future,
+      throwsA(
+        isA<ApiFailure>().having((e) => e.code, 'code', 'connection_expired'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await failure;
+    expect(calls.last.method, 'cancel');
+    launches.single.complete(
+      'specimenintake://oauth/callback#state=expected-state&code=too-late',
+    );
+    await tester.pump();
+    session.close();
+    final retry = IntakeAuthSession();
+    final next = retry.authenticate(_url);
+    await tester.pump();
+    launches.last.complete(
+      'specimenintake://oauth/callback#state=expected-state&error=access_denied',
+    );
+    await tester.pump();
+    expect((await next)['error'], 'access_denied');
+    retry.close();
+  });
+
+  for (final callback in [
+    'specimenintake://other/callback#state=expected-state&code=abc',
+    'specimenintake://oauth/other#state=expected-state&code=abc',
+    'specimenintake://oauth/callback?code=abc#state=expected-state',
+    'specimenintake://oauth/callback#state=wrong&code=abc',
+    'specimenintake://oauth/callback#state=expected-state&state=expected-state&code=abc',
+    'specimenintake://oauth/callback#state=expected-state&code=',
+    'specimenintake://oauth/callback#state=expected-state&code=abc&error=denied',
+    'specimenintake://oauth/callback#state=expected-state&code=abc&unexpected=1',
+  ]) {
+    testWidgets('rejects malformed callback: $callback', (tester) async {
+      final session = IntakeAuthSession();
+      final future = session.authenticate(_url);
+      final failure = expectLater(
+        future,
+        throwsA(
+          isA<ApiFailure>().having((e) => e.code, 'code', 'invalid_callback'),
+        ),
       );
-      expect(problem.details['action'], 'connect');
-      expect(linkCalls, ['listen', 'cancel']);
-      expired.close();
       await tester.pump();
-
-      final retry = IntakeAuthSession();
-      failure = null;
-      retry
-          .authenticate('https://provider.example/authorize?state=retry-state')
-          .then(
-            (value) {
-              response = value;
-            },
-            onError: (Object error) {
-              failure = error;
-            },
-          );
+      launches.single.complete(callback);
       await tester.pump();
-      expect(linkCalls, ['listen', 'cancel', 'listen']);
-      expect(launched, hasLength(2));
-      void callback(String state, String code) =>
-          tester.binding.channelBuffers.push(
-            links.name,
-            const StandardMethodCodec().encodeSuccessEnvelope(
-              'specimenintake://oauth/callback#state=$state&code=$code',
-            ),
-            (_) {},
-          );
-      callback('expired-state', 'stale-code');
-      await tester.pump();
-      expect(response, isNull);
-      callback('retry-state', 'retry-code');
-      await tester.pump();
-      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
-      await tester.pump();
-      expect(failure, isNull);
-      expect(response, {'state': 'retry-state', 'code': 'retry-code'});
-      expect(linkCalls, ['listen', 'cancel', 'listen', 'cancel']);
-      retry.close();
-      await tester.pump();
-    },
-  );
+      await failure;
+      session.close();
+    });
+  }
 }

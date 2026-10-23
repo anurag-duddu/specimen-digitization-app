@@ -1,4 +1,4 @@
-// Compiled browser fixture for the real production popup adapter. Synthetic
+// Compiled browser fixture for production OAuth and inline Picker adapters. Synthetic
 // messages only: no Firebase, provider, API, or credential is used here.
 import 'dart:convert';
 import 'dart:js_interop';
@@ -6,6 +6,7 @@ import 'dart:js_interop_unsafe';
 
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/intake/intake_auth_session_web.dart';
+import 'package:specimen_digitization/src/screens/intake/intake_picker_bridge_web.dart';
 import 'package:web/web.dart' as web;
 
 void main() {
@@ -13,6 +14,7 @@ void main() {
     throw StateError('The browser fixture is restricted to loopback.');
   }
   IntakeAuthSession? session;
+  IntakePickerBridge? picker;
   var state = <String, dynamic>{'status': 'idle', 'barrier': 0};
   globalContext.setProperty(
     'intakeAuthBrowserState'.toJS,
@@ -50,6 +52,30 @@ void main() {
   globalContext.setProperty(
     'intakeAuthBrowserClose'.toJS,
     (() => session?.close()).toJS,
+  );
+  globalContext.setProperty(
+    'intakePickerBrowserStart'.toJS,
+    ((String url, String pickerId) {
+      final uri = Uri.parse(url);
+      if (uri.scheme != 'http' || uri.host != '127.0.0.1') {
+        throw StateError('The Picker fixture is restricted to loopback.');
+      }
+      picker?.dispose();
+      state['pickerActions'] = <String>[];
+      picker = IntakePickerBridge(
+        url: url,
+        pickerId: pickerId,
+        onEvent: (action) {
+          (state['pickerActions'] as List<String>).add(action);
+        },
+      );
+      picker!.frame.id = 'intake-picker-fixture';
+      web.document.body!.append(picker!.frame);
+    }).toJS,
+  );
+  globalContext.setProperty(
+    'intakePickerBrowserClose'.toJS,
+    (() => picker?.dispose()).toJS,
   );
   // A barrier is posted immediately after each invalid message. Browser task
   // ordering lets the driver assert rejection without sleeping for a timeout.
