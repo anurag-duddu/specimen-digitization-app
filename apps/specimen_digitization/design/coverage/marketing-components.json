@@ -1,6 +1,6 @@
 {
   "updated": "2026-10-23",
-  "status": "Fresh source-frame anatomy reviewed for 31 families and demonstrated gaps resolved; focused continuation checks passed; integrated continuation validation is running; full visual and physical-device parity not confirmed",
+  "status": "Fresh source-frame anatomy reviewed for 31 families and demonstrated gaps resolved; focused and integrated continuation checks passed, including simulator/emulator flows; full visual and physical-device parity not confirmed",
   "source": "Original on-brand equivalence; no Untitled UI visual identity/assets copied",
   "rows": [
     {
