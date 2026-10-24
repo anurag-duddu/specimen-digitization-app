@@ -4,7 +4,7 @@
 
 import 'dart:ui' show CheckedState, Tristate;
 
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -277,11 +277,50 @@ void main() {
     expect(
       edges.first,
       edges.last,
-      reason: 'the bar gutter is reserved on every row, drawn or not',
+      reason: 'selection changes paint and semantics, never content geometry',
     );
   });
 
-  testWidgets('a selected row fills ink at 6 percent and draws the bar', (
+  for (final scale in [1.0, 2.0]) {
+    for (final direction in TextDirection.values) {
+      testWidgets('wrapped row keeps padding at $scale in $direction', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          uiHarness(
+            textScaler: TextScaler.linear(scale),
+            textDirection: direction,
+            child: SizedBox(
+              width: 280,
+              child: UiListRow(
+                title: 'A long specimen identifier',
+                subtitle: 'The collection code needs supporting evidence',
+                selected: true,
+                onPressed: () {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final bounds = tester.getRect(find.byType(UiListRow));
+        final title = tester.getRect(find.text('A long specimen identifier'));
+        final subtitle = tester.getRect(
+          find.text('The collection code needs supporting evidence'),
+        );
+        final ui = UiThemeData.light();
+        expect(title.top - bounds.top, greaterThanOrEqualTo(ui.space.s3));
+        expect(subtitle.top - title.bottom, greaterThanOrEqualTo(ui.space.s1));
+        expect(
+          bounds.bottom - subtitle.bottom,
+          greaterThanOrEqualTo(ui.space.s3),
+        );
+        expect(bounds.height, greaterThanOrEqualTo(UiDensity.hitBox));
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets('a selected row uses a quiet fill without a leading stripe', (
     WidgetTester tester,
   ) async {
     for (final Brightness mode in Brightness.values) {
@@ -291,15 +330,13 @@ void main() {
       final UiListRowStyle style = UiListRowStyle.resolve(ui, UiSize.md);
       expect(
         style.background.resolve(const <WidgetState>{WidgetState.selected}),
-        ui.color.stateLayer(UiListRowStyle.selectedFillOpacity),
+        ui.brand.secondary.fill,
       );
       expect(
         style.background.resolve(const <WidgetState>{}).a,
         0,
         reason: 'an unselected row has no fill of its own',
       );
-      expect(style.bar.resolve(const <WidgetState>{}), ui.color.ink);
-      expect(style.barWidth, ui.shape.stroke.bar);
     }
 
     await tester.pumpWidget(
@@ -321,8 +358,8 @@ void main() {
     );
     expect(
       boxes.map((ColoredBox box) => box.color),
-      contains(ui.color.ink),
-      reason: 'the 3 dp leading bar is painted in ink',
+      isNot(contains(ui.color.ink)),
+      reason: 'selection is a surface, not a high-contrast edge',
     );
   });
 
@@ -414,7 +451,6 @@ void main() {
             style.titleColor,
             style.subtitleColor,
             style.trailingColor,
-            style.bar,
           ]) {
         expect(
           part.resolve(off),
@@ -520,6 +556,107 @@ void main() {
     );
   });
 
+  for (final direction in TextDirection.values) {
+    testWidgets('large-text disclosure stays beside its title $direction', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(
+          textDirection: direction,
+          textScaler: const TextScaler.linear(2),
+          child: SizedBox(
+            width: 280,
+            child: UiListRow(
+              title: 'SPEC-2026-0041',
+              subtitle: 'Two readings disagree',
+              leading: const UiIcon(UiIcons.record),
+              trailing: const UiIcon(UiIcons.next, size: UiIconSize.inline),
+              onPressed: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final title = tester.getRect(find.text('SPEC-2026-0041'));
+      final glyph = tester.getRect(find.byIcon(UiIcons.next.defaultGlyph));
+      expect(
+        direction == TextDirection.ltr ? glyph.left : -glyph.right,
+        greaterThanOrEqualTo(
+          direction == TextDirection.ltr ? title.right : -title.left,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets(
+      'large-text status stacks without squeezing content $direction',
+      (tester) async {
+        const title = 'SPEC-2026-0042';
+        const subtitle = 'Waiting on label';
+        for (final density in UiDensityMode.values) {
+          await tester.pumpWidget(
+            uiHarness(
+              density: density,
+              textDirection: direction,
+              textScaler: const TextScaler.linear(2),
+              child: SizedBox(
+                width: 300,
+                child: UiListRow(
+                  title: title,
+                  subtitle: subtitle,
+                  leading: const UiAvatar(name: 'Ana Ruiz'),
+                  trailing: const UiChip(
+                    label: 'Needs review',
+                    icon: UiIcons.needsReview,
+                  ),
+                  semanticsLabel: '$title, $subtitle, Needs review',
+                  onPressed: () {},
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          final titleRect = tester.getRect(find.text(title));
+          final subtitleRect = tester.getRect(find.text(subtitle));
+          final chipRect = tester.getRect(find.byType(UiChip));
+          expect(chipRect.top, greaterThanOrEqualTo(subtitleRect.bottom));
+          expect(
+            direction == TextDirection.ltr ? chipRect.left : chipRect.right,
+            closeTo(
+              direction == TextDirection.ltr ? titleRect.left : titleRect.right,
+              1,
+            ),
+          );
+          expect(
+            tester
+                .renderObject<RenderParagraph>(find.text(title))
+                .didExceedMaxLines,
+            isFalse,
+            reason:
+                'the record identifier remains readable across its two lines',
+          );
+          expect(
+            tester
+                .renderObject<RenderParagraph>(find.text('Needs review'))
+                .didExceedMaxLines,
+            isFalse,
+            reason:
+                'the status fits below the text without an avoidable ellipsis',
+          );
+          expect(
+            tester.getSize(find.byType(UiListRow)).height,
+            greaterThanOrEqualTo(UiDensity.hitBox),
+          );
+          expect(
+            find.bySemanticsLabel('$title, $subtitle, Needs review'),
+            findsOneWidget,
+          );
+        }
+      },
+    );
+  }
+
   testWidgets('the row height is the density row, floored at the hit box', (
     WidgetTester tester,
   ) async {
@@ -547,12 +684,12 @@ void main() {
     final UiThemeData ui = UiThemeData.light();
     expect(
       UiListRowStyle.resolve(ui, UiSize.md).title.fontSize,
-      ui.type.title.fontSize,
+      ui.type.body.fontSize,
     );
     expect(
       UiListRowStyle.resolve(ui, UiSize.sm).title.fontSize,
       ui.type.body.fontSize,
-      reason: 'a menu row is set in body, a list row in title',
+      reason: 'rows use a body role; headings belong to their containing group',
     );
     expect(
       UiListRowStyle.resolve(ui, UiSize.md).subtitle.fontSize,

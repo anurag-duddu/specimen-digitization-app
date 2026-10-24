@@ -265,7 +265,7 @@ void main() {
     await tester.ensureVisible(uiButton('Sign in'));
     await tester.tap(uiButton('Sign in'));
     await tester.pumpAndSettle();
-    expect(uiIconButton('Test environment'), findsOneWidget);
+    expect(find.bySemanticsLabel('Test environment'), findsOneWidget);
     // The queue row sits below the fold, so scroll the queue list to it
     // rather than assuming it was laid out. Row heights move with the type
     // scale, so this must not depend on the header happening to be short.

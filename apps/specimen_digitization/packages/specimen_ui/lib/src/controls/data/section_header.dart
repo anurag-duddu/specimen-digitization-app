@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../foundation/theme.dart';
 import '../../foundation/type.dart';
+import '../actions/icon_button.dart';
 
 /// The hierarchy of a [UiSectionHeader].
 enum UiSectionHeaderRole {
@@ -61,11 +62,13 @@ class UiSectionHeader extends StatelessWidget {
     required this.title,
     this.role = UiSectionHeaderRole.section,
     this.supporting,
+    this.supportingLiveRegion = false,
     this.meta,
     this.leading,
     this.help,
     this.toolbar,
     this.tabs,
+    this.trailingAction,
     this.actions = const <Widget>[],
   });
 
@@ -78,11 +81,18 @@ class UiSectionHeader extends StatelessWidget {
   /// Context that helps the reader understand this section.
   final String? supporting;
 
+  /// Announces changes when supporting copy reports a live save or load state.
+  final bool supportingLiveRegion;
+
   /// Count, badge or other compact supporting information.
   final Widget? meta;
 
   /// Optional identity/icon, help control, filter row and section navigation.
   final Widget? leading, help, toolbar, tabs;
+
+  /// One compact command beside the heading. The title wraps independently
+  /// while the command keeps its full interaction target.
+  final UiIconButton? trailingAction;
 
   /// Commands, in reading order. They wrap without shrinking hit targets.
   final List<Widget> actions;
@@ -93,7 +103,7 @@ class UiSectionHeader extends StatelessWidget {
       context.ui,
       role,
     );
-    final Widget heading = Column(
+    final Widget headingContent = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
@@ -114,26 +124,49 @@ class UiSectionHeader extends StatelessWidget {
         ),
         if (supporting != null) ...<Widget>[
           SizedBox(height: style.gap),
-          Text(supporting!, style: style.supporting),
+          Semantics(
+            liveRegion: supportingLiveRegion,
+            child: Text(supporting!, style: style.supporting),
+          ),
         ],
       ],
     );
-    Widget complete(Widget header) => Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        header,
-        if (toolbar != null)
-          Padding(
-            padding: EdgeInsets.only(top: style.groupGap),
-            child: toolbar,
-          ),
-        if (tabs != null)
-          Padding(
-            padding: EdgeInsets.only(top: style.groupGap),
-            child: tabs,
-          ),
-      ],
+    final Widget heading = trailingAction == null
+        ? headingContent
+        : LayoutBuilder(
+            builder: (context, constraints) => Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                if (constraints.hasBoundedWidth)
+                  Expanded(child: headingContent)
+                else
+                  headingContent,
+                SizedBox(width: style.gap),
+                trailingAction!,
+              ],
+            ),
+          );
+    Widget complete(Widget header) => LayoutBuilder(
+      builder: (context, constraints) => Column(
+        crossAxisAlignment: constraints.hasBoundedWidth
+            ? CrossAxisAlignment.stretch
+            : CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          header,
+          if (toolbar != null)
+            Padding(
+              padding: EdgeInsets.only(top: style.groupGap),
+              child: toolbar,
+            ),
+          if (tabs != null)
+            Padding(
+              padding: EdgeInsets.only(top: style.groupGap),
+              child: tabs,
+            ),
+        ],
+      ),
     );
     if (actions.isEmpty) return complete(heading);
     final Widget commands = Wrap(

@@ -16,9 +16,14 @@ import 'catalog/application_patterns.dart';
 import 'catalog/foundation_assets.dart';
 import 'catalog/shared_patterns.dart';
 import 'catalog/modal_recipes.dart';
+import 'catalog/product_screens.dart';
 import 'story.dart';
 
 List<WidgetbookNode> get specimenCatalog => [
+  WidgetbookCategory(
+    name: 'Product screens',
+    children: productScreenComponents,
+  ),
   WidgetbookCategory(
     name: 'Foundations',
     children: [...foundationComponents, ...foundationAssetComponents],

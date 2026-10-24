@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_widgetbook/catalog.dart';
 import 'package:specimen_widgetbook/environment.dart';
 import 'package:specimen_widgetbook/main.dart';
@@ -10,6 +11,7 @@ import 'package:specimen_widgetbook/inventory.dart';
 import 'package:widgetbook/widgetbook.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets(
     'button preview defaults to visible content without a hidden pending label',
     (tester) async {

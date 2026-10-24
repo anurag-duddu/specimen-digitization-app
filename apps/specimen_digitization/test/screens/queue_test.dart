@@ -55,9 +55,10 @@ Future<TestSession> pumpQueue(
   WidgetTester tester,
   ScriptedRepository repository, {
   bool settle = true,
+  Size window = queueWindow,
 }) async {
   tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = queueWindow;
+  tester.view.physicalSize = window;
   addTearDown(tester.view.reset);
   final TestSession session = TestSession();
   addTearDown(session.controller.close);
@@ -73,7 +74,210 @@ String locationOf(WidgetTester tester) => GoRouter.of(
 ).routerDelegate.currentConfiguration.uri.toString();
 
 void main() {
+  group('queue issue summaries', () {
+    for (final entry in {
+      'mandatory_unresolved:taxon': 'Taxon needs a supported value',
+      'mandatory_unresolved:date_visited_from':
+          'Collection start date needs a supported value',
+      'mandatory_unresolved:collection_code':
+          'Collection code needs a supported value',
+      'mandatory_evidence_unresolved:collectors':
+          'Collectors need supporting evidence',
+      'a_future_check:internal_field': 'Review the recorded issue',
+    }.entries) {
+      test(
+        'list-only ${entry.key} has readable copy without field payloads',
+        () {
+          final record = Specimen({
+            'specimen_id': 'list-only',
+            'disposition': 'needs_human_review',
+            'reason_codes': ['human_approval_required', entry.key],
+          });
+          expect(queueReason(record), entry.value);
+        },
+      );
+    }
+    test('blocking correction precedes a nonblocking finding', () {
+      final record = Specimen({
+        'specimen_id': 'prioritized',
+        'validation_findings': [
+          {'severity': 'warning', 'message': 'Check the spelling'},
+          {'severity': 'hard', 'reason_code': 'mandatory_unresolved:country'},
+        ],
+      });
+      expect(queueReason(record), 'Country needs a supported value');
+    });
+    test('shared queue disposition is not repeated as an issue', () {
+      expect(
+        queueReason(
+          const Specimen({
+            'specimen_id': 'baseline',
+            'reason_codes': ['human_approval_required', 'needs_human_review'],
+          }),
+        ),
+        isEmpty,
+      );
+    });
+  });
+
+  testWidgets(
+    'wide queue gives the working list the main area and opens a record',
+    (tester) async {
+      final repository = ScriptedRepository()
+        ..results = const [
+          Specimen({
+            'specimen_id': 'SD-1',
+            'filename': 'First record',
+            'disposition': 'needs_human_review',
+          }),
+          Specimen({
+            'specimen_id': 'SD-2',
+            'filename': 'Second record',
+            'disposition': 'needs_human_review',
+          }),
+        ];
+      await pumpQueue(tester, repository, window: const Size(1440, 900));
+      expect(find.byType(UiBrandHero), findsNothing);
+      expect(find.text('#First record'), findsOneWidget);
+      expect(find.text('Review queue'), findsOneWidget);
+      final heading = tester.getRect(find.text('Review queue'));
+      final search = tester.getRect(find.byType(UiSearchField));
+      final ui = tester.element(find.byType(QueuePane)).ui;
+      expect(search.left, heading.left);
+      expect(search.width, ui.space.readingMax);
+      final selector = tester.getRect(
+        find.byKey(const ValueKey<String>('queue-view')),
+      );
+      expect(selector.width, lessThan(search.width));
+      final command = tester.getRect(uiIconButton('Select specimens'));
+      expect(command.top, heading.top);
+      await tester.tap(find.text('#First record'));
+      await tester.pumpAndSettle();
+      expect(locationOf(tester), endsWith('/queue/SD-1'));
+      expect(find.byType(WorkbenchScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('a loading wide queue does not claim the collection is empty', (
+    tester,
+  ) async {
+    final repository = ScriptedRepository()..gate = Completer<void>();
+    await pumpQueue(
+      tester,
+      repository,
+      window: const Size(1440, 900),
+      settle: false,
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(UiSkeleton), findsWidgets);
+    expect(find.text('Open first record'), findsNothing);
+    expect(find.text('No specimens yet'), findsNothing);
+    repository.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  for (final width in [320.0, 390.0, 768.0, 1180.0, 1440.0]) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('a populated queue remains readable at $width and $scale', (
+        tester,
+      ) async {
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final repository = ScriptedRepository()
+          ..results = const [
+            Specimen({
+              'specimen_id': 'SD-summary',
+              'filename': 'Collection specimen with a long reference',
+              'disposition': 'needs_human_review',
+              'reason_codes': [
+                'human_approval_required',
+                'mandatory_unresolved:taxon',
+              ],
+              'updated_at': '2026-10-20T13:45:00Z',
+            }),
+          ];
+        await pumpQueue(tester, repository, window: Size(width, 1000));
+        expect(find.byType(UiBrandHero), findsNothing);
+        final view = find.byKey(const ValueKey<String>('queue-view'));
+        expect(view.hitTestable(), findsOneWidget);
+        final row = find.byKey(const ValueKey<String>('queue-row-SD-summary'));
+        await tester.ensureVisible(row);
+        await tester.pumpAndSettle();
+        expect(row.hitTestable(), findsOneWidget);
+        expect(find.text('Taxon needs a supported value'), findsOneWidget);
+        expect(find.textContaining('mandatory_unresolved'), findsNothing);
+        expect(find.textContaining('Updated '), findsNothing);
+        expect(find.byType(StatusChip), findsNothing);
+        expect(
+          tester.getSize(row).height,
+          greaterThanOrEqualTo(UiDensity.hitBox),
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
+  }
+
   group('queue status controls', () {
+    testWidgets('All specimens to Cleared keeps the view in keyboard order', (
+      tester,
+    ) async {
+      final repository = ScriptedRepository();
+      await pumpQueue(tester, repository);
+      final controller = WorkspaceScope.read(
+        tester.element(find.byType(QueuePane)),
+      );
+      await controller.selectDisposition('');
+      await tester.pumpAndSettle();
+      FocusNode viewNode(String label) => tester
+          .widget<Pressable>(
+            find.byWidgetPredicate(
+              (widget) => widget is Pressable && widget.semanticsLabel == label,
+            ),
+          )
+          .focusNode!;
+      viewNode('All specimens').requestFocus();
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 3; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pump();
+      }
+      final cleared = viewNode('Cleared');
+      expect(FocusManager.instance.primaryFocus, same(cleared));
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(repository.requests.last['disposition'], 'cleared');
+      expect(find.text('All specimens'), findsNothing);
+      expect(FocusManager.instance.primaryFocus, same(cleared));
+      expect(
+        [
+          'Needs review',
+          'Deferred',
+          'Cleared',
+        ].where((label) => !viewNode(label).skipTraversal),
+        ['Cleared'],
+      );
+      tester
+          .widget<EditableText>(find.byType(EditableText))
+          .focusNode
+          .requestFocus();
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus, same(cleared));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(repository.requests.last['disposition'], 'deferred');
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+
     testWidgets('supported status controls retain their backend meanings', (
       tester,
     ) async {
@@ -81,7 +285,7 @@ void main() {
       await pumpQueue(tester, repository);
       expect(repository.requests.last['disposition'], 'needs_human_review');
       for (final entry in {
-        'needs_human_review': 'Needs a human',
+        'needs_human_review': 'Needs review',
         'deferred': 'Deferred',
         'cleared': 'Cleared',
       }.entries) {
@@ -99,15 +303,18 @@ void main() {
       final ScriptedRepository repository = ScriptedRepository();
       await pumpQueue(tester, repository);
       final semantics = tester.ensureSemantics();
-      final target = find.byKey(
-        const ValueKey('queue-filter-needs_human_review'),
+      final target = find.byWidgetPredicate(
+        (widget) =>
+            widget is Pressable && widget.semanticsLabel == 'Needs review',
       );
       tester.widget<Pressable>(target).focusNode!.requestFocus();
       await tester.pump();
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
       expect(repository.requests.last['disposition'], 'deferred');
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pumpAndSettle();
       expect(repository.requests.last['disposition'], 'cleared');
       expect(
@@ -359,7 +566,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('a queue row fits the docked list pane', (tester) async {
+  testWidgets('a queue row fits the primary work area', (tester) async {
     final ScriptedRepository repository = ScriptedRepository()
       ..results = <Specimen>[
         const Specimen({
@@ -389,16 +596,15 @@ void main() {
     final Rect idBounds = tester.getRect(
       find.text(repository.results.first.displayReference),
     );
-    // 312 dp since 2026-10-17: the rail is UiRail's 72 and the pane gives up
-    // the 8 dp so the content beside them keeps its width (05 section 1).
-    expect(
-      paneBounds.width,
-      closeTo(WindowArrangement.listPaneWidthOf(TextScaler.noScaling), 0.01),
-    );
-    expect(paneBounds.width, closeTo(312, 0.01));
-    expect(rowBounds.width, closeTo(paneBounds.width - 32, 0.01));
+    expect(paneBounds.width, greaterThan(800));
+    expect(rowBounds.width, lessThan(paneBounds.width));
     expect(rowBounds.left, closeTo(searchBounds.left, 0.01));
-    expect(rowBounds.right, closeTo(searchBounds.right, 0.01));
+    expect(
+      paneBounds.right - rowBounds.right,
+      rowBounds.left - paneBounds.left,
+      reason:
+          'the queue uses symmetric page insets; search has its own measure',
+    );
     expect(rowBounds.left, greaterThanOrEqualTo(paneBounds.left));
     expect(rowBounds.right, lessThanOrEqualTo(paneBounds.right));
     expect(idBounds.left, greaterThanOrEqualTo(rowBounds.left));
@@ -432,7 +638,7 @@ void main() {
       await pumpPhone(tester, repository);
 
       expect(
-        find.byKey(const ValueKey('queue-filter-cleared')).hitTestable(),
+        find.byKey(const ValueKey('queue-view')).hitTestable(),
         findsOneWidget,
       );
       await pickSpecimenQueue(tester, 'Cleared');

@@ -1,8 +1,9 @@
 # Specimen Widgetbook
 
-The component workbench for the real `specimen_ui` Flutter package. All actions
-use local demonstration state. It has no Firebase configuration, app session or
-production backend connection.
+The component workbench for the real `specimen_ui` Flutter package, with six
+production-screen previews using the application router, shell and controllers.
+These previews use an isolated synthetic session and repository. Widgetbook does
+not initialize Firebase or connect to a production backend.
 
 ```sh
 cd apps/specimen_digitization
@@ -22,7 +23,7 @@ Knobs changes the selected story's inputs. Copy a story URL to share its chosen
 configuration with someone running the same build. On narrow windows these
 panels are available from the bottom bar.
 
-The catalog registers 157 public controls across 193 groups and 911 examples. The
+The catalog registers 157 public controls across 196 groups and 917 examples. The
 reference coverage test reconciles all 95 actual pages of the supplied Untitled
 UI file, including shared assets, marketing sections and application examples.
 Its page accounting is a structural check; the per-family audits retain visual
@@ -48,13 +49,43 @@ change a story's local demonstration inputs; they do not edit the shared widget,
 its defaults or application data. After a shared source edit, hot reload each
 running app and Widgetbook target. Restart or rebuild when a change affects
 initialization, assets or native code. Each target then uses the same updated
-implementation with its own state and configuration.
+implementation with its own state and configuration. When adding or changing Flutter
+plugin dependencies, stop the local preview and run `flutter clean` followed by
+`flutter pub get --enforce-lockfile` in this directory before rebuilding. Flutter
+3.38 can retain a cached web entry point with the old plugin registry even after
+an incremental release build; the initial Intake preferences read then fails.
+Widget tests use a preferences mock and cannot establish browser plugin
+registration, so check both empty and saved Intake screens in the rebuilt browser.
 
 Run the shared package, catalog and application checks before delivery. CI tests
 both consumers against the shared source, and release builds compile those same
 files. Web delivery follows the protected repository release workflows; native
 apps receive the change in their next rebuilt and distributed binary. Local hot
 reload and Widgetbook previews do not update an already deployed or installed app.
+
+The **Product screens** category embeds the sibling application's actual Queue,
+Intake and Workbench through its supported `specimen_application.dart` boundary
+and a local path dependency. The six examples are Queue loaded, empty and error
+with retry; Intake empty and saved draft; and Workbench fields, labels and history.
+For example, open `http://localhost:5199/#/?path=product-screens/queue/loaded`.
+These full-screen examples use the available viewport without the component
+story's scrolling wrapper. They inherit the selected theme, direction, text scale
+and density; their dialogs stay inside that preview.
+
+The bundled label image and records are synthetic. Navigation, selection,
+inspection and retry use real application behavior. Repository writes and
+submissions fail with an explicit preview message; they do not report a save or
+upload success. File selection is disabled, including the retake fallback, and the
+camera reports unavailable without opening device plugins. Password reset cannot
+send an email. Reset screen preview restores the initial synthetic session and
+fixture. The inner router keeps its navigation in memory, so opening a record or
+returning to Queue does not replace the catalog URL or respond to browser route
+events intended for Widgetbook.
+
+Native production builds continue to use the real application entry point,
+session and services. The catalog imports the application; the application does
+not import the catalog or its fixtures. These examples support composition review,
+not backend, camera or installed-device validation.
 
 Brand authority is `SD_brand.png`: Amber–Iris hero, Iris secondary, Obsidian,
 Paper and Mist. Functional status colours communicate outcomes. Phosphor is the

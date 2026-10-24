@@ -290,6 +290,12 @@ class UiButton extends StatelessWidget {
       leading != null || (loading && busyLabel != null);
   String get _visibleLabel => loading ? (busyLabel ?? label) : label;
 
+  UiIconSize get _iconSize =>
+      size == UiSize.lg ? UiIconSize.inline : UiIconSize.small;
+
+  double _iconDimension(BuildContext context, UiButtonStyle style) =>
+      UiIcon.dimensionIn(context, size: _iconSize, textStyle: style.label);
+
   /// What the ring would be called if anything read it.
   ///
   /// `UiProgress` requires a label because an indicator has no text of its
@@ -360,7 +366,7 @@ class UiButton extends StatelessWidget {
   ) {
     // Reserve complete states, not a hidden icon beside the idle label or
     // the widest text box inside the visible row. Each row centers itself.
-    final double slot = ui.space.iconInline + style.gap;
+    final double slot = _iconDimension(context, style) + style.gap;
     final double resting =
         measureLabel(context, label, style.label).width +
         (leading != null ? slot : 0);
@@ -470,7 +476,8 @@ class UiButton extends StatelessWidget {
             )
           : requestedPadding.left;
       final available = constraints.maxWidth - inset * 2;
-      final slot = ui.space.iconInline + style.gap;
+      final iconDimension = _iconDimension(context, style);
+      final slot = iconDimension + style.gap;
       var showLeading = _showsLeadingSlot;
       var showTrailing = trailing != null;
       double requiredWidth() =>
@@ -492,7 +499,7 @@ class UiButton extends StatelessWidget {
                 children: <Widget>[
                   if (showLeading) ...<Widget>[
                     _LeadingSlot(
-                      size: ui.space.iconInline,
+                      size: iconDimension,
                       child: loading
                           ? UiProgress.ring(
                               semanticsLabel: _workingLabel,
@@ -501,7 +508,8 @@ class UiButton extends StatelessWidget {
                             )
                           : UiIcon(
                               leading!,
-                              size: UiIconSize.inline,
+                              size: _iconSize,
+                              textStyle: style.label,
                               color: foreground,
                             ),
                     ),
@@ -518,7 +526,8 @@ class UiButton extends StatelessWidget {
                     SizedBox(width: style.gap),
                     UiIcon(
                       trailing!,
-                      size: UiIconSize.inline,
+                      size: _iconSize,
+                      textStyle: style.label,
                       color: foreground,
                     ),
                   ],
@@ -554,9 +563,6 @@ class _LeadingSlot extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-    width: size,
-    height: size,
-    child: Center(child: child),
-  );
+  Widget build(BuildContext context) =>
+      SizedBox(width: size, height: size, child: child);
 }

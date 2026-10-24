@@ -160,7 +160,7 @@ class _UiSkeletonState extends State<UiSkeleton>
           );
           return switch (widget._form) {
             _SkeletonForm.line => _line(style, block, widget.widthFactor),
-            _SkeletonForm.row => _row(ui, style, block),
+            _SkeletonForm.row => _row(context, ui, style, block),
             _SkeletonForm.tile => _tile(ui, style, block),
           };
         },
@@ -185,9 +185,15 @@ class _UiSkeletonState extends State<UiSkeleton>
         ),
       );
 
-  /// The row's anatomy: the leading slot, then a title and a subtitle line.
-  Widget _row(UiThemeData ui, UiSkeletonStyle style, Color block) => SizedBox(
-    height: UiListRowStyle.heightOf(ui),
+  /// The row's anatomy grows around its content and the row padding. The
+  /// interaction minimum is a floor, never a fixed height for two lines.
+  Widget _row(
+    BuildContext context,
+    UiThemeData ui,
+    UiSkeletonStyle style,
+    Color block,
+  ) => ConstrainedBox(
+    constraints: BoxConstraints(minHeight: UiListRowStyle.heightOf(ui)),
     child: Padding(
       padding: UiListRowStyle.resolve(ui, UiSize.md).padding,
       child: Row(

@@ -145,19 +145,28 @@ void main() {
       expect(find.text('Optional'), findsNothing);
       expect(find.text('Elevation from (m)'), findsOneWidget);
       expect(find.text('Elevation to (ft)'), findsOneWidget);
+      expect(find.text('United States of America'), findsOneWidget);
+      expect(find.text('304.8'), findsOneWidget);
       expect(
-        find.text('Supported · United States of America · Required'),
+        find.text(
+          'Ambiguous · Chicago, Illinois · Two locality candidates remain',
+        ),
         findsOneWidget,
       );
-      expect(find.text('Supported · 304.8 · Required'), findsOneWidget);
-      expect(
-        find.text('Needs review · Ambiguous · Chicago, Illinois · Required'),
-        findsOneWidget,
-      );
-      expect(find.text('Needs review · Unknown'), findsOneWidget);
+      expect(find.text('Unknown'), findsOneWidget);
       expect(find.text('As written'), findsNothing);
       expect(find.text('U.S.A. · 304.8 m'), findsNothing);
-      expect(find.text('Two locality candidates remain'), findsNothing);
+      expect(
+        tester.widget<UiDisclosure>(uiDisclosure('Country')).semanticsLabel,
+        contains('Country, required. Supported. United States of America'),
+      );
+      expect(
+        tester
+            .widget<UiDisclosure>(uiDisclosure('Elevation to (ft)'))
+            .semanticsLabel,
+        'Elevation to (ft), optional. Unknown',
+      );
+      expect(find.text('Required field · Supported'), findsNothing);
       expect(uiIconButton(RegExp('^Edit ')), findsNothing);
       expect(tester.takeException(), isNull);
     },
@@ -170,6 +179,7 @@ void main() {
     await showFields(tester, onFocusRegion: focused.add);
     await expandField(tester, 'Country');
     expect(focused, ['r1']);
+    expect(find.text('Required field · Supported'), findsOneWidget);
     expect(find.text('Current value · Standardized'), findsOneWidget);
     expect(find.text('Sources: Label 1'), findsOneWidget);
     expect(find.text('Evidence for Country'), findsOneWidget);
@@ -292,14 +302,12 @@ void main() {
     );
     final row = uiDisclosure('Country');
     expect(
-      find.descendant(
-        of: row,
-        matching: find.text('Needs review · Unknown · Required'),
-      ),
+      find.descendant(of: row, matching: find.text('Unknown')),
       findsOneWidget,
     );
     await expandField(tester, 'Country');
     expect(focused, ['r2']);
+    expect(find.text('Required field · Unknown'), findsOneWidget);
     expect(find.text('Sources: Label 2'), findsOneWidget);
     expect(find.text('Chicago, Ills.'), findsOneWidget);
     expect(find.text('Old interpretation'), findsNothing);
@@ -319,9 +327,7 @@ void main() {
     });
     await showFields(tester, record: record);
     expect(
-      find.text(
-        'Needs review · State unknown · United States of America · Required',
-      ),
+      find.text('State unknown · United States of America'),
       findsOneWidget,
     );
     await expandField(tester, 'Country');
@@ -529,10 +535,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Correct Country'), findsNothing);
       expect(uiField('As written'), findsNothing);
-      expect(
-        find.text('Supported · United States of America · Required'),
-        findsOneWidget,
-      );
+      expect(find.text('United States of America'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

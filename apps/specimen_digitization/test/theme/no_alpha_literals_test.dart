@@ -37,14 +37,12 @@ import 'gate_support.dart';
 
 /// Per-file counts on 2026-10-17, when the gate was written. Shrink only.
 ///
-/// Three: the shade the capture screen paints outside the crop, and two roles
-/// faded to nothing (`alpha: 0`) in the router's page and the queue's filter
-/// control. The fourth, the wash under the selected destination in the
-/// shell's rail, left when the shell moved onto `specimen_ui` (PR #359).
+/// Two remain: the shade outside the capture crop and the router's transparent
+/// page transition. The shell's selected wash left with its shared navigation
+/// migration (PR #359); the Queue filter left with the shared segmented control.
 const Map<String, int> alphaLiteralBacklog = <String, int>{
   'lib/src/app/app_router.dart': 1,
   'lib/src/capture/capture_screen.dart': 1,
-  'lib/src/screens/queue/queue_screen.dart': 1,
 };
 
 /// One opacity written as a number.

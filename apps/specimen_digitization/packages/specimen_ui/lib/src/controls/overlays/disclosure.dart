@@ -24,6 +24,7 @@ class UiDisclosureStyle {
     required this.padding,
     required this.bodyPadding,
     required this.gap,
+    required this.summaryGap,
     required this.minHeight,
     required this.radius,
   });
@@ -51,6 +52,9 @@ class UiDisclosureStyle {
 
   /// The gap between the text column and the caret.
   final double gap;
+
+  /// Space between a field name and its value or supporting summary.
+  final double summaryGap;
 
   /// The header row's visual height, from density.
   ///
@@ -80,6 +84,31 @@ class UiDisclosureStyle {
       ui.space.s3,
     ),
     gap: ui.space.s3,
+    summaryGap: ui.space.s1,
+    minHeight: ui.density.rowHeight,
+    radius: ui.shape.inner,
+  );
+
+  /// A named value with details behind it. The small field name provides
+  /// context; the value or problem is the primary scanning line.
+  static UiDisclosureStyle value(UiThemeData ui) => UiDisclosureStyle(
+    title: ui.type.bodySmall,
+    summary: ui.type.body,
+    titleColor: ui.color.inkSecondary,
+    summaryColor: ui.color.ink,
+    caretColor: ui.color.inkSecondary,
+    padding: EdgeInsetsDirectional.symmetric(
+      horizontal: ui.space.s3,
+      vertical: ui.space.s3,
+    ),
+    bodyPadding: EdgeInsetsDirectional.fromSTEB(
+      ui.space.s3,
+      0,
+      ui.space.s3,
+      ui.space.s3,
+    ),
+    gap: ui.space.s3,
+    summaryGap: ui.space.s1,
     minHeight: ui.density.rowHeight,
     radius: ui.shape.inner,
   );
@@ -188,13 +217,15 @@ class _UiDisclosureState extends State<UiDisclosure> {
           // The summary is content, not a label: it is the row's second line,
           // the same object a list row's subtitle is, so it wraps to two
           // lines before it is cut (11 section 3.3).
-          if (_visibleSummary != null)
+          if (_visibleSummary != null) ...<Widget>[
+            SizedBox(height: style.summaryGap),
             Text(
               _visibleSummary!,
               style: style.summary.copyWith(color: style.summaryColor),
               maxLines: UiDisclosureStyle.summaryMaxLines,
               overflow: TextOverflow.ellipsis,
             ),
+          ],
           ?under,
         ],
       );

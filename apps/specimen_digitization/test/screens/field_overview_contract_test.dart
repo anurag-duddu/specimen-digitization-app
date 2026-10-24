@@ -164,9 +164,9 @@ void main() {
         tester.getTopLeft(find.text('Collection')).dy,
         lessThan(tester.getTopLeft(find.text('Taxa')).dy),
       );
-      expect(find.text('Needs review · Unknown · Required'), findsOneWidget);
-      expect(find.text('Needs review · Ambiguous · Smith'), findsOneWidget);
-      expect(find.text('Supported · Lepidoptera'), findsOneWidget);
+      expect(find.text('Unknown'), findsOneWidget);
+      expect(find.text('Ambiguous · Smith'), findsOneWidget);
+      expect(find.text('Lepidoptera'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -222,7 +222,7 @@ void main() {
         find.text('No value has been recorded for this field.'),
         findsOneWidget,
       );
-      expect(find.text('Needs review · Unknown · Required'), findsOneWidget);
+      expect(find.text('Required field · Unknown'), findsOneWidget);
       expect(find.text('Unknown'), findsNothing);
       expect(find.text('As written'), findsNothing);
       expect(uiDisclosure('Value details'), findsNothing);
@@ -302,7 +302,7 @@ void main() {
       expect(find.text('Philippines'), findsOneWidget);
       expect(find.text(raw), findsNothing);
       expect(find.textContaining('confidence'), findsNothing);
-      expect(find.text('Needs review · Unknown · Required'), findsOneWidget);
+      expect(find.text('Required field · Unknown'), findsOneWidget);
       await open(tester, 'Evidence details');
       expect(find.text(raw), findsOneWidget);
     },
@@ -333,7 +333,13 @@ void main() {
       await open(tester, 'Date visited to');
       expect(find.text('Derived from Date visited from'), findsOneWidget);
       await open(tester, 'Value details');
-      expect(find.text("3 Sept. '46"), findsOneWidget);
+      expect(
+        find.descendant(
+          of: uiDisclosure('Value details'),
+          matching: find.text("3 Sept. '46"),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('As written'), findsOneWidget);
       expect(find.text('Read as'), findsNothing);
       expect(find.text('Standardized'), findsOneWidget);

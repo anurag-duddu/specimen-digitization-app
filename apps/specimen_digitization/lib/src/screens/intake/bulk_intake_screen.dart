@@ -227,6 +227,9 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
             child: BulkPhotoInspector(
               controller: c,
               cameraFactory: widget.cameraFactory,
+              pickReplacementFile: widget.pickFiles == null
+                  ? null
+                  : () async => (await widget.pickFiles!()).firstOrNull,
               initialId: item.id,
               onClose: () => Navigator.of(context).pop(),
             ),
@@ -244,6 +247,54 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
         inspecting = null;
       });
     }
+  }
+
+  Future<void> _editSelected() => showProductModal<void>(
+    context: context,
+    title: '${c.selected.length} selected for editing',
+    body: (modal) => _selectionActions(
+      modal,
+      onAction: () {
+        Navigator.of(modal).pop();
+      },
+    ),
+  );
+
+  Widget _selectionActions(BuildContext context, {VoidCallback? onAction}) {
+    final ui = context.ui;
+    void edit(String action, {bool? value}) {
+      onAction?.call();
+      unawaited(c.edit(action, value: value));
+    }
+
+    return Wrap(
+      spacing: ui.space.s2,
+      runSpacing: ui.space.s2,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        UiButton(
+          label: 'Remove selected',
+          leading: UiIcons.remove,
+          variant: UiButtonVariant.ghost,
+          onPressed: () => edit('remove'),
+        ),
+        UiButton(
+          label: 'Mark sensitive',
+          variant: UiButtonVariant.ghost,
+          onPressed: () => edit('sensitive', value: true),
+        ),
+        UiButton(
+          label: 'Mark non-sensitive',
+          variant: UiButtonVariant.ghost,
+          onPressed: () => edit('sensitive', value: false),
+        ),
+        UiButton(
+          label: 'Exclude selected',
+          variant: UiButtonVariant.ghost,
+          onPressed: () => edit('exclude'),
+        ),
+      ],
+    );
   }
 
   Future<void> _discard() async {
@@ -330,7 +381,6 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: c,
     builder: (context, _) {
-      final ui = context.ui;
       if (submission != null) {
         return BulkIntakeProgress(
           controller: c,
@@ -340,6 +390,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
         );
       }
       return Surface(
+        role: SurfaceRole.ground,
         child: SafeArea(
           child: DropTarget(
             onDragEntered: (_) => setState(() => dragging = true),
@@ -350,203 +401,46 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
             },
             child: LayoutBuilder(
               builder: (context, constraints) {
+                final ui = context.ui;
                 final wide = constraints.maxWidth >= 1050;
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Padding(
-                      padding: EdgeInsets.all(ui.space.s4),
-                      child: Column(
+                    Expanded(
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          UiSectionHeader(
-                            title: c.visible.isEmpty
-                                ? 'Add photos'
-                                : '${c.visible.length} ${c.visible.length == 1 ? 'photo' : 'photos'}',
-                            actions: [
-                              UiButton(
-                                label: 'Your batches',
-                                variant: UiButtonVariant.ghost,
-                                onPressed: _history,
-                              ),
-                              if (c.visible.isNotEmpty)
-                                UiButton(
-                                  label: 'Add photos',
-                                  leading: UiIcons.add,
-                                  variant: UiButtonVariant.secondary,
-                                  onPressed: _add,
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.topCenter,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: ui.space.importWorkspaceMax,
                                 ),
-                            ],
-                          ),
-                          SizedBox(height: ui.space.s2),
-                          Semantics(
-                            liveRegion: true,
-                            child: Text(
-                              c.saveLabel,
-                              style: ui.type.bodySmall.copyWith(
-                                color: ui.color.inkSecondary,
+                                child: _workspace(context, wide),
                               ),
                             ),
                           ),
-                          if (c.preparingFiles || c.addingSources)
-                            Semantics(
-                              liveRegion: true,
-                              child: Text(
-                                c.preparingFiles
-                                    ? c.preparationLabel
-                                    : c.sourceAddLabel,
-                                style: ui.type.bodySmall.copyWith(
-                                  color: ui.color.inkSecondary,
-                                ),
+                          if (wide && inspecting != null)
+                            SizedBox(
+                              width: constraints.maxWidth * .38,
+                              child: BulkPhotoInspector(
+                                key: ValueKey(inspecting),
+                                controller: c,
+                                cameraFactory: widget.cameraFactory,
+                                pickReplacementFile: widget.pickFiles == null
+                                    ? null
+                                    : () async => (await widget.pickFiles!())
+                                          .firstOrNull,
+                                initialId: inspecting!,
+                                onClose: () =>
+                                    setState(() => inspecting = null),
                               ),
                             ),
                         ],
                       ),
                     ),
-                    if (c.error != null)
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: ui.space.s4),
-                        child: Wrap(
-                          spacing: ui.space.s2,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(c.error!, style: ui.type.bodySmall),
-                            UiButton(
-                              label: 'Retry saving',
-                              variant: UiButtonVariant.ghost,
-                              onPressed: c.retrySaving,
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (c.needsOpenWorkspace)
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: ui.space.s4),
-                        child: Text(
-                          'Keep this workspace open until photos are saved. If you leave early, choose the original files again to resume.',
-                          style: ui.type.bodySmall,
-                        ),
-                      ),
-                    if (c.selected.isNotEmpty)
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: ui.space.s4),
-                        child: Wrap(
-                          spacing: ui.space.s2,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              '${c.selected.length} selected for editing',
-                              style: ui.type.labelSmall,
-                            ),
-                            UiButton(
-                              label: 'Remove selected',
-                              leading: UiIcons.remove,
-                              variant: UiButtonVariant.ghost,
-                              onPressed: () => c.edit('remove'),
-                            ),
-                            UiButton(
-                              label: 'Mark sensitive',
-                              variant: UiButtonVariant.ghost,
-                              onPressed: () => c.edit('sensitive', value: true),
-                            ),
-                            UiButton(
-                              label: 'Mark non-sensitive',
-                              variant: UiButtonVariant.ghost,
-                              onPressed: () =>
-                                  c.edit('sensitive', value: false),
-                            ),
-                            UiButton(
-                              label: 'Exclude selected',
-                              variant: UiButtonVariant.ghost,
-                              onPressed: () => c.edit('exclude'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    if (c.lastRemoved.isNotEmpty)
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: ui.space.s4),
-                        child: Wrap(
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Text(
-                              '${c.lastRemoved.length} removed from this batch',
-                              style: ui.type.bodySmall,
-                            ),
-                            UiButton(
-                              label: 'Undo removal',
-                              leading: UiIcons.undo,
-                              variant: UiButtonVariant.ghost,
-                              onPressed: () =>
-                                  c.edit('restore', ids: c.lastRemoved),
-                            ),
-                          ],
-                        ),
-                      ),
-                    Expanded(
-                      child: c.loading
-                          ? const Center(
-                              child: UiProgress.ring(
-                                semanticsLabel: 'Loading your drafts',
-                              ),
-                            )
-                          : c.visible.isEmpty
-                          ? _empty(context, dragging)
-                          : Row(
-                              children: [
-                                Expanded(child: _grid(context, wide)),
-                                if (wide && inspecting != null)
-                                  SizedBox(
-                                    width: constraints.maxWidth * .38,
-                                    child: BulkPhotoInspector(
-                                      key: ValueKey(inspecting),
-                                      controller: c,
-                                      cameraFactory: widget.cameraFactory,
-                                      initialId: inspecting!,
-                                      onClose: () =>
-                                          setState(() => inspecting = null),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                    ),
-                    if (c.visible.isNotEmpty)
-                      Surface(
-                        role: SurfaceRole.paper,
-                        padding: EdgeInsets.all(ui.space.s4),
-                        child: Wrap(
-                          alignment: WrapAlignment.spaceBetween,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: ui.space.s3,
-                          runSpacing: ui.space.s2,
-                          children: [
-                            Text(
-                              c.readyCount == c.visible.length
-                                  ? 'Submit starts processing.'
-                                  : '${c.visible.length - c.readyCount} ${c.visible.length - c.readyCount == 1 ? 'photo' : 'photos'} will remain in your draft.',
-                              style: ui.type.bodySmall,
-                            ),
-                            UiButton(
-                              label:
-                                  'Submit ${c.readyCount} ${c.readyCount == 1 ? 'photo' : 'photos'}',
-                              leading: UiIcons.cloudUpload,
-                              loading: c.submitting,
-                              onPressed:
-                                  c.readyCount == 0 ||
-                                      c.preparingFiles ||
-                                      c.addingSources
-                                  ? null
-                                  : _submit,
-                              disabledReason:
-                                  c.preparingFiles || c.addingSources
-                                  ? 'Wait for the selected photos to be added.'
-                                  : c.readyCount == 0
-                                  ? 'Add readable photos to submit.'
-                                  : null,
-                            ),
-                          ],
-                        ),
-                      ),
+                    if (c.visible.isNotEmpty) _submissionBar(context, wide),
                   ],
                 );
               },
@@ -557,97 +451,320 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
     },
   );
 
-  Widget _empty(BuildContext context, bool dragging) {
+  Widget _workspace(BuildContext context, bool wide) {
     final ui = context.ui;
-    final cameraFirst = WindowClass.of(context).isCompact;
-    return Center(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.all(ui.space.s6),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: UiLayoutMetrics.fromConstraints(
-              const BoxConstraints(),
-              textScaler: MediaQuery.textScalerOf(context),
-            ).readableMax,
+    return CustomScrollView(
+      key: const ValueKey('bulk-photo-grid'),
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.all(ui.space.s4),
+          sliver: SliverToBoxAdapter(child: _header(context)),
+        ),
+        if (c.loading)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: UiProgress.ring(semanticsLabel: 'Loading your drafts'),
+            ),
+          )
+        else if (c.visible.isEmpty)
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              ui.space.s4,
+              0,
+              ui.space.s4,
+              ui.space.s6,
+            ),
+            sliver: SliverToBoxAdapter(child: _empty(context, dragging)),
+          )
+        else
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              ui.space.s4,
+              0,
+              ui.space.s4,
+              ui.space.s6,
+            ),
+            sliver: _grid(context, wide),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const UiIcon(UiIcons.image, size: UiIconSize.display),
-              SizedBox(height: ui.space.s4),
-              Text(
-                dragging
-                    ? 'Drop photos into your batch'
-                    : 'Capture a batch. Review it together.',
-                style: ui.type.headline,
-                textAlign: TextAlign.center,
+      ],
+    );
+  }
+
+  List<IntakeDraftItem> get _attentionPhotos => c.visible
+      .where(
+        (item) =>
+            item.included &&
+            (item.state == 'needs_attention' || item.error != null),
+      )
+      .toList();
+
+  String get _batchStatus => _attentionPhotos.isEmpty
+      ? c.saveLabel
+      : '${_attentionPhotos.length} ${_attentionPhotos.length == 1 ? 'needs' : 'need'} attention';
+
+  Widget _header(BuildContext context) {
+    final ui = context.ui;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (c.visible.isEmpty)
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: UiButton(
+              label: 'Your batches',
+              variant: UiButtonVariant.ghost,
+              onPressed: _history,
+            ),
+          )
+        else
+          UiSectionHeader(
+            title: 'Your batch',
+            role: UiSectionHeaderRole.section,
+            supporting:
+                '${c.visible.length} ${c.visible.length == 1 ? 'photo' : 'photos'} · $_batchStatus',
+            supportingLiveRegion: true,
+            actions: [
+              UiButton(
+                label: 'Batches',
+                semanticsLabel: 'Your batches',
+                size: UiSize.sm,
+                variant: UiButtonVariant.ghost,
+                onPressed: _history,
               ),
-              SizedBox(height: ui.space.s3),
-              Text(
-                'Add up to 500 photos from your camera, files, cloud storage, or links. Your draft stays private until you submit.',
-                style: ui.type.body,
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: ui.space.s5),
-              Wrap(
-                spacing: ui.space.s3,
-                runSpacing: ui.space.s2,
-                alignment: WrapAlignment.center,
-                children: [
-                  UiButton(
-                    label: cameraFirst ? 'Take photos' : 'Choose files',
-                    leading: cameraFirst ? UiIcons.camera : UiIcons.uploadFile,
-                    onPressed: cameraFirst ? _camera : _files,
-                  ),
-                  UiButton(
-                    label: cameraFirst ? 'Choose files' : 'Take photos',
-                    variant: UiButtonVariant.secondary,
-                    onPressed: cameraFirst ? _files : _camera,
-                  ),
-                ],
-              ),
-              SizedBox(height: ui.space.s4),
-              Wrap(
-                spacing: ui.space.s2,
-                alignment: WrapAlignment.center,
-                children: [
-                  for (final provider in [
-                    ('Google Drive', 'google_drive'),
-                    ('Dropbox', 'dropbox'),
-                    ('Storage', 'storage'),
-                    ('Import links', 'url'),
-                  ])
-                    UiButton(
-                      label: provider.$1,
-                      variant: UiButtonVariant.ghost,
-                      onPressed: () => _source(provider.$2),
-                    ),
-                ],
+              UiButton(
+                label: 'Add photos',
+                size: UiSize.sm,
+                variant: UiButtonVariant.secondary,
+                onPressed: _add,
               ),
             ],
           ),
+        if (c.preparingFiles || c.addingSources) ...[
+          SizedBox(height: ui.space.s2),
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              c.preparingFiles ? c.preparationLabel : c.sourceAddLabel,
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+            ),
+          ),
+        ],
+        if (c.error != null) ...[
+          SizedBox(height: ui.space.s2),
+          Wrap(
+            spacing: ui.space.s2,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(c.error!, style: ui.type.bodySmall),
+              UiButton(
+                label: 'Retry saving',
+                variant: UiButtonVariant.ghost,
+                onPressed: c.retrySaving,
+              ),
+            ],
+          ),
+        ],
+        if (c.needsOpenWorkspace) ...[
+          SizedBox(height: ui.space.s2),
+          Text(
+            'Keep this workspace open until photos are saved. If you leave early, choose the original files again to resume.',
+            style: ui.type.bodySmall,
+          ),
+        ],
+        if (c.selected.isNotEmpty) ...[
+          SizedBox(height: ui.space.s4),
+          DecoratedBox(
+            decoration: BoxDecoration(color: ui.brand.secondary.fill),
+            child: Padding(
+              padding: EdgeInsets.all(ui.space.s2),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${c.selected.length} selected for editing',
+                    style: ui.type.labelSmall.copyWith(
+                      color: ui.brand.secondary.content,
+                    ),
+                  ),
+                  _selectionActions(context),
+                ],
+              ),
+            ),
+          ),
+        ],
+        if (c.lastRemoved.isNotEmpty) ...[
+          SizedBox(height: ui.space.s2),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                '${c.lastRemoved.length} removed from this batch',
+                style: ui.type.bodySmall,
+              ),
+              UiButton(
+                label: 'Undo removal',
+                leading: UiIcons.undo,
+                variant: UiButtonVariant.ghost,
+                onPressed: () => c.edit('restore', ids: c.lastRemoved),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _submissionBar(BuildContext context, bool wide) {
+    final ui = context.ui;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: ui.color.paper,
+        border: Border(top: BorderSide(color: ui.color.hairline)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(ui.space.s4),
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: ui.space.s4,
+          runSpacing: ui.space.s2,
+          children: [
+            if (c.selected.isNotEmpty)
+              UiButton(
+                label: 'Edit ${c.selected.length} selected',
+                variant: UiButtonVariant.secondary,
+                onPressed: _editSelected,
+              )
+            else if (_attentionPhotos.isNotEmpty)
+              UiButton(
+                label:
+                    'Review ${_attentionPhotos.length} ${_attentionPhotos.length == 1 ? 'photo' : 'photos'}',
+                variant: c.readyCount == 0
+                    ? UiButtonVariant.primary
+                    : UiButtonVariant.secondary,
+                onPressed: () => _open(_attentionPhotos.first, wide),
+              )
+            else
+              Text(
+                c.readyCount == c.visible.length
+                    ? 'Submit starts processing.'
+                    : '${c.visible.length - c.readyCount} ${c.visible.length - c.readyCount == 1 ? 'photo' : 'photos'} will remain in your draft.',
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+              ),
+            if (c.readyCount > 0 || _attentionPhotos.isEmpty)
+              UiButton(
+                label:
+                    'Submit ${c.readyCount} ${c.readyCount == 1 ? 'photo' : 'photos'}',
+                leading: UiIcons.cloudUpload,
+                loading: c.submitting,
+                onPressed:
+                    c.readyCount == 0 || c.preparingFiles || c.addingSources
+                    ? null
+                    : _submit,
+                disabledReason: c.preparingFiles || c.addingSources
+                    ? 'Wait for the selected photos to be added.'
+                    : c.readyCount == 0
+                    ? 'Add readable photos to submit.'
+                    : null,
+              ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _grid(BuildContext context, bool wide) => LayoutBuilder(
+  Widget _empty(BuildContext context, bool dragging) {
+    final ui = context.ui;
+    final cameraFirst = WindowClass.of(context).isCompact;
+    return Align(
+      alignment: AlignmentDirectional.topStart,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: ui.space.readingMax),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UiSectionHeader(
+              title: dragging ? 'Drop photos into your batch' : 'Add photos',
+              role: UiSectionHeaderRole.page,
+              supporting:
+                  'Add up to 500 photos to a private draft. Review them before submitting.',
+            ),
+            SizedBox(height: ui.space.s6),
+            Wrap(
+              spacing: ui.space.s3,
+              runSpacing: ui.space.s3,
+              children: [
+                UiButton(
+                  label: cameraFirst ? 'Take photos' : 'Choose files',
+                  leading: cameraFirst ? UiIcons.camera : UiIcons.uploadFile,
+                  onPressed: cameraFirst ? _camera : _files,
+                ),
+                UiButton(
+                  label: cameraFirst ? 'Choose files' : 'Take photos',
+                  leading: cameraFirst ? UiIcons.uploadFile : UiIcons.camera,
+                  variant: UiButtonVariant.secondary,
+                  onPressed: cameraFirst ? _files : _camera,
+                ),
+              ],
+            ),
+            SizedBox(height: ui.space.s6),
+            UiDisclosure(
+              title: 'Import from a source',
+              summary: 'Google Drive, Dropbox, storage or links',
+              hideSummaryWhenExpanded: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final source in [
+                    ('Google Drive', 'google_drive'),
+                    ('Dropbox', 'dropbox'),
+                    ('Storage', 'storage'),
+                    ('Import links', 'url'),
+                  ])
+                    UiListRow(
+                      title: source.$1,
+                      trailing: const UiIcon(
+                        UiIcons.next,
+                        size: UiIconSize.inline,
+                      ),
+                      onPressed: () => _source(source.$2),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _grid(BuildContext context, bool wide) => SliverLayoutBuilder(
     builder: (context, constraints) {
       final ui = context.ui;
-      final available = constraints.maxWidth - ui.space.s4 * 2;
-      final columns = math.max(2, (available / 210).floor());
-      final width = (available - ui.space.s3 * (columns - 1)) / columns;
+      final available = constraints.crossAxisExtent;
+      final textScale =
+          UiType.lineHeightOf(ui.type.bodySmall, context) /
+          UiType.unscaledLineHeightOf(ui.type.bodySmall);
+      final minWidth = ui.space.targetMin * 3 * math.max(1, textScale);
+      final columns = ((available + ui.space.s4) / (minWidth + ui.space.s4))
+          .floor()
+          .clamp(1, 5);
+      final width = (available - ui.space.s4 * (columns - 1)) / columns;
       final caption =
-          MediaQuery.textScalerOf(context).scale(16) * 3 + ui.space.targetMin;
+          UiType.lineHeightOf(ui.type.bodySmall, context) * 2 +
+          math.max(
+            ui.space.targetMin,
+            UiType.lineHeightOf(ui.type.labelSmall, context),
+          ) +
+          ui.space.s2;
       final photos = c.visible;
-      return GridView.builder(
-        key: const ValueKey('bulk-photo-grid'),
-        padding: EdgeInsets.all(ui.space.s4),
+      return SliverGrid.builder(
         itemCount: photos.length,
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: columns,
-          crossAxisSpacing: ui.space.s3,
-          mainAxisSpacing: ui.space.s4,
+          crossAxisSpacing: ui.space.s4,
+          mainAxisSpacing: ui.space.s6,
           mainAxisExtent: width * .8 + caption,
         ),
         itemBuilder: (context, index) {
@@ -657,6 +774,8 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
             name: item.name,
             selected: c.selected.contains(item.id),
             included: item.included,
+            showStatus:
+                item.state != 'ready' || item.error != null || item.sensitive,
             status:
                 item.error ??
                 (item.sensitive

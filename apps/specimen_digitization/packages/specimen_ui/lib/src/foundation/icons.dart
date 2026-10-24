@@ -658,6 +658,7 @@ class UiIcon extends StatelessWidget {
     this.current = false,
     this.color,
     this.semanticLabel,
+    this.textStyle,
   });
 
   /// Which meaning to draw.
@@ -678,10 +679,28 @@ class UiIcon extends StatelessWidget {
   /// content of a control; the control sets it, not this widget.
   final String? semanticLabel;
 
+  /// The adjacent text role, when this glyph accompanies a scaled label.
+  /// Standalone actions and decorative marks keep their fixed visual size.
+  final TextStyle? textStyle;
+
+  /// The role's glyph size following the adjacent label's actual text scaler.
+  static double dimensionIn(
+    BuildContext context, {
+    required UiIconSize size,
+    TextStyle? textStyle,
+  }) {
+    final fontSize = textStyle?.fontSize;
+    return fontSize == null
+        ? size.dimension
+        : size.dimension *
+              MediaQuery.textScalerOf(context).scale(fontSize) /
+              fontSize;
+  }
+
   @override
   Widget build(BuildContext context) => Icon(
     spec.resolve(current: current),
-    size: size.dimension,
+    size: dimensionIn(context, size: size, textStyle: textStyle),
     color: color ?? DefaultTextStyle.of(context).style.color,
     semanticLabel: semanticLabel,
   );

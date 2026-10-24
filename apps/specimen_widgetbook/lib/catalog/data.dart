@@ -546,6 +546,10 @@ class _PhotoExampleState extends State<_PhotoExample> {
         ),
       ),
       name: 'DEMO-0041-label.jpg',
+      showStatus: context.knobs.boolean(
+        label: 'Show settled status caption',
+        initialValue: true,
+      ),
       status: _opened
           ? 'Inspector action recorded locally'
           : 'Synthetic preview',

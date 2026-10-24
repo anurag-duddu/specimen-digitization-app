@@ -18,8 +18,8 @@ import '../../app/shell.dart';
 import '../../models.dart';
 import '../../reason_codes.dart';
 import '../../blocker_words.dart';
+import '../workbench/blockers.dart' show reviewIssueSummary;
 import '../../selection.dart';
-import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import '../../workspace.dart';
 
@@ -51,8 +51,15 @@ String queueReason(Specimen specimen) {
     'risk_not_calibrated',
   };
   final Object? blocker = data['blocker'];
+  final findings = [...specimen.findings]
+    ..sort(
+      (a, b) => (a['severity'] == 'hard' ? 0 : 1).compareTo(
+        b['severity'] == 'hard' ? 0 : 1,
+      ),
+    );
   for (final Object? value in <Object?>[
-    for (final Json finding in specimen.findings) finding['message'],
+    for (final Json finding in findings)
+      finding['message'] ?? finding['reason_code'] ?? finding['code'],
     blocker,
     ...data['reason_codes'] as List? ?? const <Object?>[],
   ]) {
@@ -65,7 +72,7 @@ String queueReason(Specimen specimen) {
     // client has no words for it, as a generic line. Never as the code.
     return value == blocker
         ? blockerLabel(value.trim())
-        : vocabularyLabel(value.trim());
+        : reviewIssueSummary(value.trim());
   }
   return '';
 }
@@ -81,9 +88,8 @@ DateTime? queueUpdatedAt(Specimen specimen) {
 
 /// The queue route.
 ///
-/// At large and above the list is already beside this pane, drawn by the
-/// shell, so this is the placeholder half of the list detail layout. Below
-/// that it is the queue itself.
+/// The shell lends its retained queue pane to this route. Opening a record
+/// may move the same pane beside the record without losing its scroll state.
 class QueueScreen extends StatelessWidget {
   const QueueScreen({super.key});
 
@@ -94,24 +100,8 @@ class QueueScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shell = AppSidebarScope.maybeOf(context);
-    return shell?.mobileSpecimens ?? const _NoRecordSelected();
+    return shell?.mobileSpecimens ?? const SizedBox.shrink();
   }
-}
-
-class _NoRecordSelected extends StatelessWidget {
-  const _NoRecordSelected();
-
-  @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: context.ui.color.ground,
-    child: const Center(
-      child: UiEmptyState(
-        icon: UiIcons.record,
-        title: 'No record open',
-        body: 'Choose a specimen to review.',
-      ),
-    ),
-  );
 }
 
 /// Commands routed from the common workspace shortcut scope to the queue.
@@ -580,27 +570,32 @@ class _QueuePaneState extends State<QueuePane> {
               key: _toastScope,
               child: ColoredBox(
                 color: context.ui.color.paper,
-                child: Column(
-                  children: [
-                    Expanded(flex: 3, child: _body(context, controller)),
-                    if (_selection.isNotEmpty)
-                      Flexible(
-                        flex: 2,
-                        fit: FlexFit.loose,
-                        child: SingleChildScrollView(
-                          child: _QueueSelectionBar(
-                            selection: _selection,
-                            eligibility: _eligibility,
-                            checking: _checkingDecision,
-                            onRetry: () => setState(
-                              () => _refreshEligibility(force: true),
+                child: LayoutBuilder(
+                  builder: (context, constraints) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: _body(context, controller)),
+                      if (_selection.isNotEmpty)
+                        ConstrainedBox(
+                          key: const ValueKey('queue-selection-footer'),
+                          constraints: BoxConstraints(
+                            maxHeight: constraints.maxHeight * .4,
+                          ),
+                          child: SingleChildScrollView(
+                            child: _QueueSelectionBar(
+                              selection: _selection,
+                              eligibility: _eligibility,
+                              checking: _checkingDecision,
+                              onRetry: () => setState(
+                                () => _refreshEligibility(force: true),
+                              ),
+                              onDecide: (kind) =>
+                                  unawaited(_decideOnSelection(kind)),
                             ),
-                            onDecide: (kind) =>
-                                unawaited(_decideOnSelection(kind)),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -635,7 +630,8 @@ class _QueuePaneState extends State<QueuePane> {
     // records (finding V-5); a list that has never been answered says only
     // that it is loading.
     final bool first = items.isEmpty && !controller.listAnswered;
-    final double gutter = layout.gutter;
+    final bool companion = widget.onDismiss != null;
+    final double gutter = companion ? layout.gutter : ui.space.s6;
     final EdgeInsetsGeometry sides = EdgeInsetsDirectional.symmetric(
       horizontal: gutter,
     );
@@ -653,23 +649,56 @@ class _QueuePaneState extends State<QueuePane> {
         SliverPadding(
           padding: EdgeInsetsDirectional.fromSTEB(
             gutter,
-            ui.space.s2,
+            companion ? ui.space.s2 : ui.space.s6,
             gutter,
-            ui.space.s2,
+            ui.space.s3,
           ),
           sliver: SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                _SearchRow(
-                  controller: _search,
-                  focusNode: _searchFocus,
-                  onChanged: controller.search,
-                  onEscape: widget.onDismiss,
+                UiSectionHeader(
+                  title: 'Review queue',
+                  role: companion
+                      ? UiSectionHeaderRole.card
+                      : UiSectionHeaderRole.page,
+                  trailingAction: items.isEmpty
+                      ? null
+                      : UiIconButton(
+                          key: const ValueKey<String>('queue-select-records'),
+                          icon: _selection.active
+                              ? UiIcons.check
+                              : UiIcons.selectAll,
+                          semanticsLabel: _selection.active
+                              ? 'Done selecting'
+                              : 'Select specimens',
+                          tooltip: _selection.active
+                              ? 'Done selecting'
+                              : 'Select specimens',
+                          onPressed: _selection.active
+                              ? _selection.clear
+                              : _selection.begin,
+                        ),
+                ),
+                SizedBox(height: ui.space.s3),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: ui.space.readingMax),
+                    child: _SearchRow(
+                      controller: _search,
+                      focusNode: _searchFocus,
+                      onChanged: controller.search,
+                      onEscape: widget.onDismiss,
+                    ),
+                  ),
                 ),
                 SizedBox(height: ui.space.s2),
-                _StatusControls(controller: controller),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: _StatusControls(controller: controller),
+                ),
               ],
             ),
           ),
@@ -859,6 +888,9 @@ class _QueuePaneState extends State<QueuePane> {
               key: ValueKey<String>('queue-row-${items[index].id}'),
               child: _QueueListRow(
                 specimen: items[index],
+                showStatus:
+                    controller.disposition.isEmpty ||
+                    items[index].disposition != controller.disposition,
                 selected: _selection.isSelected(items[index]),
                 disabledReason: controller.mutating || _checkingDecision
                     ? 'Wait for the current selection check or decision to finish.'
@@ -893,6 +925,7 @@ class _QueuePaneState extends State<QueuePane> {
 class _QueueListRow extends StatelessWidget {
   const _QueueListRow({
     required this.specimen,
+    required this.showStatus,
     required this.selected,
     required this.disabledReason,
     required this.showCheckbox,
@@ -905,6 +938,7 @@ class _QueueListRow extends StatelessWidget {
   });
 
   final Specimen specimen;
+  final bool showStatus;
   final bool selected;
   final String? disabledReason;
   final bool showCheckbox;
@@ -929,7 +963,7 @@ class _QueueListRow extends StatelessWidget {
       id: specimen.id,
       title: specimen.displayReference,
       concise: true,
-      showStatus: false,
+      showStatus: showStatus,
       reason: queueReason(specimen),
       status: SpecimenStatus.ofRecord(
         disposition: specimen.disposition,
@@ -938,10 +972,9 @@ class _QueueListRow extends StatelessWidget {
       riskComposite: specimen.data['risk'] is num
           ? specimen.data['risk'] as num
           : null,
-      // The search endpoint answers a bare composite and leaves the
-      // contributing signals on the record. The compact meter never draws
-      // them, so the row says nothing rather than naming a signal the list
-      // response did not carry.
+      // The list leaves contributing signals on the record. A bare score
+      // cannot explain itself, so concise rows omit it until those signals
+      // are available instead of inventing a justification.
       riskComponents: const <String>[],
       riskCalibrated: specimen.data['risk_calibrated'] == true,
       updatedAt: queueUpdatedAt(specimen),
@@ -1056,157 +1089,35 @@ class _ToastLayer extends StatelessWidget {
       UiToastHost.maybeOf(context) == null ? UiToastHost(child: child) : child;
 }
 
-/// Three review views, with the active name and an icon for each view.
-class _StatusControls extends StatefulWidget {
+/// Named queue views. The shared control becomes a named picker when its
+/// labels cannot fit; selection never stretches one target over its neighbors.
+class _StatusControls extends StatelessWidget {
   const _StatusControls({required this.controller});
   final WorkspaceController controller;
 
   @override
-  State<_StatusControls> createState() => _StatusControlsState();
-}
-
-class _StatusControlsState extends State<_StatusControls> {
-  static const views = <({String value, String label, IconSpec icon})>[
-    (
-      value: 'needs_human_review',
-      label: 'Needs a human',
-      icon: UiIcons.needsReview,
-    ),
-    (value: 'deferred', label: 'Deferred', icon: UiIcons.deferred),
-    (value: 'cleared', label: 'Cleared', icon: UiIcons.cleared),
-  ];
-  final _focusNodes = <FocusNode>[
-    for (final view in views) FocusNode(debugLabel: view.label),
-  ];
-
-  @override
-  void dispose() {
-    for (final node in _focusNodes) {
-      node.dispose();
-    }
-    super.dispose();
-  }
-
-  void _select(int index) {
-    _focusNodes[index].requestFocus();
-    unawaited(widget.controller.selectDisposition(views[index].value));
-  }
-
-  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
-    final index = _focusNodes.indexWhere((node) => node.hasFocus);
-    if (index < 0) return KeyEventResult.ignored;
-    final key = event.logicalKey;
-    final rtl = Directionality.of(context) == TextDirection.rtl;
-    final int next;
-    if (key == LogicalKeyboardKey.arrowRight) {
-      next = (index + (rtl ? -1 : 1)) % views.length;
-    } else if (key == LogicalKeyboardKey.arrowLeft) {
-      next = (index + (rtl ? 1 : -1)) % views.length;
-    } else if (key == LogicalKeyboardKey.arrowDown) {
-      next = (index + 1) % views.length;
-    } else if (key == LogicalKeyboardKey.arrowUp) {
-      next = (index - 1) % views.length;
-    } else if (key == LogicalKeyboardKey.home) {
-      next = 0;
-    } else if (key == LogicalKeyboardKey.end) {
-      next = views.length - 1;
-    } else {
-      return KeyEventResult.ignored;
-    }
-    _select(next);
-    return KeyEventResult.handled;
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final ui = context.ui;
-    final active = views.indexWhere(
-      (view) => view.value == widget.controller.disposition,
-    );
-    return Focus(
-      canRequestFocus: false,
-      skipTraversal: true,
-      onKeyEvent: _handleKey,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (active < 0) ...[
-            Expanded(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: UiDensity.hitBox),
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  heightFactor: 1,
-                  child: Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      widget.controller.disposition.isEmpty
-                          ? 'All specimens'
-                          : queueDispositions[widget.controller.disposition] ??
-                                'Specimens',
-                      style: ui.type.label,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(width: ui.space.s2),
-          ],
-          for (var index = 0; index < views.length; index++) ...[
-            if (index > 0) SizedBox(width: ui.space.s2),
-            if (active == index)
-              Expanded(child: _filter(context, index))
-            else
-              SizedBox(width: UiDensity.hitBox, child: _filter(context, index)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _filter(BuildContext context, int index) {
-    final ui = context.ui;
-    final view = views[index];
-    final selected = view.value == widget.controller.disposition;
-    return UiTooltip(
-      message: view.label,
-      child: Pressable(
-        key: ValueKey<String>('queue-filter-${view.value}'),
-        semanticsLabel: view.label,
-        role: PressableRole.radio,
-        selected: selected,
-        focusNode: _focusNodes[index],
-        onPressed: () => _select(index),
-        builder: (context, states) => DecoratedBox(
-          decoration: ShapeDecoration(
-            shape: Squircle.border(ui.shape.inner),
-            color: selected
-                ? ui.color.ground
-                : ui.color.paper.withValues(alpha: 0),
+    const views = <UiSegment<String>>[
+      UiSegment(value: 'needs_human_review', label: 'Needs review'),
+      UiSegment(value: 'deferred', label: 'Deferred'),
+      UiSegment(value: 'cleared', label: 'Cleared'),
+    ];
+    final value = controller.disposition;
+    return UiSegmented<String>(
+      key: const ValueKey<String>('queue-view'),
+      label: 'Queue view',
+      value: value,
+      segments: <UiSegment<String>>[
+        if (!views.any((view) => view.value == value))
+          UiSegment(
+            value: value,
+            label: value.isEmpty
+                ? 'All specimens'
+                : queueDispositions[value] ?? 'Other specimens',
           ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: UiDensity.hitBox),
-            child: Padding(
-              padding: EdgeInsets.all(ui.space.s2),
-              child: Row(
-                mainAxisAlignment: selected
-                    ? MainAxisAlignment.start
-                    : MainAxisAlignment.center,
-                children: [
-                  UiIcon(view.icon, size: UiIconSize.inline),
-                  if (selected) ...[
-                    SizedBox(width: ui.space.s2),
-                    Expanded(child: Text(view.label, style: ui.type.label)),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+        ...views,
+      ],
+      onChanged: (value) => unawaited(controller.selectDisposition(value)),
     );
   }
 }
