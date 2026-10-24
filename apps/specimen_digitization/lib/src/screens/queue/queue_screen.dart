@@ -177,7 +177,10 @@ class QueuePane extends StatefulWidget {
   final FocusNode? searchFocusNode;
   final QueueKeyboardController? controller;
 
-  /// Dismisses a summoned queue on Escape. An ordinary queue clears selection.
+  /// Dismisses a summoned queue on Escape, preserving its search query.
+  ///
+  /// Without this callback, Escape in the search field clears the query,
+  /// then unfocuses on the next press. Escape from a row clears selection.
   final VoidCallback? onDismiss;
 
   @override
@@ -544,9 +547,10 @@ class _QueuePaneState extends State<QueuePane> {
               return null;
             },
           ),
-          // Escape dismisses a summoned queue or clears an ordinary queue's
-          // selection, including while search owns the caret. Descendant
-          // menus and dialogs retain their own Escape handling first.
+          // Escape from the list dismisses a summoned queue or clears an
+          // ordinary queue's selection. Search owns Escape while focused:
+          // it invokes onDismiss when supplied, otherwise clears then unfocuses.
+          // Descendant menus and dialogs retain their own Escape handling.
           _ClearSelectionIntent: CallbackAction<_ClearSelectionIntent>(
             onInvoke: (_) {
               final dismiss = widget.onDismiss;

@@ -193,6 +193,102 @@ void main() {
     expect(repository.calls, isEmpty);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('search Escape clears then unfocuses without losing selection', (
+    tester,
+  ) async {
+    final repository = BulkRepository(queue(3));
+    await pumpQueue(tester, repository, window: const Size(1440, 900));
+    await pick(tester, 'Pinned beetle 1');
+    final pane = find.byType(QueuePane);
+    final controller = WorkspaceScope.read(tester.element(pane));
+    final search = tester.widget<UiSearchField>(find.byType(UiSearchField));
+    await tester.enterText(uiField('Search by specimen ID'), 'fixture-001');
+    await tester.pumpAndSettle();
+    expect(controller.query, 'fixture-001');
+    expect(search.focusNode!.hasFocus, isTrue);
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(controller.query, isEmpty);
+    expect(search.controller!.text, isEmpty);
+    expect(search.focusNode!.hasFocus, isTrue);
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(search.focusNode!.hasFocus, isFalse);
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+
+    tester
+        .widget<QueueRow>(find.byType(QueueRow).first)
+        .focusNode!
+        .requestFocus();
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(rowBoxes, findsNothing);
+    expect(uiIconButton('Select specimens'), findsOneWidget);
+    expect(controller.query, isEmpty);
+    expect(repository.calls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('companion search Escape dismisses without changing its query', (
+    tester,
+  ) async {
+    final repository = BulkRepository(queue(3));
+    await pumpQueue(tester, repository, window: const Size(1440, 900));
+    await pick(tester, 'Pinned beetle 1');
+    final pane = find.byType(QueuePane);
+    final queueState = tester.state(pane);
+    final controller = WorkspaceScope.read(tester.element(pane));
+    await tester.enterText(uiField('Search by specimen ID'), 'fixture-001');
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(QueueRow).first,
+        matching: find.text('fixture-001'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(pane, findsOneWidget);
+    expect(tester.widget<QueuePane>(pane).onDismiss, isNotNull);
+    final search = tester.widget<UiSearchField>(find.byType(UiSearchField));
+    search.focusNode!.requestFocus();
+    await tester.pumpAndSettle();
+    expect(search.focusNode!.hasFocus, isTrue);
+    expect(search.controller!.text, 'fixture-001');
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(repository.calls, isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(pane, findsNothing);
+    expect(
+      tester.state(find.byType(QueuePane, skipOffstage: false)),
+      same(queueState),
+    );
+    expect(controller.query, 'fixture-001');
+    expect(search.controller!.text, 'fixture-001');
+    expect(repository.calls, isEmpty);
+
+    await tester.tap(uiIconButton('Open sidebar'));
+    await tester.pumpAndSettle();
+    expect(tester.state(pane), same(queueState));
+    expect(search.controller!.text, 'fixture-001');
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   group('picking records', () {

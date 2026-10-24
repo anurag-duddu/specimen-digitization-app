@@ -24,6 +24,7 @@ Future<T?> showProductModal<T>({
   UiModalActionBuilder? primaryAction,
   UiModalActionBuilder? secondaryAction,
   String? semanticsLabel,
+  String? dismissLabel,
   bool dismissible = true,
 }) => UiDialog.showAdaptive<T>(
   context: context,
@@ -32,5 +33,6 @@ Future<T?> showProductModal<T>({
   primaryAction: primaryAction,
   secondaryAction: secondaryAction,
   semanticsLabel: semanticsLabel ?? title,
+  dismissLabel: dismissLabel,
   dismissible: dismissible,
 );
