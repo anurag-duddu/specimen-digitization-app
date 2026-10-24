@@ -1066,6 +1066,18 @@ script refuses to run outside GitHub Actions.
    tester/original-worker memberships. This optional artifact is checked
    separately: conflicting existing rows stop the release without overwriting
    them. It creates no generic signup/collection API, content or pipeline work.
+   When the optional `OWNER_COLLECTION_ACCESS_B64` configuration is present,
+   the owner's collection-access correction verifies its exact identities
+   and scopes against both existing artifacts, their shared Insects scope, the
+   existing administrator and tester memberships, and their distinct
+   identities. It inserts only the tester's missing Insects membership with
+   the same administrator and sensitive-data access as the original owner.
+   It also marks the artifact's existing test collection as `testing`, so the
+   selector can distinguish it from the museum hierarchy. Conflicting rows
+   are refused; existing test memberships, content and private drafts are
+   retained. The write checks its prerequisites transactionally and verifies
+   the resulting rows. This is the owner's bounded two-identity correction,
+   not a general membership-inheritance or account-linking mechanism.
 9. **Done.** The last line is `data release complete for <sha>`.
 
 The workflow then publishes the pinned georeferencing datasets and runs
@@ -1157,8 +1169,8 @@ prints the completion line and succeeds.
 
 - `DATA_BOOTSTRAP_ARTIFACT_B64`, a secret of the `data-production`
   environment: the prepared organization and collection rows, base64-encoded.
-  Together with the optional intake artifact below, these are the only GitHub
-  secrets the data release reads. When this secret is
+  Together with the optional intake and owner-access inputs below, these are
+  the only GitHub secrets the data release reads. When this secret is
   unset and no organization exists, the step fails and says so. When the
   secret is unset and an organization exists, the step is skipped without
   comparing anything.
@@ -1173,8 +1185,23 @@ prints the completion line and succeeds.
   nothing. This provisions no content and starts no pipeline work. Remove the
   optional artifact after verified provisioning if later permission changes
   should no longer be compared with its initial values.
+- Optional `OWNER_COLLECTION_ACCESS_B64`, also in `data-production`: explicit
+  base64 JSON containing exactly `organization_id`, `insects_collection_id`,
+  `testing_collection_id`, `owner_uid` and `second_uid`, identifying the
+  original administrator, their second sign-in identity, the organization,
+  Insects and the existing test collection.
+  It must match both provisioning artifacts and the current memberships.
+  Without this input, no owner-access correction runs; an intake-test artifact
+  alone never authorizes a grant on Insects. No private identifiers are
+  committed or printed. This configuration grants no other membership and
+  does not link Firebase accounts or share personal OAuth credentials.
+  After the protected release and exact readback confirm the correction,
+  remove only this optional configuration and verify its absence. Keeping
+  the one-time intent indefinitely could recreate a later-deleted membership.
+  Retain it until readback succeeds so an incomplete release can be retried.
 - The Secret Manager secret `specimen-worker-actor-uid`, version 1: the
-  worker's user ID, read during the bootstrap step when either artifact is set.
+  worker's user ID, read during the bootstrap step when a provisioning or
+  owner-access input needs it.
 - Everything else the release reads is committed in this repository:
   `dataconnect/`, `storage.rules`, `firebase.auth.json`, the collection tree under
   `infra/reference/` and the release scripts.

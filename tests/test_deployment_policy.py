@@ -882,12 +882,14 @@ def test_release_jobs_install_pinned_tools_before_any_credential_exists(plane: s
 
 def test_release_workflows_read_only_named_bootstrap_secrets_and_no_variable() -> None:
     data, runtime = release_text("data"), release_text("runtime")
-    # Both additive provisioning artifacts reach only the data release step.
-    assert re.findall(r"\bsecrets\b[^\s}]*", data) == ["secrets.DATA_BOOTSTRAP_ARTIFACT_B64", "secrets.INTAKE_E2E_BOOTSTRAP_B64"]
+    # The two provisioning artifacts and explicit owner correction reach only the data release step.
+    assert re.findall(r"\bsecrets\b[^\s}]*", data) == [
+        "secrets.DATA_BOOTSTRAP_ARTIFACT_B64", "secrets.INTAKE_E2E_BOOTSTRAP_B64", "secrets.OWNER_COLLECTION_ACCESS_B64"]
     holders = [step for _, step in release_steps("data") if "secrets." in str(step)]
     assert len(holders) == 1 and holders[0].get("run") == "uv run python scripts/release/data_release.py"
     assert holders[0].get("env", {}).get("DATA_BOOTSTRAP_ARTIFACT_B64") == "${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 }}"
     assert holders[0].get("env", {}).get("INTAKE_E2E_BOOTSTRAP_B64") == "${{ secrets.INTAKE_E2E_BOOTSTRAP_B64 }}"
+    assert holders[0].get("env", {}).get("OWNER_COLLECTION_ACCESS_B64") == "${{ secrets.OWNER_COLLECTION_ACCESS_B64 }}"
     assert re.findall(r"\bsecrets\b", runtime) == []
     # The read-only run token is used once, by the job that waits for the data release and has no cloud identity.
     token = re.compile(r"github\.token|GITHUB_TOKEN")

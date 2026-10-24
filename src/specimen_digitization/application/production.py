@@ -289,6 +289,38 @@ class SqlConnectRepository:
             if m["active"] and str(UUID(m["organizationId"])) in orgs
         ]
 
+    def collection_hierarchy(self, organization_id, uid):
+        """Organization navigation names; membership checks still authorize every action."""
+        result = self.execute("ListCollectionHierarchy", {"organizationId": organization_id, "actorUid": uid})
+        rows = result.get("collections")
+        try:
+            if not isinstance(rows, list) or len(rows) > 1000:
+                raise ValueError
+            nodes = {}
+            for row in rows:
+                ident = str(UUID(row['id']))
+                if (ident in nodes or not isinstance(row['name'], str) or not row['name'].strip()
+                        or row.get('kind') not in {None, 'museum', 'testing'}):
+                    raise ValueError
+                nodes[ident] = {'collection_id': ident, 'display_name': row['name'],
+                                'parent_collection_id': str(UUID(row['parentId'])) if row.get('parentId') else None,
+                                'kind': row.get('kind') or 'museum'}
+
+            def path(node):
+                names, seen = [], set()
+                while node:
+                    if node['collection_id'] in seen:
+                        raise ValueError
+                    seen.add(node['collection_id'])
+                    names.append((node['display_name'].casefold(), node['collection_id']))
+                    parent = node['parent_collection_id']
+                    node = nodes[parent] if parent else None
+                return tuple(reversed(names))
+
+            return sorted(nodes.values(), key=path)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            raise OperationalBlock('collection_hierarchy_invalid') from None
+
     def get(self, scope, specimen_id):
         # GetSpecimen takes `$id: UUID!`. Any other id names no specimen: it is
         # Missing (404), not a refused query read as a conflict (409).

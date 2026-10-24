@@ -678,6 +678,7 @@ class ApiSpecimenRepository
         );
       }
       final collections = <String, Json>{};
+      final catalogs = <String, List<CollectionCatalogNode>>{};
       for (final org
           in memberships.map((m) => m['organization_id'].toString()).toSet()) {
         final data = await request(
@@ -698,6 +699,7 @@ class ApiSpecimenRepository
         for (final c in objects(data['items'])) {
           collections['$org/${c['collection_id']}'] = c;
         }
+        catalogs[org] = _collectionCatalog(data, org);
       }
       if (memberships.any(
         (m) => !collections.containsKey(
@@ -726,6 +728,11 @@ class ApiSpecimenRepository
                 m['role'].toString(),
                 ...(m['permissions'] as List? ?? []).map((p) => p.toString()),
               ],
+              catalogNodes:
+                  catalogs[m['organization_id'].toString()] ?? const [],
+              defaultSelection:
+                  collections['${m['organization_id']}/${m['collection_id']}']?['is_default'] ==
+                  true,
             ),
           )
           .toList();
@@ -750,6 +757,53 @@ class ApiSpecimenRepository
       }
       rethrow;
     }
+  }
+
+  /// Catalog relationships describe the chooser; they never create scopes.
+  List<CollectionCatalogNode> _collectionCatalog(
+    Json data,
+    String organizationId,
+  ) {
+    final raw = data['hierarchy'];
+    if (raw == null) return const [];
+    bool named(Object? value) => value is String && value.trim().isNotEmpty;
+    Never invalid() => throw const ApiFailure(
+      'The collection hierarchy could not be verified. Check access again.',
+      code: 'invalid_collections',
+      status: 403,
+    );
+    if (raw is! List) invalid();
+    final nodes = <String, CollectionCatalogNode>{};
+    for (final row in raw) {
+      if (row is! Map ||
+          !named(row['collection_id']) ||
+          !named(row['display_name']) ||
+          (row['parent_collection_id'] != null &&
+              !named(row['parent_collection_id'])) ||
+          (row['organization_id'] != null &&
+              row['organization_id'] != organizationId) ||
+          (row['kind'] != null &&
+              !['museum', 'testing'].contains(row['kind']))) {
+        invalid();
+      }
+      final id = row['collection_id'] as String;
+      if (nodes.containsKey(id)) invalid();
+      nodes[id] = CollectionCatalogNode(
+        collectionId: id,
+        name: row['display_name'] as String,
+        parentCollectionId: row['parent_collection_id'] as String?,
+        testing: row['kind'] == 'testing',
+      );
+    }
+    for (final node in nodes.values) {
+      final seen = <String>{node.collectionId};
+      var parent = node.parentCollectionId;
+      while (parent != null) {
+        if (!seen.add(parent) || !nodes.containsKey(parent)) invalid();
+        parent = nodes[parent]!.parentCollectionId;
+      }
+    }
+    return List.unmodifiable(nodes.values);
   }
 
   @override

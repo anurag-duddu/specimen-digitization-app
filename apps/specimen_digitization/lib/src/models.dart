@@ -100,6 +100,21 @@ class ApiFailure implements Exception {
   String toString() => message;
 }
 
+/// Collection names and parent relationships, without an access grant.
+class CollectionCatalogNode {
+  const CollectionCatalogNode({
+    required this.collectionId,
+    required this.name,
+    this.parentCollectionId,
+    this.testing = false,
+  });
+
+  final String collectionId;
+  final String name;
+  final String? parentCollectionId;
+  final bool testing;
+}
+
 class CollectionScope {
   const CollectionScope({
     required this.organizationId,
@@ -107,12 +122,18 @@ class CollectionScope {
     required this.name,
     this.permissions = const [],
     this.configuration = const {},
+    this.catalogNodes = const [],
+    this.defaultSelection = false,
   });
   final String organizationId;
   final String collectionId;
   final String name;
   final List<String> permissions;
   final Json configuration;
+
+  /// Organization catalog context. Only [CollectionScope] values grant access.
+  final List<CollectionCatalogNode> catalogNodes;
+  final bool defaultSelection;
   String get key => '$organizationId/$collectionId';
 }
 
