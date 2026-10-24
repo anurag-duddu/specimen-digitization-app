@@ -125,6 +125,24 @@ Specimen previewSpecimen(Uint8List pixels) => Specimen({
       'resolved': false,
     },
   ],
+  'evidence': [
+    {
+      'evidence_id': 'preview-evidence-a',
+      'region_id': 'r1',
+      'kind': 'literal',
+      'source': 'bounded_extraction_v1',
+      'observation_ids': ['o1'],
+      'excerpt': 'Chicago',
+    },
+    {
+      'evidence_id': 'preview-evidence-b',
+      'region_id': 'r1',
+      'kind': 'literal',
+      'source': 'bounded_extraction_v1',
+      'observation_ids': ['o2'],
+      'excerpt': 'Chicago',
+    },
+  ],
   'fields': [
     {
       'field_key': 'country',
@@ -134,6 +152,21 @@ Specimen previewSpecimen(Uint8List pixels) => Specimen({
       'literal_value': 'U.S.A.',
       'parsed_value': 'United States',
       'normalized': 'United States of America',
+    },
+    {
+      'field_key': 'city',
+      'display_name': 'City',
+      'state': 'supported',
+      'literal_value': 'Chicago',
+      'evidence_ids': ['preview-evidence-a', 'preview-evidence-b'],
+    },
+    {
+      'field_key': 'date_visited_from',
+      'display_name': 'Date visited from',
+      'state': 'ambiguous',
+      'literal_value': '1912 or 1917',
+      'verbatim_by_observation': {'o1': '1912', 'o2': '1917'},
+      'input_source_by_observation': {'o1': 'raw_reading', 'o2': 'raw_reading'},
     },
     {
       'field_key': 'collectors',

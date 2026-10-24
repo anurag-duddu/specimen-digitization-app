@@ -209,7 +209,7 @@ void main() {
 
   for (final scale in <double>[1, 2]) {
     testWidgets(
-      'observation wording leads and distinct source summaries remain exact at $scale',
+      'readings and source summaries disclose separately and remain exact at $scale',
       (tester) async {
         const observation = 'E. slope Mt. McKinley';
         const otherObservation = 'Eastern slope of Mt. McKinley';
@@ -246,12 +246,16 @@ void main() {
           onPendingChanged: (_) => fail('Evidence inspection must not edit'),
         );
         await expandField(tester, 'City');
+        expect(find.text(observation), findsNothing);
+        expect(find.text(otherObservation), findsNothing);
+        expect(find.text('2 readings'), findsOneWidget);
+        await expandField(tester, 'Label readings');
         expect(find.text(observation), findsOneWidget);
         expect(find.text(otherObservation), findsOneWidget);
         expect(find.text(sourceSummary), findsNothing);
         expect(find.text(otherSummary), findsNothing);
         expect(find.text('Sources: Label 1, Label 2'), findsOneWidget);
-        expect(find.text('Source summaries'), findsOneWidget);
+        expect(find.text('2 source summaries'), findsOneWidget);
 
         await expandField(tester, 'Evidence details');
         for (final source in [(1, sourceSummary), (2, otherSummary)]) {
