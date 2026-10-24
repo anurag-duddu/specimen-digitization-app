@@ -2,7 +2,7 @@
 
 import 'dart:ui' show Tristate;
 
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -78,19 +78,150 @@ IconData _glyph(WidgetTester tester, String label) => tester
     )
     .icon!;
 
+/// Evaluates the actual flat paint chain of a sidebar label, not token pairs.
+///
+/// Flutter's pixel-histogram guideline can mistake the most frequent
+/// antialiased edge for the text colour (Linux rendered Sources as #B9B9BC
+/// in that histogram although its paragraph ink is #494950). WCAG 1.4.3
+/// evaluates foreground/background colours before font antialiasing:
+/// https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html
+///
+/// Read the resolved paragraph style, composite every solid fill beneath it,
+/// and apply actual ancestor render opacity to both ink and backdrop. This
+/// deliberately supports the sidebar's flat surfaces only, and rejects
+/// effects whose paint cannot be measured by this bounded helper.
+double _paintedTextContrast(WidgetTester tester, Finder label) {
+  final element = label.evaluate().single;
+  final paragraph = tester.renderObject<RenderParagraph>(label);
+  final span = paragraph.text as TextSpan;
+  final style = span.style!;
+  if ((span.children?.isNotEmpty ?? false) ||
+      style.foreground != null ||
+      style.background != null ||
+      style.backgroundColor != null) {
+    throw StateError('Contrast measurement requires one solid text style.');
+  }
+  var foreground = style.color!;
+  var background = const Color(0x00000000);
+
+  void under(Color color) {
+    foreground = Color.alphaBlend(foreground, color);
+    background = Color.alphaBlend(background, color);
+  }
+
+  element.visitAncestorElements((ancestor) {
+    if (ancestor is! RenderObjectElement) return true;
+    final render = ancestor.renderObject;
+    if (render is RenderDecoratedBox) {
+      final decoration = render.decoration;
+      if (decoration is! BoxDecoration ||
+          decoration.gradient != null ||
+          decoration.image != null ||
+          decoration.backgroundBlendMode != null ||
+          (decoration.boxShadow?.isNotEmpty ?? false) ||
+          render.position != DecorationPosition.background) {
+        throw StateError('Contrast measurement requires solid backgrounds.');
+      }
+      if (decoration.color case final color?) under(color);
+    } else if (ancestor.widget case ColoredBox(:final color)) {
+      under(color);
+    } else if (render is RenderOpacity || render is RenderAnimatedOpacity) {
+      final opacity = render is RenderOpacity
+          ? render.opacity
+          : (render as RenderAnimatedOpacity).opacity.value;
+      foreground = foreground.withValues(alpha: foreground.a * opacity);
+      background = background.withValues(alpha: background.a * opacity);
+    } else if (render is RenderShaderMask ||
+        render is RenderBackdropFilter ||
+        ancestor.widget is ColorFiltered ||
+        ancestor.widget is ImageFiltered) {
+      throw StateError('Contrast measurement cannot resolve paint filters.');
+    }
+    return true;
+  });
+  if (foreground.a != 1 || background.a != 1) {
+    throw StateError(
+      'Contrast measurement requires an opaque painted backing.',
+    );
+  }
+  final inkLuminance = foreground.computeLuminance();
+  final backgroundLuminance = background.computeLuminance();
+  return inkLuminance > backgroundLuminance
+      ? (inkLuminance + .05) / (backgroundLuminance + .05)
+      : (backgroundLuminance + .05) / (inkLuminance + .05);
+}
+
 void main() {
-  testWidgets('selected navigation text meets contrast in both modes', (
+  for (final brightness in Brightness.values) {
+    testWidgets('navigation text meets AA contrast in ${brightness.name}', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        await tester.pumpWidget(
+          uiHarness(
+            brightness: brightness,
+            child: const _SidebarHost(destinations: threeDestinations),
+          ),
+        );
+        await tester.pumpAndSettle();
+        for (final selected in threeDestinations) {
+          await tester.tap(find.bySemanticsLabel(selected.label));
+          await tester.pumpAndSettle();
+          for (final destination in threeDestinations) {
+            final label = find.text(destination.label);
+            expect(label.hitTestable(), findsOneWidget);
+            expect(
+              _paintedTextContrast(tester, label),
+              greaterThanOrEqualTo(4.5),
+              reason:
+                  '${destination.label} must retain AA body-text contrast in '
+                  '${brightness.name}, with ${selected.label} selected',
+            );
+          }
+        }
+      } finally {
+        semantics.dispose();
+      }
+    });
+  }
+
+  testWidgets('contrast measurement catches ink, surface and opacity defects', (
     tester,
   ) async {
-    for (final brightness in Brightness.values) {
+    const black = Color(0xFF000000);
+    const white = Color(0xFFFFFFFF);
+    const grey = Color(0xFF999999);
+    for (final sample in [
+      (ink: black, surface: white, opacity: 1.0, passes: true),
+      (ink: grey, surface: white, opacity: 1.0, passes: false),
+      (ink: black, surface: black, opacity: 1.0, passes: false),
+      (ink: black, surface: white, opacity: .2, passes: false),
+    ]) {
       await tester.pumpWidget(
         uiHarness(
-          brightness: brightness,
-          child: const _SidebarHost(destinations: threeDestinations),
+          child: ColoredBox(
+            color: white,
+            child: Opacity(
+              opacity: sample.opacity,
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: sample.surface),
+                child: Text(
+                  'Contrast sample',
+                  style: TextStyle(color: sample.ink, fontSize: 15),
+                ),
+              ),
+            ),
+          ),
         ),
       );
       await tester.pumpAndSettle();
-      await expectLater(tester, meetsGuideline(textContrastGuideline));
+      final ratio = _paintedTextContrast(tester, find.text('Contrast sample'));
+      expect(
+        ratio,
+        sample.passes ? greaterThanOrEqualTo(4.5) : lessThan(4.5),
+        reason: '$sample',
+      );
     }
   });
 
