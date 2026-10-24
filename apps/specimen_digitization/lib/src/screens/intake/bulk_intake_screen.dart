@@ -168,44 +168,82 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
     if (result?.needsFallback == true) await _files();
   }
 
-  Future<void> _add() => showProductModal<void>(
-    context: context,
-    title: 'Add photos',
-    body: (context) => Column(
+  Future<void> _add() {
+    final cameraFirst = WindowClass.of(context).isCompact;
+    return showProductModal<void>(
+      context: context,
+      title: 'Add photos',
+      dismissLabel: 'Close add photos',
+      body: (modal) => _sourceChoices(
+        modal,
+        cameraFirst: cameraFirst,
+        beforeAcquire: () => Navigator.of(modal).pop(),
+      ),
+      secondaryAction: (modal) => UiButton(
+        label: 'Close',
+        variant: UiButtonVariant.ghost,
+        onPressed: () => Navigator.of(modal).pop(),
+      ),
+    );
+  }
+
+  Widget _sourceChoices(
+    BuildContext context, {
+    required bool cameraFirst,
+    VoidCallback? beforeAcquire,
+  }) {
+    final ui = context.ui;
+    void acquire(Future<void> Function() action) {
+      beforeAcquire?.call();
+      unawaited(action());
+    }
+
+    return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final entry in <(String, IconSpec, Future<void> Function())>[
-          ('Take photos', UiIcons.camera, _camera),
-          ('Choose files', UiIcons.uploadFile, _files),
-          ('Google Drive', UiIcons.source, () => _source('google_drive')),
-          ('Dropbox', UiIcons.source, () => _source('dropbox')),
-          (
-            'Registered storage',
-            UiIcons.sourceImport,
-            () => _source('storage'),
-          ),
-          ('Import links', UiIcons.sourceImport, () => _source('url')),
-        ])
-          Padding(
-            padding: EdgeInsets.only(bottom: context.ui.space.s2),
-            child: UiButton(
-              label: entry.$1,
-              leading: entry.$2,
-              variant: UiButtonVariant.secondary,
-              onPressed: () {
-                Navigator.of(context).pop();
-                unawaited(entry.$3());
-              },
+        Wrap(
+          spacing: ui.space.s3,
+          runSpacing: ui.space.s3,
+          children: [
+            UiButton(
+              label: cameraFirst ? 'Take photos' : 'Choose files',
+              leading: cameraFirst ? UiIcons.camera : UiIcons.uploadFile,
+              onPressed: () => acquire(cameraFirst ? _camera : _files),
             ),
+            UiButton(
+              label: cameraFirst ? 'Choose files' : 'Take photos',
+              leading: cameraFirst ? UiIcons.uploadFile : UiIcons.camera,
+              variant: UiButtonVariant.secondary,
+              onPressed: () => acquire(cameraFirst ? _files : _camera),
+            ),
+          ],
+        ),
+        SizedBox(height: ui.space.s6),
+        UiDisclosure(
+          title: 'Import from a source',
+          summary: 'Google Drive, Dropbox, storage or links',
+          hideSummaryWhenExpanded: true,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final source in [
+                ('Google Drive', 'google_drive'),
+                ('Dropbox', 'dropbox'),
+                ('Storage', 'storage'),
+                ('Import links', 'url'),
+              ])
+                UiListRow(
+                  title: source.$1,
+                  trailing: const UiIcon(UiIcons.next, size: UiIconSize.inline),
+                  onPressed: () => acquire(() => _source(source.$2)),
+                ),
+            ],
           ),
-        Text(
-          'Every source joins this batch for review before submission.',
-          style: context.ui.type.bodySmall,
         ),
       ],
-    ),
-  );
+    );
+  }
 
   Future<void> _source(String provider) => IntakeImportWorkspace.show(
     context: context,
@@ -676,7 +714,6 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
 
   Widget _empty(BuildContext context, bool dragging) {
     final ui = context.ui;
-    final cameraFirst = WindowClass.of(context).isCompact;
     return Align(
       alignment: AlignmentDirectional.topStart,
       child: ConstrainedBox(
@@ -691,47 +728,9 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
                   'Add up to 500 photos to a private draft. Review them before submitting.',
             ),
             SizedBox(height: ui.space.s6),
-            Wrap(
-              spacing: ui.space.s3,
-              runSpacing: ui.space.s3,
-              children: [
-                UiButton(
-                  label: cameraFirst ? 'Take photos' : 'Choose files',
-                  leading: cameraFirst ? UiIcons.camera : UiIcons.uploadFile,
-                  onPressed: cameraFirst ? _camera : _files,
-                ),
-                UiButton(
-                  label: cameraFirst ? 'Choose files' : 'Take photos',
-                  leading: cameraFirst ? UiIcons.uploadFile : UiIcons.camera,
-                  variant: UiButtonVariant.secondary,
-                  onPressed: cameraFirst ? _files : _camera,
-                ),
-              ],
-            ),
-            SizedBox(height: ui.space.s6),
-            UiDisclosure(
-              title: 'Import from a source',
-              summary: 'Google Drive, Dropbox, storage or links',
-              hideSummaryWhenExpanded: true,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final source in [
-                    ('Google Drive', 'google_drive'),
-                    ('Dropbox', 'dropbox'),
-                    ('Storage', 'storage'),
-                    ('Import links', 'url'),
-                  ])
-                    UiListRow(
-                      title: source.$1,
-                      trailing: const UiIcon(
-                        UiIcons.next,
-                        size: UiIconSize.inline,
-                      ),
-                      onPressed: () => _source(source.$2),
-                    ),
-                ],
-              ),
+            _sourceChoices(
+              context,
+              cameraFirst: WindowClass.of(context).isCompact,
             ),
           ],
         ),

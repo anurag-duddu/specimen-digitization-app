@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
@@ -184,6 +185,7 @@ void main() {
     expect(find.text('Sources: Label 1'), findsOneWidget);
     expect(find.text('Evidence for Country'), findsOneWidget);
     expect(find.text('U.S.A. · 304.8 m'), findsOneWidget);
+    expect(uiDisclosure('Evidence details'), findsNothing);
     await expandField(tester, 'Value details');
     expect(find.text('U.S.A.'), findsOneWidget);
     expect(find.text('United States'), findsOneWidget);
@@ -204,6 +206,89 @@ void main() {
     expect(find.text('Evidence for Country'), findsNothing);
     expect(focused, ['r1', 'r1']);
   });
+
+  for (final scale in <double>[1, 2]) {
+    testWidgets(
+      'observation wording leads and distinct source summaries remain exact at $scale',
+      (tester) async {
+        const observation = 'E. slope Mt. McKinley';
+        const otherObservation = 'Eastern slope of Mt. McKinley';
+        const sourceSummary = 'E.slope Mt. McKinley';
+        const otherSummary = 'A different source names the western slope.';
+        final record = Specimen({
+          ...specimen.data,
+          'fields': [
+            {
+              'field_key': 'city',
+              'display_name': 'City',
+              'state': 'unresolved',
+              'literal_value': 'Mt. McKinley',
+              'evidence_ids': ['e1', 'e2'],
+              'verbatim_by_observation': {
+                'observation-one': observation,
+                'observation-two': otherObservation,
+              },
+            },
+          ],
+          'evidence': [
+            {'evidence_id': 'e1', 'region_id': 'r1', 'excerpt': sourceSummary},
+            {'evidence_id': 'e2', 'region_id': 'r2', 'excerpt': otherSummary},
+          ],
+        });
+        final original = jsonDecode(jsonEncode(record.data));
+        final focused = <String?>[];
+        await showFields(
+          tester,
+          record: record,
+          size: const Size(390, 844),
+          textScale: scale,
+          onFocusRegion: focused.add,
+          onPendingChanged: (_) => fail('Evidence inspection must not edit'),
+        );
+        await expandField(tester, 'City');
+        expect(find.text(observation), findsOneWidget);
+        expect(find.text(otherObservation), findsOneWidget);
+        expect(find.text(sourceSummary), findsNothing);
+        expect(find.text(otherSummary), findsNothing);
+        expect(find.text('Sources: Label 1, Label 2'), findsOneWidget);
+        expect(find.text('Source summaries'), findsOneWidget);
+
+        await expandField(tester, 'Evidence details');
+        for (final source in [(1, sourceSummary), (2, otherSummary)]) {
+          final block = find
+              .ancestor(
+                of: find.text('Label ${source.$1} · Source summary'),
+                matching: find.byType(Column),
+              )
+              .first;
+          expect(
+            find.descendant(of: block, matching: find.text(source.$2)),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(
+              of: block,
+              matching: find.text(
+                source.$1 == 1 ? otherSummary : sourceSummary,
+              ),
+            ),
+            findsNothing,
+          );
+        }
+        expect(find.text(sourceSummary), findsOneWidget);
+        expect(find.text(otherSummary), findsOneWidget);
+        expect(find.text(observation), findsOneWidget);
+        expect(find.text(otherObservation), findsOneWidget);
+        await tester.ensureVisible(uiButton('View Label 2'));
+        await tester.pumpAndSettle();
+        await tester.tap(uiButton('View Label 2'));
+        await tester.pumpAndSettle();
+        expect(focused, [null, 'r2']);
+        expect(record.data, original);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('a field citing several labels offers each source explicitly', (
     tester,

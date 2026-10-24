@@ -563,6 +563,16 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
         : const <String>[];
     if (retained.isEmpty && regions.isEmpty && verbatim.isEmpty) return null;
     final name = fieldReviewName(field);
+    // Observation wording leads when available. Summaries remain distinct
+    // evidence, even when their wording resembles an observation; disclose
+    // them with explicit labels instead of guessing whether they are equal.
+    final discloseSummaries = verbatim.isNotEmpty && retained.isNotEmpty;
+    final hasSourceResponses = retained.any(_hasRawEvidenceDetails);
+    final regionNames = <Object?, String>{
+      for (final (index, region) in widget.specimen.regions.indexed)
+        region['region_id']: 'Label ${index + 1}',
+    };
+    String sourceLabel(Json item) => regionNames[item['region_id']] ?? 'Record';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -573,11 +583,15 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             padding: EdgeInsets.only(top: ui.space.s1),
             child: Text(text, style: ui.type.bodySmall),
           ),
-        for (final item in retained)
-          Padding(
-            padding: EdgeInsets.only(top: ui.space.s1),
-            child: Text(evidenceDisplaySummary(item), style: ui.type.bodySmall),
-          ),
+        if (!discloseSummaries)
+          for (final item in retained)
+            Padding(
+              padding: EdgeInsets.only(top: ui.space.s1),
+              child: Text(
+                evidenceDisplaySummary(item),
+                style: ui.type.bodySmall,
+              ),
+            ),
         if (widget.onFocusRegion != null && regions.isNotEmpty)
           Wrap(
             spacing: ui.space.s2,
@@ -594,21 +608,49 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
                   ),
             ],
           ),
-        if (retained.any((item) => _hasRawEvidenceDetails(item)))
+        if (discloseSummaries || hasSourceResponses)
           UiDisclosure(
             title: 'Evidence details',
-            summary: 'Retained source response',
+            summary: discloseSummaries
+                ? hasSourceResponses
+                      ? 'Source summaries and responses'
+                      : 'Source summaries'
+                : 'Source responses',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 for (final item in retained)
-                  if (_hasRawEvidenceDetails(item))
+                  if (discloseSummaries || _hasRawEvidenceDetails(item))
                     Padding(
-                      padding: EdgeInsets.only(top: ui.space.s1),
-                      child: Text(
-                        item['excerpt'] as String,
-                        style: ui.type.mono.literalDense,
+                      padding: EdgeInsets.only(top: ui.space.s2),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          if (discloseSummaries) ...<Widget>[
+                            Text(
+                              '${sourceLabel(item)} · Source summary',
+                              style: ui.type.labelSmall,
+                            ),
+                            Text(
+                              evidenceDisplaySummary(item),
+                              style: ui.type.bodySmall,
+                            ),
+                          ],
+                          if (_hasRawEvidenceDetails(item)) ...<Widget>[
+                            if (discloseSummaries)
+                              SizedBox(height: ui.space.s2),
+                            Text(
+                              '${sourceLabel(item)} · Source response',
+                              style: ui.type.labelSmall,
+                            ),
+                            Text(
+                              item['excerpt'] as String,
+                              style: ui.type.mono.literalDense,
+                            ),
+                          ],
+                        ],
                       ),
                     ),
               ],

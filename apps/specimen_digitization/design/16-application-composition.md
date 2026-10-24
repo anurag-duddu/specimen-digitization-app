@@ -27,6 +27,18 @@ installations still require their normal release.
 | Intake | Camera and file actions, named disclosure for other sources; batch save status once above a lazy photo grid; persistent submission | Private drafts, provider browsing, original-file recovery, inspection, retake, retry and explicit submission |
 | Workbench | Dominant source canvas with a bounded Paper inspector; fields lead with values or problems and disclose provenance and requirements | Source transforms, region selection, editing, review guard, record navigation and decision actions |
 
+Empty and saved Intake use the same source-choice composition: camera or files
+leads according to available width, the alternative stays visible, and named
+remote sources sit in a disclosure. The saved-batch dialog has an explicit
+Close action and returns focus to its trigger when dismissed.
+
+Field observations remain visible as written. Retained source summaries and
+responses are distinct evidence, even when they resemble those observations;
+place them behind named Evidence details with explicit labels tied to each
+source label (or Record when no label is retained). When there is
+no observation, the source summary remains visible. Never guess equivalence
+from punctuation or discard a conflicting source to simplify presentation.
+
 Counts describe the response actually loaded. Missing scores, thumbnails and
 timestamps remain missing; a page layout must not invent them. Existing roles,
 errors, loading and recovery states remain visible and actionable.

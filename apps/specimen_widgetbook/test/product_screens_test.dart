@@ -316,6 +316,12 @@ void main() {
       await tester.tap(add);
       await tester.pumpAndSettle();
       expect(button('Take photos'), findsOneWidget);
+      expect(
+        tester.widget<UiButton>(button('Choose files')).variant,
+        UiButtonVariant.primary,
+      );
+      expect(find.widgetWithText(UiListRow, 'Google Drive'), findsNothing);
+      expect(button('Close').hitTestable(), findsOneWidget);
       final modal = tester.element(button('Take photos'));
       expect(Directionality.of(modal), TextDirection.rtl);
       expect(MediaQuery.textScalerOf(modal).scale(16), 32);
@@ -325,6 +331,17 @@ void main() {
             .contains(tester.getRect(button('Take photos')).center),
         isTrue,
       );
+      await tester.ensureVisible(find.text('Import from a source'));
+      await tester.tap(find.text('Import from a source'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(UiListRow, 'Storage'), findsOneWidget);
+      expect(find.text('Registered storage'), findsNothing);
+      await tester.tap(button('Close'));
+      await tester.pumpAndSettle();
+      expect(find.text('synthetic-label.png'), findsWidgets);
+      expect(find.byType(UiSheet), findsNothing);
+      await tester.tap(button('Add photos'));
+      await tester.pumpAndSettle();
       await tester.tap(button('Choose files'));
       await tester.pumpAndSettle();
       expect(find.textContaining('File selection is disabled'), findsOneWidget);
