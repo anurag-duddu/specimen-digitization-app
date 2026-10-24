@@ -117,3 +117,28 @@ The organization name is the owner's: the proposal is `Field Museum`.
   in every sub-collection beneath it. Today that needs a row per
   sub-collection; inherited access would be a product change with a
   security review.
+
+## Restoring the collection selector — 2026-10-24
+
+The reviewed tree above remains the source for the museum's structure. The
+collection selector displays the live collection rows with their parents;
+the reference file does not grant access or create client-side collections.
+Department headings group their children on both wide and compact screens.
+Only a collection with an active membership can be selected. Other museum
+collections remain visible as unavailable, while Insects is the current
+working collection. Taxonomic orders remain specimen fields.
+
+Test collections carry an explicit `kind: testing` marker and appear
+separately from the museum hierarchy, only for their authorized members.
+An ordinary museum collection is preferred when entering without an explicit
+collection route; an authorized deep link retains its selected collection.
+Changing collections continues to honor pending saves and unsaved-review
+guards. Existing test records and private drafts are not moved or removed.
+
+The owner requested equal Insects access for their two existing sign-in
+identities. The protected data release reconciles that one missing membership
+from an explicit private owner-access configuration checked against the two
+existing provisioning artifacts. This does not introduce
+inherited membership, automatic grants for other users, or Firebase account
+linking. Registered collection sources follow collection access; personal
+OAuth connections and drafts retain their existing actor ownership.

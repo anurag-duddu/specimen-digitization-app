@@ -7,6 +7,7 @@ import '../../foundation/google_sign_in_brand.dart';
 import '../../foundation/palette.dart';
 import '../../foundation/theme.dart';
 import '../../foundation/type.dart';
+import '../../primitives/focus_ring.dart';
 import '../../primitives/pressable.dart';
 import '../overlays/tooltip.dart';
 
@@ -140,7 +141,7 @@ class UiGoogleSignInButtonStyle {
 
 /// Google's "Sign in with Google" button, the same on every platform.
 ///
-/// One component with one appearance: Google's own pill, in Google's Light
+/// One component with one appearance: Google's rectangular variant, in its Light
 /// theme in a light window and its Dark theme in a dark one, with the standard
 /// colour "G" and the label set in Google Sans Medium 14/20. Padding, size and
 /// colours are the figures of Google's "Sign in with Google branding
@@ -151,12 +152,11 @@ class UiGoogleSignInButtonStyle {
 /// behaviour adapts, identity does not). Where the sign-in is offered is the
 /// caller's decision, not this control's.
 ///
-/// The pill is a deliberate brand exception to the system's shape. The page
-/// pre-approves two shapes, "Rectangular" and "Pill", and the figure it
-/// publishes for a custom button is the pill. The system's own command buttons
-/// are the 8 dp superellipse (`Squircle.border(ui.shape.inner)`, which is what
-/// `UiButton` draws); this one keeps Google's, because a third party's brand is
-/// not ours to reshape.
+/// Google pre-approves both rectangular and pill shapes. This control uses
+/// the 4 dp rounded rectangle in Google's HTML configurator, while retaining
+/// Google's font, colours and logo. The focus and state layers follow that
+/// same contour. Choosing the rectangle does not change the product's own
+/// 8 dp superellipse command buttons.
 ///
 /// The label is Google's call to action, [GoogleSignInBrand.label], and an
 /// ellipsis would cut it to "Sign in with Go", which no longer says what the
@@ -167,7 +167,10 @@ class UiGoogleSignInButtonStyle {
 /// derives from the label's line box and grows with the text; the 40 dp
 /// visual sits inside the 48 dp hit box every control has.
 ///
-/// The button takes the width its content needs and does not stretch.
+/// The button fills its available bounded width, aligning with a form's field
+/// and primary action. With unbounded width it takes the width of its content.
+/// The logo stays 20 by 20 at the fixed start inset. The label is centred in
+/// the remaining space, following the HTML configurator's default wide layout.
 ///
 /// A button that is working is [busy], not forbidden: it refuses activation
 /// and keeps its enabled paint, like `UiButton.loading`. A button with a null
@@ -242,58 +245,78 @@ class UiGoogleSignInButton extends StatelessWidget {
       busy: busy,
       disabledReason: disabledReason,
       onDisabledReason: onDisabledReason,
-      capsule: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(
+          Radius.circular(GoogleSignInBrand.cornerRadius),
+        ),
+      ),
+      radius: GoogleSignInBrand.cornerRadius,
+      focusShape: FocusRingShape.roundedRectangle,
       stateLayerColour: style.overlay,
       focusNode: focusNode,
       autofocus: autofocus,
       statesController: statesController,
       builder: (BuildContext context, Set<WidgetState> states) {
-        return DecoratedBox(
-          decoration: ShapeDecoration(
-            // Google's pill, not the system's command shape (see above).
-            shape: StadiumBorder(side: style.edge.resolve(states)),
-            color: style.fill,
-          ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: style.height),
-            child: Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(
-                style.paddingStart,
-                style.inset,
-                style.paddingEnd,
-                style.inset,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  // The "G" is drawn the same in every state: the page says
-                  // its colour is not to change, so a disabled button does not
-                  // fade it.
-                  Image.asset(
-                    GoogleSignInBrand.logoAsset,
-                    package: GoogleSignInBrand.package,
-                    width: style.iconSize,
-                    height: style.iconSize,
-                    fit: BoxFit.contain,
-                    // The logo is drawn at a tenth of its file's size.
-                    filterQuality: FilterQuality.medium,
-                    excludeFromSemantics: true,
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final bool bounded = constraints.hasBoundedWidth;
+            final Widget visual = DecoratedBox(
+              decoration: ShapeDecoration(
+                shape: RoundedRectangleBorder(
+                  borderRadius: const BorderRadius.all(
+                    Radius.circular(GoogleSignInBrand.cornerRadius),
                   ),
-                  SizedBox(width: style.gap),
-                  Flexible(
-                    child: Text(
-                      GoogleSignInBrand.label,
-                      textAlign: TextAlign.center,
-                      style: style.label.copyWith(
-                        color: style.foreground.resolve(states),
+                  side: style.edge.resolve(states),
+                ),
+                color: style.fill,
+              ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: style.height),
+                child: Padding(
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                    style.paddingStart,
+                    style.inset,
+                    style.paddingEnd,
+                    style.inset,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      // The "G" is drawn the same in every state: the page says
+                      // its colour is not to change, so a disabled button does not
+                      // fade it.
+                      Image.asset(
+                        GoogleSignInBrand.logoAsset,
+                        package: GoogleSignInBrand.package,
+                        width: style.iconSize,
+                        height: style.iconSize,
+                        fit: BoxFit.contain,
+                        // The logo is drawn at a tenth of its file's size.
+                        filterQuality: FilterQuality.medium,
+                        excludeFromSemantics: true,
                       ),
-                      strutStyle: UiType.strutOf(style.label),
-                    ),
+                      SizedBox(width: style.gap),
+                      Flexible(
+                        fit: bounded ? FlexFit.tight : FlexFit.loose,
+                        child: Text(
+                          GoogleSignInBrand.label,
+                          textAlign: TextAlign.center,
+                          style: style.label.copyWith(
+                            color: style.foreground.resolve(states),
+                          ),
+                          strutStyle: UiType.strutOf(style.label),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+            return SizedBox(
+              width: bounded ? constraints.maxWidth : null,
+              child: visual,
+            );
+          },
         );
       },
     );

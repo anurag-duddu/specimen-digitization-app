@@ -1,0 +1,3292 @@
+{
+  "updated": "2026-10-22",
+  "referenceFileId": "fIfKyBB3UUanoV9lZoTBx9",
+  "source": "Figma MCP get_metadata; representative live browser reference inspection",
+  "status": "Local implementation; approval pending",
+  "rows": [
+    {
+      "pageId": "82:1862",
+      "family": "application-navigation",
+      "status": "implemented; integrated visual/device QA pending",
+      "variantAxes": {
+        "Open": [
+          "False",
+          "True"
+        ],
+        "Style": [
+          "Dual-tier",
+          "Simple",
+          "Slim"
+        ],
+        "Theme": [
+          "Default",
+          "Default dark",
+          "Default light",
+          "Gray dark",
+          "Primary dark",
+          "Primary light"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Current": [
+          "False",
+          "True"
+        ],
+        "State": [
+          "Default",
+          "Focused",
+          "Hover"
+        ],
+        "Type": [
+          "Image",
+          "Progress bar",
+          "Progress circle"
+        ],
+        "Opened": [
+          "False",
+          "True"
+        ],
+        "Size": [
+          "lg",
+          "md"
+        ],
+        "Hierarchy": [
+          "Primary",
+          "Secondary"
+        ]
+      },
+      "referenceSymbols": [
+        {
+          "id": "1161:17356",
+          "name": "Open=True, Style=Dual-tier, Theme=Default, Breakpoint=Mobile"
+        },
+        {
+          "id": "1165:2578",
+          "name": "Open=True, Style=Slim, Theme=Default, Breakpoint=Mobile"
+        },
+        {
+          "id": "1161:15681",
+          "name": "Open=True, Style=Simple, Theme=Default, Breakpoint=Mobile"
+        },
+        {
+          "id": "1161:14411",
+          "name": "Open=True, Style=Simple, Theme=Primary dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1161:20320",
+          "name": "Open=True, Style=Dual-tier, Theme=Primary dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1165:3807",
+          "name": "Open=True, Style=Slim, Theme=Primary dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1161:15256",
+          "name": "Open=True, Style=Simple, Theme=Gray dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1161:20295",
+          "name": "Open=True, Style=Dual-tier, Theme=Gray dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1165:3782",
+          "name": "Open=True, Style=Slim, Theme=Gray dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1161:17322",
+          "name": "Open=True, Style=Dual-tier, Theme=Default, Breakpoint=Desktop"
+        },
+        {
+          "id": "1163:99011",
+          "name": "Open=False, Style=Dual-tier, Theme=Default, Breakpoint=Desktop"
+        },
+        {
+          "id": "1165:3096",
+          "name": "Open=False, Style=Slim, Theme=Primary dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1165:2049",
+          "name": "Open=False, Style=Slim, Theme=Default, Breakpoint=Desktop"
+        },
+        {
+          "id": "1165:3041",
+          "name": "Open=False, Style=Slim, Theme=Gray dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1165:3005",
+          "name": "Open=True, Style=Slim, Theme=Primary dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1165:2013",
+          "name": "Open=True, Style=Slim, Theme=Default, Breakpoint=Desktop"
+        },
+        {
+          "id": "1165:3060",
+          "name": "Open=True, Style=Slim, Theme=Gray dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1161:16407",
+          "name": "Open=True, Style=Dual-tier, Theme=Primary dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1163:99813",
+          "name": "Open=False, Style=Dual-tier, Theme=Primary dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1161:17288",
+          "name": "Open=True, Style=Dual-tier, Theme=Gray dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1163:99779",
+          "name": "Open=False, Style=Dual-tier, Theme=Gray dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1161:8638",
+          "name": "Open=True, Style=Simple, Theme=Primary dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1161:8593",
+          "name": "Open=True, Style=Simple, Theme=Default, Breakpoint=Desktop"
+        },
+        {
+          "id": "1161:8548",
+          "name": "Open=True, Style=Simple, Theme=Gray dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1207:300",
+          "name": "Open=False, Style=Simple, Theme=Primary dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1207:550",
+          "name": "Open=False, Style=Dual-tier, Theme=Primary dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1207:650",
+          "name": "Open=False, Style=Slim, Theme=Primary dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1207:490",
+          "name": "Open=False, Style=Simple, Theme=Gray dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1207:600",
+          "name": "Open=False, Style=Dual-tier, Theme=Gray dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1207:700",
+          "name": "Open=False, Style=Slim, Theme=Gray dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1207:25",
+          "name": "Open=False, Style=Simple, Theme=Default, Breakpoint=Mobile"
+        },
+        {
+          "id": "1207:150",
+          "name": "Open=False, Style=Dual-tier, Theme=Default, Breakpoint=Mobile"
+        },
+        {
+          "id": "1207:250",
+          "name": "Open=False, Style=Slim, Theme=Default, Breakpoint=Mobile"
+        },
+        {
+          "id": "1208:102056",
+          "name": "Open=False, Style=Dual-tier, Theme=Primary dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1208:104217",
+          "name": "Open=False, Style=Simple, Theme=Primary dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1208:102829",
+          "name": "Open=False, Style=Dual-tier, Theme=Gray dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1208:104383",
+          "name": "Open=False, Style=Simple, Theme=Gray dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1208:101455",
+          "name": "Open=False, Style=Dual-tier, Theme=Default, Breakpoint=Desktop"
+        },
+        {
+          "id": "1208:104342",
+          "name": "Open=False, Style=Simple, Theme=Default, Breakpoint=Desktop"
+        },
+        {
+          "id": "1208:102029",
+          "name": "Open=True, Style=Dual-tier, Theme=Primary dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1208:102803",
+          "name": "Open=True, Style=Dual-tier, Theme=Gray dark, Breakpoint=Desktop"
+        },
+        {
+          "id": "1208:101427",
+          "name": "Open=True, Style=Dual-tier, Theme=Default, Breakpoint=Desktop"
+        },
+        {
+          "id": "1685:427953",
+          "name": "Open=False, Style=Simple, Theme=Default, Breakpoint=Mobile"
+        },
+        {
+          "id": "1685:428030",
+          "name": "Open=False, Style=Dual-tier, Theme=Default, Breakpoint=Mobile"
+        },
+        {
+          "id": "1208:102333",
+          "name": "Open=False, Style=Dual-tier, Theme=Primary dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1208:104214",
+          "name": "Open=False, Style=Simple, Theme=Primary dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1208:102330",
+          "name": "Open=False, Style=Dual-tier, Theme=Gray dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1208:104450",
+          "name": "Open=False, Style=Simple, Theme=Gray dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1208:101749",
+          "name": "Open=True, Style=Dual-tier, Theme=Default, Breakpoint=Mobile"
+        },
+        {
+          "id": "1208:104358",
+          "name": "Open=True, Style=Simple, Theme=Default, Breakpoint=Mobile"
+        },
+        {
+          "id": "1208:102384",
+          "name": "Open=True, Style=Dual-tier, Theme=Primary dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1208:104189",
+          "name": "Open=True, Style=Simple, Theme=Primary dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1208:102524",
+          "name": "Open=True, Style=Dual-tier, Theme=Gray dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1208:104399",
+          "name": "Open=True, Style=Simple, Theme=Gray dark, Breakpoint=Mobile"
+        },
+        {
+          "id": "1152:89456",
+          "name": "Current=False, Theme=Primary dark, State=Default"
+        },
+        {
+          "id": "1153:91134",
+          "name": "Current=True, Theme=Primary dark, State=Default"
+        },
+        {
+          "id": "1152:89579",
+          "name": "Current=False, Theme=Gray dark, State=Default"
+        },
+        {
+          "id": "1153:91180",
+          "name": "Current=True, Theme=Gray dark, State=Default"
+        },
+        {
+          "id": "1152:89521",
+          "name": "Current=False, Theme=Primary dark, State=Focused"
+        },
+        {
+          "id": "1153:91161",
+          "name": "Current=True, Theme=Primary dark, State=Focused"
+        },
+        {
+          "id": "1152:89572",
+          "name": "Current=False, Theme=Gray dark, State=Focused"
+        },
+        {
+          "id": "1153:91117",
+          "name": "Current=True, Theme=Gray dark, State=Focused"
+        },
+        {
+          "id": "1152:89351",
+          "name": "Current=False, Theme=Default, State=Default"
+        },
+        {
+          "id": "1153:90754",
+          "name": "Current=True, Theme=Default, State=Default"
+        },
+        {
+          "id": "1152:89344",
+          "name": "Current=False, Theme=Default, State=Focused"
+        },
+        {
+          "id": "1153:90708",
+          "name": "Current=True, Theme=Default, State=Focused"
+        },
+        {
+          "id": "1152:89449",
+          "name": "Current=False, Theme=Primary dark, State=Hover"
+        },
+        {
+          "id": "1153:91094",
+          "name": "Current=True, Theme=Primary dark, State=Hover"
+        },
+        {
+          "id": "1152:89565",
+          "name": "Current=False, Theme=Gray dark, State=Hover"
+        },
+        {
+          "id": "1153:91077",
+          "name": "Current=True, Theme=Gray dark, State=Hover"
+        },
+        {
+          "id": "1152:89337",
+          "name": "Current=False, Theme=Default, State=Hover"
+        },
+        {
+          "id": "1153:90789",
+          "name": "Current=True, Theme=Default, State=Hover"
+        },
+        {
+          "id": "1153:89415",
+          "name": "Open=False, Current=False, Theme=Default"
+        },
+        {
+          "id": "1153:91463",
+          "name": "Open=False, Current=True, Theme=Default"
+        },
+        {
+          "id": "1153:89243",
+          "name": "Open=False, Current=False, Theme=Primary dark"
+        },
+        {
+          "id": "1153:91903",
+          "name": "Open=False, Current=True, Theme=Primary dark"
+        },
+        {
+          "id": "1153:89413",
+          "name": "Open=False, Current=False, Theme=Gray dark"
+        },
+        {
+          "id": "1153:91899",
+          "name": "Open=False, Current=True, Theme=Gray dark"
+        },
+        {
+          "id": "1153:89406",
+          "name": "Open=True, Current=False, Theme=Default"
+        },
+        {
+          "id": "1153:91434",
+          "name": "Open=True, Current=True, Theme=Default"
+        },
+        {
+          "id": "1153:89236",
+          "name": "Open=True, Current=False, Theme=Primary dark"
+        },
+        {
+          "id": "1153:91888",
+          "name": "Open=True, Current=True, Theme=Primary dark"
+        },
+        {
+          "id": "1153:89399",
+          "name": "Open=True, Current=False, Theme=Gray dark"
+        },
+        {
+          "id": "1153:91870",
+          "name": "Open=True, Current=True, Theme=Gray dark"
+        },
+        {
+          "id": "1157:99074",
+          "name": "Type=Progress bar, Theme=Default"
+        },
+        {
+          "id": "1158:95085",
+          "name": "Type=Progress bar, Theme=Gray dark"
+        },
+        {
+          "id": "1158:95066",
+          "name": "Type=Progress bar, Theme=Primary dark"
+        },
+        {
+          "id": "1157:99053",
+          "name": "Type=Image, Theme=Default"
+        },
+        {
+          "id": "1158:95026",
+          "name": "Type=Image, Theme=Gray dark"
+        },
+        {
+          "id": "1158:94987",
+          "name": "Type=Image, Theme=Primary dark"
+        },
+        {
+          "id": "1157:99042",
+          "name": "Type=Progress circle, Theme=Default"
+        },
+        {
+          "id": "1158:94968",
+          "name": "Type=Progress circle, Theme=Gray dark"
+        },
+        {
+          "id": "1158:94949",
+          "name": "Type=Progress circle, Theme=Primary dark"
+        },
+        {
+          "id": "1207:399",
+          "name": "Opened=False, Theme=Primary dark, State=Default"
+        },
+        {
+          "id": "1207:353",
+          "name": "Opened=False, Theme=Default, State=Default"
+        },
+        {
+          "id": "1207:417",
+          "name": "Opened=False, Theme=Gray dark, State=Default"
+        },
+        {
+          "id": "1207:419",
+          "name": "Opened=True, Theme=Primary dark, State=Default"
+        },
+        {
+          "id": "1207:351",
+          "name": "Opened=True, Theme=Default, State=Default"
+        },
+        {
+          "id": "1207:413",
+          "name": "Opened=True, Theme=Gray dark, State=Default"
+        },
+        {
+          "id": "1207:411",
+          "name": "Opened=False, Theme=Primary dark, State=Focused"
+        },
+        {
+          "id": "1207:349",
+          "name": "Opened=False, Theme=Default, State=Focused"
+        },
+        {
+          "id": "1207:409",
+          "name": "Opened=False, Theme=Gray dark, State=Focused"
+        },
+        {
+          "id": "1207:407",
+          "name": "Opened=True, Theme=Primary dark, State=Focused"
+        },
+        {
+          "id": "1207:347",
+          "name": "Opened=True, Theme=Default, State=Focused"
+        },
+        {
+          "id": "1207:405",
+          "name": "Opened=True, Theme=Gray dark, State=Focused"
+        },
+        {
+          "id": "1207:403",
+          "name": "Opened=False, Theme=Primary dark, State=Hover"
+        },
+        {
+          "id": "1207:345",
+          "name": "Opened=False, Theme=Default, State=Hover"
+        },
+        {
+          "id": "1207:401",
+          "name": "Opened=False, Theme=Gray dark, State=Hover"
+        },
+        {
+          "id": "1207:415",
+          "name": "Opened=True, Theme=Primary dark, State=Hover"
+        },
+        {
+          "id": "1207:343",
+          "name": "Opened=True, Theme=Default, State=Hover"
+        },
+        {
+          "id": "1207:397",
+          "name": "Opened=True, Theme=Gray dark, State=Hover"
+        },
+        {
+          "id": "1165:714",
+          "name": "Current=False, Size=lg, Theme=Primary dark, State=Default"
+        },
+        {
+          "id": "1200:261",
+          "name": "Current=False, Size=md, Theme=Primary dark, State=Default"
+        },
+        {
+          "id": "1165:715",
+          "name": "Current=True, Size=lg, Theme=Primary dark, State=Default"
+        },
+        {
+          "id": "1200:255",
+          "name": "Current=True, Size=md, Theme=Primary dark, State=Default"
+        },
+        {
+          "id": "1165:716",
+          "name": "Current=False, Size=lg, Theme=Gray dark, State=Default"
+        },
+        {
+          "id": "1200:265",
+          "name": "Current=False, Size=md, Theme=Gray dark, State=Default"
+        },
+        {
+          "id": "1165:718",
+          "name": "Current=True, Size=lg, Theme=Gray dark, State=Default"
+        },
+        {
+          "id": "1200:249",
+          "name": "Current=True, Size=md, Theme=Gray dark, State=Default"
+        },
+        {
+          "id": "1165:719",
+          "name": "Current=False, Size=lg, Theme=Primary dark, State=Focused"
+        },
+        {
+          "id": "1200:269",
+          "name": "Current=False, Size=md, Theme=Primary dark, State=Focused"
+        },
+        {
+          "id": "1165:720",
+          "name": "Current=True, Size=lg, Theme=Primary dark, State=Focused"
+        },
+        {
+          "id": "1200:225",
+          "name": "Current=True, Size=md, Theme=Primary dark, State=Focused"
+        },
+        {
+          "id": "1165:721",
+          "name": "Current=False, Size=lg, Theme=Gray dark, State=Focused"
+        },
+        {
+          "id": "1200:257",
+          "name": "Current=False, Size=md, Theme=Gray dark, State=Focused"
+        },
+        {
+          "id": "1165:722",
+          "name": "Current=True, Size=lg, Theme=Gray dark, State=Focused"
+        },
+        {
+          "id": "1200:253",
+          "name": "Current=True, Size=md, Theme=Gray dark, State=Focused"
+        },
+        {
+          "id": "1165:723",
+          "name": "Current=False, Size=lg, Theme=Default, State=Default"
+        },
+        {
+          "id": "1200:247",
+          "name": "Current=False, Size=md, Theme=Default, State=Default"
+        },
+        {
+          "id": "1165:724",
+          "name": "Current=True, Size=lg, Theme=Default, State=Default"
+        },
+        {
+          "id": "1200:259",
+          "name": "Current=True, Size=md, Theme=Default, State=Default"
+        },
+        {
+          "id": "1165:727",
+          "name": "Current=False, Size=lg, Theme=Default, State=Focused"
+        },
+        {
+          "id": "1200:243",
+          "name": "Current=False, Size=md, Theme=Default, State=Focused"
+        },
+        {
+          "id": "1165:717",
+          "name": "Current=True, Size=lg, Theme=Default, State=Focused"
+        },
+        {
+          "id": "1200:241",
+          "name": "Current=True, Size=md, Theme=Default, State=Focused"
+        },
+        {
+          "id": "1165:730",
+          "name": "Current=False, Size=lg, Theme=Primary dark, State=Hover"
+        },
+        {
+          "id": "1200:235",
+          "name": "Current=False, Size=md, Theme=Primary dark, State=Hover"
+        },
+        {
+          "id": "1165:731",
+          "name": "Current=True, Size=lg, Theme=Primary dark, State=Hover"
+        },
+        {
+          "id": "1200:233",
+          "name": "Current=True, Size=md, Theme=Primary dark, State=Hover"
+        },
+        {
+          "id": "1165:732",
+          "name": "Current=False, Size=lg, Theme=Gray dark, State=Hover"
+        },
+        {
+          "id": "1200:231",
+          "name": "Current=False, Size=md, Theme=Gray dark, State=Hover"
+        },
+        {
+          "id": "1165:733",
+          "name": "Current=True, Size=lg, Theme=Gray dark, State=Hover"
+        },
+        {
+          "id": "1200:223",
+          "name": "Current=True, Size=md, Theme=Gray dark, State=Hover"
+        },
+        {
+          "id": "1165:734",
+          "name": "Current=False, Size=lg, Theme=Default, State=Hover"
+        },
+        {
+          "id": "1200:227",
+          "name": "Current=False, Size=md, Theme=Default, State=Hover"
+        },
+        {
+          "id": "1165:735",
+          "name": "Current=True, Size=lg, Theme=Default, State=Hover"
+        },
+        {
+          "id": "1200:229",
+          "name": "Current=True, Size=md, Theme=Default, State=Hover"
+        },
+        {
+          "id": "2763:418539",
+          "name": "Hierarchy=Primary, Theme=Primary light, State=Default"
+        },
+        {
+          "id": "2763:418602",
+          "name": "Hierarchy=Primary, Theme=Default light, State=Default"
+        },
+        {
+          "id": "2763:418578",
+          "name": "Hierarchy=Secondary, Theme=Primary light, State=Default"
+        },
+        {
+          "id": "2763:418604",
+          "name": "Hierarchy=Secondary, Theme=Default light, State=Default"
+        },
+        {
+          "id": "2763:418550",
+          "name": "Hierarchy=Primary, Theme=Primary dark, State=Default"
+        },
+        {
+          "id": "2763:418606",
+          "name": "Hierarchy=Primary, Theme=Default dark, State=Default"
+        },
+        {
+          "id": "2763:418580",
+          "name": "Hierarchy=Secondary, Theme=Primary dark, State=Default"
+        },
+        {
+          "id": "2763:418608",
+          "name": "Hierarchy=Secondary, Theme=Default dark, State=Default"
+        },
+        {
+          "id": "2763:418544",
+          "name": "Hierarchy=Primary, Theme=Primary light, State=Hover"
+        },
+        {
+          "id": "2763:418610",
+          "name": "Hierarchy=Primary, Theme=Default light, State=Hover"
+        },
+        {
+          "id": "2763:418582",
+          "name": "Hierarchy=Secondary, Theme=Primary light, State=Hover"
+        },
+        {
+          "id": "2763:418612",
+          "name": "Hierarchy=Secondary, Theme=Default light, State=Hover"
+        },
+        {
+          "id": "2763:418552",
+          "name": "Hierarchy=Primary, Theme=Primary dark, State=Hover"
+        },
+        {
+          "id": "2763:418614",
+          "name": "Hierarchy=Primary, Theme=Default dark, State=Hover"
+        },
+        {
+          "id": "2763:418584",
+          "name": "Hierarchy=Secondary, Theme=Primary dark, State=Hover"
+        },
+        {
+          "id": "2763:418616",
+          "name": "Hierarchy=Secondary, Theme=Default dark, State=Hover"
+        }
+      ],
+      "catalogPaths": [
+        "application-patterns/uinavigationmenu",
+        "navigation/uirail",
+        "navigation/uisidebar",
+        "navigation/uitopbar"
+      ],
+      "implementations": [
+        "UiNavigationMenu",
+        "UiSidebar",
+        "UiRail",
+        "UiTopBar"
+      ],
+      "mapping": "Simple and grouped navigation use UiNavigationMenu; slim uses UiRail; dual tier uses leadingRail; mobile uses UiDrawer. Header, search, secondary groups, featured content and account/footer are slots. Selected, expanded, disabled and badges are controlled. Search story filters groups and children.",
+      "remainingGaps": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "172:4293",
+      "family": "modals",
+      "status": "implemented; integrated visual/device QA pending",
+      "variantAxes": {
+        "Type": [
+          "2FA code",
+          "Access request",
+          "Center aligned",
+          "Centered photo",
+          "Centered photo carousel",
+          "Centered video carousel",
+          "Checkboxes",
+          "Date picker",
+          "Destructive horizontal",
+          "Destructive stacked left aligned",
+          "Dropdown",
+          "Email invite",
+          "File upload",
+          "Form 01",
+          "Form 02",
+          "Horizontal",
+          "Horizontal fill container",
+          "Horizontal left aligned",
+          "Horizontal right aligned (checkbox)",
+          "Image crop",
+          "Input field",
+          "Labels",
+          "Left aligned",
+          "Link field",
+          "Log in",
+          "Password prompt",
+          "Payment details",
+          "Payment details with image",
+          "Payment method",
+          "Plan 01",
+          "Plan 02",
+          "Profile settings",
+          "Sign up 01",
+          "Sign up 02",
+          "Stacked left aligned",
+          "Stacked with team",
+          "Stacked with team and invites",
+          "Stacked with team and link",
+          "Toggles",
+          "User invite",
+          "User selection",
+          "Verification code",
+          "Vertical fill container",
+          "Warning horizontal",
+          "Warning stacked left aligned"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Destructive": [
+          "False",
+          "True"
+        ]
+      },
+      "referenceSymbols": [
+        {
+          "id": "4057:415206",
+          "name": "Type=Horizontal, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415215",
+          "name": "Type=Warning horizontal, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415224",
+          "name": "Type=Destructive horizontal, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415260",
+          "name": "Type=Stacked with team, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415272",
+          "name": "Type=Stacked with team and link, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415287",
+          "name": "Type=Stacked with team and invites, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415320",
+          "name": "Type=Centered photo, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415328",
+          "name": "Type=Centered photo carousel, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415350",
+          "name": "Type=Centered video carousel, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415359",
+          "name": "Type=Stacked left aligned, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415368",
+          "name": "Type=Warning stacked left aligned, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415377",
+          "name": "Type=Destructive stacked left aligned, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415386",
+          "name": "Type=Checkboxes, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415402",
+          "name": "Type=Access request, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415412",
+          "name": "Type=Plan 01, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415422",
+          "name": "Type=File upload, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415431",
+          "name": "Type=Payment method, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415441",
+          "name": "Type=Date picker, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415443",
+          "name": "Type=Payment details, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415459",
+          "name": "Type=Payment details with image, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415475",
+          "name": "Type=Toggles, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415491",
+          "name": "Type=Link field, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415503",
+          "name": "Type=Email invite, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415518",
+          "name": "Type=User invite, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415538",
+          "name": "Type=Input field, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415548",
+          "name": "Type=Labels, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415562",
+          "name": "Type=Dropdown, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:415572",
+          "name": "Type=2FA code, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:417000",
+          "name": "Type=Verification code, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:417011",
+          "name": "Type=Password prompt, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:417050",
+          "name": "Type=Stacked with team, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417062",
+          "name": "Type=Stacked with team and link, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417077",
+          "name": "Type=Stacked with team and invites, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417110",
+          "name": "Type=Centered photo, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417118",
+          "name": "Type=Centered photo carousel, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417140",
+          "name": "Type=Centered video carousel, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417149",
+          "name": "Type=Stacked left aligned, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417158",
+          "name": "Type=Warning stacked left aligned, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417167",
+          "name": "Type=Destructive stacked left aligned, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417176",
+          "name": "Type=Checkboxes, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417192",
+          "name": "Type=Access request, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417202",
+          "name": "Type=Plan 01, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417212",
+          "name": "Type=File upload, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417221",
+          "name": "Type=Payment method, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417231",
+          "name": "Type=Date picker, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417233",
+          "name": "Type=Payment details, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417248",
+          "name": "Type=Payment details with image, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417262",
+          "name": "Type=Toggles, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417278",
+          "name": "Type=Link field, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417290",
+          "name": "Type=Email invite, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417305",
+          "name": "Type=User invite, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417325",
+          "name": "Type=Input field, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417335",
+          "name": "Type=Labels, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417349",
+          "name": "Type=Dropdown, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:417359",
+          "name": "Type=2FA code, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:418796",
+          "name": "Type=Verification code, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:418807",
+          "name": "Type=Password prompt, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:418819",
+          "name": "Type=Horizontal, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:418828",
+          "name": "Type=Warning horizontal, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:418837",
+          "name": "Type=Destructive horizontal, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:432890",
+          "name": "Type=Log in, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:432930",
+          "name": "Type=Sign up 02, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:432910",
+          "name": "Type=Sign up 01, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:432900",
+          "name": "Type=Log in, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:432938",
+          "name": "Type=Sign up 02, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:432920",
+          "name": "Type=Sign up 01, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:434011",
+          "name": "Type=Profile settings, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:434029",
+          "name": "Type=Profile settings, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:434954",
+          "name": "Type=Plan 02, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:434965",
+          "name": "Type=Plan 02, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:435426",
+          "name": "Type=User selection, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:435431",
+          "name": "Type=User selection, Breakpoint=Mobile"
+        },
+        {
+          "id": "4059:417281",
+          "name": "Type=Image crop, Breakpoint=Mobile"
+        },
+        {
+          "id": "4059:417266",
+          "name": "Type=Image crop, Breakpoint=Desktop"
+        },
+        {
+          "id": "4059:417927",
+          "name": "Type=Form 01, Breakpoint=Desktop"
+        },
+        {
+          "id": "4059:417938",
+          "name": "Type=Form 01, Breakpoint=Mobile"
+        },
+        {
+          "id": "4059:418956",
+          "name": "Type=Form 02, Breakpoint=Desktop"
+        },
+        {
+          "id": "4059:418971",
+          "name": "Type=Form 02, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:414353",
+          "name": "Type=Vertical fill container, Destructive=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:414637",
+          "name": "Type=Vertical fill container, Destructive=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:414356",
+          "name": "Type=Vertical fill container, Destructive=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:414642",
+          "name": "Type=Vertical fill container, Destructive=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:414363",
+          "name": "Type=Horizontal fill container, Destructive=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:414647",
+          "name": "Type=Horizontal fill container, Destructive=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:414366",
+          "name": "Type=Horizontal fill container, Destructive=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:414652",
+          "name": "Type=Horizontal fill container, Destructive=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:414373",
+          "name": "Type=Horizontal right aligned (checkbox), Destructive=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:414657",
+          "name": "Type=Horizontal right aligned (checkbox), Destructive=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "4057:414379",
+          "name": "Type=Horizontal right aligned (checkbox), Destructive=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "4057:414665",
+          "name": "Type=Horizontal right aligned (checkbox), Destructive=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "4055:413617",
+          "name": "Type=Horizontal left aligned, Breakpoint=Desktop"
+        },
+        {
+          "id": "4055:413661",
+          "name": "Type=Horizontal left aligned, Breakpoint=Mobile"
+        },
+        {
+          "id": "4055:413618",
+          "name": "Type=Center aligned, Breakpoint=Desktop"
+        },
+        {
+          "id": "4055:413668",
+          "name": "Type=Center aligned, Breakpoint=Mobile"
+        },
+        {
+          "id": "4055:413619",
+          "name": "Type=Left aligned, Breakpoint=Desktop"
+        },
+        {
+          "id": "4055:413654",
+          "name": "Type=Left aligned, Breakpoint=Mobile"
+        }
+      ],
+      "catalogPaths": [
+        "application-patterns/uimodalpanel",
+        "application-patterns/modal-recipes",
+        "application-patterns/uicropeditor",
+        "feedback/uidialog"
+      ],
+      "implementations": [
+        "UiModalPanel",
+        "UiDialog",
+        "UiCropEditor"
+      ],
+      "mapping": "45 source Type values have individually named recipes composed from actual controls. Stacked, centered and horizontal header layouts; image, crop, forms, selection, carousel, upload, date, invitations, profile, payment and action arrangements are explicit. Vertical-fill, horizontal-fill, left-aligned and checkbox footer variants preserve anatomy. Host owns validation, permissions and persistence.",
+      "remainingGaps": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "3307:403757",
+      "family": "command-menus",
+      "status": "implemented; integrated visual/device QA pending",
+      "variantAxes": {
+        "Type": [
+          "Actions",
+          "Avatar leading",
+          "Command only",
+          "Default",
+          "Dot leading",
+          "Empty state",
+          "Icon",
+          "Icon leading",
+          "Integrations menu",
+          "Text",
+          "Users",
+          "Users menu"
+        ],
+        "State": [
+          "Default",
+          "Filled",
+          "Focus",
+          "Hover",
+          "Placeholder"
+        ],
+        "Text": [
+          "Default",
+          "Stacked"
+        ],
+        "Size": [
+          "md",
+          "sm"
+        ],
+        "Dual": [
+          "False",
+          "True"
+        ],
+        "Scrollable": [
+          "False",
+          "True"
+        ]
+      },
+      "referenceSymbols": [
+        {
+          "id": "3307:404926",
+          "name": "Type=Default, State=Default, Text=Default, Size=sm"
+        },
+        {
+          "id": "3307:411138",
+          "name": "Type=Default, State=Default, Text=Default, Size=md"
+        },
+        {
+          "id": "3307:406086",
+          "name": "Type=Default, State=Default, Text=Stacked, Size=sm"
+        },
+        {
+          "id": "3307:411144",
+          "name": "Type=Default, State=Default, Text=Stacked, Size=md"
+        },
+        {
+          "id": "3307:406430",
+          "name": "Type=Default, State=Hover, Text=Stacked, Size=sm"
+        },
+        {
+          "id": "3307:411150",
+          "name": "Type=Default, State=Hover, Text=Stacked, Size=md"
+        },
+        {
+          "id": "3307:406506",
+          "name": "Type=Default, State=Focus, Text=Stacked, Size=sm"
+        },
+        {
+          "id": "3307:411156",
+          "name": "Type=Default, State=Focus, Text=Stacked, Size=md"
+        },
+        {
+          "id": "3307:405054",
+          "name": "Type=Icon leading, State=Default, Text=Default, Size=sm"
+        },
+        {
+          "id": "3307:411162",
+          "name": "Type=Icon leading, State=Default, Text=Default, Size=md"
+        },
+        {
+          "id": "3307:406093",
+          "name": "Type=Icon leading, State=Default, Text=Stacked, Size=sm"
+        },
+        {
+          "id": "3307:411169",
+          "name": "Type=Icon leading, State=Default, Text=Stacked, Size=md"
+        },
+        {
+          "id": "3307:406436",
+          "name": "Type=Icon leading, State=Hover, Text=Stacked, Size=sm"
+        },
+        {
+          "id": "3307:411176",
+          "name": "Type=Icon leading, State=Hover, Text=Stacked, Size=md"
+        },
+        {
+          "id": "3307:406512",
+          "name": "Type=Icon leading, State=Focus, Text=Stacked, Size=sm"
+        },
+        {
+          "id": "3307:411183",
+          "name": "Type=Icon leading, State=Focus, Text=Stacked, Size=md"
+        },
+        {
+          "id": "3307:405120",
+          "name": "Type=Avatar leading, State=Default, Text=Default, Size=sm"
+        },
+        {
+          "id": "3307:411190",
+          "name": "Type=Avatar leading, State=Default, Text=Default, Size=md"
+        },
+        {
+          "id": "3307:406101",
+          "name": "Type=Avatar leading, State=Default, Text=Stacked, Size=sm"
+        },
+        {
+          "id": "3307:411197",
+          "name": "Type=Avatar leading, State=Default, Text=Stacked, Size=md"
+        },
+        {
+          "id": "3307:406443",
+          "name": "Type=Avatar leading, State=Hover, Text=Stacked, Size=sm"
+        },
+        {
+          "id": "3307:411204",
+          "name": "Type=Avatar leading, State=Hover, Text=Stacked, Size=md"
+        },
+        {
+          "id": "3307:406519",
+          "name": "Type=Avatar leading, State=Focus, Text=Stacked, Size=sm"
+        },
+        {
+          "id": "3307:411211",
+          "name": "Type=Avatar leading, State=Focus, Text=Stacked, Size=md"
+        },
+        {
+          "id": "3307:405192",
+          "name": "Type=Dot leading, State=Default, Text=Default, Size=sm"
+        },
+        {
+          "id": "3307:411218",
+          "name": "Type=Dot leading, State=Default, Text=Default, Size=md"
+        },
+        {
+          "id": "3307:406109",
+          "name": "Type=Dot leading, State=Default, Text=Stacked, Size=sm"
+        },
+        {
+          "id": "3307:411225",
+          "name": "Type=Dot leading, State=Default, Text=Stacked, Size=md"
+        },
+        {
+          "id": "3307:406450",
+          "name": "Type=Dot leading, State=Hover, Text=Stacked, Size=sm"
+        },
+        {
+          "id": "3307:411232",
+          "name": "Type=Dot leading, State=Hover, Text=Stacked, Size=md"
+        },
+        {
+          "id": "3307:406526",
+          "name": "Type=Dot leading, State=Focus, Text=Stacked, Size=sm"
+        },
+        {
+          "id": "3307:411239",
+          "name": "Type=Dot leading, State=Focus, Text=Stacked, Size=md"
+        },
+        {
+          "id": "3307:404955",
+          "name": "Type=Default, State=Hover, Text=Default, Size=sm"
+        },
+        {
+          "id": "3307:411246",
+          "name": "Type=Default, State=Hover, Text=Default, Size=md"
+        },
+        {
+          "id": "3307:405062",
+          "name": "Type=Icon leading, State=Hover, Text=Default, Size=sm"
+        },
+        {
+          "id": "3307:411252",
+          "name": "Type=Icon leading, State=Hover, Text=Default, Size=md"
+        },
+        {
+          "id": "3307:405128",
+          "name": "Type=Avatar leading, State=Hover, Text=Default, Size=sm"
+        },
+        {
+          "id": "3307:411259",
+          "name": "Type=Avatar leading, State=Hover, Text=Default, Size=md"
+        },
+        {
+          "id": "3307:405200",
+          "name": "Type=Dot leading, State=Hover, Text=Default, Size=sm"
+        },
+        {
+          "id": "3307:411266",
+          "name": "Type=Dot leading, State=Hover, Text=Default, Size=md"
+        },
+        {
+          "id": "3307:404971",
+          "name": "Type=Default, State=Focus, Text=Default, Size=sm"
+        },
+        {
+          "id": "3307:411273",
+          "name": "Type=Default, State=Focus, Text=Default, Size=md"
+        },
+        {
+          "id": "3307:405070",
+          "name": "Type=Icon leading, State=Focus, Text=Default, Size=sm"
+        },
+        {
+          "id": "3307:411279",
+          "name": "Type=Icon leading, State=Focus, Text=Default, Size=md"
+        },
+        {
+          "id": "3307:405136",
+          "name": "Type=Avatar leading, State=Focus, Text=Default, Size=sm"
+        },
+        {
+          "id": "3307:411286",
+          "name": "Type=Avatar leading, State=Focus, Text=Default, Size=md"
+        },
+        {
+          "id": "3307:405208",
+          "name": "Type=Dot leading, State=Focus, Text=Default, Size=sm"
+        },
+        {
+          "id": "3307:411293",
+          "name": "Type=Dot leading, State=Focus, Text=Default, Size=md"
+        },
+        {
+          "id": "3307:405244",
+          "name": "Dual=False"
+        },
+        {
+          "id": "3307:405248",
+          "name": "Dual=True"
+        },
+        {
+          "id": "3307:404884",
+          "name": "State=Placeholder"
+        },
+        {
+          "id": "3307:405354",
+          "name": "State=Filled"
+        },
+        {
+          "id": "3307:405367",
+          "name": "State=Focus"
+        },
+        {
+          "id": "3307:405528",
+          "name": "Scrollable=False, Size=sm"
+        },
+        {
+          "id": "3307:411472",
+          "name": "Scrollable=False, Size=md"
+        },
+        {
+          "id": "3307:405549",
+          "name": "Scrollable=True, Size=sm"
+        },
+        {
+          "id": "3307:411482",
+          "name": "Scrollable=True, Size=md"
+        },
+        {
+          "id": "3307:407212",
+          "name": "Type=Command only, Text=Default"
+        },
+        {
+          "id": "3307:407511",
+          "name": "Type=Users, Text=Default"
+        },
+        {
+          "id": "3307:410235",
+          "name": "Type=Users, Text=Stacked"
+        },
+        {
+          "id": "3307:409632",
+          "name": "Type=Empty state, Text=Default"
+        },
+        {
+          "id": "3307:408520",
+          "name": "Type=Users menu, Text=Default"
+        },
+        {
+          "id": "3307:410240",
+          "name": "Type=Users menu, Text=Stacked"
+        },
+        {
+          "id": "3307:409015",
+          "name": "Type=Integrations menu, Text=Default"
+        },
+        {
+          "id": "3307:410261",
+          "name": "Type=Integrations menu, Text=Stacked"
+        },
+        {
+          "id": "3307:407697",
+          "name": "Type=Actions, Text=Default"
+        },
+        {
+          "id": "3307:410277",
+          "name": "Type=Actions, Text=Stacked"
+        },
+        {
+          "id": "3307:404987",
+          "name": "Size=sm"
+        },
+        {
+          "id": "3307:411612",
+          "name": "Size=md"
+        },
+        {
+          "id": "4898:411379",
+          "name": "_Command bar footer"
+        },
+        {
+          "id": "4898:411305",
+          "name": "Type=Icon"
+        },
+        {
+          "id": "4898:411318",
+          "name": "Type=Text"
+        }
+      ],
+      "catalogPaths": [
+        "forms/uicommandmenu",
+        "application-patterns/uicommandmenu-rich-content"
+      ],
+      "implementations": [
+        "UiCommandMenu",
+        "UiCommand"
+      ],
+      "mapping": "Commands support labels, descriptions, grouped sections, keywords, leading glyphs or arbitrary avatar/integration content, shortcut hints, disabled reasons, custom header/filter/footer slots and empty state. Arrow traversal skips disabled rows; Enter selects and Escape closes. Shortcut hints do not register global shortcuts.",
+      "remainingGaps": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "231:922",
+      "family": "slideout-menus",
+      "status": "implemented; integrated visual/device QA pending",
+      "variantAxes": {
+        "Tabs": [
+          "False",
+          "True"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Type": [
+          "File upload",
+          "Filters",
+          "Labels",
+          "Message chat",
+          "Messages",
+          "Notification settings button groups",
+          "Notification settings checkboxes",
+          "Notifications",
+          "Order summary",
+          "Payment details",
+          "Payment method",
+          "Placeholder",
+          "Plan",
+          "Project details",
+          "Team members",
+          "User profile"
+        ]
+      },
+      "referenceSymbols": [
+        {
+          "id": "1239:120665",
+          "name": "Tabs=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:717",
+          "name": "Tabs=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:2100",
+          "name": "Tabs=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:137263",
+          "name": "Tabs=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:137580",
+          "name": "Type=Filters, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:137581",
+          "name": "Type=Placeholder, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:137697",
+          "name": "Type=Placeholder, Breakpoint=Desktop"
+        },
+        {
+          "id": "1240:137858",
+          "name": "Type=Filters, Breakpoint=Desktop"
+        },
+        {
+          "id": "1240:164570",
+          "name": "Type=Notification settings checkboxes, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:11103",
+          "name": "Type=Notification settings checkboxes, Breakpoint=Mobile"
+        },
+        {
+          "id": "1241:124989",
+          "name": "Type=Notification settings button groups, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:10543",
+          "name": "Type=Notification settings button groups, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:175083",
+          "name": "Type=Project details, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:11896",
+          "name": "Type=Order summary, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:12201",
+          "name": "Type=Order summary, Breakpoint=Mobile"
+        },
+        {
+          "id": "1251:10038",
+          "name": "Type=Project details, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:169904",
+          "name": "Type=Payment details, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:7992",
+          "name": "Type=Payment details, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:170509",
+          "name": "Type=Payment method, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:7971",
+          "name": "Type=Payment method, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:170914",
+          "name": "Type=Plan, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:8708",
+          "name": "Type=Plan, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:171598",
+          "name": "Type=File upload, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:9500",
+          "name": "Type=File upload, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:168901",
+          "name": "Type=Messages, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:6984",
+          "name": "Type=Messages, Breakpoint=Mobile"
+        },
+        {
+          "id": "1251:2998",
+          "name": "Type=Notifications, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:11643",
+          "name": "Type=Notifications, Breakpoint=Mobile"
+        },
+        {
+          "id": "1247:167",
+          "name": "Type=Message chat, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:7445",
+          "name": "Type=Message chat, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:164129",
+          "name": "Type=Labels, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:9986",
+          "name": "Type=Labels, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:138404",
+          "name": "Type=Team members, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:8652",
+          "name": "Type=Team members, Breakpoint=Mobile"
+        },
+        {
+          "id": "1240:162455",
+          "name": "Type=User profile, Breakpoint=Desktop"
+        },
+        {
+          "id": "1251:6584",
+          "name": "Type=User profile, Breakpoint=Mobile"
+        }
+      ],
+      "catalogPaths": [
+        "application-patterns/uidrawer",
+        "application-patterns/slideout-recipes"
+      ],
+      "implementations": [
+        "UiDrawer"
+      ],
+      "mapping": "All 16 source Type values have recipes. Filter groups/search/saved preset, labels, chat, upload, notification preferences, payment, order, plan and profile use controlled widgets. Start/end placement follows reading direction; short-height headers and footers have bounded scroll regions so keyboard insets cannot hide content.",
+      "remainingGaps": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "43:0",
+      "family": "tabs",
+      "status": "implemented; integrated visual/device QA pending",
+      "variantAxes": {
+        "Current": [
+          "False",
+          "True"
+        ],
+        "Size": [
+          "md",
+          "sm"
+        ],
+        "Type": [
+          "Button gray",
+          "Button gray border",
+          "Button primary",
+          "Button white",
+          "Button white border",
+          "Line",
+          "Line (vertical tabs)",
+          "Underline",
+          "Underline filled"
+        ],
+        "Full-width": [
+          "False",
+          "True"
+        ],
+        "Badge": [
+          "False",
+          "True"
+        ],
+        "State": [
+          "Default",
+          "Focus",
+          "Hover"
+        ],
+        "Full width": [
+          "False",
+          "True"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "referenceSymbols": [
+        {
+          "id": "43:2572",
+          "name": "Current=True, Size=sm, Type=Button gray, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "2640:401520",
+          "name": "Current=True, Size=sm, Type=Button white, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:9185",
+          "name": "Current=True, Size=md, Type=Button gray, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "2640:401523",
+          "name": "Current=True, Size=md, Type=Button white, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1118:69640",
+          "name": "Current=True, Size=sm, Type=Button gray, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "2640:401256",
+          "name": "Current=True, Size=sm, Type=Button white, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:9179",
+          "name": "Current=True, Size=md, Type=Button gray, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "2640:401258",
+          "name": "Current=True, Size=md, Type=Button white, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1117:186",
+          "name": "Current=True, Size=sm, Type=Button primary, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:9157",
+          "name": "Current=True, Size=md, Type=Button primary, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1118:69637",
+          "name": "Current=True, Size=sm, Type=Button primary, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:9151",
+          "name": "Current=True, Size=md, Type=Button primary, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1117:82",
+          "name": "Current=True, Size=sm, Type=Button gray, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "2640:401526",
+          "name": "Current=True, Size=sm, Type=Button white, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:9144",
+          "name": "Current=True, Size=md, Type=Button gray, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "2640:401529",
+          "name": "Current=True, Size=md, Type=Button white, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1118:69634",
+          "name": "Current=True, Size=sm, Type=Button gray, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "2640:401260",
+          "name": "Current=True, Size=sm, Type=Button white, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:9137",
+          "name": "Current=True, Size=md, Type=Button gray, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "2640:401262",
+          "name": "Current=True, Size=md, Type=Button white, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1117:182",
+          "name": "Current=True, Size=sm, Type=Button primary, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:9129",
+          "name": "Current=True, Size=md, Type=Button primary, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1118:69646",
+          "name": "Current=True, Size=sm, Type=Button primary, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:9122",
+          "name": "Current=True, Size=md, Type=Button primary, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "43:2570",
+          "name": "Current=True, Size=sm, Type=Button gray, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "2640:401532",
+          "name": "Current=True, Size=sm, Type=Button white, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:9113",
+          "name": "Current=True, Size=md, Type=Button gray, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "2640:401535",
+          "name": "Current=True, Size=md, Type=Button white, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1118:69643",
+          "name": "Current=True, Size=sm, Type=Button gray, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "2640:401264",
+          "name": "Current=True, Size=sm, Type=Button white, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:9107",
+          "name": "Current=True, Size=md, Type=Button gray, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "2640:401266",
+          "name": "Current=True, Size=md, Type=Button white, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1117:178",
+          "name": "Current=True, Size=sm, Type=Button primary, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:9084",
+          "name": "Current=True, Size=md, Type=Button primary, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1118:69628",
+          "name": "Current=True, Size=sm, Type=Button primary, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:9077",
+          "name": "Current=True, Size=md, Type=Button primary, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1117:80",
+          "name": "Current=True, Size=sm, Type=Button gray, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "2640:401538",
+          "name": "Current=True, Size=sm, Type=Button white, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:9068",
+          "name": "Current=True, Size=md, Type=Button gray, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "2640:401541",
+          "name": "Current=True, Size=md, Type=Button white, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1118:69614",
+          "name": "Current=True, Size=sm, Type=Button gray, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "2640:401268",
+          "name": "Current=True, Size=sm, Type=Button white, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:9057",
+          "name": "Current=True, Size=md, Type=Button gray, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "2640:401270",
+          "name": "Current=True, Size=md, Type=Button white, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1117:174",
+          "name": "Current=True, Size=sm, Type=Button primary, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:9021",
+          "name": "Current=True, Size=md, Type=Button primary, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1118:69611",
+          "name": "Current=True, Size=sm, Type=Button primary, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:9009",
+          "name": "Current=True, Size=md, Type=Button primary, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "43:2568",
+          "name": "Current=True, Size=sm, Type=Button gray, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "2640:401544",
+          "name": "Current=True, Size=sm, Type=Button white, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:8994",
+          "name": "Current=True, Size=md, Type=Button gray, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "2640:401547",
+          "name": "Current=True, Size=md, Type=Button white, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69608",
+          "name": "Current=True, Size=sm, Type=Button gray, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "2640:401272",
+          "name": "Current=True, Size=sm, Type=Button white, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:8982",
+          "name": "Current=True, Size=md, Type=Button gray, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "2640:401274",
+          "name": "Current=True, Size=md, Type=Button white, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1117:180",
+          "name": "Current=True, Size=sm, Type=Button primary, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:9116",
+          "name": "Current=True, Size=md, Type=Button primary, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69631",
+          "name": "Current=True, Size=sm, Type=Button primary, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:9109",
+          "name": "Current=True, Size=md, Type=Button primary, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1117:76",
+          "name": "Current=True, Size=sm, Type=Button gray, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "2640:401550",
+          "name": "Current=True, Size=sm, Type=Button white, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:9102",
+          "name": "Current=True, Size=md, Type=Button gray, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "2640:401553",
+          "name": "Current=True, Size=md, Type=Button white, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69625",
+          "name": "Current=True, Size=sm, Type=Button gray, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "2640:401276",
+          "name": "Current=True, Size=sm, Type=Button white, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:9095",
+          "name": "Current=True, Size=md, Type=Button gray, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "2640:401278",
+          "name": "Current=True, Size=md, Type=Button white, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1117:172",
+          "name": "Current=True, Size=sm, Type=Button primary, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:9071",
+          "name": "Current=True, Size=md, Type=Button primary, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69605",
+          "name": "Current=True, Size=sm, Type=Button primary, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:9059",
+          "name": "Current=True, Size=md, Type=Button primary, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "43:2564",
+          "name": "Current=False, Size=sm, Type=Button gray, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "2640:401556",
+          "name": "Current=False, Size=sm, Type=Button white, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:9048",
+          "name": "Current=False, Size=md, Type=Button gray, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "2640:401559",
+          "name": "Current=False, Size=md, Type=Button white, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1118:69594",
+          "name": "Current=False, Size=sm, Type=Button gray, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "2640:401280",
+          "name": "Current=False, Size=sm, Type=Button white, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:9037",
+          "name": "Current=False, Size=md, Type=Button gray, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "2640:401282",
+          "name": "Current=False, Size=md, Type=Button white, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1117:184",
+          "name": "Current=False, Size=sm, Type=Button primary, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:8997",
+          "name": "Current=False, Size=md, Type=Button primary, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1118:69588",
+          "name": "Current=False, Size=sm, Type=Button primary, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:8984",
+          "name": "Current=False, Size=md, Type=Button primary, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1117:74",
+          "name": "Current=False, Size=sm, Type=Button gray, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "2640:401562",
+          "name": "Current=False, Size=sm, Type=Button white, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:8970",
+          "name": "Current=False, Size=md, Type=Button gray, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "2640:401565",
+          "name": "Current=False, Size=md, Type=Button white, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1118:69582",
+          "name": "Current=False, Size=sm, Type=Button gray, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "2640:401284",
+          "name": "Current=False, Size=sm, Type=Button white, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:8951",
+          "name": "Current=False, Size=md, Type=Button gray, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "2640:401286",
+          "name": "Current=False, Size=md, Type=Button white, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1117:168",
+          "name": "Current=False, Size=sm, Type=Button primary, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:8930",
+          "name": "Current=False, Size=md, Type=Button primary, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1118:69576",
+          "name": "Current=False, Size=sm, Type=Button primary, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:8923",
+          "name": "Current=False, Size=md, Type=Button primary, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "43:2560",
+          "name": "Current=False, Size=sm, Type=Button gray, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "2640:401568",
+          "name": "Current=False, Size=sm, Type=Button white, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:8915",
+          "name": "Current=False, Size=md, Type=Button gray, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "2640:401571",
+          "name": "Current=False, Size=md, Type=Button white, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1118:69570",
+          "name": "Current=False, Size=sm, Type=Button gray, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "2640:401288",
+          "name": "Current=False, Size=sm, Type=Button white, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:8909",
+          "name": "Current=False, Size=md, Type=Button gray, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "2640:401290",
+          "name": "Current=False, Size=md, Type=Button white, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1117:176",
+          "name": "Current=False, Size=sm, Type=Button primary, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:8887",
+          "name": "Current=False, Size=md, Type=Button primary, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1118:69622",
+          "name": "Current=False, Size=sm, Type=Button primary, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:8881",
+          "name": "Current=False, Size=md, Type=Button primary, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1117:78",
+          "name": "Current=False, Size=sm, Type=Button gray, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "2640:401574",
+          "name": "Current=False, Size=sm, Type=Button white, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:8874",
+          "name": "Current=False, Size=md, Type=Button gray, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "2640:401577",
+          "name": "Current=False, Size=md, Type=Button white, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1118:69602",
+          "name": "Current=False, Size=sm, Type=Button gray, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "2640:401292",
+          "name": "Current=False, Size=sm, Type=Button white, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:8867",
+          "name": "Current=False, Size=md, Type=Button gray, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "2640:401294",
+          "name": "Current=False, Size=md, Type=Button white, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1117:166",
+          "name": "Current=False, Size=sm, Type=Button primary, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:8846",
+          "name": "Current=False, Size=md, Type=Button primary, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1118:69591",
+          "name": "Current=False, Size=sm, Type=Button primary, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:9127",
+          "name": "Current=False, Size=md, Type=Button primary, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "43:2554",
+          "name": "Current=False, Size=sm, Type=Button gray, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "2640:401580",
+          "name": "Current=False, Size=sm, Type=Button white, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:9119",
+          "name": "Current=False, Size=md, Type=Button gray, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "2640:401583",
+          "name": "Current=False, Size=md, Type=Button white, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69585",
+          "name": "Current=False, Size=sm, Type=Button gray, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "2640:401296",
+          "name": "Current=False, Size=sm, Type=Button white, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:9111",
+          "name": "Current=False, Size=md, Type=Button gray, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "2640:401298",
+          "name": "Current=False, Size=md, Type=Button white, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1117:164",
+          "name": "Current=False, Size=sm, Type=Button primary, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:9089",
+          "name": "Current=False, Size=md, Type=Button primary, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69579",
+          "name": "Current=False, Size=sm, Type=Button primary, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:9082",
+          "name": "Current=False, Size=md, Type=Button primary, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1117:72",
+          "name": "Current=False, Size=sm, Type=Button gray, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "2640:401586",
+          "name": "Current=False, Size=sm, Type=Button white, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:9074",
+          "name": "Current=False, Size=md, Type=Button gray, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "2640:401589",
+          "name": "Current=False, Size=md, Type=Button white, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69573",
+          "name": "Current=False, Size=sm, Type=Button gray, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "2640:401300",
+          "name": "Current=False, Size=sm, Type=Button white, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:9066",
+          "name": "Current=False, Size=md, Type=Button gray, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "2640:401302",
+          "name": "Current=False, Size=md, Type=Button white, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1117:160",
+          "name": "Current=False, Size=sm, Type=Button primary, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:9031",
+          "name": "Current=False, Size=md, Type=Button primary, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69567",
+          "name": "Current=False, Size=sm, Type=Button primary, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:9019",
+          "name": "Current=False, Size=md, Type=Button primary, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "43:2545",
+          "name": "Current=True, Size=sm, Type=Underline, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:9004",
+          "name": "Current=True, Size=md, Type=Underline, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1118:69562",
+          "name": "Current=True, Size=sm, Type=Underline, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:8990",
+          "name": "Current=True, Size=md, Type=Underline, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1143:84558",
+          "name": "Current=True, Size=sm, Type=Underline filled, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:8978",
+          "name": "Current=True, Size=md, Type=Underline filled, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1143:84610",
+          "name": "Current=True, Size=sm, Type=Underline filled, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:8958",
+          "name": "Current=True, Size=md, Type=Underline filled, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "43:2541",
+          "name": "Current=True, Size=sm, Type=Underline, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:9061",
+          "name": "Current=True, Size=md, Type=Underline, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1118:69557",
+          "name": "Current=True, Size=sm, Type=Underline, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:9051",
+          "name": "Current=True, Size=md, Type=Underline, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1143:84554",
+          "name": "Current=True, Size=sm, Type=Underline filled, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:9039",
+          "name": "Current=True, Size=md, Type=Underline filled, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1143:84650",
+          "name": "Current=True, Size=sm, Type=Underline filled, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:9026",
+          "name": "Current=True, Size=md, Type=Underline filled, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "43:2537",
+          "name": "Current=True, Size=sm, Type=Underline, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:9014",
+          "name": "Current=True, Size=md, Type=Underline, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69552",
+          "name": "Current=True, Size=sm, Type=Underline, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:9000",
+          "name": "Current=True, Size=md, Type=Underline, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1143:84550",
+          "name": "Current=True, Size=sm, Type=Underline filled, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:8986",
+          "name": "Current=True, Size=md, Type=Underline filled, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1143:84646",
+          "name": "Current=True, Size=sm, Type=Underline filled, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:8973",
+          "name": "Current=True, Size=md, Type=Underline filled, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "43:2529",
+          "name": "Current=False, Size=sm, Type=Underline, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:8953",
+          "name": "Current=False, Size=md, Type=Underline, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1118:69547",
+          "name": "Current=False, Size=sm, Type=Underline, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:8837",
+          "name": "Current=False, Size=md, Type=Underline, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1143:84546",
+          "name": "Current=False, Size=sm, Type=Underline filled, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:8833",
+          "name": "Current=False, Size=md, Type=Underline filled, Full-width=True, Badge=False, State=Focus"
+        },
+        {
+          "id": "1143:84638",
+          "name": "Current=False, Size=sm, Type=Underline filled, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:8828",
+          "name": "Current=False, Size=md, Type=Underline filled, Full-width=True, Badge=True, State=Focus"
+        },
+        {
+          "id": "43:2521",
+          "name": "Current=False, Size=sm, Type=Underline, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:8823",
+          "name": "Current=False, Size=md, Type=Underline, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1118:69542",
+          "name": "Current=False, Size=sm, Type=Underline, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:8819",
+          "name": "Current=False, Size=md, Type=Underline, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1143:84542",
+          "name": "Current=False, Size=sm, Type=Underline filled, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:8815",
+          "name": "Current=False, Size=md, Type=Underline filled, Full-width=True, Badge=False, State=Hover"
+        },
+        {
+          "id": "1143:84634",
+          "name": "Current=False, Size=sm, Type=Underline filled, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:8965",
+          "name": "Current=False, Size=md, Type=Underline filled, Full-width=True, Badge=True, State=Hover"
+        },
+        {
+          "id": "43:2517",
+          "name": "Current=False, Size=sm, Type=Underline, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:8946",
+          "name": "Current=False, Size=md, Type=Underline, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69537",
+          "name": "Current=False, Size=sm, Type=Underline, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:8940",
+          "name": "Current=False, Size=md, Type=Underline, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1143:84538",
+          "name": "Current=False, Size=sm, Type=Underline filled, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:8933",
+          "name": "Current=False, Size=md, Type=Underline filled, Full-width=True, Badge=False, State=Default"
+        },
+        {
+          "id": "1143:84630",
+          "name": "Current=False, Size=sm, Type=Underline filled, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:8925",
+          "name": "Current=False, Size=md, Type=Underline filled, Full-width=True, Badge=True, State=Default"
+        },
+        {
+          "id": "43:2433",
+          "name": "Current=True, Size=sm, Type=Underline, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "5011:374446",
+          "name": "Current=True, Size=sm, Type=Line (vertical tabs), Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:8918",
+          "name": "Current=True, Size=md, Type=Underline, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "5011:374449",
+          "name": "Current=True, Size=md, Type=Line (vertical tabs), Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1118:69532",
+          "name": "Current=True, Size=sm, Type=Underline, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "5011:374278",
+          "name": "Current=True, Size=sm, Type=Line (vertical tabs), Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:8911",
+          "name": "Current=True, Size=md, Type=Underline, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "5011:374280",
+          "name": "Current=True, Size=md, Type=Line (vertical tabs), Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1143:84534",
+          "name": "Current=True, Size=sm, Type=Underline filled, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:8905",
+          "name": "Current=True, Size=md, Type=Underline filled, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1143:84626",
+          "name": "Current=True, Size=sm, Type=Underline filled, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:8898",
+          "name": "Current=True, Size=md, Type=Underline filled, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "43:2429",
+          "name": "Current=True, Size=sm, Type=Underline, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "5011:374452",
+          "name": "Current=True, Size=sm, Type=Line (vertical tabs), Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:8890",
+          "name": "Current=True, Size=md, Type=Underline, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "5011:374455",
+          "name": "Current=True, Size=md, Type=Line (vertical tabs), Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1118:69527",
+          "name": "Current=True, Size=sm, Type=Underline, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "5011:374282",
+          "name": "Current=True, Size=sm, Type=Line (vertical tabs), Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:8883",
+          "name": "Current=True, Size=md, Type=Underline, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "5011:374284",
+          "name": "Current=True, Size=md, Type=Line (vertical tabs), Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1143:84526",
+          "name": "Current=True, Size=sm, Type=Underline filled, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:8877",
+          "name": "Current=True, Size=md, Type=Underline filled, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1143:84622",
+          "name": "Current=True, Size=sm, Type=Underline filled, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:8869",
+          "name": "Current=True, Size=md, Type=Underline filled, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "43:2425",
+          "name": "Current=True, Size=sm, Type=Underline, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "5011:374458",
+          "name": "Current=True, Size=sm, Type=Line (vertical tabs), Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:8862",
+          "name": "Current=True, Size=md, Type=Underline, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "5011:374461",
+          "name": "Current=True, Size=md, Type=Line (vertical tabs), Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69522",
+          "name": "Current=True, Size=sm, Type=Underline, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "5011:374286",
+          "name": "Current=True, Size=sm, Type=Line (vertical tabs), Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:8856",
+          "name": "Current=True, Size=md, Type=Underline, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "5011:374288",
+          "name": "Current=True, Size=md, Type=Line (vertical tabs), Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1143:84518",
+          "name": "Current=True, Size=sm, Type=Underline filled, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:8849",
+          "name": "Current=True, Size=md, Type=Underline filled, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1143:84618",
+          "name": "Current=True, Size=sm, Type=Underline filled, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:8841",
+          "name": "Current=True, Size=md, Type=Underline filled, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "43:2459",
+          "name": "Current=False, Size=sm, Type=Underline, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "5011:374464",
+          "name": "Current=False, Size=sm, Type=Line (vertical tabs), Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:8810",
+          "name": "Current=False, Size=md, Type=Underline, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "5011:374467",
+          "name": "Current=False, Size=md, Type=Line (vertical tabs), Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1118:69517",
+          "name": "Current=False, Size=sm, Type=Underline, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "5011:374290",
+          "name": "Current=False, Size=sm, Type=Line (vertical tabs), Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:8806",
+          "name": "Current=False, Size=md, Type=Underline, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "5011:374292",
+          "name": "Current=False, Size=md, Type=Line (vertical tabs), Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1143:84530",
+          "name": "Current=False, Size=sm, Type=Underline filled, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1319:8802",
+          "name": "Current=False, Size=md, Type=Underline filled, Full-width=False, Badge=False, State=Focus"
+        },
+        {
+          "id": "1143:84614",
+          "name": "Current=False, Size=sm, Type=Underline filled, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "1319:8797",
+          "name": "Current=False, Size=md, Type=Underline filled, Full-width=False, Badge=True, State=Focus"
+        },
+        {
+          "id": "43:2413",
+          "name": "Current=False, Size=sm, Type=Underline, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "5011:374470",
+          "name": "Current=False, Size=sm, Type=Line (vertical tabs), Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:8792",
+          "name": "Current=False, Size=md, Type=Underline, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "5011:374473",
+          "name": "Current=False, Size=md, Type=Line (vertical tabs), Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1118:69617",
+          "name": "Current=False, Size=sm, Type=Underline, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "5011:374294",
+          "name": "Current=False, Size=sm, Type=Line (vertical tabs), Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:9181",
+          "name": "Current=False, Size=md, Type=Underline, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "5011:374296",
+          "name": "Current=False, Size=md, Type=Line (vertical tabs), Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1143:84522",
+          "name": "Current=False, Size=sm, Type=Underline filled, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1319:9175",
+          "name": "Current=False, Size=md, Type=Underline filled, Full-width=False, Badge=False, State=Hover"
+        },
+        {
+          "id": "1143:84654",
+          "name": "Current=False, Size=sm, Type=Underline filled, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "1319:9168",
+          "name": "Current=False, Size=md, Type=Underline filled, Full-width=False, Badge=True, State=Hover"
+        },
+        {
+          "id": "43:2411",
+          "name": "Current=False, Size=sm, Type=Underline, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "5011:374476",
+          "name": "Current=False, Size=sm, Type=Line (vertical tabs), Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:9160",
+          "name": "Current=False, Size=md, Type=Underline, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "5011:374479",
+          "name": "Current=False, Size=md, Type=Line (vertical tabs), Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69597",
+          "name": "Current=False, Size=sm, Type=Underline, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "5011:374298",
+          "name": "Current=False, Size=sm, Type=Line (vertical tabs), Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:9153",
+          "name": "Current=False, Size=md, Type=Underline, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "5011:374300",
+          "name": "Current=False, Size=md, Type=Line (vertical tabs), Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1143:84514",
+          "name": "Current=False, Size=sm, Type=Underline filled, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1319:9147",
+          "name": "Current=False, Size=md, Type=Underline filled, Full-width=False, Badge=False, State=Default"
+        },
+        {
+          "id": "1143:84642",
+          "name": "Current=False, Size=sm, Type=Underline filled, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1319:9139",
+          "name": "Current=False, Size=md, Type=Underline filled, Full-width=False, Badge=True, State=Default"
+        },
+        {
+          "id": "1118:69892",
+          "name": "Type=Button primary, Size=sm, Full width=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "1319:13474",
+          "name": "Type=Button primary, Size=md, Full width=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "1119:3699",
+          "name": "Type=Button primary, Size=sm, Full width=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "1319:13472",
+          "name": "Type=Button primary, Size=md, Full width=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "1119:263",
+          "name": "Type=Underline, Size=sm, Full width=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "1319:13377",
+          "name": "Type=Underline, Size=md, Full width=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "1143:84804",
+          "name": "Type=Underline filled, Size=sm, Full width=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "1319:13362",
+          "name": "Type=Underline filled, Size=md, Full width=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "1119:3528",
+          "name": "Type=Underline, Size=sm, Full width=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "1319:13348",
+          "name": "Type=Underline, Size=md, Full width=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "1143:84789",
+          "name": "Type=Underline filled, Size=sm, Full width=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "1319:13344",
+          "name": "Type=Underline filled, Size=md, Full width=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "1118:69973",
+          "name": "Type=Button gray, Size=sm, Full width=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "1319:13291",
+          "name": "Type=Button gray, Size=md, Full width=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "1119:3688",
+          "name": "Type=Button gray, Size=sm, Full width=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "1319:13287",
+          "name": "Type=Button gray, Size=md, Full width=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "1119:1917",
+          "name": "Type=Button white border, Size=sm, Full width=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "1319:13263",
+          "name": "Type=Button white border, Size=md, Full width=False, Breakpoint=Desktop"
+        },
+        {
+          "id": "1119:3600",
+          "name": "Type=Button white border, Size=sm, Full width=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "1319:13259",
+          "name": "Type=Button white border, Size=md, Full width=False, Breakpoint=Mobile"
+        },
+        {
+          "id": "1118:69894",
+          "name": "Type=Button primary, Size=sm, Full width=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "1319:13303",
+          "name": "Type=Button primary, Size=md, Full width=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "1119:3721",
+          "name": "Type=Button primary, Size=sm, Full width=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "1319:13289",
+          "name": "Type=Button primary, Size=md, Full width=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "1119:252",
+          "name": "Type=Underline, Size=sm, Full width=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "1319:13204",
+          "name": "Type=Underline, Size=md, Full width=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "1143:84791",
+          "name": "Type=Underline filled, Size=sm, Full width=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "1319:13191",
+          "name": "Type=Underline filled, Size=md, Full width=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "1119:3587",
+          "name": "Type=Underline, Size=sm, Full width=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "1319:13189",
+          "name": "Type=Underline, Size=md, Full width=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "1143:84787",
+          "name": "Type=Underline filled, Size=sm, Full width=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "1319:13187",
+          "name": "Type=Underline filled, Size=md, Full width=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "1118:69962",
+          "name": "Type=Button gray, Size=sm, Full width=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "1319:13160",
+          "name": "Type=Button gray, Size=md, Full width=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "1119:3440",
+          "name": "Type=Button gray, Size=sm, Full width=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "1319:13158",
+          "name": "Type=Button gray, Size=md, Full width=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "1119:1871",
+          "name": "Type=Button white border, Size=sm, Full width=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "1319:13146",
+          "name": "Type=Button white border, Size=md, Full width=True, Breakpoint=Desktop"
+        },
+        {
+          "id": "1119:3416",
+          "name": "Type=Button white border, Size=sm, Full width=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "1319:13144",
+          "name": "Type=Button white border, Size=md, Full width=True, Breakpoint=Mobile"
+        },
+        {
+          "id": "1397:9881",
+          "name": "Type=Button primary, Size=sm, Breakpoint=Desktop"
+        },
+        {
+          "id": "5011:374528",
+          "name": "Type=Line, Size=sm, Breakpoint=Desktop"
+        },
+        {
+          "id": "1397:9893",
+          "name": "Type=Button primary, Size=md, Breakpoint=Desktop"
+        },
+        {
+          "id": "5011:374608",
+          "name": "Type=Line, Size=md, Breakpoint=Desktop"
+        },
+        {
+          "id": "1397:9905",
+          "name": "Type=Button primary, Size=sm, Breakpoint=Mobile"
+        },
+        {
+          "id": "5011:374539",
+          "name": "Type=Line, Size=sm, Breakpoint=Mobile"
+        },
+        {
+          "id": "1397:9907",
+          "name": "Type=Button primary, Size=md, Breakpoint=Mobile"
+        },
+        {
+          "id": "5011:374619",
+          "name": "Type=Line, Size=md, Breakpoint=Mobile"
+        },
+        {
+          "id": "1397:10027",
+          "name": "Type=Button gray, Size=sm, Breakpoint=Desktop"
+        },
+        {
+          "id": "1397:13791",
+          "name": "Type=Button gray border, Size=sm, Breakpoint=Desktop"
+        },
+        {
+          "id": "1397:10039",
+          "name": "Type=Button gray, Size=md, Breakpoint=Desktop"
+        },
+        {
+          "id": "1397:13769",
+          "name": "Type=Button gray border, Size=md, Breakpoint=Desktop"
+        },
+        {
+          "id": "1397:10051",
+          "name": "Type=Button gray, Size=sm, Breakpoint=Mobile"
+        },
+        {
+          "id": "1397:13756",
+          "name": "Type=Button gray border, Size=sm, Breakpoint=Mobile"
+        },
+        {
+          "id": "1397:10053",
+          "name": "Type=Button gray, Size=md, Breakpoint=Mobile"
+        },
+        {
+          "id": "1397:13900",
+          "name": "Type=Button gray border, Size=md, Breakpoint=Mobile"
+        }
+      ],
+      "catalogPaths": [
+        "feedback/uitabs",
+        "application-patterns/uitabs-variants",
+        "compositions/uitabview"
+      ],
+      "implementations": [
+        "UiTabs",
+        "UiTabView"
+      ],
+      "mapping": "Reference Button gray\u2192soft, Button gray border\u2192softOutlined, Button primary\u2192filled, Button white\u2192pills, Button white border\u2192outlined, Line\u2192underline, Line vertical\u2192vertical underline, Underline\u2192underline, Underline filled\u2192underlineFilled. Gray/primary hue is adapted to Specimen neutral/Iris tokens; active, focus, hover, disabled, icon and count are retained. Manual keyboard activation and wrapping/scrolling preserve long labels.",
+      "remainingGaps": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "176:4256",
+      "family": "alerts-notifications",
+      "status": "implemented; integrated visual/device QA pending",
+      "variantAxes": {
+        "Color": [
+          "Default",
+          "Error",
+          "Gray",
+          "Primary",
+          "Success",
+          "Warning"
+        ],
+        "Size": [
+          "Floating",
+          "Full-width"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Type": [
+          "Avatar",
+          "Error icon",
+          "Gray icon",
+          "Image",
+          "No icon",
+          "Primary icon",
+          "Progress indicator",
+          "Success icon",
+          "Warning icon"
+        ]
+      },
+      "referenceSymbols": [
+        {
+          "id": "1130:82785",
+          "name": "Color=Primary, Size=Floating, Breakpoint=Desktop"
+        },
+        {
+          "id": "1130:82882",
+          "name": "Color=Gray, Size=Floating, Breakpoint=Desktop"
+        },
+        {
+          "id": "4050:412599",
+          "name": "Color=Default, Size=Floating, Breakpoint=Desktop"
+        },
+        {
+          "id": "1130:82871",
+          "name": "Color=Error, Size=Floating, Breakpoint=Desktop"
+        },
+        {
+          "id": "1130:82860",
+          "name": "Color=Warning, Size=Floating, Breakpoint=Desktop"
+        },
+        {
+          "id": "1130:82796",
+          "name": "Color=Primary, Size=Floating, Breakpoint=Mobile"
+        },
+        {
+          "id": "1130:82773",
+          "name": "Color=Gray, Size=Floating, Breakpoint=Mobile"
+        },
+        {
+          "id": "4050:412610",
+          "name": "Color=Default, Size=Floating, Breakpoint=Mobile"
+        },
+        {
+          "id": "1130:82761",
+          "name": "Color=Error, Size=Floating, Breakpoint=Mobile"
+        },
+        {
+          "id": "1130:82749",
+          "name": "Color=Warning, Size=Floating, Breakpoint=Mobile"
+        },
+        {
+          "id": "1130:82910",
+          "name": "Color=Success, Size=Floating, Breakpoint=Desktop"
+        },
+        {
+          "id": "1130:82737",
+          "name": "Color=Success, Size=Floating, Breakpoint=Mobile"
+        },
+        {
+          "id": "4893:410873",
+          "name": "Color=Default, Size=Full-width, Breakpoint=Desktop"
+        },
+        {
+          "id": "4893:411955",
+          "name": "Color=Primary, Size=Full-width, Breakpoint=Desktop"
+        },
+        {
+          "id": "4893:412330",
+          "name": "Color=Error, Size=Full-width, Breakpoint=Desktop"
+        },
+        {
+          "id": "4893:412516",
+          "name": "Color=Warning, Size=Full-width, Breakpoint=Desktop"
+        },
+        {
+          "id": "4893:412616",
+          "name": "Color=Success, Size=Full-width, Breakpoint=Desktop"
+        },
+        {
+          "id": "4893:412104",
+          "name": "Color=Gray, Size=Full-width, Breakpoint=Desktop"
+        },
+        {
+          "id": "4893:411092",
+          "name": "Color=Default, Size=Full-width, Breakpoint=Mobile"
+        },
+        {
+          "id": "4893:411968",
+          "name": "Color=Primary, Size=Full-width, Breakpoint=Mobile"
+        },
+        {
+          "id": "4893:412343",
+          "name": "Color=Error, Size=Full-width, Breakpoint=Mobile"
+        },
+        {
+          "id": "4893:412529",
+          "name": "Color=Warning, Size=Full-width, Breakpoint=Mobile"
+        },
+        {
+          "id": "4893:412629",
+          "name": "Color=Success, Size=Full-width, Breakpoint=Mobile"
+        },
+        {
+          "id": "4893:412117",
+          "name": "Color=Gray, Size=Full-width, Breakpoint=Mobile"
+        },
+        {
+          "id": "1135:591",
+          "name": "Type=Primary icon, Breakpoint=Desktop"
+        },
+        {
+          "id": "1145:62",
+          "name": "Type=Progress indicator, Breakpoint=Desktop"
+        },
+        {
+          "id": "1135:2065",
+          "name": "Type=Gray icon, Breakpoint=Desktop"
+        },
+        {
+          "id": "1135:2522",
+          "name": "Type=Success icon, Breakpoint=Desktop"
+        },
+        {
+          "id": "1135:2644",
+          "name": "Type=No icon, Breakpoint=Desktop"
+        },
+        {
+          "id": "1135:2309",
+          "name": "Type=Warning icon, Breakpoint=Desktop"
+        },
+        {
+          "id": "1135:2167",
+          "name": "Type=Error icon, Breakpoint=Desktop"
+        },
+        {
+          "id": "1135:1960",
+          "name": "Type=Avatar, Breakpoint=Desktop"
+        },
+        {
+          "id": "1135:592",
+          "name": "Type=Image, Breakpoint=Mobile"
+        },
+        {
+          "id": "1135:914",
+          "name": "Type=Primary icon, Breakpoint=Mobile"
+        },
+        {
+          "id": "1145:47",
+          "name": "Type=Progress indicator, Breakpoint=Mobile"
+        },
+        {
+          "id": "1135:2050",
+          "name": "Type=Gray icon, Breakpoint=Mobile"
+        },
+        {
+          "id": "1135:2507",
+          "name": "Type=Success icon, Breakpoint=Mobile"
+        },
+        {
+          "id": "1135:2629",
+          "name": "Type=No icon, Breakpoint=Mobile"
+        },
+        {
+          "id": "1135:2294",
+          "name": "Type=Warning icon, Breakpoint=Mobile"
+        },
+        {
+          "id": "1135:2152",
+          "name": "Type=Error icon, Breakpoint=Mobile"
+        },
+        {
+          "id": "1135:1945",
+          "name": "Type=Avatar, Breakpoint=Mobile"
+        },
+        {
+          "id": "1135:890",
+          "name": "Type=Image, Breakpoint=Desktop"
+        }
+      ],
+      "catalogPaths": [
+        "feedback/uibanner",
+        "feedback/uitoast-and-uitoasthost",
+        "application-patterns/uinotice"
+      ],
+      "implementations": [
+        "UiBanner",
+        "UiNotice",
+        "UiToast",
+        "UiToastHost"
+      ],
+      "mapping": "Functional tones reuse semantic color roles; primary/gray collapse to neutral/info within the approved restrained brand. Avatar, image, icon, no-icon and progress are leading/body slots. Inline/floating presentation, title, supporting text, timestamp, multiple actions, dismiss and live-region semantics are available.",
+      "remainingGaps": [
+        "Full combinatorial visual parity, manual assistive technology and physical device acceptance are not confirmed."
+      ]
+    }
+  ]
+}

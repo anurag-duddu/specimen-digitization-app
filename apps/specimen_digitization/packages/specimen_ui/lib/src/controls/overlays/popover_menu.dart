@@ -2,6 +2,7 @@
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/popover.dart';
 import '../../primitives/pressable.dart';
@@ -33,6 +35,10 @@ class UiMenuItem {
     this.shortcut,
     this.destructive = false,
     this.disabledReason,
+    this.groupLabel,
+    this.selected,
+    this.indent = 0,
+    this.isHeading = false,
   });
 
   /// The visible label. Verb first, two to four words (02 section 4.3).
@@ -57,8 +63,20 @@ class UiMenuItem {
   /// Why the item cannot be chosen.
   final String? disabledReason;
 
+  /// A non-actionable heading before this item, used to group related choices.
+  final String? groupLabel;
+
+  /// Marks the current choice with a check and selected semantics.
+  final bool? selected;
+
+  /// Additional hierarchy depth within a group, capped by the menu's inset.
+  final int indent;
+
+  /// A standalone group heading with no action, selection or focus stop.
+  final bool isHeading;
+
   /// True when the item responds to input.
-  bool get enabled => onSelected != null;
+  bool get enabled => !isHeading && onSelected != null;
 }
 
 /// The resolved paint of one menu.
@@ -74,6 +92,8 @@ class UiPopoverMenuStyle {
     required this.minWidth,
     required this.maxWidth,
     required this.gap,
+    required this.hierarchyInsetStep,
+    required this.hierarchyInsetLimit,
     required this.label,
     required this.shortcut,
     required this.foreground,
@@ -103,6 +123,12 @@ class UiPopoverMenuStyle {
 
   /// The gap between a glyph and its label.
   final double gap;
+
+  /// The extra leading space for each hierarchy level: `space.s4`.
+  final double hierarchyInsetStep;
+
+  /// The maximum hierarchy inset, preserving room for labels: `space.s12`.
+  final double hierarchyInsetLimit;
 
   /// The label's type role.
   final TextStyle label;
@@ -138,6 +164,8 @@ class UiPopoverMenuStyle {
       minWidth: minPaneWidth,
       maxWidth: maxPaneWidth,
       gap: ui.space.s3,
+      hierarchyInsetStep: ui.space.s4,
+      hierarchyInsetLimit: ui.space.s12,
       label: ui.type.label,
       shortcut: ui.type.mono.identifier,
       foreground: WidgetStateProperty.resolveWith(text),
@@ -172,6 +200,9 @@ class UiPopoverMenu extends StatefulWidget {
     this.semanticsLabel,
     this.placement = PopoverPlacement.auto,
     this.style,
+    this.description,
+    this.maxHeight,
+    this.surface = PopoverSurface.glass,
   });
 
   /// Opens and closes the menu.
@@ -197,6 +228,15 @@ class UiPopoverMenu extends StatefulWidget {
   /// Overrides the resolved style. A code review event (10 section 1.5).
   final UiPopoverMenuStyle? style;
 
+  /// Optional context shared by all choices, shown once above the list.
+  final String? description;
+
+  /// Optional height cap for a long chooser. Remaining choices scroll.
+  final double? maxHeight;
+
+  /// The shared floating surface recipe. Paper provides a functional boundary.
+  final PopoverSurface surface;
+
   @override
   State<UiPopoverMenu> createState() => _UiPopoverMenuState();
 }
@@ -208,18 +248,45 @@ class _UiPopoverMenuState extends State<UiPopoverMenu> {
   void initState() {
     super.initState();
     _syncNodes();
+    widget.controller.addListener(_revealSelection);
   }
 
   @override
   void didUpdateWidget(UiPopoverMenu oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.items.length != widget.items.length) _syncNodes();
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_revealSelection);
+      widget.controller.addListener(_revealSelection);
+    }
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_revealSelection);
     _disposeNodes();
     super.dispose();
+  }
+
+  void _revealSelection() {
+    if (!widget.controller.isOpen) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !widget.controller.isOpen) return;
+      final index = widget.items.indexWhere(
+        (item) => item.enabled && item.selected == true,
+      );
+      if (index < 0) return;
+      final target = _nodes[index].context;
+      if (target != null) {
+        _nodes[index].requestFocus();
+        unawaited(
+          Scrollable.ensureVisible(
+            target,
+            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+          ),
+        );
+      }
+    });
   }
 
   void _disposeNodes() {
@@ -282,12 +349,16 @@ class _UiPopoverMenuState extends State<UiPopoverMenu> {
       ui,
       destructive: true,
     );
-    final int first = widget.items.indexWhere(
-      (UiMenuItem item) => item.enabled,
+    final int selected = widget.items.indexWhere(
+      (item) => item.enabled && item.selected == true,
     );
+    final int first = selected >= 0
+        ? selected
+        : widget.items.indexWhere((UiMenuItem item) => item.enabled);
     return Popover(
       controller: widget.controller,
       placement: widget.placement,
+      surface: widget.surface,
       radius: style.radius,
       overlayBuilder: (BuildContext context) => Shortcuts(
         shortcuts: const <ShortcutActivator, Intent>{
@@ -312,23 +383,58 @@ class _UiPopoverMenuState extends State<UiPopoverMenu> {
               constraints: BoxConstraints(
                 minWidth: style.minWidth,
                 maxWidth: style.maxWidth,
+                maxHeight: widget.maxHeight ?? double.infinity,
               ),
-              child: SingleChildScrollView(
+              child: _MenuScrollArea(
+                showScrollbar: widget.maxHeight != null,
                 padding: style.panePadding,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    for (int i = 0; i < widget.items.length; i++)
-                      _MenuItem(
-                        item: widget.items[i],
-                        style: widget.items[i].destructive
-                            ? destructive
-                            : style,
-                        focusNode: _nodes[i],
-                        autofocus: i == first,
-                        onChosen: () => _choose(widget.items[i]),
+                    if (widget.description case final String description)
+                      Padding(
+                        padding: EdgeInsetsDirectional.all(ui.space.s3),
+                        child: Text(
+                          description,
+                          style: ui.type.labelSmall.copyWith(
+                            color: ui.color.inkSecondary,
+                          ),
+                        ),
                       ),
+                    for (int i = 0; i < widget.items.length; i++) ...[
+                      if ((widget.items[i].isHeading
+                              ? widget.items[i].label
+                              : widget.items[i].groupLabel)
+                          case final String label)
+                        Padding(
+                          padding: EdgeInsetsDirectional.fromSTEB(
+                            ui.space.s3,
+                            i == 0 ? ui.space.s2 : ui.space.s4,
+                            ui.space.s3,
+                            ui.space.s2,
+                          ),
+                          child: Semantics(
+                            header: true,
+                            child: Text(
+                              label,
+                              style: ui.type.labelSmall.copyWith(
+                                color: ui.color.inkSecondary,
+                              ),
+                            ),
+                          ),
+                        ),
+                      if (!widget.items[i].isHeading)
+                        _MenuItem(
+                          item: widget.items[i],
+                          style: widget.items[i].destructive
+                              ? destructive
+                              : style,
+                          focusNode: _nodes[i],
+                          autofocus: i == first,
+                          onChosen: () => _choose(widget.items[i]),
+                        ),
+                    ],
                   ],
                 ),
               ),
@@ -337,6 +443,47 @@ class _UiPopoverMenuState extends State<UiPopoverMenu> {
         ),
       ),
       child: widget.child,
+    );
+  }
+}
+
+class _MenuScrollArea extends StatefulWidget {
+  const _MenuScrollArea({
+    required this.child,
+    required this.padding,
+    required this.showScrollbar,
+  });
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final bool showScrollbar;
+  @override
+  State<_MenuScrollArea> createState() => _MenuScrollAreaState();
+}
+
+class _MenuScrollAreaState extends State<_MenuScrollArea> {
+  final ScrollController _scroll = ScrollController();
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final content = SingleChildScrollView(
+      controller: _scroll,
+      padding: widget.padding,
+      child: widget.child,
+    );
+    if (!widget.showScrollbar) return content;
+    final ui = context.ui;
+    return RawScrollbar(
+      controller: _scroll,
+      thumbVisibility: true,
+      thickness: ui.space.s1,
+      radius: Radius.circular(ui.shape.inner),
+      thumbColor: ui.color.inkTertiary,
+      child: content,
     );
   }
 }
@@ -357,6 +504,10 @@ class UiMenuTrigger extends StatefulWidget {
     this.menuLabel,
     this.placement = PopoverPlacement.auto,
     this.onOpenChanged,
+    this.trailingIcon = false,
+    this.menuDescription,
+    this.menuMaxHeight,
+    this.menuSurface = PopoverSurface.glass,
   });
 
   /// The commands the menu offers.
@@ -382,12 +533,25 @@ class UiMenuTrigger extends StatefulWidget {
   /// Reports explicit open/close changes, not disposal of the trigger.
   final ValueChanged<bool>? onOpenChanged;
 
+  /// Places the glyph after a visible label, as in a collection chooser.
+  final bool trailingIcon;
+
+  /// Context for all menu choices, displayed once in the opened menu.
+  final String? menuDescription;
+
+  /// Optional height cap for the opened menu's scrolling content.
+  final double? menuMaxHeight;
+
+  /// The shared surface recipe used by the opened menu.
+  final PopoverSurface menuSurface;
+
   @override
   State<UiMenuTrigger> createState() => _UiMenuTriggerState();
 }
 
 class _UiMenuTriggerState extends State<UiMenuTrigger> {
   final PopoverController _controller = PopoverController();
+  final FocusNode _triggerFocus = FocusNode(debugLabel: 'Menu trigger');
 
   @override
   void initState() {
@@ -400,13 +564,35 @@ class _UiMenuTriggerState extends State<UiMenuTrigger> {
     _controller
       ..removeListener(_openChanged)
       ..dispose();
+    _triggerFocus.dispose();
     super.dispose();
   }
 
   void _openChanged() {
     if (!mounted) return;
     setState(() {});
+    if (!_controller.isOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            !_controller.isOpen &&
+            _triggerFocus.context != null &&
+            _triggerFocus.canRequestFocus) {
+          _triggerFocus.requestFocus();
+        }
+      });
+    }
     widget.onOpenChanged?.call(_controller.isOpen);
+  }
+
+  void _toggle() {
+    if (!_controller.isOpen) {
+      // Pointer activation does not necessarily move keyboard focus. Make the
+      // real trigger the saved return target, including menus with no enabled
+      // item to autofocus, so Escape belongs to this open menu.
+      _triggerFocus.requestFocus();
+      FocusManager.instance.applyFocusChangesIfNeeded();
+    }
+    _controller.toggle();
   }
 
   @override
@@ -417,9 +603,13 @@ class _UiMenuTriggerState extends State<UiMenuTrigger> {
       items: widget.items,
       placement: widget.placement,
       semanticsLabel: widget.menuLabel,
+      description: widget.menuDescription,
+      maxHeight: widget.menuMaxHeight,
+      surface: widget.menuSurface,
       child: Pressable(
         semanticsLabel: widget.semanticsLabel,
-        onPressed: _controller.toggle,
+        focusNode: _triggerFocus,
+        onPressed: _toggle,
         radius: ui.shape.inner,
         selected: _controller.isOpen,
         builder: (BuildContext context, Set<WidgetState> states) =>
@@ -443,15 +633,26 @@ class _UiMenuTriggerState extends State<UiMenuTrigger> {
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
-                      UiIcon(widget.icon ?? UiIcons.more, color: ui.color.ink),
+                      if (!widget.trailingIcon || widget.label == null)
+                        UiIcon(
+                          widget.icon ?? UiIcons.more,
+                          color: ui.color.ink,
+                        ),
                       if (widget.label != null) ...<Widget>[
-                        SizedBox(width: ui.space.s2),
+                        if (!widget.trailingIcon) SizedBox(width: ui.space.s2),
                         Flexible(
                           child: UiLabel(
                             widget.label!,
                             style: ui.type.label.copyWith(color: ui.color.ink),
                           ),
                         ),
+                        if (widget.trailingIcon) ...[
+                          SizedBox(width: ui.space.s2),
+                          UiIcon(
+                            widget.icon ?? UiIcons.more,
+                            color: ui.color.ink,
+                          ),
+                        ],
                       ],
                     ],
                   ),
@@ -498,6 +699,7 @@ class _MenuItem extends StatelessWidget {
       value: item.shortcut,
       hint: item.enabled ? null : item.disabledReason,
       enabled: item.enabled,
+      selected: item.selected,
       focusable: item.enabled,
       onTap: item.enabled ? onChosen : null,
       child: Pressable(
@@ -520,7 +722,13 @@ class _MenuItem extends StatelessWidget {
                   : style.itemHeight,
             ),
             child: Padding(
-              padding: style.itemPadding,
+              padding: style.itemPadding.add(
+                EdgeInsetsDirectional.only(
+                  start: (item.indent * style.hierarchyInsetStep)
+                      .clamp(0, style.hierarchyInsetLimit)
+                      .toDouble(),
+                ),
+              ),
               child: Row(
                 children: <Widget>[
                   if (item.icon != null) ...<Widget>[
@@ -532,20 +740,60 @@ class _MenuItem extends StatelessWidget {
                     SizedBox(width: style.gap),
                   ],
                   Expanded(
-                    child: UiLabel(
-                      item.label,
-                      style: style.label.copyWith(color: foreground),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final Widget label = Text(
+                          item.label,
+                          style: style.label.copyWith(color: foreground),
+                        );
+                        final detail = item.shortcut;
+                        if (detail == null) return label;
+                        final TextStyle shortcutStyle = style.shortcut.copyWith(
+                          color: states.contains(WidgetState.disabled)
+                              ? ui.color.disabledContent
+                              : style.shortcutColor,
+                        );
+                        final Widget shortcut = Text(
+                          detail,
+                          style: shortcutStyle,
+                        );
+                        final double labelRoom = math.min(
+                          ui.space.labelMin,
+                          measureLabel(context, item.label, style.label).width,
+                        );
+                        final double shortcutWidth = measureLabel(
+                          context,
+                          detail,
+                          shortcutStyle,
+                        ).width;
+                        if (labelRoom + style.gap + shortcutWidth >
+                            constraints.maxWidth) {
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              label,
+                              SizedBox(height: ui.space.s1),
+                              shortcut,
+                            ],
+                          );
+                        }
+                        return Row(
+                          children: [
+                            Expanded(child: label),
+                            SizedBox(width: style.gap),
+                            UiLabel(detail, style: shortcutStyle),
+                          ],
+                        );
+                      },
                     ),
                   ),
-                  if (item.shortcut != null) ...<Widget>[
+                  if (item.selected == true) ...[
                     SizedBox(width: style.gap),
-                    UiLabel(
-                      item.shortcut!,
-                      style: style.shortcut.copyWith(
-                        color: states.contains(WidgetState.disabled)
-                            ? ui.color.disabledContent
-                            : style.shortcutColor,
-                      ),
+                    UiIcon(
+                      UiIcons.check,
+                      size: UiIconSize.inline,
+                      color: foreground,
                     ),
                   ],
                 ],

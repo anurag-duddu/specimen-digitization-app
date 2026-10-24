@@ -250,6 +250,76 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets(
+    'rich tooltips flip from all four viewport edges at 200 percent',
+    (WidgetTester tester) async {
+      const Size viewport = Size(640, 480);
+      const String details = 'Keeps the original photograph.';
+      await tester.binding.setSurfaceSize(viewport);
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      for (final direction in TextDirection.values) {
+        for (final (alignment, placement)
+            in <(AlignmentGeometry, PopoverPlacement)>[
+              (Alignment.topCenter, PopoverPlacement.above),
+              (Alignment.bottomCenter, PopoverPlacement.below),
+              (AlignmentDirectional.centerStart, PopoverPlacement.start),
+              (AlignmentDirectional.centerEnd, PopoverPlacement.end),
+            ]) {
+          await tester.pumpWidget(
+            uiHarness(
+              size: viewport,
+              textDirection: direction,
+              textScaler: const TextScaler.linear(2),
+              disableAnimations: true,
+              child: Align(
+                alignment: alignment,
+                child: UiTooltip(
+                  message: _message,
+                  supportingText: details,
+                  placement: placement,
+                  child: const UiButton(
+                    label: 'Rotate',
+                    variant: UiButtonVariant.secondary,
+                    onPressed: _noop,
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.longPress(find.byType(UiButton));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          for (final text in [_message, details]) {
+            expect(find.text(text), findsOneWidget);
+            final rect = tester.getRect(find.text(text));
+            expect(rect.left, greaterThanOrEqualTo(16));
+            expect(rect.right, lessThanOrEqualTo(viewport.width - 16));
+            expect(rect.top, greaterThanOrEqualTo(16));
+            expect(rect.bottom, lessThanOrEqualTo(viewport.height - 16));
+          }
+          final anchor = tester.getRect(find.byType(UiButton));
+          final heading = tester.getRect(find.text(_message));
+          final body = tester.getRect(find.text(details));
+          if (placement == PopoverPlacement.above) {
+            expect(heading.top, greaterThan(anchor.bottom));
+          } else if (placement == PopoverPlacement.below) {
+            expect(body.bottom, lessThan(anchor.top));
+          } else {
+            final bool fromLeft =
+                (placement == PopoverPlacement.start) ==
+                (direction == TextDirection.ltr);
+            if (fromLeft) {
+              expect(heading.left, greaterThan(anchor.right));
+            } else {
+              expect(heading.right, lessThan(anchor.left));
+            }
+          }
+          await tester.pumpWidget(const SizedBox());
+        }
+      }
+    },
+  );
+
   testWidgets('the control it wraps satisfies the control contract', (
     WidgetTester tester,
   ) async {

@@ -9,11 +9,13 @@
 // a count that moved under the reviewer while they read it would not be.
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -191,9 +193,154 @@ void main() {
     expect(repository.calls, isEmpty);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('search Escape clears then unfocuses without losing selection', (
+    tester,
+  ) async {
+    final repository = BulkRepository(queue(3));
+    await pumpQueue(tester, repository, window: const Size(1440, 900));
+    await pick(tester, 'Pinned beetle 1');
+    final pane = find.byType(QueuePane);
+    final controller = WorkspaceScope.read(tester.element(pane));
+    final search = tester.widget<UiSearchField>(find.byType(UiSearchField));
+    await tester.enterText(uiField('Search by specimen ID'), 'fixture-001');
+    await tester.pumpAndSettle();
+    expect(controller.query, 'fixture-001');
+    expect(search.focusNode!.hasFocus, isTrue);
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(controller.query, isEmpty);
+    expect(search.controller!.text, isEmpty);
+    expect(search.focusNode!.hasFocus, isTrue);
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(search.focusNode!.hasFocus, isFalse);
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+
+    tester
+        .widget<QueueRow>(find.byType(QueueRow).first)
+        .focusNode!
+        .requestFocus();
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(rowBoxes, findsNothing);
+    expect(uiIconButton('Select specimens'), findsOneWidget);
+    expect(controller.query, isEmpty);
+    expect(repository.calls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('companion search Escape dismisses without changing its query', (
+    tester,
+  ) async {
+    final repository = BulkRepository(queue(3));
+    await pumpQueue(tester, repository, window: const Size(1440, 900));
+    await pick(tester, 'Pinned beetle 1');
+    final pane = find.byType(QueuePane);
+    final queueState = tester.state(pane);
+    final controller = WorkspaceScope.read(tester.element(pane));
+    await tester.enterText(uiField('Search by specimen ID'), 'fixture-001');
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(QueueRow).first,
+        matching: find.text('fixture-001'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(pane, findsOneWidget);
+    expect(tester.widget<QueuePane>(pane).onDismiss, isNotNull);
+    final search = tester.widget<UiSearchField>(find.byType(UiSearchField));
+    search.focusNode!.requestFocus();
+    await tester.pumpAndSettle();
+    expect(search.focusNode!.hasFocus, isTrue);
+    expect(search.controller!.text, 'fixture-001');
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(repository.calls, isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(pane, findsNothing);
+    expect(
+      tester.state(find.byType(QueuePane, skipOffstage: false)),
+      same(queueState),
+    );
+    expect(controller.query, 'fixture-001');
+    expect(search.controller!.text, 'fixture-001');
+    expect(repository.calls, isEmpty);
+
+    await tester.tap(uiIconButton('Open sidebar'));
+    await tester.pumpAndSettle();
+    expect(tester.state(pane), same(queueState));
+    expect(search.controller!.text, 'fixture-001');
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   group('picking records', () {
+    for (final scenario in [
+      (size: const Size(1440, 900), scale: 1.0),
+      (size: const Size(390, 844), scale: 2.0),
+      (size: const Size(768, 480), scale: 2.0),
+    ]) {
+      testWidgets(
+        'selection footer stays full width and bottom anchored at ${scenario.size}, ${scenario.scale}',
+        (tester) async {
+          tester.platformDispatcher.textScaleFactorTestValue = scenario.scale;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          final repository = BulkRepository(queue(4));
+          await pumpQueue(tester, repository, window: scenario.size);
+          await tester.tap(uiIconButton('Select specimens'));
+          await tester.pumpAndSettle();
+          await tester.ensureVisible(rowBoxes.first);
+          await tester.tap(rowBoxes.first);
+          await tester.pumpAndSettle();
+          final pane = tester.getRect(find.byType(QueuePane));
+          final footerFinder = find.byKey(
+            const ValueKey('queue-selection-footer'),
+          );
+          final footer = tester.getRect(footerFinder);
+          expect(footer.left, pane.left);
+          expect(footer.right, pane.right);
+          expect(footer.bottom, pane.bottom);
+          expect(
+            tester.getSize(footerFinder).height,
+            lessThanOrEqualTo(pane.height * .4),
+          );
+          // The last command remains reachable even when the footer has to
+          // scroll at enlarged text or in a short window.
+          final bar = find.descendant(
+            of: footerFinder,
+            matching: find.byType(SelectionBar),
+          );
+          final commands = find.descendant(
+            of: bar,
+            matching: find.byType(UiButton),
+          );
+          await tester.ensureVisible(commands.last);
+          await tester.pumpAndSettle();
+          expect(commands.last.hitTestable(), findsOneWidget);
+          expect(repository.calls, isEmpty);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox());
+        },
+      );
+    }
+
     testWidgets(
       'a wide window selects by long press and can finish selecting',
       (WidgetTester tester) async {

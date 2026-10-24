@@ -18,7 +18,9 @@ from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTrace
 import pytest
 from test_application import HEADERS, PREFIX, TOKEN, intake
 
-from specimen_digitization.application.api import create_app, SYNTHETIC_TEXT
+from specimen_digitization.application.api import (
+    SYNTHETIC_COLLECTION, SYNTHETIC_ORG, SYNTHETIC_TEXT, create_app,
+)
 from specimen_digitization.application.classifier_runtime import ConfiguredClassifier
 from specimen_digitization.application.hf_collection_classifier import HFClassifierConfig
 from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository
@@ -162,7 +164,7 @@ def test_classifier_child_exports_metadata_linked_to_actual_parent(
     assert snapshot["unknown"] == 0
     assert (tmp_path / "classifier-model-calls").read_text() == "called\n"
     carrier = json.loads((tmp_path / "classifier-carrier.json").read_text())
-    assert set(carrier) == {"traceparent", "specimen_id", "run_id"}
+    assert set(carrier) == {"traceparent", "specimen_id", "run_id", "organization_id", "collection_id"}
     assert "CANARY" not in json.dumps(carrier)
     spans = exported_spans(tmp_path)
     effect = next(span for span in spans if span.name == "Run isolated specimen model")
@@ -172,8 +174,13 @@ def test_classifier_child_exports_metadata_linked_to_actual_parent(
     assert attrs["specimen.id"] == before["specimen_id"]
     assert attrs["specimen.run.id"] == before["run"]["id"]
     assert attrs["specimen.route.id"] == "synthetic-classifier"
+    # Through the metadata-only encoder too: the tenant ids are allow-listed identifiers.
+    assert (attrs["specimen.organization.id"], attrs["specimen.collection.id"]) == (
+        SYNTHETIC_ORG, SYNTHETIC_COLLECTION)
     parents = [span for span in capfire.exporter.exported_spans
                if span.name == "Process specimen checkpoint"]
+    assert parents and all(parent.attributes["organization_id"] == SYNTHETIC_ORG
+                           and parent.attributes["collection_id"] == SYNTHETIC_COLLECTION for parent in parents)
     assert any(parent.context.trace_id == int.from_bytes(effect.trace_id, "big")
                and parent.context.span_id == int.from_bytes(effect.parent_span_id, "big")
                for parent in parents)

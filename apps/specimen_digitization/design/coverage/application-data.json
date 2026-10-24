@@ -1,0 +1,1818 @@
+{
+  "updated": "2026-10-22",
+  "referenceFileId": "fIfKyBB3UUanoV9lZoTBx9",
+  "status": "Implemented; local verifier gates and representative independent review passed; full visual and physical-device parity not confirmed",
+  "scope": "17 application-data component pages and 3 application example pages. Original Specimen brand and Phosphor equivalents; no Untitled UI asset/pixel-copy claim.",
+  "referenceMethod": "Figma MCP metadata for every listed page; representative browser screenshots reviewed for charts, message attachment, banner page heading and each application-template family. get_design_context seat quota prevented additional high-fidelity extraction.",
+  "validationLimits": [
+    "Metadata axes demonstrate reference inventory, not automatic proof that every combinatorial Figma instance was individually compared.",
+    "Examples use synthetic local state. Catalog checks and simulator/emulator smoke tests do not establish manual assistive-technology, physical-device or production-connected acceptance."
+  ],
+  "rows": [
+    {
+      "pageId": "1050:146949",
+      "family": "charts",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Data": [
+          "12 months",
+          "30 days",
+          "7 days"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Chart type": [
+          "Bar desktop",
+          "Bar mobile",
+          "Line gradual",
+          "Line volatile",
+          "Line wavy"
+        ],
+        "Legend": [
+          "Bottom",
+          "False",
+          "Right",
+          "Top",
+          "True"
+        ],
+        "Axis labels": [
+          "False",
+          "True"
+        ],
+        "Chart style": [
+          "Bar",
+          "Line"
+        ],
+        "Label": [
+          "False",
+          "True"
+        ],
+        "Orientation": [
+          "Horizontal",
+          "Vertical"
+        ],
+        "Size": [
+          "lg",
+          "md",
+          "sm",
+          "xs",
+          "xxs"
+        ],
+        "Hole": [
+          "25%",
+          "50%",
+          "75%",
+          "False"
+        ],
+        "Series": [
+          "2",
+          "3",
+          "4",
+          "5",
+          "6"
+        ],
+        "Shape": [
+          "Circle",
+          "Half circle"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Data": {
+          "12 months": "1061:47349",
+          "30 days": "1061:47442",
+          "7 days": "1061:47477"
+        },
+        "Breakpoint": {
+          "Desktop": "1061:47349",
+          "Mobile": "1061:47553"
+        },
+        "Chart type": {
+          "Bar desktop": "1063:72833",
+          "Bar mobile": "1063:73707",
+          "Line volatile": "1062:46617",
+          "Line wavy": "1062:46568",
+          "Line gradual": "1062:46534"
+        },
+        "Legend": {
+          "False": "1061:47355",
+          "Right": "1062:46990",
+          "Top": "1062:48114",
+          "Bottom": "1078:214",
+          "True": "1084:971"
+        },
+        "Axis labels": {
+          "False": "1061:47355",
+          "True": "1062:47341"
+        },
+        "Chart style": {
+          "Line": "1061:47355",
+          "Bar": "1063:68702"
+        },
+        "Label": {
+          "True": "1061:46550",
+          "False": "1062:47446"
+        },
+        "Orientation": {
+          "Vertical": "1061:47128",
+          "Horizontal": "1062:47962"
+        },
+        "Size": {
+          "md": "1076:4075",
+          "lg": "1076:4186",
+          "sm": "1076:4089",
+          "xs": "1076:4162",
+          "xxs": "1726:463323"
+        },
+        "Hole": {
+          "False": "1084:2283",
+          "25%": "1084:2275",
+          "50%": "1084:2267",
+          "75%": "1084:2259"
+        },
+        "Series": {
+          "6": "1084:971",
+          "5": "1084:1044",
+          "4": "1084:1155",
+          "3": "1084:1228",
+          "2": "1084:1301"
+        },
+        "Shape": {
+          "Circle": "1084:2716",
+          "Half circle": "1084:2718"
+        }
+      },
+      "requiredCapabilities": [
+        "Grouped and stacked bars, line/area, pie/donut, radar and activity gauge",
+        "Series legend above/end/below/hidden; visible axis units and category labels",
+        "Five plot sizes; configurable donut holes; arbitrary ordered categories and series",
+        "Non-finite/null measurements stay unavailable; signed Cartesian data retains zero; exact accessible values always accompany marks"
+      ],
+      "implementations": [
+        "UiChart",
+        "UiDataVisualization",
+        "UiProgressDisplay"
+      ],
+      "catalogPaths": [
+        "data/uidatavisualization",
+        "data/chart",
+        "data/progress"
+      ],
+      "equivalenceMapping": {
+        "Data": "UiChartSeries.data accepts 7 days, 30 days, 12 months or host-defined categories; no invented smoothing.",
+        "Chart type": "UiDataVisualizationKind selects groupedBars/stackedBars/line/area; jagged/gradual/wavy traces come from actual supplied values.",
+        "Legend": "UiChartLegend.none/top/end/bottom; end stacks on narrow layouts.",
+        "Axis labels": "showAxes plus xAxisLabel/yAxisLabel.",
+        "Size": "UiChartSize.xxs/xs/sm/md/lg.",
+        "Hole": "holeRatio supports 0, .25, .5 and .75.",
+        "Series": "Arbitrary series/slice lists, with stories exercising 3 traces and 6 slices.",
+        "Shape": "UiProgressDisplay provides full-circle and half-circle progress; gauge is concentric full rings."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 149,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/charts.json",
+        "metadataDigest": "sha256:866039486418b9f4e127c82e3528ace126b3305be7587b5f9cebe55f55c93152",
+        "visual": [
+          {
+            "nodeId": "1062:48099",
+            "path": "/private/tmp/untitled-ui-reference/browser/chart-line.png"
+          },
+          {
+            "nodeId": "1084:971",
+            "path": "/private/tmp/untitled-ui-reference/browser/chart-pie.png"
+          }
+        ]
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "185:279",
+      "family": "metrics",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Actions": [
+          "False",
+          "True"
+        ],
+        "Type": [
+          "01",
+          "02",
+          "Chart 01",
+          "Chart 02",
+          "Chart 03",
+          "Icon 01",
+          "Icon 02",
+          "Icon 03",
+          "Layers",
+          "Realistic",
+          "Simple",
+          "Straight",
+          "Wavy"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Trend": [
+          "Negative",
+          "Positive"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Actions": {
+          "False": "1560:266242",
+          "True": "1561:262223"
+        },
+        "Type": {
+          "Simple": "1560:266242",
+          "Icon 01": "1561:261551",
+          "Icon 03": "4988:370796",
+          "Chart 03": "5002:371238",
+          "Icon 02": "1561:261634",
+          "Chart 02": "4993:376878",
+          "Chart 01": "1561:265452",
+          "Wavy": "1561:265483",
+          "Realistic": "4992:376490",
+          "Straight": "4992:376492",
+          "Layers": "4992:376495",
+          "01": "1563:260318",
+          "02": "4988:370934"
+        },
+        "Breakpoint": {
+          "Desktop": "1560:266242",
+          "Mobile": "1561:262364"
+        },
+        "Trend": {
+          "Positive": "1561:265483",
+          "Negative": "1561:265492"
+        }
+      },
+      "requiredCapabilities": [
+        "Value, supporting context, trend, icon, miniature chart and command slots",
+        "Zero and not measured are distinct; trends state their direction in words"
+      ],
+      "implementations": [
+        "UiMetricCard",
+        "UiChart"
+      ],
+      "catalogPaths": [
+        "data/uimetriccard"
+      ],
+      "equivalenceMapping": {
+        "Type": "UiMetricCard leading/trend/chart slots support text-only, icon and chart compositions. Chart shape is determined by measurements rather than a decorative curve enum.",
+        "Actions": "actions accepts caller-owned commands; empty omits the command region.",
+        "Trend": "Host-supplied text/icons can represent increases and decreases without assigning unsupported good/bad meaning."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 40,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/metrics.json",
+        "metadataDigest": "sha256:03618e583ffc1f1991d7ef63f33758ec65699e03ccf4ff6956439f4cbfa6d6f1",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "185:2718",
+      "family": "headers",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Style": [
+          "Avatar",
+          "Banner avatar",
+          "Banner avatar centered",
+          "Banner simple",
+          "Banner simple centered",
+          "Simple"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Style": {
+          "Simple": "1239:122641",
+          "Avatar": "1239:122728",
+          "Banner avatar": "1239:122850",
+          "Banner avatar centered": "1239:122995",
+          "Banner simple centered": "1239:123144",
+          "Banner simple": "1239:123271"
+        },
+        "Breakpoint": {
+          "Desktop": "1239:122641",
+          "Mobile": "1239:122839"
+        }
+      },
+      "requiredCapabilities": [
+        "Simple, avatar, banner, banner-avatar and centered heading layouts",
+        "Breadcrumbs, tabs, metadata and wrapping action slots"
+      ],
+      "implementations": [
+        "UiPageHeader"
+      ],
+      "catalogPaths": [
+        "data/uipageheader"
+      ],
+      "equivalenceMapping": {
+        "Style": "banner, identity and centered independently compose all six reference anatomical combinations. Gradient remains decorative with text on neutral surface."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 12,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/headers.json",
+        "metadataDigest": "sha256:c1259d7b18c3b0e699f1d89f6cc9e4b22acf8be2d260c6e7873f614504529f4a",
+        "visual": [
+          {
+            "nodeId": "1239:123561",
+            "path": "/private/tmp/untitled-ui-reference/browser/page-header.png"
+          }
+        ]
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "223:8525",
+      "family": "cards",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Avatar": [
+          "False",
+          "True"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Avatar": {
+          "False": "1211:168",
+          "True": "1211:272"
+        },
+        "Breakpoint": {
+          "Desktop": "1211:168",
+          "Mobile": "1211:622"
+        }
+      },
+      "requiredCapabilities": [
+        "Card heading with optional avatar, count, supporting text, help and commands"
+      ],
+      "implementations": [
+        "UiSectionHeader"
+      ],
+      "catalogPaths": [
+        "data/section-header"
+      ],
+      "equivalenceMapping": {
+        "Avatar": "leading accepts UiAvatar, omitted for text-only card header.",
+        "Breakpoint": "Role.card shares responsive wrapping with section and page headers."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 4,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/cards.json",
+        "metadataDigest": "sha256:82e44e7f0d87eb1bf4ef10968d65eae150bb989fade93238da76ca6eb6382b44",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "190:4871",
+      "family": "sections",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Tabs": [
+          "False",
+          "True"
+        ],
+        "Type": [
+          "Button group",
+          "Buttons",
+          "Search"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Size": [
+          "md",
+          "sm"
+        ],
+        "Supporting text": [
+          "False",
+          "True"
+        ],
+        "Actions": [
+          "False",
+          "True"
+        ],
+        "Help icon": [
+          "False",
+          "True"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Tabs": {
+          "False": "1214:66",
+          "True": "1214:2269"
+        },
+        "Type": {
+          "Buttons": "1214:66",
+          "Button group": "1740:454693",
+          "Search": "1214:2800"
+        },
+        "Breakpoint": {
+          "Desktop": "1214:66",
+          "Mobile": "1214:1330"
+        },
+        "Size": {
+          "sm": "5013:376528",
+          "md": "5013:376579"
+        },
+        "Supporting text": {
+          "True": "5013:376528",
+          "False": "5013:377135"
+        },
+        "Actions": {
+          "False": "5013:376528",
+          "True": "5013:376529"
+        },
+        "Help icon": {
+          "True": "5013:376528",
+          "False": "5013:376993"
+        }
+      },
+      "requiredCapabilities": [
+        "Section/card/page hierarchy, help tooltip, supporting copy and count",
+        "Optional search/action toolbar and controlled tabs"
+      ],
+      "implementations": [
+        "UiSectionHeader"
+      ],
+      "catalogPaths": [
+        "data/section-header"
+      ],
+      "equivalenceMapping": {
+        "Tabs": "tabs accepts controlled UiTabs.",
+        "Type": "actions and toolbar compose buttons, joined commands or UiSearchField.",
+        "Size": "role selects page/section/card type hierarchy; layout reacts to available allocation and text scaling.",
+        "Help icon": "help accepts owned tooltip/help control."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 28,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/sections.json",
+        "metadataDigest": "sha256:77b3b85f4cf489ef14c246c246ad9f2d9b2301fb999b69eef558c25bbbf6850c",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "3275:371793",
+      "family": "footers",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Type": [
+          "Card",
+          "Section"
+        ],
+        "Button group": [
+          "False",
+          "True"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Type": {
+          "Card": "3275:372530",
+          "Section": "3275:372565"
+        },
+        "Button group": {
+          "True": "3275:372530",
+          "False": "3275:373066"
+        },
+        "Breakpoint": {
+          "Desktop": "3275:372530",
+          "Mobile": "3275:372632"
+        }
+      },
+      "requiredCapabilities": [
+        "Card and section footer spacing",
+        "Supporting text, joined command group and wrapping primary/secondary actions"
+      ],
+      "implementations": [
+        "UiContentFooter",
+        "UiButtonGroup"
+      ],
+      "catalogPaths": [
+        "data/uicontentfooter"
+      ],
+      "equivalenceMapping": {
+        "Type": "UiContentFooterRole.card/section.",
+        "Button group": "leading composes UiButtonGroup; empty leading omits it."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 8,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/footers.json",
+        "metadataDigest": "sha256:321b6457fd92d17fff92405270005a163d400bedaac86a71e09da0b6952610dc",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "127:2907",
+      "family": "cta",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Type": [
+          "Actions",
+          "Change plan",
+          "Email field",
+          "Image",
+          "Payment method",
+          "Receipt",
+          "Upgrade plan"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Type": {
+          "Image": "1255:131888",
+          "Actions": "1255:131889",
+          "Email field": "1255:131908",
+          "Change plan": "1255:131909",
+          "Upgrade plan": "1255:131912",
+          "Payment method": "1255:131910",
+          "Receipt": "1255:131911"
+        },
+        "Breakpoint": {
+          "Desktop": "1255:131888",
+          "Mobile": "1255:132370"
+        }
+      },
+      "requiredCapabilities": [
+        "Actions, email input, image/media, plan, payment and receipt anatomy",
+        "Host-owned actions, media, structured content and dismiss control"
+      ],
+      "implementations": [
+        "UiInlineCta"
+      ],
+      "catalogPaths": [
+        "data/uiinlinecta"
+      ],
+      "equivalenceMapping": {
+        "Type": "title/supporting/media/content/actions slots compose all seven types; example plan/payment/receipt content is synthetic and explicitly names that no service action occurs."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 14,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/cta.json",
+        "metadataDigest": "sha256:6aef7d3a1329efc0e53769ae29034657ffaf67e265e3dfdfad864ef780bc9374",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "780:0",
+      "family": "dividers",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Type": [
+          "Button",
+          "Button group",
+          "Button group icon",
+          "Button icon",
+          "Heading",
+          "Text"
+        ],
+        "Style": [
+          "Background fill",
+          "Dual line",
+          "Single line"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Type": {
+          "Button": "1252:126873",
+          "Button group icon": "1252:126921",
+          "Button group": "1252:127012",
+          "Text": "1252:126895",
+          "Heading": "1252:126908",
+          "Button icon": "1252:127755"
+        },
+        "Style": {
+          "Single line": "1252:126873",
+          "Dual line": "1252:127296",
+          "Background fill": "1252:127730"
+        }
+      },
+      "requiredCapabilities": [
+        "Single-line, dual-line and filled separators",
+        "Text, heading, button, joined buttons, icon command and joined icon commands"
+      ],
+      "implementations": [
+        "UiContentDivider",
+        "UiHairline"
+      ],
+      "catalogPaths": [
+        "data/uicontentdivider",
+        "data/hairline"
+      ],
+      "equivalenceMapping": {
+        "Style": "UiContentDividerStyle encodes line/fill treatment.",
+        "Type": "child composes text or owned commands; separator strokes stay outside semantics."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 18,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/dividers.json",
+        "metadataDigest": "sha256:14bdda6f5d6fc4e14bddbbbb283b439d0e96b928948db1473784f14e4c2b2f5f",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1172:32",
+      "family": "loading",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Style": [
+          "Dot circle",
+          "Line simple",
+          "Line spinner"
+        ],
+        "Size": [
+          "lg",
+          "md",
+          "sm",
+          "xl"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Style": {
+          "Line simple": "1192:607",
+          "Line spinner": "1196:283",
+          "Dot circle": "1192:633"
+        },
+        "Size": {
+          "md": "1192:607",
+          "sm": "1198:99394",
+          "lg": "1196:147",
+          "xl": "1196:200"
+        }
+      },
+      "requiredCapabilities": [
+        "Dot-circle, simple line and line-spinner marks with named wait state",
+        "Four indicator sizes; inline/standalone composition; optional cancel and progress",
+        "Reduced motion and determinate/unmeasured states"
+      ],
+      "implementations": [
+        "UiLoadingState",
+        "UiLoadingIndicator",
+        "UiProgress"
+      ],
+      "catalogPaths": [
+        "data/uiloadingstate",
+        "data/progress"
+      ],
+      "equivalenceMapping": {
+        "Style": "UiLoadingIndicatorStyle.dots/line/spokes.",
+        "Size": "UiProgressSize.small/medium/large/extraLarge; UiLoadingState defaults adapt to inline or standalone use."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 12,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/loading.json",
+        "metadataDigest": "sha256:9732ab5713072519ebed944bc426c5b87cb5ece084c9a589cb305ae6c17e76cf",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1172:31",
+      "family": "empty",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Icon": [
+          "Featured icon",
+          "File type icon",
+          "Illustration"
+        ],
+        "Size": [
+          "lg",
+          "md",
+          "sm"
+        ],
+        "Style": [
+          "Box",
+          "Cloud",
+          "Credit card",
+          "Documents"
+        ],
+        "Color": [
+          "Gray",
+          "Primary"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Icon": {
+          "File type icon": "4980:382743",
+          "Illustration": "1182:2205",
+          "Featured icon": "1182:178"
+        },
+        "Size": {
+          "sm": "4980:382743",
+          "md": "4980:382754",
+          "lg": "4980:382765"
+        },
+        "Style": {
+          "Cloud": "1182:1077",
+          "Credit card": "1182:2628",
+          "Documents": "1182:2576",
+          "Box": "1182:2534"
+        },
+        "Color": {
+          "Primary": "1182:1077",
+          "Gray": "1182:2774"
+        }
+      },
+      "requiredCapabilities": [
+        "Three named scale classes plus legacy compact presentation",
+        "Phosphor, file-format or host illustration media",
+        "Primary and alternate recovery actions with local working examples"
+      ],
+      "implementations": [
+        "UiEmptyState",
+        "UiFileTypeIcon",
+        "UiFeaturedIcon",
+        "UiBrandPattern"
+      ],
+      "catalogPaths": [
+        "data/empty-state",
+        "data/uiemptystate-sizes"
+      ],
+      "equivalenceMapping": {
+        "Icon": "media accepts a file mark or original brand illustration; omitted uses a Phosphor glyph.",
+        "Size": "UiEmptyStateSize.small/medium/large.",
+        "Style": "Original neutral brand media replaces copied decorative illustrations; reusable media slot accommodates box/cloud/document/payment concepts without requiring them in museum workflows.",
+        "Color": "Neutral or Iris emphasis comes from semantic brand tokens rather than an arbitrary decorative palette."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 33,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/empty.json",
+        "metadataDigest": "sha256:53aa455809fb120e5995d8f75b6963b498247856a2e78018c5b7ce796e6c6d71",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1221:106300",
+      "family": "code",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Color": [
+          "Gray",
+          "Primary"
+        ],
+        "Theme": [
+          "Dark",
+          "Light"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Color": {
+          "Gray": "1234:242",
+          "Primary": "1234:288"
+        },
+        "Theme": {
+          "Dark": "1234:242",
+          "Light": "1234:368"
+        },
+        "Breakpoint": {
+          "Desktop": "1234:242",
+          "Mobile": "1234:244"
+        }
+      },
+      "requiredCapabilities": [
+        "Explicit light/dark code surface and neutral/brand boundary",
+        "Selectable literal text, optional line numbers and exact copy",
+        "Copy success/failure and retry preserve original source"
+      ],
+      "implementations": [
+        "UiCodeSnippet"
+      ],
+      "catalogPaths": [
+        "content/uicodesnippet"
+      ],
+      "equivalenceMapping": {
+        "Color": "UiCodeTone.neutral/brand.",
+        "Theme": "UiCodeTheme.light/dark/inherit.",
+        "Breakpoint": "Horizontal source viewport preserves exact whitespace while surrounding commands and labels wrap."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 8,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/code.json",
+        "metadataDigest": "sha256:974bc1ea21938356e4c99e458ee5e8c609de39a61c18ed7bcc5ddee2ed9d625e",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1251:12271",
+      "family": "messaging",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Type": [
+          "Received attachment",
+          "Received message",
+          "Sent attachment",
+          "Sent message",
+          "Writing"
+        ],
+        "Reactions": [
+          "False",
+          "True"
+        ],
+        "Count": [
+          "False",
+          "True"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Type": {
+          "Received message": "1242:985",
+          "Received attachment": "1249:29",
+          "Writing": "1244:532",
+          "Sent message": "1244:487",
+          "Sent attachment": "1249:112"
+        },
+        "Reactions": {
+          "False": "1242:985",
+          "True": "1249:72"
+        },
+        "Count": {
+          "False": "1244:297",
+          "True": "1244:299"
+        }
+      },
+      "requiredCapabilities": [
+        "Sent/received text or attachment; author identity, timestamp and delivery state",
+        "Optional reactions with independent count/selection/callback",
+        "Writing status and real controlled draft/send/failure behavior"
+      ],
+      "implementations": [
+        "UiMessage",
+        "UiMessageComposer"
+      ],
+      "catalogPaths": [
+        "content/uimessage",
+        "data/uimessagecomposer"
+      ],
+      "equivalenceMapping": {
+        "Type": "outgoing, attachments and writing select all five anatomical states.",
+        "Reactions": "reactions list omitted/filled; host owns toggle state.",
+        "Count": "UiMessageReaction.count accepts null, zero or measured positive count."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 11,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/messaging.json",
+        "metadataDigest": "sha256:4a30023835e92e2f81e84c6920138869f29739f6f0a6a8c0258cd9473a8a03ed",
+        "visual": [
+          {
+            "nodeId": "1249:72",
+            "path": "/private/tmp/untitled-ui-reference/browser/message-attachment.png"
+          }
+        ]
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "253:14231",
+      "family": "activity",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Size": [
+          "md",
+          "sm"
+        ],
+        "Supporting item": [
+          "False",
+          "File",
+          "Labels",
+          "Text"
+        ],
+        "Connector": [
+          "False",
+          "True"
+        ],
+        "Divider": [
+          "Connector",
+          "Divider",
+          "False",
+          "Line"
+        ],
+        "Type": [
+          "Messages",
+          "Notifications"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Size": {
+          "md": "1254:127639",
+          "sm": "1719:457980"
+        },
+        "Supporting item": {
+          "False": "1254:127639",
+          "File": "1254:127708",
+          "Labels": "1254:127645",
+          "Text": "1254:127770"
+        },
+        "Connector": {
+          "True": "1254:127639",
+          "False": "1254:128209"
+        },
+        "Divider": {
+          "Line": "1254:128621",
+          "Connector": "1254:129961",
+          "False": "3251:453107",
+          "Divider": "1254:133286"
+        },
+        "Type": {
+          "Notifications": "1254:128621",
+          "Messages": "1254:133286"
+        }
+      },
+      "requiredCapabilities": [
+        "Message/notification feed entries with actor, timestamp, unread state and actions",
+        "Optional file/label/quoted text support",
+        "Compact/regular spacing and none/line/connector dividers"
+      ],
+      "implementations": [
+        "UiActivityFeed"
+      ],
+      "catalogPaths": [
+        "content/uiactivityfeed"
+      ],
+      "equivalenceMapping": {
+        "Size": "compact selects spacing.",
+        "Supporting item": "UiActivityEntry.supporting composes real file commands, badge labels or text.",
+        "Connector": "UiActivityDivider.connector versus other modes.",
+        "Type": "Entry content and host-supplied supporting/actions slots support messages and notifications."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 22,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/activity.json",
+        "metadataDigest": "sha256:55615d1dbcaec19ddb60e0e04e071903735dee71835014442f623d1bf6f6e48f",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "225:7288",
+      "family": "pagination",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Current": [
+          "False",
+          "True"
+        ],
+        "Style": [
+          "Dot",
+          "Line"
+        ],
+        "Size": [
+          "lg",
+          "md"
+        ],
+        "Color": [
+          "Gray light bg"
+        ],
+        "Framed": [
+          "False",
+          "True"
+        ],
+        "Shape": [
+          "Circle",
+          "Square"
+        ],
+        "State": [
+          "Active/hover",
+          "Default",
+          "Focused",
+          "Hover/active"
+        ],
+        "Icon": [
+          "False",
+          "Leading",
+          "Only",
+          "Trailing"
+        ],
+        "Type": [
+          "Card button group center aligned",
+          "Card button group left aligned",
+          "Card button group right aligned",
+          "Card default",
+          "Card minimal center aligned",
+          "Card minimal left aligned",
+          "Card minimal right aligned",
+          "Page default",
+          "Page minimal center aligned"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Chevron": [
+          "Left",
+          "Right"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Current": {
+          "False": "1253:503",
+          "True": "1253:502"
+        },
+        "Style": {
+          "Dot": "1253:503",
+          "Line": "1275:139141"
+        },
+        "Size": {
+          "md": "1253:503",
+          "lg": "1253:507"
+        },
+        "Color": {
+          "Gray light bg": "1111:84"
+        },
+        "Framed": {
+          "True": "1111:84",
+          "False": "1111:260"
+        },
+        "Shape": {
+          "Square": "1114:68173",
+          "Circle": "1114:68771"
+        },
+        "State": {
+          "Default": "1114:68173",
+          "Hover/active": "1114:68175",
+          "Focused": "1114:68181",
+          "Active/hover": "1114:69114"
+        },
+        "Icon": {
+          "Only": "1114:69114",
+          "Trailing": "1114:69377",
+          "False": "1114:68898",
+          "Leading": "1114:69375"
+        },
+        "Type": {
+          "Page default": "226:519",
+          "Page minimal center aligned": "1116:4645",
+          "Card minimal right aligned": "226:331",
+          "Card minimal left aligned": "1115:68886",
+          "Card minimal center aligned": "1116:4935",
+          "Card default": "226:158",
+          "Card button group right aligned": "1115:68618",
+          "Card button group left aligned": "1115:69008",
+          "Card button group center aligned": "1115:69408"
+        },
+        "Breakpoint": {
+          "Desktop": "226:519",
+          "Mobile": "226:413"
+        },
+        "Chevron": {
+          "Left": "1253:189",
+          "Right": "1253:187"
+        }
+      },
+      "requiredCapabilities": [
+        "Numbered, minimal and joined-command pagination; aligned layouts and circle/square page targets",
+        "Dot/line framed or plain controlled indicators",
+        "Carousel arrows, keyboard Home/End/directional keys, touch swipes; no auto-advance",
+        "Boundary, empty, busy and disabled states"
+      ],
+      "implementations": [
+        "UiPagination",
+        "UiPageIndicator",
+        "UiCarousel"
+      ],
+      "catalogPaths": [
+        "data/pagination",
+        "data/uipagination-variants",
+        "data/uipageindicator",
+        "data/uicarousel"
+      ],
+      "equivalenceMapping": {
+        "Type": "UiPaginationVariant and WrapAlignment combine page/card command placement; hosts choose surrounding card surface.",
+        "Shape": "UiPaginationShape.square/circle.",
+        "Style": "UiPageIndicatorStyle.dots/lines.",
+        "Framed": "UiPageIndicator.framed.",
+        "State": "Shared Pressable contract handles hover/focus/active; controlled page/index define current state."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 64,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/pagination.json",
+        "metadataDigest": "sha256:244bee324f3e081ac66c9c64ab91949e0a3246541b72b504814eea1336364491",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "43:3087",
+      "family": "breadcrumbs",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Current": [
+          "False",
+          "True"
+        ],
+        "Type": [
+          "Button gray",
+          "Button gray with border",
+          "Button primary",
+          "Text",
+          "Text with line"
+        ],
+        "Icon": [
+          "False",
+          "True"
+        ],
+        "State": [
+          "Default",
+          "Focused",
+          "Hover"
+        ],
+        "Divider": [
+          "Chevron",
+          "Slash"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Current": {
+          "False": "43:3237",
+          "True": "1122:128"
+        },
+        "Type": {
+          "Text": "43:3237",
+          "Button primary": "1122:71",
+          "Button gray": "1122:2575",
+          "Text with line": "1122:2246",
+          "Button gray with border": "1122:3426"
+        },
+        "Icon": {
+          "False": "43:3237",
+          "True": "43:3225"
+        },
+        "State": {
+          "Focused": "43:3237",
+          "Hover": "43:3235",
+          "Default": "43:3231"
+        },
+        "Divider": {
+          "Slash": "53:1287",
+          "Chevron": "53:1190"
+        },
+        "Breakpoint": {
+          "Desktop": "53:1287",
+          "Mobile": "53:1262"
+        }
+      },
+      "requiredCapabilities": [
+        "Text, underlined text, neutral/outlined/brand button ancestors",
+        "Chevron or slash separators; optional leading Phosphor icon",
+        "Current page is noninteractive; ancestor actions retain keyboard behavior"
+      ],
+      "implementations": [
+        "UiBreadcrumbs"
+      ],
+      "catalogPaths": [
+        "data/uibreadcrumbs-variants"
+      ],
+      "equivalenceMapping": {
+        "Type": "UiBreadcrumbStyle maps text/line and neutral/outlined/brand button presentations.",
+        "Current": "Final item is the current page.",
+        "Divider": "UiBreadcrumbDivider.chevron/slash.",
+        "Icon": "UiBreadcrumb.icon is optional."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 56,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/breadcrumbs.json",
+        "metadataDigest": "sha256:76ad7ed747bc56491512a9fd37469b5e574e225d95cd87754dea514834bcc114",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "53:1288",
+      "family": "steps",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Status": [
+          "Complete",
+          "Current",
+          "Incomplete"
+        ],
+        "Size": [
+          "lg",
+          "md",
+          "sm"
+        ],
+        "State": [
+          "Default",
+          "Focus",
+          "Focused",
+          "Hover"
+        ],
+        "Type": [
+          "Featured icon",
+          "Featured icon left",
+          "Featured icon top",
+          "Icon",
+          "Icon featured",
+          "Icon left",
+          "Icon only",
+          "Icon top",
+          "Text line"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Text": [
+          "False",
+          "True"
+        ],
+        "Steps": [
+          "3",
+          "4"
+        ],
+        "Connector": [
+          "False",
+          "True"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Status": {
+          "Incomplete": "1139:80097",
+          "Complete": "1139:80037",
+          "Current": "1139:79866"
+        },
+        "Size": {
+          "sm": "1139:80097",
+          "md": "1139:80082",
+          "lg": "1139:80055"
+        },
+        "State": {
+          "Default": "1139:80097",
+          "Focused": "1139:80052",
+          "Hover": "1139:79977",
+          "Focus": "1139:78868"
+        },
+        "Type": {
+          "Text line": "1139:78992",
+          "Icon left": "1139:74417",
+          "Featured icon left": "5042:383470",
+          "Icon only": "1139:77053",
+          "Icon top": "1139:75888",
+          "Featured icon top": "5042:384005",
+          "Icon": "1141:81478",
+          "Featured icon": "5043:376438",
+          "Icon featured": "5043:377263"
+        },
+        "Breakpoint": {
+          "Desktop": "1139:81173",
+          "Mobile": "1139:81165"
+        },
+        "Text": {
+          "False": "1140:76153",
+          "True": "1141:79061"
+        },
+        "Steps": {
+          "4": "1141:81478",
+          "3": "1141:77463"
+        },
+        "Connector": {
+          "True": "1254:144282",
+          "False": "1254:145683"
+        }
+      },
+      "requiredCapabilities": [
+        "Three marker sizes; connected or separate steps; horizontal/vertical/adaptive placement",
+        "Plain/featured marker at start or above, icon-only, text-line and card forms",
+        "Current/upcoming/complete/error independent of navigation permission"
+      ],
+      "implementations": [
+        "UiSteps"
+      ],
+      "catalogPaths": [
+        "data/uisteps-variants",
+        "data/uisteps-sizes"
+      ],
+      "equivalenceMapping": {
+        "Type": "UiStepsStyle.cards/textLine/iconLeft/iconTop/featuredLeft/featuredTop/iconOnly.",
+        "Size": "UiStepSize.small/medium/large; compact controls spacing separately.",
+        "Text": "iconOnly retains complete spoken descriptions.",
+        "Steps": "Arbitrary ordered UiStep list supports three/four or other host-defined counts.",
+        "Connector": "connected controls decorative progress rules; no state is inferred from position."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 249,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/steps.json",
+        "metadataDigest": "sha256:a1d149612a8ea5948611f212fdfded73886f159a25b737e9dbf45129fd93e3bd",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "214:0",
+      "family": "tables",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {
+        "Help icon": [
+          "False",
+          "True"
+        ],
+        "Arrow": [
+          "Down",
+          "False",
+          "Up"
+        ],
+        "State": [
+          "Default",
+          "Disabled",
+          "Hover"
+        ],
+        "Text": [
+          "False",
+          "True"
+        ],
+        "Checkbox": [
+          "False",
+          "True"
+        ],
+        "Color": [
+          "Gray",
+          "White"
+        ],
+        "Style": [
+          "Action buttons",
+          "Action dropdown icon",
+          "Action icons",
+          "Avatar",
+          "Avatar group",
+          "Badge",
+          "Badges multiple",
+          "Checkbox only",
+          "Lead avatar",
+          "Lead avatar checkbox",
+          "Lead avatar radio button",
+          "Lead avatar toggle",
+          "Lead checkbox",
+          "Lead icon",
+          "Lead icon checkbox",
+          "Lead icon radio button",
+          "Lead icon toggle",
+          "Lead payment method",
+          "Lead payment method checkbox",
+          "Lead payment method radio button",
+          "Lead payment method toggle",
+          "Lead radio button",
+          "Lead text",
+          "Lead toggle",
+          "Payment method",
+          "Progress bar",
+          "Radio button only",
+          "Star ratings",
+          "Text",
+          "Toggle only",
+          "Trend negative",
+          "Trend positive"
+        ],
+        "Supporting text": [
+          "False",
+          "True"
+        ],
+        "Example": [
+          "Companies",
+          "Files",
+          "Sales",
+          "Team members"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Dividers": [
+          "Alternating fills",
+          "Divider line"
+        ]
+      },
+      "variantAxisSourceNodes": {
+        "Help icon": {
+          "False": "1221:106787",
+          "True": "1221:106789"
+        },
+        "Arrow": {
+          "False": "1221:106787",
+          "Down": "1221:106888",
+          "Up": "1221:107035"
+        },
+        "State": {
+          "Default": "1221:106787",
+          "Disabled": "1221:106976",
+          "Hover": "1221:106927"
+        },
+        "Text": {
+          "True": "214:9",
+          "False": "1224:4120"
+        },
+        "Checkbox": {
+          "True": "214:9",
+          "False": "1224:4554"
+        },
+        "Color": {
+          "White": "214:9",
+          "Gray": "1221:107934"
+        },
+        "Style": {
+          "Lead text": "1222:107304",
+          "Text": "1223:42",
+          "Badge": "1224:169",
+          "Avatar group": "1224:1353",
+          "Badges multiple": "1224:327",
+          "Lead checkbox": "1222:107426",
+          "Checkbox only": "1224:5530",
+          "Lead avatar": "1224:22",
+          "Avatar": "1227:123054",
+          "Payment method": "1722:459762",
+          "Lead avatar checkbox": "1224:5904",
+          "Lead avatar radio button": "1224:6009",
+          "Lead avatar toggle": "1224:6087",
+          "Lead icon checkbox": "1224:1461",
+          "Lead payment method checkbox": "1722:460126",
+          "Lead icon radio button": "1224:6279",
+          "Lead payment method radio button": "1722:460107",
+          "Lead icon toggle": "1224:6381",
+          "Lead payment method toggle": "1722:460078",
+          "Lead icon": "1224:6172",
+          "Lead payment method": "1722:460102",
+          "Lead radio button": "1222:107578",
+          "Radio button only": "1224:5525",
+          "Lead toggle": "1224:94",
+          "Toggle only": "1224:5515",
+          "Trend positive": "1224:410",
+          "Trend negative": "1224:1085",
+          "Progress bar": "1224:1209",
+          "Action buttons": "1224:1757",
+          "Action dropdown icon": "1224:5049",
+          "Action icons": "1224:1826",
+          "Star ratings": "1232:103"
+        },
+        "Supporting text": {
+          "True": "1222:107304",
+          "False": "1224:169"
+        },
+        "Example": {
+          "Team members": "1227:110480",
+          "Sales": "1227:121348",
+          "Companies": "1227:115509",
+          "Files": "1229:2364"
+        },
+        "Breakpoint": {
+          "Desktop": "1227:110480",
+          "Mobile": "1227:110588"
+        },
+        "Dividers": {
+          "Divider line": "1227:110480",
+          "Alternating fills": "1229:12388"
+        }
+      },
+      "requiredCapabilities": [
+        "Typed cells and stable row IDs; controlled sort and multi-selection preserve other-page IDs",
+        "Sortable/unavailable column heading, help tooltip, gray/plain header and striped/lined rows",
+        "Text/supporting copy, avatars/groups, icons, provider marks, selection controls, badges, progress, trends and ratings",
+        "Row command text/icon/menu presentations; empty/loading/error and horizontal keyboard viewport"
+      ],
+      "implementations": [
+        "UiDataTable",
+        "UiTableCell",
+        "UiTableActions",
+        "UiRating"
+      ],
+      "catalogPaths": [
+        "data/data-table",
+        "data/uidatatable-treatments",
+        "data/uitablecell",
+        "data/uitableactions",
+        "data/uirating"
+      ],
+      "equivalenceMapping": {
+        "Style": "UiDataColumn.cellBuilder composes any table anatomy; UiTableCell standardizes text/leading/selection/detail/trailing. Control-only cells may supply an owned checkbox/radio/toggle directly. UiTableActions has buttons/icons/menu.",
+        "Supporting text": "UiTableCell.supporting optional.",
+        "State": "Owned Pressable/selection controls supply focused/hover/disabled behavior; sortEnabled and row.selectable preserve permission boundaries.",
+        "Help icon": "UiDataColumn.helpText adds shared tooltip.",
+        "Arrow": "sortColumnId and UiSortDirection show controlled sorting.",
+        "Color": "shadedHeader switches neutral filled/plain column headings.",
+        "Dividers": "UiTableDividers.lines/striped.",
+        "Example": "Application directory and table gallery use synthetic museum records rather than copying companies/sales data."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 204,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/tables.json",
+        "metadataDigest": "sha256:51148616b7973d43fea6e06418cf5aed81be4c57453f173cea6e6686d7c05009",
+        "visual": []
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1686:419019",
+      "family": "dashboards",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {},
+      "variantAxisSourceNodes": {},
+      "requiredCapabilities": [
+        "Complete local workspace composition with desktop navigation or mobile drawer",
+        "Collection metrics, chart, searchable selectable record table, record detail and export request"
+      ],
+      "implementations": [
+        "UiPageHeader",
+        "UiNavigationMenu",
+        "UiDrawer",
+        "UiMetricCard",
+        "UiDataVisualization",
+        "UiDataTable",
+        "UiContentFooter"
+      ],
+      "catalogPaths": [
+        "data/application-templates/dashboard"
+      ],
+      "equivalenceMapping": {
+        "Examples": "Representative dashboard anatomy, using synthetic collection content. Desktop sidebar and compact modal navigation are functional; not a pixel clone of every example screen."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 6,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/dashboards.json",
+        "metadataDigest": "sha256:62d6bc3bdf5c64fffcfc778f5686a45eb9435ef867be8149ba5b3e1305398ce8",
+        "visual": [
+          {
+            "nodeId": "1716:461435",
+            "path": "/private/tmp/untitled-ui-reference/browser/dashboard.png"
+          }
+        ]
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1664:398802",
+      "family": "settings",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {},
+      "variantAxisSourceNodes": {},
+      "requiredCapabilities": [
+        "Profile form, notifications and member table sections",
+        "Save/reset receipts, retained field edits, controlled tabs and working workspace navigation"
+      ],
+      "implementations": [
+        "UiPageHeader",
+        "UiNavigationMenu",
+        "UiDrawer",
+        "UiTabs",
+        "UiField",
+        "UiTextArea",
+        "UiSwitch",
+        "UiDataTable",
+        "UiContentFooter"
+      ],
+      "catalogPaths": [
+        "data/application-templates/settings"
+      ],
+      "equivalenceMapping": {
+        "Examples": "Representative settings composition. Form fields and controls remain reusable rather than hardcoded replicas of unrelated billing/account screens; no backend account mutation is implied."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 2,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/settings.json",
+        "metadataDigest": "sha256:493d3a448a093adbd1f0891428ef7bdd0c2e356f7e188c1d307a516ae21f8168",
+        "visual": [
+          {
+            "nodeId": "1672:457278",
+            "path": "/private/tmp/untitled-ui-reference/browser/settings.png"
+          }
+        ]
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1686:419020",
+      "family": "informational",
+      "status": "implemented; catalog checks passed; complete visual and physical-device parity not confirmed",
+      "variantAxes": {},
+      "variantAxisSourceNodes": {},
+      "requiredCapabilities": [
+        "Browsable directory with contextual title/breadcrumbs, search, selection, row commands and details",
+        "Reference is a structured informational table layout, not a generic prose page"
+      ],
+      "implementations": [
+        "UiPageHeader",
+        "UiNavigationMenu",
+        "UiDrawer",
+        "UiDataTable",
+        "UiSearchField",
+        "UiInlineCta",
+        "UiCodeSnippet"
+      ],
+      "catalogPaths": [
+        "data/application-templates/informational-directory"
+      ],
+      "equivalenceMapping": {
+        "Examples": "Museum directory equivalent of reference trade-history header/filter/table composition, with local synthetic data and no financial behavior."
+      },
+      "referenceEvidence": {
+        "metadataVariants": 5,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/data/informational.json",
+        "metadataDigest": "sha256:3e00122fc0b622c9806c2b1241dbe2e598d7f835cb9f201a283529700d4ac117",
+        "visual": [
+          {
+            "nodeId": "1781:508819",
+            "path": "/private/tmp/untitled-ui-reference/browser/informational.png"
+          }
+        ]
+      },
+      "testEvidence": [
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_expanded_test.dart",
+        "apps/specimen_digitization/packages/specimen_ui/test/controls/data/data_patterns_test.dart",
+        "apps/specimen_widgetbook/test/data_expanded_test.dart"
+      ],
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    }
+  ],
+  "validationEvidence": [
+    "Integrated Widgetbook validation passed 29 checks, including all 911 examples at default knobs across five environments. This does not exercise every knob combination.",
+    "Representative source and implementation review found no further capability blocker. Reviewed sources included pricing, contact, press mentions, settings, dashboards and informational examples; this is not visual comparison of every reference instance.",
+    "Isolated iPad and iPhone simulator and Android emulator catalog checks and reviewed screenshots passed. iPad evidence includes paired-calendar range selection; iPhone and Android smoke checks cover the brand hero, a real tap and its callback receipt.",
+    "Native checks predate the final calendar weekday copy change to Mon through Sun. All 12 affected weekday-header goldens were subsequently independently reviewed: labels remain distinct, centered and unclipped in light and dark modes.",
+    "All local gates defined in scripts/ci/verify.sh passed after the weekday copy change, in segments resumed at unchanged remaining gates after formatter-only corrections. Independent source and representative visual review cleared reported findings. No physical-device, manual assistive-technology or production approval is claimed."
+  ]
+}

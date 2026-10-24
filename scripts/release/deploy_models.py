@@ -39,7 +39,7 @@ def checked_image(role, reference):
     return reference
 
 
-def command(role, image, sha, env_path):
+def command(role, image, sha, env_path, *, job_name=None):
     """Reuse the reviewed operational settings, replacing all optional overrides."""
     checked_image(role, image)
     # The ops constructors only read settings/environment and produce argv. No
@@ -56,7 +56,82 @@ def command(role, image, sha, env_path):
         os.environ.update(previous)
     # Preserve IAM on deploy. Check that the existing SAM policy is private and
     # its worker invoker is present; no broader project permission is needed.
-    return [arg for arg in argv if arg != "--no-allow-unauthenticated"]
+    argv = [arg for arg in argv if arg != "--no-allow-unauthenticated"]
+    if job_name is not None:
+        if role != "worker" or not re.fullmatch(r"specimen-worker-[a-z0-9-]+", job_name):
+            raise ValueError("Dedicated scientific jobs require an explicit worker name")
+        argv[4] = job_name
+    return argv
+
+
+def collection_routes():
+    """Read only the reviewed routes version; never print its private payload."""
+    secret = "specimen-collection-job-routes"  # pragma: allowlist secret -- resource name, never a credential
+    version = settings.OPTIONAL_SECRET_VERSIONS[secret]
+    if version is None:
+        return {}
+    if (type(version) is not int or version < 1 or settings.SECRET_VERSIONS.get(secret) != version
+        or any(spec["secret_env"].get("SPECIMEN_COLLECTION_WORKER_JOBS_JSON") != secret
+               for spec in (settings.API, settings.INTAKE, settings.WORKER))):
+        raise ValueError("The same numbered routing secret must reach API and both shared workers")
+    response = subprocess.run(["gcloud", "secrets", "versions", "access", str(version),
+        f"--secret={secret}", f"--project={settings.PROJECT}"],
+        capture_output=True, text=True, check=False)
+    if response.returncode:
+        raise ValueError("Pinned collection routes could not be read; run owner setup --intake-only")
+    try:
+        from specimen_digitization.application.runtime_config import collection_worker_jobs
+        routes = dict(collection_worker_jobs({"SPECIMEN_COLLECTION_WORKER_JOBS_JSON": response.stdout}, settings.PROJECT))
+        if not routes or len({route["actor_uid"] for route in routes.values()}) != 1:
+            raise ValueError()
+        for route in routes.values():
+            for lane in ("worker", "intake"):
+                prefix = f"{settings.PREFIX}/jobs/specimen-{lane}-"
+                if not route[f"{lane}_job"].startswith(prefix):
+                    raise ValueError()
+        return routes
+    except (ValueError, TypeError, KeyError):
+        raise ValueError("Pinned collection routes must name distinct dedicated jobs in the approved region and one actor") from None
+
+
+def scoped_job_env(base, scope, route):
+    organization, collection = scope.split("/")
+    return {**base, "SPECIMEN_WORKER_JOB": route["worker_job"],
+        "SPECIMEN_INTAKE_JOB": route["intake_job"],
+        "SPECIMEN_WORKER_SCOPE_JSON": json.dumps({"organization_id": organization,
+            "collection_id": collection}, sort_keys=True, separators=(",", ":"))}
+
+
+def intake_setup_metadata():
+    """Bounded owner setup input: names and versions, never secret contents."""
+    optional = settings.optional_secret_env("api")
+    bindings = "specimen-collection-bindings"
+    version = settings.SECRET_VERSIONS[bindings]
+    if (type(version) is not int or version < 1 or settings.CORE_SECRET_VERSIONS[bindings] != version
+        or any(spec["secret_env"].get("SPECIMEN_COLLECTION_BINDINGS_JSON") != bindings
+               for spec in (settings.API, settings.INTAKE, settings.WORKER))):
+        raise ValueError("Collection bindings require the same numbered runtime pin")
+    rows = [f"PIN\tapi\tspecimen-worker-actor-uid\t{settings.CORE_SECRET_VERSIONS['specimen-worker-actor-uid']}",
+            f"PIN\tapi\t{bindings}\t{version}", f"PIN\tworker\t{bindings}\t{version}",
+            "JOB\tintake\tspecimen-intake"]
+    for name in sorted(set(optional.values())):
+        rows.append(f"PIN\tapi\t{name}\t{settings.OPTIONAL_SECRET_VERSIONS[name]}")
+        if name == "specimen-collection-job-routes":
+            rows.append(f"PIN\tworker\t{name}\t{settings.OPTIONAL_SECRET_VERSIONS[name]}")
+            rows.append(f"PIN\trelease\t{name}\t{settings.OPTIONAL_SECRET_VERSIONS[name]}")
+    for name, version in sorted(settings.OAUTH_CLIENT_SECRET_VERSIONS.items()):
+        rows.append(f"PIN\tapi\t{name}\t{version}")
+    apis = settings.INTAKE_PROVIDER_APIS
+    if (not isinstance(apis, (list, tuple)) or len(set(apis)) != len(apis)
+        or set(apis) - {"drive.googleapis.com", "picker.googleapis.com"}
+        or (apis and ("specimen-cloud-import-config" not in optional.values()
+                      or not settings.OAUTH_CLIENT_SECRET_VERSIONS))):
+        raise ValueError("Provider APIs require pinned import configuration and client-secret prerequisites")
+    rows.extend(f"API\t{name}" for name in sorted(apis))
+    for route in collection_routes().values():
+        rows.append(f"JOB\tintake\t{route['intake_job'].rsplit('/', 1)[1]}")
+        rows.append(f"JOB\tworker\t{route['worker_job'].rsplit('/', 1)[1]}")
+    return rows
 
 
 def read(group, name, action="describe"):
@@ -79,7 +154,7 @@ def verify_policy(role, policy):
         raise ValueError(f"specimen-{role} is missing its scoped invoker grant; owner setup required")
 
 
-def verify_definition(role, resource, image, sha):
+def verify_definition(role, resource, image, sha, *, expected_env=None):
     metadata, spec = resource.get("metadata", {}), resource.get("spec", {})
     if metadata.get("labels", {}).get("source-sha") != sha:
         raise ValueError(f"{role}: deployed source SHA differs")
@@ -135,7 +210,7 @@ def verify_definition(role, resource, image, sha):
     if container.get("image") != image or task.get("serviceAccountName") != settings.ROLES[role]["service_account"]:
         raise ValueError(f"{role}: image digest or runtime identity differs")
     actual_env = {row["name"]: row.get("value") for row in container.get("env", []) if "value" in row}
-    expected_env = model_settings.role_env(role, settings.SAM_CHECKPOINT_SHA256)
+    expected_env = model_settings.role_env(role, settings.SAM_CHECKPOINT_SHA256) if expected_env is None else expected_env
     if actual_env != expected_env:
         raise ValueError(f"{role}: pinned runtime environment differs")
     secrets = {row["name"]: row.get("valueFrom", {}).get("secretKeyRef")
@@ -147,9 +222,14 @@ def verify_definition(role, resource, image, sha):
 
 
 def main(argv):
+    if argv[1:] == ["--intake-setup"]:
+        for line in intake_setup_metadata():
+            print(line)
+        return
     if len(argv) != 3:
         raise ValueError("usage: deploy_models.py SAM_IMAGE_DIGEST WORKER_IMAGE_DIGEST")
     sha = release_context(os.environ)
+    routes = collection_routes()
     images = {role: checked_image(role, image) for role, image in zip(("sam", "worker"), argv[1:], strict=True)}
     env = {**os.environ, "CLOUDSDK_CORE_DISABLE_PROMPTS": "1", "CLOUDSDK_CORE_SHOULD_PROMPT_TO_ENABLE_API": "false"}
     for role, image in images.items():
@@ -169,6 +249,18 @@ def main(argv):
         verify_definition(role, read(group, f"specimen-{role}"), image, sha)
         verify_policy(role, read(group, f"specimen-{role}", "get-iam-policy"))
         print(f"verified specimen-{role}: {sha} {image}; no inference executed", flush=True)
+    for scope, route in routes.items():
+        name = route["worker_job"].rsplit("/", 1)[1]
+        values = scoped_job_env(model_settings.role_env("worker", settings.SAM_CHECKPOINT_SHA256), scope, route)
+        # As for intake, first creation precedes its resource-level owner grant.
+        # Missing access fails verification; it never starts or broadens a job.
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "env.json"
+            path.write_text(json.dumps(values))
+            subprocess.run(command("worker", images["worker"], sha, path, job_name=name), env=env, check=True)
+        verify_definition("worker", read("jobs", name), images["worker"], sha, expected_env=values)
+        verify_policy("worker", read("jobs", name, "get-iam-policy"))
+        print(f"verified dedicated scientific job {name}: {sha}; no inference executed", flush=True)
 
 
 if __name__ == "__main__":

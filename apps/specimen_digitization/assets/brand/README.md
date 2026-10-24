@@ -1,74 +1,91 @@
 # Brand assets
 
-The mark is the pin: a vertical stroke with a filled circular head, standing in
-a disc. The specification is
-[`design/09-brand-direction.md`](../../design/09-brand-direction.md) section 9.
+The owner's selected [primary mark](../../design/brand-reference/owner-primary-mark.png)
+and [Paper app icon](../../design/brand-reference/owner-app-icon.png) are the visual
+authority. Their provenance is retained in
+[brand-reference/README.md](../../design/brand-reference/README.md).
+The mark has three interlocking ribbons, an open aperture in the front ribbon,
+and a shaded Iris, Amber and Obsidian fold. The primary mark darkens toward
+the upper end; the app icon returns to Amber at that end. Both named gradients
+are retained in the canonical vector. The former pin is retired. Interface icons
+remain Phosphor.
 
-Everything in this directory is generated from one geometry, stated once at the
-24 dp mark and scaled from there. Nothing here is loaded at runtime, so there is
-no `assets:` entry for it in `pubspec.yaml`; these are the inputs the two
-platform generators read, plus the reference renderings.
+`specimen-mark.svg` is the canonical vector. Both the platform raster renderer
+and `tool/brand/generate_flutter_mark.py` consume this source. Flutter renders
+its generated `MarkGeometry`; the Python raster pipeline does not duplicate the
+paths. The SVG colours are checked against the exact `BrandPalette` values in
+`packages/specimen_ui/lib/src/foundation/palette.dart`.
 
-## The vector source
+These files are generator inputs and reference renders, so they do not require
+an application `assets:` entry in `pubspec.yaml`.
 
-`pin.svg` is the source of truth for anyone working outside Flutter. It carries
-the derivation of the two coordinates that are not printed in 09: the head's
-centre at y 5.5 and the shaft's end at y 18, both of which fall out of the
-1 dp optical rise.
+## Files and platform treatment
 
-Two other files draw the same geometry and have to move with it:
-`../../tool/brand/render_mark.py` for the rasters and
-`../../packages/specimen_ui/lib/src/foundation/mark.dart` for `UiMark`.
-
-## The files
-
-| File | What it is |
+| File | Purpose |
 |---|---|
-| `pin.svg` | The mark at 24 dp. The vector source. |
-| `mark-1024.png` | The mark as it appears in the product: accent disc, pin, on `ground` light. Opaque. The reference rendering. |
-| `mark-mono-1024.png` | The monochrome variant: `paper` disc, `ink` pin, on `ground` light. Opaque. Its pair. |
-| `splash-mark-1024.png` | The same disc with its square cut away, so the splash composites it on `ground` in light and on `ground` dark in dark. |
-| `splash-mark-android12-1024.png` | The same again at two thirds of the size, for Android 12 and later. That platform clips the splash icon to a circle and masks a third of the foreground away, and the mark's head reaches three quarters of the disc's radius, so the full bleed disc comes back with a flattened head. |
-| `icon-1024.png` | The app icon: an accent superellipse at exponent 5 with the pin at 44 percent of the height, corners in `ground` light. Opaque, because iOS rejects an icon with an alpha channel. iOS and the legacy Android launcher. |
-| `icon-foreground-1024.png` | The Android adaptive foreground: the pin alone, on nothing. Sized against the safe zone, which is the central 66 percent of the canvas a launcher mask shows. |
-| `icon-maskable-1024.png` | The web maskable icon: accent to every edge, pin sized against the central 80 percent a maskable mask guarantees. |
+| `specimen-mark.svg` | Canonical 512 square vector, traced from the retained owner reference. |
+| `mark-1024.png` | Primary mark on opaque Paper. |
+| `mark-mono-1024.png` | The same three paths and aperture, all Obsidian on Paper. |
+| `icon-1024.png` | App-icon mark on opaque Paper for iOS and legacy Android launchers. The platform supplies its rounded mask. |
+| `icon-foreground-1024.png` | Transparent full-colour mark in the central 66 percent frame for an Android adaptive icon, over its configured Paper background. |
+| `icon-maskable-1024.png` | Paper to every edge with the mark in the central 80 percent frame for web masks. |
+| `splash-mark-1024.png` | The owner's Paper rounded tile with transparent corners, keeping the Obsidian ribbons visible on both Paper and Obsidian launch backgrounds. |
+| `splash-mark-android12-1024.png` | Transparent mark in the central two-thirds frame, entirely inside the Android 12 safe circle. Android supplies a Paper icon background in both themes. |
 
-The pin is always 44 percent of the icon a mask shows, never 44 percent of the
-source canvas. That is what makes the masked Android icon, the masked maskable
-icon and the iOS icon carry a pin of the same optical size.
+The SVG already contains the owner's visual margins. The adaptive and maskable
+frames scale the complete vector, using its `fold-app-icon` gradient and
+preserving the same relative foreground size when each platform applies its
+mask. Opaque launcher sources do not pre-cut corners: doing so would compound
+platform masks and give iOS an alpha channel.
+The 64 px browser favicon uses the rounded Paper tile to remain visible on dark
+browser surfaces.
 
 ## Regenerating
 
 From `apps/specimen_digitization`:
 
 ```bash
-uv run --with pillow python tool/brand/render_mark.py
+python3 tool/brand/generate_flutter_mark.py
+dart format packages/specimen_ui/lib/src/foundation/mark_geometry.dart
+uv run --with resvg-py==0.5.0 --with pillow==11.3.0 python tool/brand/render_mark.py
 dart run flutter_launcher_icons
 dart run flutter_native_splash:create
-uv run --with pillow python tool/brand/render_mark.py --only web
+uv run --with resvg-py==0.5.0 --with pillow==11.3.0 python tool/brand/render_mark.py --only web
 ```
 
-The last line is not a mistake. `flutter_launcher_icons` resizes one source
-into all four web files, which leaves a 16 px favicon and two maskable icons
-with `ground` in their corners, so the renderer runs again afterwards and
-replaces `web/favicon.png`, `web/icons/apple-touch-icon-180.png` and the two
-`web/icons/Icon-maskable-*.png`. `--only sources` renders the other half on its
-own.
+The final pass restores the 64 px favicon, Apple touch icon, and the safe-area
+web maskable icons after the launcher generator resizes its single input.
+`--only sources` updates just the seven source rasters. The renderer checks the
+vector, native YAML, HTML and web manifest against the Flutter palette before
+writing anything. It never generates a new design or uses a raster photograph
+as the launcher source.
 
-Every run also checks that `flutter_launcher_icons.yaml`,
-`flutter_native_splash.yaml`, `web/index.html` and `web/manifest.json` still
-carry the palette, and exits non zero naming anything that drifted.
+`resvg-py` 0.5.0 renders the source at four times the requested output size. Pillow
+11.3.0 composes the Paper plate, then resolves colour and alpha together using
+premultiplied Lanczos resampling. Both rendering tools are pinned in the command;
+no Flutter application dependency is added. The generated PNGs contain no
+timestamps or other varying metadata.
 
-Two generated files are one hook away from what the generators write: the
-repository's `trailing-whitespace` hook strips a trailing space from a comment
-line in `android/app/src/main/res/values-v31/styles.xml` and its night
-counterpart. Re-running the generator reintroduces it and the hook removes it
-again.
+Run the asset and mark regression checks after generation:
 
-## Drawing
+```bash
+flutter test test/theme/brand_assets_test.dart
+cd packages/specimen_ui
+flutter test test/foundation/brand_test.dart test/foundation/mark_test.dart
+```
 
-Rasters are drawn at four times the output side and resolved with a Lanczos
-filter, which is where the anti-aliasing comes from: Pillow draws hard edged
-polygons. Colour and coverage are separate channels, resolved separately, so a
-disc on transparency keeps its edge instead of the dark halo an
-un-premultiplied RGBA resize leaves behind.
+The asset test checks every active source, Android, iOS and web PNG for Obsidian
+and the approved fold gradient, and retains the rejected yellow-green hue guard.
+It checks the actual ribbon silhouette, aperture and separation gaps at useful
+raster resolutions, opaque Paper launcher backgrounds, transparent foreground
+safe circles, source palette consistency and the absence of the retired vector.
+The Flutter mark test checks the same canonical geometry and its mono variant.
+Historical screenshots and golden baselines are outside the generated-asset scan.
+
+**Generator caveat:** `flutter_launcher_icons` 0.14.4 can rewrite
+`ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS` from its boolean
+value to `AppIcon`. Restore each original `YES` or `NO` value after generation;
+the regression test rejects a nonboolean. Preserve application identifiers,
+unrelated `Info.plist` formatting, web-manifest `purpose: any` entries, and final
+newlines. Strip generated Android XML trailing whitespace before the whitespace
+check. Generator side effects do not authorize bundle identity changes.

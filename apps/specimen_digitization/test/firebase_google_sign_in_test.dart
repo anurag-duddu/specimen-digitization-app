@@ -103,14 +103,18 @@ void main() {
         enabled: true,
         web: true,
       );
-      for (final hint in [' STAFF@FIELDMUSEUM.ORG ', 'ANURAG@INFINATIVE.COM']) {
+      for (final hint in [
+        ' STAFF@FIELDMUSEUM.ORG ',
+        'ANURAG@INFINATIVE.COM',
+        'tester.external@gmail.com',
+      ]) {
         await adapter.authenticate(hint);
         expect((auth.provider as GoogleAuthProvider).parameters, {
           'prompt': 'select_account',
           'login_hint': hint.trim().toLowerCase(),
         });
       }
-      await adapter.authenticate('staff@fieldmuseum.org.evil.example');
+      await adapter.authenticate('staff@@fieldmuseum.org');
       expect((auth.provider as GoogleAuthProvider).parameters, {
         'prompt': 'select_account',
       });

@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../blocker_words.dart';
 import '../../models.dart';
+import '../../processing_wait.dart';
 import '../../review_context.dart';
 import 'workbench_layout.dart';
 
@@ -263,6 +264,30 @@ const Map<String, String> _recordMessages = <String, String>{
       'The identifier needs a confirmed EMu person record',
 };
 
+/// A compact issue summary for list responses that omit the detailed fields.
+/// Names come from the same contract vocabulary as the review inspector, but
+/// this summary never claims a navigation target that the payload did not send.
+String reviewIssueSummary(String raw) {
+  final code = raw.trim();
+  final separator = code.indexOf(':');
+  final base = separator < 0 ? code : code.substring(0, separator);
+  final suffix = separator < 0 ? '' : code.substring(separator + 1);
+  final fieldName = _fieldNames[suffix];
+  final fieldReason = _fieldReasons[base];
+  if (fieldName != null && fieldReason != null) {
+    return _fieldReasonMessage(const Specimen({}), suffix, fieldReason);
+  }
+  if (_labelReasons[base] case final reason?) return 'A label $reason';
+  if (base == 'unresolved_transcription') {
+    return 'A label reading is unresolved';
+  }
+  if (_recordMessages[code] case final message?) return message;
+  if (_operatorMessages[base] case final message?) return message;
+  if (_researchStops[base] case final message?) return message;
+  if (blockerWords(code) != null) return blockerLabel(code);
+  return _humanMessage(code) ?? 'Review the recorded issue';
+}
+
 ClearanceBlocker _issueFor(
   Specimen specimen,
   String code, {
@@ -295,7 +320,16 @@ ClearanceBlocker _issueFor(
   // processing, and it says what stopped the run in the words the processing
   // panel uses, never the code.
   final BlockerWords? words = blockerWords(code);
-  if (words != null) {
+  final ProcessingWait? waiting = processingWaitFor(specimen);
+  if (waiting != null && code == objectOf(specimen.data['run'])['blocker']) {
+    // Processing is still outstanding, so keep the clearance gate without
+    // telling a reviewer to reconcile an active intent or a scheduled retry.
+    kind = ClearanceBlockerKind.processing;
+    message = waiting.summary;
+    detail = waiting.detail;
+    field = null;
+    region = null;
+  } else if (words != null) {
     kind = ClearanceBlockerKind.processing;
     message = words.what;
     detail = words.next;

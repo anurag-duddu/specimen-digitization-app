@@ -249,46 +249,61 @@ void main() {
   });
 
   group("Google's figures", () {
-    testWidgets('it is the pill of Google drawing: 40 high, paddings 12, 10 '
-        'and 12, a 20 by 20 G', (WidgetTester tester) async {
-      await tester.pumpWidget(uiHarness(child: _plain));
-      await tester.pumpAndSettle();
-      final Finder face = _face(_lightFill);
-      final Rect button = tester.getRect(face);
-      final Rect logo = tester.getRect(find.byType(Image));
-      final Rect text = tester.getRect(find.text(_label));
-      expect(button.height, 40, reason: 'the button is 40 high at scale 1.0');
-      expect(logo.size, const Size(20, 20), reason: 'the G is 20 by 20');
-      expect(logo.left - button.left, 12, reason: '12 before the G');
-      expect(text.left - logo.right, 10, reason: '10 between the G and text');
-      expect(button.right - text.right, 12, reason: '12 after the text');
-      expect(
-        logo.center.dy,
-        button.center.dy,
-        reason: 'the G is centred on the button',
-      );
-      expect(text.height, 20, reason: 'the label sits in the 20 of 14/20');
-      expect(
-        button.width,
-        12 + 20 + 10 + text.width + 12,
-        reason: 'the button takes the width its content needs',
-      );
-    });
+    testWidgets(
+      'unbounded width keeps Google geometry: 40 high, paddings 12, 10 '
+      'and 12, a 20 by 20 G',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          uiHarness(
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [_plain],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final Finder face = _face(_lightFill);
+        final Rect button = tester.getRect(face);
+        final Rect logo = tester.getRect(find.byType(Image));
+        final Rect text = tester.getRect(find.text(_label));
+        expect(button.height, 40, reason: 'the button is 40 high at scale 1.0');
+        expect(logo.size, const Size(20, 20), reason: 'the G is 20 by 20');
+        expect(logo.left - button.left, 12, reason: '12 before the G');
+        expect(text.left - logo.right, 10, reason: '10 between the G and text');
+        expect(button.right - text.right, 12, reason: '12 after the text');
+        expect(
+          logo.center.dy,
+          button.center.dy,
+          reason: 'the G is centred on the button',
+        );
+        expect(text.height, 20, reason: 'the label sits in the 20 of 14/20');
+        expect(
+          button.width,
+          12 + 20 + 10 + text.width + 12,
+          reason: 'the button takes the width its content needs',
+        );
+      },
+    );
 
-    testWidgets("its edge is Google's pill with a 1 dp outline drawn inside", (
-      WidgetTester tester,
-    ) async {
-      await tester.pumpWidget(uiHarness(child: _plain));
-      await tester.pumpAndSettle();
-      final ShapeDecoration painted = _decoration(tester, _face(_lightFill));
-      expect(painted.shape, isA<StadiumBorder>());
-      expect((painted.shape as StadiumBorder).side.width, 1);
-      expect(
-        (painted.shape as StadiumBorder).side.strokeAlign,
-        BorderSide.strokeAlignInside,
-        reason: 'the page says "1px, inside"',
-      );
-    });
+    testWidgets(
+      "its edge is Google's 4 dp rectangle with a 1 dp inside outline",
+      (WidgetTester tester) async {
+        await tester.pumpWidget(uiHarness(child: _plain));
+        await tester.pumpAndSettle();
+        final ShapeDecoration painted = _decoration(tester, _face(_lightFill));
+        expect(painted.shape, isA<RoundedRectangleBorder>());
+        expect(
+          (painted.shape as RoundedRectangleBorder).borderRadius,
+          BorderRadius.circular(4),
+        );
+        expect((painted.shape as RoundedRectangleBorder).side.width, 1);
+        expect(
+          (painted.shape as RoundedRectangleBorder).side.strokeAlign,
+          BorderSide.strokeAlignInside,
+          reason: 'the page says "1px, inside"',
+        );
+      },
+    );
 
     testWidgets("light and dark are Google's two themes, whatever the "
         'platform', (WidgetTester tester) async {
@@ -306,7 +321,7 @@ void main() {
         await tester.pumpAndSettle();
         final ShapeDecoration painted = _decoration(tester, _face(fill));
         expect(
-          (painted.shape as StadiumBorder).side.color,
+          (painted.shape as RoundedRectangleBorder).side.color,
           stroke,
           reason: '${theme.key.name} stroke',
         );
@@ -469,11 +484,11 @@ void main() {
       );
     });
 
-    testWidgets('the window does not stretch it: the same button in a phone '
-        'and in a desktop browser', (WidgetTester tester) async {
+    testWidgets('the face fills its bounded column at every window width', (
+      WidgetTester tester,
+    ) async {
       addTearDown(tester.view.reset);
       tester.view.devicePixelRatio = 1;
-      final Set<Size> faces = <Size>{};
       for (final double width in <double>[320, 390, 768, 1024, 1440]) {
         tester.view.physicalSize = Size(width, 900);
         final GlobalKey column = GlobalKey();
@@ -493,14 +508,24 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(tester.getSize(find.byKey(column)).width, width - 32);
-        faces.add(tester.getSize(_face(_lightFill)));
+        expect(tester.getSize(_face(_lightFill)).width, width - 32);
+        final logo = tester.getRect(find.byType(Image));
+        final label = tester.getRect(find.text(_label));
+        final face = tester.getRect(_face(_lightFill));
+        expect(logo.size, const Size(20, 20));
+        expect(logo.left - face.left, 12);
+        expect(label.left - logo.right, 10);
+        expect(face.right - label.right, 12);
+        expect(
+          tester.widget<Text>(find.text(_label)).textAlign,
+          TextAlign.center,
+        );
         expect(
           tester.getCenter(_face(_lightFill)).dx,
           closeTo(tester.getCenter(find.byKey(column)).dx, 0.01),
           reason: 'it is centred in the column it is given at $width dp',
         );
       }
-      expect(faces, hasLength(1), reason: 'one size at every window width');
     });
 
     testWidgets('it builds right to left with the G at the start', (
@@ -511,11 +536,16 @@ void main() {
       );
       await tester.pumpAndSettle();
       final Rect button = tester.getRect(_face(_lightFill));
+      final Rect logo = tester.getRect(find.byType(Image));
+      final Rect label = tester.getRect(find.text(_label));
       expect(
-        button.right - tester.getRect(find.byType(Image)).right,
-        12,
-        reason: 'the 12 before the G is on the right in a right to left script',
+        logo.left - label.right,
+        10,
+        reason: 'the G precedes the label in right to left reading order',
       );
+      expect(logo.size, const Size(20, 20));
+      expect(button.right - logo.right, 12);
+      expect(label.left - button.left, 12);
     });
   });
 
@@ -574,7 +604,7 @@ void main() {
         _lightText.withValues(alpha: ui.color.pressedOpacity),
       );
       expect(ui.color.pressedOpacity, 0.12);
-      expect(overlay.shape, isA<StadiumBorder>());
+      expect(overlay.shape, isA<RoundedRectangleBorder>());
       expect(
         _face(_lightFill),
         findsOneWidget,
@@ -626,7 +656,7 @@ void main() {
       }
     });
 
-    testWidgets('keyboard focus rings the capsule, and a pointer press does '
+    testWidgets('keyboard focus rings the rectangle, and a pointer press does '
         'not', (WidgetTester tester) async {
       await tester.pumpWidget(uiHarness(child: _plain));
       expect(
@@ -638,10 +668,11 @@ void main() {
       await tester.pumpAndSettle();
       final FocusRing ring = tester.widget<FocusRing>(find.byType(FocusRing));
       expect(ring.visible, isTrue);
+      expect(ring.radius, 4);
       expect(
         ring.shape,
-        FocusRingShape.stadium,
-        reason: 'a capsule is ringed by a stadium, concentric with its edge',
+        FocusRingShape.roundedRectangle,
+        reason: 'the focus ring follows the same rounded rectangular contour',
       );
 
       FocusManager.instance.primaryFocus?.unfocus();
@@ -728,7 +759,7 @@ void main() {
 
         // Google's fill stays; the label and the outline move to the tokens.
         final ShapeDecoration painted = _decoration(tester, _face(fill));
-        final BorderSide side = (painted.shape as StadiumBorder).side;
+        final BorderSide side = (painted.shape as RoundedRectangleBorder).side;
         expect(side.color, ui.color.disabledOutline, reason: '$mode outline');
         expect(side.color, isNot(stroke), reason: '$mode is not enabled paint');
         expect(side.width, 1);
@@ -842,7 +873,8 @@ void main() {
           reason: state,
         );
         expect(
-          (_decoration(tester, _face(_lightFill)).shape as StadiumBorder)
+          (_decoration(tester, _face(_lightFill)).shape
+                  as RoundedRectangleBorder)
               .side
               .color,
           _lightStroke,

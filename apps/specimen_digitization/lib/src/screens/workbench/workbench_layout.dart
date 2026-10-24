@@ -45,9 +45,6 @@ enum WorkbenchRegime {
   bool get isStacked => this == stacked;
 }
 
-/// Bounds the reading measure while leaving the photograph room to breathe.
-const double reviewInspectorMaxWidth = 650;
-
 /// Minimum readable column for a photograph beside label comparison.
 /// This local content policy is scaled with text before choosing two panes.
 const double reviewColumnMinWidth = 360;

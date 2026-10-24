@@ -25,18 +25,16 @@ import '../ui_finders.dart';
 /// The boundary a verification capture is taken from.
 const Key verificationBoundary = ValueKey<String>('verification-boundary');
 
-/// The accent, as the palette declares it (09 section 3.1).
+/// The current brand accent, read from the same tokens as the application.
 ///
-/// One colour in both modes. The rule it carries is "one use per screen", and
-/// [accentRegions] is how that is counted rather than asserted.
-const int accentValue = 0xFFE8FF47;
+/// [accentRegions] measures how much secondary brand emphasis a screen uses.
+/// It is a diagnostic, not a one-use-per-screen limit on the brand gradient.
+final int accentValue = UiColor.light.accent.toARGB32();
 
-/// How far a pixel may sit from the accent and still be counted as it.
+/// Tolerance for antialiasing around the exact accent seed, per RGB channel.
 ///
-/// Eight per channel. The nearest other token in the system is the sun field
-/// centre, `0xFFF2FF66`, which is 31 away on blue before it is composited over
-/// paper and further after, so this separates the accent from the sky without
-/// dropping the antialiased edge of a disc.
+/// Tonal Iris containers and the gradient are separate treatments; this
+/// instrument counts connected runs near the seed, not all brand expression.
 const int accentTolerance = 8;
 
 /// The smallest run of connected accent pixels that counts as a use.
@@ -224,11 +222,9 @@ Future<void> pumpMeasuredApp(
 /// Selects the current inline Deferred filter and verifies the actual state.
 Future<void> chooseDeferredQueue(WidgetTester tester) async {
   await pickSpecimenQueue(tester, 'Deferred');
-  for (final status in ['needs_human_review', 'deferred', 'cleared']) {
-    final control = find.byKey(ValueKey('queue-filter-$status'));
-    expect(control.hitTestable(), findsOneWidget);
-    expect(tester.widget<Pressable>(control).selected, status == 'deferred');
-  }
+  final control = find.byKey(const ValueKey<String>('queue-view'));
+  expect(control.hitTestable(), findsOneWidget);
+  expect(tester.widget<UiSegmented<String>>(control).value, 'deferred');
 }
 
 /// The pixels currently under [verificationBoundary].
@@ -335,9 +331,9 @@ Future<int> accentRegions(WidgetTester tester) async {
   final Uint8List rgba = pixels.buffer.asUint8List();
   if (rgba.length < width * height * 4) return 0;
 
-  const int targetR = (accentValue >> 16) & 0xFF;
-  const int targetG = (accentValue >> 8) & 0xFF;
-  const int targetB = accentValue & 0xFF;
+  final int targetR = (accentValue >> 16) & 0xFF;
+  final int targetG = (accentValue >> 8) & 0xFF;
+  final int targetB = accentValue & 0xFF;
 
   final Uint8List mask = Uint8List(width * height);
   for (int i = 0; i < width * height; i++) {

@@ -471,6 +471,7 @@ class Workflow:
         with logfire.span(
             "Process specimen checkpoint",
             specimen_id=specimen_id,
+            organization_id=principal.scope.organization_id,
             collection_id=principal.scope.collection_id,
         ):
             return self._step(principal, specimen_id)
@@ -632,6 +633,13 @@ class Workflow:
             # Never more than the program's allowance has left (when that fits
             # one expert request): the step's meter has this as its cap.
             cost = self.field_research.reservation(self, principal, specimen, cost)
+        if billable and not run.profile.synthetic and cost:
+            from .tenant_budget import recorded_micros
+
+            # An attempt that already holds on a monthly cap's ledger was never
+            # sent (a refusal later in the chain blocked it): it reserves the
+            # recorded amount again, so its holds replay (TENANT_BUDGETS.md).
+            cost = recorded_micros(run, step) or cost
         # The limits on money, in the order they block: the cost settings, the
         # saved cost totals, then the run's cost ceiling.
         money_issue = None
@@ -681,13 +689,16 @@ class Workflow:
                 issue = str(error)
         if (issue in RESEARCH_LIMITS or issue == ATTEMPTS_USED) and step == FIELD_RESEARCH:
             # Money comes first: a run whose cost ceiling, cost settings or
-            # totals, or program allowance would refuse this attempt keeps that
-            # block. The allowance is only read here (lane_allowance.admits),
-            # never reserved on.
+            # totals, monthly cap or program allowance would refuse this attempt
+            # keeps that block. The caps' ledgers and the allowance are only
+            # read here (tenant_budget.admits, lane_allowance.admits), never
+            # reserved on.
             from .lane_allowance import admits
+            from .tenant_budget import admits as tenant_budget_admits
 
             money_issue = money_issue or (
-                admits(self.repository, principal, specimen, cost, self.clock)
+                tenant_budget_admits(self.repository, principal, specimen, step, cost, self.clock)
+                or admits(self.repository, principal, specimen, cost, self.clock)
                 if billable and not run.profile.synthetic
                 else None
             )
@@ -752,9 +763,14 @@ class Workflow:
             permit = admission.token
         if billable and not run.profile.synthetic:
             from .lane_allowance import reserve_step
+            from .tenant_budget import reserve_step as reserve_tenant_budget
 
-            # The program's allowance (LANE.md T2b), once the circuit admits the call.
-            allowance_issue = reserve_step(
+            # The program's allowance (LANE.md T2b), once the circuit admits the
+            # call, after any monthly cap of the organization or the collection
+            # (TENANT_BUDGETS.md): with none set, only the caps are read.
+            allowance_issue = reserve_tenant_budget(
+                self.repository, principal, specimen, step, cost, self.clock
+            ) or reserve_step(
                 self.repository, principal, specimen, step, cost, self.clock
             )
             if allowance_issue:
@@ -1692,10 +1708,18 @@ class Workflow:
         attempt. Nothing is reserved, attempted or paid; earlier attempts keep
         what they hold and the fields they settled. The step's rules finalize
         the record, the fields it could not check unresolved for a person
-        (``FieldResearchStep.give_up``), and it goes on to review."""
+        (``FieldResearchStep.give_up``), and it goes on to review.
+
+        This attempt itself may hold on a monthly cap's ledger: a refusal
+        later in the chain blocked it after its holds, and the run records
+        them (tenant_budget.recorded_micros). It was never sent, so once the
+        give-up is saved they settle at zero (tenant_budget.release_unsent,
+        TENANT_BUDGETS.md)."""
         from .active_graph import save_recoverably
+        from .tenant_budget import release_unsent, settle_released
 
         run = specimen.run
+        release = None
         try:
             self.field_research.give_up(self, principal, specimen, code)
         except OperationalBlock as error:
@@ -1707,6 +1731,7 @@ class Workflow:
             run.dead_letter = False
             run.lease_until = None
             end_step(run, FIELD_RESEARCH)
+            release = release_unsent(run, FIELD_RESEARCH)
         _log_step_failure(
             run, FIELD_RESEARCH, "field_research_unaffordable", code=code, stage=run.stage
         )
@@ -1718,7 +1743,7 @@ class Workflow:
                 after={"stage": run.stage, "blocker": run.blocker},
             )
         )
-        return save_recoverably(
+        saved = save_recoverably(
             self.repository,
             principal,
             specimen,
@@ -1726,6 +1751,8 @@ class Workflow:
             f"field-research-unaffordable:{revision}",
             digest({"field_research_unaffordable": code, "run": run.id}),
         )
+        settle_released(self.repository, principal, saved, release, self.clock)
+        return saved
 
     def recover_blocked(self, principal: Principal, specimen_id: str) -> bool:
         """Make a blocked ordinary first pass or extraction due again; whether it did.
@@ -1876,18 +1903,24 @@ class Workflow:
         Only an envelope this run reserved exactly as ``settle_step`` would
         settle it: the same reservation and allowance, its numbers read back as
         exact integers (``stored_integer``: the transport may return doubles).
-        None when the run has no program allowance, the ledger cannot be read,
-        the envelope differs, or the attempt is reserved but not settled; the
-        lost attempt then stays held in full.
+        None when the ledger cannot be read, the envelope differs, or the
+        attempt is reserved but not settled; the lost attempt then stays held
+        in full. A run with no program allowance asks the monthly cap ledgers
+        the attempt reserved in (tenant_budget.settled_micros): None when it
+        reserved in none, or they do not all hold one settled amount.
         """
         from .domain import Scope
-        from .lane_allowance import ProgramLedger
+        from .lane_allowance import ORDINARY, ProgramLedger
         from .lane_worker import stored_integer
+        from .tenant_budget import settled_micros
 
         run = specimen.run
         policy = run.profile.execution
-        if policy.program_allowance_micros is None or not reserved:
+        if not reserved:
             return None
+        if policy.program_allowance_micros is None:
+            return settled_micros(self.repository, principal, specimen, step,
+                run.attempts.get(step, 0), reserved)
         try:
             ledger = ProgramLedger(
                 self.repository,
@@ -1900,7 +1933,7 @@ class Workflow:
             key = ProgramLedger._ordinary_key(
                 specimen.id, run.id, step, run.attempts.get(step, 0)
             )
-            entry = ledger.read().get("ordinary_effects", {}).get(key)
+            entry = ledger.effect(ORDINARY, key)  # The head's, else its archive's.
             if not isinstance(entry, dict) or entry.get("settled_micros") is None:
                 return None
             if (

@@ -6,8 +6,8 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../foundation/type.dart';
 import '../../primitives/fit.dart';
-import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
 import '../actions/chip.dart';
 
@@ -24,6 +24,7 @@ class UiDisclosureStyle {
     required this.padding,
     required this.bodyPadding,
     required this.gap,
+    required this.summaryGap,
     required this.minHeight,
     required this.radius,
   });
@@ -51,6 +52,9 @@ class UiDisclosureStyle {
 
   /// The gap between the text column and the caret.
   final double gap;
+
+  /// Space between a field name and its value or supporting summary.
+  final double summaryGap;
 
   /// The header row's visual height, from density.
   ///
@@ -80,6 +84,31 @@ class UiDisclosureStyle {
       ui.space.s3,
     ),
     gap: ui.space.s3,
+    summaryGap: ui.space.s1,
+    minHeight: ui.density.rowHeight,
+    radius: ui.shape.inner,
+  );
+
+  /// A named value with details behind it. The small field name provides
+  /// context; the value or problem is the primary scanning line.
+  static UiDisclosureStyle value(UiThemeData ui) => UiDisclosureStyle(
+    title: ui.type.bodySmall,
+    summary: ui.type.body,
+    titleColor: ui.color.inkSecondary,
+    summaryColor: ui.color.ink,
+    caretColor: ui.color.inkSecondary,
+    padding: EdgeInsetsDirectional.symmetric(
+      horizontal: ui.space.s3,
+      vertical: ui.space.s3,
+    ),
+    bodyPadding: EdgeInsetsDirectional.fromSTEB(
+      ui.space.s3,
+      0,
+      ui.space.s3,
+      ui.space.s3,
+    ),
+    gap: ui.space.s3,
+    summaryGap: ui.space.s1,
     minHeight: ui.density.rowHeight,
     radius: ui.shape.inner,
   );
@@ -116,7 +145,7 @@ class UiDisclosure extends StatefulWidget {
     this.style,
   });
 
-  /// The row's title. A noun phrase, no period (02 section 4.2).
+  /// The row's title or question. Wraps to remain readable before expansion.
   final String title;
 
   /// What the row reveals.
@@ -184,17 +213,19 @@ class _UiDisclosureState extends State<UiDisclosure> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          UiLabel(widget.title, style: title),
+          Text(widget.title, style: title, strutStyle: UiType.strutOf(title)),
           // The summary is content, not a label: it is the row's second line,
           // the same object a list row's subtitle is, so it wraps to two
           // lines before it is cut (11 section 3.3).
-          if (_visibleSummary != null)
+          if (_visibleSummary != null) ...<Widget>[
+            SizedBox(height: style.summaryGap),
             Text(
               _visibleSummary!,
               style: style.summary.copyWith(color: style.summaryColor),
               maxLines: UiDisclosureStyle.summaryMaxLines,
               overflow: TextOverflow.ellipsis,
             ),
+          ],
           ?under,
         ],
       );
@@ -229,12 +260,10 @@ class _UiDisclosureState extends State<UiDisclosure> {
   /// The header's line: text, the optional trailing, and the caret.
   ///
   /// The trailing keeps the line while the whole of the title and the whole
-  /// of the summary still fit beside it. A title is a label, which never
-  /// wraps and never loses a word to a neighbour (11 section 3.3, rules 1 and
-  /// 2), and a summary is content that wraps to two lines before it is cut,
-  /// so when either would not fit beside the chip the chip moves under the
-  /// text, at the start of its own line, rather than squeezing the words into
-  /// an ellipsis.
+  /// of the summary still fit beside it. When either would not fit, the chip
+  /// moves under the text at the start of its own line. The title then wraps
+  /// into the available width so the full question remains visible, while
+  /// the optional summary keeps its two-line preview.
   Widget _headerRow(UiThemeData ui, UiDisclosureStyle style) {
     final Widget caret = AnimatedRotation(
       turns: _open ? UiDisclosureStyle.caretTurns : 0,

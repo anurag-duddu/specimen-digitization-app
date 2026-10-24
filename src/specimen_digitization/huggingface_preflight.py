@@ -15,6 +15,11 @@ from pydantic import BaseModel
 from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.usage import UsageLimits
 
+from .application.model_option import (
+    ModelOptionConfigurationError,
+    active_routes,
+    nvidia_stages,
+)
 from .hub_models import SAM3_MODEL
 from .model_gateway import (
     HUGGINGFACE_ROUTES,
@@ -203,12 +208,15 @@ def run_preflight(
     live_route: str | None = None,
     image_path: Path | None = None,
     bill_to: str | None = None,
+    environ: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    # The routes of the active option only (SPECIMEN_NVIDIA_STAGES,
+    # application/model_option.py): a route the option leaves off cannot block
+    # a release. A live smoke may still name any registered route.
+    routes = active_routes(nvidia_stages(os.environ if environ is None else environ))
     token_report = inspect_runtime_token(token)
     catalog = fetch_router_catalog(token)
-    route_reports = [
-        validate_route(route, catalog) for route in HUGGINGFACE_ROUTES.values()
-    ]
+    route_reports = [validate_route(route, catalog) for route in routes.values()]
     report: dict[str, Any] = {
         "token": token_report,
         "router_model_count": len(catalog),
@@ -275,6 +283,10 @@ def main() -> None:
     token = os.getenv("HF_TOKEN")
     if not token:
         parser.error("HF_TOKEN is not set.")
+    try:
+        nvidia_stages(os.environ)
+    except ModelOptionConfigurationError as error:
+        parser.error(str(error))  # It names the setting, never its value.
 
     if args.live_route:
         configure_observability(

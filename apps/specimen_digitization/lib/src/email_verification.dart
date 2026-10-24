@@ -61,8 +61,8 @@ class _EmailVerificationGateState extends State<EmailVerificationGate> {
     if (access is FirebaseSession && !access.staffEmailAllowed) {
       return UiScaffold(
         body: SignInLayout(
-          title: 'Use a Field Museum account',
-          purpose: 'Sign in with your fieldmuseum.org email address.',
+          title: 'Choose an account with an email address',
+          purpose: 'Use your Field Museum account or another approved account.',
           icon: UiIcons.account,
           busy: _busy,
           footer: _busy ? null : const AdministratorContactLine(),

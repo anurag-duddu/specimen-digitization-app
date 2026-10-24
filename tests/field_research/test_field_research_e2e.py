@@ -220,16 +220,22 @@ def test_field_research_reaches_the_final_queue_in_one_step(rig, caplog):
     assert run.completed_steps[-1] == FIELD_RESEARCH and "plan" not in run.completed_steps
     assert done.version == parsed.version + 2  # The workflow's intent save, then the one result save.
     # Every connector call of the step, as observed: the read of the run, the
-    # intent save (nothing new to project), the result save, then the result's
-    # projection rows. No research-state, circuit or ledger document call.
-    assert sequence[:8] == ["GetSpecimen", "GetSnapshot", "GetReceipt", "GetSnapshot", "SaveSpecimenV3",
-        "GetReceipt", "GetSnapshot", "SaveSpecimenV3"]
-    assert all(name.startswith("Append") for name in sequence[8:])
-    assert dict(calls) == {"GetSpecimen": 1, "GetSnapshot": 3, "GetReceipt": 2, "SaveSpecimenV3": 2,
-        "AppendSourceAssetV2": 10, "AppendEvidenceItemV2": 11, "AppendToolCallV1": 5,
+    # monthly budget caps read twice (TENANT_BUDGETS.md: once for the step's
+    # headroom, FieldResearchStep.reservation, once at its reservation,
+    # tenant_budget.reserve_step; none is set, so no ledger is read), the
+    # intent save (nothing new to project, no paid call yet), the result save,
+    # then the result's projection rows and the cost meter's one upsert of the
+    # step's paid call (COST_METER.md). No research-state, circuit or ledger
+    # document call.
+    assert sequence[:10] == ["GetSpecimen", "GetSnapshot", "TenantBudgetCapsV1", "TenantBudgetCapsV1",
+        "GetReceipt", "GetSnapshot", "SaveSpecimenV3", "GetReceipt", "GetSnapshot", "SaveSpecimenV3"]
+    assert all(name.startswith("Append") for name in sequence[10:-1])
+    assert sequence[-1] == "UpsertCostEntriesV1"
+    assert dict(calls) == {"GetSpecimen": 1, "GetSnapshot": 3, "TenantBudgetCapsV1": 2, "GetReceipt": 2,
+        "SaveSpecimenV3": 2, "AppendSourceAssetV2": 10, "AppendEvidenceItemV2": 11, "AppendToolCallV1": 5,
         "AppendFieldCandidateV2": 16, "AppendCandidateEvidenceV2": 24, "AppendRecordVersionV2": 1,
-        "AppendResolvedFieldV2": 20}
-    assert len(sequence) == 6 + 2 + 87
+        "AppendResolvedFieldV2": 20, "UpsertCostEntriesV1": 1}
+    assert len(sequence) == 6 + 2 + 2 + 87 + 1
     assert not NATIVE_OPERATIONS & set(calls)
     assert not [r for r in caplog.records if "Projection" in r.getMessage()]
 
@@ -239,6 +245,12 @@ def test_field_research_reaches_the_final_queue_in_one_step(rig, caplog):
     assert meter.cap_micros == CAP == paid["reserved_micros"]
     assert paid["cost_micros"] == meter.spent_micros == 50 * len(resolver.calls) <= CAP
     assert run.usage.reserved_cost_micros == meter.spent_micros <= run.profile.execution.approved_cost_limit_micros
+    # The cost meter holds that call as its one row, at the settled cost.
+    [entry] = [item["row"] for item in rig.fake.cost_entries.values()]
+    assert (entry["step"], entry["stage"], entry["kind"], entry["run_id"]) == (
+        FIELD_RESEARCH, "field_research", "model", run.id)
+    assert (entry["cost_micros"], entry["reserved_micros"], entry["cost_basis"]) == (
+        meter.spent_micros, CAP, "computed")
     # Every field's expert ran, the identified-by IRN's aside (no source supplies one).
     assert sorted(resolver.calls) == sorted(set(field_step.FIELD_TOOLS) - {"identified_by_irn"})
 

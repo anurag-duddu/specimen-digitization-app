@@ -4,19 +4,27 @@
 # the runtime release and the web app build, each started on main and followed to its end.
 # Safe to run again: every step reads the live state first and changes only what is missing.
 #
-# Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only]
+# Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only | --cost-meter-only | --intake-only]
 #   --dry-run       read the live state and print every command that would run; change and start nothing.
 #   --setup-only    do the setup and stop; start no release.
 #   --redeploy-web  build and publish the web app again even when its variables were already set.
 #   --auth-only     grant only the existing data identity's Auth configuration role; start no release.
+#   --cost-meter-only  let the worker read Cloud Monitoring and create the API's requests-by-organization
+#                   log-based metric (the cost meter's shared-cost split); start no release.
+#   --intake-only   provision only reviewed intake permissions/APIs; needs this repository and uv; start nothing.
+#   --intake-config-dir ABS  with --intake-only, validate/provision fixed private configuration files first.
+#   --intake-picker-key  with the two intake options, create/reconcile the dedicated restricted Google Picker key.
 #
 # Self-contained: it reads no other file of the repository and nothing relative to its own
 # location, so a copy fetched from main runs from any directory. It needs no terminal either:
 # no question is asked, no pager is used, and every tool it starts reads from /dev/null.
+# The opt-in --intake-only mode instead reads this checkout's committed pins
+# and the one pinned routing secret through a read-only metadata exporter.
 #
 # Needs gcloud signed in as a project Owner (or IAM admin plus Cloud SQL admin) and gh signed
 # in with admin rights on the repository. --auth-only needs only the project IAM administrator;
-# it does not use gh or Cloud SQL. Written for the stock macOS bash 3.2: no associative
+# it does not use gh or Cloud SQL. --cost-meter-only needs the project IAM and Logging
+# configuration rights a project Owner holds; it does not use gh or Cloud SQL either. Written for the stock macOS bash 3.2: no associative
 # arrays, no mapfile, and no pattern substitution with a computed replacement.
 
 # Bash only. Any other shell (zsh, a plain sh, bash started as sh) stops here, at lines every
@@ -107,6 +115,28 @@ readonly SQL_DESCRIPTION='Connect, IAM login and metadata only for the existing 
 readonly STAMP='[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z'
 readonly WINDOW="^request\\.time >= timestamp\\('($STAMP)'\\) && request\\.time < timestamp\\('($STAMP)'\\)\$"
 
+# The cost meter splits the API's Cloud Run cost by organization from this user-defined
+# counter over the API's request logs (docs/execution/golive/COST_METER.md).
+readonly COST_METRIC=specimen_api_requests_by_organization
+readonly COST_METRIC_FILTER='resource.type="cloud_run_revision" AND resource.labels.service_name="specimen-api" AND log_id("run.googleapis.com/requests") AND httpRequest.requestUrl:"/v1/organizations/"'
+readonly COST_METRIC_EXTRACTOR='REGEXP_EXTRACT(httpRequest.requestUrl, "/v1/organizations/([0-9a-fA-F-]{36})/")'
+readonly METRIC_FORMAT='value[separator="|"](filter,labelExtractors.organization_id)'
+
+# The image registry's cleanup policy, in the file format of gcloud artifacts repositories set-cleanup-policies.
+# A keep rule wins over the delete rule: an image would go a day after its push unless it is one of the newest
+# five of its kind or carries a tag the runtime release moves, per service and job, onto the image it runs
+# (deployed-<name>) or the one before (rollback-<name>); scripts/release/keep_images.py moves them and reads
+# this policy back. It is set in
+# dry-run mode, so the registry deletes nothing; turning dry run off is a later reviewed change of its own.
+readonly CLEANUP_POLICY='[
+  {"name": "keep-newest", "action": {"type": "KEEP"}, "mostRecentVersions": {"keepCount": 5}},
+  {"name": "keep-deployed", "action": {"type": "KEEP"},
+   "condition": {"tagState": "TAGGED", "tagPrefixes": ["deployed", "rollback"]}},
+  {"name": "delete-old", "action": {"type": "DELETE"}, "condition": {"tagState": "ANY", "olderThan": "1d"}}
+]'
+# The same policy as gcloud prints value(cleanupPolicies) once it is live.
+readonly CLEANUP_POLICY_LIVE="delete-old={'action': 'DELETE', 'condition': {'olderThan': '86400s', 'tagState': 'ANY'}, 'id': 'delete-old'};keep-deployed={'action': 'KEEP', 'condition': {'tagPrefixes': ['deployed', 'rollback'], 'tagState': 'TAGGED'}, 'id': 'keep-deployed'};keep-newest={'action': 'KEEP', 'id': 'keep-newest', 'mostRecentVersions': {'keepCount': 5}}"
+
 readonly PUSH_ONLY="assertion.event_name == 'push'"
 readonly PUSH_OR_MANUAL="(assertion.event_name == 'push' || assertion.event_name == 'workflow_dispatch')"
 
@@ -120,6 +150,11 @@ DRY_RUN=0
 SETUP_ONLY=0
 REDEPLOY_WEB=0
 AUTH_ONLY=0
+COST_METER_ONLY=0
+INTAKE_ONLY=0
+INTAKE_REPOSITORY_ROOT=''
+INTAKE_CONFIG_DIR=''
+INTAKE_PICKER_KEY=0
 STARTED=0
 COMPLETE=0
 CHANGE_WORD=change
@@ -135,6 +170,7 @@ WORK=''
 NOW=''
 POLICY=''
 CONDITION_FILE=''
+METRIC_FILE=''
 REPLACED=''
 COMMAND=(gcloud)
 # Release stages: what the summary says about each, and what the waits are.
@@ -163,13 +199,18 @@ POLL_SECONDS=15
 FIND_SECONDS=5
 
 usage() {
-  printf 'Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only]\n'
+  printf 'Usage: owner_setup.sh [--dry-run] [--setup-only | --redeploy-web | --auth-only | --cost-meter-only | --intake-only]\n'
   printf '  (no flag)       do the setup, then start the data release, the runtime release and, when the\n'
   printf '                  repository variables changed, the web app build; follow each to its end.\n'
   printf '  --dry-run       read the live state and print every command that would run; change and start nothing.\n'
   printf '  --setup-only    do the setup and stop; start no release.\n'
   printf '  --redeploy-web  build and publish the web app again even when its variables were already set.\n'
   printf '  --auth-only     grant only Auth configuration access to the existing data identity; start nothing.\n'
+  printf '  --cost-meter-only  let the worker read Cloud Monitoring and create the requests-by-organization\n'
+  printf '                  metric for the cost meter; start nothing.\n'
+  printf '  --intake-only   provision only reviewed intake grants/APIs from this checkout; start nothing.\n'
+  printf '  --intake-config-dir ABS  with --intake-only, provision approved private numbered JSON configuration first.\n'
+  printf '  --intake-picker-key  with --intake-only and --intake-config-dir, provision the dedicated restricted Picker key.\n'
 }
 
 bad_usage() {
@@ -280,10 +321,10 @@ run() {
     fi
   fi
   succeeded
-  # New Google access takes a moment to reach every server; a removal needs no wait.
+  # New Google access takes a moment to reach every server; a removal or a registry setting needs no wait.
   if [ "$1" = gcloud ]; then
     case " $* " in
-      *' remove-iam-policy-binding '*) ;;
+      *' remove-iam-policy-binding '* | *' artifacts repositories update '* | *' set-cleanup-policies '*) ;;
       *) ACCESS_CHANGED=1 ;;
     esac
   fi
@@ -506,7 +547,7 @@ preflight() {
   command -v gcloud > /dev/null 2>&1 || die "gcloud is not on PATH: install the Google Cloud SDK"
   account=$(gcloud config get-value account 2> /dev/null < /dev/null) || account=''
   [ -n "$account" ] || die "gcloud is not signed in: run gcloud auth login"
-  if [ "$AUTH_ONLY" -eq 0 ]; then
+  if [ "$AUTH_ONLY" -eq 0 ] && [ "$INTAKE_ONLY" -eq 0 ] && [ "$COST_METER_ONLY" -eq 0 ]; then
     command -v gh > /dev/null 2>&1 || die "gh is not on PATH: install the GitHub CLI"
     gh auth status > /dev/null 2>&1 < /dev/null || die "gh is not signed in: run gh auth login"
     login=$(gh api user --jq .login 2> /dev/null < /dev/null) || login='(not shown by gh)'
@@ -517,7 +558,9 @@ preflight() {
   fi
   [ "$number" = "$PROJECT_NUMBER" ] || die "project $PROJECT has number $number, expected $PROJECT_NUMBER"
   printf 'Google Cloud account: %s\n' "$account"
-  if [ "$AUTH_ONLY" -eq 0 ]; then printf 'GitHub account: %s\n' "$login"; fi
+  if [ "$AUTH_ONLY" -eq 0 ] && [ "$INTAKE_ONLY" -eq 0 ] && [ "$COST_METER_ONLY" -eq 0 ]; then
+    printf 'GitHub account: %s\n' "$login"
+  fi
   printf 'Project: %s (%s)\n' "$PROJECT" "$PROJECT_NUMBER"
   printf 'Repository: %s\n' "$REPOSITORY"
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -533,15 +576,172 @@ auth_release_grants() {
   # CLI15.8.0 preflights projects.update/configs.update, lists the existing
   # web app and reads its project. The release verifies only non-secret Auth
   # fields. Config access is project-wide; partial response fields keep this
-  # script from fetching provider secrets. No user, hash, Secret Manager,
-  # client creation, IAM or Hosting permission is granted.
+  # script from fetching provider secrets. Firebase CreateShaCertificate needs
+  # firebase.clients.update plus the additional clientauthconfig.clients.create
+  # permission for the existing Android app.
+  # No user, hash, Secret Manager, IAM or Hosting permission is granted.
   ensure_role specimenAuthConfiguration 'Specimen Auth configuration' \
     'Provision Google for the existing Firebase app and verify Auth configuration; no user or hash permissions.' \
-    firebase.clients.get firebase.clients.list firebase.projects.get firebase.projects.update \
+    clientauthconfig.clients.create \
+    firebase.clients.get firebase.clients.list firebase.clients.update \
+    firebase.projects.get firebase.projects.update \
     firebaseauth.configs.get firebaseauth.configs.update
   # Do not bind an existing role if its permissions could not be reconciled.
   if [ "$FAILURE_COUNT" -ne "$failures_before" ]; then return 0; fi
   grant project "$PROJECT" "$DATA" "$CUSTOM/specimenAuthConfiguration"
+}
+
+# Writes the requests-by-organization metric's configuration for --config-from-file and sets
+# METRIC_FILE: a counter (DELTA, INT64) of the API's request log entries whose path names an
+# organization, labelled with that organization's id.
+metric_file() {
+  FILE_COUNT=$((FILE_COUNT + 1))
+  METRIC_FILE="$WORK/metric-$FILE_COUNT-$COST_METRIC.yaml"
+  {
+    yaml_field name "$COST_METRIC"
+    yaml_field description 'Specimen API requests by organization, from the request path (cost meter).'
+    yaml_field filter "$COST_METRIC_FILTER"
+    printf 'metricDescriptor:\n'
+    printf '  metricKind: DELTA\n'
+    printf '  valueType: INT64\n'
+    printf "  unit: '1'\n"
+    printf '  labels:\n'
+    printf '  - key: organization_id\n'
+    printf '    valueType: STRING\n'
+    printf "    description: 'The organization id in the request path'\n"
+    printf 'labelExtractors:\n'
+    printf '  '
+    yaml_field organization_id "$COST_METRIC_EXTRACTOR"
+  } > "$METRIC_FILE"
+  printf '    metric %s: %s\n' "$COST_METRIC" "$COST_METRIC_FILTER"
+}
+
+# Creates the metric, or sets a differing filter or label extractor back to this one. Its
+# kind, value type and label cannot change once created, so they are only ever created.
+ensure_log_metric() {
+  local live want="$COST_METRIC_FILTER|$COST_METRIC_EXTRACTOR"
+  if live=$(gcloud logging metrics describe "$COST_METRIC" "--project=$PROJECT" "--format=$METRIC_FORMAT" \
+      2> "$WORK/stderr" < /dev/null); then
+    if [ "$live" = "$want" ]; then
+      in_place "log-based metric $COST_METRIC counts API requests by organization"
+      return 0
+    fi
+    change "set log-based metric $COST_METRIC to its filter and organization label"
+    metric_file
+    run gcloud logging metrics update "$COST_METRIC" "--project=$PROJECT" "--config-from-file=$METRIC_FILE"
+  elif grep -q 'NOT_FOUND' "$WORK/stderr"; then
+    change "create log-based metric $COST_METRIC (API requests by organization)"
+    metric_file
+    run gcloud logging metrics create "$COST_METRIC" "--project=$PROJECT" "--config-from-file=$METRIC_FILE"
+  else
+    cat "$WORK/stderr" >&2
+    die "could not read log-based metric $COST_METRIC"
+  fi
+}
+
+# The cost meter's shared-cost split (docs/execution/golive/COST_METER.md): the worker may list
+# the project's Cloud Monitoring time series and do nothing else in Monitoring; the metric counts
+# the API's requests by organization from the moment it exists (never before).
+cost_meter_grants() {
+  local failures_before=$FAILURE_COUNT
+  heading 'Cost meter: the worker lists Cloud Monitoring time series; API requests are counted by organization'
+  ensure_role specimenCostMeterRead 'Specimen cost meter usage read' \
+    'List Cloud Monitoring time series for the cost meter; no metric, alert, dashboard or log access.' \
+    monitoring.timeSeries.list
+  # Do not bind an existing role if its permissions could not be reconciled.
+  if [ "$FAILURE_COUNT" -eq "$failures_before" ]; then
+    grant project "$PROJECT" "$WORKER" "$CUSTOM/specimenCostMeterRead"
+  fi
+  ensure_log_metric
+}
+
+intake_grants() {
+  local metadata kind who name version member enabled job_name failures_before=$FAILURE_COUNT
+  heading 'Intake setup only: bounded token storage and reviewed pinned configuration'
+  if [ -n "$INTAKE_CONFIG_DIR" ]; then
+    local config_args=(--directory "$INTAKE_CONFIG_DIR")
+    local config_helper=intake_config.py
+    if [ "$INTAKE_PICKER_KEY" -eq 1 ]; then config_helper=intake_picker_key.py; fi
+    if [ "$DRY_RUN" -eq 1 ]; then config_args+=(--dry-run); fi
+    # The helper validates every local and remote target before its first
+    # append. Failure here precedes even the IAM writes below.
+    if ! SPECIMEN_OWNER_SETUP_MODE=intake uv run --frozen --project "$INTAKE_REPOSITORY_ROOT" python \
+        "$INTAKE_REPOSITORY_ROOT/scripts/ops/$config_helper" "${config_args[@]}" < /dev/null; then
+      die 'private intake configuration was refused; no intake IAM grant changed'
+    fi
+  fi
+  if ! metadata=$(uv run --frozen --project "$INTAKE_REPOSITORY_ROOT" python \
+      "$INTAKE_REPOSITORY_ROOT/scripts/release/deploy_models.py" --intake-setup < /dev/null); then
+    die 'could not read reviewed intake metadata; no intake grant changed'
+  fi
+  # Create is authorized on the parent project, before a secret exists. It
+  # grants no read, write-version, list, IAM, deletion or rotation permission.
+  ensure_role specimenIntakeSecretCreate 'Specimen intake credential creation' \
+    'Create credential containers only; no secret read, version write, IAM, list or delete.' \
+    secretmanager.secrets.create
+  ensure_role specimenIntakeTokenVersions 'Specimen intake credential versions' \
+    'Add, access, inspect, list and retire versions within the dynamic intake credential namespace only.' \
+    secretmanager.versions.add secretmanager.versions.access \
+    secretmanager.versions.list secretmanager.versions.get secretmanager.versions.destroy
+  ensure_role specimenWorkerRead 'Specimen worker readiness read' \
+    'Read only the deployed specimen worker definition for API readiness.' run.jobs.get
+  if [ "$FAILURE_COUNT" -ne "$failures_before" ]; then return 0; fi
+  grant project "$PROJECT" "$API" "$CUSTOM/specimenIntakeSecretCreate"
+  # IAM supports startsWith, not regular-expression matches. Its boundary is
+  # this project's dynamic namespace and these two Secret Manager types;
+  # application validation additionally requires UUIDs and numbered versions.
+  grant project "$PROJECT" "$API" "$CUSTOM/specimenIntakeTokenVersions" specimen_intake_token_versions \
+    "resource.service == \"secretmanager.googleapis.com\" && (resource.type == \"secretmanager.googleapis.com/Secret\" || resource.type == \"secretmanager.googleapis.com/SecretVersion\") && resource.name.startsWith(\"projects/$PROJECT_NUMBER/secrets/specimen-intake-\")"
+  while IFS="$TAB" read -r kind who name version; do
+    [ -n "$kind" ] || continue
+    case $kind in
+      PIN)
+        case $who in
+          api) member=$API ;;
+          worker) member=$WORKER ;;
+          release) member=$RELEASE ;;
+          *) die 'intake metadata contains an unknown runtime role' ;;
+        esac
+        pinned_secret "$member" "$name" "$version"
+        ;;
+      JOB)
+        # The exporter emits job names only. Scope and actor values never
+        # enter setup output. A first release may create the job before its
+        # resource-level grant is possible; rerun setup after that creation.
+        if ! job_name=$(gcloud run jobs describe "$name" "--region=$REGION" "--project=$PROJECT" \
+            '--format=value(metadata.name)' 2> "$WORK/stderr" < /dev/null); then
+          if grep -Eq 'NOT_FOUND|Cannot find|not found' "$WORK/stderr"; then
+            note "job $name does not exist yet; rerun intake setup after the protected release defines it"
+            continue
+          fi
+          die 'could not verify an intake job exists; no job grant changed'
+        fi
+        [ "$job_name" = "$name" ] || die 'intake job metadata differs; no job grant changed'
+        grant job "$name" "$API" roles/run.invoker
+        if [ "$who" = worker ]; then
+          grant job "$name" "$WORKER" roles/run.invoker
+          grant job "$name" "$API" "$CUSTOM/specimenWorkerRead"
+        fi
+        ;;
+      API)
+        name=$who
+        if ! enabled=$(gcloud services list --enabled "--project=$PROJECT" \
+            "--filter=config.name=$name" '--format=value(config.name)' < /dev/null); then
+          die 'could not read a required provider API'
+        fi
+        if [ "$enabled" = "$name" ]; then
+          in_place "provider API $name is enabled"
+        elif [ -z "$enabled" ]; then
+          change "enable reviewed provider API $name"
+          run gcloud services enable "$name" "--project=$PROJECT"
+        else
+          die 'provider API read returned an unexpected service'
+        fi
+        ;;
+      *) die 'intake metadata contains an unknown operation' ;;
+    esac
+  done <<< "$metadata"
+  note 'No job was executed. Before E2E submission, confirm older shared executions have finished; deployed definitions do not replace running executions.'
 }
 
 # Removes one expired grant by its exact live condition; never --all, which would also drop
@@ -673,6 +873,7 @@ runtime_grants() {
   grant repository "$REGISTRY" "$RELEASE" roles/artifactregistry.reader
   grant job specimen-worker "$RELEASE" "$CUSTOM/specimenWorkerExecution"
   grant job specimen-worker "$API" "$CUSTOM/specimenWorkerRead"
+  grant job specimen-intake "$API" roles/run.invoker
   for name in api worker sam; do
     grant service-account "specimen-$name-runtime@$ACCOUNTS" "$RELEASE" roles/iam.serviceAccountUser
   done
@@ -698,6 +899,7 @@ runtime_grants() {
   pinned_secret "$API" specimen-worker-logfire 1
   pinned_secret "$API" specimen-source-registry 1
   pinned_secret "$API" specimen-collection-bindings 1
+  pinned_secret "$API" specimen-worker-actor-uid 1
   pinned_secret "$WORKER" huggingface-runtime-token 2
   pinned_secret "$WORKER" specimen-worker-logfire 1
   pinned_secret "$WORKER" specimen-worker-actor-uid 1
@@ -714,6 +916,55 @@ runtime_grants() {
   for name in specimen-data-release specimen-runtime-build specimen-runtime-release; do
     grant service-account "$name@$ACCOUNTS" "$PLANE/$name" roles/iam.workloadIdentityUser
   done
+}
+
+# Without a cleanup policy every pushed image stays forever, about 0.55 GB a release. The release moves tags onto
+# the images in service, so tags must be able to move; under immutable tags the registry could also never delete a
+# tagged image, and every image is pushed with one. The policy goes in only in dry-run mode, so Google evaluates it
+# and deletes nothing, and it is in dry-run mode before tags may move: immutability is what stops a deleting
+# policy set elsewhere from removing a tagged image.
+registry_cleanup() {
+  local live immutable rest dry policies file failures_before=$FAILURE_COUNT
+  heading 'Image registry: a cleanup policy in dry-run mode (it deletes nothing) and the tags that keep the images in service'
+  ensure_role specimenRuntimeImageTags 'Specimen runtime image tags' \
+    'Point the deployed and rollback tags of the runtime images; no delete.' \
+    artifactregistry.tags.create artifactregistry.tags.update
+  # Bind the role only when it holds exactly these two permissions.
+  if [ "$FAILURE_COUNT" -ne "$failures_before" ]; then
+    warn "the image registry is left as it is: the role specimenRuntimeImageTags could not be set; the next run of this script tries again"
+    return 0
+  fi
+  grant repository "$REGISTRY" "$RELEASE" "$CUSTOM/specimenRuntimeImageTags"
+  if [ "$HELD" -ne 1 ]; then
+    warn "the cleanup policy of $REGISTRY is not set: the runtime release could not tag the images in service yet; the next run of this script tries again"
+    return 0
+  fi
+  if ! live=$(gcloud artifacts repositories describe "$REGISTRY" "--location=$REGION" "--project=$PROJECT" \
+    '--format=value[separator="|"](dockerConfig.immutableTags,cleanupPolicyDryRun,cleanupPolicies)' \
+    2> "$WORK/stderr" < /dev/null); then
+    cat "$WORK/stderr" >&2
+    die "could not read the image registry $REGISTRY (see the error above)"
+  fi
+  immutable=${live%%|*}
+  rest=${live#*|}
+  dry=${rest%%|*}
+  policies=${rest#*|}
+  if [ "$policies" = "$CLEANUP_POLICY_LIVE" ] && [ "$dry" = True ]; then
+    in_place "the cleanup policy of $REGISTRY is the committed one, in dry-run mode"
+  else
+    file="$WORK/cleanup-policy.json"
+    printf '%s\n' "$CLEANUP_POLICY" > "$file"
+    change "set the cleanup policy of $REGISTRY in dry-run mode (nothing is deleted): keep the newest 5 images of each kind and the deployed and rollback images"
+    run gcloud artifacts repositories set-cleanup-policies "$REGISTRY" "--location=$REGION" "--project=$PROJECT" \
+      "--policy=$file" --dry-run
+    if [ "$LAST_OK" -ne 1 ]; then return 0; fi
+  fi
+  if [ "$immutable" = True ]; then
+    change "let tags move in $REGISTRY, so the release can move its deployed and rollback tags"
+    run gcloud artifacts repositories update "$REGISTRY" "--location=$REGION" "--project=$PROJECT" --no-immutable-tags
+  else
+    in_place "tags can move in $REGISTRY"
+  fi
 }
 
 # Widens one provider from push-only to push or a manual run; every other clause stays verbatim.
@@ -1322,7 +1573,9 @@ summary() {
 
 main() {
   local base=${TMPDIR:-/tmp} arg
-  for arg in "$@"; do
+  while [ "$#" -gt 0 ]; do
+    arg=$1
+    shift
     case $arg in
       --dry-run)
         if [ "$DRY_RUN" -eq 1 ]; then bad_usage; fi
@@ -1341,6 +1594,27 @@ main() {
         if [ "$AUTH_ONLY" -eq 1 ]; then bad_usage; fi
         AUTH_ONLY=1
         ;;
+      --cost-meter-only)
+        if [ "$COST_METER_ONLY" -eq 1 ]; then bad_usage; fi
+        COST_METER_ONLY=1
+        ;;
+      --intake-only)
+        if [ "$INTAKE_ONLY" -eq 1 ]; then bad_usage; fi
+        INTAKE_ONLY=1
+        ;;
+      --intake-config-dir)
+        if [ -n "$INTAKE_CONFIG_DIR" ] || [ "$#" -eq 0 ]; then bad_usage; fi
+        INTAKE_CONFIG_DIR=$1
+        shift
+        case $INTAKE_CONFIG_DIR in
+          /*) ;;
+          *) bad_usage ;;
+        esac
+        ;;
+      --intake-picker-key)
+        if [ "$INTAKE_PICKER_KEY" -eq 1 ]; then bad_usage; fi
+        INTAKE_PICKER_KEY=1
+        ;;
       -h | --help)
         usage
         exit 0
@@ -1350,6 +1624,21 @@ main() {
   done
   if [ "$SETUP_ONLY" -eq 1 ] && [ "$REDEPLOY_WEB" -eq 1 ]; then bad_usage; fi
   if [ "$AUTH_ONLY" -eq 1 ] && { [ "$SETUP_ONLY" -eq 1 ] || [ "$REDEPLOY_WEB" -eq 1 ]; }; then bad_usage; fi
+  if [ "$COST_METER_ONLY" -eq 1 ] && { [ "$SETUP_ONLY" -eq 1 ] || [ "$REDEPLOY_WEB" -eq 1 ] ||
+    [ "$AUTH_ONLY" -eq 1 ] || [ "$INTAKE_ONLY" -eq 1 ]; }; then bad_usage; fi
+  if [ -n "$INTAKE_CONFIG_DIR" ] && [ "$INTAKE_ONLY" -ne 1 ]; then bad_usage; fi
+  if [ "$INTAKE_PICKER_KEY" -eq 1 ] && { [ "$INTAKE_ONLY" -ne 1 ] || [ -z "$INTAKE_CONFIG_DIR" ]; }; then bad_usage; fi
+  if [ "$INTAKE_ONLY" -eq 1 ]; then
+    if [ "$AUTH_ONLY" -eq 1 ] || [ "$SETUP_ONLY" -eq 1 ] || [ "$REDEPLOY_WEB" -eq 1 ]; then bad_usage; fi
+    INTAKE_REPOSITORY_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+    if [ ! -f "$INTAKE_REPOSITORY_ROOT/scripts/ci/runtime_settings.py" ] || \
+      [ ! -f "$INTAKE_REPOSITORY_ROOT/scripts/release/deploy_models.py" ] || \
+      [ ! -f "$INTAKE_REPOSITORY_ROOT/scripts/ops/intake_config.py" ] || \
+      [ ! -f "$INTAKE_REPOSITORY_ROOT/scripts/ops/intake_picker_key.py" ]; then
+      die '--intake-only requires the repository checkout; run bash scripts/ops/owner_setup.sh --intake-only there'
+    fi
+    command -v uv > /dev/null 2>&1 || die '--intake-only requires uv for the locked repository runtime'
+  fi
   # The two waits a test may shorten: after new access (and, half as long again, before the
   # one retry), and between two readings of a run (a third of it while a new run shows up).
   SETTLE_SECONDS=${OWNER_SETUP_SETTLE_SECONDS:-120}
@@ -1368,9 +1657,25 @@ main() {
   NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   preflight
   STARTED=1
+  if [ "$INTAKE_ONLY" -eq 1 ]; then
+    intake_grants
+    printf 'Intake setup only: %s change(s), %s failure(s). No release or worker execution started.\n' \
+      "$CHANGE_COUNT" "$FAILURE_COUNT"
+    COMPLETE=1
+    if [ "$FAILURE_COUNT" -gt 0 ]; then exit 1; fi
+    return 0
+  fi
   if [ "$AUTH_ONLY" -eq 1 ]; then
     auth_release_grants
     printf 'Auth setup only: %s change(s), %s failure(s). No providers, variables, other grants or releases changed.\n' \
+      "$CHANGE_COUNT" "$FAILURE_COUNT"
+    COMPLETE=1
+    if [ "$FAILURE_COUNT" -gt 0 ]; then exit 1; fi
+    return 0
+  fi
+  if [ "$COST_METER_ONLY" -eq 1 ]; then
+    cost_meter_grants
+    printf 'Cost meter setup only: %s change(s), %s failure(s). No providers, variables, other grants or releases changed.\n' \
       "$CHANGE_COUNT" "$FAILURE_COUNT"
     COMPLETE=1
     if [ "$FAILURE_COUNT" -gt 0 ]; then exit 1; fi
@@ -1380,6 +1685,8 @@ main() {
   data_release_grants
   cloud_sql_role
   runtime_grants
+  registry_cleanup
+  cost_meter_grants
   manual_runs
   repository_variables
   bootstrap_secret

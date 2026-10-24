@@ -146,6 +146,15 @@ final List<Case> moneyLimits = <Case>[
     money: true,
   ),
   stop(
+    'tenant_budget_exhausted',
+    'Monthly cost limit reached',
+    'Processing stopped at a monthly cost limit set for the organization or '
+        'a collection',
+    next: 'An administrator must review the limit.',
+    caveat: true,
+    money: true,
+  ),
+  stop(
     'pilot_launch_budget_exhausted',
     'Pilot cost limit reached',
     "The pilot's cost limit would be crossed",
@@ -178,6 +187,12 @@ final List<Case> settingsUnavailable = <Case>[
     'program_allowance_ledger_unavailable',
     'Allowance totals not readable',
     "The program's spending totals could not be read",
+    next: 'An operator must check them before processing continues.',
+  ),
+  stop(
+    'tenant_budget_unavailable',
+    'Monthly totals not readable',
+    'The monthly spending limits or totals could not be read',
     next: 'An operator must check them before processing continues.',
   ),
   stop(

@@ -66,6 +66,8 @@ class AuthLayout extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 if (wordmark) ...<Widget>[
+                  UiBrandAccent(height: ui.space.s3),
+                  SizedBox(height: ui.space.s4),
                   const Center(
                     child: UiMark(label: productName, size: markSize),
                   ),
@@ -77,17 +79,7 @@ class AuthLayout extends StatelessWidget {
                   ),
                   SizedBox(height: ui.space.s6),
                 ],
-                Text(
-                  title,
-                  style: ui.type.titleLarge.copyWith(color: ui.color.ink),
-                ),
-                if (purpose != null) ...<Widget>[
-                  SizedBox(height: ui.space.s2),
-                  Text(
-                    purpose!,
-                    style: ui.type.body.copyWith(color: ui.color.inkSecondary),
-                  ),
-                ],
+                UiSectionHeader(title: title, supporting: purpose),
                 SizedBox(height: ui.space.s6),
                 ...children,
               ],

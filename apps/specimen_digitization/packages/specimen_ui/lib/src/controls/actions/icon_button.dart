@@ -143,6 +143,11 @@ class UiIconButton extends StatelessWidget {
 
   /// The hover and long-press tooltip. Defaults to [semanticsLabel].
   ///
+  /// An explicitly supplied value is also exposed as accessibility tooltip
+  /// information. The fallback label is visual guidance only: the control
+  /// already announces that label. The visual pane is excluded from semantics
+  /// so revealing it never duplicates the label or tooltip metadata.
+  ///
   /// Overridden while the button is disabled with a [disabledReason], which
   /// is the one thing the reviewer needs more than the button's name.
   final String? tooltip;
@@ -175,14 +180,23 @@ class UiIconButton extends StatelessWidget {
     // `SemanticsOwner.sendSemanticsUpdate`'s own assertion.
     return MergeSemantics(
       child: Semantics(
-        tooltip: phrase,
+        tooltip: tooltip,
         child: forbidden
             ? UiTooltip.reason(
                 reason: disabledReason,
+                // Pressable already publishes this reason as its hint.
+                excludeSemantics: true,
                 builder: (BuildContext context, ValueChanged<String> report) =>
                     _disc(style, onDisabledReason: report),
               )
-            : UiTooltip(message: phrase, child: _disc(style)),
+            : UiTooltip(
+                message: phrase,
+                // The action label and tooltip information are
+                // already on this node. Merging the visual pane duplicates
+                // them when a pointer or long press reveals it.
+                excludeSemantics: true,
+                child: _disc(style),
+              ),
       ),
     );
   }

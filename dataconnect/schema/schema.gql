@@ -16,6 +16,7 @@ type Collection @table(key: ["organizationId", "id"]) {
   id: UUID! @default(expr: "uuidV4()")
   name: String!
   parentId: UUID
+  kind: String
   parent: Collection @ref(constraintName: "scope_ref_1", fields: ["organizationId", "parentId"])
 }
 type CollectionMember @table(key: ["organizationId", "collectionId", "uid"]) {
@@ -520,4 +521,17 @@ type DocumentListing @view(sql: """
   createdBy: String
   createdAt: Timestamp
   updatedAt: Timestamp
+}
+
+# The intake worker reads only active work, in pages, without fetching each
+# historical job individually. Job payloads contain references, not images.
+type ActiveIntakeJob @view(sql: """
+  SELECT organization_id, collection_id, id::text COLLATE "C" AS id, payload
+  FROM public.auxiliary_document
+  WHERE kind = 'intake_job' AND sensitive = false AND payload->>'state' = 'waiting'
+""") {
+  organizationId: UUID
+  collectionId: UUID
+  id: String
+  payload: Any
 }

@@ -1,11 +1,6 @@
-// A field row that carries a basis chip, captured as a component.
-//
-// Why this is not a screen golden. The workbench goldens draw a record whose
-// fields carry no `layer`, so no row there has a basis and none shows a chip;
-// they hold the four-group layout only. This sheet draws the rows the other
-// goldens cannot: one of each chip beside its title, and, at double text size,
-// the chip moved under the text because the title needs the whole line
-// (design 11, section 3.3). It is limited to that one job.
+// Field values stay concise until opened. This component image explicitly
+// opens one field so its requirement, basis and source details can be reviewed
+// alongside the neighboring collapsed values at normal and enlarged text.
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,22 +74,25 @@ void main() {
             onPendingChanged: (_) {},
           ),
         );
-        // A guard on the coverage rather than on the pixels, which run on
-        // every platform including the Linux CI where the comparison skips.
-        expect(find.byType(UiChip), findsNWidgets(4));
-        for (final String label in <String>[
-          'As written',
-          'Derived',
-          'Inferred',
-        ]) {
-          expect(
-            find.byWidgetPredicate(
-              (Widget w) => w is UiChip && w.label == label,
-            ),
-            findsWidgets,
-            reason: label,
-          );
-        }
+        expect(find.byType(UiChip), findsNothing);
+        final field = find.byWidgetPredicate(
+          (widget) => widget is UiDisclosure && widget.title == 'Country',
+        );
+        final trigger = find
+            .descendant(
+              of: field,
+              matching: find.byWidgetPredicate((widget) => widget is Pressable),
+            )
+            .first;
+        await tester.tap(trigger);
+        await tester.pumpAndSettle();
+        expect(
+          find.byWidgetPredicate(
+            (widget) => widget is UiChip && widget.label == 'Derived',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Required field · Supported'), findsOneWidget);
         expect(tester.takeException(), isNull);
         await expectGoldenComponent(
           tester,

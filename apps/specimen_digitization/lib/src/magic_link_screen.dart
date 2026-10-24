@@ -272,7 +272,7 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
               ? 'Use the email address that received this link.'
               : sent
               ? 'Use the sign-in link in your email.'
-              : 'Use your fieldmuseum.org email.',
+              : 'Use your fieldmuseum.org email or an approved account.',
           icon: controller.hasError
               ? UiIcons.error
               : sent
@@ -420,7 +420,7 @@ class _MagicLinkSignInScreenState extends State<MagicLinkSignInScreen> {
               variant: sent
                   ? UiButtonVariant.secondary
                   : UiButtonVariant.primary,
-              size: UiSize.lg,
+              size: !sent && !confirm ? UiSize.md : UiSize.lg,
               loading: controller.busy,
               onPressed: disabled ? null : _submit,
               disabledReason: !confirm && cooldown > 0

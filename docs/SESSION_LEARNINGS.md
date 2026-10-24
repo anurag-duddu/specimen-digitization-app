@@ -20714,6 +20714,55 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Not changed, and worth knowing: `NavDisc` (the pill and rail disc) wraps its `UiTooltip` in `MergeSemantics` too, so it probably has the same open-pane duplication. It was out of scope and the new `excludeSemantics` is the way to fix it if a review asks.
 - Reusable learning. A test that settles before it measures cannot tell "right on the first frame" from "right one frame later"; the signal that does is an event only a late move produces, here the scroll notifications of a `jumpTo`. And any semantics you fold in with `MergeSemantics` includes whatever an `OverlayPortal` inside it attaches while it is open, so assert a merged control's semantics in every state of what it contains, not only the closed one.
 
+
+### 2026-10-17 - Mobbin photo intake comparison (INTAKE-MOBBIN-AUDIT-20261017)
+
+- Task/chat: `01a149fc-3649-75c1-a121-11c19de12cb8`. Worktree: `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, detached HEAD `e6effb420949276467675d5bfcbc3c9d91804066`. User requested a Mobbin MCP study and comparison with current intake. This was an audit, not a product implementation or release. No PR created.
+- Baseline: GitHub connector `fetch_commit(main)` returned the same `e6effb42` as local HEAD during this session. Read current intake, capture, manifest, transfer-session, status and photo-preview source; visually inspected the committed compact empty Intake and compact/desktop selected-photo goldens. The selected-photo goldens were last changed by `976ae089` on 2026-10-17. They are synthetic widget captures, not physical-device or deployed evidence; selected-photo fixtures omit the application shell. The real route already publishes Send through the scaffold decision bar, so the inline Send position in those fixtures is not evidence of a production missing-sticky-action defect.
+- Context: Basic Memory search and build_context identified the 2026-10-16 intake scope and existing implementation program. Read `/Users/anuragduddu/specimen-intake-ux/spec/01-intake-ux-requirements.md` and the lane plan. Preserve intake's boundary at confirmed pipeline handoff and existing post-processing Queue semantics. On-device persistence of unsent photos remains deferred. Existing work already specifies compact rows, sensitivity wiring, details sheets, and removal of the processing strip; these are integration follow-ups rather than new feature proposals.
+- Mobbin evidence: inspected returned preview images, not just result titles. Strong references: [Docusign camera and editing](https://mobbin.com/flows/58934f51-ac13-410e-8d63-423b08a56bdc), [Dropbox add a scanned page](https://mobbin.com/flows/8fee3032-15d4-4621-a66f-ea9a6a815660), [Dropbox edit a scan](https://mobbin.com/flows/f7dc166f-c4bf-4419-a1c1-a124e1cd19cb), [Google Drive upload completion](https://mobbin.com/flows/c7cbf930-da97-4418-82d6-176cda849e7a), [Whop per-file validation](https://mobbin.com/screens/03fc821c-eec1-4278-bf97-8f8ac202d34c), [Proton transfer panel](https://mobbin.com/screens/12f6528d-e78a-4540-9087-784c0baa9172). Other search results included Apple Notes, Google Lens, AWS, Magnific and PandaDoc; these were less directly applicable. The reference screenshots establish visible patterns, not measured usability superiority or unseen interaction capabilities.
+- Finding: presentation and transfer logic are partly integrated. `screens/intake/intake_status.dart` has the concise handoff mapping, but `manifest_panel.dart:566` still builds `IntakeStageProgress`, and lines 595/635 still build Progress details and File details. `intake.dart:394` passes `onAccepted`, not `onCaptured`, so camera sensitivity controls guarded by the latter callback are absent in the real path. Camera unavailable UI can say Choose files while `intake.dart:371-384` falls back to the device camera picker. Finish the existing lane-2 integration before judging the simplified flow complete.
+- Finding: session totals survive row retirement (`intake_transfer_session.dart:107-112`, `:911-927`), while `intake.dart:750-789` derives camera activity only from remaining entries and `:1018` hides Photos after the last row exits. Completion is announced, but a persistent visible cumulative summary is not wired through those surfaces. Proposed: keep session-level sent/duplicate/held/action-needed totals visible, including an explicit completed state. Do not imply that Sent means processing or scientific review finished.
+- Finding: camera portrait layout assigns preview flex 2 and guidance flex 1 (`capture_screen.dart:1160-1164`) regardless of how little guidance is present. Proposed: maximize the viewfinder with compact contextual guidance while retaining whole-image framing, reachable controls, and large-text/landscape adaptation. No precise device viewport percentage was measured.
+- Finding: capture review asks All labels sharp and in frame but renders an `Image.memory` without zoom (`capture_screen.dart:882-908`); the selected-photo preview is also a fixed-aspect image without zoom (`widgets/intake_photo.dart:41-63`). Proposed: zoom/pan and a fit/reset control for actual label inspection. This is a specimen-specific recommendation, not a claim that the sampled Mobbin screenshots prove pinch-to-zoom.
+- Finding: Review / Send now is an unlabeled camera preference placed alongside file actions (`capture_card.dart:137-149`), and Mark sensitive visibly omits its new-photo scope (`intake.dart:840-848`). Proposed: label the camera mode and make setting scope visible; retain immediate-send as opt-in and sensitivity off by default. Test comprehension instead of treating fewer words alone as evidence of usability. The existing specification explicitly selected these short labels, so changed copy is a proposed refinement, not an implementation defect against that wording.
+- Finding: desktop retains a full-width source area and a list constrained to readable paragraph width (`intake.dart:1032-1035`); the drop instruction appears only during dragging. Proposed later desktop improvement: discoverable drop target plus compact photo list and selected-photo inspection pane. Web drop redesign was excluded from the existing program and would be added scope. Borrow scanner review hierarchy and repeat-capture rhythm, not multi-page document grouping, auto-cropping, or document filters; v1 remains one photo per specimen.
+- Validation actually run: read-only Git/GitHub/source inspection and visual inspection of Mobbin previews and three checked-in goldens; final append-only prefix assertion and `git diff --check`. No Flutter suite, fresh app rendering, physical camera/picker, accessibility session, upload, model request, deployment or production acceptance was run. Not confirmed: device experience, current deployed build identity, recovery behavior on a real connection loss, and human task-success/timing metrics.
+- Failed approach: shell `gh api` could not connect to api.github.com; the GitHub connector successfully established current main instead. Historical September design screenshots were excluded as the baseline because they precede current code. Broad tool batches produced truncated output; important owning source ranges were reread directly.
+- Next validation proposed: capture three distinct specimens, inspect a tiny label, mark one sensitive, recover from a connection loss, and identify which photos reached the pipeline without opening technical details. Separately exercise camera denial and a desktop multi-file selection. Measure mode comprehension, label inspection, failure recovery and completion recognition, plus large text and keyboard/screen-reader access. These are proposed checks, not results.
+
+### 2026-10-17 - Intake research split and integration handoff
+
+- Same chat/worktree as INTAKE-MOBBIN-AUDIT-20261017 above. User clarified in voice that live camera capture needs its own Mobbin inspiration research and drive/link import needs separate research, then explicitly requested rerunning those searches and creating a new session to finish the unfinished integration in parallel.
+- New source observation: `widgets/repository_url_import_gate.dart` recognizes Google Drive folder links but always returns not connected; only registered storage locations resolve through the current repository. Do not describe Drive import as working or fold implementing a new Drive connector into the integration cleanup.
+- Handoff scope: reverify current main and existing integration ownership, finish the already planned row/status/camera sensitivity/fallback/completion/auth recovery wiring with appropriate tests and a PR. Camera redesign, zoom, desktop redesign and new import connectors remain research recommendations. Parent continues two distinct Mobbin research tracks. No implementation or live actions performed by parent.
+
+
+### 2026-10-17 - Separate camera and cloud/link Mobbin studies completed
+
+- Task/chat `01a149fc-3649-75c1-a121-11c19de12cb8`, detached `e6effb420949276467675d5bfcbc3c9d91804066`, worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`. Follow-up to the two intake research entries immediately above; no product source changed and no parent PR created.
+- Reran Mobbin searches separately: iOS repeat capture and framing/review guidance; web cloud-account connection/file browsing and pasted-link import. Visually inspected the returned sampled screens for eBay, Google Drive camera, Vestiaire Collective, CapWords, Best Buy, Dovetail, PandaDoc, Air and Shopify. Results establish visible interaction patterns, not measured superiority, complete journey coverage, or unseen gesture behavior. Early cloud searches returned Drive's own file navigation rather than an importer; the refined connected-account query produced the relevant Air/PandaDoc/Dovetail references.
+- Camera references: [eBay repeat photography](https://mobbin.com/flows/3eca5e69-e846-4e68-92b2-71870d247d8b) shows contextual guidance near the shutter and accumulated photo thumbnails; [Google Drive taking a photo](https://mobbin.com/flows/a82d529f-cccc-423b-bf1c-aa391ac41882) has explicit Retake/Use Photo review; [Vestiaire Collective adding photos](https://mobbin.com/flows/4052da5d-e81d-4899-80a3-a07c282b9efb) shows numbered capture slots. Borrow visible capture/review hierarchy and continuity while retaining one photo per specimen; these marketplaces' multiple photos of one item are not our domain model. Proposed journey: frame specimen and labels, capture, inspect/retake/edit, Send, return to capture with persistent session totals. Zoom is a specimen-specific recommendation from our actual label-inspection need, not a feature proved by these snapshots.
+- Cloud references: [PandaDoc connecting to Drive](https://mobbin.com/flows/13d41c53-95f2-4920-ae58-e6125e08a165) clearly separates provider selection, Connect and an account-bound file list; [Air connecting to Drive](https://mobbin.com/flows/b64a77e8-e8f2-41cb-be6b-0d02a35358a0) shows the account, My Drive/Shared with me/Shared Drives, selection count, destination and Import; [Dovetail Drive import](https://mobbin.com/flows/6c7a6d69-c6d7-4a99-bced-db242ab15c65) separately acknowledges connection and imported files. Proposed Drive journey: choose provider, connect/select account, browse folder, select images, confirm collection/count/consequence, import, retain outcomes and recovery.
+- Link reference: [Shopify URL upload](https://mobbin.com/flows/7c21aac4-b0ab-4e0f-840b-d776339c1bfc) uses a dedicated URL action, an input naming accepted URL types, and a resulting file plus uploaded feedback. Proposed link journey: paste a supported link, resolve it, show the actual matched folder/files and collection, confirm selection, import, retain outcomes. It is a separate branch within import, not a substitute for a connected Drive browser. This is future design direction; current app has neither arbitrary URL ingestion nor a Drive connector.
+- Current import source evidence: `repository_url_import_gate.dart:160-166` always returns Drive not connected; matching registered gs:// locations is implemented. Its Review source callback passes no matched source identity, and `app_router.dart:707-711` routes to the general source list. Retain the resolved target in a future improvement. `source_object_row.dart` always draws a placeholder for unimported objects; a source thumbnail endpoint is explicitly missing, so useful photo preview requires API work rather than cosmetic styling alone. Visually inspected existing source desktop and compact-selection goldens; these are synthetic fixtures, not a fresh live run.
+- Existing import strengths to retain: collection-scoped registered source browsing, state filters, explicit selection counts, confirmation, duplicate handling, per-object refusal results and partial-outcome reports. `source_controller.dart:301-306` currently sends sensitive:true for every source import, and `source_import_sheet.dart:74-79` explicitly explains that these records are held with no model run requested. This differs from camera intake's sensitivity-off default; do not silently unify their processing outcomes during visual redesign.
+- Parallel implementation: created local project chat **Finish intake integration**, thread `01a14a1c-4506-7543-8eb1-e5ec81870d06`, host `local`. It is assigned the already specified integration gaps, validation and reviewed PR, with new visual redesign/Drive connector and release/live actions excluded. A bounded status check confirmed the child active and independently identifying old rows, missing camera sensitivity, disappearing totals and router/auth recovery. Implementation completion, PR, checks and live acceptance: Not confirmed at parent closeout; the child continues separately.
+- Validation actually run in this follow-up: Mobbin sampled-image review, direct source reads, committed source golden inspection, router callback verification, child progress snapshots, append-only prefix assertion and git diff --check. No application test, new runtime rendering, physical-device interaction, upload, model request, merge or release in this parent session.
+
+
+### 2026-10-17 - Bulk intake research correction and complete-flow audit
+
+- Task/chat `01a149fc-3649-75c1-a121-11c19de12cb8`, detached HEAD `e6effb420949276467675d5bfcbc3c9d91804066`, worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`. This entry corrects the scope of the preceding Mobbin camera/import studies, following the owner's explicit feedback. The owner rejected a scanner-led/per-photo hero flow and clarified all photo sources (URL, bulk local upload, Google Drive/Dropbox, camera) feed review then Submit; Submit must show an intake queue with progress, and success hands off to the specimen pipeline. Intake transfer/handoff progress is required; removing the old scientific-processing strip must not be interpreted as removing the intake progress queue.
+- Owner also accepted the cloud connection/browsing/URL patterns in principle and required administrative approval, insufficient permission, failure and recovery coverage. Personal Drive is a possible test source, not proof of institutional approval, and no live account connection or upload was performed here.
+- Research rerun: 14 targeted Mobbin queries spanning bulk capture/library selection, media review/upload, source connections, per-file errors and progress. Visually inspected selected results; downloaded nine high-resolution references and included two current synthetic baseline captures. Main evidence: Squarespace selected asset grid and iOS multi-image progress/Cancel remaining; Shopify uploading-files mixed outcome with a failed video while an image remained; Later's batch inspector; Google Photos selection; AWS and Proton transfer queues; Whop localized validation; Air source/account/destination browser. Scanner editing is secondary. Admin/permission results were weak or unrelated; excluded from evidence of organizational cloud approval. Dropbox search results did not establish a complete Dropbox importer journey; report says so explicitly.
+- Official sources consulted: Google Drive error handling and scope guidance; Google Workspace app controls/access requests; Dropbox error handling and team app permissions. Proposed UX distinguishes collection authorization, organization policy, provider account/app authorization and file readability. Google and Dropbox behavior is not assumed identical; pending approval is shown only if actually confirmed. Personal accounts cannot validate managed-tenant IT controls. No advice to make private files public or bypass restrictions.
+- Deliverable: `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-research/index.html`; query/result metadata and reference paths in adjacent `sources.json`. Report contains linked high-resolution reference board, nine source-backed composition findings, all acquisition paths, two illustrative layout sketches, queue state semantics, 20 failure/recovery situations, and acceptance scenarios. Illustrative counts are not actual records. These are recommendations and evidence, not shipped capability.
+- Design finding: the app already has `specimen_ui` and tokens, but intake composition mixes source actions and camera settings, retains dominant acquisition controls after photos exist, constrains desktop content to paragraph width, and exposes too much machinery per row. A photo-dominant batch review grid and a separate compact transfer queue use different representations for different work. Use existing library anatomy/spacing/surfaces and add reusable patterns; update the intake blueprint instead of assuming every existing layout breaks its own spec. The selected-photo fixture omits the shell; the real action bar already exists.
+- Behavioral change: `intake.dart:408` currently starts sending each accepted camera photo before camera Done. The owner's latest add/review/Submit direction calls for an accumulating default camera loop. Immediate-send, if retained, is separately opt-in; do not present the current integration wiring cleanup as delivering this changed workflow. Submitted batch totals and outcomes should survive navigation; unsent photo persistence across restarts was previously deferred and remains an explicit product/runtime boundary, not an existing promise.
+- Validation actually run: source/doc and Basic Memory inspection, Mobbin sampled-image inspection, high-resolution image retrieval, HTML local-link/asset checks, isolated headless Chrome render at 390/768/1440 widths (11 images loaded; no horizontal document overflow or broken section anchors), and visual review of report top and flow sketches. Append-only prefix assertion and git diff --check. No Flutter tests/build, fresh app runtime, human usability test, OAuth connection, production data/model request, merge or release in this parent session.
+- Failed approaches resolved: Python urllib downloads were blocked by sandbox DNS and then its certificate store; the system HTTPS client successfully downloaded the references without disabling certificate validation. Bundled Playwright lacked its expected Chromium; installed Chrome rendered the local report with an isolated temporary profile after sandbox process launch failed. No global installation or user browser profile change.
+- Parallel chat `01a14a1c-4506-7543-8eb1-e5ec81870d06` remained active on the separately assigned integration fixes; latest observed report was full verification progressing without failures. Completed PR/checks/release: Not confirmed. No new instruction was sent to that chat in this follow-up.
 - Login integration with pinned main `7f0447c3a3e2d2229f03eed80d12a54e6a6af14e` completed without source conflicts. Journal custody preserved every base line in order and every complete input insertion exactly once; saved inputs/result are in `/private/tmp/login-merge-pr353-354-357-custody/`. The upstream Intake/navigation/reference files are retained as committed on main. A first merge attempt ran before the journal commit hook finished and correctly refused the dirty journal; after that commit completed, the merge succeeded without any discarded work. The combined source requires fresh canonical validation and exact-head independent review; r5 remains prior-head evidence.
 
 
@@ -20760,6 +20809,18 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 
 - Final PR #363 integration: pinned main `19a6de3eec71f04eec967bcb3119e1741b977df9` merged locally into r9 closeout head `515fb8ff99445f4bf0d932f2b8e2ca26fe3a91a1` without conflicts. Every base journal line remained in order and all complete ours/incoming insertions occurred exactly once; custody inputs and result are in `/private/tmp/login-merge-pr363-custody/`. The complete working-tree diff from fully tested `f058e9e6be78b35a0027911e0bb81f5bc9cf945c` names only SESSION_LEARNINGS, so all application, test, build, dependency, configuration and reference inputs remain byte-identical to canonical r9. This final journal-only merge will receive exact-head review before updating PR #361; fresh hosted and production verification remain required.
 
+### 2026-10-17 - Finish photo-intake integration (lane 2 closeout)
+
+- Task `01a14a1c-4506-7543-8eb1-e5ec81870d06`; branch `codex/finish-photo-intake`, managed worktree `/Users/anuragduddu/.codex/worktrees/finish-photo-intake/specimen-digitization-app`, based on `origin/main` `19a6de3eec71f04eec967bcb3119e1741b977df9` (source base `e6effb420949276467675d5bfcbc3c9d91804066`). Implementation and visual validation complete; commit and PR references are appended below after creation. The original `codex/front-end-finesse` checkout and audit worktree were left untouched.
+- Outcome: Intake uses the existing handoff mapping in compact tappable photo rows and a details sheet; one Ready menu changes only that photo's sensitivity or removes it. Diagnostics and previews live in the sheet, the obsolete stage strip is removed, and Sources' `UploadState` values, labels and row path are preserved. Sent/duplicate totals persist after row retirement. View in Specimens opens All specimens with previous query and filters cleared. The real routed 390 dp layout keeps the first photo above sticky Send at normal and 200 percent text.
+- Camera and recovery: `CapturedPhoto.sensitive` and live transfer activity are wired through the real capture route; permission/no-camera fallbacks choose files and do not silently auto-send those selections. Last-shot removal is restricted to the exact admitted Ready entry, including re-admission of an earlier interrupted row; stale popovers are closed. Picker/admission/preflight continuations are scoped to the captured session, while already-admitted and authorized automatic transfers can finish after Intake closes. Verified access for the same signed-in user resumes a paused batch; explicit sign-out clears entries. Thumbnail and details-preview disposal evict the exact resized image-cache keys.
+- Requirements integrated: INT-UX-005, 013-014 wiring, 017, 023 wiring, 031-034, 037-039, 051-052, 071 UI, 074 UI and 080. The existing lane 1 status/session contract is reused. The planned Processing and Blocked Specimens tabs do not exist; existing Needs human, Deferred and Cleared semantics remain, and the completion link uses All specimens. The pre-existing six-category summary versus ten-word budget conflict remains explicit rather than hiding counts.
+- Validation actually run: `TZ=America/Chicago LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 scripts/ci/verify.sh` passed with its unmodified default six Python shards: 18,018 Python passed and 49 skipped (18,067 accounted for exactly once); 1,255 design-system tests passed; 2,939 application tests passed and 7 skipped; fatal-info analysis clean in both Flutter packages; UI-string and pre-commit gates passed; 553 Dart files formatted with zero changes; release web build and loopback route/security-header smoke passed (13 responses, five security headers). The local build has no stamped deployment marker and is not deployment evidence. Sixteen selected-photo golden images were inspected (twelve updated at 390/768/1440 in light/dark and text 1.0/2.0, plus four new routed 390 images). All eleven row states meet the 88 dp budget at normal text and avoid overflow at 200 percent text. Keyboard details-sheet open/close and focus return, semantics, sensitivity freezing, duplicate suppression, reduced motion and stale callback cases have focused regression coverage.
+- Red evidence: a temporary archive of main source `e6effb42` compiled the main-compatible row/routed tests and produced three assertion failures (old disclosure row, missing per-photo menu, no automatic access-recheck resume); the explicit-sign-out control passed. API-specific new tests were verified on the changed branch and are not represented as assertion-red on main.
+- Independent review: a separate read-only Codex reviewer found stale queue filters, a stale sensitivity-menu file reference, re-admission tracking of the wrong last row, retained camera references, fallback picker ownership, and an old last-shot popover reopening on a later capture. Each was fixed with regression coverage; final committed-head review is recorded below. The reviewer inspected source and did not claim live validation.
+- Failed approaches: early full Flutter runs exposed obsolete presentation assertions and one real earned-admission-after-unmount regression; assertions were updated to the new row/sheet contract and the lifecycle behavior was restored. The first canonical Python gate failed a source contract requiring an explicit native-camera guard; the source was fixed and the original contract test retained. A 12-shard local invocation was rejected because the local runner supports at most six; the final canonical run uses the default six without changes to the runner. A sliver-hosted row menu tripped the existing glass-surface constraint; the default scrollable manifest uses a single scroll view and column, while production remains inside its existing page scroll.
+- Evidence files: local task outputs under `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a14a1c-4506-7543-8eb1-e5ec81870d06/outputs/intake-integration/`, including rendered contact sheets and red, targeted, golden and canonical logs.
+- Not confirmed: physical camera capture, VoiceOver/TalkBack, interrupted real-network transfer, real sensitive hold, deployment, or live camera-to-Specimens acceptance. The routed fake repository proves sensitivity propagation and response mapping, not production sensitivity policy. This task authorizes source, local tests, review and PR checks only; no merge, deployment, device install, paid run or live upload was performed.
 ### 2026-10-17 - GITLEAKS-FIXTURE-20261017 the shared-wire fixture's idempotency key recorded as a reviewed Gitleaks false positive
 
 - Branch `claude/gitleaks-fixture-reviewed`, worktree `.claude/worktrees/gitleaks-fixture`, cut from `origin/main` `e6effb42` (the merge of PR #356, whose commit `989b5a2f` added `tests/fixtures/general_api_contracts.json`). One small PR to main, opened for review and not merged by this session. Pull request: PR #364 (base `main`).
@@ -20771,6 +20832,21 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Not confirmed: the hosted CI run on the final head of the pull request; the merge; unblocking an actual feature branch by merging main after this lands (the controls above stand in for it).
 
 
+### 2026-10-17 - Photo-intake integration PR and committed-source review
+
+- Continuation of task `01a14a1c-4506-7543-8eb1-e5ec81870d06` above. PR [#366](https://github.com/anurag-duddu/specimen-digitization-app/pull/366), `codex/finish-photo-intake`; implementation commit `5cfac3ec`; merge commit `993016c66d830d2c928c537748964bb02dab6846` incorporates main `12397a0093c4ac4c568b023091ed39f15f14420e` after PR #364. That upstream change contains only `.gitleaks.toml`, `docs/SESSION_LEARNINGS.md` and `docs/execution/SECRET_SCAN_REVIEW.md`; application, Python, tests, scripts and workflow files are byte-identical to the implementation that passed the canonical gate. All pre-commit checks passed again after the merge.
+- Independent read-only review confirmed exact source head `993016c66d830d2c928c537748964bb02dab6846` against main `12397a0093c4ac4c568b023091ed39f15f14420e`, with no outstanding actionable findings. The final addition after that review is this append-only documentation entry. Canonical test evidence remains the primary agent's execution, not a test rerun claimed by the reviewer.
+- GitHub checks were pending when this entry was written. Their final result and final committed-head review are recorded with the PR handoff; [the PR checks page](https://github.com/anurag-duddu/specimen-digitization-app/pull/366/checks) binds the results to the current head. Required checks read from live branch protection: Repository checks, Python tests, Flutter checks and web build; strict up-to-date branches are required.
+- Scope and evidence limits remain as in the closeout above. No merge, release, device installation or live upload was performed. Local canonical and final pre-commit logs are saved in this task's `outputs/intake-integration/` artifact folder.
+
+### 2026-10-17 — Bulk intake checkpoint before main reconciliation
+
+- Task 01a149fc-3649-75c1-a121-11c19de12cb8; branch codex/compare-photo-intake-ux; worktree /Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app.
+- Reconciled integration PR #366 source f77aa3fe (implementation 5cfac3ec) through merge 653ece84. Implemented private bulk drafts, explicit frozen submissions, durable intake jobs, shared Flutter review/capture/progress, and cloud/registered-source/direct-link adapters. Release clients remain disabled pending compatible backend provisioning and acceptance.
+- Checkpoint validation: 32 focused Python intake/source/release contracts; 18 full-shell/capture/grid Flutter tests, including 16 golden compositions; 3 native-file recovery tests; SQL Connect local compile. Earlier deployment-policy/runtime-settings selection: 592 passed. All are local/synthetic evidence.
+- Independent read-only review prompted fixes for wake-up races, changed source policies, replacement replay, session-bound callbacks/disconnect races, account choice, partial source admission and frozen-submission recovery. Reviewer confirmed existing storage behavior is AST-identical after removing three added intake methods; current-source pins can advance without changing canonical publication behavior.
+- Required verification attempted: pre-commit passed. Python shards were interrupted after exact storage-source pin and release/setup expectation failures. Corrected the current-source pin and narrow intake-job/secret expectations; focused rerun and complete final verification pending. No assertions or protections disabled.
+- Not confirmed: final exact-head review, full final verification, redesign PR, merge, deployment, physical camera/memory/VoiceOver/TalkBack, live personal Drive/Dropbox, managed-account approval or live pipeline handoff. OAuth configuration and scoped Secret Manager/IAM provisioning remain external dependencies. Main reconciliation follows; final evidence will be appended separately.
 ### 2026-10-17 - Login PR361 integrates the shared scanner ruling from PR364
 
 - Task `01a147ea-7efb-7e22-8821-e42395a135fc`, branch `codex/email-first-sso`, worktree `/Users/anuragduddu/.codex/worktrees/9030/specimen-digitization-app`, PR #361. Exact reviewed head `c4e76aeeab798e79919d7beb7fc799a82a8fe19d` passed all twelve hosted Python shards, repository checks, real SQL/Storage engine contracts, Flutter tests and release web build, both Android and iOS builds, and Runtime candidate CI. The Python aggregate was still queued at integration time; its eventual result must be reported separately. Hosted CI/CD run `39040905300`, runtime candidate run `39040905327`.
@@ -20794,6 +20870,22 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Follow-ups: the record's loading inspector wants a field-row skeleton (no leading block) if `UiSkeleton` grows a form for it; `UiSidebar`'s footer does not spend the bottom inset `UiScaffold` now hands it; `AppShell.accountInBar` and `accountOnRecordBar` always return false and could go.
 - Reusable learnings. Two questions about a window, two answers: content asks how wide it is (`WindowClass`), chrome asks how it is arranged (`WindowArrangement`), and a modal belongs to chrome. When a design system component is a few dp wider than the hand-built thing it replaces, measure what the content beside it loses before accepting it: here 8 dp crossed a fit threshold in another component on the most used window. And a finder that matches by tooltip or by label double counts any control that publishes the name both ways.
 
+## 2026-10-17 — Bulk intake review fixes and local contract evidence
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch `codex/compare-photo-intake-ux`, worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`. Implementation checkpoint `be8a7aea`; main reconciliation `b551548e` includes origin/main `4894bf2e`. Integration source from PR #366 remains preserved. Redesign PR: Not confirmed at this checkpoint.
+- Independent read-only review found and prompted fixes for full-batch browser reselection, capture retention failure acknowledgement, immediate draft history, explicit provider account choice for links, same-account reconnect of queued items, retries after local validation failure, source browsing previews, and historical-job N+1 reads. Durable capture count now advances only after retention succeeds; a failed shot stays available for retry. Active jobs use an additive SQL view and bounded payload pages.
+- Validation run: 39 focused backend contracts passed, plus the separate 100-photo mixed-source end-to-end contract passed (zero specimens before Submit; exactly 100 afterward); 24 focused Flutter widget/recovery/visual tests passed. Android debug compilation passed. iOS arm64 simulator compilation passed with explicit ARCHS after the default Flutter/Xcode combined-architecture check failed. SQL Connect compilation passed. New private ownership, bounded inventory, active-job and atomic submit/outbox contracts passed against disposable local PostgreSQL/SQL Connect via sensitivity-test.mjs. These are local/synthetic results, not physical or cloud acceptance.
+- Failed approaches: canonical engine harness stopped at provisioning preflight (`report must be outside cached engine files`); separate local engine diagnostics do not replace that CI gate. Full verify.sh began before independent-review fixes and its source-integrity guard correctly invalidated changed-input shards; only the remaining identified task-owned shards were stopped. A fresh unchanged-source run and final exact-head review remain required.
+- Not confirmed: merge, deployment, live provider consent, physical camera capture, physical 500-image memory measurement, VoiceOver/TalkBack, institutional approval, or live pipeline handoff. Provider OAuth client configuration, bounded Secret Manager grants and first-job invoker provisioning remain explicit external dependencies; release clients retain the disabled feature default.
+
+### 2026-10-17 — Submitted-photo recovery and final verification checkpoint
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`; branch `codex/compare-photo-intake-ux`, worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`; follows implementation/review head `ddaa26353aa9495d1c3a5967535534b984875315`.
+- Independent review found two interruption paths: missing browser originals after Submit, and complete bytes without the final save acknowledgement. The submission now offers checksum-matched original reselection and a separate Finish saved transfers action. Both retain the frozen item identity/classification; replay cannot create a new specimen. Pending-file leave warnings include previous submissions while another draft is open.
+- Recovery regressions cover wrong-file rejection, resumed offsets, no new admission/Submit, and repeated finalization after losing the last acknowledgement. Backend intake contracts: 17 passed. Flutter analysis: clean. Final full verification is pending this checkpoint; earlier full-client run exposed literal geometry and Material navigation, now replaced with shared tokens, full-screen route, and readable layout metrics. Two named nonvisual network durations use the documented section 8 policy exception; no screen exemptions were added.
+- A phone at 200% text exposed progress-header overflow with recovery actions. The view now uses a scrollable header and lazy item list; its generated progress images were visually inspected.
+- Genuine local browser interaction with synthetic fixtures confirmed saved draft restoration, no specimens before Submit, 2/2 sent to pipeline after Submit, and both items in the existing specimen Queue. Screenshot: `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-submitted-browser.png`. This is synthetic local evidence, not deployed/live acceptance.
+- Not confirmed: real provider consent, institutional policy acceptance, physical native camera, manual VoiceOver/TalkBack, production memory budget, deployment. Provisioning and backend-first feature-flag rollout remain documented in `docs/execution/BULK_PHOTO_INTAKE.md`.
 
 ### 2026-10-17 - Login PR361 integrates the responsive shell release from PR359
 
@@ -20830,6 +20922,50 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Failed approaches and traps. (1) The re-sign script builds `origin/main` by default, so until this lands every re-sign reinstalls a crashing build: use `~/bin/resign-specimen-iphone.sh --ref claude/ios-uiscene-adoption` meanwhile. (2) `xcrun simctl openurl` with a custom scheme stops at an OS prompt, so a log-based link test shows nothing until the prompt is tapped (the first scripted run showed no links for that reason). (3) A broad `pkill -f xcodebuild` to stop a simulator build on a shared Mac can kill another session's build; scope kills to the worktree path. (4) Two agents fixed the same crash at once because the coordinator's request and the owner's report arrived separately, and the later `devicectl install` replaced the earlier one: one installer per phone, named in the coordinator's plan.
 - Reusable learning. When an iPhone app that ran yesterday crashes on every launch, read the crash log before reading code: `xcrun devicectl device info files --device <udid> --domain-type systemCrashLogs` lists them and `devicectl device copy from --domain-type systemCrashLogs --source <name>` fetches them. Here the faulting frame named the cause outright, and the OS version in the log header (26.6.2 yesterday, 27.0.1 today) explained why an unchanged app broke. Crash logs of a device that was updated overnight should be compared against the previous OS before suspecting the last commit.
 
+### 2026-10-17 — Reconcile concurrent sign-in and iOS lifecycle delivery
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch `codex/compare-photo-intake-ux`, worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`. Independent review approved intake head `9a1628cf3933ca5ff911901414d6a99f0ffa1c6c`, including the two browser-interruption fixes. Reviewer independently passed three backend contracts, four Flutter checks, and a cancellation/finalization reproduction with zero specimens.
+- Main advanced to `ee727747a612cc98e64936e72493501a5b45c3c9` (email-first/Google sign-in #361 and iOS UIScene #362) while full verification was running. Stopped the task-owned six-shard parent through its cleanup handler before source edits; that interrupted run is not a pass. An earlier requested 12-shard run was rejected by the script's supported 1–6 bound. No check was bypassed.
+- Reconciled both dependency sets, preserving intake app_links callback registration and main's Google sign-in and UIScene registrations. Only pubspec.lock had textual conflict; retain both package sets and resolve via Flutter. Validation of the merged source is pending this checkpoint.
+
+- Reconciliation validation: dependency lock enforced, 64 focused intake/login/native-configuration tests passed, and CocoaPods deployment-mode install retained the merged lock. The generated resource-copy phase for Google sign-in dependencies is included in the Xcode project. The vendored app_links implementation registers FlutterSceneLifeCycleDelegate and supports scene URL callbacks. Current iOS rebuild/full verification remain pending at this append.
+
+### 2026-10-17 — iOS callback ownership correction
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree unchanged. Bounded review of reconciliation head `2f6ed7029141d570db9383537c349e786cc85bc7` found an inherited callback issue: App Links publishes the intake OAuth URL but defaults to not claiming it, so Flutter's scene handler also forwards it to GoRouter and the no-collection fallback redirects to Queue.
+- Added `FlutterDeepLinkingEnabled=false` on iOS, matching Android's existing opt-out. App Links owns email and intake callbacks; native Google SDK retains its separate handler. Added the native configuration regression. The source-frozen verification parent was stopped through its cleanup handler before this edit, so the interrupted run is not a pass.
+- The merged arm64 iOS simulator build succeeded before this boolean configuration correction; no physical-device/provider acceptance is claimed. Final focused/full verification and exact-head review follow.
+
+### 2026-10-17 — Draft PR verification boundary
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`; branch `codex/compare-photo-intake-ux`; worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`. Final implementation head `ddef30cfc11702d2c75a65b569267f9a2f481c25` independently approved with no outstanding recovery, upstream-integration, or iOS callback findings. This entry changes documentation only.
+- Ran required `scripts/ci/verify.sh` on that frozen source. All hooks passed; all 18,115 collected Python tests ran across six shards: 18,064 passed, 49 skipped, two failed. Failures: `test_storage_standalone_interruption_cleans_complete_tree[2-130-assertions]` (its SQL reconciliation readiness setup failed; cleanup passed with no surviving fixture processes/ports), and `test_classifier_child_exports_metadata_linked_to_actual_parent` (classification operationally blocked, missing expected status). Both passed individual reruns with equivalent process/loopback permissions.
+- Whole-shard retries preserved assertions and source but produced additional engine-fixture failures. Interrupted those retries; one owned process group ignored INT/TERM and required KILL after verifying its group identity. These retries are not passing evidence. Another repository verification was using the same machine during the original run; load may contribute, but this is not a proven root cause. Logs: `/tmp/intake-verify-release-ready.log`, `/tmp/intake-engine-interruption-unrestricted.log`, `/tmp/intake-classifier-tracing-isolated.log`, `/tmp/intake-rerun-shard0.log`, `/tmp/intake-rerun-shard3.log`.
+- Continued the remaining verifier commands unchanged in `/tmp/intake-remaining-gates.sh`: UI-copy check passed (zero violations), design-system analysis/tests passed, app analysis passed, and formatting checked 580 files with zero changes. Full app tests/web build/route smoke are still running at this checkpoint; see `/tmp/intake-remaining-gates.log`. The local full verifier is NOT reported as green.
+- Publish a draft PR with these failures visible and require the isolated hosted checks before any merge. No merge, deployment, provider/device/live acceptance is claimed. Backend-first feature flag, OAuth/worker provisioning, managed-account scenarios, physical camera, manual VoiceOver/TalkBack, and device-memory acceptance remain explicit dependencies in `docs/execution/BULK_PHOTO_INTAKE.md`.
+
+### 2026-10-17 — Bulk intake draft PR and recovery-test synchronization
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch `codex/compare-photo-intake-ux`, worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`; draft PR #368: https://github.com/anurag-duddu/specimen-digitization-app/pull/368. Product implementation remains the independently approved `ddef30cf`; `569fc4d4` only records verification.
+- The remaining client verifier reached 3,048 passing tests and seven skips, with one failure in the legacy interrupted-camera recovery test: it assumed real image decoding finished within a fixed 100 ms. The unchanged test passed in isolation. Replaced that sleep with the file's existing bounded `_pumpRecovery` helper, which waits for recovery/decoding and marker cleanup to finish before inspecting the photo. All owner/collection, no-upload/preflight, and marker-removal assertions are unchanged. Independent review approved this test-only correction and reproduced its pass; the entire recovery file passed all 11 tests.
+- Full client-suite rerun, formatting, release web build, and route smoke are running in `/tmp/intake-client-final.log`; hosted PR checks are running. These are pending at this checkpoint. The earlier full Python verification failure remains recorded; isolated reruns do not convert it to a full-suite pass. No merge, deployment, real provider, physical-camera, institutional, or manual accessibility acceptance is claimed.
+
+### 2026-10-17 — Owner testing preview for bulk photo intake
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch `codex/compare-photo-intake-ux`, worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, PR #368, source `491a78186f43cb23049bdb3e7e6f090b9356a491`. Final source CI completed with 23 successful checks and PR Hosting deployment skipped; exact-head independent review approved. Local client rerun passed 3,049 tests with seven skips, formatting, release web build, and route smoke. Earlier local Python full-run failures remain recorded above.
+- On the owner's request to test, built an isolated local release preview with `BULK_INTAKE_ENABLED=true` and synthetic processing. The existing supervised local-review runner serves http://localhost:3048 with API on loopback port 8048, state/configuration at `/private/tmp/specimen-bulk-intake-user-review-01a149fc`. Both launchd jobs and authenticated API/web HTTP 200 responses were verified. Port 3000 belonged to another application and was left untouched. The generated temporary Firebase placeholder was removed by the build helper. The preview stays running for the owner's test session; no production or provider credentials are used.
+- Opened and signed into the empty bulk intake workspace in the in-app browser and retained the tab. First-load font requests failed transiently; the assets returned HTTP 200 and a reload rendered the icons correctly. Screenshot: `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-ready-to-test.png`. The owner then reported a quick review and said it looks better. This is initial visual feedback, not acceptance of all flows.
+- Real Drive/Dropbox OAuth, managed-account restrictions, physical camera, manual VoiceOver/TalkBack, device memory, deployment, and live pipeline acceptance remain Not confirmed. Use `scripts/dev/local_review.py status|stop --review-dir /private/tmp/specimen-bulk-intake-user-review-01a149fc` to inspect or stop only these owned jobs; stop preserves the test state. This closeout append is local and does not change the approved PR head.
+
+### 2026-10-17 — Persistent cloud connectors and recovery after consent
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch `codex/compare-photo-intake-ux`, worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, draft PR #368. Product commit `07df7aa8cd54fef9d49f46711db1f990ca9d998d` independently approved with no outstanding findings. The owner requested a seamless connector experience with actual denial/retry/admin guidance after attempting connection, rather than a preflight IT gate.
+- Consulted Mobbin's Attio storage accounts and Dropbox Dash connection-denial screens; canonical references are in `docs/execution/BULK_PHOTO_INTAKE.md`. Connect now continues immediately into Google Picker or Dropbox browsing, reuses persistent accounts, explicitly selects between multiple accounts, and preserves expired connection identities for queued imports. Additional Google folder access remains incremental. Copy administrator details preserves the confirmed error and does not send anything or invent an approval request.
+- Review caught and resolved hidden expired accounts, stale polling across account changes, a closed reused popup, and hidden Add actions when the current listing is empty. Source-scoped selection identities also prevent equal Dropbox paths from different accounts colliding. A confirmed status poll reconciles a lost completion acknowledgement without another connection attempt. Origin/window/state/session-proof protections remain intact.
+- Actual local-browser testing uncovered `ImportProblem` being handled outside CORS by the generic server-error middleware, hiding actionable details from the browser. Registering this known exception with the existing classified handler fixes browser readability without relaxing allowed origins. Google/Dropbox setup-error and callback contracts passed independently (3 tests). Final focused backend run: 58 passed; final focused Flutter run: 34 passed, including 13 connector cases, retained bulk recovery, phone 200% text and account-switch race cases. App analysis and final changed-file/commit hooks passed. Logs: `/private/tmp/intake-connector-python.log`, `/private/tmp/intake-connector-focused.log`, `/private/tmp/intake-connector-analyze.log`, `/private/tmp/intake-connector-final-precommit.log`.
+- Required `scripts/ci/verify.sh` was invoked. One preliminary hook run was invalidated by concurrent local formatting; the next all-file hooks passed and launched the six Python shards. That broad run began before the final browser error fix and commit, and was deliberately interrupted through its owning runner's cleanup rather than claimed as final-code evidence. A failure marker had appeared in shard 3; its complete result is Not confirmed. No full local verifier pass is claimed. Logs/results: `/private/tmp/intake-connector-verify.log` and `/private/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-python-shards-9ph4c5yy`. The draft PR's complete final-head hosted checks remain required before merge.
+- Final synthetic release web build succeeded and the owned preview remains at http://localhost:3048, API port 8048. Retained existing draft state. Both services returned HTTP 200 after startup. Browser verified Connect, the actual missing-provider-configuration reason, Copy administrator details with the reason retained, and Retry connection. Evidence: `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/intake-connector-recovery.png`. Restarting launchd jobs immediately can observe a stale registration or a still-bound port; wait for both old jobs and listeners to exit and then for API startup, rather than treating registration as readiness.
+- Real Google/Dropbox OAuth, managed-account policy acceptance, native/device acceptance, merge, deployment, and live processing remain Not confirmed. Provider configuration remains a provisioning dependency. The preview is a real local UI/API with synthetic authentication/processing, not a successful provider-connection simulation.
 ## 2026-10-17 — Login journey correction, implementation checkpoint
 
 - Task: `01a147ea-7efb-7e22-8821-e42395a135fc`; worktree
@@ -21011,6 +21147,26 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - Failed approaches and traps. (1) Copying #358's whole `pubspec.yaml` into the scratch tree would have put the application's `assets/google-sign-in/` and font declaration back, a directory that no longer exists; only the `analyzer` line was taken. (2) In zsh, `git show "$B:apps/..."` reads `:a` as a path modifier; write `${B}:apps/...`, and a bare `echo ====` fails with "= not found". (3) A second `createGesture(kind: mouse)` plus `addPointer` in one test trips the mouse tracker assertion; make one pointer and move it. (4) `matchesGoldenFile(find.byKey(...))` with no `RepaintBoundary` around the key captured the whole window here, so a sheet's picture includes the ground around it. (5) A disabled state taken from Material's default (38 percent) looks reasonable in a golden and fails the system's own contrast floors; check a new control's disabled paint against 03 section 3.6 before choosing one, as `UiButton` already does.
 - Reusable learning. A design system component that draws an asset or a font has to own the file, or the application's `pubspec.yaml` is a second place a consumer must know about: the G and Google Sans moved into the package and `UiFonts.loadForTest` is the one seam both test configs already call, so tests measure the label in the face a person sees. A file that code reads from the bundle has to be a declared asset: `LICENSES/OFL-Geist.txt` was read for the licence page and never bundled, which only showed once a test iterated `LicenseRegistry.licenses`. To prove "looks the same on every platform", compare pixels (precache the image under `runAsync`, then `toImage` and `toByteData`) across every `TargetPlatform` and check the pixels are not blank; the same read of a region proves the G is untouched by a state.
 
+### 2026-10-17 — Connector branch reconciliation with shared Google sign-in
+
+- Same task/worktree and PR #368. Published connector head `8bdce19a98623b3643c1fa3b64175c9506095d15` was independently approved, but GitHub did not schedule checks because main advanced to `835f197a` (PR #367, shared `specimen_ui` Google sign-in button) and reported a session-log append conflict. The earlier statement that checks were starting was corrected after inspecting the run list and mergeability.
+- Fetched and merged `origin/main` locally. The repository's union merge preserved both session histories; the automatic `pubspec.yaml` merge correctly removes the old app-owned Google assets/font registration because upstream moved them into `specimen_ui`. No connector behavior was changed during reconciliation.
+- On the merged tree, `flutter pub get --enforce-lockfile` passed, all 51 connector/bulk/source-recovery/login widget tests passed, and `flutter analyze --fatal-infos` passed. Log: `/private/tmp/intake-connector-merged-flutter.log`. This reconciliation is local source integration, not a production merge or deployment; complete hosted checks remain required on the published merge head. The running synthetic preview retains the previously tested connector product code.
+
+### 2026-10-17 — Connector final checks and owner preview
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch `codex/compare-photo-intake-ux`, worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, draft PR #368. Final published head `a5978572d6ffff2e8d3e004eeb52e578a2d9db13` received independent exact-head approval with no findings. Hosted CI completed with 23 successful checks and the PR Hosting deployment skipped: all twelve Python shards plus aggregate, Flutter/web, Android, iOS, repository checks, SQL/Storage contracts, and runtime candidate checks. Runs: https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39064009820 and https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39064009795. Earlier local verifier failures/interruption remain as recorded; hosted success does not reclassify them. Local and hosted shard numbers are not equivalent because they use six and twelve partitions respectively.
+- Rebuilt the local release preview from the clean final commit with `BULK_INTAKE_ENABLED=true`. Served source marker and authenticated API both returned HTTP 200 at http://localhost:3048; main JavaScript SHA-256 `5ff2fc6124724ae8c75b8ae8b4105a2416784bec522eb1c3f25fd05262571bca`. Rechecked synthetic sign-in, direct Drive and Dropbox Connect actions, actual missing-provider-configuration responses, administrator-details copying without clearing the reason, Retry, and Escape dismissal. Screenshots and machine-readable evidence are under `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/` (`intake-connector-connect.png`, `intake-connector-recovery.png`, `intake-dropbox-recovery.png`, `bulk-intake-verification.json`). The user-facing tab and owned preview remain available; private drafts and files were retained. Temporary Firebase build configuration was removed.
+- Restart gotcha: removal of the owned launchd jobs and disappearance of listeners did not immediately allow the runner's plain bind probe because recently closed sockets remained in TIME_WAIT. Confirmed neither loopback port had a listener, then used a socket-reuse-aware probe in the one-off launcher; this preserved the occupied-port check, changed no repository source, and started only the owned services. The final marker/API/browser checks above confirmed recovery.
+- This closeout append is local bookkeeping after the verified commit, not another product revision. No PR merge, production deployment, provider credentials, IAM changes, or live pipeline operation occurred. Real provider consent, managed-account denial/approval, physical camera, manual VoiceOver/TalkBack, and device memory acceptance remain Not confirmed. OAuth provisioning and those live scenarios remain follow-ups.
+
+### 2026-10-17 — Simpler connector interaction after owner review
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`; branch `codex/compare-photo-intake-ux`; worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`; draft PR #368; preceding verified head `a5978572`. The owner said the connector flow still felt too complicated and requested Claude, OpenAI, and Attio patterns. Inspected actual Mobbin Claude connector rows, Attio storage-account connection/disclosure, and ChatGPT connection/return flows. ChatGPT's Mobbin examples were GitHub/Codex and Figma, not Drive; official OpenAI Drive guidance confirms account/consent/return behavior. References and the evidence boundary are in `docs/execution/BULK_PHOTO_INTAKE.md`.
+- Simplified the disconnected view to one short description and Connect. Saved-account actions and optional Google folder access move into the existing shared overflow control. Folder selection/subfolder inclusion and administrator details use collapsed shared disclosures. Removed repeated privacy prose and the always-visible account-management button group. Link import begins with the link field and shows only relevant provider controls. No API, OAuth scope, credential, or provider-policy changes were made.
+- Independent review caught and resolved two edge cases: a sole expired account used by a pasted link must reconnect its original ID/access, and Google folder-to-Picker switching must clear stale navigation while preserving selected photos. Returning to folders closes Picker so late responses are ignored by existing guards. The reviewer approved source blob `1ada0f9bdbe57bdacc037e0444078131f729f27c` with no remaining findings.
+- Validation: 40 focused connector, bulk-intake, and source-recovery widget tests passed; app analysis passed; UI copy check had zero violations (one unrelated existing long-text warning); diff check passed. Logs: `/private/tmp/intake-simplification-reviewed.log`. A first preview build completed before the two review fixes and is not final-build evidence. Final preview rebuild and required repository verification follow this checkpoint. Prior-head hosted results remain prior-head evidence until the new head completes CI.
+- Not confirmed: real provider consent, institutional approval/denial acceptance, physical native camera and manual accessibility. No merge, production release, IAM/OAuth provisioning, or live pipeline operation is authorized or claimed by this UX follow-up.
 
 ### Firebase login integration and verification repair, 2026-10-17
 
@@ -21281,6 +21437,50 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 - What the skip covered: gitleaks (the hook's build, pre-commit rev v8.30.1) with main's `.gitleaks.toml` was run over every line this PR adds relative to `origin/main`, 5,348 lines of `git diff origin/main ca1acaeb`. It finds no leaks. The same scan flags main's line 23, so it can see one. The fixture is byte-identical to main's. The coordinator ran the same check independently.
 - The merge stays, with no revert and no force-push, by the coordinator's decision. PR #364 records main's value as a reviewed false alarm. When #364 merges, the new main is merged here once, with every hook running.
 
+### 2026-10-17 — Connector simplification reconciled with current main
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, branch `codex/compare-photo-intake-ux`, PR #368. Independent review approved exact simplification head `8d23d71e4855c5282f3235ede3268faf402e871b`. A clean synthetic release build of that head succeeded (JavaScript SHA-256 `4e4876d0b7467df2089d73d40d30cb33a399bd59b53766d482e87dac7348bb45`), but main advanced and made the PR conflicting before publication. The initial required verifier was interrupted during repository hooks to avoid testing mixed source; it is not passing evidence.
+- Reconciled `origin/main` `86555f1f` locally. Dependency conflicts retain intake's file/storage dependencies and main's analyzer dependency. The Xcode conflict was only two IDs for the same Copy Pods Resources phase; retained main's ID. Removed a duplicate `FlutterDeepLinkingEnabled=false` produced by automatic merge, preserving the intake callback scheme and the single shared App Links owner. Locked dependency resolution and both plist/project syntax checks passed. The session-log union preserves both histories.
+- Main's new design-system guards exposed platform checks in the earlier bulk-intake screen. Camera prominence now follows compact window width; the leave warning follows actual non-durable pending file transfers; Retake uses the existing camera error/fallback path on every supported client. Four targeted empty/inspector golden cases passed; only the desktop empty-state PNG changed (Choose files is primary), and all four were visually inspected. The final focused integrated run passed 89 tests covering connector, bulk review, source recovery, camera/callback configuration, and upstream login/email completion; analysis passed. Log: `/private/tmp/intake-simplification-merged-final.log`.
+- The two conditional-export adapters (`draft_file_store.dart`, `intake_auth_session.dart`) and the two existing nonvisual network durations (`intake_timing.dart`) require narrow owner sign-off under main's new exemption rule. The reviewer confirmed these are real capabilities and should not be hidden in exempt files or rewritten to evade the scanner. Asked the owner for exactly those three entries; no answer yet at this checkpoint, and no approval quotation or allowance has been added. Required full verification and final integrated preview remain pending. Early diagnostic runs had a missing temporary Firebase placeholder, one nonexistent test filename, and a missing explicit `Uint8List` import after removing foundation; these were corrected before the 89-test run. No production or live acceptance is claimed.
+
+### 2026-10-17 — Retake fallback during connector integration review
+
+- Same task/worktree/PR #368; reconciliation commit `3859ddc5`. Independent review identified that exposing Retake consistently also exposed an old fallback gap: the inspector ignored the camera's `needsFallback` result. Retake now opens one file selection, preserves original identity/sensitivity for replacement, and leaves the original unchanged on cancellation. It uses the same supported-format group as ordinary file intake and surfaces acquisition failures through the controller.
+- Added focused widget cases that exercise the real camera-unavailable route into file selection and cancellation. The integrated connector/bulk/source-recovery/camera/configuration/login run passed 91 tests; analysis passed (`/private/tmp/intake-simplification-retake-final.log`). Review of this final fix and the full repository verifier follow. The three narrow guard approvals remain pending; no exemptions have been added. No live provider, device, merge-to-main, deployment, or pipeline acceptance is claimed.
+
+### 2026-10-17 — Simplified connector preview ready; guard approval pending
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree as above, existing draft PR #368. Local source head `2fecdf196ffe02856465030cd7aaa7159ddecf93` received exact-head bounded product-source approval; this does not approve the pending guard allowances or merge/release. It is not pushed yet; the published PR remains at `a5978572` until the required owner decision and verification are completed.
+- Built a clean release preview from `2fecdf19`, feature flag enabled only for the isolated synthetic preview. Source marker and authenticated API returned HTTP 200; main JavaScript SHA-256 `02ae4e578c50252553ea48b87a1673cd11fc0ba9b65eb5e60a95492a957a6c27`. Restarted only the two owned launchd jobs with the TIME_WAIT-aware port probe and retained drafts/files. Preview remains available at http://localhost:3048. Browser verified both single-action Drive/Dropbox entries, actual missing-configuration failures, collapsed administrator help, copying details while preserving Retry/reason, empty link entry, provider-specific controls for Drive/Dropbox links, and no connector for a direct HTTPS image link. Temporary example links were cleared without importing; the tab returns to intake.
+- Evidence: `intake-connector-simple.png`, `intake-connector-simple-recovery.png`, and the additive `connector_simplification` section of `bulk-intake-verification.json` under `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8`. Research references are recorded in the intake design document; actual inspected ChatGPT Mobbin examples concern GitHub/Codex and Figma, not Drive.
+- Canonical `scripts/ci/verify.sh` ran on the integrated committed source: all repository hooks passed, locked Python sync passed, then six complete-collection shards started (18,207 collected tests). The run was deliberately interrupted through its coordinator's cleanup while the explicit owner guard-approval question remains pending. Exit 130; no full Python or full verifier pass is claimed. Logs/results: `/private/tmp/intake-simplification-integrated-verify.log` and `/private/var/folders/nq/t4rvrkyx2dx2293cx4bn8gfm0000gn/T/specimen-python-shards-skqkgsho`. The completed focused run remains 91 tests plus clean analysis. No hosted checks were started for this unpublished head.
+- Remaining work: receive the owner's decision on exactly two platform adapter entries and the existing two-duration network-policy entry; if approved, record the exact attributable quotation on those entries, run final guards/full verification, publish the draft PR update and wait for exact-head hosted checks. Real OAuth consent, managed-account policy acceptance, physical capture, manual accessibility, production deployment and live specimen acceptance remain Not confirmed. This append is local closeout bookkeeping, not a new product revision.
+
+### 2026-10-17 — Owner asked whether the connector simplification is live
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, worktree/branch and PR #368. Read-only GitHub verification found #368 still OPEN and draft at `a5978572`, with no merge commit. The later simplified source `2fecdf19` remains local as recorded above.
+- Public Hosting `deployment.json` and API `/version` both report production commit `c38f4fd4a096d09e37e8e395f87889f2faa5648b`. Runtime/Data release runs for it succeeded; the CI/CD run was still in progress in the initial status snapshot. These production markers do not contain or establish a release of this unmerged intake PR. Python urllib's local certificate store rejected the reads; ordinary certificate-verifying curl succeeded. No certificate validation was disabled.
+- Outcome: connector simplification is not live; it remains in the local synthetic preview. Guard approvals, remaining exact-head verification/publication, protected release, provider provisioning and real acceptance remain outstanding. No merge, deployment or permission change was performed for this status request.
+
+### 2026-10-17 — Remove the owner's immediate preview login friction
+
+- Same task/worktree/branch and local source `2fecdf19`, PR #368. The owner could not enter the test preview because it requested a fixture token. Confirmed owned services and authenticated API were healthy. The earlier browser tab no longer existed, so opened a new visible localhost tab, entered the existing local fixture credential without printing it, completed sign-in, and marked the tab to remain open.
+- Verified the signed-in intake UI is accessible. During the handoff the page reached the actual Google Drive configuration failure and administrator-help controls; preserved the user's page state. Screenshot: `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/intake-owner-access.png`. This resolves access in the open tab, not persistence across a refresh/new browser session.
+- Testing boundary remains explicit: local photo intake/review and synthetic submission progress are usable; real Drive/Dropbox consent and import are not ready because this preview has no provider OAuth configuration. The shown administrator-setup error is application-side setup, not evidence of an institutional policy denial. No auth bypass, provider access grant, production change, or guard exemption occurred.
+
+### 2026-10-17 — Clarify the complete intake outcome and personal-account test path
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch `codex/compare-photo-intake-ux`, worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, local source `2fecdf19`, draft PR #368. The owner reiterated that the deliverable is the complete bulk acquisition, shared grid review, explicit submission, persistent intake progress, and successful pipeline handoff. Research must inform that whole experience and its interaction/design consistency.
+- Read-only source inspection confirms the preview connection failure is missing application provider configuration (`SPECIMEN_INTAKE_OAUTH_JSON` / `provider_not_configured`) before provider consent, not demonstrated museum policy denial. App membership, provider authorization, and institutional/file restrictions are distinct. Personal Google account testing is a valid independent acceptance path once application access and provider setup are ready; it does not establish managed-account acceptance.
+- The owner authorized using their existing personal Gmail as an app test account. No account creation, membership grant, provider configuration, consent, production change, or real import occurred during this clarification. Real provider/device acceptance remains Not confirmed. No additional tests ran; this entry records clarification and source inspection only.
+
+### 2026-10-17 — Real Gmail E2E implementation team starts
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch `codex/compare-photo-intake-ux`, worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, draft PR #368, starting local head `2fecdf19`. Owner selected a dedicated test collection in the existing deployed app and explicitly authorized model-assigned agents/subagents, implementation, tests, QA/fixes, merge, deploy, go-live and pruning. Real OAuth and data/pipeline behavior are the acceptance boundary.
+- Read-only planning found frontend/backend mailbox admission excludes the requested personal account, Firebase has no account for it, release settings lack provider configuration and bulk feature forwarding, and the current intake handoff starts an unscoped shared worker. Implementation will reconcile current main, provide exact server-owned external admission, real provider configuration, and collection-scoped dedicated job routing with isolated worker membership.
+- Team: Astra/max connections lead, Astra/max intake delivery lead, Sol/max independent integration QA; root coordinates runtime/provisioning/release and owns Git operations. No account/provider/IAM/release change or real E2E result yet. Existing three guard-entry approvals remain unresolved; owner quotations will not be invented.
+- Current GitHub inspection: main `c38f4fd4` protected, #368 OPEN/draft at `a5978572`, merge state DIRTY. First local merge attempt stopped before changes because prior append-only session notes were uncommitted; preserve those by committing before retry.
 
 ### 2026-10-17 - LOGIN-JOURNEY-FIREBASE pre-merge closeout for PR 371
 
@@ -21582,3 +21782,3889 @@ Root remains sole integrator and release/action owner; this prepared entry is fo
 ### 2026-10-17 — Correction to the desktop-target closeout above
 
 - The pull request is https://github.com/anurag-duddu/specimen-digitization-app/pull/372, draft, base `main`. The closeout commit is `21300868329468593f7bc8b66cfbd1488487de99`.
+### 2026-10-17 — Real account and cloud-source integration lane
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, agent
+  `/root/connections_lead`, branch `codex/compare-photo-intake-ux`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, PR #368.
+  Handoff base is `a15504c5f1da9a2f65747067f55041050e24375c`; this lane's
+  changes are uncommitted in the shared checkout. The coordinator owns final
+  integration, review, commit, push and protected releases.
+- Implemented a server-owned exact external-email allowlist while retaining
+  verified Firebase identity, App Check and current collection permissions.
+  Client email validation checks syntax so approved external accounts can
+  complete ordinary sign-in; Firebase authentication alone grants no collection
+  membership. Config rejects wildcard entries and does not fold Gmail aliases.
+  No personal test mailbox was added to public application source.
+- Google native file selection follows the documented system-browser OAuth
+  Picker flow with only `drive.file`; web continues to use JavaScript Picker.
+  Selected IDs become durable metadata only after authenticated callback
+  completion, and polling can recover the selection. Folder consent remains
+  separate. Provider setup, institution policy, expired authorization and file
+  permission failures now have distinct actionable results. A source
+  configuration failure does not establish an institutional denial.
+- Fixed Secret Manager token references: writes can return the configured
+  project's numeric resource name even when requested by project ID. Reads
+  accept only that configured ID or number and a numeric version, rejecting
+  other projects. Regression coverage exercises the write-to-read round trip.
+- Validation actually run: the wider focused Python auth/source/API/lane suite
+  passed 226 tests; the final narrower auth/source rerun passed 143 tests. Nine
+  focused Flutter suites passed 179 tests. Full application Flutter analysis
+  reported no issues; formatting and `git diff --check` passed. These are local
+  tests with doubles, not real provider or deployed acceptance. Initial runs
+  failed on sandbox loopback binding/SDK cache access, stale verifier test
+  signatures, one nonexistent test path and assertions for the former client
+  domain restriction; corrected commands/fixtures and explicit server denial
+  coverage passed on rerun. No assertion or required release check was disabled.
+- Updated `docs/execution/BULK_PHOTO_INTAKE.md` with actual Google/Dropbox
+  prerequisites and independent app membership, app configuration, user
+  consent, institution policy and file permission boundaries. Integration
+  caught an optional secret env-name mismatch; the release lane confirmed it
+  restored `SPECIMEN_INTAKE_OAUTH_JSON`, matching the existing parser.
+- Not confirmed: real external-account sign-in, provider-console setup,
+  production token-secret permissions, real Drive/Dropbox consent and private
+  staging, physical native Picker behavior, Submit through the scoped specimen
+  pipeline, authoritative Queue disposition, and institutional acceptance.
+  This lane made no cloud changes, guard entries, commits, pushes or releases.
+  Final integrated `scripts/ci/verify.sh`, exact-head independent review and
+  protected-release verification remain the coordinator's follow-ups. The
+  ignored CI Firebase-options placeholder supplied by the intake lane remains
+  available for the coordinator's local verification.
+
+
+### 2026-10-17 — bulk-intake reliability and collection worker boundaries
+
+- Session: `01a149fc-3649-75c1-a121-11c19de12cb8`, delegated lane
+  `/root/intake_delivery_lead`; branch `codex/compare-photo-intake-ux`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, shared
+  checkout HEAD `a15504c5f1da9a2f65747067f55041050e24375c`. Changes remain
+  uncommitted for the coordinator; no pull request, push, merge, deployment,
+  cloud mutation, provider connection, or live scientific run by this lane.
+- Added immutable server-owned collection-to-job dispatch across intake,
+  scientific handoff, explicit processing, derivation and research retry.
+  Dedicated workers validate exact scope, configured actor, continuation job,
+  and Cloud Run job identity before inventory; shared workers exclude every
+  dedicated route before inventory. Intake applies the boundary before reading
+  jobs or changing to a job owner's verified actor. Continuations keep their
+  own fixed jobs and send no invocation overrides.
+- The existing application actor remains shared because the cumulative program
+  ledger is creator-guarded. The explicitly bound operational `intake-e2e` node
+  inherits Insects' unchanged profile while leaving the original Insects ledger
+  binding unique. No published museum tree/profile bytes, ledger copy/reset,
+  scientific Queue semantics, or budget changes were introduced by this lane.
+- Fixed SQL Connect intake inventory UUID spelling normalization, and release
+  the wake lease after exceptional/unconfirmed starts so a prompt user retry
+  can reconcile without a stale coalescing result. Flutter Submit now compares
+  selected photos' inclusion/removal/sensitivity with the latest manifest;
+  changed reviewed photos require a new click, and unseen rows stay unselected.
+- Validation: 212 focused Python tests passed for scope routing, bulk intake,
+  profiles, readiness, derivation API, worker starts and drain; 78 worker actor,
+  drain CLI and research retry tests passed; the subsequently added scoped
+  public retry regression passed separately (291 passing test executions).
+  The 27 Flutter bulk intake/review/retake tests passed, including existing
+  500-photo layout and retained-camera coverage. `git diff --check` passed.
+  This is offline/local validation, not deployed or physical-device acceptance.
+- Failed setup attempts: a research test import needed the existing harness
+  directory on PYTHONPATH; uv cache access was sandbox restricted, so tests ran
+  through the repository virtualenv. Existing verifier stubs needed `**kwargs`
+  after the parallel auth interface update. Flutter initially lacked the ignored
+  Firebase options file; the unchanged CI placeholder enabled local tests.
+  Flutter SDK cache access required the approved shell escalation. The ignored
+  placeholder is retained for the coordinator's canonical gate; no goldens were
+  regenerated or guards weakened.
+- Rollout/acceptance still required: final independent source review and full
+  canonical gate; matching route maps on API/shared/dedicated jobs; exact
+  dedicated scope/actor/own-job settings and fixed continuations; old shared
+  executions must end before dedicated test work is created. Confirm live SQL
+  inventory spelling and real persistence/restart/retry/uncertain-ack behavior,
+  personal-Gmail authorization and providers, physical continuous camera/privacy
+  recovery, and final disposition plus authoritative scientific Queue membership.
+  These remain Not confirmed by this lane. Synthetic staging/Submit/handoff
+  tests do not establish that end-to-end acceptance.
+
+### 2026-10-17 — Cloud source listing completeness repair
+
+- Follow-up in task `01a149fc-3649-75c1-a121-11c19de12cb8`, agent
+  `/root/connections_lead`, branch `codex/compare-photo-intake-ux`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, PR #368,
+  uncommitted on `a15504c5f1da9a2f65747067f55041050e24375c`.
+- Independent review found that the GCS SDK's `max_results` counts folder
+  markers too. Applying the file limit to that raw count before filtering could
+  accept 500 selected photos while silently omitting a 501st photo. The reader
+  now counts actual files across pages and preserves the legacy list return
+  contract: a complete list or `limit + 1` file rows signaling overflow.
+- A separate raw scan budget has one additional lookahead entry, so hitting
+  that budget cannot masquerade as EOF. Exceeding it, or receiving a file with
+  missing size metadata, raises an explicit incomplete-listing error. The
+  intake routes ask for a smaller folder or a retry instead of returning a
+  partial selection. The existing inventory caller also fails before saving
+  a snapshot when listing completeness is unknown.
+- Validation actually run: 115 focused source-reader, inventory, intake-source
+  and authorization tests passed, with one existing dependency deprecation
+  warning; `git diff --check` passed. New tests use the real GCS SDK iterator
+  with local paginated replies, including one marker plus 4,500 unsupported
+  files plus 501 JPEGs, marker-only pages, partial final EOF, exact scan-bound
+  EOF, overflow beyond that bound, and missing file metadata. An initial test
+  request-count assertion also counted the SDK's background bucket-property
+  lookup; the fixture now answers bucket properties separately from object
+  pages. No source behavior or safety assertion was weakened.
+- No cloud mutations or commits occurred. Live Storage acceptance is Not
+  confirmed. The stable source delta was handed directly to `/root/release_review`
+  for independent review; root retains canonical verification and release work.
+
+
+## 2026-10-17 — Native Google/device readiness (task 01a149fc-3649-75c1-a121-11c19de12cb8, delegated device_acceptance)
+
+- Branch/worktree: `codex/compare-photo-intake-ux`, `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`. Source changes remain uncommitted for root integration; no delegated commit or PR was created.
+- Read-only evidence: connected Android A142/API36 has installed 1.0.0+10, camera permission granted and Firebase email-link domain approved. iPhone 14 Pro Max/iOS27.0.1 has installed 1.0.0+8 and paired developer access. Exact installed source SHAs, current app identity/collection, App Check token success, camera capture and authoritative Queue acceptance: Not confirmed. No launch, install, capture, authentication, cloud write or paid work occurred in this lane.
+- Fresh Firebase SDK metadata contains existing web/iOS OAuth clients; cached primary-checkout SDK files predate them. Existing Android Firebase app has no registered signing certificates (read-only SHA-list returned an empty array). Its installed signature matches the local debug certificate; this identifies the signing certificate, not the installed source commit.
+- Source repair: protected `provision_auth.py` now reconciles only the fixed existing active Android app and two confirmed public certificate fingerprints, adding missing entries once and verifying complete readback while retaining all existing certificates. The existing main Data-release guard remains ahead of authentication/network. iOS Info.plist adds the existing public Google client IDs and reversed callback scheme while retaining `specimenintake`. No ignored SDK files were changed.
+- Validation actually run: `uv run pytest -q scripts/release/test_provision_auth.py` passed 151 tests; `plutil -lint apps/specimen_digitization/ios/Runner/Info.plist` passed; owned-file `git diff --check` passed. No Flutter execution or canonical verification was run by this lane.
+- Reusable constraint: Firebase's primary IAM permissions table documents `clientauthconfig.clients.create` as additional to `firebase.projects.update` for Android SHA registration. Root owns the matching auth-only role/test/documentation extension; broad `firebase.clients.update` was not inferred. Certificate readback alone does not establish an Android OAuth client or actual native Google sign-in.
+- Follow-ups: independent source review; root canonical gate and protected merge/release; refresh ignored real SDK configurations after CI-placeholder verification; qualify native Google and email-link handoff and App Check on both exact native candidates; perform actual 30 consecutive captures, persistent draft/grid, explicit submission and server-backed intake-queue reconciliation per device. Keep later main Queue acceptance separate.
+
+## 2026-10-17 — Bulk intake production integration, pre-verification checkpoint
+
+Task `01a149fc-3649-75c1-a121-11c19de12cb8`, coordinator `/root`, branch
+`codex/compare-photo-intake-ux`, worktree `5da8/specimen-digitization-app`, PR #368.
+This entry follows the team scope checkpoint `8000fcb4` and main integration
+`a15504c5`. The owner authorized build, test, QA, bug fixes, merge, protected
+release, real Gmail E2E in an isolated collection, and safe pruning. The owner
+subsequently delegated reversible technical choices: “Any two way door decision,
+you don't need me.” The two intake platform capability declarations and two
+network-policy durations record that exact delegation; scans and guard ratchets
+remain enforced.
+
+- Integrated actual-email allowlisting, isolated collection worker routing with
+  the existing worker actor and cumulative ledger, conditional intake-e2e
+  collection profile, additive E2E bootstrap, native Google configuration,
+  provider token storage and pinned configuration provisioning. No fresh budget
+  or global worker drain was introduced.
+- Independent reviewer reproduced GCS folder-marker truncation hiding the 501st
+  eligible photo. The repair counts files across pages and fails explicitly on
+  an uncertain bounded scan. Focused reader/source suites: 115 passed. Reviewer
+  inspected the repair and native/auth/worker/release changes; exact-head G51
+  approval is still pending.
+- Root focused results: bootstrap/data/runtime settings 235 passed; earlier
+  deployment contracts 583 passed; narrow platform/geometry/owner gates 26
+  passed; auth-only owner setup 11 passed. Combined native/auth/deployment run:
+  802 passed, 1 skipped, 1 failed because the new plist contract was not in the
+  frontend-focused workflow list. Fixed by adding its test module to that list
+  and the inventory expectation, preserving coverage; rerun pending. Pre-commit
+  passed before the final Picker helper and workflow-list delta. Canonical
+  scripts/ci/verify.sh on the final combined source: Not confirmed.
+- Explicitly approved Drive OAuth client was created with the exact production
+  API origin and /v1/intake/oauth/callback. Dropbox console now has Specimen
+  Photo Intake under the Gmail-linked account; after explicit content-access
+  and API-terms approvals, its four read-only scopes and exact callback were
+  saved, and implicit OAuth was disabled. Secrets remain in private0600
+  provisioning files outside Git. Cloud Secret Manager provisioning, account
+  connection, file import, submission and live acceptance: Not confirmed.
+- Automatic approval initially rejected selecting Full Dropbox; no bypass was
+  used. Owner then specifically approved the read-only folder connector and
+  creation/terms. Dropbox's development status currently allows only its owner;
+  public provider approval remains separate from personal-account E2E.
+- Google Picker needs both the application origin and docs.google.com referrers
+  on its Picker-only browser API key. The independently reviewed owner helper
+  creates a restricted key once, reconciles uncertain outcomes by deterministic
+  identity, and refuses conflicting keys/configuration. Independent mocked
+  helper/config verification: 39 passed. No key or IAM cloud writes yet.
+- Auth-only live dry run requires one custom-role update adding
+  clientauthconfig.clients.create for Firebase's fixed Android SHA registration;
+  existing binding needs no change. API Keys service is already enabled. Latest
+  observed old shared worker execution47dzr completed with runningCount0; recheck
+  after scoped runtime release and before adding E2E membership/content.
+- Device audit/readiness is recorded separately above. Real Gmail sign-in,
+  personal Drive/Dropbox consent/import, physical capture, native attestation,
+  scientific Queue disposition, merge, protected deployment, and cleanup all
+  remain Not confirmed at this checkpoint. Do not conflate source tests with
+  those outcomes.
+
+### Coordinator checkpoint correction and final provisioning preparation
+
+Same task/worktree/PR as the preceding checkpoint. The static iOS plist test is
+now `tests/test_native_google_configuration.py`, included in frontend-focused
+coverage. Keeping it outside `scripts/release` preserves the existing strict
+Hosting/release script boundary; that policy test was not loosened. Four
+secret-scan false positives in newly tracked files were annotated precisely as
+resource names/references or synthetic values. First commit attempt stopped on
+those findings; no hook was bypassed.
+
+The Picker lane completed 114 passed, 1 skipped across helper/config/owner tests;
+independent helper/config verification was 39 passed. Actual combined private
+Google/Dropbox configuration dry run succeeded: six numbered versions to append,
+one restricted Picker key, and five current IAM changes, zero failures. No cloud
+writes occurred in that dry run. A subsequent `--auth-only` application attempt
+was rejected by automatic approval review because the production IAM recipient
+and scope required explicit authorization. Both concrete auth and intake setup
+approvals were requested together; cloud setup remained unapplied when recorded.
+
+### 2026-10-18 UTC — Login recovery merge and partial release
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, worktree `9030`, branch
+  `codex/login-appcheck-recovery`: exact final head `0cf7a102` passed independent
+  G51 review and fresh hosted CI/CD 39082345693 plus Runtime candidate
+  39082345699. All required checks passed; native builds passed. The final
+  head differs from fully canonical-qualified `57b1ec4c` only by a verified
+  append to this journal. No checks or assertions were relaxed.
+- PR #375 merged normally as `c38f4fd4a096d09e37e8e395f87889f2faa5648b`
+  at 00:33:23 UTC. The merge tree exactly matches reviewed head `0cf7a102`.
+  Main Runtime candidate 39083195885 passed. Hosting 39083195854 is still
+  running at this entry; deployment and fresh original-tab acceptance remain
+  Not confirmed. A later append will record the final Hosting and browser result.
+- Data 39083195853 failed at "Enable and verify Google alongside email
+  sign-in": CLI exit 2, stage provider_provision, last recognized HTTP 200,
+  no concrete API reason or missing permission. Runtime 39083195857 built
+  and pushed all images successfully, but its Data dependency failed and
+  deployment was skipped. A fresh public API /version read still reports
+  `69bd6469cde211cb822936f9ac033b9453a80404`; full release is NOT green.
+- A bounded read-only CLI/source inspection found no concrete invocation or
+  schema defect. The initial HTTP 200 precedes operation polling and must not
+  be presented as provisioning success. The diagnostic operation-name matcher
+  could omit differently shaped operation names, but this is not established
+  as the live failure. No further cloud audit, grants, retries, feature-flag
+  changes or release-gate changes were performed. Google remains hidden.
+- Before pruning, live GitHub confirmed PR #371 and #374 merged their exact
+  local heads `ecbc150f` and `238317a3`; remote lookup found no remaining
+  task branch heads. Only merged local predecessor branches are eligible for
+  normal safe deletion. Preserve current recovery branch and this closeout,
+  and preserve unmerged `codex/login-journey-complete` at `18288554` (custom
+  code-plus-link work has no configured sender and was never deployed).
+
+- Final c38 Hosting outcome: CI/CD 39083195854 succeeded at 00:46:28 UTC;
+  protected deployment and public smoke passed. Independent public marker
+  matches exact `c38f4fd4`, run 39083195854, attempt 1. Native, web, repository,
+  engine and Python checks all passed. Runtime candidate also passed; the
+  separate Data/Runtime failures recorded above remain unresolved.
+- Fresh real email acceptance on c38 passed in a new owned Chrome Guest
+  profile. One request at 00:47:17 UTC produced the matching 00:47 email;
+  no resend was needed. The actual delivered link signed in the second tab
+  to the intended Insects collection with a clean route. The original tab
+  reached the same authorized collection without manual reload. Sign-out
+  propagated to both tabs and cleared stale sent/email state. Screenshot
+  evidence and `live-login-acceptance-c38f4fd4.json` are retained externally.
+  The precise automatic reload count was not instrumented; its bound is
+  covered by tests. Physical native-app email return remains Not confirmed.
+- Closed only the owned Guest window and cleared in-memory link variables;
+  the user's existing signed-in app and Chrome audio window were preserved.
+  Safely deleted merged local predecessor branches and stale remote-tracking
+  refs; retained current source, journal and unmerged custom-email branch.
+- The owner explicitly answered "Keep Google in this launch." Google is
+  required, so this is not a completed launch. No deferral was applied.
+- Google diagnostic follow-up branch `codex/login-google-operation-diagnostics`
+  starts from c38 and preserves this journal. A concrete parser/CLI mismatch
+  was found: the script assumed a narrow operation name, but CLI 15.8.0 uses
+  the server-returned name. Exact safe-name correlation now preserves only
+  bounded error output. Three synthetic cases failed before the repair; the
+  focused suite passed 174 after it. Deleted live raw logs cannot establish
+  that their operation name had this shape; this repair may still yield only
+  the known PERMISSION_DENIED code, and is not a provisioning fix by itself.
+- A documented Firebase managed-agent binding was checked read-only. The
+  first gcloud attempt exited 1 without a recognized HTTP status; its cause
+  was unknown and no policy was returned. A single alternative field-masked
+  read using the existing owner Firebase session succeeded at 00:52:04 UTC:
+  the exact managed agent has one unconditional
+  `roles/firebase.managementServiceAgent` binding. No restoration is needed
+  from this evidence, and no additional IAM grant was made. The internal
+  ProvisionFirebaseApp endpoint has no complete public IAM contract; neither
+  extra caller OAuth permissions nor a support-email change is established
+  as the remedy. No raw policy, unrelated principals or tokens were saved.
+
+
+## 2026-10-17: login launch activation and provider-button consistency
+
+- Task `01a147ea-7efb-7e22-8821-e42395a135fc`, coordinator `/root`, worktree
+  `/Users/anuragduddu/.codex/worktrees/9030/specimen-digitization-app`, branch
+  `codex/login-google-operation-diagnostics`, base diagnostic commit `cc4f9b83`.
+  The owner kept Google in this launch and then flagged the inconsistent small
+  Google pill beside the full-width email action. Existing authorization covers
+  design, build, test, fix, protected launch and safe pruning.
+- Superseding release evidence: main `c38f4fd4` Data run `39083195853` attempt 2
+  and Runtime run `39083195857` attempt 2 succeeded. These reruns were initiated
+  externally, not by this coordinator. Data reported "Google provider already
+  enabled; existing client retained." The previously failing provider-creation
+  path was not exercised. The unmerged diagnostic repair did not cause this
+  success. A masked owner read returned HTTP 200, enabled=true, the expected
+  resource and a valid client ID; clientSecret was never requested. No additional
+  IAM grants, provider writes or workstation deployment were made.
+- The coordinator set the existing public repository UI flag
+  `SPECIMEN_GOOGLE_SIGN_IN_ENABLED=true` and reran all jobs of the existing main
+  push Hosting run `39083195854`. Attempt 2 passed all checks and deployed; public
+  smoke completed 2026-10-18 01:21:31 UTC. The public marker matches exact c38,
+  run and attempt; served main.dart.js SHA-256
+  `9705bc4764ff55381fa65bf44b199b78465f48f0aa609dcc62afc5e79a8100fd`
+  matches the digest-verified tested artifact, whose build log records flag=true.
+  Runtime /version independently matches c38, readiness is 200 and the public
+  unauthenticated session check returns the expected 401. Warm/process was
+  skipped; no fresh specimen-processing acceptance is claimed.
+- Exact `cc4f9b83` canonical verification completed cleanly, exit 0 at
+  2026-10-18 01:17:19 UTC: 18,272 Python passes / 49 skips (18,321 collected,
+  each executed once across six shards), 1,307 design-system tests, 3,124 app
+  tests / 7 skips, both analyzers clean, 585 formatted files / zero changes,
+  release web build and 13 route / five header smoke checks passed. The local
+  unstamped marker check was skipped as expected. Independent review approved
+  that exact source/tree. This qualification does not cover the subsequent UI
+  correction described below.
+- Provider-button correction: the earlier recorded owner rule required one
+  Google component with the same look across platforms and Google's branding;
+  it did not require a content-hugging pill. Google explicitly permits rectangular
+  and pill variants. The shared component now follows the default rectangular
+  HTML configurator: 4 dp corners, fixed 12 dp start/end inset, 20 dp logo,
+  10 dp gap, and an expanding centered label region. Bounded forms fill their
+  available width; unbounded contexts retain intrinsic sizing. Logo, font and
+  brand colors are unchanged. A narrow optional Pressable focus-shape override
+  lets the focus ring follow this rectangle; all existing defaults remain.
+  Only initial Send link uses medium sizing; confirmation and resend keep large.
+  Authentication/provider behavior is unchanged by this correction.
+- Focused correction validation: 41 package tests, 33 login tests and four
+  no-update Google golden comparisons passed; both focused analyses are clean.
+  Only the four directly affected Google button golden images were regenerated
+  for the intentional shape/alignment change. Assertions for logo/color,
+  platform consistency, keyboard focus, RTL and large text remain. Twelve
+  offline production-widget entry captures completed against stable source;
+  coordinator inspected desktop, tablet, mobile, dark, keyboard and 200 percent
+  Google entry scenes. Authentication in these images is synthetic. Fresh
+  canonical verification, exact-head review and protected release of this UI
+  correction remain pending at the time of this entry.
+- Live Google acceptance on c38 attempt 2: an owned Chrome museum-profile tab
+  initially restored an older cached UI/session with app-verification failure;
+  normal refresh loaded the current two-method entry. A background automation
+  click was pop-up blocked; a native browser interaction opened Google's account
+  picker. Closing that owned provider tab restored enabled email and Google
+  choices with cancellation guidance. Retrying, choosing aduddu@fieldmuseum.org
+  and continuing with only the displayed name/profile and email scopes completed
+  Google's callback. No Workspace policy rejection occurred. The app correctly
+  showed the museum account, but collection admission is NOT CONFIRMED: local
+  app verification failed with typed app_check_unavailable. One supported Reload
+  app returned briefly to the intended collection route before the same failure.
+  The browser SDK reports appCheck/recaptcha-error. No CAPTCHA challenge was
+  visible. No protection was disabled, cookie store reset, extension changed,
+  or collection membership granted to make this pass. Earlier successful real
+  email-link acceptance in a fresh Guest profile remains separate evidence.
+- Evidence directory:
+  `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a147ea-7efb-7e22-8821-e42395a135fc/login-study/recovery-implementation/`:
+  `data-runtime-c38f4fd4-attempt2-final.json`,
+  `hosting-google-activation-c38-attempt2/hosting-verification.json`,
+  `canonical-google-operation-cc4f9b83-result.json`,
+  `google-button-consistency-local.json`, `button-alignment-captures/manifest.json`
+  and `live-google-acceptance-c38-attempt2.json`. Earlier failed-attempt reports
+  are preserved. Physical installed-app authentication is Not confirmed.
+
+
+## 2026-10-17: login button correction qualified for protected integration
+
+- Task: `01a147ea-7efb-7e22-8821-e42395a135fc`; branch
+  `codex/login-google-operation-diagnostics`, worktree `9030`.
+- UI correction committed as `dc83030d2412a1cdc142ec2e5cc9875a725f7eae`,
+  tree `c76ebda2609ac8d4664b3e9281aeba6dcb7ddead`; inherited diagnostic
+  repair remains `cc4f9b8308c59d4435dd90b8fb52555c87b82e7c`.
+- Full `PYTHON_TEST_SHARDS=6 bash scripts/ci/verify.sh` passed on the clean
+  exact `dc83030d` head from 2026-10-18 01:40:37 to 02:01:52 UTC:
+  18,272 Python tests passed / 49 skipped, all 18,321 collected exactly once;
+  1,309 design-system tests passed; 3,134 app tests passed / 7 skipped;
+  both analyzers clean; 585 files formatted with no changes; release web
+  build and 13-route/five-header smoke passed. The local unstamped deployment
+  marker was intentionally not a production assertion. Final worktree clean.
+- G51 independent review approved all 19 changed files at the exact head/tree,
+  with no findings. The reviewer checked all 12 retained entry captures,
+  four changed Google goldens and tracked source/image hashes. A separate
+  reviewer approved the UI delta; its inherited diagnostic approval was
+  explicitly attributed to the independent diagnostic reviewer.
+- Evidence is under the existing external `login-study/recovery-implementation/`
+  directory: `canonical-google-button-dc83030d-result.json` and corresponding
+  log; `independent-full-review-dc83030d.json`; and
+  `full-review-dc83030d-source-verification.json`. This closeout append changes
+  only the journal; code validation remains bound to `dc83030d` and hosted
+  checks must qualify the eventual PR head before merge.
+- Additional bounded App Check investigation captured one instrumented native
+  Chrome reload. Enterprise JS, reCAPTCHA assets, anchor and clr requests
+  returned HTTP 200; no App Check token-exchange request was observed. The
+  museum identity remained authenticated but collection admission still
+  failed with local app verification. HTTP 200 does not establish successful
+  reCAPTCHA execution. No bodies, headers, query values or tokens retained.
+- Pinned SDK/Flutter source does not support a missing initialization await or
+  Flutter body-clearing fix. The documented related SDK concurrency repair
+  predates the deployed SDK. No speculative upgrade, storage reset, browser
+  security change or enforcement reduction was made. The owner has a pending
+  optional check in their usual browser. Evidence: `appcheck-resource-trace-c38.json`
+  and `appcheck-upstream-bounded-search-c38.json`.
+- At this entry, the button correction is not deployed and has no PR yet.
+  Current live release remains `c38f4fd4` with all three attempt-2 workflows
+  green. Full collection admission after Google in the tested Chrome profile
+  and physical installed-app authentication are Not confirmed. Preserve the
+  unmerged `codex/login-journey-complete` branch and primary worktree.
+
+
+## 2026-10-17: bulk intake full verification and credential lifecycle review
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`; branch
+  `codex/compare-photo-intake-ux`, worktree `5da8`, PR #368.
+- Implementation commit `00f9a51c` and merge head
+  `a9cccdf1ed5206fa92c6e38744fe5a143c845e63` incorporate main
+  `75cb3dfbbea20e0b80d1def16352a4805c5d20be`. The complete
+  `bash scripts/ci/verify.sh` passed on that unchanged head: 18,516 Python
+  passes and 49 skips across all six shards (18,565 collected, accounted for
+  exactly once); 1,309 specimen_ui tests; 3,185 app tests and seven skips;
+  analyzers, formatting, release web build and loopback route/security-header
+  checks passed. Log: `/private/tmp/specimen-intake-verify-01a149fc.log`.
+  This is local verification, not a deployed or live integration result.
+- Independent review subsequently reproduced two credential-lifecycle issues:
+  every expired access-token refresh appended a billable Secret Manager version
+  indefinitely; every abandoned OAuth attempt also retained a PKCE secret.
+  Dropbox reconnect could replace the stored credential without revoking the
+  previous refresh family, so a later disconnect revoked only the replacement.
+  The reviewer explicitly withdrew the prior source approval pending repair.
+- Provider revocation is not interchangeable: revoking an old Google credential
+  can invalidate the replacement project's grant, while Dropbox token-family
+  revocation is specific. Replacement, uncertain Secret Manager writes, process
+  death, and disconnect races require durable reconciliation before retirement.
+  Disabling an old secret version does not end its storage billing; destruction
+  does. Cleanup must exclude pinned application client credentials.
+- Lifecycle repair and focused regression tests are in progress after the full
+  baseline verifier completed. That baseline does not qualify the subsequent
+  repair. No source push, merge, runtime deployment, Gmail connector acceptance,
+  native capture acceptance, or cleanup is established by this entry.
+- The exact production IAM/setup approval questions remain pending following
+  automatic approval review's rejection of the attempted auth-only setup. No
+  denied IAM action was retried through a different tool or console.
+
+- Follow-up to the entry above: retained the complete baseline verifier log at
+  `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-research/implementation/verify-a9cccdf1.log`.
+  The integration QA lane corrected authoritative collection names through the
+  existing server-only Memberships query, scoped dynamic credential version
+  listing/destruction without granting access to pinned client credentials, and
+  first-creation job definition convergence. Missing invoker grants still fail
+  the runtime release, and processing remains success-gated; private definitions
+  can be completed for one subsequent resource-level owner setup pass.
+- Focused integration validation: 53 API/collection tests, 21 setup tests and
+  629 release/provisioning/deployment-policy tests passed; these groups may
+  overlap and are not a unique combined test count. Actionlint, shellcheck,
+  secret scanning and diff checks passed. Independent review found no P1/P2
+  in that delta. Credential lifecycle review and final exact-head review remain
+  pending. A misplaced pre-existing test assertion was caught as a NameError
+  in the first combined run, restored to its owning test and verified by rerun.
+- Fresh read-only auth dry run still proposes one role update. Revised intake
+  dry run validates the restricted Picker key and six private configuration
+  versions, proposing five IAM changes and zero failures with optional runtime
+  pins still disabled. It performs no live changes or worker execution. The
+  pending setup authorization must explicitly include dynamic UUID credential
+  version list/destroy; fixed client/configuration secrets are excluded.
+- The real Gmail acceptance sequence is prepared privately in
+  `/private/tmp/specimen-intake-acceptance-01a149fc/real-gmail-web-acceptance.md`.
+  User-authorized reversible test-file preparation is allowed while preserving
+  originals; no additional file-selection approval gate is invented. Dropbox
+  remains Development/Only you. Google app verification, personal-account
+  success and institution policy remain separate acceptance boundaries.
+
+## 2026-10-18: bulk intake recovery repairs before final qualification
+
+- Continuation of task `01a149fc-3649-75c1-a121-11c19de12cb8`, worktree
+  `5da8`, branch `codex/compare-photo-intake-ux`, PR #368, after `a9cccdf1`.
+- Secret Manager consistency required a second repair: use confirmed numbered
+  references directly, retain exact destroyed-version intervals without treating
+  gaps as destroyed, and confirm uncertain destruction through exact version
+  metadata. List absence is not proof. Durable revocation claims serialize
+  disconnect/reconnect cleanup; rejection paths now retain issued credentials
+  for non-promoting cleanup rather than clearing the intent before revocation.
+  Rejected Google reconnects preserve an accepted connection by destroying the
+  rejected local credential without project-wide revocation; a provider grant
+  may remain in the user's Google account until revoked there.
+- A 500-file selection previously performed serial metadata work in one request.
+  The repair freezes IDs first, checkpoints each checked photo under a fenced
+  lease, and returns bounded-chunk progress. This is resumable work, not a claim
+  that every provider/SQL request completes within a strict time limit. Same-account
+  reconnection must restore the retained selection; other accounts stay separate.
+- Focused evidence during final repair: 49 lifecycle tests; 45 source/selection
+  tests; 25 Flutter connector tests passed. These overlap other runs and are not
+  a unique combined total. One earlier broader provisional run had 255 passes,
+  one stale immediate-selection expectation, and two sandbox-denied loopback
+  binds; it is not final qualification. Final canonical and exact-head independent
+  review remain pending at this append.
+- Correction to the prior intake dry-run entry: the final dynamic credential role
+  needs access/add/get/list/destroy, scoped to the exact project's UUID credential
+  namespace. Final read-only dry run passed with five proposed IAM changes and
+  zero failures (`/private/tmp/specimen-intake-final-dryrun-01a149fc.log`). No live
+  grants, secret provisioning, worker execution, or budget reset occurred.
+- Automatic approval review still requires the exact production IAM authorization.
+  A consolidated question names the service accounts, credential namespace,
+  restricted Picker key, six configuration versions and resource-specific job
+  grants. User-authorized routine technical choices continue independently.
+  Live Gmail/provider/device/Queue acceptance and release remain Not confirmed.
+
+- Final focused freeze: credential/source/selection suite passed 94 tests;
+  connector widgets passed 26 tests including lost reconnect acknowledgement.
+  Independent reviewer reran 59 credential/selection tests and found no remaining
+  P1/P2 in the repaired source. Flutter analyzer, focused secret scan, shellcheck
+  and diff check passed. This supersedes the in-progress focused counts above;
+  canonical qualification and the new committed-head review follow separately.
+
+- Final code commit `79067f9057255c2621693539fa412d0f369efb5b`, tree
+  `5130208865dd282a231794b0873142fd7f6310ed`, passed the complete canonical
+  `bash scripts/ci/verify.sh` with a clean worktree at completion on
+  2026-10-18 04:23 UTC: 18,580 Python passes / 49 skips, all 18,629 collected
+  exactly once across six shards; 1,309 specimen_ui tests; 3,190 app tests /
+  seven skips; both analyzers clean; 605 files formatted without changes;
+  release web build and 13-route/five-security-header smoke passed.
+  Local deployment marker was unstamped and intentionally skipped.
+  Durable log: `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-research/implementation/verify-79067f90.log`.
+- Independent G51 reviewer approved that exact SHA/tree and cumulative 169-file
+  PR diff with no unresolved P1/P2, including all 21 final repair files. This
+  supersedes the withdrawn `a9cccdf1` approval. Reviewer independently passed
+  59 credential/selection tests and 19 intake setup tests; these overlap the
+  canonical suite. This append changes only the journal; a successor-head
+  review still confirms that narrow delta before merge.
+- Private Gmail acceptance preparation identified three genuine pilot originals
+  (105526321, 105526324, 105526329), verified against retained source hashes and
+  G31's explicit non-sensitive classification. Candidate manifest and plan are
+  in `/private/tmp/specimen-intake-acceptance-01a149fc/`; public licensing is Not
+  established. No uploads or submissions occurred. The 500-copy review plan is
+  distinct from 500 unique originals/device-memory acceptance and includes no
+  scientific Submit. Actual allowance must be reread before paid acceptance.
+- The Mac is locked; owner Chrome interaction could not proceed. Production IAM
+  setup remains pending explicit bounded approval after the automatic reviewer
+  rejection. This session has not merged, deployed, granted IAM, provisioned the
+  prepared runtime secrets, accepted real Gmail connections, captured on device,
+  or established submission-to-final-Queue acceptance. Preserve the unmerged
+  worktree and private configuration; do not prune needed work.
+
+## 2026-10-18: hosted engine contract correction after bulk intake verification
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/compare-photo-intake-ux`, worktree `5da8`, PR #368. Published head
+  `3d734564dba9d2bf994617ec06762f60713f584e` contains the approved implementation
+  and a 29-line journal-only successor; G51 independently approved that exact
+  successor after confirming no runtime/test/config changes from `79067f90`.
+- Hosted run `39097054658`, SQL and Storage engine contracts job
+  `117585573733`, failed four SQL authorization cases. The Memberships operation
+  correctly returns the newly selected `collection { name }`, but the independent
+  admin-row oracle omitted that field; its strict equality failed. The preceding
+  local canonical suite passed, but does not run this separate real-engine job.
+  Storage did not run after the SQL failure. Do not describe that hosted run as
+  green or weaken/drop the exact membership, role, sensitivity or denial checks.
+- Narrow oracle projection repair and real local engine validation are in progress.
+  Sanitized job log: `/private/tmp/specimen-intake-ci-sql-3d734564.clean.log`.
+  Any correction requires renewed review, required verification and hosted checks.
+  No merge, deployment, IAM change, provider upload or paid intake occurred.
+- Task-local cleanup stopped only two orphaned Python test fixtures (fake postgres
+  and SQL Connect CLI from pytest-640) after matching their exact scripts and
+  reparented process identities, and confirmed both exited. No real engine/cloud
+  process or unmerged worktree was removed.
+- Follow-up before freezing the correction: the one-file oracle repair includes
+  the authoritative nested collection name and rejects wrong/missing names,
+  extra nested fields and null collections. Focused oracle replay: 241 passed,
+  6 deselected; independent adapter-list replay: 46 passed, 201 deselected.
+  Independent source review found no unresolved issues. These are replay tests,
+  not evidence that the hosted database or Storage engines passed.
+- Real local engine validation is unavailable on this Darwin/ARM64 host: the
+  existing wrappers require the approved Ubuntu 24/Linux AMD64 toolchain,
+  PostgreSQL 16, Java 21 and pinned Linux emulator binaries. No guard or test
+  inventory was relaxed, no engine installed, and no local engine run claimed.
+  The protected hosted engine job must qualify the successor commit.
+- Hosted Python shard 8 also failed at
+  `scripts/ops/test_simple_owner_setup.py::test_shellcheck_passes` (job
+  `117585719885`): its ShellCheck flagged SC2015 in the intake checkout guard.
+  The guard now uses an explicit conditional requiring the same four files,
+  preserving the error and failure behavior. No permission or cloud behavior
+  changed. Focused owner setup tests passed 77/77 with cached ShellCheck 0.11.0
+  explicitly on PATH; independent source review found no issues.
+- Oracle successor `a8528d674979194f07fcfa92d01d16f9cbcbe3c5`, tree
+  `41e2ca0893f1b57c90d2e529141d5dde53e95456`, received exact-head G51 approval.
+  Its canonical attempt was deliberately interrupted during pre-commit after
+  discovering the additional hosted lint failure; it did not complete and is
+  not qualification evidence. Both fixes require the next frozen verification.
+- Engine selection remains nine real-engine nodes. The 241 oracle replay cases
+  are explicitly invoked; this filename is outside default pytest discovery.
+  They are not included in the default shard totals or the nine engine cases.
+- Both CI corrections are frozen in `c58662c05f6581e7eb7fe69cacebce5954d4018d`,
+  tree `5fe42229f75f1827d0a0225640750c8762839f21`; independent G51 review
+  approved that exact head with no unresolved findings. Its complete canonical
+  verification passed with a clean worktree on 2026-10-18 04:55 UTC: 18,581
+  Python passes / 48 skips, all 18,629 collected exactly once across six shards;
+  1,309 specimen_ui tests; 3,190 app tests / seven skips; both analyzers clean;
+  605 Dart files unchanged by formatting; release web build and 13-route,
+  five-security-header smoke passed. ShellCheck was explicitly on PATH so its
+  Python test ran rather than skipped. The local unstamped deployment marker
+  remains intentionally skipped. This qualifies local source only.
+- Durable canonical log:
+  `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-research/implementation/verify-c58662c0.log`.
+  The old hosted run finished with only the corrected engine-oracle and
+  ShellCheck failures (plus their failed aggregate); the successor hosted
+  checks remain required. Production IAM authorization is still pending and
+  no merge, deployment, secret provisioning, provider import or live specimen
+  acceptance occurred. Preserve this unmerged work and private configuration.
+
+## 2026-10-18: bulk intake CI repaired; production setup remains pending
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/compare-photo-intake-ux`, worktree `5da8`, PR #368. Published head
+  `71333f59cd143b8114bfa6ed6ef43a275f7a09ef`, tree
+  `5fa42874d408a48ed99250448f1cd2025e93e7c3`, received exact-head G51 source
+  approval. It adds only 17 journal lines to canonically verified `c58662c0`.
+- Hosted CI/CD run `39098848625` and runtime candidate run `39098848632`
+  passed on the published head. Authoritative GitHub readback at 05:10 UTC
+  confirmed all three branch-required checks (Python aggregate, Flutter/web,
+  repository checks) passed, as did all 12 Python shards, Android/iOS builds,
+  runtime candidate validation/images and SQL/Storage engine contracts.
+  Hosting deployment was correctly skipped for this pull request.
+- Engine job `117590780900` passed nine real SQL tests, process restart and
+  database restore checks, and Storage denial/original-byte checks; its mandatory
+  evidence verifier passed. Retained sanitized log:
+  `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-research/implementation/ci-engine-71333f59.log`.
+  This supersedes the failed old-head engine/ShellCheck runs; emulator success
+  remains separate from production-connected Gmail and physical-device acceptance.
+- PR remains draft and unmerged. Automatic approval review's production IAM
+  rejection still requires the pending exact service-account/grant authorization.
+  No denied action was routed around that rejection. Prepared private provider
+  configuration is not provisioned or activated; isolated collection membership,
+  protected release, normal Gmail provider imports and final specimen Queue
+  acceptance remain Not confirmed. Native attestation/signing and managed-account
+  acceptance limitations remain as recorded above; no budget was reset or spent
+  on new scientific work in this verification phase.
+- User's production technical autonomy preference is recorded. Routine reversible
+  technical choices did not require new user decisions; the IAM prompt is an
+  automatic-review permission boundary. Preserve the unmerged worktree and private
+  setup/acceptance files. This final append is intentionally left uncommitted so
+  it does not replace the exact reviewed, hosted-green PR head during the block.
+### 2026-10-17 — EBFC fourth location attempt: PR355 qualified head and live-access recovery
+
+- Task: finish the owner-authorized single fourth same-run location reassessment for specimen `ebfc6171-bf2f-56b8-a35b-442798810461`, run `e7b00556-f006-4be7-9bd8-82ebf41173be`. Branch/worktree: `anurag-duddu/location-harness-latest`, Conductor `denpasar`. PR: #355. Reviewed head `7228660f86fd72163e85ba3578c372e601beb5dd`, tree `f07cc4231ffdd313ae56d2da67d2286398814bc2`, integrated main `4f27714cb09e31f98e293e326372463c8fddd0f2` (PR351).
+- Independent read-only review approved this exact integrated head and verified application/test/specification bytes unchanged from the previously reviewed implementation, all main CI planner changes inherited unchanged, and both append-only journal suffixes preserved. Evidence: `.context/extra-attempt-integrated-review.txt`. Source authorization permits only this existing run's fourth location attempt; max_attempts remains 3, specimen cap remains USD1, cumulative program cap remains USD16, and no fifth attempt is authorized.
+- Fresh complete canonical `scripts/ci/verify.sh` on this integrated head passed (exit 0): 16,516 Python passed / 49 skipped, 16,565 collected exactly once over six local shards; 1,171 design-system tests; 2,748 Flutter app tests / 7 existing skips; both analyses, formatting, hooks, release web build, routes and security-header smoke passed. Evidence: `.context/extra-attempt-verify-integrated-722.log`. Pre-push hooks passed. Hosted CI/CD run 39005506759 remains in progress at this entry; Runtime candidate 39005506758 passed all four jobs. Hosted completion, merge, three production releases and actual fourth live result are Not confirmed at entry time.
+- Earlier unmodified-head full local failures under host contention remain failures, not green evidence: two startup/deadline failures in the first run and one reader elapsed-time failure in the second; exact failing nodes passed in isolation. A subsequent complete default-six run passed before main integration; the integrated full pass above is fresh and separate. No timeout, fixture, assertion, skip or gate was weakened. Logs retained under `.context/extra-attempt-verify*.log` and isolated-check logs.
+- Fresh bounded SQL Connect read confirmed revision 47, same active run, completed / needs_human_review, no scheduled work and zero ReviewDecisions. Canonical active graph still hashes to `8dc59695aa031796b1d4b8873448535d39f39d126c9d895db00179419ce10870`. Field research is still 3; no fourth UI action was sent. Evidence: `.context/extra-attempt-preaction-sql.json`.
+- Normal browser access intermittently failed App Check after the owner's sign-in confirmation. Reload and a new tab in the same Chrome profile eventually restored the signed-in authorized Insects target without another sign-in, security bypass or credential extraction. Read-only source review establishes that the exact setup banner follows successful bearer acquisition and failed App Check token reads; it is not evidence of Firebase Auth session expiry. Check access again retries token reads; email-link sign-in does not reactivate App Check. Blank startup alone does not identify the provider or initialization stage. Preserve the working tab and avoid repeated sign-out/sign-in as a purported fix. Evidence: `.context/app-check-reconnect-source-review.txt` and `.context/extra-attempt-access-restored.png`.
+- Acceptance limit: offline recovery can retain raw city literal ILLINOIS while withdrawing its supported/published city value. Actual fresh worker trace and hash-verified saved graph must establish the scientific outcome. Do not substitute offline replay, an API source marker or a prior attempt trace for actual fourth-attempt acceptance; do not send a fifth, reset history, repin limits, create a new run or manually force geography.
+
+- Pre-merge correction for the entry immediately above: fresh GitHub verification confirmed every PR355 check green, Python aggregate successful, mergeable/CLEAN, exact reviewed head7228660f and main/base4f27714c unchanged. CI/CD39005506759 and Runtime candidate39005506758 terminal success. Hosting deployment correctly skipped for the PR event. Merge and actual live result still pending at this line.
+
+- PR355 merged normally at 2026-10-17T05:25:50Z as `e193e0d819d10b2fa6e2368c1f84b4cae63a1cf8`; merge tree equals reviewed `f07cc4231ffdd313ae56d2da67d2286398814bc2`. Official PR hosted Linux result is 16,563 collected exactly once across 12 shards, 16,512 passed / 51 skipped, zero failures; both PR workflows attempt1 succeeded. This differs from the explicitly local Darwin inventory above and is not relabeled. Official main releases started for the exact merge: Hosting39006229006, Data39006229004, Runtime39006228996; candidate39006229014. Release completion and fourth live result remain Not confirmed at this line.
+
+
+### 2026-10-17 — PR355 released; actual fourth reassessment settled mechanically but FAILED geography acceptance
+
+- Same task/worktree/branch as preceding entry. PR355 merge `e193e0d819d10b2fa6e2368c1f84b4cae63a1cf8`, tree identical to exact-head reviewed PR tree. All official main runs succeeded, each attempt1: Hosting39006229006, Data39006229004, Runtime39006228996; candidate39006229014. Main hosted Python16,512 passed/51 skipped/16,563 collected exactly once12. Root independently checked fresh public deployment.json exact commit/repository/Hosting run/attempt, API/version exact SHA production, API readiness, and four-argument Hosting smoke; all passed. Evidence `.context/extra-attempt-pr355-{release-final.json,hosting-evidence.txt,runtime-evidence.txt}` and fresh `.context/extra-attempt-{hosting-deployment,api-version,api-ready}.json`.
+- After fresh scoped revision47/same-run3/zero-ReviewDecisions check, root submitted exactly ONE normal authenticated UI Reassess locations action at2026-10-17T05:49:03Z with neutral reason. Saved action revision48 at05:49:08Z; worker intent revision49 increased field_research3→4; final revision50 at05:50:52Z, completed/needs_human_review, finalized, no blocker/lease/retry/scheduled work. No fifth, ordinary Retry, replacement run, manual geography edit, reset, repin, cap increase or credit was sent.
+- Actual worker trace `01a14868ec97861f879a771443c63fc7` binds Process specimen checkpoint specimen/collection and all five committed location spans to service_version `e193e0d819d10b2fa6e2368c1f84b4cae63a1cf8`. Twenty-four model calls,18 fresh source lookups,41.69s active; one normal fourth field_research cost row (31,086 computedmicros,246,777 originally reserved). Reserved cost total753,223→784,309; steps21→22/calls28→29/reservedtokens256,000→272,000. Stored program position15,161,257/16,000,000micros,remaining838,743,ledgerrevision1006; not booked actual spend or a fresh global-ledger census. Readings, observations, transcripts, regions, segmentation, first-pass decisions, every nonlocation field, prior toolcalls/evidence/lookups/paidcalls, profile/pins/caps all unchanged/preserved. Evidence fresh hash-verified SQL snapshot50 plus generation-pinned graph `060380120862434ccf29f5e9b417364887cc357bc8eae21ce6f6ae2c2d8236b1:1792216252179213` in `.context/ebfc-fourth-live-20261017T055109217027Z-93d5c788.*`.
+- Verification helper limitation discovered and kept visible: its owner_authorization_audited assertion incorrectly assumed the action remained in snapshot50's hot audit tail. That snapshot has audit_offset25/history_through_revision49 and only latest workflow event. Original false result was preserved. Independent read of queued snapshot48 verified canonical SHA `6f270e1bc8fe5029a7693037c234b8de7f66a880c538ac2ab74c25fe7dee8327` and exact action audit `73f50c1c-7b1c-4b43-ac5c-727e4f6872ae`, authorization owner-2026-10-16-ebfc-location-attempt-4, attempt4/same run, matched to revision48 SQL audit actor. Supplement `.context/extra-attempt-fourth-audit-supplement.json` establishes preservation separately; original helper was not edited/rerun to erase its false failure. No new ReviewDecision exists.
+- Scientific acceptance FAILED: saved country remains supported derivedPH; city remains supportedIllinois/nga16400756; state/county remain unresolved and precise_location ambiguous. Normal UI refreshed to final50 confirms these values, `.context/extra-attempt-fourth-final.png`. Source markers, release green and mechanical settlement are not geographic success.
+- Exact remaining cause independently established from actual PydanticAI terminal messages and deterministic source: country answered several_possibilities, optionsILLINOIS/Bloomington,literalNone. This produces blankAMBIGUOUS in step._field_value; derive._can_derive_place permits blankUNRESOLVED but rejectsAMBIGUOUS. Shared-source reconciliation DID transiently qualify fresh Illinois state/WikidataQ1204 and Clark CountyQ110532, but country therefore lacked a fresh derivation. location_reassessment.commit's sole unproved key wascountry and restored the entire old family atomically. State/county expert validation failures did not prevent deterministic shared-source qualification. Actual traces/raw messages are `.context/extra-attempt-fourth-{expert-trace,field-trace,span-inventory,trace-binding}.json`.
+- Earlier offline positive test missed this because it reconstructed country sources_cannot_resolve instead of actualfourth several_possibilities, producingUNRESOLVED and letting derivation proceed. Do not reconstruct away the model outcome shape or conflate archived attempt3 response bytes with actual4 evidence. The narrow remaining fix must prove every retained country alternative is exclusively below-country using fresh direct gazetteer records before deriving the compatible country from a qualified administrative chain; true country disputes, unknown/unqueried alternatives, other-label candidates, conflicting ancestry, human protections, GEOLocate query echoes and atomic rollback remain vetoes. Bounded implementation/review/actual4 recorded-byte offline replay in progress; no further paid/live attempt is authorized.
+
+
+### 2026-10-17 — Country-level ambiguity fix prepared from actual fourth-attempt evidence
+
+- Task `ebfc-country-level-ambiguity`, same denpasar worktree and `anurag-duddu/location-harness-latest` branch; parent PR355 mergee193e0d8, actual live record remains revision50 with incorrect PH/Illinois city. This source repair does not authorize or apply a fifth attempt, change caps, or rewrite that record.
+- `field_research.step` now transiently permits parent derivation for a blank ambiguous country only when every retained expert option plus original country literal/candidates/verbatims across readers and labels has fresh directly matching recognized lower-level gazetteer proof, with no recognized country counterproof. Eligible human/protected fields remain excluded, GEOLocate is not administrative ancestry, and incompatible parent countries restore the original ambiguity. Clarification of the earlier design wording: this is the existing finite positive source-classifier contract, not universal proof that every unmodeled namesake is a nonplace. A nonempty unmapped kind provides neither proof nor counterproof; an alternative with only unmapped/no positive lower-level proof remains blocked. No place-name or album exception was added; AMBIGUOUS is not globally treated as open.
+- A regression exposed a related existing ancestry bug: derive._settling_candidate could return the first same-name record before reaching the explicitly selected authority ID. It now requires exact ID when present and uses name fallback only without a selected ID. Selected/missing/no-ID and mutually incompatible parent-country regressions cover this behavior. This preserves the atomic family-commit requirement.
+- Focused command `.venv/bin/python -m pytest tests/field_research/test_country_level_ambiguity.py tests/field_research/test_location_reassessment.py tests/field_research/test_step.py -q --disable-warnings --maxfail=1` passed673 tests/2warnings in42.47s. New test module provenance docstring was added afterward, with no test behavior change. Full canonical and integrated-head review are pending at entry time.
+- Actual fourth source evidence archived separately in `.context/ebfc-rev50-source-proof`: exactly18 new lookup calls/34 unique immutable objects/1,372,707bytes, metadata size/generation and generation-pinned media SHA256 verified; original producing IDs/timestamps/attempt4 preserved. Unchanged production ApprovedSources parser reconstructed18/18 answers offline with socket/httpx sends denied; statuses and candidate counts match recorded calls. Root independently rechecked graphSHA, exact18-call history suffix, all34 local hashes/sizes/ref generations and original18IDs. This is archived provider evidence, not newly fresh provider responses.
+- `.context/ebfc-actual-fourth-postexpert-replay.py` passed sequentially after focused tests, with actual18 typed answers/20 routed source calls, original evidenceIDs, actual accepted country several_possibilities(optionsILLINOIS/Bloomington), accepted city/locality outputs. State/county UNCHECKED fallback FieldOutcomes are explicitly reconstructed from their actual validator-exhaustion trace because the original FieldOutcomes were not serialized. No model turn was executed. Result: countryUnitedStates/Q30 derived from freshly qualified Illinois/Q1204; ClarkCounty/Q110532 settled; cityBloomington literal retained as unresolved with no parsed/normalized/authority value, precise locality ambiguous; no atomic retention; usage/readings/profile/pins unchanged. Evidence `.context/ebfc-actual-fourth-postexpert-replay.result.json`; this is post-expert scientific replay, not new live acceptance or a full model replay.
+- Frozen source fingerprints: step.py28f806bb4115bb40508078cca517003989a7e821b796d90a2ef5733f55b80673; derive.py5e979384d3d4defc635c82605db3662eeae835e53dd4efbdfee3e055126fee18; test_country_level_ambiguity.py6e711fe26d71403fd3f5754436bf5a27b3a6092606701cf780d035106d95603e. FIELD_RESEARCH documents the bounded classifier/ancestry rule. No SDK/dependency/CI/budget/attempt-authorization change is owned by this repair.
+- Fresh main advanced to d054631a via PR352 camera/intake changes plus an append-only journal suffix; backend and deployment instructions unchanged. Root will integrate it locally with journal custody, then obtain exact integrated-head review and run canonical verification before a follow-up PR. No fifth or retained-source production replay is authorized. A positive offline result does not update revision50 or establish live recovery.
+
+### 2026-10-18 - LOCATION-SHAPES-ONE-RULE a place text counts only at the level its evidence gives it
+
+- Task: a side session started from session `local_e3ae4073-3104-4654-a8b6-cae123e47c6c`: settle the four location shapes the batch rerun of 2026-10-17 left open (`docs/execution/golive/location-rerun-inventory-2026-10-17.md`, "Shapes still open"; entry LOCATION-RERUN-BATCH-20261017). Branch `claude/location-shapes-one-rule`, worktree `.claude/worktrees/adoring-elgamal-a9b492`, PR #377 (https://github.com/anurag-duddu/specimen-digitization-app/pull/377), base `c38f4fd4`.
+- Diagnosis, from the batch runs' saved run graphs (read-only `executeGraphqlRead` and generation-pinned Storage GETs) and the Logfire `field_research.field` spans and expert chat spans. (1) County ambiguous (93e61763, 9cc24b07, d3fb389f, f35af3a5): the province settled on the department or province line, and the county expert answered that same line as `several_possibilities`. On 93e61763 its first resolved answer was refused `NOT_EVERY_READER`; the county brief and `FIRST_LEVEL_TOO` tell it to answer `several_possibilities` whenever its sources also hold a first-level unit of the text. (2) Province ambiguous (48a71d53, cb903c0e): the organiser filed "Mindanao," as the province (and, on 48a71d53, "Davao Prov." as the county). The province expert's resolved "Davao Prov." / "Davao" was refused `DIFFER`, because "Mindanao" was found (as an island, streets and towns), not found by none. On both records label 2 has a decided transcript, so the refusal came from `labels()`'s decided-reading branch, which never consulted sources when the decided reading had two texts. (3a) d10333ff: label 3's first pass "reached its token cap before an answer"; reader 3A writes "Panama" where 3B writes "Panorpa", so G20 and G32 hold the country. (3b) 2b02009d: "P.I." settled and `_corroborate` dropped it, because no administrative place below it settled.
+- Outcome: one rule, a place text counts only at the level its evidence gives it, in three parts. `agreement.found_only_elsewhere` (ruled out at the field's level, also on a decided reading with several texts: `_by_source`). `step._only_a_place_above` (a county or a city whose every text is a settled place's above it is not present, then rule A). `step._placed_inside` (initials corroborated by a label place that the answers of two or more gazetteers about it put only inside them, among the candidates of its name that name a parent). FIELD_RESEARCH.md updated.
+- Validation. The new and changed tests on base `c38f4fd4` (a throwaway worktree with this branch's tests copied in and its two message constants inlined): 20 failed (12 shape tests by assertion on a field's state, 8 tests of `found_only_elsewhere` because it does not exist there) and 12 guards passed. On round 1's code `835f549e`, the round-2 tests: 7 failed and 25 passed. `tests/field_research`: 2,933 passed at the round-2 head. Full Python suite at round 1's head `a043f319` (load averages up to 194): 16,062 passed, 47 skipped, 1 failed (`test_worker_cleanup_cutoff`'s wall-clock test, which passed alone). Offline replay (an uncommitted script: the saved run graphs and the experts' recorded Logfire answers, through `apply_outcomes`, no model or source call): on base `c38f4fd4` it gives back the saved value of every field this branch changes, on nine records; on this branch it changes exactly the fields PR #377's table lists. It is a prediction from recorded answers, not a rerun.
+- Reusable learnings. (a) Look for the decided-transcript branch first: a `DIFFER` retry says "A label with no decided transcript whose readers differ" even when it came from `labels()`'s decided branch with several texts on the decided reading. The message alone does not say which branch refused. (b) The step keeps a reader's organiser candidate as the settled place's `verbatim_by_observation` for that reader even when the literal came from another text (48a71d53's province: 1A "Davao Prov.", 1B "Mindanao"). A "where does this field's text stand" check must take each text's position on its own, not count one place per reading. (c) `_value_spans` claims every occurrence of a literal in its label's readings, so a name written twice ("Chimaltenango, Chimaltenango") cannot say which occurrence a field holds. Use a text's spans only in a reading that writes it once. (d) A post-expert replay from a finalized run needs three things: location reassessment's `working_run`; every location field unprotected except a person's (the reassessment otherwise keeps a source-backed province as a constraint, and `_corroborate` then sees no province settled in the attempt); and the resolver's fallback when no recorded answer passes the expert check (d10333ff's province). Check it with a control run on the base, which must give back the saved values. (e) In this worktree layout, pytest run from `.claude/worktrees/<name>` picks up the main checkout's `pyproject.toml` as its rootdir and ini file. Pass `-c pyproject.toml --rootdir .` to run as CI does. (f) A wait loop `until ! pgrep -f "python_shards.py local"` never ends, because `pgrep -f` matches the loop's own command line. Wait on the process id or on the log's last line instead. (g) A rule that rests on a gazetteer answer's list of candidates must allow for the list being cut short. Wikidata's search asks for 7 results and gives no sign of a cut, while TGN and NGA signal one as ambiguous with no candidates. Requiring two gazetteers covers both.
+- Review. Round 1 (head `a043f319`, one independent reviewer): REQUEST_CHANGES.
+  - B1: initials were corroborated on one gazetteer's capped list (Wikidata asks `limit=7`, with no sign of a cut), and four sentences said "every record". Fixed by requiring two or more gazetteers.
+  - B2: the city branch had no test. Fixed with a city test and its guard.
+  - N1: the trace lost the refusing check's code. Fixed: it is kept.
+  - N2: a reader's other text kept as the province's verbatim counted as the province's. Fixed: a verbatim counts only when it names the place.
+  - Wording fixes in the spec and the PR body.
+  Round 2 (head `d00c12a1`): APPROVE, recorded in PR #377's comment. Later commits need their own review, also recorded in PR #377.
+- Round 3, on the starting session's message of 2026-10-18 quoting the owner ("why is location harness still pending? I thought that was complete? I want that complete"):
+  - Open PR #360 (`c9ace71c`, the ebfc6171 country derivation) is folded into this branch by `git cherry-pick -x`, with its own tests and its three log entries above this one. Its offline replay script, run on the combined code from copies of its inputs (checked against their SHA-256s), passes every assertion: United States, Illinois, Clark County.
+  - The second rerun (release `c38f4fd4`, 2026-10-18 01:42 to 02:39 UTC) left six location fields on the resolver's fallback, with reasons ending "Getty TGN could not be reached". Their Logfire traces show each expert's answers failing their checks, not a source outage:
+    - f35af3a5's organiser gave the province "Prov." and the city "Davao", both cut from "Davao, Prov.";
+    - 19f0f1f6's Wikidata names Bahia only "federative unit of Brazil", and only a county's lookup read class chains;
+    - 48a71d53's expert kept the island "Mindanao" as its literal;
+    - cb903c0e was the `DIFFER` this PR fixes;
+    - 3781e440's "USA" fails `identities`' name check (not fixed).
+  - Fixes: `agreement.names_no_place`, `sources.LEVEL_FIELDS`, the fallback in `_only_a_place_above`, no unreachable-source note on a fallback, `UNCHECKED` reworded, and the briefs.
+  - An offline replay of those six records reproduces every saved value on main `75cb3dfb`. On this branch it settles f35af3a5's province and country, clears its city as not on the label, and settles cb903c0e's province.
+- Not done, on purpose: no production write, no rerun, no deploy. 2b02009d's province stays unresolved on "Mindanao" (the same rule would make a field whose only text is found only as another kind of place not present; not built). d10333ff stays for review until label 3 has a decided transcript. Fresh runs on f35af3a5, 48a71d53, cb903c0e and d10333ff were created between 01:42 and 01:47 UTC on 2026-10-18 (run graphs read at 01:49); this session did not start them.
+- Round 3 review (head `6c5fd8ee`): REQUEST_CHANGES, two findings, both fixed in round 4 with tests that fail on `b59392a3`.
+  - B1: dropping unit-only texts from `reader_literals` also hid them from `_place_texts`, so a county settled with no NO_PROVINCE check beside a province the label writes. `_place_texts` now keeps them (`unit_words=True`).
+  - B2: a fallback reached `_only_a_place_above` with the organiser's texts alone. It now counts only when its expert asked at least one source, each asked name standing as an option: f35af3a5's city asked "Davao" and "Davao City" and still clears; one that asked about "Tagum", which the label writes, keeps the field.
+- Reusable learning (h). A fallback's reason must not end with the unreachable-source note. The note was meant for an answer that stood despite an outage, and a fallback is no answer; read beside "could not be checked", it sent the investigation to Getty TGN.
+- Reusable learning (i). A helper that filters a field's texts for one rule (`reader_literals`) may feed another rule that asks a different question (`_place_texts`: does the reading write the field at all?). Check every caller before narrowing a shared helper.
+- Not confirmed: what live experts will answer on a rerun; whether 19f0f1f6's province now settles live (its fix changes the source answers, which no replay can show); the replay predicts only from the recorded answers. How #360's country derivation and this branch's rules interact in `apply_outcomes` is tested only by both test files passing together in `tests/field_research` and by the ebfc6171 replay; no test builds a record that needs both.
+
+### 2026-10-17 - PARSE-SETTLES-20261017: a completed parse is charged its measured tokens
+
+- Task: make the `parse` step's paid call settle at its extraction's measured tokens, as transcribe and first_pass do, and keep unknown spend held. Branch `claude/parse-settles-measured-tokens`, worktree `.claude/worktrees/parse-settles-tokens`, PR #378. Started from the go-live coordinator session's brief, which quotes the owner's words of 2026-10-17: "remember I want actual costs attributed properly."
+- Evidence: the read-only batch note `batch-paid-calls-2026-10-17.md` in the coordinator's session notes folder. All 11 runs recorded parse at 58,164, `reserved`, usage null (639,804 in all). Each parse answered one request in Logfire; at handwriting-qwen's 0.20 and 0.70 per million their tokens come to 11,005. 19f0f1f6's was 1,627 in and 1,077 out, 1,080.
+- Cause: PR #373 wired parse's tokens from `harness.extract_with_agent` through the model child to `lane_costs.record_step`, but its test passed a hand-made usage dict to `record_step`. The real call returned None for every completed extraction. The extraction answers through Pydantic AI's output tool, and Pydantic AI 2.54 then appends the tool's return as one more request that is never sent (`['request', 'response', 'request']`). `reliability.reported_usage` counted it as sent and not answered.
+- What changed: `reported_usage(..., completed=True)` excludes that last request when it is the only one more than the answers and holds tool returns alone; `extract_with_agent` passes it. The failure paths in `run_agent_bounded` are unchanged. A completed parse whose answer reported no input tokens still stays reserved in full, as a 5xx or a deadline overrun does. PLAN.md section 4.3 has a dated correction of #373's "Parse settles at its extraction's tokens".
+- Field research is unchanged. Its meter (`field_research/budget.py` `MeteredModel`) prices `input_tokens` and `output_tokens` only. Pydantic AI's Hugging Face model (`models/huggingface.py` `_map_usage`) maps only `prompt_tokens` and `completion_tokens`, so a `cached_tokens` count DeepInfra may send never reaches it. None of the 970 DeepSeek chat spans between 2026-10-17 05:00 and 2026-10-18 03:00 UTC carries a cache attribute, but that only shows the mapping. The price list has no cached-input rate. Changing it would mean guessing a discount.
+- Durable learnings:
+  - A completed Pydantic AI run with tool output ends with a request holding the output tool's return. Any check that pairs requests with answers must treat a completed run apart from a failed one.
+  - A test that feeds a hand-made value to the last function in a chain does not show that the chain produces it. Drive the real producer: here, the isolated model child with an offline provider.
+- Validation:
+  - Red: `test_a_completed_parse_settles_at_the_tokens_its_provider_reported` fails on untouched `origin/main` 75cb3dfb with `(1, 'completed', 'reserved', 58164, None)`. `test_a_completed_call_whose_last_request_is_not_a_tool_return_stays_unknown` fails with `fcc694bf`'s `reliability.py` in place.
+  - Full Python suite (`python_shards.py local --count 6`) on `fcc694bf`: 16,040 passed, 47 skipped, 4 failed under load 30 to 160. The failures were 3 in `test_classifier_runtime_tracing.py` and 1 in `test_worker_cleanup_cutoff.py`: two `FileNotFoundError` on a child's marker file (`started`, `classifier-wire.bin`) and two `KeyError: 'status'` on `run.classification` after the classify step blocked `external_outcome_unknown`; all pass on a rerun. The suite's summary log shows one traceback per shard, so read each shard's own log for the failure types. On `90b709f2`, seven cost and extraction files: 545 passed.
+  - `pre-commit run --all-files` and `check_ui_strings.py` pass. No Dart changed.
+  - Review (G51): Fable approved `fcc694bf` with three nits (notes `review-fcc694bf.md` in the coordinator's session notes folder). Nit 1, exclude the last request only when it holds tool returns alone, is `90b709f2`. The delta review of `bb7ab49e` requested one change, the failure types above (notes `review-bb7ab49e.md`). The verdicts on `fcc694bf` and `bb7ab49e` are PR comments.
+- Follow-ups, not done here:
+  - Field research's cached input: capture one raw router.huggingface.co response for `harness-deepseek` (an httpx event hook in a lab run) to see whether `usage.prompt_tokens_details.cached_tokens` is sent. If it is, the meter needs it mapped and an authoritative cached rate in the price list.
+  - `tests/test_reader_failures_recoverable.py::test_a_reader_whose_deadline_passes_is_retried_not_blocked` failed locally with a KeyError on this branch and on untouched `origin/main` 75cb3dfb, then passed in the full suite and in a later run: a load flake. Not investigated.
+
+### 2026-10-18 - LOCATION-LAST-GAPS 3781e440's one-reader "USA" and d10333ff's disputed "Panama"
+
+- Task: a side session started by the location coordinator after PR #377 merged (`d5a6502d`), to close the two location gaps #377 left open, on the owner's request the coordinator quoted ("why is location harness still pending? I thought that was complete? I want that complete", 2026-10-17). Branch `claude/location-last-gaps` from `origin/main` `d5a6502d`, worktree `.claude/worktrees/agent-ac667de59ee32e1ba`. PR #379 (https://github.com/anurag-duddu/specimen-digitization-app/pull/379).
+- Diagnosis, from the saved run graphs (read-only `executeGraphqlRead` and generation-pinned Storage GETs) and Logfire chat spans.
+  - 3781e440 (run `1078c504`, release `c38f4fd4`): reader 2B writes "USA: Ill. Coles Co.", 2A "U.S.B.I.L.: Coles Co.,". The organiser filed 2B's "USA", "Ill." and "Coles Co." only. A label whose readers differ settles a text through `agreement.labels`' source branch, and `agreement.identities` confirmed a text only by a candidate of its own name. Wikidata's answer for "United States of America" (and for "Illinois") holds the place as its one candidate at the level, under another name, so "USA" and "Ill." were never confirmed: the state's answers were refused `DIFFER` and it ended ambiguous; every country answer was refused (none cited the answer for "United States of America", only the lookup of "USA" itself and the no-match answers for "U.S.B.I.L.") and the country fell back; the county passed its expert's check and the step refused it `NO_COUNTRY`, as the reading writes a country no answer settled.
+  - d10333ff: label 3, a determination label, had no decided transcript in all three runs read. Run `a75b4e51` (2026-10-17): its GLM-5.3-Flash first pass on Novita stopped at `finish_reason` "length" with 4,096 output tokens and a response with no parts (`CAP_RATIONALE`). Run `1427d6ba` (2026-10-18): it answered (2,492 output tokens) and chose no reading, as the image supports 3A at one difference. Run `8a91d868` (the fresh rerun on `d5a6502d`): it answered (3,052 tokens) and chose no reading; label 1's first pass was given up there (`model_malformed_response`: its retry still invalid), so label 1 had no decided transcript either. In each run 3A writes "Panama" where 3B writes "Panorpa" (3B's taxon), and the country expert answered several_possibilities "ILLINOIS" (label 1's misfiled state) and "Panama". #360's derivation (`step._country_alternatives_are_lower_places`) then failed on "Panama" (country-level proof) and on label 1's other reader's "BONITELL" (refused `NOT_DECIDED`).
+  - The first pass's cap: in Logfire, `chat zai-org/GLM-5.3-Flash` spans from 2026-10-05 to 2026-10-11 (DeepInfra) number 13, with at most 440 output tokens and no "length" stop; from 2026-10-12 00:31 (the move to Novita) to 2026-10-18 05:58 UTC they number 137, of which 23 stopped at "length" with 4,096 output tokens, 21 of them with an empty response (queried 2026-10-18 06:15 UTC). The tokens are counted while the response carries no part, so they went to reasoning the provider does not return (an inference: the provider shows no reasoning). Not changed here: the cap and the reservation are cost code, and PR #378 is changing that code; a cut-off answer is already no decision (G19).
+- Outcome:
+  - `agreement.identities`: a place text written as an abbreviation is also confirmed as the one candidate at the field's level of an answer asked an expansion its letters fit (the rule `place_settling` already settles such a value by). Initials so confirmed still need another place inside them (`step._corroborate`). The `DIFFER` retries say so.
+  - `agreement.confirmed_place` and `step._confirmed_country`: a country no answer settled holds no place back (`parents_refusal`'s `NO_COUNTRY`) when the gazetteer answers of any field confirm every country text of every reading as one nation that the place lies in; the country is then derived from the place, never read from the text.
+  - `agreement.evidence_only`, `agreement.disputed`, `agreement.set_aside` and `step._claimed_texts`: in #360's derivation, a country alternative that only a decided label's other reader writes (G19), or that one reader of a label with no decided transcript writes where the other reader writes another field's text at that very point (by `application.first_pass.reading_differences`), no longer holds the derived country back. Such text still counts as its label's text in G20 and G32.
+  - FIELD_RESEARCH.md: the G20 "an answer confirms" paragraph, the parents check, and the country derivation paragraph.
+- Validation.
+  - New tests: `tests/field_research/test_location_last_gaps.py`, 18 tests. On base `d5a6502d` (its `src` and `tests` extracted with `git archive`, this file copied in): 14 fail and 4 pass. Five fail by assertion on a field's state or a refusal: the expansion `identities` test, the one-reader `refusal` test, both 3781e440 step tests (fallback, and the answer citing the expansion), and the d10333ff two-label step test. Nine fail because `confirmed_place`, `evidence_only` or `disputed` does not exist there. The 4 that pass are guards: an expansion answer holding two places, a second country text ("Canada") on the label, and the two d10333ff guards (both readers write "Panama"; 2B's other words are no field's text).
+  - `tests/field_research` in full (with `PYTHONPATH=src`, `LANG`/`LC_ALL=en_US.UTF-8`, `TZ=America/Chicago`): 3,009 passed (2,991 before plus the 18 new). Full Python suite (`scripts/ci/python_shards.py local --count 6`, the main checkout's venv with `PYTHONPATH=src`, commit `27445427`): 16,140 passed, 47 skipped, 1 failed, 2 errors. All three fail the same way on base `d5a6502d` in this environment: `test_general_api_contract_fixtures.py::test_fixture_bytes_match_regeneration` (fixture bytes differ from its regeneration), and two `test_upload_completion_http.py` setup errors (they start `.venv/bin/specimen-api` from the worktree, which has no venv of its own). A first full run aborted one shard with "source/input changed during shard execution", because this entry was edited while it ran.
+  - Offline replay (an uncommitted script, the method of #377's: saved run graphs, the experts' recorded `final_result` answers from Logfire, through `apply_outcomes`; no model or source call, no write). One change from #377's script: this attempt's lookup rows are removed from the working run first, as live they reach the run only in `apply_outcomes` (`_add_sources`); without that #360's derivation never sees fresh evidence. Control on base `d5a6502d`: the four target runs give back every saved location value. Branch: 3781e440 (run `1078c504`) settles the state "Ill." = Illinois [wikidata:Q1204], the county "Coles Co." = Coles County [wikidata:Q112137] and derives the country United States; d10333ff's runs `a75b4e51`, `1427d6ba` and `8a91d868` each derive the country United States. A sweep of the twelve other runs of #377's two replays (nine records: f35af3a5, 48a71d53, cb903c0e, 19f0f1f6, 93e61763, 9cc24b07, 2b02009d, e98a924c, d3fb389f) gives the same values on base and branch.
+- Reusable learnings.
+  - (a) The venv's editable install points at the main checkout's `src`. In a worktree, pytest and scripts import the main checkout's code unless `PYTHONPATH=src` is set; a collection error naming a function the branch added is the sign.
+  - (b) A post-expert replay must remove the attempt's own lookup rows from the working run before `apply_outcomes`; a saved graph already holds them, so every check that asks for fresh evidence (#360's derivation) silently never fires.
+  - (c) GLM-5.3-Flash on Novita (since 2026-10-12) spends the whole 4,096-token cap on hidden reasoning in about a sixth of its first-pass requests (23 of 137, 21 of them returning nothing); first-pass outcomes on one label vary run to run (cut off, no reading, decided). A field rule must hold for every outcome, not wait for a decided transcript.
+  - (d) The organiser may leave no candidates at all (run `8a91d868`: no `bounded_extraction_v1` rows), so a rule that reads "another field's text" must also read the other fields' literals, not only the organiser's candidates.
+- Not done, on purpose: no production write, no rerun, no deploy; no change to the first pass, its cap or its reservation (cost code; PR #378 in flight). d10333ff's run `8a91d868` province stays ambiguous: label 1's first pass failed, 1A reads "BLOOMINGTON" where 1B reads "ILLINOIS", and its expert's "ILLINOIS" read from the transcript was refused `NOT_EVERY_READER`; the country now derives from Edgar County there, the province does not.
+- Not confirmed: what live experts will answer on a rerun (for 3781e440, whether its country expert cites the expansion answer after the new retry text, or falls back and the country is derived); the fresh rerun of 3781e440 on `d5a6502d` was still `retry_scheduled` when this entry was written and is not replayed.
+- Gap 3, added to this PR on the coordinator's request of 2026-10-18 ("a precise_location written on two lines"; the owner's standing ask, the location harness complete):
+  - Diagnosis, from the rerun on `d5a6502d`: run graphs of e98a924c run `3b011cbf` and 2b02009d run `95361b46`, read-only; recorded answers from Logfire traces `01a14d9de4639f6a1bc67eeed064e978` and `01a14d899720cdc22d4e889db6374a70`. Both precise locations fell back (`UNCHECKED`).
+    - e98a924c's label 2 has no decided transcript (its first pass was given up), and both readers write "CNHM. E Slope Mt." over "McKinley, Davao Prov.". All three answers gave "E Slope Mt. McKinley, Davao Prov." and were refused "Reading 2A does not contain the literal ... exactly".
+    - 2b02009d's label 3 decided on 3A, "Seliban Riv." over "Mt. Apo", which the organiser gave as two candidates. Its two two-line answers were refused `NOT_CANDIDATE` (they extend "Seliban Riv."); its third answer, "Mt. Apo" alone, was refused `DIFFER` (the decided reading's other text "Seliban Riv.").
+  - Outcome:
+    - Precise location (`agreement.ACROSS_LINES`) may run over consecutive lines (`agreement.runs_across_lines`, `written_runs`).
+    - An answer with a space for a line break is read as the readers' own text (`agreement.across_lines`, in `experts._Expert._across_lines` and `step._across_lines`), so the value keeps the line break.
+    - Such a literal may hold whole candidates in their order but cuts none (`_cut_candidate`), and the candidates it holds are parts of it, not rival texts (`labels`).
+    - Every reader of a label with no decided transcript must write it, line breaks, case and spacing aside (`_agreeing_spans_across`, `_holding_across`).
+    - Every other field keeps one line. FIELD_RESEARCH.md: point 2's "Or text read from the transcript". The precise location brief says a locality may run over its lines; the shared brief's "never spanning two lines" stays for every other field.
+  - Validation:
+    - 13 more tests in `tests/field_research/test_location_last_gaps.py` (31 in all).
+    - On base `d5a6502d` the 13 give 8 failed and 5 passed:
+      - two fail because `runs_across_lines` or `across_lines` does not exist there;
+      - the expert-check test fails on the refusal itself ("does not contain the literal ... exactly");
+      - five fail by assertion: the two-line `refusal`, the holds-a-date reason, both step tests, and the readers-differ test, which base refuses `NOT_CANDIDATE` rather than as readers that differ;
+      - the 5 that pass are guards: a run that cuts "Mt. Apo", a piece of a candidate, and a city over two lines, at the check and, for the cut run and the city, through the step.
+    - The whole module on base: 22 failed, 9 passed.
+    - `tests/field_research`: 3,022 passed. With the related suites and #378's two test files: 3,477 passed.
+    - Full Python suite at `53da75b4` (`scripts/ci/python_shards.py local --count 6`): 16,157 passed, 47 skipped, 1 failed and 2 errors, the same three that fail on base `d5a6502d` in this environment (above).
+  - Offline replay (same script and method):
+    - The control on base gives back every saved location value of both runs.
+    - Branch: e98a924c's precise location settles "E Slope Mt.\nMcKinley, Davao Prov." and 2b02009d's "Seliban Riv.\nMt. Apo", each on its expert's first recorded answer. No other location field of the two runs changes.
+    - The sweep of #377's runs now also changes the first rerun's two settled precise locations, because each expert's first answer was two lines and now passes: 2b02009d's "Mt. Apo" becomes "Seliban Riv.\nMt. Apo", and e98a924c's "McKinley, Davao Prov." becomes "E Slope Mt.\nMcKinley, Davao Prov.".
+    - Everything else in the sweep is unchanged, and the four country runs still derive the United States.
+  - Reusable learning (e): `checks.collapse` already reads a line break as a space, so most comparisons never depended on lines. The one-line rule lives in `verbatim_runs`, `_agreeing_spans`/`holding_clauses` and the plain `literal in reading.text` checks. Keeping the value's literal exactly as the reading writes it, line break included, lets every `in reading.text` check downstream stand unchanged.
+
+### 2026-10-18 - LOCATION-REVIEW-FOLLOWUPS #379's review findings 1-3 and e98a924c's collection code
+
+- Task: the location coordinator's follow-up after PR #379 merged (`616ae010`) and went live, toward the owner's standing ask that the location harness be complete. Branch `claude/location-review-followups` from `origin/main` `616ae010`, worktree `.claude/worktrees/agent-ac667de59ee32e1ba`. PR #380 (https://github.com/anurag-duddu/specimen-digitization-app/pull/380).
+- Finding 2 (correctness, done first):
+  - Problem: #379's `step._confirmed_country` read the record's country texts only through `agreement.reader_literals`, the organiser's candidates and verbatims. Another reader's "Canada: Ill. Coles Co." with no candidate filed for "Canada" let the state and county settle, and the country derived as the United States, where main before #379 refused `NO_COUNTRY`.
+  - Fix: `step._unplaced_text` reads every line of any reading that writes a country, province or county text of the record.
+    - It sets aside what any field holds there: every field's organiser candidates, literals and verbatims, where the line writes them as whole words.
+    - It splits the rest at `, ; : ( ) [ ] /` and checks each group.
+    - A group is let through when it holds no letter, is only unit words, holds a date, an elevation or a range (`written.other_kind`), was found by none of the sources asked (`agreement.ruled_out`: 3781e440's "U.S.B.I.L."), or is confirmed as the same nation.
+    - Any other group keeps `NO_COUNTRY`.
+- Finding 1:
+  - Problem: `agreement.disputed` with `step._claimed_texts` accepted any other field's text as the other reader's counterpart.
+  - Decision: narrowed to fields of another kind than places (`agreement.FIELD_KINDS`). A taxon, a collector or a date there is another kind of reading of that ink. Another place field's text ("Texas" where the other reader writes "Mexico") is a rival reading of the same place, and the country stays for review.
+  - FIELD_RESEARCH.md says so; tests pin the province case and the taxon, collector and date cases.
+- Finding 3:
+  - Problem: an across-lines literal "Seliban Riv.\nnear Mt. Apo" with candidates "Seliban Riv." and "Mt. Apo" passed as text read from the transcript, while "near Mt. Apo" on one line is `NOT_CANDIDATE`.
+  - Fix in `agreement._cut_candidate`: a line of the run that holds a candidate holds no other letter or digit, so that literal is now `NOT_CANDIDATE`. A line holding no candidate may still join them, as e98a924c's lines do (none filed).
+- Live finding (e98a924c, run `629f91eb` on `616ae010`; Logfire trace `01a14e035a03b2d08c94fbadc8294b64`):
+  - The expert's precise-location literal was "E Slope Mt.\nMcKinley, Davao Prov.", without "CNHM.". The organiser had filed the whole first line "CNHM. E Slope Mt." as the collection code (both readers), and the code's expert kept that candidate.
+  - `step._taken` checks only literals read from the transcript, so the code, an organiser candidate, settled and claimed its text. The two texts overlap only partly ("E Slope Mt."), and the locality went to review.
+  - Fix: a place read from the transcript that another field's value settled in the same attempt overlaps only partly (`step._partly`) now settles, and that field goes to review instead, named in the reason. A place that holds the other text whole, lies inside it, or sits beside a value settled before this attempt or by a person still yields.
+- Validation:
+  - New tests: `tests/field_research/test_location_review_followups.py`, 15 tests. On main `616ae010` 5 fail by assertion and 10 pass. The 5 are the unfiled "Canada", the "Texas" counterpart, "near Mt. Apo" over two lines, and e98a924c's shape with and without a decided transcript. The 10 that pass are guards.
+  - `tests/field_research`: 3,037 passed. With the nine related suites and #378's two test files: 3,492 passed.
+  - Full Python suite at `bbc88c46` (`scripts/ci/python_shards.py local --count 6`): 16,172 passed, 47 skipped, 1 failed and 2 errors. These are the same three that fail on base in this environment: the general API contract fixture regeneration, and two upload HTTP setup errors that need the worktree's own `.venv/bin/specimen-api`.
+- Offline replay:
+  - Same script as #379's. For e98a924c's live run the collection code is researched in the same attempt, as live: no reassessment marker, the location fields and the code reset to unresolved.
+  - Control on main `616ae010`: that run gives back its saved values (precise location `taken`, code supported).
+  - Branch: the precise location settles "E Slope Mt.\nMcKinley, Davao Prov." and the collection code goes to review (`taken` by the precise location).
+  - The other 18 runs replayed in #379 (3781e440, d10333ff's three runs, e98a924c's and 2b02009d's d5a6502d runs, and #377's twelve) give the same values on main and branch.
+- Reusable learnings:
+  - (a) A replay that must research a non-location field cannot use the location-reassessment marker: `active_keys` narrows research to location fields, and a marker naming another field is refused whole. Reset the fields by hand instead.
+  - (b) The organiser may file a whole label line as one field's candidate (here a code plus the locality's first words). A guard that examines only literals read from the transcript (`_taken`'s "mine") lets such a candidate claim text unchecked.
+- Not done, on purpose: no production write, no rerun, no deploy. e98a924c's collection code now goes to review rather than settling on "CNHM."; the harness never shortens an expert's literal.
+
+### 2026-10-18 - LOCATION-REVIEW-ROUND2 the four non-blocking findings of #380's review
+
+- Task: the location coordinator's last follow-up after PR #380 merged (`0346a26e`). It fixes the four non-blocking findings of #380's review (https://github.com/anurag-duddu/specimen-digitization-app/pull/380#issuecomment-6247882670), toward the owner's standing ask that the location harness be complete. Branch `claude/location-review-round2` from `origin/main` `0346a26e`, worktree `.claude/worktrees/agent-ac667de59ee32e1ba`. PR #381 (https://github.com/anurag-duddu/specimen-digitization-app/pull/381).
+- Finding 1: the reason a field got on the yielded path said its text was "read from the transcript" and "is also the value found for" the place. For e98a924c's collection code, an organiser candidate that only runs into the precise location, neither was true. Now `step._taken` returns `Taken(other, partly)`, and `_taken_value` gives `step.RUNS_INTO`, "This text runs into the value found for <field>.", with the trace code `runs_into`. #380's test now pins that wording, and FIELD_RESEARCH no longer says "with the same reason".
+- Finding 2: `step._unplaced_text` set aside every `run.fields` literal and verbatim, so the country expert's own unresolved "Canada" (sources_cannot_resolve, the literal kept) hid "Canada" on the place line. Now only a supported value's literal and verbatims are set aside. Candidates are set aside as before.
+- Finding 3: only lines that write a place text of the record were read. Now, on each label, the line at the same index of every other reader is read too, so 1B's "Canada" over "Ill." over "Coles Co." (only 1A filed) keeps `NO_COUNTRY`.
+- Finding 4: a group that held a date or an elevation was let through whole. Now each date, elevation or range `written.other_kind` finds is set aside (as often as it finds one), and the rest is weighed. "Canada 1948" and "Canada 1200 ft" keep `NO_COUNTRY`; a date that is the whole group still leaves nothing.
+- Item 5: the unused `decisions` in #380's test is removed. The review's other cosmetic note, that `_candidates` is recomputed per `_misfit`, is left as it is.
+- Validation.
+  - New tests: `tests/field_research/test_location_review_round2.py`, 7 tests. On main `0346a26e`, 5 fail by assertion: the collector "runs into" reason, the unresolved "Canada", the own-line "Canada", and "Canada 1948" / "Canada 1200 ft". The 2 that pass are guards: "U.S.B.I.L." on that line, and a date alone on the place line.
+  - #380's file with its changed pin: on main, its two e98a924c tests fail by assertion on the new wording.
+  - `tests/field_research`: 3,044 passed. With the nine related suites and #378's two test files: 3,499 passed.
+  - Full Python suite at `708d9008` (`scripts/ci/python_shards.py local --count 6`): 16,179 passed, 47 skipped, 1 failed and 2 errors, the same three that fail on base in this environment (the general API contract fixture regeneration, and two upload HTTP setup errors that need the worktree's own `.venv/bin/specimen-api`).
+- Offline replay (the same uncommitted script, the 19 runs replayed for #379 and #380): main `0346a26e` and this branch give the same value for every field of every run. The one difference is e98a924c's collection code in run `629f91eb`, unresolved on both, whose reason and trace code change from `taken` to `runs_into`. None of the 19 recorded runs has a shape that findings 2, 3 or 4 guard, so no value changes.
+- Not done, on purpose: no production write, no rerun, no deploy.
+- Round 1 of #381's review (head `7884f700`): REQUEST_CHANGES, https://github.com/anurag-duddu/specimen-digitization-app/pull/381#issuecomment-6248248074, relayed by the coordinator. Two over-strict guards refused settlements that main `0346a26e` allows; nothing wrong settled.
+  - Blocking 1: masking a group's date or elevation left its heading ("alt." of "alt. 1200 m", "elev.", "ca.", "coll."), which held the derivation back. Now a group that is only words naming no place (`step._residue_words`: written's headings, approximate words, elevation words, units and their parts, months, range joiners, and `written.PERSON_MARKS` with "lg") counts for nothing.
+  - Blocking 2: pairing lines by index across readers with different line counts (a printed header one reader skipped, two lines joined) read the line beside the place line. Now a label's lines are paired by index only when its readers all have the same number of lines; otherwise each reader's own place lines alone are read, as on main.
+  - Non-blocking 3: "US", "U.S." and "United States" alone on the other reader's line were refused, because they were compared only with the name the sources were asked ("United States of America"). Now a group that is one of the nation's own names (`place_keys`), or an abbreviation of one by the letter rule (`abbreviations.fits` against the nation's names), counts for nothing. `fits` already maps "US" and "U.S." onto "United States", so `fit` itself is unchanged and loosens nothing elsewhere.
+  - Cosmetic 4: the long line in FIELD_RESEARCH.md's "Text another field holds" is wrapped.
+  - Validation:
+    - 18 more tests in `test_location_review_round2.py` (25 in all). On the reviewed head `7884f700` 11 fail: the six heading lines, both line-count shifts, and "US", "U.S." and "United States". The 7 that pass there are the five bare forms ("1200 ft", "1948", "12.vi.1948", "1200-1500 m", "1200 m a.s.l.") and "U.S.A." / "USA.".
+    - On main `0346a26e` all 18 pass, as the review reports main's outcomes.
+    - `tests/field_research`: 3,062 passed. With the related suites and #378's two test files: 3,517 passed.
+    - Full Python suite at `35d5da57`: 16,197 passed, 47 skipped, and the same 1 failed and 2 errors as on base in this environment.
+    - The 19-run replay is unchanged: main and branch give every field of every run the same value, and the only difference is still e98a924c's collection-code reason.
+  - Reusable learning: a guard that refuses more must be probed against the shapes main settles, not only the shapes it is meant to catch. Here the heading a masked number leaves, and readers whose line counts differ, were ordinary label shapes absent from the 19 recorded runs.
+
+### 2026-10-18 - RELIABLE-PROVIDERS the first pass stays on Novita with low reasoning, and a null written as text is no pick
+
+- Task: move the pipeline's unreliable model routes to a reliable provider, from the go-live coordinator's brief, which quotes the owner's words typed in the coordinator session on 2026-10-18: "More reliable inference provider like fireworks together also work" and "Hold. The let's just move to a reliable provider if novita is a problem for now." Branch `claude/reliable-providers` from `origin/main` `8b3b5254`, worktree `.claude/worktrees/agent-aa28f36bad4392f20`. The PR is named in a later line of this entry.
+- Evidence (Logfire, project specimen-digitization, 2026-10-12 03:00 to 2026-10-18 14:45 UTC): `first-pass-glm` (`zai-org/GLM-5.3-Flash` on Novita) had 141 chat spans and 119 first-pass runs: 74 answered, 26 ended with no answer at the 4,096-token cap, 16 ended "Exceeded maximum output retries" (`model_malformed_response`), 3 were HTTP 504 at the router's 120 s. `handwriting-muse` (DeepInfra) had 34 errors in 272 calls from 2026-10-11, every one at about 60 s (the reader's request timeout): 29 on 2026-10-12, 5 on 2026-10-17, none of 110 on 2026-10-18.
+- Finding 1, Together and Fireworks: with the production token (Secret Manager `huggingface-runtime-token` version 2, read with ADC and passed to the probe child only in its environment), the router answered every request to either with HTTP 402 and the body `{"error":"Pay-as-you go is not enabled for provider together yet."}` (`fireworks-ai` the same), for GLM through `first_pass_direct`, for Muse through `_transcribe_direct`, and in one-token text calls. Novita, DeepInfra, Baseten, `zai-org` and Featherless answered the same text calls. Hugging Face's pricing page: a routed request is billed only for a provider integrated with its pay-as-you-go billing; another provider needs a custom provider key in the account's Inference Providers settings and is billed by that provider. Only the owner can open a Together or Fireworks account. Neither route moved.
+- Finding 2, the malformed first passes: GLM on Novita writes `selected_reader` as the string "null" where the schema asks for JSON null, and mostly writes it again on the output retry (once "None", once ""). Each of the 16 traces with a first-pass run that ended "Exceeded maximum output retries" holds such an answer; 3 more traces hold one in a run that did not end so.
+- Finding 3, the cap: Novita runs GLM with its reasoning on and counts it as output tokens. It honours the OpenAI-style `reasoning_effort` field: in one-call text tests "low" used 0 to 19 reasoning tokens where the default used 52 to 106; `thinking: {"type": "disabled"}`, `enable_thinking`, `chat_template_kwargs.enable_thinking` and `reasoning_effort: "none"` left 68 to 145.
+- Probe, through the production code path: `first_pass_direct` and `ProductionAdapters._transcribe_direct`, with only the route's provider (and request option) overridden in `model_gateway.HUGGINGFACE_ROUTES` and the run's pin; 12 real labels of 9 recorded runs (crops and readings of saved run graphs, read only with `executeGraphqlRead` and generation-pinned Storage GETs; d10333ff's label 3 included). GLM: Novita default 22 calls, 10 answers, 6 at the cap, 6 malformed, median 52.1 s; `reasoning_effort: low` 37 calls, 24 answers, 0 at the cap, 13 malformed, median 13.3 s; "medium" 24 calls, 16 answers, 0 at the cap, 8 malformed, median 19.9 s; DeepInfra 12 of 12, median 4.2 s; this branch's code (low and the null rule) 12 of 12 answers on Novita, 11 of them from the first request, median 13.2 s. Re-read with the null rule, every recorded malformed answer of the "low" arm was usable. Muse: Together 402; DeepInfra 4 of 4 in 3 to 15 s. The full table, and the pick comparison, are in HARNESS.md section 5. Probe scripts and results stayed uncommitted in the session scratchpad (`providers/`). Spend: USD 0.0765 measured from reported tokens at the router's listed prices over 127 recorded calls, plus at most one call stopped in flight (USD 0.014 at worst) and a few one-token calls (under USD 0.0001); the three HTTP 402 answers did no work. The billed amount is Not confirmed.
+- What changed:
+  - `model_gateway.py`: `HuggingFaceInferenceRoute.request_options`, provider-specific body fields sent in every request through the model's `extra_body` setting, not part of the pin. `first-pass-glm` sends `reasoning_effort: low`.
+  - `first_pass.py`: `FirstPassOutput.selected_reader` reads "null", "None" or "" (any case, spaces ignored) as null; any other non-letter is still refused. A first-pass call's `parameters` records the route's settings under the agent's.
+  - HARNESS.md section 3 ("A first pass's null written as text"), section 5 (the owner's approval of Together and Fireworks quoted, the 402 and what would enable them, the reasoning bound and its table, runs started before a route changes); HUGGINGFACE_MODEL_ROUTING.md.
+  - The price list is unchanged: no route changed provider, and Novita's GLM price is the one listed (USD 0.15 and 0.50 per million), so measured-cost settlement already uses it; no version bump.
+- Runs started before the change: the pin keeps model id and provider only, so an in-flight run's next first pass sends `reasoning_effort: low` and records it; nothing blocks. A later move of `first-pass-glm` to Together is carried by the existing same-model repin rule. A reader move is not: the reading blocks `pinned_model_route_unavailable` and `parse` refuses `pinned_model_route_changed_requires_new_run`, so every run not past `parse` would need a reprocess. That is a second reason Muse stays on DeepInfra.
+- Reusable learnings:
+  - (a) HTTP 402 "Pay-as-you go is not enabled for provider X yet" from router.huggingface.co is the account's billing integration, not the provider's health. One one-token text call per provider shows it before a paid probe.
+  - (b) `PrivateProviderModel` drops provider error bodies by design, so a production-path probe sees only "provider_request_failed" and a status. Read the router's body with a separate one-token call.
+  - (c) A long probe whose child processes import the worktree's `src` picks up any edit made while it runs. Snapshot `src` for the probe (`PYTHONPATH` at the copy) before editing the code it measures.
+  - (d) Hugging Face's own `completion_tokens_details.reasoning_tokens` shows whether a provider runs a model's reasoning; GLM-5.3-Flash on Novita reports it, on DeepInfra it answers at a few hundred output tokens.
+- Not done, on purpose: no production write, no deploy, no rerun, no Together or Fireworks account or key (the owner's). No scoring of first-pass accuracy against reference readings; whether "low" changes accuracy is Not confirmed. Why the 2026-10-12 probe got 8 of 8 from Together is Not confirmed (its token is not recorded).
+- PR: #382 (https://github.com/anurag-duddu/specimen-digitization-app/pull/382), first head `d729ff10`; its required checks passed on that head.
+- Validation actually run:
+  - Red: the two new files on untouched `origin/main` `8b3b5254` (its `src` and `tests` extracted with `git archive`, the files copied in): 7 fail and 8 pass. The 7: the four null-text spellings ("null", "None", "", " NULL "), the null-text answer decided on its first request (main fails it as `model_malformed_response` after two requests), the route's `reasoning_effort: low`, and every first-pass request carrying it and the call recording it. The 8 that pass are guards: "a", "neither", "C" and "nil" still refused, a lower-case letter still retried, an answer malformed twice still failing, and both reader routes sending no request option.
+  - Related suites (first pass, readers, gateway, preflight and the cost meter's lane and program-budget tests): 479 passed, 1 skipped. `tests/field_research`: 3,062 passed. All with `PYTHONPATH=src`, `LANG`/`LC_ALL=en_US.UTF-8`, `TZ=America/Chicago`, the main checkout's venv.
+  - Full Python suite at `d729ff10` (`scripts/ci/python_shards.py local --count 6`): 16,212 passed, 47 skipped, 1 failed and 2 errors. The failure is `test_general_api_contract_fixtures.py::test_fixture_bytes_match_regeneration`, which fails the same way on base `8b3b5254` here; the errors are the two `test_upload_completion_http.py` setups that need the worktree's own `.venv/bin/specimen-api`, as in earlier entries.
+  - `pre-commit run --files` on the seven changed files: passed. No Dart changed. `scripts/ci/verify.sh` was not run whole (its Flutter gates cover no changed file).
+
+### 2026-10-18 - RELIABLE-PROVIDERS round 2: the first pass's picks scored, and the route sends "medium"
+
+- Follows the RELIABLE-PROVIDERS entry above (PR #382). The G51 review (APPROVE of `1b3c9fd1`, https://github.com/anurag-duddu/specimen-digitization-app/pull/382#issuecomment-6251902140) raised three non-blocking findings. The coordinator asked, before merge, for finding 1 to be settled by scoring "low" and "medium" picks against reference readings and keeping the better setting ("If medium is as good or better, switch the route to medium"), with a spend cap of USD 0.75, plus a test for finding 2 and the wording of finding 3.
+- Method: `first_pass_direct` on the branch head's code (the null rule in place), Novita, only `reasoning_effort` varying. Labels and references:
+  - the eight pilot left labels of S4's T1 scoring (`~/specimen-golive/runs/t1-routes`), with those crops and readings, against S4's `TRUTH`;
+  - four pilot labels in production runs (9cc24b07 = subject 105526330's barcode label, 01b79931 = 105526321, e98a924c = 105526322, cb903c0e = 105526325's right label), against S8's eyes-on table and S4's truth, each checked against the crop;
+  - six labels where a reader wrote "[unreadable]", with no reference (19f0f1f6, d10333ff label 3, two of 2c6ef7b0, ebfc6171, f9d55015).
+  No human-checked transcript of any of them exists locally. "Low" and "medium" ran six times on each referenced label, the default three times; each arm ran three times on each "[unreadable]" label.
+- Result on the referenced labels:
+  - Pick precision: medium 34 of 45 (76%), low 29 of 39 (74%), default 10 of 13 (77%).
+  - Calls ending right (a right pick, or no pick where no reader is right): medium 56 of 73, low 51 of 72, default 19 of 36.
+  - Wrong picks: medium 11, low 10, default 3.
+  - Missed picks (no pick where a reader was right): medium 6, low 11, default 7.
+  - Calls with no answer: the default 7 of 36 at the cap.
+  - Fluent-trap verdicts right: medium 16 of 19, low 16 of 18, default 5 of 6.
+  - On the "[unreadable]" labels, text picked over "[unreadable]": medium 2 of 18, low 4 of 18, default 2 of 7.
+  - Cap stops over all calls: default 18 of 54, medium 0 of 91, low 0 of 90. No malformed answer in any arm.
+  - Median seconds: medium 15.8, low 11.3, default 48.8. Mean USD per call: 0.00055, 0.00038, 0.00162.
+  The full table is in HARNESS.md section 5, "The picks, scored".
+- Choice: `reasoning_effort: medium`. Its picks were as precise as low's and it left fewer right labels undecided, with the same wrong-pick count. Cost and latency decided nothing. Every measure differs by a few picks at most.
+- Wrong picks remain with every setting, about one call in seven at medium or low. Most fall on labels where both readers are partly wrong and no pick is right: e98a924c, 01b79931 and 105526323. Medium also picked the fluent reading of a trap three times (cb903c0e's "Mckinley" once, and "Chimaltenango" on 105526329 and on 105526330), low twice (cb903c0e once, 105526329 once). G19 does not catch these, because the verdicts err with the pick.
+- Finding 2: `research_harness/gateway.py` `EffectModel` now folds the wrapped model's own settings (a route's request options) into `expected_settings`, so an option on `harness-deepseek` would not block its requests; it has none. Test: `tests/test_harness_route_options.py`.
+- Finding 3: HARNESS.md section 5, HUGGINGFACE_MODEL_ROUTING.md and the `model_gateway` comments now say that a provider move measures the route's request options there again, or clears them (a provider that refuses a field rejects every request, `model_request_rejected`).
+- Spend, round 2: USD 0.1715 measured over 235 recorded calls; no call without reported usage. With round 1, the probes spent about USD 0.25.
+- Reusable learnings:
+  - (a) S8's pilot locality table normalises spellings. cb903c0e's label reads "Mckimley", the table "McKinley". A table made for georeferencing is not a literal reference; check the crop at each difference.
+  - (b) GLM's first-pass picks vary run to run on the same label and setting. Three runs a label could not separate two settings; six runs left them within a few picks. Size a pick comparison by repeats, not by labels alone.
+  - (c) T1's saved crops and readings (`~/specimen-golive/runs/t1-routes`) can drive `first_pass_direct` directly: a one-region asset per crop, and the newest saved production run as the template for profile, pins and pinned prompt.
+- Validation actually run (round 2, commit `55de70b5`):
+  - Red, on the previous head `1b3c9fd1`'s code (a copy of its `src` on `PYTHONPATH`): 3 fail and 3 pass. The 3 that fail are the route's "medium", every first-pass request carrying it, and the harness settings pin holding a wrapped model's option (it shows `{'max_tokens': 128}`). The 3 that pass are guards: both reader routes send no option, and the harness route carries none.
+  - The touched files with `test_model_gateway.py`, `test_first_pass_null_text.py` and `test_research_harness_agents.py`: 77 passed.
+  - Full Python suite at `55de70b5` (`scripts/ci/python_shards.py local --count 6`): 16,214 passed, 47 skipped, 1 failed and 2 errors. These are the same three as at `d729ff10` and on base in this environment: `test_fixture_bytes_match_regeneration`, and the two `test_upload_completion_http.py` setups.
+  - `pre-commit run --files` on the seven changed files: passed.
+
+## 2026-10-18: owner requests bulk intake production release
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368. Owner explicitly requested
+  "make it live" after the scoped production-access blocker. Proceed with the
+  already prepared bounded setup and protected release sequence; no standing
+  checks, budget or scope constraints are relaxed.
+- Preserved the prior local closeout in `577710c7`. Current main advanced to
+  `0eeab118ffcac113089d683ba2b584431bb65639`; its 32 changed paths overlap the
+  prior reviewed intake branch only in the append-only session log. Local merge
+  completed without conflicts, preserving incoming provider/location repairs.
+  The new integrated head requires fresh verification and independent review.
+- Read-only owner setup preflight stopped before any mutation: the existing
+  anurag@infinative.com Cloud SDK session expired. Owner Chrome is signed in,
+  but Google requires a fresh passkey verification; that exact tab is open and
+  the owner was asked to complete it. No secrets or permissions were changed.
+- Integration QA found the setup metadata omits the current core collection-
+  bindings pin, so activating version 2 would leave API/worker access at version
+  1. A narrow exact-pin metadata repair is required before activation; no broader
+  secret access is needed. Private provider configs and runtime pins remain
+  inactive until actual provisioning and readback.
+
+### 2026-10-18: current binding-version setup repair before intake activation
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368, integrated base `44575b8b`.
+  `intake_setup_metadata()` now exports the exact resolved collection-bindings
+  version for both API and worker identities, refusing invalid or inconsistent
+  pins. Existing version-scoped IAM grants remain unchanged; no broad access
+  was added. Synthetic setup fixtures explicitly model their baseline rather
+  than assuming production optional configuration stays disabled forever.
+- Integration QA: 172 focused provisioning/model/configuration/Picker/owner
+  tests passed, with cached ShellCheck available. A separate 98-case check
+  using an in-memory prospective configuration (bindings 2; optional/provider
+  versions 1) passed without editing or activating runtime settings. Secret
+  scan and `git diff --check` passed. Independent reviewer found no P1/P2
+  issue in the five-file repair and verified the clean main merge preserved
+  both parents' non-overlapping changes and ordered session-log entries.
+- Google admin verification remains incomplete. Its Touch ID prompt expired;
+  the existing sign-in tab was restored to Continue for the owner. No production
+  configuration, provider bytes, membership, runtime pins, or IAM changed.
+  Real connector and deployed intake acceptance: Not confirmed. Full canonical
+  verification and hosted checks are required for this integrated candidate.
+
+### 2026-10-18: integrated intake candidate passes canonical verification
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368. Independent G51 source
+  review approved exact code head `6fc70000a3504bc4a6a950ebae030447b761d776`
+  (tree `90e3df8c905bb562913d6dac1bd4e88d74ae756e`) with no unresolved findings.
+- Full `scripts/ci/verify.sh` exited 0 on that head: 18,772 Python tests passed,
+  48 skipped, all 18,820 collected tests accounted for exactly once across six
+  shards; 1,309 design-system tests and 3,190 app tests passed (seven app skips);
+  both analyzers, formatting, release web build and 13-route/five-header smoke
+  passed. Cached ShellCheck was available. Durable local log:
+  `/Users/anuragduddu/.codex/visualizations/2026/10/17/01a149fc-3649-75c1-a121-11c19de12cb8/bulk-intake-research/implementation/verify-6fc70000.log`.
+- GitHub main remains `0eeab118ffcac113089d683ba2b584431bb65639`. New hosted
+  checks must qualify the updated published candidate; previous green checks
+  on `71333f59` are not substituted. This entry changes no tested code.
+- Production setup is blocked on Google's identity verification: the existing
+  CLI admin session expired; the owner Chrome passkey page waits at Continue,
+  and the Mac is now locked. No production setup was applied in this release
+  continuation. Runtime pins and client flags stay inactive. Deployment,
+  Gmail/provider E2E, native capture and final scientific Queue acceptance:
+  Not confirmed. No branch/worktree pruning occurred.
+
+### 2026-10-18: published intake candidate green; owner reauthentication blocks release
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368. Published head
+  `96214d62645e0844476010dfdcd9e905196c5080`, tree
+  `a39409c17e8fe5bfa1b3dab992c377f9789c77e9`. Independent G51 reviewer approved
+  the exact journal-only successor of verified code head `6fc70000`; no
+  source/configuration/test changes followed the canonical pass.
+- CI/CD run `39179040282` and runtime candidate run `39179040248` completed
+  successfully on that exact head. All 23 executed checks passed, including
+  the three required contexts (Python tests aggregate, Flutter/web and
+  repository checks), all 12 Python shards, both mobile builds, all runtime
+  image builds and SQL/Storage engine contracts. PR Hosting deploy correctly
+  skipped. Current PR is open/draft, merge state CLEAN. These are CI results;
+  mobile builds use synthetic native configuration and are not device capture
+  or real authentication acceptance.
+- Completed engine job: `117827681092`, private log
+  `/private/tmp/specimen-intake-ci-engine-96214d62.log`; check watch exited 0,
+  `/private/tmp/specimen-intake-pr368-checks-96214d62.log`. Canonical evidence
+  remains the durable visualization log named above. No checks were bypassed.
+- Remaining blocker is Google's passkey verification of the existing
+  `anurag@infinative.com` admin CLI session, then bounded owner setup and
+  verified configuration pin activation. A screenshot attempt confirmed the
+  Mac is locked; do not retry UI until the owner unlocks it. Owner Chrome's
+  Google page was left at Continue. No production setup, merge, deployment,
+  client activation, real Gmail/import/Submit test, or pruning occurred in this
+  continuation. All remain Not confirmed. Keep private prepared configuration
+  and the original actor/budget ledger; no resets or unscoped worker drain.
+- This final closeout entry is intentionally local for the next authorized
+  setup/activation commit; do not manufacture another release-triggering
+  documentation-only commit or discard it during cleanup.
+
+### 2026-10-20: intake release resumes with restored owner authentication
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368. Owner renewed the request
+  to make the release live. A fresh ordinary Google CLI sign-in restored the
+  existing `anurag@infinative.com` session; project readback confirmed
+  `specimen-digitization` / `716045864126`. The one-time code was handed to
+  the waiting local CLI privately and its temporary file removed. No code or
+  token was printed, and no production configuration has yet been changed.
+- Main advanced to `ba007d4c7b47fc52f8c663d8ed7396a9c6cdfcd3` (PR #383).
+  Integration QA identified one source conflict in `published_registry`:
+  preserve both the incoming NVIDIA profile variant and the intake E2E node.
+  Reconcile before fresh verification; the earlier green head is not claimed
+  to qualify the upcoming integrated/activated candidate.
+### 2026-10-18 - NVIDIA-OPTION Nemotron as a per-stage option behind SPECIMEN_NVIDIA_STAGES (off), measured on the pilot labels
+
+- Owner's words, typed 2026-10-18 in the coordinator session: "We have to enable Nvidia across the pipeline as another option also see how this impacts the UI and backend". Started from the coordinator session local_e3ae4073. Branch `claude/nvidia-nemotron-option`, worktree adoring-elgamal-a9b492, base `0eeab118`.
+- Built: routes `handwriting-nemotron`, `first-pass-nemotron`, `harness-nemotron`, all `nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4` on baseten through HF's router (`transport="router"`, "model_id:baseten"); a route flag `forced_tool_choice_disables_thinking`; the switch `SPECIMEN_NVIDIA_STAGES` (readers, first_pass, field_research), read in `published_registry()`, which loads a variant profile versioned `1.0.0+nvidia.<stages>`; price rows (`pilot-prices-2026-10-18`); preflight over the active option only; a runtime-settings check that the API and the worker carry the same value. Production config does not set the switch. Design and measurements: `docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md`; story for NVIDIA: `docs/outreach/NEMOTRON_STORY.md`.
+- Measured (USD 2.43 at list price of a USD 5 cap; inputs, scripts and rows in `~/specimen-golive/runs/nvidia-nemotron-20261018/`): readers 15 crops x 3, Nemotron 76.2% of 98 facts, 0 failures, 2.2 s; Muse 91.5%; Qwen 69.0% with 12 of 45 failures. Muse+Nemotron cover 94.9% of facts, Muse+Qwen 94.6%. Parse: Nemotron about as accurate as Qwen, 1.2 s vs 23.5 s. First pass with reasoning "low": precision 66% vs GLM's 76%, wrong picks 15% both, 35% no answer (cap). Field research: 132 of 266 Nemotron experts failed the answer checks ("None" as text, invented ids such as `wikidata:Q123456`); DeepSeek 0. Section 7 of the design doc has every table.
+- Reusable learnings:
+  - (a) huggingface_hub 1.18 has no `baseten` helper (first in 1.26.1) and still lists `nvidia`, which the Hub no longer accepts as an inference provider. HF's router pins a provider by the model name "model_id:provider" and keeps `bill_to` (a client header), so a route can use a provider the client lacks.
+  - (b) Through the production token on 2026-10-18: baseten, deepinfra and featherless answer; fireworks-ai answers HTTP 402 "Pay-as-you go is not enabled for provider fireworks-ai yet".
+  - (c) Baseten skips Nemotron's reasoning whenever the tool call is forced ("required" or named): 0-1 reasoning tokens vs 1,516 with "auto". Pydantic AI's `forced_tool_choice_disables_thinking` profile flag does nothing on its HuggingFaceModel; the gateway's `UnforcedOutputToolHuggingFaceModel` sends "auto" instead.
+  - (d) `reliability.run_agent_bounded` caps every request at 4,096 output tokens whatever the route's price row says; a price-row `max_output_tokens` above it has no effect (an 8k arm here was in fact a second 4k arm).
+  - (e) A scorer of reader text against facts must accept the writer's own letter forms (this writer's n looks like m: "Mckimley", "Mimdanao", "Mum.") and spaces beside hyphens, or it scores ink-identical readings as wrong.
+- Not done, on purpose: the switch is not turned on anywhere (the owner's call after the NVIDIA conversation); no app (Flutter) change; the lab runner's and QA checkers' hard-coded reader prices and routes are unchanged; the older "on"-mode research harness refuses `harness-nemotron` until Nemotron's tokenizer files are pinned. Qwen's 12 failed readings (always the same five labels) are not investigated here.
+- PR: #383 (https://github.com/anurag-duddu/specimen-digitization-app/pull/383).
+- Merging this changes `model_gateway.py` and `published.json`, so field-research jobs provisioned before the deploy are held `research_committed_pins_changed`, as with PR #382.
+- Validation actually run: full Python suite (`scripts/ci/python_shards.py local --count 6`) on the implementation head `ef80bfd9`: 16,295 passed, 47 skipped, 1 failed (`test_fixture_bytes_match_regeneration`, the known local failure; the contract exporter's output is byte-identical before and after). The targeted set plus `tests/test_nvidia_option.py`: 4,671 passed, 4 skipped. `pre-commit run --files` on the changed files: passed. Each new test was seen failing before its change. No Dart changed.
+- G51 review: APPROVE of `ed50d5d6` (https://github.com/anurag-duddu/specimen-digitization-app/pull/383#issuecomment-6259882115), no blocking findings. Its five non-blocking findings were answered in the docs only: the story's all-Nemotron cost ratio now uses the estimate's own basis (about 3.7x, not "roughly 4x" beside the billed 1.7 cents); the design doc notes that the 32-pixel image rule may undercount small images (Not confirmed), that the unforced tool choice applies only to a resolved "required", that the registry keeps its published version, and that the evidence-pilot launch path refuses the readers stage.
+
+### 2026-10-20: intake reconciles current main and resumes scoped setup
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368. Locally reconciling
+  `ba007d4c7b47fc52f8c663d8ed7396a9c6cdfcd3` into `d6cf6dab`. The registry
+  combines the private intake E2E child with NVIDIA profile variants; the
+  original Insects ledger, allowance, run cap and actor are retained. NVIDIA
+  remains off in production settings. Incoming session entries are retained.
+- Integration QA ran lane-profile and NVIDIA-option tests: 66 passed; the
+  regression exercises both option-off and readers-on with the E2E binding.
+  Diff whitespace check passed. Log:
+  `/private/tmp/specimen-intake-nvidia-merge-focused-20261020.log`. Fresh full
+  canonical verification and exact final-head independent review remain due.
+- Automatic approval review rejected the first scoped Auth IAM write before
+  execution because it required specific access authorization. The complete
+  named recipients, resources, permissions and versions were presented in
+  `production-setup-scope-20261020.txt`; the owner replied to use production
+  judgment and make these technical decisions. A bounded Auth-only retry is
+  now running. No release, live Gmail E2E or provider acceptance is claimed.
+
+### 2026-10-20: verified production connector configuration and supported IAM condition
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/compare-photo-intake-ux` / `5da8`, PR #368, integrated parent
+  `91c02731d838d012e4f8751223d227f8242632c9`. Auth-only owner setup succeeded:
+  existing data-release Auth role now has its exact seven permissions.
+- Intake-only setup created the dedicated Picker key with exact API/referrer
+  restrictions and six fixed configuration versions. The helper and a separate
+  private readback verified every value, the original actor and additive
+  collection bindings. Activated source pins: bindings version 2; external
+  email, cloud-import config, job routes and the two provider clients version 1;
+  Drive and Picker APIs selected. Original actor and cumulative budget remain.
+  No private values enter this log. The dedicated E2E collection is not yet
+  bootstrapped; Gmail UID and real provider/import acceptance are Not confirmed.
+- Real IAM rejected `resource.name.matches` as unsupported before the token
+  binding was written. The corrected expression uses service and Secret /
+  SecretVersion type guards plus the numeric-project `specimen-intake-` prefix.
+  IAM enforces the reserved namespace; application validators enforce UUID
+  identity and positive numbered references. Fixed configuration/client secrets
+  cannot use that prefix. Google's read-only lintPolicy returned `{}` for the
+  corrected expression. This is a cloud-validated syntax result, not simulated
+  IAM acceptance. Private safe metadata evidence:
+  `/private/tmp/specimen-intake-iam-condition-lint-20261020.json`.
+- Focused activated-pin/configuration checks: 83 passed. IAM owner-setup, syntax
+  and ShellCheck checks: 22 passed, 57 deselected. Earlier merge regression:
+  66 passed. A bounded idempotent setup reconciliation is running to apply the
+  supported condition, exact-version reads and provider APIs. New job grants
+  still follow their first protected definition; no job was executed.
+- Read-only production baseline: Hosting and API both report main `ba007d4c`;
+  CI/CD 39202837342, data 39202837275 and runtime 39202837225 succeeded. Google
+  sign-in is false and bulk flag absent. All 109 retained shared executions
+  completed; running and unfinished counts are zero at 15:55 UTC. Repeat the
+  execution and original-budget checks before any paid E2E submission. Fresh
+  full canonical verification, final-head G51 review and hosted checks are due.
+
+### 2026-10-20: active-pin dry-run contract correction before release
+
+- Same task/branch/worktree/PR #368. Independent G51 code review approved
+  `56995a45216e63f06ad49a813896bbd3c5fc716c`, tree
+  `330f95ebc5202d43dcc22cfb3bd89d67fcfb5274`, conditional on canonical and
+  hosted verification. Bounded intake reconciliation then completed with
+  12 changes and zero failures: supported token IAM condition, exact-version
+  reads and Drive/Picker APIs. No job execution or deployment occurred.
+- Full canonical verification on that code head exited 1: an old ops dry-run
+  test expected collection binding version 1 although the script correctly
+  consumed committed version 2. Fixed only that test to require exactly the
+  two positive-numbered committed reads, preserving privacy and invalid-scope
+  assertions. Focused seed tests: 13 passed, 33 deselected. Independent review
+  found no P1/P2 in the repair; runtime and allowance code are unchanged.
+- Failed approach: the test edit happened before two remaining Python shards
+  finished. Their source-fingerprint guard correctly invalidated them. Do not
+  edit source or inputs while canonical verification is running, even after
+  another shard has already failed. No successful whole-suite claim is made
+  from that run. Restart full verification on the frozen successor. Diagnostic
+  log: `/private/tmp/specimen-intake-verify-56995a45.log`.
+- Dropbox console confirmed additional consenting development users enabled
+  (limit 500); production approval is still pending. Credential-free proof:
+  `bulk-intake-research/implementation/dropbox-users-confirmation-20261020.png`
+  under this task's visualization directory. No provider originals changed.
+- At 16:07 UTC the existing allowance ledger was revision 2003, reserved total
+  25,441,472 micros, leaving 2,558,528 under its unchanged 28,000,000 cap. This
+  is ledger accounting, not all infrastructure billing. Candidate originals
+  matched existing non-sensitive pilot records; duplication is collection
+  scoped. Read the ledger/executions again before a bounded real submission.
+  Gmail/provider import, final Queue and native acceptance remain Not confirmed.
+
+### 2026-10-20 — bulk intake release continuation and real provider sources
+
+- Task: `01a149fc-3649-75c1-a121-11c19de12cb8`; branch
+  `codex/compare-photo-intake-ux`; worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`; PR #368.
+  Frozen code head `71b50f53916f0061decb7a72a515b9696c21b1ec`, tree
+  `a56440d6d3f0765c301c5fa8fc6340e8ff0ba13e`, independently G51 approved.
+- Canonical retry with 12 shards was rejected before collection: the local
+  runner supports 1–6, unlike hosted CI's 12. A sandbox-only retry could not
+  write Flutter engine.stamp; standard approved cache/network access restored
+  the pinned toolchain. No contract was changed to bypass these restrictions.
+- Read-only Firebase accounts:lookup initially returned403 without a quota
+  project; the same existing owner credential with x-goog-user-project returned
+  HTTP200 and no Gmail identity. No IAM expansion, fabricated user, custom
+  token or impersonation was used. Ordinary released sign-in must create the
+  account before protected additive E2E membership bootstrap.
+- Prepared real sources through the user's normal Chrome account sessions:
+  private `Specimen Intake E2E - 2026-10-20` folders in Gmail Drive and Dropbox,
+  containing approved non-sensitive original subject_105526321.jpeg (Drive)
+  and subject_105526324.jpeg (Dropbox). Both native provider UIs confirmed one
+  completed upload and displayed the specimen. Dropbox folder read Only you;
+  no shared links or sharing changes. Blocked Dropbox's unrelated local-device
+  access request; the upload still completed. Skipped optional onboarding and
+  installed no software. These are source preparation, not app connector,
+  Submit, pipeline or Queue acceptance.
+- Read-only release preflight confirmed one-route definitions precede the
+  missing named-job policy checks. Inspect actual results before applying
+  resource-level invoker/read grants, then retry protected Runtime on main with
+  process_queued=false. Check no old executions before E2E worker membership,
+  and refresh original cumulative budget immediately before Submit.
+- Private provider-review preparation records actual scopes, pre-Submit
+  staging, retained blobs after discard/disconnect and downstream-provider
+  disclosure requirements. Public product/privacy pages, operator facts,
+  Google folder-scope verification/security assessment and Dropbox production
+  approval remain unresolved; personal-account tests do not prove them.
+- Canonical six-shard Python run at `71b50f53` completed all18,901 tests exactly
+  once:18,851passed,48skipped,2failed; exit1 stopped before Flutter gates.
+  Log `/private/tmp/specimen-intake-verify-71b50f53-six-shards.log`; shard
+  artifacts `specimen-python-shards-a1tk848z` under the OS temporary directory.
+  This is a failed canonical run, not an approval. Concurrent unrelated Python
+  and Flutter tests were observed on the machine; none were altered or stopped.
+- Exact first failure: the intentionally missing-Java Storage negative fixture
+  hit its independent35-second outer subprocess watchdog before readiness
+  failure/cleanup reporting completed. The trace names TimeoutExpired35 and
+  matches the retained fixture with405 synthetic process inspections. The
+  bounded test-only correction permits60seconds for only that negative case;
+  other defaults and all birth-bound cleanup/readiness assertions remain.
+- Exact second failure: the actual-worker-handler cutoff test lacked its
+  startup marker after a2.013-second run. Its budget includes a fresh Python
+  process and cold worker/API imports. After other shards stopped, isolated
+  diagnostics at2seconds and10seconds both reached the actual handler and
+  returned deadline_exceeded/overall_deadline with complete cleanup and no late
+  SDK action. Thus startup sensitivity under load is supported; no production
+  cutoff failure is established. Only this test now has10seconds plus a marker
+  assertion that reports IsolatedResult on failure. Production deadlines and
+  shutdown behavior are unchanged. Focused regression results follow below.
+- Focused verification of the two test-only repairs: 8 engine startup,
+  registration, interruption and survivor-rejection controls passed (228
+  deselected, 62.54 seconds); 23 worker cutoff, parent-deadline and bounded-
+  effect controls passed (19.17 seconds). An initial focused command named a
+  nonexistent test_worker_deadline.py and ran no tests; the corrected command
+  used test_worker_parent_deadline.py. The isolated 2/10-second diagnostic was
+  synthetic and used stubbed services; it is not live pipeline acceptance.
+- Independent reviewer inspected both exact diffs and failure traces, found
+  no P1/P2, and confirmed the original short synthetic/resistant-descendant
+  controls and production logic remain unchanged. Frozen-head review and a
+  fresh full canonical run are required before this candidate is published;
+  existing or focused results do not substitute for that full run.
+
+### 2026-10-20 — bulk intake canonical verification passes before publication
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, PR #368, branch
+  `codex/compare-photo-intake-ux`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Qualified code head `492bca660e3959897a0ef26b8647de112f5a8c71`, tree
+  `5ebed147a984e3e3129b7252fcc3bbd6205202eb`; no source edits during the run.
+- `scripts/ci/verify.sh` completed with exit0 and its final all-gates-passed
+  message. Pinned tools and six Python shards: all18,901 tests accounted for,
+  18,853passed/48skipped/0failed. Both previously failing fixtures passed.
+  Shared design system:1,309passed; app:3,190passed/7skipped. Both Flutter
+  analyses passed; formatting checked605files with0changes. Release web build
+  and smoke passed13routes/5headers with the gallery excluded. Local build
+  deployment.json was unstamped and explicitly skipped, not a live marker.
+  Log `/private/tmp/specimen-intake-verify-492bca66.log`; shard artifacts
+  `specimen-python-shards-5t0zddy5` in the OS temporary directory.
+- Independent G51 review approved this exact code head with no unresolved
+  P1/P2. Current main remained `ba007d4c7b47fc52f8c663d8ed7396a9c6cdfcd3`
+  immediately after verification. A journal-only successor and its review
+  preserve this qualified source; new hosted checks are still required.
+- Fresh read-only release preflight: Hosting/API and all three main releases
+  still report ba007d4c; Google sign-in remains off, Bulk defaults off. Only
+  the shared worker exists, with109retained executions and0unfinished. The
+  initial protected runtime release must create the three missing named jobs
+  before the already authorized bounded owner setup grants their policies.
+  The protected retry leaves process_queued=false.
+- Prepared a private operator guide and read-only all-page SQL/Queue/job
+  observation helper. The helper is source/syntax inspected only, not run or
+  acceptance evidence. Normal-user sign-in/Queue UI must be observed separately
+  from administrative SQL records and worker metadata.
+- An optional Cloud Billing console read requested organizational passkey
+  verification and was not completed; closed only that new tab. Existing CLI
+  project read still succeeded. No financial or security setting changed.
+  Consolidated G9 headroom is Not confirmed; preserve the original G30 ledger
+  and G9 ceiling without inventing a new per-Submit billing gate or allowance.
+- Public homepage/privacy copy is prepared privately with explicit unresolved
+  operator/contact/retention/recipient facts. Nothing was published. Provider
+  verification, broad public admission, real Gmail connector/Submit/final
+  Queue, physical camera and institutional acceptance remain Not confirmed.
+  Merge, protected release, client activation and live acceptance are pending.
+
+### 2026-10-20 — bulk intake PR #368 merged; protected releases started
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/compare-photo-intake-ux`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Independent G51 review approved exact journal-only successor
+  `7d935a72a2930bfa90035854d0db0c78e0ddfba9`, tree
+  `03e79b9d5870c66209a490f1e8909e96bf8538a4`, with no P1/P2. All23 applicable
+  hosted checks passed on this head; PR Hosting deployment correctly skipped.
+  CI/CD39466027555 and Runtime candidate CI39466027630 succeeded.
+- Immediately before normal protected merge, main still matched ba007d4c,
+  the local tree was clean, PR head matched7d935a72, merge state was CLEAN,
+  and no review thread remained unresolved. No admin override, required-check
+  bypass, force push or branch-protection change was used.
+- PR #368 merged at2026-10-20T17:40:17Z as
+  `3350648862ab23dab6f6337481b2be8840a27caa`. Main-push Hosting CI/CD39468106835,
+  Data39468106836, Runtime39468106897 and Runtime candidate CI39468107065
+  started on that SHA. Release completion, client activation, Gmail provider
+  acceptance and final scientific Queue acceptance are still Not confirmed.
+  Preserve the branch/worktree and this pending release log until reconciliation.
+
+### 2026-10-20 — first protected data release exposes missing base permission
+
+- Same task/worktree as above. Fix-forward branch
+  `codex/fix-intake-auth-permission` starts from merged main33506488 and retains
+  the pending append-only release record.
+- Data39468106836 completed database/connector/Storage and pinned georeferencing
+  dataset steps, then failed `Enable and verify Google alongside email sign-in`.
+  The Google provider was already enabled and retained. The following Android
+  SHA POST returned403. Runtime39468106897 failed its same-commit Data wait;
+  its deployment step did not run. Client flags remain disabled.
+- Read-only Cloud Audit Logs give the exact failure at
+  2026-10-20T17:43:06.721913Z: Firebase AndroidAppService.CreateShaCertificate,
+  permission `firebase.clients.update`, granted=false on the existing project.
+  Firebase's Cloud Audit Logs reference documents that base permission.
+  Its general IAM page separately lists `clientauthconfig.clients.create` as
+  an additional permission; adding only that additional permission was
+  insufficient. The existing Auth role has the other seven reviewed permissions.
+- Repair scope is one missing permission on the existing data release role,
+  with corresponding contract and deployment-guide correction. Do not grant
+  Firebase Admin/Editor, manually add certificates, bypass the failed release,
+  or weaken App Check. Validation, source review, protected repair release,
+  and real Gmail acceptance are pending.
+- Minimal repair prepared in owner_setup.sh, its existing contract suite and
+  both deployment/Google sign-in guides. Focused checks passed:13Auth-only
+  setup cases,197Auth provisioning cases, shell syntax, pinned ShellCheck and
+  diff check. The regression starts with the actual seven-permission shape,
+  verifies one role update to exactly eight with the existing binding unchanged,
+  no other writes or release starts, and an idempotent second run.
+- Independent review found no P1/P2 in that repair and confirmed the documented
+  missing-grant exception: DEPLOYMENT's failed-release procedure directs the
+  owner-authorized setup script for missing grants, then protected release
+  retries. That permits this bounded setup repair while the owner-script
+  correction follows full canonical/G51/hosted PR qualification. Application
+  deployment source remains merged33506488; no hand deployment is permitted.
+  The permission is project-scoped Firebase app-configuration authority, not a
+  SHA-only IAM permission; the existing protected provisioner bounds operations
+  to its exact app and reviewed fingerprints. Exact-head approval follows freeze.
+
+### 2026-10-20 — protected runtime exposes intake argument parsing defect
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, same 5da8 worktree. Applied the reviewed
+  Auth-only setup repair from e895e930: exactly one role update, zero failures,
+  existing recipient unchanged. Live role readback has the exact eight
+  permissions. Data39468106836 attempt2 then passed, including Google provider
+  and Android fingerprint provisioning. Hosting39468106835 attempt1 passed;
+  its public marker and the public API /version both report merged33506488.
+- Protected Runtime39470159238 on33506488 with process_queued=false passed
+  Data wait, all image checks, API deployment and API smoke. Intake job creation
+  failed before creating either intake job: gcloud treats the separate value
+  starting `-m,` as an option, so `--args` has no argument. SAM and the shared
+  scientific worker subsequently deployed and verified. The dedicated E2E
+  scientific job was created, then correctly failed its missing invoker check.
+  The error's generic `specimen-worker` label refers to the dedicated job in
+  that loop; readback confirms the shared worker already had both invokers.
+- Repaired only intake command serialization to one `--args=...` argv token.
+  Both shared and dedicated names reproduce the old parsing failure in an
+  offline option-parser regression. The fixed focused release/ops suite passed
+  106 tests. The existing scientific worker constructor already uses equals
+  form. Independent source review found no P1/P2; job arguments, images,
+  limits, identity, secret pins, policy checks and no-execution behavior remain
+  unchanged. Full verification and exact-head/hosted qualification are pending.
+- The e895e930 canonical run was deliberately interrupted (exit130) after the
+  newly observed release defect required a source correction. It is not a
+  pass. All its processes exited before editing. Restart the complete canonical
+  verifier on the corrected frozen source; do not reuse its partial shards.
+- Authorized intake-only setup dry-run and application each reported exactly
+  three changes and zero failures: API/worker invokers and API definition read
+  on specimen-worker-e2e. Missing intake jobs were explicitly skipped; they
+  still need protected definition and the existing bounded setup grants.
+  No job or release was started by setup. Fresh shared execution read observed
+  109 retained executions, zero without completionTime, zero running; repeat
+  before granting original worker access to the new test collection.
+- Google sign-in activation is independent of intake jobs. Following the
+  documented post-Data activation path and independent review, set only
+  SPECIMEN_GOOGLE_SIGN_IN_ENABLED=true and reran all jobs of current-main push
+  Hosting39468106835 (attempt2). Bulk intake remains unset/default false.
+  This is a rebuild through protected Hosting, not a manual deploy. Real Gmail
+  sign-in, collection membership, imports, Submit and final Queue remain
+  Not confirmed. No provider or native acceptance is inferred from these runs.
+
+### 2026-10-20 — corrected release candidate qualification and live read preparation
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Independent G51 code/security review approved exact clean
+  `d629bf739716e9e3365729e85c2ecf523bcc0767`, tree
+  `6f7831a31f93bf8780fbe822db2dedcfe9dad562`, covering both the Auth permission
+  and intake argument repairs. No P1/P2 findings; this source approval does
+  not substitute for canonical/hosted checks or production acceptance.
+- Read back specimen-worker-e2e after the authorized setup: exactly the API
+  and worker identities under roles/run.invoker and the API identity under
+  specimenWorkerRead, with no public binding. Both intake definitions remain
+  absent until the protected argument repair releases.
+- Real Gmail Firebase account lookup still returned zero users. No account
+  was administratively created. A private read-only helper now uses the locked
+  Python environment and trusted CA bundle; the system Python's absent CA
+  chain had refused the first read, and certificate validation stayed enabled.
+- Corrected the private acceptance helper/guide to take actual specimen IDs
+  from submission-item results, not draft/submission/item IDs, and to require
+  finalized non-synthetic processing separately from terminal disposition.
+  Historical executions alone are not attribution to the actual submission.
+  Pilot scope remains exactly the two approved distinct provider originals.
+- First real read-only helper execution succeeded at2026-10-20T18:17:11Z:
+  one exhausted SQL page, zero specimen and Queue records, and no test
+  collection yet. This is pre-provisioning evidence only, not the required
+  after-Saved/pre-Submit proof. Private observation is
+  authoritative-baseline-20261020T181711172719Z.private.json. Runtime checks
+  correctly remain false while intake jobs are absent; no live import,
+  normal-user Queue, scientific completion or native acceptance is implied.
+- Canonical d629bf73 reported a real failure in
+  test_http_configured_classifier_pins_scope_source_route_and_provenance:
+  completed child provenance existed, but the parent retained
+  external_outcome_unknown after a5.866-second call against a5-second total
+  budget. The separate timeout/unknown/no-automatic-retry case passed. The
+  isolated result reason was not retained, so budget exhaustion is a supported
+  hypothesis rather than a recorded reason. Shard1 finished with1failed,
+  5450passed and5skipped. After obtaining its full traceback, interrupted the
+  remaining run (exit130) to address the failure and integrate newer main.
+  This run is not a canonical pass; the entire corrected integration will be
+  requalified. Log /private/tmp/specimen-intake-verify-d629bf73.log and shard
+  artifacts specimen-python-shards-3wmfk9qk retain the actual partial results.
+- Main advanced independently through PR #386 to
+  cd8be7d2a193f5efdf5b7bab4c403f892499c965, adding the cost meter. Narrow independent
+  integration review confirmed the four-field E2E bootstrap, dedicated routing,
+  existing actor and original G30 ProgramLedger admission/cap are unchanged.
+  CostEntry reporting is not a replacement allowance. Do not use costs/refresh
+  as a read-only check: it starts worker drains. Preserve these main changes
+  when integrating the release repairs and rerun required qualification.
+- Hosting39468106835 attempt2 passed; public marker reports33506488, the same
+  run/attempt and Google-enabled build. In normal Chrome, observed the Google
+  button, cancelled the chooser, observed the recovered cancellation message
+  and enabled email/Google choices, retried, selected the exact Gmail account
+  and completed ordinary identity consent. The live app recognized
+  anurag.duddu@gmail.com and displayed no collection assigned. Read-only Auth
+  lookup confirms one verified, active Google-provider identity. This is real
+  Gmail sign-in/cancellation/retry evidence, not an administrative fake user.
+- With fresh109shared executions all complete and zero running, prepared only
+  the approved four bootstrap identifiers from that real UID. Set the private
+  data-production artifact via stdin and dispatched protected Data39476572585
+  on current maincd8be7d2. It passed and reported creation of the missing test
+  collection/memberships with no content or work submitted. The normal Gmail
+  Check access again action then opened Intake E2E. Read-only observation at
+  2026-10-20T18:41:40Z confirmed the correct collection/parent and zero specimen
+  and Queue rows. This does not yet prove the after-Saved/pre-Submit boundary.
+- Safe browser evidence: gmail-live-sign-in-20261020.png and
+  gmail-live-collection-access-20261020.png in this task's visualization
+  implementation directory. API/version now reports current maincd8be7d2.
+  Bulk remains disabled. Provider consent/import, Submit, final scientific
+  Queue, public provider approval and real native camera remain Not confirmed.
+### 2026-10-20 - COST-METER-PR1 the cost meter's ledger of record, backfill sweep and admin cost totals
+
+- Owner's words, typed 2026-10-20 and relayed by the coordinator session (local_e3ae4073): "Yes, build the in-app tenant cost meter (option A): per organization and collection totals, per-tenant budget caps, shared Google costs split by usage, monthly check against the real bills." This is PR 1 of five, to the coordinator's design contract (`cost-meter-design-2026-10-20.md`, the "table", "Writes (PR 1)" and "API contract" sections). Claude agent, worktree agent-a9bb5a91976a19136, branch `claude/tenant-cost-meter-ledger` from origin/main ba007d4c; PR #386. Nothing deployed; no gcloud or firebase command; no production read; no model call.
+- Built: `CostEntry` (`dataconnect/schema/cost_entry.gql`, no `@ref`); `dataconnect/connector/cost_meter.gql` with `UpsertCostEntriesV1`, `ListRunPaidCallsV1`, `CostTotalsV1`; `application/cost_ledger.py` (rows and the GET body, pure); `SqlConnectRepository.write_costs` after `write_projection` in `_commit` and `_receipted`; `application/cost_sweep.py`, run by `DrainWorker._drain` before `_recover_blocked`; `GET` and `POST .../costs/refresh` in `api.py`; tenant ids on the checkpoint span and the model children's spans. `docs/execution/golive/COST_METER.md` describes it.
+- Decisions, for the reviewer: the upsert is not in `REPEATABLE_MUTATIONS` (that set's rule is a receipt that refuses a committed repeat; the upsert has none, and the next save or the sweep resends); the SQL recomputes each row id with `uuid_generate_v5` and checks the row's organization, collection and specimen; the sweep cursor adds `pass_started_at` so a resumed pass moves the watermark to its own start; a 503 is `runtime_unavailable` with the block code as message, as every `OperationalBlock` is.
+- Deliberate test changes: `test_field_research_e2e.py` gains one `UpsertCostEntriesV1` (the step's one paid call) in its pinned counts and sequence; the tracing tests' pinned telemetry key sets gain `organization_id` and `collection_id`; the engine contract gains stage `sql.cost-meter` (no pinned count changes).
+- Validation actually run: uncommitted local runs on 2026-10-20 (no hosted CI yet): `node scripts/data/cost-meter-test.mjs` against `scripts/data/serve-local.sh` (PostgreSQL 18.6, Data Connect emulator 3.2.0), all 6 PASS groups; the opt-in `tests/test_sqlconnect_cost_meter.py` against the same emulator, 1 passed; `schema_gate.py` against origin/main's dataconnect tree, `additive`. Committed tests: test_cost_ledger 46, test_cost_writer 11, test_cost_sweep 15, test_cost_api 26 passed. Whole suite (`python_shards.py local --count 4`, 74fd6e14): 16,387 passed, 48 skipped, 9 failed; five were this branch's (stand-in specimens without `scope` in test_first_pass and test_trace_worker_wiring), fixed in 4b98b025 and rerun with the 27 runtime, telemetry, first-pass and cost files plus the field research e2e (523 passed, 1 skipped, 3 failed: test_sam_total_deadline, which fails the same with origin/main's src at load about 30); the other four were load-flaky deadline tests (two passed on rerun; test_worker_cleanup_cutoff's production-handler case fails on origin/main's src too). scripts/ci and scripts/release tests: 774 passed, 1 Storage-harness failure that passed 2 of 2 alone. Each cited test fails with its one source file at origin/main. pre-commit run --files passed; verify.sh not run as one command; no Dart changed.
+- Reusable learnings: (1) In SQL Connect a list field's `@check` takes `this.size()`; `_execute` answers its affected-row count under its alias, and `ON CONFLICT DO UPDATE` without a `WHERE` counts unchanged rows too, so `@check(expr: "this > 0")` refuses an all-or-nothing upsert that wrote nothing while a CASE on `updated_at` keeps unchanged rows' time. (2) A raw `executeGraphql` list read returns at most 100 rows unless it names a `limit`. (3) Fakes that hand a model child a `SimpleNamespace` specimen have no `scope` (test_first_pass, test_trace_worker_wiring); telemetry reads the tenant ids with `observability.tenant_ids`, which never raises. (4) In a worktree-isolated agent, `until ... || ! pgrep -f ...` loops never end (pgrep matches the loop) and a shard run redirected to a file leaves its task output empty; wait on the shard logs' summary lines instead.
+- Not confirmed: hosted CI (the python-engines run of `sql.cost-meter` on PostgreSQL 16; local runs used PostgreSQL 18.6); the opt-in `tests/test_sqlconnect_cost_meter.py` is not in CI's engine node lists; the data release's migration of the new table; sweep timing on production snapshot sizes; the G51 review.
+
+### 2026-10-20 — Intake repair integration and classifier fixture qualification
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`.
+  Locally merged main `cd8be7d2a193f5efdf5b7bab4c403f892499c965` as
+  `74f5576b6153271d8a0b3afcca3c0fcbf247f01a`; both append-only logs survived.
+  Independent review confirmed the six Auth/argv repair files remain identical
+  to reviewed `d629bf73` and incoming cost-meter source remains identical to main.
+- Current-main Runtime `39475816367` reproduced the same intake `--args`
+  parser failure. No hand deployment or processing was substituted. Protected
+  Data bootstrap `39476572585` succeeded, and Gmail's normal live collection
+  access plus the post-bootstrap empty SQL/Queue baseline were recorded above.
+- The interrupted `d629bf73` canonical run was not a pass. Its positive
+  classifier fixture returned `external_outcome_unknown` after 5.866 seconds
+  with a five-second total clock, despite completed child provenance at about
+  4.864 seconds after input creation. The generic result does not establish
+  the exact isolation failure reason. The positive fixture now allows 30
+  seconds for fresh interpreter/imports, work, export and IPC; a delegating
+  observer records the real isolation status/reason/elapsed/cleanup on failure.
+  Production clocks and behavior are unchanged. The negative two-second
+  timeout/no-automatic-retry case is unchanged, and all exact configuration,
+  source, model and provenance assertions remain in place.
+- Validation actually run after integration: 32 focused classifier runtime,
+  tracing and worker-wiring tests passed in 12.99 seconds; `git diff --check`
+  passed. QA changed only `tests/test_classifier_runtime.py` and performed no
+  cloud or repository commits. Full canonical verification on this integrated
+  candidate and final exact-head G51/hosted checks remain pending. Bulk remains
+  disabled; real connector import, Submit, scientific finalization, public
+  provider and native acceptance remain Not confirmed.
+
+### 2026-10-20 — Intake repair canonical qualification before PR publication
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch/worktree
+  `codex/fix-intake-auth-permission` in `5da8/specimen-digitization-app`.
+  Integrated source `7a8e4e9766115e73f49eaf583dc8542143c66efe`, tree
+  `61eb9f7f8b107fe059c838cc44a29e91f9c59e6b`, remained clean and unchanged
+  throughout `scripts/ci/verify.sh`, which exited zero. Full Python inventory:
+  18,958 passed plus 50 skipped equals 19,008, with complete exact-once shard
+  accounting. Both the positive classifier fixture and unchanged two-second
+  negative control passed in shard 2. The design-system suite passed 1,309;
+  the app suite passed 3,190 with 7 skips. Both analyses, repository/secret
+  checks, formatting (605 files, zero changes), web build and all declared
+  route/security-header smoke checks passed. This is local qualification,
+  not a claim of native-device or provider acceptance.
+- Durable local evidence: `/private/tmp/specimen-intake-verify-7a8e4e97.log`
+  and `specimen-python-shards-rccbh014` under the task's macOS temporary
+  directory. Independent G51 source/journal review approved the exact source
+  and tree above with no P1/P2 findings. This append changes only the journal;
+  final PR-head review and hosted checks are still required.
+- Main remained protected at `cd8be7d2a193f5efdf5b7bab4c403f892499c965`.
+  Its Hosting run `39475816905` succeeded; both public web and API markers
+  reported that SHA. Its Runtime run still failed at the known intake argument
+  parser, so this was not a complete intake release. Google sign-in is live;
+  Bulk remains off until compatible private jobs and their IAM verify.
+- The reviewed private owner observer ran only scoped GraphQL reads and found
+  zero Gmail-owned drafts, items, submissions, results, jobs and specimens in
+  Intake E2E at `2026-10-20T18:56:42.852081Z`, with every page exhausted and
+  unchanged inventory/membership readback. No content or processing was
+  started. This establishes a metadata baseline, not normal-user import proof.
+  Its private artifact is `intake-metadata-baseline-20261020T185642852081Z.private.json`.
+  Real connector consent/import, pre-Submit staging proof, explicit submission,
+  scientific finalization, institutional/public-provider and native acceptance
+  remain Not confirmed.
+
+### 2026-10-20 - REGISTRY-CLEANUP Artifact Registry cleanup policy (dry run) and the deployed/rollback tags
+
+- Asked by the coordinator session local_e3ae4073 (via local_420c7c0a) after the read-only storage measurement of 2026-10-20: `specimen-runtime` held 289 images, 46.9 GiB, about USD 4.69 a month, 286 no longer in service, about 0.55 GB more per release, no cleanup policy. Branch `claude/agitated-dubinsky-8fa7dc`, worktree schema-redesign-thread-ba6f67, base `ba007d4c`.
+- Built: `owner_setup.sh` step "Image registry": the role `specimenRuntimeImageTags` (tags create/update, no delete) for `specimen-runtime-release` on the repository only, `--no-immutable-tags`, and the committed policy in dry-run mode (`keep-newest` 5 per package, `keep-deployed` tag prefixes `deployed`/`rollback`, `delete-old` any version after 1 day). `scripts/release/keep_images.py`, the last step of the runtime release (`if: always()`). It reads the policy back (before setup it passes with a note). Then, for every service and job the release defines (`specimen-api`, `specimen-sam`, `specimen-worker`, `specimen-intake`, and the collection jobs of the pinned routes), it points `deployed-<name>` at the digest in service and `rollback-<name>` at the previous one, and reads both back. Docs: DEPLOYMENT.md "Image registry cleanup".
+- Reusable learnings:
+  - (a) With `dockerConfig.immutableTags: true`, Google never deletes a tagged image, by policy or by hand ("If a repository has immutable tags enabled, tagged artifacts can't be deleted"). Every release image here carries a unique tag, so no cleanup policy can work until tags may move.
+  - (b) A cleanup policy is a fixed rule set and cannot name a digest that changes with each release. Protect what is in service with a keep rule on tag prefixes plus a release step that moves those tags.
+  - (c) A cleanup dry run reports what it would delete only in Data Access audit logs (`BatchDeleteVersions`, `validateOnly`). This project has no `auditConfigs` (read 2026-10-20), so the cloud dry run is invisible. Evaluate the rules offline against the live version listing instead.
+  - (d) gcloud 582 sends a policy file's enums as written and durations as "<n>.0s"; the API stores "86400s". `value(cleanupPolicies)` prints a sorted-key Python repr joined by ";", and `value[separator="|"](...)` keeps empty fields (`True||` for the 2026-10-20 repository). The SDK's own printer can be driven offline (`resource_printer.Print` on an apitools message) to pin such strings without a cloud call.
+  - (e) Since PR #368 one image package serves several runtimes: the api image runs `specimen-api`, `specimen-intake` and the `specimen-intake-<x>` collection jobs, and the worker image runs `specimen-worker-<x>` too. After a partial release they can hold different digests, so anything that tracks "the deployed image" must be per runtime, not per package.
+  - (f) The auto-mode classifier refused to write the owner-setup step while it applied the policy with `--no-dry-run` ("Blind Apply", "Cloud Storage Mass Delete"). It accepted the same step in dry-run mode.
+- Offline dry run, read-only, live listing of 2026-10-20 under the documented rules: 274 of 289 versions would go (api 108, worker 84, sam 82), 15 stay; the digest each runtime ran was the newest of its package.
+- PR: #389 (https://github.com/anurag-duddu/specimen-digitization-app/pull/389). The branch merged origin/main at `33506488` (PR #368) before review.
+- Validation actually run: after the merge, `scripts/release` + `scripts/ops` + `tests/test_deployment_policy.py` gave 1,264 passed and 1 skipped. The full suite in 6 local shards on the pre-merge commit `0cb8556c` gave 16,288 passed and 8 failed. The failures are load-sensitive deadline tests and the known `test_fixture_bytes_match_regeneration`, at a machine load of 30 to 50; the diff touches no `src/` or `tests/` file. `pre-commit run` on the changed files passed. The fail-first check was seen: without `keep-deployed`, the simulator deletes the 48-hour-old deployed and rollback images.
+- Not done, on purpose: no production change; the owner runs `owner_setup.sh` once after the merge (one step). Turning dry run off is a follow-up PR (`--dry-run` to `--no-dry-run` and `DRY_RUN` together) plus one more owner run.
+- G51 review, by Codex (gpt-6.1-sol, reasoning xhigh, read-only `codex exec`) at the user's request in this session; each verdict pasted verbatim on the PR. Round 1, REQUEST_CHANGES of `c60ec324`: a P1 (owner setup lifted immutability before dry run was in place, which would have armed a deleting policy set elsewhere) and four P2s (keep the revisions that actually take traffic, not the latest ready one; bind the tags role only after it reconciled; a failed route read must not stop the fixed runtimes; docs overreach). Round 2, REQUEST_CHANGES of `281af313`: reordered traffic swapped the extra tags, leaving a gap. Round 3, REQUEST_CHANGES of `e9057e9e`: an interrupted rotation lost rollback on retry, and a spare could be reused too early. Round 4, APPROVE of `edc2af43` (https://github.com/anurag-duddu/specimen-digitization-app/pull/389#issuecomment-6299197775).
+- Reusable learning (g): a release step that moves tags to protect images needs (1) stable extra slots, so a digest that stays in service keeps its extra tag (the main digest changes tags on purpose during rotation); (2) protect-then-repurpose ordering, so a tag leaves an image only when another tag holds it or it is no longer needed; and (3) the tag the plan derives state from (here `deployed-<name>`, the source of rollback) moved only after the intended rollback is established, so retries preserve the intended deployed/rollback rotation. Test it by failing after every write and then retrying, not only by checking the failed state.
+
+### 2026-10-20 - COST-METER-CAPS optional monthly budget caps per organization and collection (cost meter PR 2)
+
+- Owner's words, typed 2026-10-20 and relayed by the coordinator session: "Yes, build the in-app tenant cost meter (option A): per organization and collection totals, per-tenant budget caps, shared Google costs split by usage, monthly check against the real bills." Built from the coordinator's brief and its design note `cost-meter-design-2026-10-20.md` (sections "Hard constraints" and "Caps (PR 2)"). Branch `claude/tenant-cost-meter-caps`, worktree `agent-a9d15ffc8457e81f5`, base `ba007d4c`. PR: #387 (https://github.com/anurag-duddu/specimen-digitization-app/pull/387).
+- Built: the `TenantBudgetCap` table and the `TenantBudgetCapsV1` / `SetTenantBudgetCapV1` operations; `application/tenant_budget.py` (monthly ledgers with `ProgramLedger`'s semantics, `cap_positions` for the cost report); its wiring beside `reserve_step`, in `lane_costs.settle_step`, `Workflow._ledger_settlement`, the RESEARCH_LIMITS check, `FieldResearchStep.reservation` and `ProgramEffectBroker.before_send`; `SqlConnectRepository.tenant_caps` / `set_tenant_cap`; `PUT /v1/organizations/{org}/costs/caps`; app words for `tenant_budget_exhausted` and `tenant_budget_unavailable`. How it works: `docs/execution/golive/TENANT_BUDGETS.md`. No cap is set anywhere: a cap's value is the owner's spending decision.
+- Deliberate test changes: `tests/field_research/test_field_research_e2e.py` now pins two `TenantBudgetCapsV1` calls in the field-research step (its headroom, then its reservation); `FakeDataConnect` answers both new operations; `blocker_words_test.dart` lists the two codes and reads `application/tenant_budget.py` as a backend source; `blocker_plain_words_test.dart` has their cases; `scripts/data/engine-contract-selection.json` gains the stage `sql.tenant-budget` (no pinned count changes).
+- Reusable learnings:
+  - (a) The Data Connect emulator (3.2.0) returns an `Int64` field as a JSON string (`tenant-budget-test.mjs` prints the type); read both a decimal string and a number.
+  - (b) A worktree under the main checkout (`.claude/worktrees/...`) whose `pyproject.toml` has no `[tool.pytest.ini_options]` makes pytest walk up to the main checkout's `pyproject.toml`, which had that section on 2026-10-20 (pytest printed `rootdir` and `inifile` there). `PYTEST_ADDOPTS="-c /dev/null --rootdir=$PWD"` avoids that for most files but makes `scripts/ci/test_engine_contract_gate.py` error 180 times ("collected Python inventory mismatch or duplicate"); an untracked empty `pytest.ini` in the worktree root (never committed) passed all 244.
+- Not done, on purpose: no cap set; no screen to set one; the cost report's GET (PR 1) is to call `cap_positions` once both PRs are in `main`.
+- Validation actually run: full Python suite (`scripts/ci/python_shards.py local --count 4`, head `b4809867`, an untracked empty `pytest.ini` in the worktree): 18,594 passed, 49 skipped, 4 failed, all four wall-clock deadline tests at machine load 25 to 51 (`test_reader_effect_timeout`, `test_worker_cleanup_cutoff`, `test_reader_failures_recoverable::test_a_reader_whose_deadline_passes_is_retried_not_blocked`, `test_sam3_runtime::test_sam_total_deadline_durable_unknown_and_no_retry[success]`), which fail the same way alone with origin/main's `src` first on `PYTHONPATH`. The 69 new tests pass; each changed source file put back to origin/main in a scratch `src` makes its tests fail (counts in the PR). Flutter: `flutter analyze --fatal-infos` clean, `dart format` clean, `blocker_words_test.dart` and `blocker_plain_words_test.dart` 94 passed (13 fail with main's words). `check_ui_strings.py` 0 violations; `schema_gate.py` against origin/main: additive; `pre-commit run --files` on the changed files: passed. `scripts/data/tenant-budget-test.mjs` passed in an uncommitted local run against `scripts/data/serve-local.sh` (darwin emulator 3.2.0, PostgreSQL 18.6); the engine contract stage `sql.tenant-budget` runs only in CI (Linux, PostgreSQL 16): Not confirmed until CI runs it. Not run: `scripts/ci/verify.sh` as a whole, the full Flutter suite.
+
+### 2026-10-20 - COST-METER-PR4 monthly reconciliation of the meter against the Hugging Face and Google bills
+
+- Owner's words, typed 2026-10-20 and relayed by the coordinator session (local_e3ae4073): "Yes, build the in-app tenant cost meter (option A): per organization and collection totals, per-tenant budget caps, shared Google costs split by usage, monthly check against the real bills." This is PR 4 of five, to the coordinator's design contract (`cost-meter-design-2026-10-20.md`, "Reconciliation"). Claude agent, worktree agent-a9b87872d00c15b9f, branch `claude/tenant-cost-meter-reconciliation` from origin/main 6c0d7c46; PR #393. Offline operator tooling: nothing deployed; no gcloud, bq, curl or firebase command run; no production read; no model call.
+- Built: `application/cost_reconciliation.py` (pure: `reconcile`, `render_markdown`); `scripts/ops/reconcile_costs.py` (`--month`, `--meter-rows`, `--huggingface`, `--google`, `--out-json`, `--out-md`, `--print-queries`, thresholds, `--project`, `--billing-zone`, `--free-credit-type`, `--bq-table`); `docs/execution/golive/COST_RECONCILIATION.md`, linked from COST_METER.md. `--print-queries` only prints the read-only `executeGraphqlRead` query and curl loop, two BigQuery export queries and a browser-console line that reads the usage page's `data-props`.
+- Decisions, for the reviewer: a gap is `metered - billed`; Hugging Face compares the bill with settled plus held and also reports the settled-only gap; Google compares cost plus free-allowance credits with the meter after its free allowance, and keeps any other credit apart; bill amounts are summed as integer nano-USD and rounded to micro-USD once per figure, so tables add up; the route-to-model map is built from `model_gateway.HUGGINGFACE_ROUTES` at run time (a test checks every route the published profile names is in it); instance-based Cloud Run SKUs are read as `specimen-sam` because the standard export does not name the service; the US Pacific day rule is written out in the module (since 2007), so the billing-day check needs no tz database, and a test compares it with `zoneinfo` hour by hour for 2026 where that exists; the billing-day check compares hourly export rows cut under UTC, America/Los_Angeles and UTC-5 with the console's daily lines, and names no winner when the second best is within USD 0.01 (the console rounds to cents).
+- Validation actually run (uncommitted local runs on 2026-10-20, no hosted CI yet; `LANG`/`LC_ALL=en_US.UTF-8`, `TZ=America/Chicago`, `uv run --frozen`): `tests/test_cost_reconciliation.py` 55 passed and `scripts/ops/test_reconcile_costs.py` 15 passed; with all of `scripts/ops`, `tests/test_cost_ledger.py` and the source-tree-walking gates (test_deployment_policy, test_extraction_kind_guard, test_gadm_not_used, test_bounded_effect, test_hierarchy_approval, test_blob_publication, the three input-materialization tests): 1,079 passed, 1 skipped. Seven one-line edits to the module (the limit comparison, the tie window, held counting, the free credit type set, the Pacific rule, the request-count comparison, the Jobs mapping) each made at least one test fail; the tie-window edit survived the first test file until a near-tie case was added. `pre-commit run --files` on the changed files passed. The whole Python suite was not run: no shared code changed. The fixtures' figures are worked by hand in the tests; no real bill was read.
+- Reusable learnings: (1) A Google console day-boundary check needs both hourly export rows and the console's daily lines, and cannot separate zones unless a boundary hour carries more than the console's cent rounding. (2) A worktree-isolated agent's Bash refuses heredocs and chained commands as too complex; write the edit script to the scratchpad with the Write tool and run it with `bash` or `python3`. (3) macOS `sed` has no `\b`; use `perl -pi -e`. (4) Open the report with what was billed versus metered and keep structural gaps (intake jobs, unmetered services, shared free tier) on every run, so a reader does not mistake them for meter bugs.
+- Not confirmed: the raw field names of the usage page's `inferenceUsageMetrics` beyond `histogram`, `numRequests`, `usedNanoUsd` (the raw reader is tested only against layouts made up from those names, and fails with the keys it saw); whether the page counts refused requests; the credit type the Cloud Run free tier carries in the export (`FREE_TIER` assumed, widen with `--free-credit-type`); the billing-day zone (Pacific per Google's docs, UTC-5 in a hand reading of 2026-10-17) and the zone of `invoice.month`; that `executeGraphqlRead` accepts `limit: 1000` and the `costEntries` arguments used; how the allocation change (PR 3, not merged when this was written) writes its rows, which `meter_family` assumes; no billing export dataset existed on 2026-10-20, so the Google side needs the owner's one-time step in COST_RECONCILIATION.md; hosted CI; the first real run on October. Follow-ups: the owner enables the export; the coordinator runs the October report; `meter_family` and its tests change if PR 3 writes rows differently.
+- Review round 1 (independent G51 review at head 2054ff5d, REQUEST_CHANGES), fixed in the same branch: (B1) an input that is missing, a directory, empty, not UTF-8 or not JSON now stops the command with `error: <file>: <why>` and exit status 2 and writes nothing (before: exit 1, a traceback, or a silent run on zero rows); a missing output folder is refused before any input is read. (N1) Credits of any type other than `FREE_TIER` are shown by type in the headline, the family table and the unmetered table, with a net charge, and the `free_allowance` explanation names them (with the `--free-credit-type` re-run) before it blames the shared free tier; unmetered lines now carry `after_allowance_micros` (cost plus free tier) and `net_micros` (after every credit). (N2) The printed curl loop pages until a short page (cap 100) and the command warns, on standard error and in the report's `warnings`, when a meter-rows file holds a multiple of 1,000 rows. (N3) A test pins the nano-to-micro rounding direction; N4: a test pins that allocation days are read in the billing zone. Local runs after the fixes (same settings as above): `tests/test_cost_reconciliation.py` 61 passed and `scripts/ops/test_reconcile_costs.py` 38 passed (the printed loop is run under bash and zsh with a stand-in curl and gcloud); with all of `scripts/ops`, `tests/test_cost_ledger.py`, `tests/test_cost_api.py` and `tests/test_cost_caps_api.py`: 351 passed, 1 skipped; nine one-line edits (the micro rounding, the allocation day, the other-credit hint, the headline net note, the free-credit test, the empty-file and OSError handling, the page-size warning, the loop's stop condition) each made a test fail. Reusable learning: a documented exit status needs a test per way an input can fail (missing path, empty file, not JSON), not one `code != 0`.
+- Review round 2 (coordinator, Claude Opus 5.5): a `--huggingface` file holding only JSON `null` was read as "no bill supplied" and exited 0; `load_json` now refuses a bare null (exit 2, `error: <file>: the file holds only null`) for every input flag. An output path that is a folder is refused before any input is read, and a write that fails exits 2 and removes anything already written, so no half report is left. `scripts/ops/test_reconcile_costs.py` pins both; the four new cases fail on 08f0c4d4.
+
+### 2026-10-20 - COST-METER-5 Admin Costs view in the Flutter app (client half of the tenant cost meter)
+
+- Task: PR 5 of the in-app tenant cost meter, built for the coordinator session. The brief says the owner approved the meter on 2026-10-20; I did not see the owner's words. Branch `claude/tenant-cost-meter-costs-view`, worktree `agent-ac54db3ea91d13a73`, base `origin/main` `ba007d4c`, five commits (`0147a6cb`, `ec17b46f`, `4f7834bf`, `a9540916`, `f0c25004`) plus this entry. The server routes (`GET .../costs`, `POST .../costs/refresh`, `PUT .../costs/caps`) are other agents' PRs and were not available: the client is built to the contract in the brief and tested against a fake that answers in that wire shape and is read through the real parser.
+- Built: `lib/src/money.dart` (dollars and cents, the typed-limit reader), `lib/src/costs.dart` (typed models, `CostRepository`, `costsIn`, `costOrganizationOf`, the month list), a separate cost block in `vocabulary.dart`, the three calls in `ApiSpecimenRepository`, `lib/src/screens/costs/` (screen, limit form, access helpers), the `/costs` route, the account-menu entry, 07 section 15 and 13 section 4.7.
+- Decision, the route: `/costs` is a global location like `/help`, opened with `push`. A path under `/c/` would have had to answer to three collection rules that do not fit an organization-wide page: `frame()` in `app_router.dart` reads any path that is not intake as the queue destination, `restoreWebHistory` recognises only queue and intake tails, and the redirect sends a path that names no collection home unless `isGlobalLocation` names it. The entry also needs no new navigation destination. `push` keeps a record and its drafts mounted underneath.
+- Decision, who may ask: an `admin` role on any collection in the open collection's organization (`costOrganizationOf`). `ApiSpecimenRepository._deny` keeps the first 401 or 403 as the failure of the whole session, so the entry is hidden (not disabled) for everyone else, the route draws a sentence for them, and `costs_route_test.dart` counts requests: none for reviewer, manager, no role, an admin of another organization, or a link to `/costs`. `api_costs_test.dart` shows the reason: after one 403 the second read never leaves the client.
+- Reusable learnings:
+  - (a) A page opened with go_router `push` leaves `routerDelegate.currentConfiguration.uri` and `routeInformationProvider.value.uri` at the base route; the page on top is `currentConfiguration.last.matchedLocation` (probed in a widget test, not in a browser). Help behaves the same.
+  - (b) `GlassSurface` asserts inside a sliver list item (`SliverMultiBoxAdaptorWidget` ancestor), and `UiDataTile` defaults to a glass surface, so tiles go in `SliverToBoxAdapter` or take `UiDataTileSurface.paper`.
+  - (c) `UiButton` with a `busyLabel` reserves a leading slot even at rest; without a `leading` glyph the primary button shows an empty gap (seen in the first limit-form goldens). The form gives both buttons a glyph.
+  - (d) A test class field named `override` breaks every `@override` below it ("Not a constant expression").
+  - (e) `test/wall_time_test.dart` reads comments: naming the wall-time override in a doc comment failed it once (`costs.dart`, found by the first full run).
+  - (f) `check_ui_strings.py` bans the bare string `ok` anywhere in `lib/`, including a wire value. The meter status is parsed by enum name (`CostAllocation.fromWire`), so the wire word is written once, as an identifier.
+  - (g) `tester.enterText` applies the field's input formatters, so a test cannot type a letter into an amount field that filters them out.
+  - (h) Under the environment band (`_EnvironmentFrame`) a `UiTopBar` below it adds the status bar inset a second time; the route removes the top padding below the band. `costs_route_test.dart` ("takes the status bar's inset once") fails without that line (difference 0.0 against 47.0) and passes with it.
+  - (i) A fake that answers in microtasks never lets a loading state reach a frame; a test that wants the skeleton or its announcement has to hold the read (`FakeCostRepository.hold`).
+- Round 2 (2026-10-20, after the coordinator merged main into this branch and the final contract landed; contract in `docs/execution/golive/COST_METER.md` on `origin/claude/tenant-cost-meter-allocation` and `TENANT_BUDGETS.md` on main):
+  - `meter.allocation_status` is `never_run`, `behind` or `ok`; the first contract's `monitoring_unavailable` is gone (`CostAllocation` is now `ok`, `behind`, `neverRun`, and the old word reads as a status this client has not met). `behind` shows a band "Shared Google costs are behind." whose detail says more than two complete billing days and the billing day counted through (Pacific time); `never_run` shows "No shared Google costs have been counted."
+  - New top-level `caps_status` (`CostCapsStatus`). `unavailable` means every limit in the report is null, which is not "no limit": the limit section says "The monthly limits could not be read." with a retry, each collection row says "Limit could not be read" and is not a control, and no "Set limit" or "Change limit" is offered over a limit that cannot be seen. A report without the word, or with one this client has not met, is read as having its limits (written in `CostReport.capsUnavailable`).
+  - Every sum can be negative. `formatMicros` writes a credit in words (`$0.30 credit`, "Credit under one cent"), never with a minus sign or a dash; the 02 guidelines and the design docs say nothing about negative amounts, so this follows rule 1 of the 02 checklist. `CostAmounts.hasCosts` counts any nonzero sum, a credit sorts after every cost among stages and models, and nothing in the screen assumes a non-negative figure (there is no bar or share). A stage or model from `google_cloud` is named "Google Cloud".
+  - Explanatory words are cut back to the contract: the total is after Google's free allowance, "Before free allowance" is the list figure, and the held tile is "Held, cost unknown", the part held for calls whose cost is unknown (it said "held in full" before, which was my wording).
+  - A limit of zero is accepted and sent as zero (`TENANT_BUDGETS.md`: whole micros from 0 to 2^53 - 1; null removes). Round 1 refused zero and capped a limit at USD 1,000,000, which were my own rules, not the contract's; the bound is now the service's 2^53 - 1 micros.
+- Round 2 learnings:
+  - (j) The Write and Edit tools turn `\u2013` into the raw character, so a test that asserts the absence of dashes builds them with `String.fromCharCode`.
+  - (k) A one-line `UiBanner` message truncates at 390 dp after about 40 characters (seen in the first `costs_behind` golden, where the whole sentence was in the message); the message is short and the explanation is the `detail`.
+  - (l) `dart format` reflows a long `find.text(...)` call, so a scripted edit that quotes a test's text can miss; edit from the file's current text.
+- Round 3 (the independent review of `e0c0c4af`, REQUEST_CHANGES): a collection the server no longer lists comes back with `name: null` (`COST_METER.md`), and round 1 and 2 drew its UUID as the row's title and offered "Set limit" for an id the caps route refuses. It now reads "Collection no longer listed" with its costs, never the id, and is not a control (`CostCollection.name` is nullable, `listed`; 6 new screen tests fail on the old behavior and pass on the fix, and a model test group). Also: `started: false` says only "No update was started. Try again later." (no promise of an update); the meter band's "Update figures" is a `UiButton` under the band, busy while the request is out (so is the Figures section's), and its outcome is written under the control that was pressed and announced once; `AppShell.costsLabel` now is `CostsScreenCopy.title`. Left as the review found them: N3 (a third "access not verified" branch in the route), N5 to N7.
+- Not done, on purpose: the screen does not say what a limit does (the contract does not); no change to `SpecimenRepository`; no allow-list, exemption or backlog entry was added or changed; no existing golden was regenerated.
+- Validation actually run, from `apps/specimen_digitization` with `LANG`, `LC_ALL` = `en_US.UTF-8` and `TZ=America/Chicago`:
+  - Full app suite, first run at the implementation head before the last edits: 3,357 passed, 7 skipped, 1 failed (the `wall_time_test.dart` finding in learning (e)). Full suite again at the head these commits were cut from: 3,360 passed, 7 skipped, 0 failed. No pre-existing golden failed by a pixel ratio in either run, so no macOS drift is claimed or excluded here.
+  - `flutter analyze --fatal-infos`: no issues. `dart format --output=none --set-exit-if-changed lib test packages/specimen_ui/lib packages/specimen_ui/test`: 596 files, 0 changed.
+  - New tests: `test/costs/` (money, model, API with `MockClient`), `test/screens/costs_screen_test.dart`, `test/app/costs_route_test.dart`, plus the cost sweeps in the composition gates (no_nested_scrollables, surface_depth, chrome_budget, one_job at four windows), the fit matrix (12 cells) and the dark windows.
+  - From the repository root: `uv run python scripts/ci/check_ui_strings.py --baseline scripts/ci/ui_strings_baseline.txt`: 0 violations. `uv run pytest -q scripts/ci/test_smoke_web_routes.py`: 77 passed, after `/costs` was added to its expected route set (its route parser reads the new `GoRoute` path from `AppRoutes.costs`). `scripts/ci/smoke_web_routes.py` itself needs a web build and was not run.
+  - Round 2: full app suite at the round 2 head: 3,459 passed, 7 skipped, 0 failed; `flutter analyze --fatal-infos` no issues; `dart format --output=none --set-exit-if-changed` over the same four trees: 616 files, 0 changed; `check_ui_strings.py`: 0 violations, nothing baselined; `uv run pytest -q scripts/ci/test_smoke_web_routes.py`: 77 passed again. The cost goldens were regenerated on this Mac with the same command and `--name costs` (only the `costs*` files; 40 PNGs now: `costs_meter` became `costs_behind`, and `costs_never_run`, `costs_credit` and `costs_limits` are new), viewed by eye for the behind, never-run, credit and unreadable-limits cases.
+  - Round 3: full app suite: 3,475 passed, 7 skipped, 0 failed; `flutter analyze --fatal-infos` no issues; format check over the four trees: 616 files, 0 changed; `check_ui_strings.py`: 0 violations, nothing baselined. Only the six goldens that showed a change were regenerated (`costs_behind` and `costs_never_run` for the button under the band, `costs_collections` for the unlisted row), by `--update-goldens ... --name costs`, and viewed by eye.
+  - 34 new golden PNGs under `test/golden/images/` (`costs*`) in round 1, generated with `flutter test --update-goldens test/golden/size_classes_golden_test.dart --name costs` and viewed by eye for the compact, large, limit-form, meter and empty cases.
+- Not confirmed: anything against a real server; the wording of the stage and status names on screen (owner has not seen it); the browser address after `push` in a real browser; that a label-finding residual below zero is best called a credit (the contract calls a negative free-allowance row a credit and a negative residual only "below the per-request charges"); any run on a device, an emulator or the hosted Linux job (goldens compare on macOS only).
+- PR: #385 (https://github.com/anurag-duddu/specimen-digitization-app/pull/385), opened as a draft because the server routes ship first.
+
+### 2026-10-20 - COST-METER-CAPS-FOLLOWUPS replayed holds, provably unsent holds and the caps API's statuses (follow-up to #387)
+
+- Task: the coordinator's brief for a follow-up to #387 (merged, released at 87ee9072), fixing findings 1 to 4 of its second independent review (comment 6300178019, APPROVE at 3156f2ae). Branch `claude/tenant-budget-followups` from origin/main 96c12b92, PR #394. No cap is set in production; with none set nothing here reads or writes more than before.
+- Built:
+  - (1) `tenant_budget.admits(repository, principal, specimen, step, cost, clock)` shares `reserve_step`'s pre-check (`_next_attempt`): an attempt that already holds is checked by its own entry, in the month and ledger collection the run recorded, so its hold is not counted twice.
+  - (2) `Workflow._give_up_field_research` marks the attempt's record `"released": true` (`release_unsent`) and, after the save returns that mark, settles each recorded entry at zero (`settle_released`). A give-up does not advance the attempt number and field research can be queued again on the same run, so the attempt's next hold uses a new entry, `[specimen, run, step, attempt, generation]`, and `TenantLedger.reserve`/`admits` refuse an entry already settled. First pass and extraction unsent give-ups are not wired.
+  - (3) GET `/costs` reads the caps as the PUT route's membership, the first active admin row (`cap_administrator_collections`).
+  - (4) PUT `/costs/caps`: an answer the store cannot trust is 503 `tenant_budget_unavailable`; a `Conflict` from the read or the write re-reads the memberships: 403 when no active admin row in that collection remains, else 503 `tenant_budget_unavailable`.
+  - Also: `_record` reads a whole double in `micros` and `generation` as an int. A run under `active_graph.GRAPH_THRESHOLD` comes back from protobuf Struct with doubles, and on 96c12b92 `recorded_micros` returned None for it, so #387's replay of the recorded amount did not hold for an inline run.
+- Validation actually run (uncommitted local runs on 2026-10-20, `LANG`/`LC_ALL=en_US.UTF-8`, `TZ=America/Chicago`, an untracked empty `pytest.ini` in the worktree for the full suite): the whole Python suite (`scripts/ci/python_shards.py local --count 4`, this change on 96c12b92 before this entry): 19,198 passed, 50 skipped, 0 failed in about 26 minutes at load 4 to 7. The targeted set (`tests/test_tenant_budget.py`, `tests/test_tenant_budget_api.py`, `tests/test_cost_caps_api.py`, `tests/test_cost_api.py`, `tests/field_research/`, `tests/test_lane_allowance.py`, `tests/test_lane_costs.py`, `tests/research_harness/test_program_budget.py`, `tests/test_lost_reading.py`): 3,268 passed. Red checks with origin/main's `src` first on `PYTHONPATH` (import path printed): the end-to-end field-research test ends `('processing_blocked', 'tenant_budget_exhausted', None)`; the settled-entry test replays `(None, True)`; the Struct test gets `recorded_micros` None; the API tests answer 403, 409, 422 and 409; the GET test reads as the inactive row; the new `admits` tests fail on the new `step` parameter, and a scratch script calling 96c12b92's own `admits` got `tenant_budget_exhausted` for both cases. Undoing only the release line, or only the generation bump, fails the end-to-end test (and, for the generation, the queued-again unit test). `pre-commit run --files` on the changed files passed. Not run: Flutter (no Dart changed) and the emulator stage.
+- Reusable learnings:
+  - (a) Settling an attempt-keyed ledger entry to zero is safe only if that key can never be reserved again for a call. Where the attempt number does not advance (a give-up), give the next hold a new key and refuse a settled entry, and apply the zero only after the run save that records it, so the run's compare-and-set excludes a sender at the same revision.
+  - (b) Anything a reader keeps in `run.dependencies` comes back as doubles for a run stored inline. Test it through `json_format.ParseDict(payload, Struct())` and `SqlConnectRepository._snapshot`, as `tests/test_stage_cost_reservations.py` does; the SQLite store and the active graph blob keep ints and hide it.
+  - (c) Every GraphQL error from SQL Connect reaches the API as the same `Conflict`. Re-reading the caller's memberships after a refusal tells an authorization refusal from the store's own without matching messages.
+  - (d) In a worktree under the main checkout, pytest takes the main checkout's `pyproject.toml` as its config unless the worktree has a `pytest.ini` (the COST-METER-CAPS entry's learning (b)); `pytest --co` prints `rootdir` and `configfile`.
+- Not confirmed: Data Connect's error codes for `@check` failures (the route does not use them); the emulator stage (no connector or schema changed); the race argument in (2), which is from the code with no concurrent test; hosted CI. Follow-ups, not done: `lane_allowance.admits` also reads `total + cost` without the attempt's own entry, reachable only when the program ledger already holds the attempt (a worker that stopped between its reservations and its intent save); `cost_administrator` (#386) has no `active` filter, while production's `memberships` returns active rows only.
+### 2026-10-20 — PR #391 pre-merge review and protected checks
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, worktree `5da8/specimen-digitization-app`.
+  PR https://github.com/anurag-duddu/specimen-digitization-app/pull/391 fixes
+  the missing Auth SHA-registration permission, intake worker argument parsing,
+  and the positive classifier fixture's cold-process budget/diagnostics.
+- Independent G51 review approved exact head
+  `ed35c5dfbbbf3e4b25a0fc47386b93f9b809e5ab`, tree
+  `92ffbd07ea12e6f4a9c079616bc7f26c453592e2`, with no unresolved P1/P2.
+  Its only difference from canonically qualified `7a8e4e97` is the preceding
+  34-line journal append. The reviewer independently checked the full local
+  results and both classifier controls in the actual shard report.
+- All 23 applicable hosted checks passed on that exact head: CI/CD
+  `39481416819` and Runtime candidate CI `39481416507`. Hosting deployment is
+  correctly skipped for a PR; it is not a failed or skipped required gate.
+  Immediately before merge, GitHub reported `CLEAN`/`MERGEABLE`, the same head
+  and base `cd8be7d2a193f5efdf5b7bab4c403f892499c965`, and protected main.
+- This entry is appended locally before merge as required. It is not an
+  untested code change or part of the immutable PR head. Preserve this journal
+  when reconciling/pruning; no branch/worktree removal is authorized to lose it.
+  Protected main release, new private intake definitions/IAM, Bulk enablement
+  and real provider/Submit/final Queue acceptance remain pending.
+
+### 2026-10-20 — PR #391 production repair and intake activation
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-auth-permission`, worktree `5da8/specimen-digitization-app`.
+  PR #391 merged normally through GitHub at 19:41:01Z as
+  `6c0d7c46a01c1d3976df3edc83db6acc10f68d42`, after the exact-head review and
+  required checks recorded above. No protection or gate was bypassed.
+- Protected Data run `39485539045` succeeded. The older global bootstrap
+  artifact differed from existing rows; the release warned and preserved them.
+  The dedicated Gmail bootstrap remained valid. Hosting run `39485539010`
+  attempt 1 succeeded, and its exact public SHA/run/attempt smoke passed.
+- The first Runtime run `39485538987` created and read back both intake jobs
+  before failing their missing API invoker policy. API smoke and scientific
+  definitions passed; no processing step ran. The first-hand-authorized
+  `owner_setup.sh --intake-only` dry run and apply then made exactly two changes:
+  scoped invoker grants for the existing API identity on `specimen-intake`
+  and `specimen-intake-e2e`. Zero failures; no broader grants or job executions.
+  Logs are `/private/tmp/specimen-intake-jobs-grants-{dry-run,apply}-6c0d7c46.log`.
+- Runtime retry `39486722035`, manually dispatched on the same main SHA with
+  `process_queued=false`, succeeded. API smoke, both private intake definitions
+  and policies, and SAM/scientific worker definitions all passed; optional
+  processing was skipped. The public `/version` reported the same production
+  SHA. This completes the compatible backend release, not provider acceptance.
+- The read-only authoritative baseline at `2026-10-20T20:02:26.855811Z`
+  found zero specimens and zero Queue records in Intake E2E, exhausted every
+  page, and matched all runtime definitions to the reviewed scope/source.
+  Private evidence: `authoritative-baseline-20261020T200226855811Z.private.json`
+  under `/private/tmp/specimen-intake-acceptance-01a149fc`.
+- After reconfirming current main and all three successful release planes,
+  enabled the existing `BULK_INTAKE_ENABLED=true` repository variable and
+  reran all jobs of the same main push Hosting run `39485539010`. Attempt 2
+  activation is in progress; manual Hosting dispatch was not used.
+  Google sign-in remains enabled. Actual connector consent/import, saved draft,
+  explicit Submit, final scientific Queue, native and institutional acceptance
+  remain Not confirmed at this entry.
+
+### 2026-10-20 — Independent runtime readback and merged-branch cleanup
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8` and active
+  `codex/fix-intake-auth-permission` worktree. Independent review confirmed
+  merged `6c0d7c46` has the exact reviewed PR #391 tree; Data and Runtime
+  succeeded and optional processing was skipped. Both dedicated job scopes,
+  actor/routes pins and continuations match. The shared jobs derive exclusions
+  from the same pinned route map. A fresh read at 20:08:05Z found 109 retained
+  shared executions, zero unfinished and zero running.
+- Before cleanup, GitHub confirmed PR #368 and #391 merged at `33506488`
+  and `6c0d7c46`. Both remote source refs were already absent. Local
+  `codex/compare-photo-intake-ux` points to PR #368's exact head
+  `7d935a72a2930bfa90035854d0db0c78e0ddfba9`, is not checked out in any
+  worktree, and is an ancestor of current HEAD with no unique commits.
+  Only that fully merged local ref is eligible for deletion now. Keep the
+  active repair worktree and its append-only journal; unrelated worktrees and
+  branches are outside this cleanup.
+- Hosting attempt 2 remains in progress. No provider import or submission has
+  been performed, and scientific final Queue acceptance remains Not confirmed.
+- Cleanup result: `git branch -d codex/compare-photo-intake-ux` succeeded,
+  deleting only the verified merged local ref. `git diff --check` passed.
+  The active repair branch/worktree and all journal appends remain intact.
+
+### 2026-10-20 — Bulk client deployed; Gmail connector test awaits Mac unlock
+
+- Same task `01a149fc-3649-75c1-a121-11c19de12cb8`, active branch/worktree
+  `codex/fix-intake-auth-permission` / `5da8/specimen-digitization-app`.
+  Hosting `39485539010` attempt 2 succeeded: every required test/build,
+  complete Python accounting, tested-artifact deployment and public smoke.
+  An independent exact SHA/run/attempt smoke also passed for `6c0d7c46`.
+  Repository flags are `BULK_INTAKE_ENABLED=true` and
+  `SPECIMEN_GOOGLE_SIGN_IN_ENABLED=true`.
+- During that build, unrelated operations PR #389 merged as
+  `b1c6133fa8da0c18e7cc6ac6e25a26069a7ab3e8`, descending from `6c0d7c46`.
+  Its delta concerns registry cleanup dry run and image retention tags, not
+  application intake source. At this observation the API already reported
+  production `b1c6133f`, Data `39490200535` succeeded, Runtime `39490200505`
+  was in progress, and Hosting `39490200390` was queued/running. Do not confuse
+  the successful intake activation with completion of this newer three-plane
+  release. Its updated deployment-contract clauses were read; no older runtime
+  was dispatched or rollback performed.
+- Before activation, Chrome visibly showed the real Gmail identity with
+  authorized Intake E2E access. Safe local screenshot:
+  `bulk-intake-research/implementation/gmail-live-collection-access-20261020.png`
+  in this task's visualization directory. The fresh original allowance read
+  at 20:07:55Z retained revision 2003, USD 2.558528 remaining, the original
+  actor and zero test-collection duplicates. No allowance or ledger changed.
+- On returning to Chrome after deployment, computer control reported the Mac
+  locked and automatic unlock unsuccessful. Requested manual unlock through
+  the user-input tool. Did not bypass the lock or attempt another access path.
+  Actual released-screen refresh, provider consent/import, saved two-photo
+  review, pre-Submit staging proof, explicit Submit and scientific final Queue
+  remain Not confirmed. No provider consent or content submission occurred in
+  this segment. Resume normal Chrome only after unlock; any provider access
+  grant must follow the browser tool's applicable confirmation policy.
+- Follow-up independent read: current-main `b1c6133f` Runtime `39490200505`
+  succeeded, including API, intake/scientific definitions and registry cleanup
+  checks; processing was skipped. The reviewer confirmed application source,
+  schemas, intake constructors, actor/routes pins, G30, and Hosting/Data
+  workflows are unchanged from `6c0d7c46`, with no compatibility blocker.
+  The newer Hosting run still awaited completion. The Mac-unlock request
+  remains pending; no normal-user connector acceptance is implied.
+
+### 2026-10-20 — Gmail live connector reached consent; current release reconciled
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, active local branch/worktree
+  `codex/fix-intake-auth-permission` / `5da8/specimen-digitization-app`.
+  User confirmed the Mac was open. Chrome retained the real Gmail session;
+  refreshed the deployed app, opened Intake E2E's bulk workspace, selected
+  Google Drive, clicked Connect and chose the approved personal Gmail account.
+  The actual Google consent screen requests only `drive.file`: access to the
+  selected files, including Google's edit/create/delete permission. Application
+  behavior remains import-only. No consent button has been clicked by the agent.
+- Asked one batched action-time confirmation for the Google selected-file grant
+  and the configured Dropbox read-only account/metadata/content/sharing grant,
+  as required by the browser tool. Displayed a consent screenshot with its
+  address bar removed. Awaiting that response. Real provider transfer, Saved
+  review, Submit and scientific final Queue acceptance remain Not confirmed.
+- Current main, public web marker and API all match
+  `b895f96591f9858b7955ffa6c29cedd0d1559a7d`. Hosting `39510860277` attempt 1,
+  Data `39510860270` and Runtime `39510860219` all succeeded. Exact public
+  Hosting smoke passed. Independent review confirmed intake/provider/source,
+  scope/dispatch/profile/actor contracts and the private metadata observers
+  remain compatible. No deployment-contract delta since the already-read
+  `b1c6133f` version. No cloud change or processing was started here.
+- Fresh authoritative baseline at 23:21:29Z: zero specimens/Queue, exhausted
+  pagination, all runtime definitions match the current deployed source.
+  Private artifact: `authoritative-baseline-20261020T232129705194Z.private.json`.
+  Independent shared-execution read at 23:21:25Z: 110 retained, none active.
+- Correction to earlier reporting-only cost-stack assumptions: current main
+  adds tenant budget admission before unchanged G30 reservation. Independent
+  read of the actual deployed `TenantBudgetCapsV1` connector as the original
+  pinned worker at 23:25:23Z returned zero organization/applicable caps;
+  therefore no monthly tenant ledger applies to Intake E2E. Exact original G30
+  remains revision 2003 with USD 2.558528 available. Two USD 1 worst-case run
+  envelopes fit with USD 0.558528 spare at that read; nothing was reserved or
+  changed. Repeat both tenant-cap and G30 reads immediately before Submit.
+  This is not a complete G9 infrastructure bill. Never invoke reserve, cap
+  writes, allowance resets or costs refresh for a read-only preflight.
+- Public-launch finding from the genuine consent screen: Google displays the
+  backend hostname and no app privacy/terms links. Branding/legal publication
+  remains a separate unresolved readiness item; the owner-account consent
+  test must not be represented as general public or institutional approval.
+
+### 2026-10-20 — Live Google callback exposes cross-origin Dart equality failure
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, repair branch
+  `codex/fix-intake-oauth-handoff`, worktree `5da8/specimen-digitization-app`,
+  based on main `5f3378d9`. Preserved the root's uncommitted append-only log
+  through a named stash and applied it onto current main; the stash is retained
+  until reconciliation. No other work was reset.
+- The owner reported the Google popup saying to return to the app. Native
+  Chrome observation confirmed that page and the original intake dialog still
+  showing “Connecting to Google Drive… Loading source”. The original app's
+  console reports a SecurityError reading Dart's dispatch-record property from
+  a cross-origin Window at the compiled message-listener callback. Source has
+  one matching Dart equality check: `event.source != popup`. The exception
+  happens before the returned authorization response can complete the future.
+  COOP warnings about `window.closed` are also present but are not sufficient
+  evidence of the callback failure's cause.
+- This supersedes the prior Google-consent waiting state: the owner advanced
+  the Google flow to our callback. Provider token exchange, Picker selection,
+  imported bytes, Submit, and final Queue remain Not confirmed. Do not reuse
+  an old callback code or manufacture a completion request to bypass this bug.
+- Redacted console evidence is stored privately as
+  `google-oauth-handoff-console-20261020.private.txt`. No authorization codes,
+  state values, session proofs or credentials are in the repository log.
+  Repair retains exact callback origin, initiating window identity and state
+  checks; a real browser regression must exercise the compiled Dart listener.
+- Independent review matched the live compiled callback's generic Dart
+  equality call to this source guard. Public web/API and all three protected
+  workflows were reconciled to `5f3378d9` (Hosting `39520741945` attempt 1,
+  Data `39520742079`, Runtime `39520742125`). These are the pre-repair releases.
+- Focused repair replaces only popup comparison with JavaScript strict
+  identity. The new browser contract imports the production adapter, compiles
+  it at release `-O4`, and runs fresh headless Chrome with two loopback origins.
+  Fixed source passes all eight checks: cross-origin WindowProxy, wrong
+  origin/source/state/null-source rejection, valid completion, Picker popup
+  preservation and default popup closure. An exact old-source private overlay
+  fails with the same dispatch-record SecurityError observed live. Logs:
+  `/private/tmp/specimen-intake-oauth-browser-fixed-o4.log` and
+  `/private/tmp/specimen-intake-oauth-browser-old-o4.log`.
+- Failed approach: `-O2` compiled the old guard into direct JavaScript identity
+  and passed, so it did not reproduce the production defect. Pinned Flutter's
+  web compiler uses `-O4` for release; the committed gate uses that setting.
+  No artificial equality probe is retained. The browser contract is wired
+  into canonical local verification and the existing protected Flutter job.
+  It is synthetic regression evidence, not live provider acceptance.
+- Canonical `scripts/ci/verify.sh` exited 0 on the complete repair: repository
+  safety checks, Python 19,198 passed / 50 skipped (19,248 accounted for exactly
+  once), design system 1,309 passed, application 3,475 passed / 7 skipped,
+  both Flutter analyses, release `-O4` Chrome contract, Dart formatting, release
+  web build and loopback route/security-header smoke passed. Log:
+  `/private/tmp/specimen-intake-oauth-verify-20261020.log`. Independent review
+  found no unresolved P1/P2 or security issue in the seven-file candidate.
+  Hosted checks, merge, deployed markers and real reconnection are subsequent
+  outcomes; none is implied by this local verification.
+- Before merge: PR #395 at `c8993a94ee84b0f4a85acc3e7e7bab476cfc24ac`,
+  tree `970a3617fb8e5e1029dcd91424d01f0307c36fa2`, received independent G51
+  exact-head approval with no unresolved P1/P2/security findings. All 23
+  hosted checks passed, including the Chrome contract, SQL/Storage engines,
+  full Python accounting and both native builds; Hosting deploy was correctly
+  skipped for the pull request. GitHub reports the exact head clean and
+  mergeable. CI run `39540769774`; candidate run `39540769796`. Release and
+  real reconnection remain Not confirmed at this pre-merge checkpoint.
+- PR #395 merged as `2130ccd0a8aea6aa1906760919238c6c9dd96424`; its tree
+  matches the independently reviewed candidate. Protected push workflows
+  started: Hosting `39541934354`, Data `39541934399`, Runtime `39541934381`,
+  candidate `39541934379`. No workstation deployment or provider operation was
+  used to bypass the release. Local checkout fast-forwarded without losing
+  the append-only journal. Production-marker verification is still pending.
+- Release correction, 2026-10-21 UTC: Hosting `39541934354` attempt 1 is now
+  successful; `scripts/ci/smoke_hosting.sh` independently passed against the
+  public production origin and exact merge SHA `2130ccd0a8aea6aa1906760919238c6c9dd96424`.
+  Data `39541934399` and Runtime `39541934381` succeeded. The final Python
+  aggregate waited for a GitHub runner, then completed without bypassing gates.
+  A fresh real Google connection remains Not confirmed: native Chrome window
+  control timed out twice after deployment. The owner was asked to foreground
+  the signed-in app and leave the Mac unlocked. No photos were submitted.
+- Scoped prune preflight for task `01a149fc-3649-75c1-a121-11c19de12cb8`:
+  `codex/fix-intake-auth-permission` at `6c0d7c46` is an ancestor of the merged
+  release and is not checked out in any registered worktree. Preserved stash
+  `85a42fb6ac6aaa20e9bd83a6d43dcb09305d31f9` changes only this journal; all 154
+  nonblank added lines are present in the merged log. These two redundant
+  references can be removed without losing work. The active 5da8 worktree,
+  its current branch and post-merge journal remain; unrelated branches,
+  worktrees and stashes are outside this cleanup.
+- Scoped prune completed: removed the merged inactive local
+  `codex/fix-intake-auth-permission` branch and exactly stash
+  `85a42fb6ac6aaa20e9bd83a6d43dcb09305d31f9`. Initial safe `git branch -d`
+  refused because its stale remote-tracking upstream preceded the merge;
+  GitHub PR #391 was freshly confirmed merged and `git ls-remote` confirmed
+  that remote branch absent. Unsetting only that obsolete upstream allowed
+  normal `-d` deletion; no force-delete or broad prune was used.
+- Independent release review at `2026-10-21T04:26:37Z` confirmed protected main,
+  all three successful release workflows, public Hosting marker and API
+  `/version` at `2130ccd0a8aea6aa1906760919238c6c9dd96424`, with no source
+  drift from the reviewed tree. Anonymous readback of production JavaScript
+  confirmed the strict popup identity comparison is deployed. Runtime smoke,
+  intake/science job definitions and registry checks passed; queued-work
+  execution was skipped. Release is confirmed. Real Gmail reconnection,
+  imported bytes, Submit and final Queue acceptance remain Not confirmed.
+
+## 2026-10-21 — Real Gmail Drive acceptance; Dropbox PKCE configuration follow-up
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/fix-intake-oauth-handoff`, worktree `5da8`, deployed PR #395 merge
+  `2130ccd0a8aea6aa1906760919238c6c9dd96424`. Owner reopened Chrome. The old
+  app tab still showed the previous dispatch-record error. After a hard reload,
+  a fresh same-scope Google connection successfully advanced from the callback
+  into the real Google Picker. App UI confirmed Connected with the approved
+  personal Gmail account. This supersedes the earlier reconnect-Not-confirmed
+  checkpoint; it does not establish institutional or native acceptance.
+- Selected exactly the approved Drive original `subject_105526321.jpeg`,
+  returned it to the app, selected its row and added one photo. Real staging
+  completed, thumbnail displayed and draft said Saved. Reloading restored
+  the same photo and Saved state. No Submit was clicked. Private screenshots:
+  `/private/tmp/specimen-intake-acceptance-01a149fc/google-connected-live-20261021.png`
+  and `drive-draft-restored-live-20261021.png` in the same directory.
+- Independent owner-scoped metadata at `2026-10-21T04:45:43Z` confirmed one
+  draft and one ready Google Drive item, exact approved original checksum and
+  size, staged asset and thumbnail, non-sensitive included manifest item,
+  zero submissions/results and zero owner specimens. Inventory was stable
+  across a repeat read. Whole-collection authoritative observation at
+  `04:41:55Z` confirmed zero specimens and zero SQL Queue rows, with all pages
+  exhausted and runtime definitions matching the deployed SHA.
+- Observer-only gotcha: SQL Connect UUID columns arrived in noncanonical
+  textual form. The private helper initially failed closed on literal scope
+  comparison. Independent review established UUID semantic equality and exact
+  Gmail owner identity. Only typed SQL UUID columns were canonicalized with
+  UUID; fixed scope, literal user identity and JSON payload IDs remained strict.
+  Twenty local equivalence/malformed/wrong-scope/owner/payload cases passed.
+  No repository source, production permission or data was changed to resolve it.
+- Actual Dropbox connection failed before consent with `pkce_disallowed`:
+  its app registration disallows PKCE while our authorization request uses
+  S256. Closing that provider window produced the actionable app message
+  "Connection window closed. Connect again when ready." The Drive draft
+  remained intact. Screenshot `dropbox-pkce-rejected-20261021.png` is private.
+- Two independent security reviews rejected simply removing Dropbox PKCE:
+  client-secret authentication and our pending state/session proof do not bind
+  a stolen provider code to its originating transaction (RFC 9700 section 4.5).
+  Preserve S256, server-side exchange and existing read-only scopes. Dropbox's
+  named public-client control also enables legacy implicit capability; it is
+  not a PKCE-only switch. Confirmation for that concrete registration change
+  is pending under the browser tool's action-time access-setting requirement.
+  No provider setting was changed, no Dropbox grant completed, and no source
+  changes were made. Full mixed-source Submit and final Queue remain Not confirmed.
+- Fresh independent whole-collection observation at `04:46:44Z` again found
+  zero specimens/Queue records, matching runtime definitions, one completed
+  dedicated transfer execution and zero dedicated scientific executions.
+  Existing focused credential/source tests at exact deployed `2130ccd0`
+  passed: `PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m pytest -q -p no:cacheprovider
+  tests/test_intake_credentials.py tests/test_intake_sources.py` — 84 passed,
+  one warning, 9.76 seconds. These cover proof/owner/replay/account binding;
+  provider code-substitution rejection is not proven by their permissive token
+  fixture. No fresh source changes or release were needed for Google acceptance.
+- Dropbox follow-up: automatic approval review rejected an initial attempt to
+  enable the coupled setting because the earlier general instruction was not
+  explicit approval of its expanded grant capabilities. No workaround was used.
+  The owner then explicitly answered "Approve this exact Dropbox setting"
+  to the named `Allow public clients (Implicit Grant & PKCE)` question.
+  Applied Allow in the existing Specimen Photo Intake app console and reloaded
+  the page to verify persistence. Scopes, redirects and application source
+  were unchanged; no secret was displayed or rotated.
+- A fresh real Dropbox attempt now passes the former `pkce_disallowed` error
+  and reaches normal consent. The provider shows view-only file/folder content,
+  sharing/collaborator metadata and basic account information. Explicit consent
+  for that account grant is pending under the browser's private-data-access
+  rule. Private proof is `dropbox-pkce-enabled-20261021.private.png`; the
+  OAuth-address-redacted consent view is `dropbox-consent-20261021.png` in the
+  existing private acceptance directory. No Dropbox photo or Submit yet.
+
+## 2026-10-21 — Live intake continuation and expired-connection recovery
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, worktree `5da8`; continued
+  from deployed PR #395, `2130ccd0a8aea6aa1906760919238c6c9dd96424`.
+  Fresh origin/main remains that commit. Created
+  `codex/fix-intake-connection-timeout` without discarding the append-only log.
+- Restored the existing owner CLI session for the same project-admin account
+  through Google's normal login flow. No identity, IAM, permission scope or
+  application credential changed. The one-time login code was kept out of
+  tool output and repository files; its temporary handoff file was deleted.
+- Independent scoped observations at 16:27–16:28 UTC confirmed the same one
+  ready Google Drive draft item, exact approved checksum/size, private staged
+  asset and thumbnail, included and non-sensitive. Zero Dropbox items,
+  submissions, results, specimens and authoritative Queue rows; all pages
+  exhausted. Web/API and four runtime definitions match `2130ccd0`.
+  No scientific execution is active; the single transfer execution completed.
+  Evidence remains private under `/private/tmp/specimen-intake-acceptance-01a149fc/`.
+- An abandoned Dropbox consent wait exceeded the ten-minute authorization
+  timeout. The raw TimeoutException reached the generic draft-save error,
+  misleadingly saying that the change could not be saved. Connections review
+  traced this to the auth adapter and controller fallback; bounded redacted
+  request telemetry does not establish completed consent or token exchange.
+  A fresh attempt again reaches the provider's read-only consent screen.
+  The account-access grant is still pending; the earlier approval applied
+  specifically to the PKCE registration setting. No Submit occurred.
+- Narrow recovery repair is assigned to the connections agent; independent
+  QA and read-only budget preflight run separately. Expired connection wording,
+  real Dropbox import, submission and final specimen Queue acceptance remain
+  Not confirmed at this checkpoint. Administrative SQL observations alone do
+  not establish normal-user Queue visibility.
+- Recovery repair now maps only the expired callback wait to
+  `ApiFailure(connection_expired)` with a Connect recovery action in both
+  adapters. Ten-minute timeout, PKCE, callback origin/window/state checks and
+  cancellation cleanup are unchanged. Focused native/connector tests: 27
+  passed. Actual release `dart2js -O4` and isolated two-origin Chrome contract:
+  14 checks passed, including the real deadline under virtual time, unsuccessful
+  keepOpen cleanup, listener removal, stale-state rejection and fresh retry.
+  Both expiry regressions failed on the old adapters before the repair.
+  Focused analysis, formatting, Node syntax and diff checks passed. Independent
+  source review found no P1/P2; canonical verification and exact-head review
+  are subsequent gates, not implied by these focused results.
+- Private budget observer corrections preserve actual production permissions:
+  canonicalize typed SQL UUID fields, and permit the original worker's existing
+  `canViewSensitive=false` for its explicitly non-sensitive owned ledger.
+  Fixed actor/scope, literal JSON identities, row/payload sensitivity and target
+  bootstrap permissions remain checked. No IAM or ledger was changed. At
+  16:40:36 UTC, original G30 revision 2029 retained 25,616,598 of 28,000,000
+  micros, with 2,383,402 remaining; two conservative one-dollar run envelopes
+  fit that snapshot. Existing unsettled and held entries remain counted.
+  There were no applicable tenant monthly caps and no target specimens/Queue
+  rows. This is a read-only snapshot, not a reservation or infrastructure bill.
+- Recreated-controller Submit recovery has a source-supported server identity
+  (`ident(draft_id, 'submission')`), not a separately persisted client Submit
+  key. Current tests exercise same-controller lost acknowledgements and local
+  outbox recovery; a real recreated-browser/SQL/worker composite fault remains
+  Not confirmed. Do not relabel those tests as live acceptance. The completed
+  owner CLI sign-in transcript was removed after successful session restoration.
+- Subsequent authoritative reads at 16:41 and 16:53 UTC confirmed both approved
+  originals saved in the same private draft: one Google Drive item and one
+  Dropbox item, both ready with exact checksums/sizes, staged originals and
+  thumbnails, non-sensitive and included. The Dropbox transfer completed
+  during a browser-control gap; this supersedes the earlier import-pending
+  observation without attributing the consent or selection action to this
+  agent. Zero submissions/results/specimens/Queue rows remained, all pages
+  exhausted. No scientific executions occurred; two transfer executions
+  completed. Fresh 16:43:20 budget read retained the same revision 2029 and
+  2,383,402 micros remaining. Refresh volatile observations before Submit.
+- Automatic approval review rejected binding the entire Chrome app because
+  unrelated signed-in tabs/private content could be exposed. A safer lookup
+  restricted to the exact production intake URL found no tab in the connected
+  extension profile. Asked the owner to foreground the existing Work-profile
+  intake window and confirm continuing that specific window. No alternative
+  credential/token extraction or API Submit was used to bypass the UI test.
+  Both imports are confirmed by server evidence; normal-user batch review,
+  Submit, final scientific disposition and Queue visibility remain Not confirmed.
+- Canonical `scripts/ci/verify.sh` exited 0 for this frozen repair: Python
+  19,198 passed / 50 skipped, all 19,248 accounted for exactly once; design
+  system 1,309 passed; application 3,476 passed / 7 skipped; both fatal-info
+  analyses; 14 actual release-compiled Chrome checks; formatting; release web
+  build and loopback route/security-header smoke. Log:
+  `/private/tmp/specimen-intake-timeout-verify-20261021.log`.
+  No production deployment or real submission is implied by those checks.
+- Provider readiness review remains separate from owner-account imports:
+  Google selected-photo access uses non-sensitive `drive.file`; public folder
+  access uses restricted `drive.readonly` and needs the applicable verification
+  and server-data security assessment. Dropbox development-user access is not
+  production approval. Public operator/contact facts, accurate retention and
+  processing disclosures, verified public pages and provider review ownership
+  remain unresolved in the private preparation documents. Institutional,
+  physical camera/memory and manual accessibility acceptance remain Not confirmed.
+
+### 2026-10-21 — intake expiry recovery PR #396 review and release continuation
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, worktree
+  `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`, branch
+  `codex/fix-intake-connection-timeout`. PR #396 head
+  `bbd2bc5f1582a280391ceaaaa26e49bbaf13548b`, tree
+  `cbcd3bb1e6b1253cb179e5b972fca38171b0d42c` received independent G51 approval
+  from integration QA after review of the complete six-file delta and canonical
+  verification log; no P1/P2 or security findings. Approval covers source and
+  local verification, not hosted checks, deployment or live acceptance.
+- Main remained `2130ccd0a8aea6aa1906760919238c6c9dd96424`; fresh GitHub reads
+  confirmed branch protection, strict required checks and administrator
+  enforcement, no force-push/deletion, and no unresolved PR review threads.
+  The reviewed source remains frozen while hosted checks finish. This append-only
+  continuation is intentionally uncommitted and does not change the PR head.
+- Scoped device inventory initially timed out inside the sandbox; the read-only
+  CoreDevice query succeeded with normal host access and found a paired physical
+  iPhone available. No device app was installed/launched and no real capture,
+  memory or accessibility acceptance was established by this inventory.
+- The connected Chrome extension still has no tab for the production app.
+  Whole-Chrome binding remains blocked by the earlier automatic approval review;
+  the specific Work-profile intake-window handoff is pending. No UI/API Submit
+  or alternate profile/token path was used to bypass it.
+- PR #396 hosted run 39640719403 completed all three protected checks on
+  `bbd2bc5f1582a280391ceaaaa26e49bbaf13548b`: Repository checks, Python tests
+  (including the engine tier and full twelve-shard accounting), and Flutter
+  checks/web build. Native Android/iOS builds and runtime candidate run
+  39640718818 also passed. Fresh PR read reports `CLEAN`, with the exact
+  independently reviewed head unchanged. Root proceeds through the normal
+  protected merge; no bypass or workstation deployment is involved.
+- PR #396 merged at 2026-10-21 17:19:59 UTC as
+  `7aa78001bd5ce6f1a12a858cd5cbafcf91276ee9`. Protected production workflows
+  are being observed separately; merge alone is not deployment acceptance.
+- Scoped cleanup reconciliation: local `codex/fix-intake-oauth-handoff` points
+  to PR #395's merged `2130ccd0a8aea6aa1906760919238c6c9dd96424`, has no
+  associated worktree or commits/diff outside current `origin/main`, and its
+  remote branch is already absent. Fresh GitHub read confirms PR #395 merged.
+  Removing only this redundant local branch with `git branch -d`; current
+  worktree, current journal and all unrelated branches/worktrees/stashes remain.
+- First safe branch deletion refused because its stale tracking ref still
+  points to the pre-merge PR head. The local branch points to the verified
+  merge commit and is an ancestor of current HEAD/main; no work is unmerged.
+  Remove only this branch's obsolete upstream association, then use the same
+  non-forced `git branch -d` check. No force deletion is used.
+- Protected release completed for `7aa78001bd5ce6f1a12a858cd5cbafcf91276ee9`:
+  Hosting/CI https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39642853398,
+  Data https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39642853525,
+  Runtime https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39642853569.
+  All three succeeded on attempt 1, as did runtime candidate 39642853411.
+  Independent release reviewer verified the public Hosting marker against
+  SHA/run/attempt, reran the Hosting smoke successfully, and read API `/version`
+  with that same SHA and production mode. Main remains protected. Runtime API
+  smoke, intake/scientific definitions and registry verification passed;
+  queued processing was skipped. No workstation deployment occurred.
+- At 17:41:46 UTC the reviewed runtime-only observer confirmed all four job
+  definitions on the new source with original actor/routes/scope/continuation
+  checks intact. Shared scientific job: 111 retained executions, zero unfinished
+  or running; dedicated scientific job: zero executions; dedicated transfer
+  job: two completed, zero running. These read-only observations start no work.
+- Fresh bound-owner intake observation at 17:39:03 UTC found one draft, two
+  ready items (one real Drive and one real Dropbox), zero submissions/results
+  and zero owner specimens, with all pages exhausted and repeated inventory
+  unchanged. Root compared both saved item hashes/sizes against exactly the two
+  approved originals and confirmed non-sensitive status, staged bytes,
+  thumbnails and no item errors. Private evidence:
+  `/private/tmp/specimen-intake-acceptance-01a149fc/intake-metadata-progress-20261021T173903208047Z.private.json`.
+- Outcome is deployed connector-recovery repair plus genuine two-source staging,
+  not full live E2E acceptance. The specific Chrome Work-profile task-window
+  handoff remains pending after the automatic approval rejection described
+  above. Submit, intake progress during submission, final scientific disposition
+  and normal Gmail Queue visibility are Not confirmed. Refresh the approved
+  manifest, runtime baseline and existing G30 budget immediately before a single
+  normal-user Submit of the two photos; do not substitute a token/API submission.
+  Real native camera/memory/accessibility, managed-account policy and public
+  provider readiness remain separately Not confirmed. No paid retry was added.
+- Current local branch fast-forwarded to the verified merge while preserving
+  this append-only post-commit journal. Keep this worktree and current branch
+  for the unfinished acceptance; only the reconciled old local OAuth-handoff
+  branch was pruned. No unrelated worktree, branch or stash was deleted.
+
+### 2026-10-21 — real Gmail two-provider submission and processing observation
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, same `5da8` worktree and
+  `codex/fix-intake-connection-timeout`, deployed PR #396 merge
+  `7aa78001bd5ce6f1a12a858cd5cbafcf91276ee9`. The owner's repeated foreground
+  confirmation allowed the targeted native Chrome access this turn. The
+  foreground window was an old OAuth callback popup; closing that stale popup
+  exposed the existing Work-profile app tab. No token extraction or API Submit
+  substituted for the normal-user interaction.
+- Reloading the released app as the Gmail user restored the two-photo Saved
+  draft in Intake E2E. Fresh checks immediately before Submit confirmed exactly
+  the approved Drive/Dropbox originals, staged bytes and thumbnails, included
+  and non-sensitive, no submissions/results/specimens. The existing G30 ledger
+  at revision 2029 retained 2,383,402 micro-USD; all actor, scope and job routing
+  pins matched, with no active scientific executions. No cap, hold, identity or
+  allowance was changed. Evidence files are in the task-private
+  `/private/tmp/specimen-intake-acceptance-01a149fc/` directory.
+- Clicked normal UI `Submit 2 photos` exactly once. The released progress view
+  showed `2 of 2 finished · 2 sent to pipeline`; persisted metadata at 17:51:58
+  UTC independently confirmed one submission, two sent results and two distinct
+  specimens. `View specimens` opened both records under the Gmail user. Saved
+  screenshots `gmail-restored-two-photo-review.png` and
+  `gmail-intake-two-sent-to-pipeline.png` in that private directory; the latter
+  was shown to the owner. These prove real intake and handoff, not final
+  scientific processing.
+- The dedicated transfer execution completed successfully. The dedicated
+  scientific execution ran on the same reviewed source and scoped route;
+  shared scientific history stayed at 111, with no active shared execution,
+  and shared intake history stayed empty. Read-only runtime evidence includes
+  `runtime-submit-observation-20261021T175608419536Z.private.json`.
+- An early observer refused the revision-one records because canonical
+  `activeRunId` is initially null while the Queue view derives it from the
+  snapshot. Independent source review confirmed this creation-time semantic
+  difference (`CreateSpecimenV3` vs first `SaveSpecimenV3`), not a proven changing
+  record. The helper and final acceptance gates were left unchanged. A later
+  observation at 17:58:29 passed exact record/Queue/revision/run/checksum/scope
+  checks for both actual submission-result specimen IDs. Both still lacked a
+  final disposition; final scientific and Queue acceptance remain Not confirmed.
+- Correction to the first verbal diagnosis: `external_outcome_unknown` with
+  an active lease is also the durable intent saved before an ordinary external
+  call. Its presence alone does not prove failure. Source review found the UI
+  labels any blocker as blocked, including that normal in-flight intent. Real
+  telemetry separately found one Muse reading for each specimen ended with
+  child outcome `failed`; the workflow persisted `reader_worker_failed` and
+  scheduled its existing bounded retry. No manual retry/resume/reprocess,
+  additional photo, budget change or paid experiment was started. Continue
+  tracing these failures and fixing misleading UI states before final acceptance.
+- At 18:08:56 UTC the unchanged final observer passed every exact-record,
+  current-snapshot Queue, original-checksum, accepted-ID, revision/run-link,
+  non-sensitive/non-synthetic, collection and runtime-definition check. Both
+  specimens finalized: one `cleared`, one `needs_human_review`. Evidence:
+  `authoritative-final-20261021T180856148234Z.private.json`. Independent runtime
+  observation at 18:09:22 confirmed successful completion of the one post-Submit
+  dedicated scientific execution and the one dedicated transfer execution,
+  both on 7aa78001 with original actor/scope/routing intact; no unfinished jobs
+  and no new shared executions. Existing bounded recovery handled the failed
+  readings without an operator replay.
+- Fresh normal-user browser reload retained the Gmail login and displayed
+  `subject_105526324` alone in Needs a human; selecting Cleared displayed
+  `subject_105526321` alone and opened its finalized record. Both private
+  screenshot proofs are `gmail-final-needs-human-queue.png` and
+  `gmail-final-cleared-queue.png`. This establishes real Drive and Dropbox
+  import, saved review, single Submit, intake progress, scientific completion,
+  and final Queue access for these two original photos in the dedicated
+  collection. It does not establish institutional/public-provider approval,
+  native camera, large-batch memory, or manual accessibility acceptance.
+- Follow-up source branch `codex/fix-processing-status` starts at 7aa78001.
+  The UI repair classifies coherent active external intents and scheduled
+  retries as waiting while preserving real blocks, expired/missing leases,
+  contradictory states, clearance gates and server-owned actions. It covers
+  the owning `plan`/field-research alias and the due-retry intent alias.
+  Four Dart files; 157 focused widget/unit tests passed, focused analysis and
+  formatting clean. Evidence: `/private/tmp/specimen-processing-wait-focused-20261021.log`.
+- A separate deterministic offline reproduction through the installed
+  HF/Pydantic AI/HTTPX stack proved HTTPX timeout classes escape the builtin
+  TimeoutError handler. Adding `httpx.TimeoutException` to the existing catch
+  retains the same unknown-spend code, reservation behavior, budgets, limits
+  and retry policy. Fifteen regressions cover all transport timeout types,
+  timeouts after an answered request, safe child metadata and unrelated-error
+  controls; the original source failed nine with six controls passing.
+  The focused recovery/usage/refusal/cap suite passed 101 tests. This improves
+  classification; the exact live child exception remains Not confirmed, and
+  no provider outage or changed timeout requirement is inferred from timing.
+  Logs: `/private/tmp/specimen-model-timeout-before.log` and
+  `/private/tmp/specimen-model-timeout-focused.log`. Canonical verification and
+  independent exact-head review follow before the protected release.
+- Independent review found the scheduled-retry presentation omitted the exact
+  existing `provider_deadline_outcome_unknown` code. Added that known cause and
+  both future/due regressions with unchanged action and clearance assertions;
+  the focused UI suite now passes 161 tests, analysis/format/whitespace clean.
+  Evidence: `/private/tmp/specimen-processing-wait-provider-deadline-focused-20261021.log`.
+  No backend retry policy changed. The first canonical attempt ended in
+  pre-commit's shellcheck wrapper reporting files modified after root staged
+  during the hook; there were no shell-file or unstaged changes. Do not stage
+  concurrently with pre-commit. Re-run the complete verification on the corrected,
+  fully staged frozen tree; the first attempt is not a pass.
+- Exact runtime attribution reconciled the first and final execution IDs and
+  matched both accepted activeRunIds to the sanitized warnings from that same
+  scientific execution. Transfer ran 17:51:00–17:52:32 UTC; science ran
+  17:51:38–18:08:25 UTC. Evidence:
+  `runtime-final-attribution-20261021T181036545804Z.private.json`.
+- Canonical verification completed successfully on the frozen staged candidate:
+  `scripts/ci/verify.sh` exited 0. All six Python shards exited 0 with 19,213
+  passed and 50 skipped, reconciled across the complete collection. Design
+  system tests: 1,309 passed; application tests: 3,507 passed and seven skipped.
+  Both Flutter analyses passed, 620 Dart files required no formatting changes,
+  the compiled OAuth browser contract passed, and the release web build and
+  local route/header smoke passed. Evidence:
+  `/private/tmp/specimen-processing-status-verify-final-20261021.log`.
+  This is local candidate verification, not a new production deployment.
+- The owner requested ten specimen photos in personal Google Drive and ten in
+  personal Dropbox for an imminent demo, explicitly leaving app import and
+  Submit to the owner. Created private `Specimen Demo - 10 photos - 2026-10-21`
+  folders under the Gmail-linked accounts and uploaded ten genuine unchanged
+  originals to each. Native browser UI verified `10 uploads complete` in Drive
+  and `Upload successful! 10 of 10 uploads complete` in Dropbox, with all ten
+  filenames present. No app import, Submit, or processing was performed for
+  this request. Targeted local searches found only ten unique originals;
+  disclosed that the same ten are in both providers and that subjects
+  105526321 and 105526324 were already used in the live E2E. Do not claim twenty
+  unique photos or fresh duplicate-free processing. Original bytes, full JPEG
+  decoding and hash uniqueness were checked; provider screenshots and the
+  exact folder URLs are in `/private/tmp/specimen-demo-20261021/` alongside
+  `manifest.json` and `provider-upload-completion.json`.
+
+
+### 2026-10-21 — Integration QA owns the protected reliability-fix release
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8` / `/root/integration_qa`;
+  branch `codex/fix-processing-status`, worktree `5da8/specimen-digitization-app`.
+  Root handed off the clean candidate `402a558fea6e6480fed9ef227ba590c5cfebb14a`
+  (tree `d499bcf8d901848cc3b80e9815557cd11035b47a`) after successful canonical
+  verification; no additional technical changes or broad test rerun were made.
+- Refreshed remote main remains `7aa78001bd5ce6f1a12a858cd5cbafcf91276ee9`.
+  Main protection is active with strict required checks and administrator
+  enforcement; all four active production environments accept only `main`.
+  Required pre-push hooks passed. Opened
+  [PR #397](https://github.com/anurag-duddu/specimen-digitization-app/pull/397)
+  and attached it to the task. Independent reviewer `/root/release_review`
+  approved that exact head/tree under G51 with no unresolved P1/P2 or security
+  findings. Container candidate run `39654705298` passed; main CI run
+  `39654705366` is still running, so merge and production release are pending.
+- Preserve the owner demo folders and originals. This release handoff performs
+  no browser action, app import, Submit, worker execution or paid model call.
+  Runtime push releases define jobs only; processing requires the separate
+  manual `process_queued` input, which is not selected here.
+
+- PR #397 hosted run `39654705366` blocked release before merge: shard 8 failed
+  `test_storage_wrapper_requires_all_denial_ids_and_cleanup[storage.anonymous.overwrite]`
+  because Storage startup stopped at `auxiliary port alias`, before the intended
+  denial-inventory check. The dependent Python aggregate failed; every other
+  hosted job, including the real SQL/Storage engine tier and both native builds,
+  passed. No rerun, merge or production change was substituted for diagnosis.
+  Sanitized traceback: `/private/tmp/specimen-processing-status-pr397-python-shard8.clean.log`.
+- The real reporter released each ephemeral auxiliary listener before choosing
+  the next, so the OS could return an excluded primary or a previous auxiliary.
+  The original trace contains no chosen port numbers, so which collision occurred
+  there is Not confirmed. Deterministic real-wrapper regressions reproduce both
+  branches with real loopback TCP listeners; both fail the original reporter at
+  the same alias guard. Evidence:
+  `/private/tmp/specimen-storage-auxiliary-before-20261021.log`.
+- Repaired `scripts/data/engine-contract-reporter.mjs` to hold all candidates
+  concurrently, including excluded primary candidates, until two distinct
+  auxiliary ports are selected. At most five candidates are needed; every
+  listener is closed in finally, including partial allocation failure. Alias,
+  readiness, exact denial-inventory and owned-process/port cleanup guards are
+  retained. Added primary-first, auxiliary-first and injected-listen-failure
+  controls to `scripts/ci/test_engine_harness.py`; the complete controlled
+  fixture module passes 239 tests. Node syntax and diff whitespace also pass.
+  Evidence: `/private/tmp/specimen-storage-auxiliary-focused-20261021.log`.
+  These fixtures use controlled stand-ins, not real SQL/Storage engines.
+- Independent `/root/release_review` source review found no P1/P2 or security
+  issue in the repair. Corrected-tree full local verification, a new exact-head
+  G51 review, documented hosted normal/cold engine qualification and ordinary
+  exact-head PR checks are required next. No selector, tool pin, assertion,
+  timeout or protected workflow policy was weakened. Production remains at the
+  previous release, and the owner demo originals/folders remain untouched.
+
+- Corrected-tree `scripts/ci/verify.sh` exited 0. All six Python shards passed
+  with 19,217 passed and 49 skipped across the complete verified inventory.
+  Design system: 1,309 passed; app: 3,507 passed and seven skipped; both analyses
+  passed, all 14 actual compiled OAuth browser checks passed, 620 Dart files
+  needed no changes, and the release web build and route/header smoke passed.
+  Evidence: `/private/tmp/specimen-processing-status-allocator-verify-20261021.log`.
+  The worktree stayed frozen throughout; a sandbox-denied staging attempt before
+  the run changed no index entry, and no staging occurred while it ran. Only this
+  append-only result was added afterwards. This is local qualification, not a
+  deployed or real-engine acceptance claim; hosted normal/cold qualification and
+  exact-head PR checks remain pending before any merge.
+
+- New candidate `c88a0945fab5f4f70d090039ac436eb14df0254b`, tree
+  `f567356157f9c901108654b441ceda1dc9c71a97`, passed commit and pre-push
+  hooks. Independent `/root/release_review` approved this exact nine-path head
+  under G51 with no unresolved P1/P2 or security findings; original source/test
+  blobs are unchanged and the allocator repair matches the reviewed hashes.
+- Exact-head PR CI `39660725819` and runtime candidate CI `39660726005`
+  passed, including both native compile checks. Required hosted engine
+  requalification also passed: normal-cache CI-only run `39660797437`, attempt 1,
+  and cold-cache run `39660832696`, attempt 1. Both complete engine artifacts
+  match this SHA/run/attempt, have unchanged contexts, nine Python calls,
+  32 connector/Storage events, every stage passed, zero survivors and all ports
+  free. Normal restored its verified three-file cache; cold started from a fresh
+  empty private directory and bypassed restoration. Recorded engine time was
+  142.29 s and 147.27 s respectively; both engine jobs ended well before their
+  slowest Python shard. Private readback summaries:
+  `/private/tmp/specimen-pr397-normal-engine-summary.json` and
+  `/private/tmp/specimen-pr397-cold-engine-summary.json`.
+- Before merge, refreshed main remains `7aa78001bd5ce6f1a12a858cd5cbafcf91276ee9`;
+  strict required checks, administrator enforcement, conversation resolution,
+  disabled force pushes and all four main-only environments remain intact.
+  PR #397 reports the approved exact head, is mergeable, and has zero unresolved
+  threads. Merge will use the ordinary protected path without an admin override.
+  This append is deliberately uncommitted so the tested head remains unchanged;
+  preserve it with the post-release outcome rather than pruning this worktree.
+
+- PR #397 merged normally at `6873e6d70f05edfc7d692917507a728db1665cb5`
+  after all exact-head required/native checks and the documented normal/cold
+  engine qualifications passed. Data release `39665920532` and runtime release
+  `39665920527` succeeded for the merge; runtime API smoke and private job
+  definitions passed, while processing was not selected. Hosting run
+  `39665920552` failed one Python test and skipped deployment, so the integrated
+  release is NOT complete. No manual deployment or blind rerun was used.
+- Hosted failure:
+  `tests/test_stage_cost_reservations.py::test_exact_map_reserves_each_stage_before_effect_and_survives_restart`.
+  The direct local fixture Qwen reader ran, then Workflow's post-effect elapsed
+  guard correctly rejected its result at 1.1 seconds against the fixture's
+  one-second policy, retaining the reservation and preventing Muse. This is not
+  evidence of a subprocess deadline or a live provider failure. Safe traceback:
+  `/private/tmp/specimen-processing-status-main-shard1.clean.log`.
+  Monetary/restart fixtures should control their elapsed clock; independent
+  deadline tests must continue to prove the held outcome and no replay. The
+  fix-forward branch preserves this uncommitted append and all owner demo data.
+
+
+### 2026-10-21 — Stage-cost fixture clock fix-forward
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, agent
+  `/root/integration_qa`, branch `codex/fix-stage-cost-fixture-clock`, shared
+  worktree `/Users/anuragduddu/.codex/worktrees/5da8/specimen-digitization-app`,
+  starts from merged main `6873e6d70f05edfc7d692917507a728db1665cb5`.
+  Root delegated completion of the protected reliability release; no app,
+  browser, provider-folder or paid-processing action is part of this repair.
+- Only the cost-map fixture's existing `Workflow.monotonic` seam is controlled;
+  its persisted one-second policy and exact reservation/restart assertions
+  remain unchanged. A new same-fixture control advances the clock inside the
+  actual local reader and requires the deadline reason, retained 76-unit
+  reservation, discarded observation/no disposition and no second call across
+  SQLite reopen. Production source, timers, budget and actor are unchanged.
+- Focused six-module accounting/evidence/recovery/logging/SAM/effect suite:
+  84 passed, one skipped. Initial sandbox run had 81 passes and three local
+  HTTP bind PermissionErrors; the authorized loopback run passed those tests.
+  Evidence: `/private/tmp/specimen-stage-cost-clock-focused-loopback-20261021.log`.
+  Independent `/root/release_review` reviewed the stable test delta with no
+  P1/P2 or security findings. Full canonical and exact-head review remain
+  required before pushing; Hosting remains at the prior web release.
+
+- Frozen fix-forward tree passed `scripts/ci/verify.sh` (exit 0): 19,218 Python
+  passes and 49 skips across the complete verified inventory; design system
+  1,309 passes; app 3,507 passes/seven skips; both analyses; 14 actual compiled
+  OAuth browser checks; 620 Dart files/zero formatting changes; release web
+  build and route/security smoke. Authentic log:
+  `/private/tmp/specimen-stage-cost-clock-verify-20261021.log`.
+  No source, fixture, staging or journal edit occurred during the run. Only this
+  actual-result append follows qualification. Exact-head G51, required hosted
+  checks and all three protected main releases remain pending.
+
+- Fix-forward [PR #398](https://github.com/anurag-duddu/specimen-digitization-app/pull/398)
+  uses exact head `b05647f4b02770f4e389d9819a7723d6d50f646a`, tree
+  `01a1095a80d57e1d28f6ebd1028b04b10cb85f8b`, based on merged main
+  `6873e6d70f05edfc7d692917507a728db1665cb5`. Commit and pre-push hooks
+  passed. Independent `/root/release_review` approved that exact two-path head
+  under G51 with no unresolved P1/P2 or security findings.
+- Exact-head [CI `39671122436`](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39671122436)
+  and [runtime candidate `39671122454`](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39671122454)
+  succeeded, including all twelve Python shards, the three required contexts,
+  real SQL/Storage contracts and both native compile checks. These native
+  checks do not establish actual-device or distributed-build acceptance.
+- Fresh pre-merge reads confirm main is still `6873e6d7`, strict required
+  contexts and administrator enforcement remain enabled, conversation resolution
+  is required, force pushes remain disabled, and all four active production
+  environments accept only `main`. PR #398 is clean/mergeable with zero
+  unresolved review threads. Merge uses the ordinary protected path without
+  an admin override. This append is intentionally uncommitted; preserve it
+  with the actual post-release outcome and do not prune this worktree.
+
+- PR #398 merged normally at `c9040b83b4ccd5f4507bd53f44ab4694e81cd021`
+  (`2026-10-21T21:12:02Z`). Its tree
+  `01a1095a80d57e1d28f6ebd1028b04b10cb85f8b` exactly matches the
+  independently approved/tested candidate; parents are previous main `6873e6d7`
+  and approved head `b05647f4`. The post-merge Hosting failure from PR #397 was
+  fixed through this ordinary PR, with no bypass or substituted hand deployment.
+- All protected main releases succeeded for that exact merge:
+  [Hosting `39676823376`](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39676823376),
+  [Data `39676823233`](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39676823233),
+  [Runtime `39676823286`](https://github.com/anurag-duddu/specimen-digitization-app/actions/runs/39676823286).
+  Main runtime candidate `39676823270` also passed. Runtime API smoke, both
+  private definition/policy steps and registry cleanup passed; queued-work
+  processing and its restore step were skipped. This release ran no model job.
+- Independent public smoke commands exited 0. Hosting's actual marker identifies
+  `c9040b83b4ccd5f4507bd53f44ab4694e81cd021`, run `39676823376`,
+  attempt `1`, built at `2026-10-21T21:23:54Z`; the strict four-argument smoke
+  qualified that exact identity. API `/version` reports the same full source SHA
+  in production mode (HTTP 200), `/health/ready` answers ready (200), and an
+  unauthenticated `/v1/session` answers exactly 401. Authentic private evidence:
+  `/private/tmp/specimen-pr398-public-hosting-smoke.log`,
+  `/private/tmp/specimen-pr398-public-api-smoke.log`,
+  `/private/tmp/specimen-pr398-public-deployment.json`,
+  `/private/tmp/specimen-pr398-public-api-version.json`, and
+  `/private/tmp/specimen-pr398-runtime-c904-steps.json`.
+- Protected reliability release is complete. No app/browser operation, import,
+  Submit, paid model call, actor/budget configuration change or provider-folder
+  edit occurred in this follow-through. Root's ten-original demo folders and
+  prior accepted two-photo Gmail E2E were preserved; actual native-device
+  acceptance is not established by these compile checks. This post-release
+  append remains intentionally uncommitted on `codex/fix-stage-cost-fixture-clock`;
+  retain this worktree and append, with no cleanup that could lose them.
+- Closeout recorded at `2026-10-21T21:26:46.709192+00:00`.
+
+### 2026-10-21 — connector workspace and bulk-intake polish, research through verification
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, root coordinator, branch
+  `codex/intake-connector-polish`, worktree `5da8`, baseline
+  `c9040b83b4ccd5f4507bd53f44ab4694e81cd021`. The preceding PR398 closeout
+  append was preserved. Current PR, merged commit and polish deployment:
+  Not confirmed at this pre-verification entry.
+- The owner requested Mobbin research, one relevant direction and a written plan
+  before building, with autonomous reversible implementation and release.
+  Inspected Air, Claude, ChatGPT, Attio, Canva, Dropbox and Frame.io flows;
+  selected Air's bulk asset import workspace as the primary reference. The
+  before-code plan and exact observed references are in
+  `docs/execution/INTAKE_CONNECTOR_POLISH_20261021.md`. Live baseline audit used
+  the Gmail account in the designated E2E collection, without importing or
+  submitting anything. Provider demo folders and specimen Queue were preserved.
+- Implementation: shared `UiImportWorkspace`, source rail/compact selector,
+  lazy file lists, named folders, scoped filtering/selection, automatic selection
+  of eligible Picker results, retained same-batch/account context, per-link
+  recovery, progress and accessible preview retry. Controller admission uses
+  bounded requests and original persisted identities; hidden/terminal progress
+  views stop periodic reads. Existing intake workers now continue Picker checking
+  independently of the UI. Explicit capability flags retain legacy API behavior
+  during independent Hosting/runtime rollout. No new OAuth scopes, IAM grants,
+  schema, provider configuration or workflow changes.
+- Focused evidence: backend five-module suite 140 passed (two existing warnings),
+  `/private/tmp/specimen-intake-polish-backend-preflight-focused.log`; root
+  workspace/connector/source-recovery suite 54 passed,
+  `/private/tmp/intake-polish-workspace-final-fixed.log`; controller six-suite
+  rerun 63 passed, `/private/tmp/specimen-intake-polish-controller-final-rerun.log`;
+  shared workspace/dialog contracts 15 passed earlier in
+  `/private/tmp/intake-workspace-component.log`. Fifteen new full-shell renders
+  cover phone/tablet/desktop, light/dark, 200% text, connection, storage-empty and
+  link partial-failure states. Root inspected rendered states. These are
+  controlled transport/rendering results, not provider/device acceptance.
+- Independent reviewer `/root/polish_independent_review` inspected the entire
+  diff, owning permission/persistence sources and desktop/200% phone PNGs.
+  Findings fixed before verification: preflight membership latency could consume
+  the admission budget forever; removed photos reused removed manifest IDs;
+  historical source receipts accumulated indefinitely. Strongest-permission
+  batching, post-preflight admission budgeting, confirmed-removed re-admission,
+  and authoritative terminal-receipt pruning address those cases. Additional
+  checks cover lost replies, remaining drafts, stale progress snapshots,
+  serialized draft switches and legacy endpoint compatibility. Exact-head G51
+  verdict and full canonical verification remain Not confirmed at this entry.
+- Reusable constraints: preserve exact source/version/body identities across
+  uncertain replies, but never reuse a confirmed removed admission; source UI
+  memory must include the local/server batch identity, not a shared null/new key.
+  Link-list edits must prune removed URLs and changed-account rows while retaining
+  unchanged successes and explicit deselections. A provider retry must not reset
+  active leases or persisted backoff. Keep source permission preflight outside a
+  cooperative progress budget, while still authorizing every owner/object.
+- Failed approaches: `SliverFillRemaining` queried intrinsic sizes through a
+  LayoutBuilder-backed button; replaced it with a bounded minimum-height adapter.
+  A broad desktop test input finder also matched shell search; scoped it to the
+  link field. Pending remote photos initially showed Retry preview; distinguished
+  not-yet-saved content from real fetch failure, retaining the existing goldens.
+  Direct subset Dart analysis hit an SDK linter NullAwareElement internal error;
+  full normal Flutter analysis is pending, with no lint suppression introduced.
+- Controlled local admission measurements reduced 500 calls to 10 (50 per chunk).
+  SQLite timings in the plan are not live-network claims. Registered storage
+  pagination still relists inventory; optimizing it and recursive scans needs a
+  safe snapshot/resumable-scan contract. Existing complete-list limits remain.
+  Real provider smoke after release, physical camera, managed-account policy,
+  VoiceOver/TalkBack and 500-original device memory acceptance: Not confirmed
+  by this polish's fixture evidence. No scientific processing was started here.
+- Follow-up before the canonical run: normal full `flutter analyze --no-pub
+  --fatal-infos` passed with no issues; the earlier direct subset analyzer crash
+  was not reproduced by the required invocation. Final activity rerun 12 passed
+  after tightening the stale-action fence. Evidence:
+  `/private/tmp/specimen-intake-polish-flutter-analyze-final-rerun.log` and
+  `/private/tmp/specimen-intake-polish-activity-final.log`. Source frozen for
+  canonical verification; no existing golden baseline was changed.
+- Final compatibility correction (2026-10-21, same task/branch): independent
+  review found cached capability flags could leave an open client using GET-only
+  Retry after a runtime upgrade. Explicit selection Retry now probes POST and
+  falls back only on 404/405, with the original account/Picker/generation fences.
+  Tests cover both old-server statuses, stale capability flags, and no fallback
+  on authorization, conflict, server or network failures. The first canonical
+  run was intentionally interrupted (exit 130, before completion) for this fix;
+  it is not counted as passed. The final connector/workspace/source-recovery
+  suites passed 61 tests without updating goldens; evidence:
+  `/private/tmp/intake-polish-final-retry-focused.log`.
+- Canonical verification completed successfully on the frozen implementation:
+  `scripts/ci/verify.sh` exit 0, evidence
+  `/private/tmp/specimen-intake-polish-verify-final.log`. Python: 19,244 passed,
+  50 skipped, all 19,294 collected tests reconciled exactly once across six
+  shards. Design system: 1,312 passed. App: 3,572 passed, seven skipped.
+  Both analyzers, UI writing, formatting, secret/policy checks, actual optimized
+  dart2js OAuth adapter in isolated Chrome, release web build and all declared
+  route/security-header smoke checks passed. No existing goldens were changed.
+  This is local canonical evidence, not deployed/provider acceptance. Independent
+  reviewer confirmed the final Retry correction resolved with no new finding;
+  exact committed-head verdict and protected CI/release remain next.
+- Post-release real-provider browser verification currently cannot proceed:
+  the Mac is locked. An unlock request is pending with the user. This does not
+  block the authorized PR/protected-release work and does not establish personal
+  or institutional provider acceptance for this new build.
+- PR/review follow-up (2026-10-21, same task): committed implementation as
+  `9c3a5548b6110ed617802633ea0a3c4d3c42c04f`, PR #399
+  <https://github.com/anurag-duddu/specimen-digitization-app/pull/399>.
+  Independent reviewer `/root/polish_independent_review` issued **G51 APPROVED**
+  for that exact head against `c9040b83b4ccd5f4507bd53f44ab4694e81cd021`,
+  confirming the clean committed diff, resolved findings and canonical evidence.
+  Reviewer did not rerun tests. Hosted CI/CD run `39693627001` and runtime
+  candidate run `39693626999` are in progress; merge/release not yet confirmed.
+  This append is local closeout evidence after the reviewed implementation commit.
+- Hosted attempt 1 follow-up: PR #399 CI/CD run `39693627001` failed the
+  unchanged `test_complete_cohort_reservation_precedes_reader_and_survives_restart`
+  in Python shard 6. Its local fixture freezes wall time but leaves effect
+  monotonic time real; synchronous fixture work exceeded its persisted one-second
+  budget on the runner. The production deadline and unresolved-liability guard
+  correctly blocked it. Relevant cohort/workflow/launch files are byte-identical
+  to the base. Original focused test passed locally, while a controlled 1.01-second
+  fixture clock advance reproduced the exact deadline/held-liability behavior.
+  Evidence: `/private/tmp/intake-polish-pr399-shard6-clean.log` and
+  `/private/tmp/intake-polish-cohort-deadline-diagnosis.log`. Fixing the fixture's
+  clock consistency and adding explicit late-result/restart coverage; production
+  barriers, one-second policy and required checks remain unchanged. Earlier G51
+  approval applies only to `9c3a5548`; the amended head needs fresh review/CI.
+- Fixture correction completed only in `tests/test_cohort_reading_barrier.py`:
+  all constructed/restarted fixture workflows now receive the existing simulated
+  clock for elapsed effects. No production file or timeout changed. New negative
+  coverage advances 1.01 seconds, verifies the deadline block, retained 165-cost
+  liability/two claims, no accepted late observation and no replay/next-member
+  dispatch after SQLite restart. The original one-off single-worker override is
+  now centralized. Independent reviewer found no issue in this correction.
+  Cohort barrier, stage-cost reservations and evidence-pilot suites: 77 passed,
+  three existing warnings (33.52s), evidence
+  `/private/tmp/intake-polish-cohort-clock-focused.log`. Full canonical rerun
+  begins next on the frozen amended tree; earlier full run remains accurately
+  recorded for the preceding implementation head.
+- Full amended-tree canonical run completed with exit 0:
+  `/private/tmp/specimen-intake-polish-verify-cohort-fix.log`. Python: 19,245
+  passed, 50 skipped, all 19,295 collected tests reconciled exactly once across
+  six shards. Design system: 1,312 passed. App: 3,572 passed, seven skipped.
+  Both analyzers, policy/secret/format/UI-writing gates, compiled OAuth browser
+  contract, release web build and route/security-header smoke passed again.
+  Ready to commit the fixture-only correction, renew exact-head review and run
+  hosted CI again; production release remains not confirmed.
+
+
+## 2026-10-22 — Brand restoration and Widgetbook design-system standard
+
+- Task: `01a161f6-9906-75f1-bc98-e9c3ebeca013`; branch
+  `codex/design-system-standard`; worktree
+  `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`.
+  Starting commit: `473b48ea93258b9ea9c26b71f152c732087441e4`.
+  Implementation remains uncommitted. Commit/PR/hosted checks: Not confirmed;
+  no push, merge or deployment was performed. Full `scripts/ci/verify.sh`
+  was not run in this session; it remains required before a subsequent push.
+- Outcome: restored the owner's `SD_brand.png` as active visual authority;
+  added the missing application component families, a dedicated Widgetbook
+  catalog with interactive states and an explicit public-control manifest;
+  integrated shared tokens, headers, brand and selection primitives throughout
+  the existing app. The plan, scope, ownership, coverage, app adoption and
+  limitations are in `apps/specimen_digitization/design/15-design-system-standard.md`.
+- Brand constraint: Obsidian `#0E0E11`, Paper `#FAF9F6`, Amber `#F5A45B`,
+  Iris `#7B61FF`, Mist `#E6E6EA`; Amber-to-Iris is the hero, Iris is the
+  secondary brand colour. Functional status roles remain distinct without a
+  decorative hue per provenance category. Phosphor is retained. The rejected
+  yellow/green direction is removed from executable tokens, generated native/web
+  identity assets and active guidance. Tests reject the old seed and saturated
+  hue-family regressions in source and raster assets. Historical verification
+  prose is marked non-authoritative rather than rewritten as current evidence.
+- Font constraint: the reference names Söhne, but no licensed asset was supplied
+  or found during the audit. Bundled Geist/Geist Mono is the explicitly documented
+  fallback. Do not claim it is Söhne or import an unlicensed substitute.
+- Reference: Figma MCP inspected Untitled UI file
+  `fIfKyBB3UUanoV9lZoTBx9`, page `1480:0`, page inventory, button/input variant
+  metadata, and table/header nodes `2218:468696` / `2218:468697` including design
+  context and screenshots. Two component-master context requests failed; metadata
+  alone was not treated as pixel evidence. Component anatomy and coverage informed
+  the implementation; Specimen's own identity governs appearance.
+- Added controlled advanced inputs (slider, date picker, upload presentation,
+  command menu), section headers, table/pagination/chart, breadcrumbs/steps and
+  activity/message/code patterns. Existing owned primitives remain the base.
+  Preserve caller-owned values, lazy cursor lists, partial historical dates,
+  missing-versus-zero/currency semantics, file/camera integration and authoritative
+  final Queue disposition. New bounded tables and finite pagination do not replace
+  unbounded collections. Upload presentation never admits a record into Queue.
+- Native behavior: calendar values use UTC civil year/month/day normalization
+  so local DST changes cannot skip dates; native selection uses Flutter's adaptive
+  infrastructure behind the allowed adapter. Widgetbook modal scopes inherit the
+  preview environment; the application retains root-navigator behavior. SafeArea
+  covers native gallery insets without duplicating an existing ancestor inset.
+  Identical icon/navigation label+tooltip pairs caused duplicate iOS accessibility
+  announcements; the label remains authoritative, distinct guidance and disabled
+  explanations remain available, and visual overlays do not reannounce the label.
+- Widgetbook uses the installed-SDK-compatible 3.23.0 package rather than upgrading
+  Flutter just to install 3.25. It provides nine family folders, device widths
+  320/390/768/1180/1440, theme/density/text scale/RTL/reduced-motion controls,
+  real callbacks and composition examples. Its tests load the real fonts.
+  Default-knob smoke coverage is not a Cartesian proof of every knob combination;
+  focused component tests cover behavioral boundaries separately.
+- Validation environment: Flutter 3.38.5, Dart 3.10.4, macOS 27.0.1 arm64.
+  Dart MCP analysis clean for app/package/Widgetbook; Dart MCP formatting applied;
+  `git diff --check` clean. Full app suite: **3,657 passed, seven predeclared
+  live-HTTP skips**. Final full shared package suite after all native/semantics
+  repairs: **1,467 passed**. Final Widgetbook suite: **six passed**, including
+  every registered case in five environments, modal inheritance, ownership
+  inventory and real composition interactions. The affected app semantics suites
+  passed **22 checks again** after the final icon/navigation changes. JSON evidence:
+  `/private/tmp/specimen-app-final-tests.jsonl`,
+  `/private/tmp/specimen-ui-final-tests.jsonl`,
+  `/private/tmp/specimen-widgetbook-final-tests.jsonl`.
+- Rendering evidence: independent isolated baseline archives at the starting
+  commit passed **398 package golden checks** and **275 selected app checks**
+  under the same renderer/fonts/reference bytes. Thus initial candidate diffs
+  were not dismissed as environmental failures. Reviewed all 18 package families
+  in light/dark/narrow 200% RTL at top/middle/bottom and all 230 changed app images
+  (54 app contact sheets). Adopted **396 changed + 96 new package images** and
+  **230 changed app images**, deleting none. Normal comparisons passed
+  **494 package + 241 app checks**; final full suites also passed those checks.
+  Review/manifests remain in `/tmp/specimen-brand-golden-review/`,
+  `/private/tmp/specimen-app-brand-review/`, and baseline directories
+  `/private/tmp/specimen-ui-baseline-473b48ea-q3_furur` and
+  `/private/tmp/specimen-app-baseline-473b48ea-gs8ppz_e`.
+- Failed approaches and corrections: initial rendering exposed tall capsule-toast
+  clipping, status-strip glyph columns at narrow widths, glass-example clipping
+  and bidi hex labels; fix geometry before adopting references. Short sign-in
+  viewports required spacing changes without replacing the focused form subtree.
+  A glossary routing test needed to scroll to the lazy content. Date review found
+  selected-state contrast and controlled same-month reveal defects; both repaired.
+  Advanced date checks also passed under America/Chicago and Pacific/Auckland.
+  Generated failure PNGs were cleaned after evidence review, not committed.
+- Independent adversarial review (GPT-6-astra) cleared the repaired calendar,
+  selection and modal contracts and subsequently the toast/status/gallery repairs.
+  It independently passed 30 final visual-repair tests plus earlier focused checks.
+  Final source/test review found no actionable issue in icon/navigation semantics:
+  six fixtures remove only 32 total redundant tooltip attributes, preserving roles,
+  labels, selection, actions and disabled hints. This is scoped local review, not
+  a release approval or blanket approval of uninspected production behavior.
+- CI integration: after reading `docs/DEPLOYMENT.md`, the CI agent added locked
+  Widgetbook dependency/format/fatal-info analysis/test/web-build checks inside the
+  existing Flutter gate and local verify script. No deployment permissions,
+  triggers, environments or release settings changed. Bash syntax, shellcheck,
+  actionlint and **583 deployment-policy Python tests** passed; mocked-tool
+  ordering, failure-stop behavior and cleanup were checked.
+- Builds/previews: final `flutter build web --release` for Widgetbook passed;
+  `flutter build apk --debug` for the app passed. Native app-gallery entrypoint
+  `tool/design_system_preview.dart` rejects release mode and does not initialize
+  Firebase, repositories or a user session. It compiled and ran on isolated
+  iPhone and iPad simulators. CUA verified software-keyboard filtering, page
+  switching, tablet layout, safe areas, calendar October-to-November navigation,
+  and post-fix single icon labels in the iPad accessibility tree. Generic iOS
+  multiarch simulator build failed in debug_unpack_ios/lipo with this SDK/Xcode;
+  targeting the concrete arm64 simulators resolved it. Runs emitted an SdkRoot
+  native-assets warning but built, launched and rendered successfully. Native
+  build inputs use task-created ignored nonsecret CI-template Firebase placeholders,
+  not live credentials. No physical-device or provider acceptance is claimed.
+- Deliverable: local Widgetbook server at `http://127.0.0.1:5199`, final browser
+  action callback exercised. Preview captures are under
+  `/Users/anuragduddu/.codex/visualizations/2026/10/22/01a161f6-9906-75f1-bc98-e9c3ebeca013/`
+  (`specimen-widgetbook-brand.png`, `specimen-tablet-brand.png`,
+  `specimen-tablet-advanced.png`). The HTTP server and isolated preview devices
+  are local review aids, not deployed infrastructure.
+- Remaining acceptance boundaries: licensed Söhne substitution, physical
+  iPhone/Android/tablet review, manual VoiceOver/TalkBack use, actual camera/file
+  picking and production-connected flows are Not confirmed by this work.
+  Any later release must run canonical verify, use a PR, meet current independent
+  review/required-check policy and follow the three documented main workflows.
+
+
+## 2026-10-22 — Resumed marketing design-system implementation
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subtask `finish_marketing`; branch
+  `codex/design-system-standard`, worktree `cea9/specimen-digitization-app`; base
+  `473b48ea93258b9ea9c26b71f152c732087441e4`. Changes remain uncommitted. PR: Not confirmed.
+- Continued original Specimen marketing/shared-page controls, preserving the
+  approved brand and Phosphor. Added grid/featured/sidebar/carousel editorial
+  layouts, adaptive horizontal/portrait-panel profiles, and controlled location
+  detail which never substitutes another location for an unknown selected ID.
+  Expanded composed landing/pricing/about/contact examples.
+- Fixed pointer-open mega-menu focus restoration and compact-menu Escape.
+  A pointer tap need not focus UiButton; Popover snapshots primary focus, so an
+  owned trigger node restores focus after the popup focus scope is removed.
+  Auth validation now attaches errors to fields and focuses the first invalid
+  field in reading order; passwords remain unmodified and stale async stage
+  responses remain ignored.
+- Validation actually run: absolute scoped Dart MCP analysis clean; 20 package
+  marketing contracts passed; 4 marketing catalog tests passed including every
+  registered use case across 320/390/768/1180/1440 width, with large-text, RTL
+  and dark representatives. This is local synthetic evidence, not release or
+  email-client acceptance.
+- Reconciled 11 actual Figma example-page metadata inventories into concrete
+  section-to-widget mappings in `design/coverage/marketing-components.json`.
+  Contact and pricing reference browser captures inspected. Remaining reference
+  visual review, rendered browser/native review and independent approval are
+  Not confirmed; coordinator owns integration and the release process.
+
+## 2026-10-22 — Independent expanded-component adversarial review
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subtask `coverage_review`;
+  branch `codex/design-system-standard`, worktree `cea9/specimen-digitization-app`.
+  Reviewed uncommitted source at base `473b48ea93258b9ea9c26b71f152c732087441e4`;
+  exact integrated head and PR: Not confirmed.
+- Independently read shared/marketing coverage and raw modal reference metadata,
+  inspected the reference Filters slideout browser capture, and traced notice,
+  modal, drawer, tabs, crop, navigation and representative marketing recipes.
+- Three targeted Dart MCP probes failed: valid sub-one-percent right-edge crop
+  resize throws `ArgumentError`; 320x280 drawer with 200% text/search header and
+  action footer overflows by 226 pixels; upload recipe add/add/remove-first/add
+  violates the component's unique-file-ID assertion. Temporary reproduction
+  tests were left for coordinator-owned fix validation.
+- Reference `_Modal actions` variants are currently catalogued as complete modal
+  recipes with an identical action row; image payment variant has no extra image;
+  filter recipe search has no filtering callback. Catalog name coverage alone
+  cannot establish component-anatomy or interaction equivalence.
+- Shell Flutter was blocked by SDK cache write restrictions; Dart MCP ran the
+  probes successfully. No implementation, golden, deployment or CI edits by this
+  reviewer. Findings handed to coordinator; fixes, integrated checks, complete
+  visual reference review, physical-device/accessibility and release approval
+  remain Not confirmed by this review.
+
+### 2026-10-22 — Expanded-component review follow-up
+
+- Correction/addendum to the `coverage_review` entry immediately above: two
+  additional Dart MCP reproduction tests failed. Radar labels at 320 dp/200%
+  text can exceed the fixed plot height and produce a negative clamp upper
+  bound during painting. Replacing a message composer's draft controller while
+  a send is pending leaves the new draft blocked by the previous delivery.
+  Both cases were added to the retained reviewer probe for coordinator fixes.
+- The review treats approved palette, Phosphor, owned media and responsive
+  consolidation as valid brand adaptations. The reported coverage gaps concern
+  missing action/media/filter anatomy or nonfunctional controls, not ornamental
+  pixel parity. No full-reference, exact-head, production or device approval is
+  implied; concurrent implementation remained in progress.
+
+### 2026-10-22 — Complete interrupted shared-control expansion
+
+- Task: `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subagent `/root/finish_shared`; branch `codex/design-system-standard`, worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`. Shared uncommitted tree; no commit, PR or release created by this subtask.
+- Outcome: completed the 15-family shared-control audit and 21 public component slots in `catalog/shared_patterns.dart`, with actual Widgetbook navigation mappings in `design/coverage/shared-components.json`. Added size/anatomy variants, provider/store identity slots, joined-command dots, rich selected identities, numeric range label collision handling, explicit calendar today/activity markers, OTP/tag/phone/formatting controls, richer tooltips and supporting-label stories. Brand adaptations are explicit: restricted Specimen semantic colors; arrowless tooltips retain all four functional placements; third-party artwork is supplied, never fabricated.
+- Durable behavior: an OverlayPortal cannot close synchronously from a widget's update/build phase. The combobox now defers closure with mounted/current-availability guards. A controlled OTP String cannot represent holes: middle deletion normalizes displayed cells to the reported String; a host reset clears completion deduplication. Separate tag selection/removal and badge close actions retain distinct accessible actions.
+- Validation: 94 focused package tests passed across shared controls, their edge cases, tooltip, advanced inputs, checkbox/radio/switch, and avatar/hairline. The Widgetbook shared/input/advanced story sweep passed at 320 px/200%/dark/RTL/touch and 1180 px/default/light/LTR/pointer. Absolute-path scoped Dart MCP analysis passed. This is controlled local evidence only; integrated five-environment QA, screenshot acceptance, physical-device acceptance, independent approval and production release are Not confirmed by this subtask.
+- Failed approaches: guessed per-widget test paths did not exist (the calendar/upload tests live in `advanced_inputs_test.dart`); corrected to actual suites. One catalog run collided with an in-progress root drawer edit; rerun after the root repair passed. Existing two-size avatar expectation was updated to the now-required eight-size contract and still verifies every rendered diameter.
+- Follow-ups: root owns global coverage reconciliation, remaining reference screenshots, app integration, complete validation, independent review and approved release workflow. No shared-control implementation gap remains in this audit; pending visual/acceptance evidence stays explicit in each family row.
+
+### 2026-10-22 — Resume application-data design-system expansion
+
+- Task: `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subagent `/root/finish_data`; branch `codex/design-system-standard`, worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`, baseline `473b48ea93258b9ea9c26b71f152c732087441e4`. Changes remain in the shared uncommitted tree. Commit, PR and release: Not confirmed by this subtask.
+- Outcome: reconciled 20 reference pages (17 data/content families plus three application example pages), containing 945 metadata symbols, into `design/coverage/application-data.json`. Reviewed supplied browser captures of line/donut charts, attachment messages, banner headings, dashboards, settings and informational table pages. Extended real table anatomy with avatar groups, badges, provider marks, null/fractional/controlled ratings, and text/icon/menu row commands. Added striped/plain table treatments, three empty/step sizes, connected steps, true joined-command divider/footer stories, and complete local application templates with desktop navigation or compact modal navigation.
+- Validation: 32 package tests passed across expanded data, baseline data patterns and empty states; three Widgetbook tests passed, including every expanded data story at 320 px/200%/dark/RTL and 1180 px/default/light/LTR, plus working directory search/selection/detail and settings edit/reset/navigation. An additional 11-test focused run included the independent radar/composer reproduction probes. Absolute-path scoped Dart MCP analysis reported no errors for owned controls and catalogs. Integrated physical-device, visual, live-app and production acceptance remain Not confirmed.
+- Reviewer fixes: radar axis labels now use numbered plot markers with a fully wrapping category key and exact accessible values; plot text never relies on a negative clamp or overlaps arbitrarily long category names. Composer sends carry generations: replacing the draft controller immediately starts a fresh context, and stale async completion cannot clear, error or unlock a newer pending send. Regression tests cover every radar plot size at 200% RTL and old failure completing during a newer send.
+- Failed approaches: a catalog assertion initially counted both the search field and matching table text; narrowed it to the data cell and retained selection checks. Relative Dart MCP paths are insufficient evidence for analysis; all final analysis used absolute owning paths. Shared-tree compilation briefly encountered an independently owned crop constructor edit, then passed after its owner repaired it.
+- Follow-ups: root owns global catalog inventory, integrated visual/device review, gap reconciliation, live app adoption and approved PR/release. Reference metadata records scope; it does not prove that every combinatorial Figma instance was compared pixel by pixel. Original brand surfaces, Phosphor and host-owned media are the intended adaptations.
+
+### 2026-10-22 — Shared-control reference correction and final verification
+
+- Correction to “Complete interrupted shared-control expansion” above, same task/branch/worktree and subagent: the subsequently available exact date-range screenshot exposed typed start/end inputs beyond the original metadata-based anatomy. Added those before handoff. Entries parse explicit YYYY-MM-DD civil dates, reject nonexistent/out-of-bounds/reversed dates, synchronize calendar/preset/Cancel edits, and commit only a valid complete range. Immediate mode avoids duplicate proposals on submit/blur. A 320 px/200%/RTL adaptive-modal interaction test confirms typed dates can be applied and the route dismissed.
+- Final verification supersedes the earlier 94-test count: **98 focused package tests passed**, the shared/input/advanced Widgetbook narrow-and-desktop sweep passed, and scoped analysis passed. Additional exact reference screenshots for range sliders, dual-date ranges and compound inputs were visually reviewed and added to the family audit. Full application, integrated visual/device, independent review and live release remain root-owned and Not confirmed by this subtask.
+
+### 2026-10-22 — Shared-control application regression reconciliation
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, `/root/finish_shared`, same `codex/design-system-standard` / `cea9` shared worktree. No commit, PR or release performed. This entry follows the shared-control verification above; integrated application testing exposed additional compatibility failures after the focused pass.
+- Restored the longstanding icon-button semantics metadata contract after comparing the task diff with the baseline. Both default and explicit tooltip phrases remain in `Semantics.tooltip`; the visible tooltip pane stays excluded from semantics so reveal does not duplicate the label or description. No camera-specific wrapper, assertion waiver or app source change was needed.
+- Added opt-in measured viewport-edge fallback to `Popover`, enabled for tooltips. A requested side remains preferred, but an edge tooltip flips and clamps inside the safe area so a keyboard-focused docked-rail control can reveal its complete message. Other popovers retain existing positioning. A dedicated 200% text test checks all four edges in both reading directions.
+- Replaced verification-code cell geometry with target/type tokens, and replaced date/range dash copy with readable “to”. The global geometry guard and app no-dash guard remain unchanged.
+- Validation: 46 app tests passed across capture viewfinder UX, window arrangement and no-dash suites. 61 focused package tests passed across icon buttons, tooltips, menus, shared edge cases and the geometry gate. The subsequent tooltip-only run passed 11 tests, including the new edge-position test (overlaps the 61-test run). Final scoped absolute-path analysis passed. Verification completed at 2026-10-23 01:10:09 UTC. The initial new edge test accidentally nested two tooltip gesture recognizers; corrected its test trigger to an ordinary button, with no production change. Full app/catalog, visual/device and release acceptance remain coordinator-owned and Not confirmed by this subtask.
+- Post-regression shared/input/advanced Widgetbook sweep also passed at the previously documented narrow and desktop settings.
+
+### 2026-10-22 — Explicit tooltip metadata correction
+
+- Correction to the preceding shared-control application reconciliation, same task, branch/worktree and subagent: the full app run exposed six checked-in semantic-fixture differences when the fallback visual label also became semantic tooltip metadata. Final contract distinguishes caller intent: explicit `tooltip` is preserved (including camera close), while omitted `tooltip` uses the control label visually without adding redundant semantic metadata. The pane stays excluded from semantics on reveal. No app-source workaround, semantic-fixture update or golden update was made.
+- The 13 focused icon-button tests passed, including omitted, explicit-identical and explicit-distinct tooltip cases before/after reveal and disabled reason behavior. Absolute-path scoped analysis passed. Source frozen; `/root/finish_data` owns the targeted semantic/capture and full app reruns. Their results and final integrated acceptance are Not confirmed by this subtask at handoff.
+
+
+### 2026-10-22 — Full application design-system integration validation
+
+- Task: `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subagent `/root/finish_data`; branch `codex/design-system-standard`, worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`, baseline `473b48ea93258b9ea9c26b71f152c732087441e4`. Shared uncommitted tree. No commit, PR, release or dependency update by this phase.
+- Production audit: all 161 application Dart files consume the local `specimen_ui` package and shared theme bridge; source scans found no raw color constructors/Colors, Material control constructors or overlay APIs, raw Icons, or retired acid-yellow names/seeds. The shared light/dark tokens, density and motion scopes already enclose app routes and overlays. No unrelated catalog components were injected into product workflows.
+- Final validation: Dart MCP full app suite passed **3,657 tests with seven existing opt-in live HTTP/backend tests skipped**, including pixel goldens, checked-in accessibility trees, capture/workbench behavior, token guards and native/browser asset hue checks. The targeted camera/accessibility run also passed all 53 tests. JSON reporter: `/private/tmp/app-design-integration-verified-tests.json`. SHA-256 comparison confirmed all 199 preexisting app golden image references unchanged through validation. No assertions, semantic fixtures, goldens or tolerances were weakened or regenerated.
+- Regression diagnosis and repairs: the first run overlapped a shared date-picker edit and hit 43 compile-load failures; that run is diagnostic only. All 50 pixel mismatches were a 16 px upward shift of the default tab underline, caused by natural-height Row replacing an expanding Center. Root restored full horizontal tab height. Shared fixed the narrow keyboard tooltip layout, missing date-input import and forbidden dash literals. Icon tooltips now keep visual label fallback separate from explicit accessibility tooltip metadata; otherwise default names are repeated. The remaining `UiTopBarAction` wrapper unconditionally forwarded its label as explicit tooltip metadata; this phase removed that one redundant forwarding argument, retaining explicit caller tooltip metadata elsewhere. All corresponding app assertions now pass unchanged.
+- Analysis: the whole app-root analyzer was clean before the final independent modal probe was added. The final app-root recheck had no production diagnostics and only two child-last info lints in the new reviewer-owned `modal_panel_short_height_test.dart`; its owner was notified for correction. Root owns the subsequent package/catalog validation and integrated closeout.
+- Limits: these are local app tests against the shared source/reference tree, not live-backend, manual assistive-technology, physical-device or production-release acceptance. The seven live tests require their explicit backend test configuration. No production state was changed.
+
+- Final analysis follow-up for the integration validation entry above: after the independent modal-probe owner corrected both test-only lints, a fresh full app-root Dart MCP analysis reported **No errors**.
+
+### 2026-10-22 — Independent shared-interaction review fixes
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, `/root/finish_shared`, `codex/design-system-standard` in `cea9/specimen-digitization-app`. No commit, PR or release performed by this subtask. Root's independent reviewer found four interaction defects after prior focused checks, all repaired before source freeze at 2026-10-23 01:30:57 UTC.
+- Collapsed range pointers choose the lower or upper logical side, and a drag starting on the shared hit target waits for direction rather than inheriting old thumb focus. The chosen thumb remains fixed for that gesture, including reversal. New tests include both reading directions, retained focus after either thumb collapses, 33.3 (pixel roundoff), limits and one completion callback.
+- Joined-command Arrow/Home/End traversal now scans a bounded number of nodes for actual `canRequestFocus`, preserving disabled-with-reason discoverability while skipping unavailable commands without reasons. Combobox dismissal restores its actual trigger after the overlay scope leaves, guarded for mounted, available and attached state; pointer activation does not itself imply focus ownership.
+- A range's visible month is separate from its selected dates. `UiDatePicker.displayedMonth` and `onDisplayedMonthChanged` let the range coordinate adjacent months for pointer and keyboard navigation without both panes jumping to a shared anchor. Standalone controlled-value reveal remains unchanged. External values, presets, typed complete endpoints and Cancel reveal the relevant pair. Tests verify start in either pane, cross-month selection, keyboard month crossing, selected focus and host updates.
+- Validation: 69 tests passed across 15 new interaction regressions, shared components, prior shared edge cases, advanced inputs and the no-literal geometry gate. Absolute-path scoped source/test analysis passed after a test-only braces correction. The initial test compile rejected a const group whose constructor asserts list length; the test now uses a runtime group with constant items. No assertions, semantic fixtures or goldens were weakened or replaced. Coordinator owns full app/catalog/native and final independent acceptance; those remain Not confirmed by this subtask.
+
+### 2026-10-22 — Comprehensive design-system continuation and local closeout
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, coordinator `/root`; branch `codex/design-system-standard`, worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`, base `473b48ea93258b9ea9c26b71f152c732087441e4`. This entry closes the interrupted implementation and supersedes blanket pending integration claims in preceding subtask entries. Local implementation and review are distinct from production acceptance; no PR, push, merge or production deployment was performed.
+- Outcome: reconciled all 95 actual supplied Untitled UI Figma pages (83 content, 12 setup/section/separator) with 157 public controls, 193 Widgetbook groups and 911 reachable examples. Includes advanced forms, table anatomy, chart families, 61 modal/slideout recipes, navigation/feedback, marketing, shared assets, page templates and annotations. Source capabilities and purposeful brand adaptations remain explicit in family audits; page registration is not exhaustive visual parity.
+- Brand: owner-approved Obsidian/Paper/Amber/Iris/Mist, Amber-to-Iris hero and Iris secondary, neutral evidence surfaces, Phosphor icons. Active source and shipped raster hue guards reject the retired yellow-green direction. Söhne is not supplied; bundled Geist/Geist Mono remain the declared fallback. The current user request authorizes implementation/catalog work, not merging or deployment.
+- Integration/review: repaired the reproduced crop, short-overlay, upload identity, radar, stale async-composer, modal anatomy, tab-placement and tooltip semantics defects without changing existing app assertions or accessibility fixtures. Final independent review additionally reproduced and cleared collapsed range-thumb selection/locking, nonfocusable grouped-command traversal, combobox dismissal focus and paired-calendar month coordination. Retained regression tests cover these behaviors. Independent review found no further missing-capability blocker in its final reference composition sample.
+- Native/browser evidence: actual expanded Widgetbook rendered in isolated iPad and iPhone simulators and an Android emulator. iPad light/dark and cross-month range selection/Apply were inspected through Dart MCP; no runtime errors were reported. CLI Flutter Driver on the exact iPhone/Android devices verified hero rendering, real button tap and callback receipt with reviewed screenshots. These native runs precede the final weekday-label-only change. Browser checks covered hero callbacks, range preset/Apply, annual pricing, narrow marketing and invitation modal typing/Escape/reopen/submit, with no console errors. Isolated test devices were shut down; the localhost Widgetbook server remains available.
+- Failed approaches: the temporary iOS host required iOS15 and the app's UIScene setup for SDK27; corrected only the temporary host. The Dart MCP retained an old driver attachment, so exact-device CLI Flutter Driver supplied the phone/Android evidence. A generated driver first used an invalid tree getter/overbroad text lookup; changed the probe to wait for the exact receipt. A first browser reload retained an old service-worker build; a second ordinary reload exposed 193 groups/911 examples.
+- Canonical gate repairs: public Figma reference IDs, bare metadata digests, UI-label property names and a synthetic OTP were scanner false positives. Corrected representation/naming to `referenceFileId`, algorithm-qualified `metadataDigest`, local UI label constants and a different synthetic filtering character. All 20 original metadata digests were independently verified against the same raw bytes. No scanner exclusion, baseline, threshold or policy was changed. UI-writing rejected two-letter `We`; default weekdays now read Mon through Sun.
+- Golden evidence: 44 earlier intentional icon/progress-size changes were individually reviewed on six contact sheets. The weekday change affected exactly 12 advanced-input images, all differences confined to 11/13 px header text bands; coordinator and independent reviewer inspected every baseline/current/difference crop. Adopted only those exact images, preserving old/new hashes in `/private/tmp/specimen-weekday-comparison/adopted-images.json`. No tolerance or assertion weakening. All 199 existing app reference images remained unchanged during this resumed expansion (initial brand restoration is a separate, earlier phase).
+- Final local validation: all gates defined by `scripts/ci/verify.sh` passed across sequential segments. The original run passed all-file pre-commit/security/policy, frozen dependencies, all 19,295 collected Python tests exactly once (19,245 passed/50 skipped), UI writing and all 1,597 exact-macOS package tests. It stopped on three Widgetbook formatting drifts; standard `dart format` fixed them. Unchanged remaining gates passed Widgetbook formatting/analyze, 29 checks covering all 911 examples across five environments, its release web build, app analysis, 3,657 app tests (seven existing live-backend skips), and the actual dart2js/Chrome OAuth origin/source/state/lifecycle contract. App formatting then found eight additional formatting-only files; standard formatting and the unchanged final gates passed 691-file formatting, app release build and all 11 declared routes with five security headers. No gate, script, assertion or tolerance was removed or weakened. This is completed gate coverage, not one uninterrupted verifier invocation. Logs: `/private/tmp/specimen-design-system-verify-final.log`, `/private/tmp/specimen-design-system-verify-remaining.log`, `/private/tmp/specimen-design-system-verify-build.log`. Final browser refresh confirmed193 groups/911examples and real hero callback; console errors empty.
+- Limits: representative reference visual review and all registered examples at default knobs do not establish every combinatorial variant, manual assistive-technology use, physical-device behavior or production release acceptance. Coverage manifests retain `coverageLevel: page_and_story_registration` and `parityStatus: not_approved`. No backend, payment, email or account action is connected to synthetic catalog examples.
+
+
+### 2026-10-23 — Shared-control continuation beyond registration coverage
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subagent `/root/finish_shared`; branch `codex/design-system-standard`, shared worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`, baseline `dea0542f2`. This continuation addresses behavior after the preceding local closeout. No commit, PR, merge or release performed by this subtask.
+- Outcome: reproduced and repaired five substantive gaps: keyboard access to offscreen combobox choices; complete progress metric text at 200/400 percent; readable avatar overflow counts at large text sizes; verification completion after a genuinely different complete host value; and arrow navigation from discoverable disabled selection cards. Existing brand tokens, Phosphor usage, public APIs and semantic fixtures remain unchanged.
+- Reusable constraints: a lazy option list can create a FocusNode without mounting a context, so direct focus plus ensureVisible cannot reach distant options. The finite combobox list now mounts its keyboard targets in a scrollable column. A Stack can silently clip a paragraph with no RenderFlex exception; retained tests compare its complete paragraph height as well as checking exceptions. Progress values move below the track when necessary, and avatar overflow count geometry follows the requested text size. Completion deduplication distinguishes host replacement from an accepted echo. Selection navigation locates current focus before filtering enabled destinations, preserving disabled-reason discovery.
+- Evidence: the first 11 probes produced one pass and ten failures; two subsequent selection-card probes also failed before repair. Final focused Dart MCP run passed all 93 tests across the retained 13-test regression file, existing shared component/edge/interaction suites, avatar/hairline, progress and the unchanged literal-geometry gate. Absolute-path scoped analysis and git diff --check passed. An intermediate invocation used a nonexistent avatar_test.dart path; corrected it to avatar_hairline_test.dart and reran the entire focused batch. No assertions or fixtures were weakened.
+- Follow-ups: coordinator owns independent review, updated catalog visual evidence, global coverage reconciliation and integrated checks for this continuation. Full combinatorial visual parity, manual assistive technology, physical-device acceptance and production release are Not confirmed by this subtask.
+
+
+### 2026-10-23 — Data-control continuation beyond default examples
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subagent `/root/finish_data`; branch `codex/design-system-standard`, shared worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`, baseline `dea0542f2`. No commit, PR, merge or release performed by this subtask.
+- Compared retained application-data reference metadata with source behavior. Tables `Help icon=True, Arrow=False` (`1221:106789`) exposed a real missing affordance: nonsortable help headings could not receive keyboard focus. The separate help control now supports hover/focus and an activated, dismissible scrolling explanation without sorting. Headings without help retain their existing layout. The card/section catalog composition at `data_patterns.dart:413` has the related passive-icon problem; coordinator notified, not changed by this subtask.
+- Retained failing probes also demonstrated a 55px chart-axis overflow for two finite signed `1.7e308` series at 200dp/200% text; a disabled carousel swallowing host navigation keys; and a 20-page, 240dp-high carousel reducing media to exactly zero height. Repairs keep axis and plot on one horizontally scrollable canvas, leave disabled navigation gestures/keys to the host, and keep bounded carousel indicators in a single scrollable row with the active mark visible in LTR and RTL. No literal-geometry or golden/semantic fixture gate was weakened.
+- Validation: Dart MCP 33 focused tests passed, including eight new regression cases, existing data/content contracts, independent edge probes and no-literal geometry checks. Absolute-path scoped analyzer reports No errors. `git diff --check` clean. Reports: `/private/tmp/data-completeness-red.jsonl`, `/private/tmp/data-completeness-first-fix.jsonl`, `/private/tmp/data-completeness-focused-final.jsonl`. The first controls-only carousel probe passed while its image had collapsed; asserting nonzero media height exposed the substantive defect.
+- Follow-ups: coordinator owns the related catalog help composition, independent review and integrated package/Widgetbook/app verification. Full combinatorial visual parity, manual assistive technology, physical devices and production release are Not confirmed by this subtask.
+
+
+### 2026-10-23 — Direct marketing-render anatomy reconciliation
+
+- Same task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subagent `/root/finish_shared`, branch `codex/design-system-standard`, shared `cea9` worktree and baseline `dea0542f2`. Directly inspected fresh Figma MCP renders for metrics, newsletter, testimonials, social proof, blog, content, team, careers, FAQ, footer, banner, authentication, error and email. Sources are retained under `/private/tmp/untitled-ui-reference/followup/`; exact frame identities are in `visual-followup-targets.json` in its parent directory.
+- Outcome: visual inspection exposed real anatomy beyond earlier metadata registration. Added backwards-compatible section slots for leading visuals, metric context/split media, testimonial introduction/actions, structured article attribution, featured articles alongside sidebar results, blog sort controls, article category/byline before media, career media and actual department groups, FAQ search/no-results, footer call to action, and separate banner title/icon/support. Feature showcases now support a heading icon and checked benefit list. Root owns catalog examples; the data agent owns the separately identified auth preference, error search, hero announcement and email-order fixes.
+- The independent reviewer additionally reproduced pointer-open marketing menus missing Escape when another field had focus. Added trigger focus and focus-manager flush before opening; the reviewer verified the repair with its retained seven new plus sixteen existing menu tests. No menu test or fixture was weakened.
+- Validation: ten new meaningful anatomy/interaction/readability tests and all twenty existing marketing tests passed; four literal-geometry checks passed. Scoped absolute-path analysis and git diff --check passed after constructor-const and child-argument-order lint corrections. Large-text cases include 200/400 percent RTL feature benefits and 400 percent RTL announcement text. No goldens changed, no PR or release performed. Integrated catalog renders, full combinatorial parity, assistive-technology and physical-device acceptance remain coordinator-owned and Not confirmed by this subtask.
+
+
+### 2026-10-23 — Table-help review correction and remaining page anatomy
+
+- Continuation/correction to “Data-control continuation beyond default examples” above; same task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subagent `/root/finish_data`, branch `codex/design-system-standard`, shared cea9 worktree, baseline `dea0542f2`. No commit, PR, merge or release by this subtask.
+- Independent review caught pointer opening of table help while another field held focus: Escape did not close and the close command returned focus to the unrelated field. Added explicit trigger/pane-close focus nodes and guarded post-frame open/close focus handling. Both unchanged reviewer reproductions now pass. This supersedes any inference that the earlier keyboard-open checks qualified pointer focus restoration.
+- Added optional controlled sign-in remember-session preference and nullable submission value (host owns actual persistence); hero announcement maps to the shared section leading slot; error pages accept actual recovery controls; email actions now follow body/summary before footer. No new public classes, exports or catalog counts. Coordinator owns catalog integration and global inventory.
+- Validation: 16 targeted cases passed (six new page-anatomy/interaction cases, two reviewer focus regressions, eight data regressions); absolute scoped analysis No errors; diff whitespace check clean. `/private/tmp/data-marketing-anatomy-final.jsonl` records this run. Shared agent separately reported 30 existing marketing/section tests passing the same forms/pages source; this subagent did not duplicate that run.
+- Reusable constraint: an anchored overlay opened by pointer cannot assume its trigger previously held keyboard focus. Explicitly enter its focus scope, return to the actual trigger, and guard deferred requests against disposal and a changed open state. The host-controlled remember-session value is captured at submission invocation; later host changes cannot rewrite the in-flight request. Full integration, manual assistive technology, physical-device acceptance and production remain Not confirmed by this subtask.
+
+
+### 2026-10-23 - Disclosure question readability after browser inspection
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subagent `/root/finish_shared`; branch `codex/design-system-standard`, shared cea9 worktree, baseline `dea0542f2`. No commit, PR, merge or release by this subtask.
+- Coordinator browser review found that the 320px FAQ silently ellipsized its collapsed question. A retained normal-size regression reproduced `didExceedMaxLines=true`; full semantics and lack of a layout exception did not establish visible readability. Disclosure titles now use wrapping text with the existing type strut, minimum hit area and trailing-chip reflow preserved. The control contract now correctly identifies the title as wrapping content, alongside the summary.
+- Validation: 53 focused tests passed: eight new 320px cases across 100/200 percent text, LTR/RTL and trailing-chip presence, fifteen existing disclosure contracts, ten section-anatomy tests and twenty marketing contracts. The new checks compare rendered title height with complete wrapped text before and after touch/keyboard toggles. Absolute scoped analysis and diff check passed. An initial test finder reached an extra semantics render object; targeting the descendant paragraph corrected the probe before reproducing the real clipping failure. No golden or fixture was updated.
+- Source frozen and runner released to the coordinator; native snapshot owner notified to resync disclosure.dart. Updated browser/native proof and final integrated checks are coordinator-owned. Full combinatorial visual parity, manual assistive technology, physical-device acceptance and production release remain Not confirmed by this subtask.
+
+
+### 2026-10-23 — Fresh native catalog interaction verification
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, subagent `/root/finish_data`; branch `codex/design-system-standard`, shared cea9 worktree, baseline `dea0542f23995a34b476d3b4ba789178bbec1180`. Native preparation and probe changes were confined to the existing `/private/tmp/specimen-widgetbook-native-01a161f6` host. This log entry is the only repository edit in this native subtask. No commit, PR, merge or release performed.
+- Snapshotted the final frozen actual Widgetbook library and specimen_ui library/assets/licenses after the disclosure-title, auth-receipt and article-date fixes. `qa/source-manifest.json` records 183 source inputs and an aggregate SHA-256; `qa/snapshot-verification.json` confirms all source inputs remain unchanged, all 182 copied runtime files remain byte-identical, and native identity configuration is unchanged. The host-only pubspec/lockfile add the Flutter Driver SDK dependency and copied-package path; their final hashes are separately recorded. The catalog controls, environment and story wrappers were not replaced by test-only widgets.
+- Built/launched through Dart MCP and passed the same seven-state Flutter Driver probe sequentially on the existing isolated iPhone simulator `B7A38F77-46FD-4947-9C7B-39F771CA6131`, iPad simulator `F7C08325-946B-4FFC-B391-6AD1F6630014`, and verified Android AVD `Specimen_Design_Review_01a161f6` at `emulator-5556`. Probe setup resolves actual catalog stories through the public platform route-information provider; actual taps, scrolling and synthetic text input exercise hero callbacks, FAQ filter/expanded answer/no-results/reset, remember-session true and false submissions with exact async completion receipts, and dark header navigation. All three runtime-error checks were clear.
+- All 21 retained screenshots were individually inspected: full FAQ questions and answers, recovery/reset controls, hero actions and receipts, both checked/unchecked auth preferences with completion receipts, and dark navigation are readable. Proof is under the temporary host's `qa/native-summary.json`, `qa/results/{iphone,ipad,android}/result.json`, seven PNGs per result directory and `qa/results-{device}.log`. The coordinator independently inspected representative screenshots and result files. The native app hosts were stopped, both task iOS simulators shut down, and only the verified task Android emulator was terminated; Flutter runner ownership returned to the coordinator.
+- Failed approaches and constraints: the first temporary probe used a nonexistent binding route method, caught by analysis/build, then corrected to the public route-information provider. An initial immediate checkbox read preceded the rendered host update; explicit frame synchronization fixed the probe without changing product source or its assertions. Final temporary-entry/driver analysis reported No errors. Native runs use the existing catalog's Small phone 320px and Tablet portrait 768px variants; results separately record actual native host dimensions. These are compiled simulator/emulator interaction and representative visual checks, not physical-device acceptance, OS-keyboard automation, every environment/knob combination, manual assistive-technology acceptance or production release. Those broader outcomes are Not confirmed by this subtask.
+
+
+### 2026-10-23 - Integrated direct-reference continuation closeout
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, coordinator `/root`; branch `codex/design-system-standard`, worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`, parent implementation `dea0542f23995a34b476d3b4ba789178bbec1180`. This continuation is saved locally in the commit containing this entry. No PR, push, merge, deployment or production change was performed. The local release Widgetbook remains available at `http://127.0.0.1:5199/`.
+- Outcome: reconciled 31 fresh direct Figma renders against actual component anatomy, then integrated the missing section/page slots and working local interactions. Catalog counts remain 157 public controls, 193 groups and 911 examples, mapped to all 83 content pages plus 12 reference-file structural pages. Added complete Blog/Article/Team compositions, actual FAQ search/reset, journal filter/sort/pagination, recovery search and captured remembered-session receipts. Parallel ownership and independent adversarial review additionally repaired offscreen combobox focus, disabled navigation, large-text data, bounded carousels, menu/table-help focus return, story-owned modal/toast disposal and visibly truncated disclosure questions. The approved palette and Phosphor remain guarded; no new palette or dependency was introduced.
+- Fresh integrated evidence: exact macOS shared-package suite passed 1,656 tests (`/private/tmp/design-continuation-package-final.jsonl`); catalog passed 38 checks (`/private/tmp/design-continuation-catalog-final.jsonl`), including all 911 examples at default knobs across five environments; application suite passed 3,657 tests with seven existing opt-in live-backend skips (`/private/tmp/design-continuation-app-verified.jsonl`). An additional 13-case app rerun passed, including two new full-workbench actual-scroll regressions at390x844/200% and the documentation typography gate (`/private/tmp/workbench-large-text-scroll-focused-final.jsonl`). Package/catalog/app analysis is clean. Formatting checked all731 Dart files. UI writing scanned313 files with zero violations and three existing advisory long-copy warnings. Both final web release builds passed; current app artifact passed all11 declared routes and five security headers. Baseline Python/OAuth/canonical-verifier results remain explicitly historical in the standard and README; they were not relabeled as fresh continuation runs.
+- Browser/native evidence: actual final release browser interaction verified FAQ answer search, no-results/reset, full questions/expansion, journal ordering and completed auth preference receipts, with no console errors. Screenshots are under `/Users/anuragduddu/.codex/visualizations/2026/10/22/01a161f6-9906-75f1-bc98-e9c3ebeca013/`. Fresh isolated iPhone/iPad simulator and Android emulator runs passed seven states each, retained21 individually reviewed screenshots and reported no runtime errors; native proof/source matching and cleanup are detailed immediately above and in `/private/tmp/specimen-widgetbook-native-01a161f6/qa/native-summary.json`. All183 source inputs and182 copied runtime files were verified unchanged. Root independently inspected representative native results; the native owner inspected every screenshot.
+- Intentional visual change: the final application run exposed six compact390x844/200% workbench images differing after full-title wrapping. Root and the independent reviewer inspected every baseline/current/difference triple. The only visible change is the full two-line `Label overlays unavailable` title and40px downward flow of the same scrollable content; upper interface and fixed footer are pixel-identical. Exactly those six images were adopted, with before/after hashes in `/private/tmp/disclosure-six-review/adopted-images.json`. Package goldens and all other application images/semantics fixtures are unchanged. The new scroll regressions prove Fields/History endpoints become fully visible through real drags and the fixed Approve record opens its confirmation sheet. Exact comparisons and assertions were not weakened.
+- Failed approaches and reusable constraints: root Dart MCP root registration was blocked by automatic approval policy, so approved CLI runners supplied integrated evidence; agent MCP supplied its independently recorded native/focused evidence. SDK cache writes required the existing Flutter execution approval. A prior app run failed only on a prohibited documentation dash and was repaired in prose. Final native probe setup required the public route-information provider and a rendered-frame boundary before reading controlled checkbox state. The initial large-text scroll probe assumed compact Next/coverage controls were inline; it was corrected to the actual visible primary action. One all-file policy run overlapped documentation edits and reported changed files; final save checks run after edits freeze. A clean layout-exception test or complete semantics label is not proof that visible text is untruncated; measure the full paragraph and inspect actual renders.
+- Review and limits: independent source review cleared the component/catalog fixes; separate review cleared the six exact image updates. The final commit receives a read-only head review before handoff. No known component capability gap remains in the reconciled implementation, but registration/sample review is not every Figma instance or knob combination. Manifests deliberately retain `coverageLevel: page_and_story_registration` and `parityStatus: not_approved`. Physical-device acceptance, manual assistive-technology acceptance, deployed UI and production release are Not confirmed. Synthetic catalog auth/email/payment callbacks do not contact those services.
+
+- Post-save reconciliation for the integrated closeout above: implementation commit `554e0cbd3a713fe6ab68060c93e0ab0d259d27a6` was saved with a clean worktree and passing commit hooks. Final all-file pre-commit/security checks and all nine reference-reconciliation checks also passed. Independent saved-head review identified one stale top-level audit phrase saying integrated validation was still running; this follow-up changes only that status sentence to match the completed evidence, retaining all parity/physical-device limits. No runtime source, test or image changed after the saved implementation.
+
+
+### 2026-10-23 - Owner logo correction
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, coordinator `/root`, with `/root/finish_shared`, `/root/finish_data` and independent `/root/final_independent_review`; branch `codex/design-system-standard`, worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`, starting commit `40dbb1460cde5da6884526f771126556e1078083`. This entry accompanies the local correction commit. No PR, push, merge, deployment or app installation performed.
+- Owner correction: the retained pin/disc was an invented identity, not the logo in the supplied brand board. The two newly selected crops are retained byte-for-byte in `apps/specimen_digitization/design/brand-reference/`. The canonical `specimen-mark.svg` is a faithful vector trace of those rasters, not an original vector supplied by the owner. The three interlocking ribbons and open counter now drive generated Flutter paths and platform artwork. The primary gradient ends in Obsidian; the separate app-icon crop ends in Amber. Both use the same geometry and a muted fold shade derived from the existing seeds. UI icons remain Phosphor; no additional interface color role was introduced.
+- Implementation: replaced shared `UiMark`, added explicit `UiMark.appIcon`, updated the existing Widgetbook identity story, and regenerated 70 native/source/browser PNGs. App-icon artwork stays Obsidian on Paper in both themes; standalone primary and mono adapt to dark surfaces. The source vector owns path geometry, and its Dart generator and pinned resvg/Pillow raster pipeline regenerate deterministically. Original crop bytes, 11 repeat-generated raster hashes, and generated Dart byte identity were checked. Native bundle IDs, Xcode project, Info.plist, web manifest and AppIcon metadata stayed unchanged. Existing yellow-green guards remain active; independent ribbon/counter/gap and safe-circle probes prevent reintroducing a pin with the right colors.
+- Fresh validation: all three Flutter analyzers passed; 136 foundation tests, 116 focused application tests (including 81 asset checks), eight exact sign-in image comparisons, and 38 catalog checks passed. The final app-icon preview removed duplicate padding already supplied by the vector; the seven catalog checks were rerun afterward, including all 911 stories across five environments. The final Widgetbook release build passed. Changed Dart formatting and whitespace checks passed. These are scoped logo-correction results; prior full-repository, native device and production evidence was not relabeled as fresh.
+- Visual review: coordinator and independent reviewer inspected both final artwork treatments, the two 24/40/96 dp light/dark mark sheets, and all eight sign-in before/current/difference triples. Adopted exactly those ten rendered image candidates. All sign-in differences are confined to a 50 by 49 px logo rectangle (1,854 dark pixels or 1,811 light pixels); all surrounding pixels are unchanged. Comparison settings and assertions were not weakened. Before/after hashes and difference bounds are retained under `/private/tmp/specimen-logo-correction/`. Final browser verification at the existing Small phone story shows both correct logos with no console errors; screenshot is `/Users/anuragduddu/.codex/visualizations/2026/10/22/01a161f6-9906-75f1-bc98-e9c3ebeca013/widgetbook-corrected-logo.png`.
+- Failed approaches and constraints: CairoSVG needed an unavailable system Cairo library, so raster generation uses pinned self-contained `resvg-py==0.5.0` with `Pillow==11.3.0`, without an app dependency. A first direct Amber-to-Obsidian gradient looked brown; independent comparison identified the supplied muted-plum fold and the app icon's separate Amber tip, both corrected before final generation. The old preview server had stopped and Flutter's service worker showed an offline cached pin; restarting the loopback server on port 5199 and reloading activated the verified rebuilt bytes. Platform generators can rewrite Xcode boolean flags and manifest metadata; snapshots were preserved and checked. Physical-device launcher/splash appearance and deployed UI remain Not confirmed by this correction.
+- Save checks: the final all-file pre-commit run passed security, secret scanning, whitespace, file-format and repository policy hooks. Final saved-head review follows the local commit; no release acceptance is implied.
+
+### 2026-10-23 - Shared control content sizing repair
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, coordinator `/root` with `/root/finish_shared`, `/root/finish_data` and `/root/final_independent_review`; branch `codex/design-system-standard`, worktree `/Users/anuragduddu/.codex/worktrees/cea9/specimen-digitization-app`, starting commit `02a2c9ca37c0576e071a32d87c8cae509032d398`. This entry accompanies the local repair commit. The owner expanded the button complaint into a proactive audit of similar shared layout defects. No push, PR, merge or deployment was performed.
+- Fixed 17 shared controls across actions, inputs, navigation, overlays and data. Buttons center their actual visible row while optionally reserving the larger complete loading state; default catalog examples no longer silently supply a separate loading label. Decorative glyphs yield in tight hosts, and the local busy bar now paints inside the capsule. Choice labels no longer retain a blank check slot. Joined groups measure their real padding and hit targets; decision bars tolerate unbounded rows; tag counts use actual content width. Fields and input groups return unused side space to the editor. Long menu/tab/navigation metadata reflows, breadcrumbs measure actual separators, and headers constrain navigation. Dialog/sheet titles wrap with reachable body/action scroll regions. Metric titles and gauge endpoints wrap without borrowing the decorative gauge diameter. Existing brand colors, Phosphor identity, focus outlines and minimum hit targets remain the contract.
+- Fresh final validation: all 1,719 package tests, 39 catalog checks and 3,661 app tests passed; seven existing live-backend app skips remain. The catalog covers all 911 registered examples in five environments. Sixty new package layout regressions cover actual geometry and interaction, including narrow/unbounded hosts, RTL, large text, short/long/absent slots and loading. Final Dart MCP analysis returned no errors across package, catalog and app. The final Widgetbook release build passed, all 27 changed Dart files are formatted, and all-file pre-commit/security checks passed. Exact final test logs are `/private/tmp/content-sizing-{package,catalog,app}-release.jsonl`; build and pre-commit logs use the same prefix. Dart MCP root registration succeeded for these final runs; earlier CLI results were not substituted for them.
+- Visual baseline review: exactly 26 package images changed. Twelve action images differ only in the newly visible slim busy bar; fourteen control-state images differ only in unselected choice labels moving to their actual center. Coordinator and independent reviewer inspected all before/current/difference comparisons before adopting those exact candidate bytes. `/private/tmp/content-sizing-visual-review/current-candidates.json` records destination and before/after hashes; all 26 destination hashes and the complete changed-image set were rechecked. No application golden changed. No comparison tolerance, assertion or required check was weakened. Stale compact control-state failure artifacts were excluded from this fresh candidate set.
+- Browser validation: the final release preview on port 5199 shows naturally sized, centered button content and a successful save receipt. The earlier source-identical button checks covered changing the label and enabling both icons; choice selection/reset and modal Save were also exercised. Browser inspection found a final defect missed by the first input tests: common `https://` and `.museum` affixes wrapped unnecessarily at 286 dp. Four new natural-width/full-height tests reproduced it in both directions before repair. The final shared affix budget preserves editor space and redistributes the short side's unused allocation; all 18 input tests, including asymmetric and editing cases, pass. Independent review also checked 252 finite allocation combinations. The rebuilt 320 dp preview now shows both complete affixes on one line and accepts `specimens`; the final button activates and console errors are empty. Proof images are `button-content-sizing.png`, `choice-content-sizing.png` and `field-content-sizing.png` under `/Users/anuragduddu/.codex/visualizations/2026/10/22/01a161f6-9906-75f1-bc98-e9c3ebeca013/`. Two normal reloads activated rebuilt service-worker assets.
+- Failed approaches and reusable constraints: red probes reproduced off-center button content, tight-button overflow, lost input width and modal/data text defects. Review caught a short-tag-count flex regression, modal gaps omitted from the height budget, and a progress bar positioned outside its clipped stack. Loose flex allocations do not redistribute unused width to neighboring flexible children; measure natural content and bound only oversized slots. Complete-state width reservation must be separate from the visible row's centering. Initial semantics tests selected a merged child rather than the actual named button, and deferred disposal of a semantics handle ran after Flutter's leak verification; both test harness issues were corrected while retaining exact semantic/action assertions. A huge-count test needed a realistic scroll host, with complete text bounds and removal still verified. Full semantics text and an absence of layout exceptions do not prove visible readability: inspect paragraph dimensions and real browser examples.
+- Review and limits: shared action, input, navigation, modal/data changes and the exact image updates received independent review; a final saved-head review follows this commit. The final app run retains two hit-test warnings in the existing reason-sheet theme-loop test, matching the previous accepted run; no runtime test failures occurred. Production UI, physical devices and manual assistive-technology acceptance are Not confirmed by this repair. The earlier reference inventory's page/story coverage and parity limits are unchanged; this audit does not assert every possible host constraint or content combination is defect-free.
+- Renewed review (2026-10-21, same task/PR): amended head
+  `e759ecbf8a627f203eda636ed3c181ed9bf705ad` received **G51 APPROVED** from
+  `/root/polish_independent_review`. Reviewer independently verified the clean
+  exact head, fixture-only delta, unchanged production safeguards and complete
+  amended canonical evidence; no unresolved findings. PR #399 now runs fresh
+  CI/CD `39697317164` and runtime candidate CI `39697317119` on this head.
+  Prior attempt's failure is not counted as a pass. Merge/release still pending.
+- Pre-merge outcome: CI/CD `39697317164` and runtime candidate CI `39697317119`
+  passed on independently approved head `e759ecbf8a627f203eda636ed3c181ed9bf705ad`.
+  All three protected checks, all twelve Python shards and aggregate, SQL/Storage
+  contracts, Android/iOS builds, and runtime image checks are green. PR Hosting
+  deploy is correctly skipped. No check or protection was weakened. PR #399 is
+  ready for the authorized merge; production markers and real-provider smoke
+  remain separate checks after the protected main workflows.
+- Authorized merge completed: PR #399 squash-merged as
+  `473b48ea93258b9ea9c26b71f152c732087441e4` at 2026-10-22 00:16:29 UTC
+  (2026-10-21 local). Protected main releases are now being followed. A merge is
+  not recorded as a release; web/API markers and all main workflow results are
+  still pending.
+- Production rollout progress: merged SHA `473b48ea93258b9ea9c26b71f152c732087441e4`.
+  Data release `39698707778`, runtime candidate `39698707637`, and runtime release
+  `39698707443` succeeded. Runtime completed API deployment, public API smoke,
+  private intake job definition, SAM/worker definition and image cleanup policy
+  verification. The optional queued-work drain was correctly skipped.
+  Independent API smoke passed `/version` exact SHA/production, readiness 200,
+  and unauthenticated session 401; evidence
+  `/private/tmp/intake-polish-production-api-smoke.log`. Hosting CI/CD
+  `39698707639` remains in progress. Signed-in Chrome checks remain blocked by
+  the locked Mac; no provider/device acceptance is inferred from these results.
+- Release complete for PR #399 / merge SHA
+  `473b48ea93258b9ea9c26b71f152c732087441e4`: Hosting CI/CD `39698707639`
+  attempt 1, data `39698707778`, runtime `39698707443`, and runtime candidate
+  `39698707637` all succeeded. Independent public Hosting smoke verified the
+  application HTML and exact SHA/run/attempt marker; independent API smoke
+  verified matching production SHA, ready 200 and unauthenticated session 401.
+  Evidence: `/private/tmp/intake-polish-production-hosting-smoke.log` and
+  `/private/tmp/intake-polish-production-api-smoke.log`. No workstation deploy,
+  gate bypass, new permission or scientific-processing submission was used.
+- Live acceptance limit at closeout: Chrome again reports the Mac locked, so a
+  fresh signed-in Drive/Dropbox browse/preview/import check on this release is
+  **Not confirmed**. Earlier personal-provider acceptance does not substitute
+  for this build; managed-account policy, real camera, screen readers and
+  500-original device memory acceptance also remain separate. User's pending
+  unlock request is the remaining browser prerequisite. Demo folders and
+  specimen Queue content were left untouched.
+- Cleanup reconciliation: origin/main is the released merge SHA; committed
+  implementation tree matches it (excluding append-only session evidence).
+  The only local uncommitted file is this closeout log. Preserve this worktree
+  and local branch for that evidence; only the merged remote task branch may
+  be pruned after checking its exact head. No unrelated branch/worktree cleanup.
+- Remote cleanup result: exact `git ls-remote --heads` lookup returned no
+  `codex/intake-connector-polish` branch; GitHub already removed the merged
+  remote head. No additional branch deletion was performed. Local worktree,
+  branch and uncommitted closeout evidence are retained for the pending browser
+  acceptance and next session.
+
+- Signed-in acceptance follow-up after the user unlocked the Mac (2026-10-22
+  UTC / 2026-10-21 local), same task
+  `01a149fc-3649-75c1-a121-11c19de12cb8`, branch
+  `codex/intake-connector-polish`, worktree `5da8`, PR #399, released merge
+  `473b48ea93258b9ea9c26b71f152c732087441e4`. This supplements the locked-Mac
+  limitation above; it does not rewrite earlier evidence. Chrome Work profile
+  was explicitly refreshed into the released app, signed in as the authorized
+  Gmail account in the dedicated Intake E2E collection.
+- Actual provider evidence: the existing Google Drive connection restored;
+  Google Picker listed real source files, search selected `subject_105526330.jpeg`,
+  callback persisted the selection, and the background selection check reached
+  one available/selected photo. The popup displayed “Selection saved. Return to
+  the app to check your photos”; closing it returned to running validation,
+  which completed without retry. The real Drive preview rendered successfully.
+  Dropbox restored the same authorized Gmail account, browsed the demo folder,
+  reported ten available/zero unavailable photos, and rendered a genuine image
+  preview. Folder, filter and selected-photo context survived source switching
+  and closing/reopening the source workspace. No new authorization scope,
+  disconnect, credential change or provider-original mutation was performed.
+- Real private-stage/restore check: added Dropbox `subject_105526328.jpeg` and
+  Drive `subject_105526330.jpeg` to the same private batch. The UI transitioned
+  from Saving to Saved, with both actual thumbnails. A real page reload restored
+  both photos as Saved and retained the explicit “Submit starts processing” /
+  “Submit 2 photos” boundary. These two photos remain in the user's private
+  Intake E2E draft for inspection. Submit was not clicked, no scientific
+  processing was started, and the existing Needs-a-human list remained
+  #105526324, #105526329 and #105526323. Provider demo originals were preserved.
+- Additional actual UI evidence: registered storage reports no locations for
+  this collection with an administrator/alternate-source action. Invalid link
+  input returned “Use a direct HTTPS image link”, zero available and disabled
+  Add; test input was cleared. No successful registered-storage/direct-image
+  transfer is claimed. Successful source browse/preview/staging/reload is
+  personal-account acceptance for this build, not institutional/SSO approval,
+  a new full Submit-to-scientific-Queue run, native-camera/screen-reader
+  acceptance, or a measured 500-original production performance benchmark.
+  Existing automated/release evidence above remains the validation for those
+  covered contracts; no new source-code changes were required in this follow-up.
+- Screenshot evidence (actual production Chrome):
+  `/private/tmp/intake-dropbox-preview-live-20261022.png`,
+  `/private/tmp/intake-drive-preview-live-20261022.png`,
+  `/private/tmp/intake-dropbox-selected-live-20261022.png`, and
+  `/private/tmp/intake-mixed-draft-restored-live-20261022.png`.
+  Local worktree/branch and this append-only uncommitted acceptance log remain
+  preserved. No extra branch deletion or hand deployment was performed.
+
+## 2026-10-22 — Drive selection inside the intake workspace
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, worktree `5da8`, branch
+  `codex/intake-drive-inline`, based on released main
+  `473b48ea93258b9ea9c26b71f152c732087441e4` / PR #399. The user's screenshot
+  identified a missed reference requirement: file selection still opened a
+  separate browser window. The preceding real-account acceptance established
+  transfer/staging/restore, not complete Air interaction fidelity. This entry
+  corrects that scope without changing the earlier evidence.
+- Rechecked the saved Mobbin Air import screenshot (screen
+  `93402b73-7eaf-446a-86e2-2c8c0f55ad5d`): connected account, source navigation,
+  folder/file list and Import action occupy one in-app dialog. Google's current
+  Picker guide documents iframe embedding with `PickerBuilder.toUri()` and
+  recommends LIST mode under `drive.file`, which does not provide general
+  thumbnail access. The detached chooser was an implementation decision, not a
+  provider requirement. A fresh Mobbin search returned unrelated Drive flows;
+  those results were not used as Air evidence.
+- Written plan precedes implementation:
+  `docs/execution/INTAKE_DRIVE_INLINE_20261022.md`. Account authorization keeps
+  its separate lifetime; connected web file selection uses an API-origin iframe
+  inside the existing import workspace. Exact origin/session binding and
+  authenticated selection reconciliation preserve credential isolation and
+  cancellation races. Native/legacy behavior stays compatible; no broader OAuth
+  permission, key restriction or deployment policy change is planned.
+- Initial compiled-browser evidence: actual production Dart adapters compiled
+  with dart2js `-O4` in a fresh isolated loopback Chrome profile passed all 20
+  checks, including the six new inline-frame/message/disposal/retry assertions.
+  This is a browser contract, not real Google acceptance. Focused suites, full
+  canonical verification, exact-head independent review, protected release and
+  actual inline Google selection are still pending at this point.
+- Existing two-photo Intake E2E draft and provider demo originals are retained.
+  No Submit or scientific worker drain is part of this presentation correction.
+- Focused implementation validation: 145 backend tests passed across embed,
+  selection, source, credential and bulk-source modules (one existing Starlette
+  warning), including 24 new embed tests with executable page-JavaScript
+  scenarios. Log: `/private/tmp/specimen-inline-picker-backend-focused.log`.
+  Seventy-seven Flutter inline/connector/recovery/workspace tests passed;
+  normal fatal-info analysis reported no issues. Logs:
+  `/private/tmp/specimen-intake-drive-inline-final-focused.log` and
+  `/private/tmp/specimen-intake-drive-inline-analyze-final.log`.
+- Review found a focus-return race when cancellation awaited a slow server:
+  the button was disabled when focus was requested. A retained focus intent now
+  executes after reconciliation, including status polling that beats the iframe
+  notification. Delayed-response/200%-text and poll-first tests cover both paths.
+  Initial test-file compilation needed a missing typed-data import, and analysis
+  required eight braces; both were corrected without test or lint suppression.
+  Source is frozen for the canonical gate; exact-head approval/release/live
+  provider acceptance still remain pending.
+- Canonical attempt `/private/tmp/specimen-drive-inline-verify.log` was
+  deliberately stopped (exit 143) during Python shards, after repository hooks
+  passed, to resolve review's remaining terminal-state focus paths. It is not
+  counted as a complete passing run. Cancelled/expired/failed status polling now
+  preserves focus-return intent as successful polling does; source switch and
+  disposal continue to leave outside focus alone. Final focused matrix: 83
+  tests passed, normal analysis clean, formatting/diff checks clean. Logs:
+  `/private/tmp/specimen-intake-drive-inline-terminal-matrix.log` and
+  `/private/tmp/specimen-intake-drive-inline-terminal-analyze.log`.
+- Canonical second attempt `/private/tmp/specimen-drive-inline-verify-final.log`
+  passed repository hooks and all six Python shards: 19,269 passed, 50 skipped,
+  19,319 collected nodes reconciled exactly once. It then exited 1 at the UI
+  wording gate for the new word “Invalid”; changed the message to “Drive
+  selection page is unavailable.” The wording ratchet now reports zero
+  violations. This partial attempt is not a complete canonical pass.
+- Remaining-client preflight found two architecture gates, despite passing the
+  functional intake tests: a new duration literal and an additional conditional
+  platform export. Reused the existing `apiRequestTimeout` and consolidated
+  OAuth/Picker transport behind the existing conditional adapter using explicit
+  provider transport export libraries. Independent review confirmed that this
+  preserves the real platform capability boundary; no guard/allowance or
+  owner-signoff change was made. Focused architecture/native/connection/widget
+  suites passed 239 tests, analysis was clean, and the optimized browser
+  contract passed all 20 checks.
+- Final remaining-client preflight exited 0:
+  `/private/tmp/specimen-inline-client-preflight-final.log`. Both analyzers
+  passed; design system 1,312 passed; app 3,594 passed and seven skipped;
+  compiled browser contract 20 checks passed; 633 Dart files needed no format
+  change; release web build and declared-route/security-header smoke passed.
+  This is local/synthetic evidence, not live Google acceptance. Full canonical
+  rerun on the frozen tree follows before push.
+- Final frozen-tree canonical verification `scripts/ci/verify.sh` exited 0;
+  log `/private/tmp/specimen-drive-inline-verify-clean.log`. Repository hooks,
+  six complete Python shards (19,269 passed / 50 skipped / 19,319 exactly-once
+  collected nodes), UI wording ratchet, both Flutter analyzers, design-system
+  and app tests, optimized browser contract, Dart formatting, release web build
+  and route/security smoke all passed. Independent source review reported no
+  remaining actionable findings, including origin middleware/frame policy and
+  token containment. Commit/exact-head G51 approval and protected GitHub checks
+  follow; live nested Google acceptance is still Not confirmed at this point.
+- Committed `dae93552d8eb8c62129916c38244ddc65cad8179` and opened PR #400
+  (`https://github.com/anurag-duddu/specimen-digitization-app/pull/400`).
+  Independent reviewer `/root/polish_independent_review` issued exact-head G51
+  APPROVED against `473b48ea93258b9ea9c26b71f152c732087441e4`, confirming the
+  committed source, clean worktree at review, append-only log preservation and
+  complete canonical results. Hosted PR run `39729386256` and runtime candidate
+  run `39729386261` are pending. Merge, protected deployment and live nested
+  Google acceptance are distinct and Not confirmed here.
+- Before merge: PR #400 remains exactly approved head `dae93552d8eb8c62129916c38244ddc65cad8179`,
+  GitHub reports CLEAN/MERGEABLE, all three protected checks are SUCCESS, and
+  all other hosted PR checks have completed successfully. CI/CD `39729386256`
+  includes full Python exact-once reconciliation, actual SQL/Storage engine
+  tier, web checks/build and Android/iOS builds; runtime candidate
+  `39729386261` is successful. Native builds are compile evidence only.
+  Proceeding with the authorized protected merge; production/live acceptance
+  remains separate until main workflows and public markers pass.
+- PR #400 merged as `357f9d0dee7dd4b397adfde3f4f6d3228e553941` at
+  `2026-10-22T05:54:22Z`. Protected main workflows started: CI/CD
+  `39730702189`, Data release `39730702278`, Runtime release `39730702201`,
+  and runtime candidate `39730702287`. A started workflow is not deployment;
+  awaiting exact-SHA production markers and successful smoke results.
+- All three main releases completed successfully on merge `357f9d0dee7dd4b397adfde3f4f6d3228e553941`:
+  Hosting `39730702189` attempt 1, Data `39730702278`, Runtime `39730702201`.
+  Public deployment.json matches SHA/run/attempt; API /version matches SHA and
+  production mode; protected Hosting and runtime smoke checks succeeded.
+- Live acceptance FAILED after deployment: actual Gmail Intake E2E still
+  restored its two saved photos, and connected Choose photos opened inline
+  without a new window, but Google /picker returned HTTP403. Screenshot:
+  `/private/tmp/intake-drive-inline-google403-20261022.png`. Cancel returned
+  cleanly; a recorded retry reproduced403. No Submit or provider-original
+  modification occurred. Therefore deployed does not mean working/accepted.
+- Diagnosis used visible Chrome Network metadata only, with credential-bearing
+  URL values suppressed: raw toUri produced protocol/origin/oauth_token/
+  developerKey/multiselectEnabled/nav but omitted appId, hostId and rpcService.
+  Inspection of the public Google SDK confirmed build() supplies appId/hostId/
+  relay/ifls, then Picker registers RPC and adds rpcService/rpctoken/thirdParty;
+  toUri alone serializes the incomplete builder. This matches the actual403.
+  Google's iframe example did not establish sufficient live compatibility.
+  Fix forward using the fully initialized SDK Picker inside the same API frame;
+  do not widen permissions/referrers or weaken sandbox based on this failure.
+- Fix-forward branch `codex/intake-drive-sdk-inline` starts from deployed
+  `357f9d0dee7dd4b397adfde3f4f6d3228e553941`; written implementation decision
+  appended to `docs/execution/INTAKE_DRIVE_INLINE_20261022.md` before edits.
+  The SDK's fully initialized dialog is constructed inside the same API frame,
+  readiness waits for its LOADED callback, and cleanup exceptions cannot suppress
+  terminal notifications. No key, scope, sandbox, parent-origin or IAM change.
+- Executed the actual public Google SDK with sentinel credentials in isolated
+  Chrome and blocked outbound provider requests. Raw toUri omits appId and RPC
+  fields; constructed Picker includes appId/hostId/parent/ifls/rpcService/
+  rpctoken/thirdParty/usegapi, registers RPC and forwards LOADED; dispose exists.
+  Fresh builds with real wrapper CSS at 900x560,390x260,280x240 start at origin
+  and allow scrolling to right/bottom edges. An earlier negative-top measurement
+  carried scroll between cases; fresh-instance measurements corrected that
+  harness artifact. Log `/private/tmp/specimen-picker-sdk-characterization.log`.
+  This characterizes SDK behavior, not account or provider acceptance.
+- Focused backend suite passed148 tests (27 embed cases,14 executable page-JS
+  scenarios), one existing Starlette warning; log
+  `/private/tmp/specimen-picker-sdk-inline-combined.log`. The new protocol
+  regression fails the old page at missing appId and passes the repair. Source
+  review has no findings; corrected compact evidence and exact-head review are
+  being confirmed. Full canonical gate follows on the frozen correction.
+- Correction canonical `scripts/ci/verify.sh` exited0 on the frozen tree;
+  `/private/tmp/specimen-drive-sdk-inline-verify.log`. Six Python shards passed
+  19,272 tests /50 skips, all19,322 collected nodes reconciled exactly once;
+  design system1,312 passed; app3,594 passed/7skipped; both analyzers clean;
+  optimized browser20checks, formatting633files/0changes, release web build and
+  route/security smoke passed. Independent reviewer cleared final source and
+  fresh compact-SDK measurements with no findings. Current main remains base
+  `357f9d0dee7dd4b397adfde3f4f6d3228e553941`. Exact-head approval and hosted
+  checks follow; live repaired Google selection remains Not confirmed.
+- Correction committed as `a4ea58056d1e9b2011da8d64cd6f7e01c2df4f91` and opened
+  PR #401 (`https://github.com/anurag-duddu/specimen-digitization-app/pull/401`).
+  `/root/polish_independent_review` issued G51 APPROVED for that exact head
+  against deployed `357f9d0dee7dd4b397adfde3f4f6d3228e553941`, verifying the
+  clean four-file scope, append-only log/plan changes, and the complete canonical
+  results above. Pre-push hooks passed. Hosted checks and protected release are
+  pending; actual Google selection remains Not confirmed after the prior403.
+- While PR #401 checks ran, live Gmail Dropbox browsing on deployed PR #400
+  loaded all10 demo photos inline with0 unavailable. Selected demo321, switched
+  to Drive and back, and confirmed its selection persisted. Cleared only that
+  temporary selection, closed the panel, and confirmed Saved2photos remains
+  demo328/330; no Add/Submit or provider-original mutation occurred. This
+  validates existing Dropbox behavior, not the still-pending Drive correction.
+- Before merge: PR #401 is CLEAN/MERGEABLE at the independently approved exact
+  head `a4ea58056d1e9b2011da8d64cd6f7e01c2df4f91`, base unchanged at
+  `357f9d0dee7dd4b397adfde3f4f6d3228e553941`. CI/CD `39736633342` and runtime
+  candidate `39736633298` completed successfully; every required check and
+  supplementary database/storage/native check passed. Native build success is
+  compile evidence only. Proceeding with protected merge; deployment and actual
+  repaired Google selection remain separate and Not confirmed here.
+- After the user's resume on October22 local, PR #401 merged at
+  `2026-10-23T00:39:19Z` as `084b387f950cf2c255c04849f08998cb84d1096e`.
+  Main protected runs: Hosting CI/CD `39879397457`, Data `39879397403`,
+  Runtime `39879397420`; runtime candidate `39879397409`. These runs are
+  started, not yet a confirmed release or live-provider acceptance.
+- Corrected API `/version` reports `084b387f950cf2c255c04849f08998cb84d1096e`
+  in production; Data `39879397403` and Runtime `39879397420` succeeded.
+  Hosting remains pending. Real Gmail Choose photos now renders the actual
+  Google file list within the existing import pane, without the former403 or
+  a detached window. Screenshot saved under connector-polish-20261021 as
+  `drive-inline-live-20261022.png`. Selection handoff remains Not confirmed:
+  concurrent Chrome window changes interrupted that step. Saved2photos remains
+  unchanged; no Submit or provider-original mutation occurred.
+- Production release complete at `084b387f950cf2c255c04849f08998cb84d1096e`:
+  Hosting `39879397457` attempt1, Data `39879397403`, and Runtime `39879397420`
+  all SUCCESS. Public deployment.json matches SHA/run/attempt; API /version
+  matches SHA and production mode. Hosting `Verify the public site` and runtime
+  `Smoke the public API` succeeded. This confirms deployment, not full live
+  chooser acceptance. The actual corrected API rendered real Gmail files inline;
+  selecting/returning to review, cancel/reopen and refreshed matching-web checks
+  remain Not confirmed because concurrent Chrome window changes interrupted
+  native automation. An availability question is pending; no permissions or
+  credentials were widened. Only this append-only closeout log is uncommitted;
+  feature branches/worktree are retained for the outstanding live acceptance.
+- Follow-up after the user made Chrome available: hard-refreshed the production
+  Gmail Intake E2E app and restored Saved2photos (328/330). Real inline Google
+  Picker selected demo330, returned through server validation (1 available,
+  0 unavailable), and opened its actual specimen-image preview. Google's Cancel
+  settled back to that selected item; reopening loaded real files again, and
+  the app's Back to selected photos returned without losing the selection.
+  Proof `drive-inline-selected-preview-live-20261022.png` under the existing
+  connector-polish-20261021 visualization directory. No detached chooser,
+  permission expansion, Add-to-draft or Submit was used in this correction.
+- Live chooser acceptance is now confirmed for Gmail on the released web/API:
+  Drive -> Dropbox -> Drive retained the selected demo330; closing the panel
+  left Saved2photos exactly328/330 and the existing specimen Queue unchanged.
+  Selected-list proof `drive-inline-selection-verified-live-20261022.png` saved
+  beside the preview proof. This confirms the inline chooser correction, not a
+  new scientific submission, institutional approval, or physical-device run.
+- Cleanup reconciliation: fetched origin/main at released merge084b387f;
+  remote `codex/intake-drive-inline` remains dae93552 and
+  `codex/intake-drive-sdk-inline` remains a4ea58056; both exact heads are
+  ancestors of origin/main and their PRs400/401 are merged. Only the appended
+  SESSION_LEARNINGS.md is uncommitted. Pruning only those two remote branches
+  with exact-head leases; retaining this checkout/local branches and its log so
+  no uncommitted or unrelated work is lost.
+- Cleanup correction: the leased remote deletion reported both refs already
+  absent; a fresh `git ls-remote --heads` confirmed neither exists. The earlier
+  normal fetch retained stale tracking refs. No remote branch was deleted by
+  this attempt; removing only those two stale local remote-tracking refs.
+- Mobile follow-up for task01a149fc, same5da8 checkout/branch and released
+  merge084b387f: source inspection confirms inline Google Picker is web-only;
+  native iOS/Android still use LaunchMode.externalApplication and the
+  specimenintake callback. Connected physical-device inventory found iPhone
+  installed1.0.0(8), Android1.0.0(10), Android updated October17. No native
+  build was installed or device UI acceptance completed in this follow-up.
+  iPhone Mirroring reported iPhone in Use; native acceptance is Not confirmed.
+- Live Gmail mobile-web emulation at393x852 (Chrome iPhone16 preset) rendered
+  the real Google list, selected demo330, returned to server validation, and
+  displayed the actual image preview within phone width. Checking0of1 persisted
+  while DevTools was open; closing DevTools/restoring app focus immediately
+  showed the completed selection. Lifecycle polling pauses outside resumed
+  app state by source; causality beyond that observation is Not confirmed.
+  Reopened emulation and confirmed1available/0unavailable and working preview.
+  Proofs drive-mobile-web-emulated-20261022.png and
+  drive-mobile-preview-emulated-20261022.png in connector-polish-20261021.
+  These are real-provider browser-emulation checks, not Safari or physical
+  Android/iPhone acceptance. Native external-browser selection remains a UX
+  difference, not evidence of a failed native callback.
+- Closed preview/source panel, disabled emulation, and closed DevTools.
+  Saved2photos328/330 remains unchanged; no Add/Submit or provider mutation.
+  A read-only Cloud Run execution query could not run because the existing CLI
+  session requires reauthentication; no credentials/configuration were changed.
+  No application code changed for the mobile assessment; prior full verification
+  remains the source gate, not new physical-mobile evidence. Follow-up remains:
+  current native builds, real-phone provider handoff/cancellation/recovery,
+  capture/review/submit, and mobile Safari/Chrome acceptance.
+
+### 2026-10-23 — Cross-platform intake implementation (task01a149fc)
+
+- Task `01a149fc-3649-75c1-a121-11c19de12cb8`, worktree5da8, branch
+  `codex/intake-cross-platform`, base084b387f950cf2c255c04849f08998cb84d1096e.
+  Written plan: docs/execution/INTAKE_CROSS_PLATFORM_20261022.md. Scope is the
+  shipped iOS/Android/web targets; native desktop hosts are not present.
+- Shared image filters now include iOS UTIs for bulk selection/reselection.
+  Capture admission acknowledges durable metadata before adding a review item.
+  Failed acknowledgements reconcile against host storage; uncertain outcomes
+  retain bytes and stable identity for retry instead of deleting a possibly
+  committed file. Prior retained bytes survive replacement failure. iOS camera
+  restriction errors follow the permission-recovery path.
+- Native connector transport uses ASWebAuthenticationSession (iOS15 compatible)
+  and AndroidX Auth Tab with Custom Tab fallback. Completion/cancellation/expiry
+  and exact initiating state are fenced; late callbacks cannot complete a newer
+  connection. Native Google uses the supported OAuth-triggered Picker; web keeps
+  its inline SDK Picker. Google disallows native Picker inside an embedded
+  WebView. Credentials stay server-side and no provider scope was expanded.
+- Source lifecycle now permits visible inactive polling, pauses when hidden,
+  and reconciles on resume. Route/account/source changes close authorization.
+  Cancellation re-reads authoritative connection state: the server may persist
+  needs_authorization on initiation, so restoring stale Connected would be wrong.
+  Existing source selections remain intact.
+- Validation before freeze: combined focused suite68 passed (auth, connector,
+  lifecycle, file types, permission classification and file-backed recovery).
+  Capture agent separately passed43 relevant cases including30 captures/restart
+  and commit-then-lost-ACK retry. Android debug APK compiled at build11; signer
+  SHA256 matches the installed build10, package identity unchanged. No install
+  yet. Unsigned generic iPhoneOS Xcode build succeeded and compiled AppDelegate;
+  Flutter's wrapper failed at signing/provisioning. No iOS entitlement was
+  removed to get a build. Physical native/provider acceptance is Not confirmed.
+- Initial canonical verify passed pre-commit/Python/design-system gates, then
+  stopped on one unnecessary non-null assertion in cancellation reconciliation.
+  Removed that assertion without behavior changes; full verification restarted
+  at /private/tmp/specimen-cross-platform-verify-final.log. Android's first build
+  caught an invalid platform theme; corrected to Theme.NoDisplay and rebuilt.
+  SDK configuration was fetched for existing registered Firebase native apps and
+  written only to ignored local build files. No production IAM, app registration,
+  provider-original or saved Gmail demo draft was changed.
+- Independent exact-head review, remaining canonical gates, protected release,
+  real native installation/signing, capture/provider/submit device acceptance,
+  and physical Safari/Chrome acceptance remain pending at this checkpoint.
+
+### 2026-10-23 — Cross-platform recovery review and Android provider checkpoint (task01a149fc)
+
+- Same task/worktree/branch as the preceding entry; first implementation commit
+  1e3db26f51d65bde0979b64a854b3729889bc4f8. Independent review found that uncertain
+  capture saves needed recovery beyond retrying one source path. Follow-up now
+  scopes admission attempts to one camera route, reconciles acknowledged host
+  metadata, preserves registered/in-flight item identity, keeps recovery within
+  its original draft, resumes confirmed transfers, and checks actual prospective
+  capacity before retaining a replacement. Fresh captures after reopening must
+  not be inferred to be retakes. Targeted recovery/parser27 and adjacent97 tests
+  passed; source reviewer approved the five changed blobs pending commit freeze.
+- Canonical run specimen-cross-platform-verify-final.log passed pre-commit, all
+  six Python shards and design-system gates, then failed its Flutter parse gate
+  because the controller was being edited during that run. Flutter result was
+  3623 passed,7 skipped,1 failed. The source was repaired and focused parser tests
+  passed; this is not a canonical pass. The next run uses frozen source.
+- Installed Android build11 over the existing app on Nothing A142/API36 with
+  adb install -r; package/signature and installed data retained. Gmail email-link
+  sign-in reached the live Intake E2E collection. Saved demo draft328/330 restored
+  with real thumbnails and remains unsubmitted. A separate test draft now holds
+  real Drive327 and Dropbox326, both visibly Saved; no Submit yet at checkpoint.
+- Physical Drive selected content reached the native app, but a stale Auth Tab
+  remained above it after Google Picker launched a nested browser task. Closing
+  that old tab exposed the successful result. Follow-up brings the original app
+  task forward after recording the callback, preserving the existing Flutter
+  engine. Reviewer approved source; automatic-return device retest is pending.
+  Dropbox reauthentication with unchanged existing read-only scopes returned
+  automatically and browsed the real demo folder; this used build11, not the
+  pending callback/recovery follow-up. Provider originals were not modified.
+- Unsigned iOS compilation is successful, but the installed personal-team
+  provisioning profile lacks com.apple.developer.associated-domains required by
+  Runner.entitlements and expires2026-10-24. Physical iOS installation and E2E
+  remain Not confirmed. No entitlement, bundle identity, account or installed
+  data was removed to work around provisioning. Final stable canonical run,
+  exact-head review, physical callback/submit acceptance and release remain open.
+
+### 2026-10-23 — Physical review caught stale preview pixels (task01a149fc)
+
+- On Android build11, next-photo navigation updated the filename before the new
+  bytes arrived, leaving the prior photo visible temporarily. FutureBuilder's
+  retained snapshot and gapless image playback caused misleading review state.
+  Each preview load now keys its FutureBuilder generation and clears prior
+  decoded pixels. Delayed item/controller swaps plus existing retry behavior
+  passed13 activity tests; parser5 passed and analyzer was clean. Independent
+  review approved the two changed blobs atop05fee3fcd4f7041e7f7204353fa5615af5f8896c.
+- Build12 of05fee3f installed in place and restored Gmail plus the saved326/327
+  test draft. Its SHA256 is1da752d856a4f1713fbc96010a6ff617bd0af50bcba4aeda067cf710dfbe08bf.
+  Current canonical run began before this preview fix; remaining checks may see
+  the final source, so it is not exact-head evidence without rerunning the earlier
+  affected gates. Final verification and physical preview retest remain pending.
+
+### 2026-10-23 — Native Android intake handoff and final local gates (task01a149fc)
+
+- Same task/worktree/branch; implementation heads1e3db26f5,05fee3fcd,ca7e18396.
+  Independent G51 reviewer approved the full branch atca7e1839639596932ad73424139300dc0f531850
+  and the two subsequent analyzer corrections: remove a redundant null check
+  implied by registered, and accept captureAttempt in the retake test override.
+  Exact final commit acknowledgement follows commit creation.
+- Canonical scripts/ci/verify.sh at specimen-cross-platform-verify-frozen.log
+  passed all six unchanged Python shards:1839/2183/3280/4592/3889/3489 passed,
+  27/4/7/1/3/8 skipped, then stopped on the two analyzer findings above. This
+  invocation is not a pass. After fixing them, reran all affected/remaining
+  gates with frozen source: all-files pre-commit, UI strings, both fatal-info
+  analyzers, design-system1312 tests, application3631 tests with7 skipped,
+  actual dart2js/Chrome OAuth and inline-Picker contract probe, Dart format,
+  release web build, and loopback route/security-header smoke. All passed.
+  Formatter also corrected the ignored local Firebase SDK configuration;
+  no SDK credentials/configuration were added to tracked files. Logs are in
+  /private/tmp/specimen-cross-platform-remaining-gates.log and
+  /private/tmp/specimen-cross-platform-web-final.log. All required local gate
+  stages passed across these runs; no assertions, goldens or checks were waived.
+- Physical Nothing A142/API36 build12 verified Google Picker selection returns
+  automatically to the native source sheet after the nested Chrome task. No
+  manual Auth Tab close or app switch was needed. Existing Gmail consent scopes
+  remained unchanged. Prior build11 separately verified Dropbox authorization,
+  folder browsing and selection against the live account.
+- Build13 fromca7e18396 installed in place with preserved signer/package/data;
+  APK SHA2562dc8f6a1d3b1b55b2c0dc5477da140e410721361acb62405acb333d87c2d3461.
+  Restored the real mixed-source327/326 draft. Next-photo review now clears stale
+  pixels immediately and loads the correctly named photo. Submitted this separate
+  two-photo batch once; intake progress showed0of2 waiting, then2of2 finished and
+  2sent to pipeline. Both appeared in the existing specimen list and327 opened
+  its scientific review screen. This confirms intake handoff, not completion of
+  every scientific processing stage. Original demo328/330 was reopened afterward
+  and remains Saved/unsubmitted. Provider originals were untouched.
+- Screenshots: connector-polish-20261021/android-drive-return-20261023.png,
+  android-review-next-loading-20261023.png, android-submission-start-20261023.png,
+  android-two-sent-to-pipeline-20261023.png and
+  android-original-demo-preserved-20261023.png under this task's visualizations.
+- iOS native code compiled in the unsigned generic iPhoneOS build, but the only
+  available same-identity Personal Team profile lacks Associated Domains and
+  expires2026-10-24. Physical iOS installation/provider/camera/submit acceptance
+  is Not confirmed. No entitlement was removed, app identity changed or installed
+  app erased. Thirty real camera captures,100/500 real-source batches, physical
+  Safari, VoiceOver/TalkBack and managed-account approval scenarios are also
+  Not confirmed; automated coverage is not substituted for those device results.
+  Merge, protected deployment and mobile distribution remain separate outcomes.
+
+### 2026-10-23 — PR402 hosted gates and physical mobile-web sign-in (task01a149fc)
+
+- Same task, worktree and codex/intake-cross-platform branch. Independent G51
+  review approved exact implementation head bee3d7aea52f9177fabe0f428275ae6eb530458a.
+  PR402 CI/CD39918712634 and runtime candidate39918712605 completed all applicable
+  checks successfully; Hosting deployment is correctly skipped for the PR.
+- Physical Android Chrome on specimen-digitization.web.app initially displayed
+  an older cached sign-in shell. A normal browser Reload updated it without
+  clearing site data. Gmail Google sign-in then reached the real Intake E2E
+  collection and its specimen list; intake navigation also succeeded. Evidence:
+  connector-polish-20261021/android-mobile-web-signin-20261023.png. This exercised
+  current production084b387f9, not an unshipped PR web build.
+- The alternate specimen-digitization.firebaseapp.com app shell accepted Google
+  sign-in but App Check token acquisition failed before collection access was
+  requested, including after Reload. Both hosts use the same public Enterprise
+  site key; the live allowed-domain configuration is Not confirmed. Canonical
+  web.app success narrows the issue but does not prove a domain-allowlist cause.
+  gcloud read-only key inspection and the existing browser admin session both
+  require renewed Google verification. No App Check protection was disabled.
+- Camera viewfinder opened on the physical Android, but no capture was taken;
+  this does not establish real-camera acceptance. iOS provisioning and remaining
+  physical acceptance limitations in the preceding entry remain unresolved.
+  Protected release, alternate-host investigation and device acceptance continue.
+
+### 2026-10-23 — PR402 protected release and Android/mobile-web acceptance (task01a149fc)
+
+- Task01a149fc-3649-75c1-a121-11c19de12cb8, worktree5da8. PR402 merged
+  codex/intake-cross-platform at47aa86f39008db3617f6e38d24d661ac1da4bdf3.
+  Independent G51 review approved exact final head6c2142d93e18e72b28a7d3a936de51a5e4106e42;
+  final PR CI/CD39920466880 and runtime candidate39920466951 passed, with no
+  unresolved review threads. No required gate, assertion or protection was waived.
+- All three protected main releases succeeded on that merge SHA: Hosting
+  39922006687 attempt1, data39922006700 and runtime39922006691. Hosting public
+  verification and runtime API smoke passed. Independently ran smoke_hosting.sh
+  with the exact SHA/run/attempt; it passed. Public deployment.json reports
+  commitSha47aa86f39008db3617f6e38d24d661ac1da4bdf3, runId39922006687,
+  runAttempt1, builtAt2026-10-23T08:13:54Z. API /version reports the same source_sha,
+  api-runtime-v1, production. Web/backend release is complete; native distribution
+  and complete physical acceptance are separate outcomes.
+- Built Android debug build14 from the exact merge and installed in place on
+  Nothing A142/API36, packageorg.fieldmuseum.specimen_digitization. Local and
+  on-device APK SHA256 both match
+  50b16c00d1c33b24b6e5c88ce9c4d06860a316af8daa577258701817f819aa9d.
+  Existing signer, original installation, application data and Gmail session
+  were preserved. The app restored the original328/330 draft as2photos Saved
+  and reopened the earlier327/326 submission as2of2finished,2senttopipeline.
+  This post-install check did not submit another batch. Build log:
+  /private/tmp/specimen-cross-platform-android-14.log.
+- Physical Android Chrome reloaded canonical specimen-digitization.web.app
+  after the release. Gmail session and original328/330 draft restored. The real
+  inline Google Picker loaded, selected325 and returned to source review with
+  1available,0unavailable,1selected and Add1photo. Closed source review without
+  adding; original draft remains2Saved/unsubmitted. Earlier mobile-web Dropbox
+  browsing selected the ten-file demo folder successfully but did not add it.
+  That Dropbox check preceded this release; do not relabel it exact-release E2E.
+- New screenshots under this task's bulk-intake-research/connector-polish-20261021:
+  android-build14-restored-20261023.png, android-build14-progress-20261023.png,
+  android-mobile-web-released-restored-20261023.png and
+  android-mobile-web-released-drive-20261023.png. Existing native mixed-source
+  Submit/progress/pipeline evidence is recorded in the preceding entries.
+- iOS remains blocked for physical installation: Xcode exposes one configured
+  Apple account and one cached Personal Team with isFreeProvisioningTeam=true.
+  Its same-bundle profile lacks Associated Domains and expires2026-10-24.
+  No paid team is exposed in that inventory; membership elsewhere is Not
+  confirmed. Unsigned native compilation passed, but this is not physical iOS
+  acceptance. Need legitimate provisioning for the existing identity with its
+  required entitlement. Did not remove the entitlement, alter identity, erase
+  the installed app or purchase membership.
+- Unresolved: alternate firebaseapp.com App Check failure needs renewed existing
+  project-admin verification before live configuration inspection. Canonical
+  web.app works. Two Dropbox connection choices have identical displayed email
+  labels; actual stable account IDs were not compared. Source inspection shows
+  Use another account can allocate another connection before provider identity
+  is known. Follow-up should converge new callbacks using a private CAS identity
+  claim scoped by owner/collection/provider/access/stable account ID, before
+  storing candidate credentials; retain old referenced connection IDs. Do not
+  silently merge or disconnect existing rows or copy secret references across
+  connection IDs. No production credential or connection mutation was made for
+  this finding.
+- Thirty real captures,100/500 real-source batches, physical iOS/Safari,
+  VoiceOver/TalkBack and managed-account policy acceptance remain Not confirmed.
+  Viewfinder opening and automated tests do not establish these outcomes.
+  Continue on codex/intake-mobile-acceptance from the deployed merge, preserving
+  this worktree, local device configuration and evidence. Only the fully merged
+  codex/intake-cross-platform branch is eligible for pruning after ancestry and
+  remote checks; no unrelated worktrees or branches are eligible.
+
+
+### 2026-10-23 — Manual iPhone build15 installation and sign-in inspection (task01a149fc)
+
+- Task01a149fc-3649-75c1-a121-11c19de12cb8 continues in worktree5da8 on
+  codex/intake-mobile-acceptance, HEAD5dfbdf924, following deployed PR402 merge
+  47aa86f39008db3617f6e38d24d661ac1da4bdf3. This corrects the preceding entry's
+  physical-install blocker: the existing free Personal Team can install a
+  supervised Debug test artifact for the same bundle identity. It does not
+  establish production signing, Associated Domains or standalone distribution.
+- User explicitly connected the iPhone and requested the manual path. Built
+  exact current source without tracked changes: Flutter iOS Debug1.0.0(15),
+  --no-codesign --no-pub, production API URL, explicit Apple debug App Check and
+  personal-demo flags, and native Google sign-in flags. No release/debug guards
+  were broadened. The existing profile and signing identity were used without
+  purchasing membership or changing account provisioning.
+- Signed a private copy at /private/tmp/specimen-iphone-manual-build15/Runner.app
+  with the existing Personal Team HM3L7UN9RZ and matching profile/keychain group.
+  The private signing entitlements omit unsupported Associated Domains; tracked
+  Runner.entitlements remains unchanged. Deep strict codesign verification
+  passed. Profile expires2026-10-24T20:54:59Z. Runner executable SHA256:
+  e9e0ad40196abea66a4d108c2cc2c900b56e93a3782af7d960d1ce60c7d595d7.
+  Profile SHA256:
+  533e9ea02ea3479deb0a6178a4539bf03759956dea88077f5e8d8ea7728daeca.
+- Installed in place on paired iPhone14ProMax/iOS27.0.1, preserving the existing
+  org.fieldmuseum.specimenDigitization app container and keychain. Started
+  suspended with devicectl, attached LLDB, then continued. The new native intake
+  screen rendered with the old Field Museum session and Insects collection.
+  No capture, import or Submit was performed in that collection. Debug build
+  use requires debugger supervision; standalone launch is Not confirmed.
+- Signed out through the app to exercise the authorized Gmail E2E account.
+  Native Google sign-in opened the system consent prompt and Google account
+  chooser. Existing Gmail account was displayed. Account-row and close actions
+  did not advance through iPhone Mirroring, while app navigation and mirroring
+  App Switcher worked. Requested a direct phone tap to distinguish a mirroring
+  input issue from a device/app failure; authenticated iOS Gmail return and
+  provider import remain Not confirmed at this checkpoint.
+- Logs are local under /private/tmp/specimen-iphone-manual-build15/ and
+  /private/tmp/specimen-iphone-manual-build15.log. Do not publish unfiltered
+  debugger/app logs. Default-sandbox signing inspection returned misleading
+  unavailable-authority/profile errors; explicit host inspection succeeded.
+- Inspected the Infinative Chrome profile and existing Google project-admin
+  session. Firebase admin redirects to Google Welcome/password verification,
+  although the specimen app's own session is valid. Read-only gcloud inspection
+  still requires reauthentication. No password, live configuration, IAM, secret,
+  provider credential or production deployment was changed for this work.
+- Independent device_acceptance lane audited build15 read-only: actual Google
+  client IDs and reversed callback scheme match; google_sign_in_ios6.3.5
+  registers application and scene delegates. Its Google SDK sign-in is separate
+  from IntakeAuthChannel. No configuration defect was found explaining both
+  unresponsive account rows and the system close button. Root confirmed the
+  SafariViewService process exists. This does not establish a successful native
+  callback; direct physical input remains the next diagnostic. No source fix
+  was invented from the Mirroring-only observation.
+
+
+### 2026-10-23 — iPhone splash diagnosis and standalone Profile build16 (task01a149fc)
+
+- Task01a149fc-3649-75c1-a121-11c19de12cb8, worktree5da8,
+  codex/intake-mobile-acceptance from ba2de4bfc, continues the preceding build15
+  checkpoint. User reported physical iPhone stuck on splash. Existing LLDB
+  PID28048 was stopped on a real EXC_BAD_ACCESS in objc_release_x8, followed by
+  nested block releases, NSArrayM deallocation and UIKit transition completion.
+  Saved symbolic backtrace at
+  /private/tmp/specimen-iphone-manual-build15/crash-main-thread-20261023.txt.
+  This corrects any inference that the prior unresponsive sheet was proven to
+  be solely Mirroring. The memory-corruption origin remains Not confirmed.
+- A diagnostic relaunch of the same build with NSZombieEnabled reached sign-in;
+  no deallocated-object diagnostic was recorded. Its private console exposed
+  missing Flutter debugger RX-page support and simulator execution fallback.
+  Added the existing generated handle_new_rx_page callback to the selected
+  LLDB target, with auto-continue disabled and only identified RX stops manually
+  resumed, consistent with Flutter upstream PR191434 for iOS27. A subsequent
+  launch reported Dart JIT, without the missing-assist message. Many RX stops
+  require supervision; a manually attached Debug build is unsuitable for normal
+  Home Screen launch. This debugger correction is not proof that the UIKit
+  transition crash was fixed.
+- Initial automatic approval review rejected terminating PID28048 as potentially
+  losing session state. Read-only process status reconfirmed the fatal crash;
+  the observed session was signed out, with no photos, uploads, draft changes
+  or Submit in flight. The same bounded termination was then approved with that
+  evidence. Subsequent diagnostic relaunches and replacement preserved the app
+  container/keychain. No protection was bypassed and no app was uninstalled.
+- Prepared a standalone Profile build by adding a separate default-off
+  SPECIMEN_APPLE_PROFILE_APP_CHECK_DEBUG define and actual kProfileMode wiring.
+  Apple debug attestation additionally requires !kReleaseMode and non-web.
+  Existing SPECIMEN_APPLE_APP_CHECK_DEBUG remains Debug-only, Android selection
+  is unchanged, and production Release retains DeviceCheck. README documents
+  registered-device-token, signing, expiry and distribution limitations. No
+  token, credential, server policy, IAM or production configuration was changed.
+- Ten enterprise_app_check tests passed, focused Dart analysis reported no
+  issues, formatting and diff checks passed. Independent cross_platform_review
+  found no blocking code/README findings. Reviewed blobs:
+  main.dart d0af67d354d2c3a7ded538a2654dd97863cacd84;
+  app_check.dart e5ef635352e8d5167013600561cb2cc0730cd9db;
+  enterprise_app_check_test.dart c761d47b4f18947ccc2d07c93ad8f0d1092fed8d;
+  README.md ff112f62689e651b6ecb914cbce70fbc13dc51e2.
+  The unit runner simulates modes; this is not execution of a Release binary.
+- Flutter Profile1.0.0(16) compiled in76.9s. Signed a private copy using the same
+  existing Personal Team/profile and profile-compatible private entitlements;
+  tracked entitlements remain unchanged. Deep strict codesign verification
+  passed. Runner SHA256:
+  dd7d1cd9746491e6d75d1147a41f6f3e4deb04b2b038384b938e86f3ba35ea47.
+  Installed in place and launched WITHOUT LLDB or start-stopped. Native sign-in
+  rendered past splash. Google system consent and real account chooser loaded;
+  scrolling worked, account taps through Mirroring did not advance. No native
+  crash/exit was reported in this Profile console at this checkpoint. Direct
+  phone account selection requested; authenticated iPhone Gmail/API access,
+  provider import and Submit remain Not confirmed. CLI standalone launch is
+  observed; Home Screen cold launch and full iOS E2E are separate pending checks.
+- Profile artifact/logs: /private/tmp/specimen-iphone-profile-build16/ and
+  /private/tmp/specimen-iphone-profile-build16.log. Profile expires
+  2026-10-24T20:54:59Z. No debugger is attached to this installed Profile build.
+  Build flags contain native Google and explicit Profile App Check opt-in;
+  no synthetic access or manual email-paste helper was enabled.
+- Device acceptance lane prepared an inert diagnostic backup at
+  /private/tmp/specimen-iphone-manual-build15/ios27_rx_supervisor.py, with16
+  host-only safety tests. It was not loaded or used on the phone. Listener/GIL
+  timing remains unqualified; do not present its unit checks as device evidence.
+- Required scripts/ci/verify.sh is running at this checkpoint (session46809,
+  /private/tmp/specimen-iphone-profile-verify-20261023.log). All pre-commit
+  checks passed; six Python shards are active. No full-gate pass, push, new PR,
+  merge or production deployment is claimed by this checkpoint. The deployed
+  PR402 release remains separate. Preserve this branch and evidence pending
+  direct-phone feedback and completion of verification.
+
+
+### 2026-10-23 — Profile build16 Gmail and Drive return verified (task01a149fc)
+
+- Same task01a149fc-3649-75c1-a121-11c19de12cb8, worktree5da8 and branch
+  codex/intake-mobile-acceptance. User completed Google account selection by
+  direct touch and reported being in the app. Root independently observed
+  anurag.duddu@gmail.com in the native account menu, Intake E2E collection,
+  and the original328/330 draft restored as2photos Saved. The earlier327/326
+  submission opened as2of2finished,2senttopipeline. This confirms authenticated
+  native API access; reopening historical progress is not a new iOS Submit.
+- Real Drive selection ran through the native system authorization sheet.
+  Mirroring could open the sheet but its account-row tap did not advance.
+  User selected Gmail and photos directly on the phone; root then observed the
+  native callback return and selection validation finish with327/321,
+  2available,0unavailable,2selected. Closed source review without adding these
+  photos to the original draft. That draft remained2Saved/unsubmitted.
+- Started a separate empty private batch for further iPhone acceptance and
+  opened Dropbox. Existing account choices loaded, but Mirroring ended due to
+  physical phone use before an account was selected. New iOS Dropbox import,
+  Submit and Home Screen cold launch remain Not confirmed. No new specimen
+  or scientific pipeline work was started during these checks.
+- Evidence under this task's bulk-intake-research/connector-polish-20261021:
+  iphone-build16-restored-20261023.png, iphone-build16-progress-20261023.png,
+  iphone-build16-drive-selection-20261023.png. The installation/signature/profile
+  expiry and build-mode limitations in the preceding entry still apply.
+- scripts/ci/verify.sh completed with exit0: all19322collectedPython tests were
+  accounted exactly once across6shards; specimen_ui1312tests and application
+  3632tests passed (7application skips), both analysis stages passed, OAuth
+  cross-origin browser contract passed, formatting, release web compilation
+  and built-route/security-header smoke passed. No golden or assertion changed.
+  Log: /private/tmp/specimen-iphone-profile-verify-20261023.log.
+- Remote main remains47aa86f39008db3617f6e38d24d661ac1da4bdf3 and protected=true.
+  Source change is limited to explicit personal-device Profile App Check opt-in,
+  its tests and documentation. Device evidence does not qualify distribution
+  signing, institutional acceptance, real camera capture or full iOS E2E.
+
+### 2026-10-20 - COST-METER-PR3 shared Google costs split across tenants by measured usage
+
+- Owner's words, typed 2026-10-20 and relayed by the coordinator session (local_e3ae4073): "Yes, build the in-app tenant cost meter (option A): per organization and collection totals, per-tenant budget caps, shared Google costs split by usage, monthly check against the real bills." Also 2026-10-17: "remember I want actual costs attributed properly". PR 3 of five, to the coordinator's brief (it refines the design note's PR 3 sketch: Pacific billing days, not America/Chicago). Claude agent, worktree agent-a0a1ed43ee4bd9022, branch `claude/tenant-cost-meter-allocation` from origin/main cd8be7d2 (PR #386 merged). Nothing deployed; no gcloud or firebase command; no production read; `owner_setup.sh` run only against the test fakes.
+- Built: `application/cost_allocation.py` (pure: Pacific billing days from hourly readings, six methods, largest-remainder split, chronological free-tier pools as negative credit rows), `profiles/infrastructure_prices.json` (rates, version infrastructure-prices-2026-10-20), `cost_monitoring.py` (timeSeries.list via AuthorizedSession, per-series hourly alignment, grouping in Python), `cost_allocator.py` (run by `DrainWorker._allocate_costs` right after the sweep; cursor `worker_cursor` per collection; 45 s, 7 days a pass; fail-open), `dataconnect/connector/cost_allocation.gql` (`CostAllocationInputsV1`, `UpsertCostAllocationsV1`, `CostAllocationStatusV1`), the `meter` field of GET /costs and signed sums in `cost_report`, `owner_setup.sh --cost-meter-only` (role `specimenCostMeterRead` = `monitoring.timeSeries.list` on `specimen-worker-runtime`, log-based metric `specimen_api_requests_by_organization`), kept in the full setup path. COST_METER.md "Shared Google costs" and DEPLOYMENT.md item 4 describe it.
+- Deliberate test changes: `test_simple_owner_setup.py` pins three more setup changes wherever it counts them (for example 30 to 33 printed and 29 to 32 applied on the live-state runs), a "Cost meter" heading, one more custom role and one more worker grant in the literal standing table; its fake gcloud learns `logging metrics describe/create/update`. FakeDataConnect records receipt and specimen times in new side dicts (`receipt_times`, `created_times`) so no existing row comparison changes. No pinned connector call count changed: nothing on the save path calls the new operations.
+- Validation actually run, uncommitted local runs on 2026-10-20 (no hosted CI yet): `node scripts/data/cost-allocation-test.mjs` and PR 1's `cost-meter-test.mjs` against `scripts/data/serve-local.sh` (PostgreSQL 18, Data Connect emulator 3.2.0), all PASS groups; opt-in `tests/test_sqlconnect_cost_allocation.py` and `test_sqlconnect_cost_meter.py` against the same emulator, 2 passed; `schema_gate.py` against origin/main's dataconnect tree: `additive`. Whole suite (`python_shards.py local --count 4`, head 820918e7): 16,656 passed, 49 skipped, 0 failed. `pre-commit run --files` on every changed file passed (its shellcheck included). Red checks with the origin/main file swapped in: cost_ledger.py (4 API tests fail), api.py (5), lane_worker.py (4 drain tests), the FakeDataConnect support file (4 connector tests), owner_setup.sh (7 owner-setup tests; the mode-rejection cases pass on main too, so they prove nothing). verify.sh not run as one command; no Dart changed.
+- Reusable learnings: (1) A SQL Connect `@check` expression sees only the fields its lookup selects: `this.role` with a `{ active }` selection fails to compile, the emulator then loads no connector at all and `seed-integration.mjs` fails with HTTP 503; read `connector.log` in the retained serve directory. (2) PostgreSQL `LEAST` ignores NULL, so `LEAST(gap since lag(created_at), cap)` gives the cap to a save with no earlier one in the window, which equals the full-history answer when the window starts a cap before the month. (3) The emulator database is shared by every engine-contract stage, so a deployment-wide aggregate also counts other stages' rows: assert on your own ids, and expect a split by specimens to give your fresh collection no share. (4) Projection writes send Int64 `byteSize` as text; a fake that sums them must convert. (5) In a worktree-isolated agent, heredocs whose text holds JSON-like braces and quotes (commit messages, appended test code) are refused as too complex; write the text with the Write tool and pass the file (`git commit -F`), or use Edit.
+- Failed approaches: a first commit order put the connector tests before the signed-sum change they need; it was redone with `git reset --soft` before any push.
+- Not confirmed: the Monitoring query strings against the live API (fixtures are in the documented response shape, not recorded from the project); that a custom role with only `monitoring.timeSeries.list` suffices; gcloud's `NOT_FOUND` wording and `logging metrics update --config-from-file`; the Pacific day boundary (an earlier console reading suggested 05:00Z); whether jobs share the instance-based free pool, the 1-minute job minimum in `billable_instance_time`, chronological drawing of the free tier, and this project being alone on its billing account; the bucket's storage class; the database tier and the Data Connect trial on the bill; a paid call that reaches the ledger after its day left the last two complete billing days is not reflected; the intake job's cost is not allocated; hosted CI and the G51 review.
+- Coordinator's follow-up on head 24bae553 (relayed in this session, not the owner's words): the first production sweep may need several executions, so the allocation now runs for a collection only when that drain's sweep returned `complete` (else `cost_allocation_waiting_for_sweep`, nothing read, written or moved), and every pass allocates the last 2 complete billing days again by the same ids (`REALLOCATE_DAYS`, stated in each row's details), never moving the cursor back. Commit 9a2e4096. Its 8 new test cases in `tests/test_cost_allocator.py` all fail with 24bae553's `cost_allocation.py`, `cost_allocator.py` and `lane_worker.py`. Validation on 9a2e4096 (local, uncommitted runs): the 20 drain, worker and lane test files plus the cost files and the field research e2e, 710 passed, 4 skipped; `cost-allocation-test.mjs` all PASS groups and the two opt-in emulator tests passed against a fresh `serve-local.sh`; the whole suite was not rerun. Learning: never restore files with `git checkout HEAD --` after a red check while the fix itself is uncommitted; it reverted the fix (re-applied from the session's own edit script). Commit first, then swap the old files in.
+- Merging main after PR 2 (#387, caps) landed: the cap report's spend (`tenant_budget.report_caps`, through `cost_ledger._amount`) would have counted allocation rows too, and `cap_positions` refuses a negative spend, so a collection whose free-tier credits exceed its other costs would turn every cap `unavailable`. `report_caps` now counts paid-call rows only (a cap governs run reservations; no run reserves an allocation), and TENANT_BUDGETS.md and COST_METER.md say so. `tests/test_cost_caps_api.py::test_shared_cost_allocations_and_their_credits_are_not_a_cap_s_spend` fails with origin/main's `tenant_budget.py`. The engine contract lists `sql.tenant-budget` then `sql.cost-allocation`.
+
+### 2026-10-23 - Prepare shared design system for live application release
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, branch `codex/design-system-standard`, cea9 worktree, starting head `c81266f212909f1f469804352764b5ab8bf5f6b4`. The owner now requests making the design system live across the application and platforms, with permanent component changes flowing from one shared source. This supersedes earlier task scope statements that did not authorize a release.
+- Read the complete current deployment runbook. Main protection was confirmed active. Integrated current `origin/main` at `749f61b825d1a47499da3dc5ce213a0d11de31e2`; the sole textual conflict was the bulk intake heading. Kept the shared `UiSectionHeader`, upstream singular/plural photo wording, both live status announcements and existing action callbacks. Capture recovery and provider-return changes from main are preserved. Independent source review found no critical issue in this integration or the broader app/CI/native-branding diff.
+- Verified app and catalog path dependencies point to the same in-repository `specimen_ui`; app-wide `UiTheme` covers routes and overlays. Catalog knobs remain demonstration state, while permanent component/token edits belong to the shared package. Both consumers are validated by CI. Native build jobs currently prove Android/iOS compilation only and do not distribute an installable release. Current connected Android/iPhone targets and compatible in-place update paths are being inspected before any installation; existing app identity and data must be preserved.
+- This merge is preparation, not release evidence. The full canonical local gate, integrated hosted checks, final-head independent review, production merge, all three release workflows, public marker/API smoke and native delivery remain Not confirmed at this checkpoint. Validation and the final disposition will be appended after those steps; no production setup, credential change, hand deployment or paid processing is part of this release.
+
+### 2026-10-23 - Shared design system release candidate passes canonical verification
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, branch `codex/design-system-standard`, cea9 worktree. Source candidate `54aa69348fc2981c044b4934f7427717fdb0e93d` includes current main `749f61b825d1a47499da3dc5ce213a0d11de31e2`. The app and Widgetbook resolve the same canonical package root and library path; seven new guard tests reject copied, cached, redirected, missing or duplicate package entries. The authoring guide distinguishes permanent shared-source edits, local preview knobs, development hot reload and rebuilt web/native delivery.
+- Ran the complete `scripts/ci/verify.sh` uninterrupted on that source, exit 0. All 19,415 collected Python tests were accounted exactly once across six shards (19,364 passed, 51 skipped). Shared package: 1,719 tests passed; Widgetbook: 46 passed, including all examples across five environments; application: 3,721 passed with seven existing opt-in skips. All three analysis stages, exact golden comparisons, repository/security checks, UI writing ratchet, formatting, compiled OAuth browser contract, both web release builds and local route/security-header smoke passed. No assertion, golden or gate was changed for this run. Log: `/private/tmp/design-system-live-verify-54aa69348.log`.
+- Independent reviewer approved the integrated source at `54aa69348`, including the intake merge, app-wide adoption, source-resolution guard and additive CI checks. A separate native artifact review confirmed compatible identities, signatures and configuration. Android candidate build 15 and iPhone Profile candidate build 17 were built from the same source in the isolated managed `design-system-native` worktree. Existing production configuration was copied only into ignored files; tracked source stayed clean. Android retains the installed build 14 package/certificate; iPhone retains build 16 bundle/team/keychain entitlements and uses the already-renewed profile expiring 2026-10-30T18:45:12Z. Neither device was uninstalled, cleared, updated or launched at this checkpoint.
+- Native artifacts and metadata: `/private/tmp/specimen-design-native-01a161f6-builds/`. The ribbon mark is compiled from generated `MarkGeometry` through `UiMark`; the canonical SVG is generator input, not a runtime-bundled SVG. Verified source/build dependencies and launcher assets rather than treating the absence of a bundled SVG as a packaging failure. Independent iOS verification initially failed inside the reviewer's sandbox but succeeded outside it and in the root session; certificate trust visibility was the cause, not a changed entitlement or signature.
+- A read-only review found the pre-existing app-owned `TermText`/`TermAffordance` glossary links lack keyboard focus and activation. This branch does not change their gesture logic or remove an existing keyboard path. The reviewer classified it as a bounded follow-up, not an introduced release blocker: shared inline-link focus/Enter activation, Escape/focus restoration and corresponding tests. The existing Help glossary is not evidence of inline keyboard operability; comprehensive keyboard or assistive-technology acceptance is not claimed.
+- Hosted PR checks, merge, all three production releases and physical native runtime acceptance remain Not confirmed here. Both phones were locked when inspected; the owner has been asked to unlock them for the prepared in-place updates while web release work continues. No production CLI deployment, auth-provider expansion, IAM change or paid processing occurred.
+### 2026-10-20 - LEDGER-ARCHIVE The program ledger's head stays small; its version rows stop growing with the square of paid steps
+
+- Started from session local_420c7c0a. Its brief says the owner asked for the full cost of a specimen, including storage that keeps growing; the owner's exact words and where they were typed: Not confirmed here. Branch `claude/program-ledger-archive`, worktree gallant-swartz-e85ca0, base `ba007d4c`, `origin/main` merged in twice (`33506488`, then `cd8be7d2`).
+- Measured read-only on 2026-10-20 (`executeGraphqlRead` aggregates and Cloud Monitoring, Application Default Credentials): `AuxiliaryVersion` kind `worker_cursor` 5,789 rows; the ledger document `315b5836...` at revision 2,003 with 2,003 version rows; `cloudsql.googleapis.com/database/disk/bytes_used` 234.7 MB (daily maximum at the start of the 30-day window, 2026-09-20 to 09-21) and 393.4 MB on 2026-10-20. Payload sizes (58 B growing to 214,678 B, 197 MB in all) are from the storage footprint review of the same day, not re-read here.
+- Cause: `SaveDocumentV2` inserts the whole saved payload into `AuxiliaryVersion` on every save, and `ProgramLedger` kept every effect in one document. Nothing reads those rows: the CAS uses `AuxiliaryDocument.revision`, a resend is matched by `AuxiliaryReceipt`, `GetDocumentVersionV2` has no caller in the application.
+- Built: `lane_allowance.ProgramLedger`'s head keeps the total and the effects it has not archived. After an ordinary reservation or settlement leaves more than `HEAD_EFFECTS` (16) there, up to `ARCHIVE_BATCH` (64) effects move to one archive `worker_cursor` document each, then leave the head in their own CAS save. `ProgramLedger.effect` reads the head first, then the archive. `workflow._ledger_settlement` uses it. Research charges do not archive (they run inside a 60 s send lease). Only archivable effects take a batch place, so malformed ones (left in the head, which refuses them) cannot stall archiving. No schema, connector or data-release change. Design and the owner-facing notes: `docs/execution/PROGRAM_LEDGER_ARCHIVE.md`.
+- Reusable learnings:
+  - (a) Any auxiliary document that accumulates entries is quadratic on disk through `AuxiliaryVersion`; keep it bounded or move entries out.
+  - (b) An archive that only moves forward (held, then settled), written before the head lets go, makes a head-first lookup safe without a multi-document transaction: a later change of the effect goes through a head save, so a racing CAS fails and retries.
+  - (c) `scripts/ci/python_shards.py` fingerprints `src/`, `scripts/` and `tests/` and voids the whole run ("source/input changed during shard execution", no test summary) if any of them changes mid-run; `docs/` is not fingerprinted. Commit first, then run the suite, and do not merge main during it.
+  - (d) In auto mode, production aggregate reads (`auxiliaryVersions { documentId _count }`) and Monitoring metrics were allowed; reading ledger payloads from production was refused ("Production Reads").
+- Not done, on purpose: the 2,003 old version rows are not pruned (not needed; the optional owner-run SQL step is in the design doc); no change to Cloud SQL storage settings (automatic storage increase recommended as a safety net, owner's call through `owner_setup.sh`, which has no step for it yet); `SpecimenSnapshot`'s full copy per revision is unchanged (follow-up).
+- PR: #388 (https://github.com/anurag-duddu/specimen-digitization-app/pull/388).
+- Validation actually run:
+  - `tests/test_lane_allowance_archive.py`: 12 passed. Red: the first 11 in a detached worktree of `origin/main` `ba007d4c` with the new constants stubbed gave 10 failed, 1 passed (the archive-refused safety test passes trivially when nothing archives); 400 paid steps there stored 28,021,053 bytes of versions against 1,810,024 for 100. The malformed-effects test failed on the previous head `d039bfa1`.
+  - Full Python suite (`scripts/ci/python_shards.py local --count 6`) on `992c2fb7`: 16,491 passed, 47 skipped, 3 failed: `test_sam3_runtime.py::test_sam_total_deadline_durable_unknown_and_no_retry` (two cases) and `test_reader_failures_recoverable.py::test_a_reader_whose_deadline_passes_is_retried_not_blocked`. Run alone at load about 20 to 24 they failed on that head and on `origin/main` `cd8be7d2` alike (wall-time deadline tests).
+  - After merging `cd8be7d2`: the ledger, cost-meter and drain files with the new test, 282 passed, 1 skipped. `pre-commit run --files` on the changed files: passed. No Dart changed.
+- G51 review: APPROVE of `992c2fb7` (https://github.com/anurag-duddu/specimen-digitization-app/pull/388#issuecomment-6298266379), no blocking findings. Its wording findings were answered in the docs and the PR body (where the storage review lives, the dates, version rows rather than rows, the old versions' on-disk size as unmeasured, which red tests fail with `AttributeError`). Not changed: five older tests still read the head's effect maps directly, which holds while they stay under 16 effects.
+- Round 2, after `origin/main` `b895f965` (#385, #387, #389, #391, #393) was merged in (`51f53b06`). The union driver put this entry before six of main's newer ones; `4187f143` rebuilt the file as main's bytes followed by this entry. main's tenant budget caps (#387) added `tenant_budget.TenantLedger`, one `worker_cursor` document per cap and UTC month holding every effect, the same quadratic shape; `9df3a282` archives it through the shared `lane_allowance.ArchivedEffects`. `tenant_budget._program_admits` recognised a replay only in the program ledger's head, so an archived replay at the allowance edge was refused; it now uses `effect()`. The save that drops effects now marks the head `archives: true`, and `effect()` reads no archive for an unmarked head (a field-research test rig whose fake connector has no `GetDocumentV2` showed every lookup reading an archive). The last commit adds the unmarked-head race case, neutral warning text and the doc's deployment precondition for the mark.
+  - (e) A textually clean merge of main can still conflict with a change of shape: after each merge, grep every reader of the changed structure (here `ordinary_effects` in the new caps code).
+  - Validation, round 2: `tests/test_lane_allowance_archive.py` 16 passed; red on `51f53b06`, 5 failed on their own assertions (the cap ledger kept 400 entries in its head; the archived replay was refused as exhausted; a never-archived head read 16 archive ids, one per reservation; both marked race cases need the mark). Full Python suite on `9df3a282`: 16,747 passed, 48 skipped, 2 failed: `test_sam3_runtime.py::test_sam_total_deadline_durable_unknown_and_no_retry[success]` (load, as in round 1) and `test_cohort_reading_barrier.py::test_complete_cohort_reservation_precedes_reader_and_survives_restart`, which passed alone at load 6 and touches neither ledger. After the last commit, the 14 ledger, tenant budget and cost-cap files: 191 passed.
+  - G51, round 2: APPROVE of `7a7f4306` and `10709c9f` (docs deltas) and of `9df3a282` (code, https://github.com/anurag-duddu/specimen-digitization-app/pull/388#issuecomment-6304268993), no blocking findings. Its four non-blocking findings: the mark's deployment precondition (now in the doc), an unmarked-head race test (added), the read cost on marked heads (in the PR body), the warning text (now "ledger archiving deferred").
+
+### 2026-10-23 - Reconcile upstream ledger archive before design-system merge
+
+- Same task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 branch `codex/design-system-standard`, PR https://github.com/anurag-duddu/specimen-digitization-app/pull/404. All hosted checks passed for reviewed head `c8be3ece0d7bdb9cd040839f422867d42979e124`, including repository, Python/engine contracts, Flutter/web, Android/iOS compilation and runtime candidate image builds (CI/CD run `40027789310`, runtime candidate run `40027789337`). Hosting correctly did not deploy a pull request.
+- Main advanced to `5f8679868cad4ef06d327ff788f941de93f16344` through PR #388 while those checks ran. GitHub reported the append-only session log as conflicting. Merged main locally with the union driver; no manual conflict resolution was needed, and both sessions' entries are retained. Upstream changes are the program/tenant-ledger archive, its tests and documentation. The application, shared package, catalog, CI workflows and scripts are unchanged by this merge. Fresh integrated validation and independent review are required before the next push/merge; the earlier green checks do not qualify this new head.
+- Both reviewed personal native candidates were installed in place after the canonical gate passed: iPhone 16 to 17, Android 14 to 15. Fresh installed metadata confirms the versions; the on-device Android APK hash equals the reviewed candidate. The incoming main change does not alter their application source. No uninstall, data clearing, authentication or security change occurred. Installation records are in `/private/tmp/specimen-design-native-01a161f6-builds/`. Android visual acceptance remains blocked by its locked display; iPhone Mirroring could not reconnect and timed out. No app launch or native runtime acceptance is claimed. The owner has been asked for the physical device state needed to finish those visual checks.
+
+### 2026-10-23 - Design-system integration clears protected merge gates
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 worktree, branch `codex/design-system-standard`, PR https://github.com/anurag-duddu/specimen-digitization-app/pull/404. Exact approved head `3488baadad547a9ae3bc12748a29f9154fea8bc1` includes main `5f8679868cad4ef06d327ff788f941de93f16344`. Independent review confirmed both session-log histories are retained and application/shared-package/catalog sources are unchanged by the upstream backend-ledger merge.
+- Full `scripts/ci/verify.sh` passed uninterrupted on this exact head, exit 0: 19,431 Python tests accounted exactly once (19,380 passed, 51 skipped), 1,719 shared-package tests, 46 catalog checks and 3,721 application tests with seven existing opt-in skips. Three analyzers, exact local goldens, repository/security/writing/formatting checks, the Chrome contract, both release web builds and local route/header smoke passed. Log: `/private/tmp/design-system-live-verify-3488baada.log`.
+- Every hosted PR check is green on this head: CI/CD run `40032322416` and runtime candidate run `40032322091`, including Android/iOS builds. The first web job `120683329557` timed out waiting for the fresh Chrome debugging endpoint before any browser assertion ran. The script discards Chrome stderr, so its root cause is Not confirmed. An independent review found no evidenced application defect and retained source approval. One unchanged job rerun (`120688252396`) passed the complete web job, including the Chrome contract; no source, assertion, timeout, golden or gate was weakened. Failure detail: `/private/tmp/design-system-live-ci-3488-startup-failure.json`.
+- Immediately before merge, GitHub reports this exact head CLEAN, required checks green, and main remains `5f8679868`. This append is a local closeout record outside the frozen reviewed PR tree. Production release remains Not confirmed until the main workflows and public commit markers pass. Android build 15 and iPhone Profile build 17 remain installed in place; physical visual acceptance is still pending the previously recorded device-state/mirroring constraints.
+
+### 2026-10-23 - Shared design system released and live app inspected
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 branch `codex/design-system-standard`, PR #404 merged through the protected GitHub path at `c966564a1293644dc24c9d3e138fae6a5941d24b`. Its Git tree equals reviewed head `3488baada` (`a077a51e179c4dca103e787a5e54aa9422aaf206`). No hand deployment, production setup, credential/provider/IAM change, camera use, upload, paid processing or record mutation was performed.
+- All production workflows succeeded for this exact merge: Hosting CI/CD `40035368068` attempt 1, Data release `40035368058`, Runtime release `40035368106`; runtime candidate CI `40035368050` also succeeded. Fresh `smoke_hosting.sh` qualified the public site and deployment marker against this SHA/run/attempt. Fresh `smoke_api.sh` qualified `/version` 200 with this production source SHA, `/health/ready` 200 and unauthenticated `/v1/session` 401. Logs: `/private/tmp/design-system-live-hosting-c966564a.log` and `/private/tmp/design-system-live-api-c966564a.log`.
+- Opened the real public app in the in-app browser, using its existing signed-in session. The Queue and specimen #105526321 loaded, and a field disclosure opened. The first load retained the older cached interface despite the new public marker; refreshing activated the released Paper/Iris UI. The selected image outline then changed from the retired yellow to Iris, with shared controls and the full field disclosure visible. Therefore a fresh public marker alone does not prove an already-cached browser tab is rendering the new bundle: refresh and inspect the actual UI. Before-refresh captures are explicitly named as such. Verified post-refresh screenshot: `/Users/anuragduddu/.codex/visualizations/2026/10/22/01a161f6-9906-75f1-bc98-e9c3ebeca013/live-app-record-c966564a.png`. No field value was edited or approved. The live app tab is retained for the owner.
+- Shared source is live on main: permanent controls/tokens are authored in `apps/specimen_digitization/packages/specimen_ui`, and the application and Widgetbook resolve that same directory/library. The guard rejects accidental package divergence. Each development target can hot reload; released web/native binaries receive shared changes through their normal build/release path. Preview knobs remain local example state.
+- Connected-device delivery remains Android build 15 and iPhone Profile build 17, installed in place and identity/signature/configuration verified as recorded above. The app source is identical to the released tree. Physical visual/runtime acceptance remains Not confirmed: Android is locked with display off; iPhone Mirroring remains timed out. CLI reachability or unlocked-since-boot metadata does not establish Mirroring readiness. The iPhone development provisioning profile expires `2026-10-30T18:45:12Z`. Native artifacts and the isolated native worktree are retained for this outstanding check.
+- These post-gate/post-release entries remain local, append-only closeout records outside the released source tree; no follow-up production release was created merely to record an already completed release. Branch/worktrees are preserved. The previously identified pre-existing inline glossary keyboard-access follow-up remains open; complete keyboard/assistive-technology or physical-camera acceptance is not claimed.
+
+### 2026-10-23 - Research professional design-system practice against the shared Flutter setup
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 worktree, branch `codex/design-system-standard`, local head `3488baadad547a9ae3bc12748a29f9154fea8bc1`, previously released through PR #404. The owner's new request is research into design-engineering and atomic-design practice. This continuation changes no application, library, catalog or release implementation.
+- Read primary sources: Brad Frost, Atomic Design chapter 2 (https://atomicdesign.bradfrost.com/chapter-2/) and The Workshop and the Storefront (https://bradfrost.com/blog/post/the-workshop-and-the-storefront/); Dan Mall, The Sweet Spot for Design System Work (https://v5.danmall.com/posts/the-sweet-spot-for-design-system-work/); official Widgetbook monorepo and mocking guides (https://docs.widgetbook.io/essentials/monorepo and https://docs.widgetbook.io/use-cases/mocking); Storybook page composition guidance (https://storybook.js.org/docs/writing-stories/build-pages-with-storybook); GOV.UK contribution criteria (https://design-system.service.gov.uk/community/contribution-criteria/).
+- Reusable distinction: atomic design describes iteration between parts and actual page compositions, rather than a linear process that completes all components before testing screens. Reference-library coverage is useful inventory evidence, not proof of product usability. A workbench can render the real production screens with controlled dependencies; it does not need a backend connection or copies of screen implementations.
+- Source inspection confirms that Widgetbook depends on the shared specimen_ui package but not the specimen_digitization application, and no app-screen imports were found in its lib directory. Its compositions demonstrate shared controls with local state. Actual app screen, composition and golden tests exist separately; frontend_review_golden_test.dart already renders the production app with GoldenQueueRepository. The recommended next step is to expose the actual Queue, Intake and Workbench screens in the workbench using reusable fixtures and controlled dependencies, retaining domain logic in the application. This is a proposed improvement, not implemented work or evidence that current page testing is absent.
+- Validation actually run: source and dependency inspection, git status/head inspection and live retrieval of primary research sources. No new build, analyzer, test suite, device check or deployment ran for this research-only continuation. User-research and comprehensive assistive-technology acceptance remain Not confirmed. Existing local closeout appends were preserved byte-for-byte before this entry.
+
+### 2026-10-23 - Complete web and connected Android design-system visual checks; defer iPhone
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 branch `codex/design-system-standard`, local source head `3488baadad547a9ae3bc12748a29f9154fea8bc1`, released via PR #404 at `c966564a1293644dc24c9d3e138fae6a5941d24b`. Owner explicitly says to continue web and Android and leave iPhone for later. No iPhone interaction was performed in this continuation.
+- The Android was initially absent from ADB and Flutter discovery. After the owner reconnected it, `00079346Q001016` returned as authorized Nothing A142; lock state was showing=false, screen on and interactive. Installed package `org.fieldmuseum.specimen_digitization` is build 15, version 1.0.0. Fresh on-device APK SHA-256 matches the reviewed build exactly (`770c2d5420c6f34456d0f38c64c6123d5c2c060c109b9c456571af3126f3e418`); no reinstall or data clearing was needed.
+- Used Android Studio's existing Running Devices UI to mirror this physical phone. Its open IDE project is a different worktree (5da8); no IDE build or source edit was performed there. Foreground Android activity was independently confirmed as the intended installed package. In the existing Intake E2E collection/session, inspected Queue, opened specimen #105526324, expanded FMNH INS number evidence, and scrolled the real disclosure while the bottom action bar remained visible. Iris image outlines were visible in dark mode. Returned to Queue and opened Intake; the existing two-photo saved draft loaded and was left intact. Correct/approve actions are unavailable for this collection role. No correction, approval, camera, upload, submission, paid processing or permission change occurred.
+- Available logcat for the current app PID after these interactions contains zero occurrences of the checked fatal-exception, unhandled-exception, Flutter exception and RenderFlex overflow markers. This is bounded runtime smoke evidence, not exhaustive accessibility, device, camera or workflow acceptance. Record: `/private/tmp/specimen-design-native-01a161f6-builds/android-debug-15/physical-check-summary.json`.
+- Fresh public Hosting deployment.json and API /version both still report `c966564a1293644dc24c9d3e138fae6a5941d24b`. Reloaded the existing authenticated web tab, re-enabled Flutter's semantic tree, opened FMNH INS number evidence on #105526321, returned to Queue and opened Intake until its empty-draft choices loaded. Web used the existing Insects collection/session, distinct from the Android collection. No production record or draft was changed. The live web and Widgetbook tabs are retained.
+- Proof images live in `/Users/anuragduddu/.codex/visualizations/2026/10/22/01a161f6-9906-75f1-bc98-e9c3ebeca013/`: `android-build-15-field-disclosure-studio.png`, `android-build-15-scrolled-field-studio.png`, `android-build-15-intake-studio.png`, `web-recheck-field-c966564a.png`, and `web-recheck-intake-c966564a.png`. `android-build-15-field-disclosure.png` crops the physical-phone pixels from the retained Studio screenshot; `web-android-design-system-proof.png` places the web and phone captures side by side for review. They show different records and roles, not a pixel-parity comparison.
+- No new application code, build, CI run or deployment was necessary. Existing closeout log content is preserved as an unchanged prefix. Remaining work: iPhone physical visual/runtime check is deferred by the owner's direction; the previously recorded broader assistive-technology and glossary keyboard follow-ups remain outside this bounded smoke check.
+
+### 2026-10-23 - Clarify shipped design-system scope versus visible product redesign
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 branch `codex/design-system-standard`, local head `3488baada`, PR #404 release `c966564a`. Owner observes that the application looks the same. Compared the release against its first parent rather than inferring visual change from catalog counts or passing release checks.
+- The release changes shared palette/status roles, replaces yellow image selection with Iris, supplies the ribbon vector mark, repairs button content/loading geometry and related fit behavior, and adds substantial reusable components and Widgetbook examples. App-level edits predominantly replace local headings/control implementations with shared equivalents. Queue and Workbench screen source files have no direct changes in this release diff; their shared dependencies changed. Bulk Intake adopts UiSectionHeader and rearranges its header/save-status presentation but retains the main screen composition.
+- UiBrandHero exists in the shared library; no application lib/src usage was found. Authentication adds UiBrandAccent and consumes UiMark. Therefore the signed-in app has not received the broad page composition and visible brand-expression redesign the owner expected. The earlier successful delivery/runtime checks establish that shared code shipped, not that those larger visual goals were achieved. Clarified this distinction to the owner. No new implementation or release was made in this explanatory continuation.
+- Validation actually run: release-to-parent source diff, targeted component/app usage searches and git status. New visual acceptance, tests and deployments: Not run.
+
+
+### 2026-10-23 - Compose the shared design system into the production application
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 worktree, branch `codex/design-system-app-composition`, based on released main `c966564a1293644dc24c9d3e138fae6a5941d24b` (PR #404). The owner explicitly requests the visible application redesign after distinguishing component-library delivery from product composition. Existing session-log appends are retained unchanged.
+- Queue now has an Amber-Iris brand hero in the unused desktop pane, a clear review heading, contextual row metadata and Iris selection. Bulk Intake places acquisition actions in the empty-state hero, uses a compact populated-batch header, and retains lazy photos, deep selection editing and fixed submission controls. Workbench gives the source canvas priority, bounds the Paper inspector, and places review summary, tabs and evidence in one scroll while preserving the decision bar. The responsive shell uses the owned ribbon mark. Domain actions, roles and acquisition behavior remain application-owned.
+- Widgetbook adds six actual production-screen cases via the application package, public embedding boundary, real router, shell and controllers. Only session/repository/device dependencies are synthetic. Preview writes fail explicitly, both replacement-picker paths are injected, browser events and URLs belong to the outer catalog, and dialogs stay within the preview. Production defaults retain the real services and build-time feature switch. GitHub's current BULK_INTAKE_ENABLED variable was read as true.
+- Independent composition review found two issues and both were repaired: pinned Workbench summary/tabs could consume the evidence area at large text, and the saved-draft retake fallback could reach a real file picker. The reviewer changed tests only: five navigation walkthroughs and eight short-window/light-dark/200-percent evidence-scroll probes pass. Narrow decision navigation is verified through its actual More decisions menu rather than assuming desktop buttons remain visible.
+- Validation before the frozen full gate: 74 Queue/row tests, 17 Queue composition probes; 28 Intake composition/activity/retake tests plus six flows; 52 Workbench tests and 212 composition/accessibility checks; seven actual-screen Widgetbook interaction tests and clean scoped analyzers. Full integration initially exposed intentional visual changes and stale geometry/interaction assumptions; those were fixed without loosening pixel tolerances. All 133 changed golden PNGs were reviewed from current-failure inventories, including 80 independently reviewed renders, then seven affected golden/semantics test files passed 250 tests with updated baselines. Exactly five semantics fixtures changed. Shared-package goldens are unchanged. Full canonical verification, frozen-head approval, new PR, protected web release and Android build 16 are pending; none are claimed here.
+- Reusable constraints: canonical repository verification must run with sources frozen; actual-screen catalog examples must isolate transport, platform events and modal navigation while reusing real composition. A source app import alone does not isolate nested device hooks. Preserve existing native identity and drafts during the Android update. Android currently does not appear in either USB discovery or ADB; the owner has been asked to reconnect it while web work continues. iPhone remains deferred at the owner's request.
+
+
+### 2026-10-23 - Repair full-gate findings before application-composition release
+
+- Same task and branch. First canonical run `/private/tmp/app-composition-canonical-verify.log` passed all 19,431 Python tests exactly once (19,380 passed, 51 skipped), 1,719 shared-package tests, 53 catalog checks, catalog analysis and its release web build. Application run finished 3,745 passed, seven skipped and five failed assertions: two platform-capability census assertions counted a barrel show-export as a read, two named-size assertions rejected the new inspector width constant, and the design-document dash rule rejected one character. No pixel or behavioral test failed in this run. No gate was weakened.
+- Removed the unnecessary show-filter from the router export (buildAppRouter remains its only public declaration), derived the inspector maximum from forty secondary-text ems and the actual text scaler instead of a local pixel constant, and corrected the document character. All 43 targeted guard/workbench/short-pane tests pass in `/private/tmp/composition-guard-repair.jsonl`. The standard 13-point secondary role retains the reviewed 520/1040 measures at 100/200 percent; nonlinear scaling follows that role directly.
+- Actual browser navigation through the rebuilt catalog exposed an initial Intake save error that VM preference mocks did not reproduce. The updated dependency graph included SharedPreferences, but cached web_plugin_registrant.dart still had its October 22 contents with only UrlLauncherPlugin. Flutter 3.38 reused that web entrypoint across the dependency change. Supported repair is flutter clean in Widgetbook followed by pub get/build; do not wire plugins manually or fake repository saves. Added clean empty/saved-preview and Queue-to-record-to-Queue-to-Intake assertions plus explicit write rejection. Nine focused tests and catalog analysis pass. Fresh browser acceptance after clean regeneration is pending.
+- Android reconnected after the owner confirmed it is unlocked. Fresh device metadata confirms Nothing A142 00079346Q001016, package org.fieldmuseum.specimen_digitization, version 1.0.0/build 15 and installed APK SHA-256 770c2d5420c6f34456d0f38c64c6123d5c2c060c109b9c456571af3126f3e418. Native update is not yet installed. The source candidate will now rerun the complete repository gate before push; release and final exact-head approval remain pending.
+
+
+### 2026-10-24 - Application composition passes full gate and enters protected delivery
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 worktree, branch `codex/design-system-app-composition`, PR https://github.com/anurag-duddu/specimen-digitization-app/pull/405. Frozen head `1dd04979498a79fa1895a906bbbb80576dbce286` is based on main `c966564a`. The owner explicitly prioritizes the actual live web/Android application over catalog demonstrations; iPhone remains deferred.
+- Full `scripts/ci/verify.sh` passed exit 0 on this exact committed head: all 19,431 Python tests accounted once (19,380 passed, 51 skipped), 1,719 shared tests, 55 catalog checks and 3,750 application tests with seven existing skips. All three analyzers, exact goldens and semantics, security/repository/writing/format checks, Chrome browser contract, both web release builds and route/header smoke passed. Log: `/private/tmp/app-composition-canonical-verify-1dd049794.log`. No gate was weakened. Push hooks also passed.
+- Independent reviewer composition_review approved this exact commit with no blocking findings. Source and local validation approval do not substitute for hosted checks or live acceptance. The fresh clean-generated catalog browser bundle no longer shows the spurious initial save error. A separate catalog-only saved-draft initial-selection issue remains: directly opening the example may first show Queue, while selecting Intake renders the correct saved draft. Review accepted this as non-blocking for production because preview initialization is asynchronous and production router defaults/lifecycle are unchanged.
+- PR checks are now running on the exact head. Android build 16 is being built from the same approved head in the isolated design-system-native worktree; device discovery currently confirms authorized Nothing A142 00079346Q001016. Web deployment and Android installation/visual acceptance are Not confirmed at this entry. This closeout append stays outside the frozen reviewed source tree.
+
+
+### 2026-10-24 - Hold composition release for owner-directed design correction
+
+- Same task, cea9 branch and PR #405. All hosted checks on `1dd04979498a79fa1895a906bbbb80576dbce286` passed: CI/CD `40065520082` and Runtime candidate CI `40065520111`; Hosting was correctly skipped for the pull request. Before merge, the owner rejected the visual hierarchy and density, identifying repeated review badges, heavy leading selection stripes, disproportionate icons and cramped navigation, and explicitly requested adversarial review, Mobbin inspiration and coordinated agent implementation. Converted PR #405 back to draft and did not merge. Production web remains `c966564a`; passing technical gates do not establish visual acceptance.
+- Android build 16 from `1dd049794` was already installed in place before this new direction. The installed APK hash matches the verified candidate, package/signature and original first-install time remain unchanged, and the existing authenticated session and two-photo saved draft survived. Physically inspected Queue, specimen #105526324 evidence disclosure and scrolling, then Intake showing two photos Saved. Bounded current-process logcat contains zero checked fatal, unhandled, Flutter exception or RenderFlex overflow markers. No camera, submission, approval, correction or draft mutation occurred. Evidence: `/private/tmp/specimen-design-native-01a161f6-builds/android-debug-16/` and the `android-build-16-*-studio.png` captures in the task visualization folder. This installation is the now-rejected composition iteration, not acceptance of the new design direction.
+- New team starts with a read-only adversarial audit and parallel source/constraint audits for navigation and content hierarchy. Implementation follows reconciled findings and pattern-specific Mobbin references, shared components first and production consumers next. Root integrates and owns Intake; independent reviewer rechecks the result. No synthetic preview or passing test count will be presented as live visual acceptance.
+- A validated catalog-only initial-route patch remains unapplied outside the checkout at `/private/tmp/widgetbook-initial-route-followup-1dd049794.patch`. It can be integrated with the correction rather than forgotten: deterministic test fails on old source and all ten focused tests plus analysis pass with the patch. Shared source and released binary freshness are separate facts; the final revision still requires new exact-head verification and protected delivery. Existing log prefix remains unchanged.
+
+
+### 2026-10-24 — Shared pattern correction after adversarial visual review
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, branch `codex/design-system-app-composition`, worktree `cea9`, PR #405. The earlier `1dd049794` candidate remains held; its successful checks did not qualify the owner-rejected composition.
+- Parallel navigation, content and Intake work converged on shared sidebar, row, disclosure, photo tile, heading and button contracts. The Queue is the primary working surface; record companion navigation respects available room. Repeated baseline status and selected-row stripes are removed. Intake secondary sources remain named and reachable; private drafts, explicit submission and original-file recovery are preserved.
+- Mobbin web/iOS references and primary NN/G/Android guidance informed the choices, recorded in `design/16-application-composition.md`. These references do not prove museum task frequency or Android behavior.
+- Before baseline adoption, root reviewed app render sheets 01–08 and full-size cases; the independent adversarial reviewer reviewed sheets 09–15 and all eight refreshed five-record Queue captures. Shared review covered all 136 initially changed render names and final row/sidebar/focus cases. Findings led to chip reflow, dark navigation contrast and catalog focus-contour repairs. No remaining blocking visual finding was observed in that local scope.
+- Focused evidence: 103 content app tests, 40 shared navigation/row/focus tests, 18 shell/window tests, five synthetic-auth tests, 22 semantics tests, 56 catalog tests and root Intake/source/keyboard/decision tests passed. Regeneration of reviewed app golden families passed 234 tests; shared families passed 492 tests. Pixel/semantics assertions remain exact, with no tolerance or check weakening. Full integrated repository gate and final-head independent review are pending at this entry.
+- Reusable constraints: settled batch status may be visually suppressed only when exceptions and accessible per-photo status remain; status-chip width and title allocation must follow actual text scaling; visual focus contours differ from minimum interaction targets. A preview must defer workspace start until its route is mounted so asynchronous loading cannot reset the selected initial screen.
+- Live delivery of this correction: Not confirmed. Production remains the prior main release until protected PR checks/merge and all three main workflows finish; installed Android 16 is the earlier candidate. iPhone verification is deferred by the owner.
+
+
+### 2026-10-24 - Pattern integration, native verification and final gate repair
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 worktree, `codex/design-system-app-composition`, PR #405. Integrated pattern source is `3f26e855dc4c212ee6904505416dd1cb1b85cc1d`. Independent adversarial review approved that exact source and independently passed 21 shared segmented and 76 application interaction tests. A discovered dynamic four-to-three-option keyboard regression was fixed by tracking segment focus and keyed subtrees by option value; removal, reorder and fallback focus regressions now pass.
+- Canonical local verification passed all 19,380 Python tests with 51 existing skips, 1,740 shared tests, 56 catalog tests, all analyzers and the catalog web build, then exposed 25 app failures. Seven were obsolete navigation locators/source boundaries; one was an opacity backlog entry whose literal had been eliminated; one incorrectly equated the row minimum with a rendered two-line row; sixteen were an omitted top-level bulk Intake golden family. The earlier 19-image Intake review contained four routed states and fifteen import/source images, not these sixteen. No production changes were needed for these findings. Navigation checks still require a hit-testable control, opening the explanation and 4.5:1 contrast; skeleton now compares exact rendered loading/loaded heights; removing the zero-count backlog entry tightens the gate.
+- The independent reviewer inspected all sixteen fresh bulk Intake images at full size and approved their exact bytes for adoption; root verified candidate and prior baseline hashes before copying. All four test repairs were independently reviewed for assertion weakening, with none found. Targeted navigation 74, skeleton six and opacity four tests pass. Canonical gate is being rerun on the final frozen revision; do not report the earlier failed invocation as successful. The compiled cross-origin OAuth browser contract, final web build and all eleven declared route/security-header checks pass separately.
+- Android 1.0.0/build 17 from `3f26e855` is installed in place on Nothing A142 `00079346Q001016`, package `org.fieldmuseum.specimen_digitization`. Pulled installed APK SHA-256 matches `985c4984f5c738d687defbbbe5126df2f0f60ef136604a7b2f891aac7fe8fc75`; signer, Firebase identity, 32 native image pixels and original first-install time are preserved. Root physically checked the Queue, record opening, supported field disclosure, evidence scroll and role restriction, then returned to the unchanged two-photo saved draft. Navigation reviewer inspected the four physical captures. No camera, Submit, record edit or review decision was invoked. This account offers only Intake E2E, so the phone check does not establish Insects-tenant acceptance. Artifacts: `/private/tmp/specimen-design-native-01a161f6-builds/android-debug-17/`; screenshots in this task's visualization folder.
+- Fresh Widgetbook browser load confirms the saved-draft example now opens Intake directly and shows one aggregate Saved state; its prior cached bundle needed a second reload. The actual live web Insects account is still on the prior production revision and remains the required post-release acceptance surface. Web deployment: Not confirmed at this entry. iPhone remains deferred by the owner.
+
+
+### 2026-10-24 - Exact local pass and Linux contrast sampler diagnosis
+
+- Same task, branch and PR #405. Independent review approved clean head `bfea3d39f1970137d2fb6298e7044c8ee2959af4`, including all sixteen adopted image hashes, four assertion-preserving test repairs, unchanged application source and the append-only log. Full `scripts/ci/verify.sh` then passed exit 0 on this exact head: 19,380 Python tests with 51 skips, 1,740 shared tests, 56 catalog tests, 3,783 app tests with seven skips, all analyzers, exact macOS visual/semantics checks, OAuth browser contract, both web release builds, format and route/security-header smoke. Log: `/private/tmp/pattern-canonical-final-bfea3d39f.log`. Pushed this head; PR is ready for review.
+- Hosted CI/CD run `40071936062` stopped in shared tests with 1,739 passing and one failure in the newly added sidebar contrast guideline. The SDK histogram chose the unselected Sources glyph's antialiased edge (#B9B9BC) against white, reporting 1.957:1. This is not the rendered foreground (#494950), whose specified pair is 8.928:1; the edge matches roughly 38.4 percent glyph coverage. Independent reviewer inspected the SDK algorithm and confirmed no screenshot cache is involved. WCAG SC1.4.3 evaluates foreground/background colors independently of font smoothing: https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html.
+- Repair is limited to the sidebar test: inspect actual RenderParagraph paint and painted ancestor backgrounds, compose opacity, retain the 4.5:1 minimum, exercise every selected destination in both modes, and prove rejection with planted defects. No production color, font, layout, tolerance, platform exclusion or required check is being changed. Fresh focused validation and exact-head review follow the repair; hosted checks must pass before merge. The earlier full local pass does not qualify the failed hosted gate.
+- Production desktop acceptance is available in Chrome profile Anurag (infinative.com), with the existing Intake E2E account and saved two-photo draft. The in-app browser separately holds the authenticated Insects account. Preserve both accounts and drafts; no camera, import, correction or Submit action is authorized by this visual check. Web release remains Not confirmed.
+- Follow-through: pinned Linux Flutter 3.38.5 reproduced the original 1.96 failure exactly, then all fourteen repaired sidebar tests passed on Linux and macOS. Independent reviewer reran all fourteen and approved the actual-paint method, eighteen label/selection/theme cases, planted regressions and rejection of unsupported effects. Root reran the entire shared suite: 1,742 passed, analyzer clean; all-files repository hooks passed. Logs: `/private/tmp/navigation-sidebar-linux/{original,fixed}.log`, `/private/tmp/pattern-final-shared-contrast-repair.log`, `/private/tmp/pattern-final-contrast-precommit.log`. App/shared production, catalog, dependencies, native artifacts and visual baselines are byte-unchanged from the fully verified `bfea3d39f` tree. New hosted exact-head gates remain required.
+
+
+### 2026-10-24 - Reviewed shared-pattern release enters main
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 worktree, branch `codex/design-system-app-composition`, PR #405. Independent adversarial reviewer approved clean final head `372a9d36bb99d17b3720c7255612bb15deaf2db4`, including the reviewed sidebar-test hash, append-only log and unchanged production sources. All 23 PR checks passed in CI/CD `40072977347` and Runtime candidate CI `40072977390`; Hosting is correctly skipped on the PR. GitHub reports CLEAN against unchanged main `c966564a1293644dc24c9d3e138fae6a5941d24b`.
+- Android 17 production-source equivalence to this exact candidate was independently rechecked across 23 Git objects covering app/shared/catalog code, assets, dependencies and native/web build settings; its staged APK hash remains `985c4984f5c738d687defbbbe5126df2f0f60ef136604a7b2f891aac7fe8fc75`. Metadata preserves the actual build source `3f26e855` and installation evidence rather than relabeling the binary.
+- This pre-merge append stays outside the frozen reviewed commit. Protected main workflows, exact public Hosting/API markers and post-release Insects web acceptance are pending. Current live Insects Queue contains 26 records; the separate Chrome Work-profile Intake E2E session retains its saved two-photo draft. Production release: Not confirmed at this entry.
+
+
+### 2026-10-24 - Shared patterns released; live acceptance finds a source-dialog gap
+
+- Same task. PR #405 merged as `a057dae84e572cf4695e0ecbfca72bbc0b43e738`, whose complete Git tree exactly equals independently approved `372a9d36`. Main Hosting `40073912155`, Data `40073912164` and Runtime `40073912170` all succeeded. Public Hosting smoke confirms that SHA, run and attempt 1; API version/readiness/unauthenticated-session smoke also passes for that SHA. Runtime candidate CI `40073912151` succeeded. No workstation deployment occurred.
+- Actual authenticated Insects web acceptance confirms the owned mark, quieter Queue reasons, named status views, Deferred empty state, exact-ID search, retained search/selection after an Intake roundtrip, source disclosure and Storage browser cancellation. The separate desktop Intake E2E session shows the named sidebar and unchanged two-photo saved draft. Independent visual review found no blocking issue in those four captured Queue/Intake states. Initial web reload activated the old service-worker bundle; a second reload showed the new UI. Chrome's cached old yellow favicon refreshed to the shipped ribbon after a hard reload; the public asset was already correct. Android 17 remains physically verified for Intake E2E; iPhone remains deferred.
+- Further live inspection exposed an uncorrected saved-batch Add photos dialog: six equally emphasized outlined actions in a tall column, no visible Close/Cancel and inconsistent Storage naming. The adversarial reviewer confirmed this P2 gap in `BulkIntakeScreen._add`, a separate composition from the corrected empty state. Root continued on `codex/design-system-intake-source-consistency` from released main; content agent owns unifying source choice and explicit dismissal, navigation agent investigates an observed web Escape/search discrepancy, and root retains live acceptance/release ownership. No source import, specimen edit, review decision or Submit was invoked.
+- Proof captures are in this task's visualization folder, including `web-desktop-add-photos-dialog-after-pattern-release.png`. Remaining work: source-dialog fix, meaningful shared/consumer tests, independent review, normal protected release and updated native build as required. Do not label the complete Intake journey accepted while this known gap remains.
+
+### 2026-10-24 - Source chooser and evidence follow-through
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 worktree, `codex/design-system-intake-source-consistency`, starting from released merge `a057dae84e572cf4695e0ecbfca72bbc0b43e738`. The parallel content agent unified empty and saved Intake source choices using existing shared controls, added explicit Close and named barrier dismissal, and preserved original acquisition callbacks. Navigation agent corrected Queue's Escape documentation and added consumer regressions: search clears then unfocuses while retaining selection; row Escape exits selection; summoned companion Escape dismisses while preserving query/selection. No Queue behavior change was needed.
+- Further authenticated Insects acceptance opened the real `105526321` record and its City evidence. The reviewer caught near-identical observation and retained source-summary strings rendered consecutively. Root now leaves all distinct observations visible, retains summaries behind named Evidence details with explicit Summary/Response labels, and keeps summary-only evidence visible when observations are absent. No punctuation-based equivalence, data deletion, correction or provenance mutation occurs; all label-source actions remain available. Composition documentation records this distinction.
+- Focused validation: 34 Intake tests including 20 new responsive, cancellation and acquisition-handoff checks; one actual Widgetbook preview at dark RTL 200%; 23 Queue bulk tests; 22 field/evidence/frontend review tests; scoped analyzer and diff checks pass. Existing empty-Intake and frontend review goldens remain unchanged. Eight new saved-dialog captures cover 390/1440 widths, 100/200% text and collapsed/expanded sources; root inspected all eight and independent review is underway before adoption. Canonical `scripts/ci/verify.sh` is running on the frozen source; log `/private/tmp/intake-evidence-followup-canonical.log`.
+- These focused tests use controlled repositories and injected acquisition. No real camera, file upload, external import, review decision or Submit was invoked. New web release and Android 18 installation: Not confirmed. PR #405's already deployed main is the last accepted release while this follow-up proceeds.
+- Independent follow-up review approved all eight chooser renders but found a provenance association gap inside evidence details: multiple summaries were generically labeled without mapping each to its retained label. Root corrected each Summary/Response heading to its exact `Label N` or `Record` using the existing evidence-choice convention. Tests now scope opposing summaries to their own labeled blocks and cover observation present/absent with known, absent and stale region locators; all 26 targeted field/frontend checks pass. The first canonical invocation stopped at repository hooks because edits during the hook were detected; no Python or Flutter suite ran in that invocation. Restart the complete gate after the final source freeze, with no assertion or scanner-policy changes.
+
+### 2026-10-24 - Source consistency passes complete verification and Android acceptance
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 worktree, branch `codex/design-system-intake-source-consistency`, exact clean head `06990dca185a75454a820d619b9ed54e1575a74a`, based on released main `a057dae84e572cf4695e0ecbfca72bbc0b43e738`. Independent adversarial reviewer approved this exact commit after 85 focused app/catalog checks and review of eight new dark chooser goldens, eight supplemental light chooser captures and four supplemental evidence captures. No remaining findings in the bounded follow-up. This append stays outside that frozen source commit.
+- Complete `scripts/ci/verify.sh` passed exit 0 on this exact head: 19,380 Python tests with 51 existing skips, 1,742 shared tests, 56 catalog tests, 3,820 application tests with seven existing skips, all analyzers, exact visual/semantics checks, repository/security hooks, formatting, compiled OAuth browser contract, both web builds and route/security-header smoke. Log: `/private/tmp/intake-evidence-followup-canonical-clean.log`. The preceding clean-source attempt passed Python/shared/catalog but stopped at two analyzer warnings in temporary untracked Dart capture probes under the ignored app build directory. Moved the probes outside the app, then reran the entire gate; do not leave Dart visual probes under build because Flutter analysis can include them. No committed source or gate policy changed for this repair.
+- Android 18 (version 1.0.0) was built from `06990dca` in the isolated design-system-native worktree and installed on authorized Nothing A142 `00079346Q001016`, preserving package `org.fieldmuseum.specimen_digitization`, signer and original first-install time. Staged and pulled installed APK SHA-256 match `4089ca0c9938404f3dfe3eeccc46ac0afb1c4e8f53b2820412126bb3f9a57850`. Production API/Firebase identity and 32 native asset pixels were verified. Artifact and metadata: `/private/tmp/specimen-design-native-01a161f6-builds/android-debug-18/`.
+- Physical Android acceptance retained the original two-photo Saved draft, verified local source hierarchy, expanded all four remote source rows, used visible Close, reopened and used system Back, then returned to the unchanged Saved draft. Navigation reviewer inspected all three captures. This is the existing dark Intake E2E account, not Insects or a physical 200-percent/light-theme acceptance. No acquisition, camera, submit or specimen mutation was invoked. iPhone remains deferred. Follow-up web PR/release and fresh live Insects evidence acceptance are pending; PR #405 remains the live release at this entry.
+
+### 2026-10-24 - Source consistency approved for protected merge
+
+- Same task and cea9 branch, PR https://github.com/anurag-duddu/specimen-digitization-app/pull/406. Exact independently approved head `06990dca185a75454a820d619b9ed54e1575a74a` has all 23 PR checks green: CI/CD `40079328117` and Runtime candidate CI `40079328118` succeeded, with Hosting correctly skipped on the PR. GitHub reports CLEAN/MERGEABLE against unchanged main `a057dae84e572cf4695e0ecbfca72bbc0b43e738`. Full local canonical validation is recorded above.
+- Push initially stopped because root appended this session log during hooks; the subsequent unchanged-source push stashed/restored the log and all hooks passed. Do not write even closeout documentation while hooks are active. No scanner or required check was altered.
+- This pre-merge append remains outside the frozen candidate. Android 18 is already installed and physically accepted within the stated Intake E2E scope. All three main release workflows, public Hosting/API markers and new authenticated web acceptance remain pending. A merge alone is not release completion.
+
+### 2026-10-24 - Source consistency released; live evidence exposes another shape
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`. PR #406 merged as `1f671af2034907abfb96036916c391732d3e61c0`; its complete tree `a14f2299cdb7e897cdb3d8ab3bc89b1369df9c26` exactly equals approved candidate `06990dca`. Main Hosting `40080479108` attempt 1, Data `40080479170`, Runtime `40080479188` and Runtime candidate `40080479182` all succeeded. Root public Hosting/API smokes passed the exact merge SHA; logs `/private/tmp/intake-followup-main-1f671af-{hosting,api}-smoke.log`. No workstation deploy occurred.
+- Android 18 source equivalence to this merge was independently checked across the complete tree and 16 production objects; candidate and captured installed APK hashes still match. Metadata preserves its original build source and adds only mergeSourceEquivalence.
+- Actual Chrome Work-profile saved Intake now renders primary Choose files, secondary Take photos, collapsed source disclosure, all four source rows and visible Close. Close, Escape and named backdrop dismissal each preserve the same two-photo Saved draft with both selections unchecked. Proof captures `web-live-add-photos-{local,sources}-1f671af.png` and `web-live-saved-draft-1f671af.png` are in the task visualization directory. No imports, camera or Submit was invoked.
+- Important correction to the prior evidence assumption: the actual Insects record #105526321 still renders both E. slope Mt. McKinley and E.slope Mt. McKinley with no Evidence details after the release. Help explicitly reports Build `1f671af2034907abfb96036916c391732d3e61c0`, so caching is not the explanation. The prior fix covers mixed observations plus retained summaries, but not multiple observations without retained evidence or multiple summary-only items. Do not claim this live evidence case accepted.
+- Root continues from released main on `codex/design-system-evidence-readings`. Adversarial reviewer identified flattened observation IDs and incomplete disclosure conditions; content agent owns the bounded field presentation/matrix tests, while root inspects the exact current version through normal read-only History UI. Preserve all exact readings and their provenance, use named disclosure for multiple readings, and never choose a preferred reading or fuzzy-deduplicate conflicting evidence. The separate chooser release remains successful.
+
+### 2026-10-24 — Exact live evidence shape and bounded technical previews
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 worktree, branch `codex/design-system-evidence-readings`, based on released main `1f671af2034907abfb96036916c391732d3e61c0`. This corrects the unresolved-shape assumption in the preceding entry: the live City field has no verbatim map entries and two retained literal excerpts from the same label, each linked to a distinct observation. Root read version 91 through SQL Connect and its generation-pinned immutable active graph, verified the content digest, and reproduced only its sanitized shape in tests. No record or production configuration was changed.
+- Content agent preserves observation identities, discloses multiple readings and multiple retained summaries with counts, attributes retained sources through exact observation references, and explicitly distinguishes decided transcripts from raw readings. Equal wording from different observations is retained. Missing or ambiguous references never borrow another reader's identity; raw IDs are not spoken. The existing field review tests and real Widgetbook Workbench fixture now exercise these branches.
+- Navigation agent bounds the shared raw-evidence viewer to a 4,096-code-unit/80-line selectable preview while preserving complete clipboard content and a reachable Close. Independent adversarial review caught a partial-grapheme lookahead bug and a visible/accessibility name mismatch; both were fixed. All 35 drawer tests and 72 existing History, research-card, semantics and reduced-motion integration tests pass. Small payload behavior remains covered unchanged.
+- Root inspected representative captures from 16 light/dark, 390/1000 dp and 100/200-percent field states; all capture runs passed. Outputs are `/private/tmp/evidence-readings-visual/`. Eleven real Widgetbook product-preview tests pass, including the new evidence interaction. An initial combined field test run failed because new tests disposed semantics handles after Flutter's verification; disposal was corrected rather than weakening the assertion. Temporary visual probes were moved outside the app before source freeze so the analyzer cannot discover them under ignored build directories.
+- Read-only native readiness: native worktree remains clean at the Android18 source, real ignored configurations and APK digest intact, Nothing device connected/unlocked, installed package identity and first-install time preserved. Android19 build/install and this follow-up's complete canonical gate, independent final-head review, protected release and live acceptance are not yet confirmed at this entry.
+- Final pre-freeze focused evidence validation: 37 new field cases and 12 existing field review cases pass together (49 total); targeted field analysis is clean. Canonical gate and independent commit approval remain pending.
+
+
+### 2026-10-24 - Retained evidence passes complete gate and enters protected release
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 worktree, branch `codex/design-system-evidence-readings`, PR https://github.com/anurag-duddu/specimen-digitization-app/pull/407. Exact clean head `d2f0724b9d80725ebb44f2e9951694c06b75ed73` was independently approved after review of all nine committed files, 20 field/drawer captures, 87 focused app/catalog tests and four supplemental render checks. This post-validation append stays outside the frozen candidate.
+- Complete `scripts/ci/verify.sh` passed exit 0 on that exact head: 19,380 Python tests with 51 existing skips, 1,742 shared UI tests, 57 Widgetbook tests, 3,884 application tests with seven existing skips, all analysis/format/security hooks, exact visual and semantics assertions, compiled OAuth browser contract, both web builds and route/header smoke. Log `/private/tmp/evidence-readings-canonical.log`; no assertion, golden tolerance, scanner or required check was weakened. Push succeeded with hooks passed.
+- Android 19 (1.0.0) is installed in place on Nothing A142 `00079346Q001016`, package `org.fieldmuseum.specimen_digitization`. Staged and pulled installed APK SHA-256 both `a93efeea6e56323a374c05cf72ca0d79deaaf0198bbef482c31ce1b7b6263cfc`; signer, app ID, original first-install time and three ignored native configuration hashes were preserved. Actual APK build source remains `d2f0724b9d80725ebb44f2e9951694c06b75ed73`. Metadata and APK are in `/private/tmp/specimen-design-native-01a161f6-builds/android-debug-19/`.
+- Root physically verified the same two-photo Saved draft, primary Take photos/secondary Choose files, expanded source choices and visible Close returning to unchanged unchecked draft selections. This is the existing dark Intake E2E account, not physical Insects or 200-percent/light-mode acceptance. No acquisition, camera, Submit or record mutation occurred. Fresh production Insects Queue was also inspected at 1440x900 and 390x844 on the preceding released web source; no duplicate baseline review badge or leading stripe was observed. The rebuilt Widgetbook shows the new counted City evidence disclosure through the actual Workbench widget.
+- Hosted PR checks, protected merge, all main releases and fresh live City/large-payload acceptance remain pending at this entry. Existing web remains `1f671af2034907abfb96036916c391732d3e61c0`; iPhone remains deferred by the owner.
+
+
+### 2026-10-24 - Retained evidence approved for protected merge
+
+- Same task and cea9 branch, PR #407. All 23 executed hosted checks on independently approved `d2f0724b9d80725ebb44f2e9951694c06b75ed73` passed: CI/CD `40084620354` and Runtime candidate CI `40084620317` succeeded, with Hosting correctly skipped on the PR. The three required aggregate checks are green; GitHub reports CLEAN/MERGEABLE against unchanged main `1f671af2034907abfb96036916c391732d3e61c0`. Navigation agent independently verified exact-head readiness read-only.
+- Full local verification and Android19 installation/acceptance are recorded above. Independent reviewer additionally inspected two actual Insects Queue desktop/phone-width captures and three Android19 saved Intake/source-choice captures with no blocking visual regression in those stated states. These do not replace pending City and large-payload acceptance on the new live web build. All main release workflows and exact public smoke markers remain pending; this entry stays outside the frozen source head.
+
+
+### 2026-10-24 - Pattern correction released and actual evidence journey accepted
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 branch `codex/design-system-evidence-readings`. PR #407 merged as `3b8876616200f802baa3509a558fab88892a431b`; its complete tree `57d88c105058aff6a332917cf2667b2ae079d129` exactly equals independently approved candidate `d2f0724b9d80725ebb44f2e9951694c06b75ed73`. All main workflows succeeded: Hosting/CI `40085782935` attempt 1, Data `40085782960`, Runtime `40085782872`, Runtime candidate `40085782962`. Navigation agent independently verified all four final states. Public Hosting and API/version/readiness/authentication smokes pass this exact merge; logs `/private/tmp/evidence-readings-main-3b887661-{hosting,api}-smoke.log`. No workstation deploy occurred.
+- Content agent independently proved complete candidate/merge equivalence and rehashed both staged and captured installed Android19 APKs; both match `a93efeea6e56323a374c05cf72ca0d79deaaf0198bbef482c31ce1b7b6263cfc`. Only mergeSourceEquivalence was added to external native metadata. Actual APK build source remains d2f0724; all existing metadata and native configs are unchanged. Physical two-photo draft/source-choice acceptance is recorded above.
+- Actual authenticated Insects browser acceptance confirms Help Build `3b8876616200f802baa3509a558fab88892a431b`. First reload retained the prior web bundle; the second reload after update loaded the new build. Real specimen #105526321, current version91: City shows a collapsed Evidence details disclosure with two source summaries; expansion retains the distinct `E. slope Mt. McKinley` and `E.slope Mt. McKinley` excerpts and exact Qwen/Muse source attribution. Neither record nor provenance was changed.
+- The previously freezing full retained-version viewer now opens promptly with a shortened preview, one Copy full payload action and reachable Close. Desktop dialog, phone-resized dialog and fresh phone-origin sheet were inspected. Copy was verified by native system paste into a task-created local temporary text file: 496,191 UTF-16 units exactly match the displayed count; full JSON parses at revision91 and retains both excerpts. Browser Use virtual clipboard returned empty and cannot establish native clipboard failure. The local verification file and local HTML probe were removed and the temporary editor/tab closed. Both dialog and phone sheet dismissed back to History; current version remains91. No edit, approval, import, camera or Submit was invoked.
+- Independent adversarial reviewer approved the supplied final dark/default-text actual Queue, collapsed/expanded City, and three viewer screenshots with no material visual blocker. Desktop1440x900 and phone390x844 Queue render correctly; browser override was reset and the live app/catalog left available. Screenshots are in `/Users/anuragduddu/.codex/visualizations/2026/10/22/01a161f6-9906-75f1-bc98-e9c3ebeca013/`, with `web-live-*-3b887661.png` names. Local light/dark and 100/200-percent render/test coverage remains a separate evidence layer. Physical Android acceptance remains the existing Intake E2E account; iPhone is explicitly deferred.
+- Parallel navigation, content, root Intake/integration and independent review work converged across released PRs #405, #406 and #407. Shared components and actual production compositions power both Widgetbook and the app; source edits require rebuild/release before installed clients change. The 95-page reference inventory is coverage mapping, not proof of every possible visual/behavioral combination. All known blockers in this correction pass are resolved. This append remains outside the frozen released source head; no source changes are pending and no branch/worktree cleanup was requested.
+
+
+### 2026-10-24 - Collection labels distinguished from release versions
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 branch `codex/design-system-evidence-readings`, source head `d2f0724b9d80725ebb44f2e9951694c06b75ed73`, released PR #407 merge `3b8876616200f802baa3509a558fab88892a431b`. Read-only follow-up to the owner’s Intake E2E versus Insects screenshots: Chrome Work-profile Help freshly confirms Production and the same released 3b887661 build as the Insects browser. Chrome’s application account is the Gmail session and its selected collection ID is (private identifier withheld); the in-app Field Museum session selects Insects (private identifier withheld). The name difference is collection/session data, not a separate UI release. Public deployment.json also confirms 3b887661. No reload, account switch, collection switch or record mutation was performed.
+- Source inspection finds an actual presentation inconsistency: shell.dart uses UiMenuTrigger with a leading expand icon on desktop, and UiButton with a trailing expand icon in the compact header. Both read controller.scope.name. This remains unfixed; no source/test changes were made for this diagnostic. Chrome Help proof is `chrome-intake-e2e-build-3b887661.jpg` in the task visualization directory; Help was closed after reading. Existing uncommitted closeout entries remain preserved.
+
+
+### 2026-10-24 - Recover museum hierarchy and align the owner's Insects access
+
+- Task `01a161f6-9906-75f1-bc98-e9c3ebeca013`, cea9 worktree. Started `codex/collection-navigation` from current released main `3b8876616200f802baa3509a558fab88892a431b`, preserving prior uncommitted append-only closeouts. The owner explicitly requested the recovered EMu collection/subcollection dropdown and consistent Insects access for their two existing identities; no account merging or record movement was requested.
+- Separate archaeology agent recovered the original hierarchy commits `246237ae6`, `b82819607`, `45155b0b4` and PR #70 merge `85f5924`. The artifacts were never deleted: `docs/product-requirements/COLLECTION_HIERARCHY.md`, its sourced JSON companion and `infra/reference/fieldmuseum-collection-tree.json` retain four departments and fourteen children. Fresh read-only SQL confirms all eighteen institutional nodes plus the separate test collection. The flat API/picker omitted the hierarchy; Insects taxonomic orders remain specimen fields.
+- Root and backend agent independently verified the two exact existing Firebase identities and their SQL memberships read-only. The institutional identity has Insects admin/sensitive access; the personal identity has only test-collection operator/non-sensitive access. Private identifiers and proof remain outside the public repository. The new protected-release correction binds exactly these identities and collections, inserts the missing Insects membership, and classifies the existing test collection without changing its memberships, contents or drafts. The reviewer rejected implicit tester-to-owner promotion; a separate explicit optional configuration now binds this correction and is required before it can run.
+- Independent reviewer approved the private five-field configuration against fresh Auth/SQL evidence, canonical UUID normalization and private file modes. Root set only `OWNER_COLLECTION_ACCESS_B64` in the existing GitHub `data-production` environment; metadata confirms 2026-10-24T14:09:19Z. This configuration is inert on current main and changes no database rows until the reviewed source is merged and released. No workstation production deployment or data mutation occurred.
+- Frozen backend lane passed 240 focused unit/API/release tests, local SQL Connect schema/connector compilation and 14 exact-mutation/query engine tests, including null handling, ten raced prerequisites, rollback, partial completion, idempotence and denied organization metadata access. Engine proof used an isolated disposable PostgreSQL18.6/SQL Connect3.4.24 pair, not the canonical hosted PG16 tier; log `/private/tmp/specimen-owner-access-engine-run.log`. Owned processes were stopped. Full integrated canonical verification, independent final-head review, PR, release and live acceptance remain pending at this entry.
+- Registered sources follow collection membership/sensitivity. Private Drive/Dropbox OAuth connections and drafts remain actor-scoped in `GetDocumentV2` and `ListPrivateIntakePage`; adding collection access does not share them. An initial backend assumption based only on the HTTP route was corrected after independent review of connector guards. The owner was asked whether “connections” meant collections or also personal linked storage; no answer was received at this entry. Do not claim private OAuth parity from this collection correction.
+
+- Final client lane is frozen: 56 focused app/API tests, 26 shared menu/focus tests and 13 Widgetbook product-composition tests pass. Twelve font-loaded 390/1440-dp light/dark 100/200-percent captures passed eight render runs; root inspected desktop light and compact dark 200-percent results. The selector uses the existing paper popover surface, a 520-dp viewport-limited scroll area, department headings, one availability explanation and selected-row checks. Catalog visibility does not confer access; selection rechecks membership and pending mutations after the leave guard. Explicit authorized test routes remain valid while fresh entry prefers a museum collection.
+- The visual audit separately exposed the existing GlassSurface stroke being obscured by its opaque child fill. The collection selector uses the appropriate existing paper recipe and has a visible boundary; a global GlassSurface paint-order change is not included in this bounded hierarchy/access release. Full canonical gate, final-head review and protected release remain pending.
+
+- The first full canonical attempt stopped in Python with 19,410 passed, 65 existing/opt-in skips and one failure: the deployment-policy test still enumerated the previous two bootstrap secrets. Root updated its exact ordered list to the three reviewed inputs and added the exact new environment expression; sole-step placement, runtime exclusion, token and no-variable restrictions are unchanged. No release began. The independent reviewer approved this bounded contract correction in principle; final patch and full rerun are pending.
+- One-time intent cleanup is documented: after protected Data success and exact readback, remove only OWNER_COLLECTION_ACCESS_B64 and verify absence. The reviewer confirmed that keeping it indefinitely could recreate a later-deleted membership; absence is already a tested no-op. The original provisioning inputs remain unchanged.
+
+- The second complete canonical attempt passed all 19,411 Python tests (65 existing/opt-in skips) and stopped at the shared geometry gate: the hierarchy indentation used a literal depth cap. Replaced that cap with the existing space.s4 step and space.s12 maximum in the shared style; full shared analysis and all 1,744 tests then passed. The analogous compact-shell expression was corrected without changing geometry; unchanged app geometry plus 56 focused collection tests passed (59 total), and full app analysis passed. No gate exception was added.
+- Remaining Flutter preflight passed catalog analysis, 59 catalog tests and its web build, then identified 70 expected exact-golden deltas and the compact geometry issue above. Independent review proved all 70 deltas were confined to the collection trigger bounding box [32,99,171,111); copied masters matched existing baselines and no other pixels changed. Root regenerated the six affected test files (224 tests passed); exactly the approved 70 PNGs changed, each matching its independently reviewed actual-image hash. Pixel tolerances and assertions are unchanged.
+- Subsequent full app preflight passed all 3,900 tests with seven existing skips, compiled OAuth browser contract, formatting of 734 files with zero changes, release web build and all route/security-header smokes. Logs: /private/tmp/collection-app-final-preflight.log and /private/tmp/collection-approved-golden-refresh.log. The rebuilt live Widgetbook product Queue displays Insects, all recovered department/collection headings, disabled unavailable choices and separate Testing through the actual production picker. Screenshot widgetbook-recovered-collection-picker.png is in the task visualization directory. The browser initially held its older service-worker bundle; after activation the current picker was verified. This remains local catalog evidence, not production release evidence.
+- Independent reviewer approved the compact token correction and exact set of 70 updated baseline hashes; final candidate now covers 96 files. Complete canonical verification on the final frozen tree, exact-head review, protected release and both-account/Android20 acceptance are still pending at this entry.

@@ -543,3 +543,103 @@ Matches the sequencing in the north star: foundation and writing first, then the
 shell and queue, then the workbench, then intake and capture, then motion and
 polish, then verification. Each screen blueprint is independently mergeable
 once the foundation is in.
+
+## 15. Costs
+
+**Purpose.** Let an administrator see what the organization's work costs, month
+by month, and set the monthly limit of the organization and of each collection.
+It shows what the server's cost meter reports and works nothing out.
+
+**Reached from the account menu,** for an administrator of at least one
+collection in the open collection's organization, and for nobody else: the
+entry is hidden, never disabled, for every other account and for a build whose
+repository serves no costs. It is not a navigation destination and it is not
+under a collection, because the costs belong to the organization.
+
+**The route is `/costs`** (`AppRoutes.costs`), a global location like `/help`.
+Three rules of the collection routes would otherwise apply to it and none of
+them fits: the frame reads its destination off a collection path and takes any
+path that is not intake for the queue, `restoreWebHistory` recognises only
+collection paths, and the redirect sends a location that names no collection
+home unless `AppRoutes.isGlobalLocation` names it. It is opened with `push`,
+so a record and its unsaved drafts stay mounted
+beneath it and the top bar's back returns to them; opened as the first thing
+(a link, a reload) back goes to the collection's queue. A pushed page leaves
+the address where it was, as Help does.
+
+**An account that may not ask never asks.** The API repository keeps the first
+401 or 403 as the failure of the whole session, so a refused request cannot be
+taken back. The entry and the route ask the same question,
+`costOrganizationFor`, and the screen is built only from its answer, so a link
+to `/costs` followed by a reviewer reaches a sentence and no request.
+
+**Blueprint,** one vertical scroll in a reading column:
+
+- **Month.** A select over the current UTC month and the eleven before it,
+  with "Months are counted in UTC." under it.
+- **A meter that is behind, or has counted nothing,** is a band above the
+  figures with the update it offers: the shared Google costs are behind, which
+  the band's detail says is more than two complete billing days (`behind`), or
+  none has been counted (`never_run`). The band carries an "Update figures"
+  button under it, busy while the request is out, with the outcome written
+  under it. A meter that is `ok` says how far it has counted, in the Figures
+  section, and is otherwise silent.
+- **Organization.** Three numeral tiles, at most one hero: the cost the meter
+  counts, which is after Google's free allowance; the part held for calls whose
+  cost is unknown; and the cost before Google's free allowance.
+  Side by side where the width earns it and stacked where it does not. A month
+  with nothing recorded says "No costs recorded" in their place.
+- **Organization limit.** What is left of the limit, of what, and for which
+  month (the server's current month, whichever month is read), or that none is
+  set; one button to set or change it. When the report says it could not read
+  the limits (`caps_status` is `unavailable`) every limit in it is null, and
+  null is not "no limit": the section says "The monthly limits could not be
+  read." with a retry, each collection row says "Limit could not be read", and
+  nothing offers to set or change a limit that cannot be seen.
+- **Collections.** One row each, a sub-collection under its parent and one step
+  in, with the total including its sub-collections and its limit and what is
+  left, or "No monthly limit". The row opens the limit form. A collection the
+  server no longer lists comes back with no name; its costs still count, so the
+  row reads "Collection no longer listed" with its costs, never the id, and has
+  no limit control, because the service refuses a limit for an id that is not
+  one of the organization's collections.
+- **Cost by stage** and **cost by model.** Rows, largest first, a stage or a
+  provider this client has not met still named in plain words.
+- **Figures.** When they were updated, on the reader's clock, how far the
+  shared Google costs are counted (a billing day, in Pacific time), and
+  "Update figures", which asks the server and says the figures update within
+  minutes. When the server answers that none was started (no worker job is
+  configured, or the start failed) the screen says only that no update was
+  started and to try again later. Both controls are busy while a request is
+  out, and the outcome is written beside the one that was pressed and announced
+  once.
+
+**The limit form** is a sheet on a stacked window and a dialog above it, the
+same for the organization and every collection: an amount in US dollars,
+from $0.00 (the service takes a limit from zero up; removing one is its own
+action), checked on leaving the field and on submit, never on every
+keystroke; "Save
+limit", "Remove limit" where one is set, and "Cancel". The server's refusal
+keeps the form open with what was typed. The screen does not say what a limit
+does, because the contract does not.
+
+**Money** is US dollars with thousands separators and cents, an amount above
+zero and under one cent reads "Under one cent", and the unit the meter counts
+in never reaches the screen. Every sum the meter reports is signed, because
+Google's free allowance is recorded as a negative row and a residual can fall
+below the charges it is measured against, so an amount below zero is a credit,
+written in words after its dollars (`$0.30 credit`, "Credit under one cent")
+and never with a minus sign or a dash. The guidelines say nothing of negative
+amounts; this follows rule 1 of the 02 checklist (no dash). A credit
+is the smallest cost there is, so it sorts last. Absence is words: "No costs
+recorded", "No monthly limit", "Update time not recorded".
+
+**States.** Skeleton and one "Loading costs for October 2026" announcement while
+a month loads; a failure with what happened and a retry; a server with no meter
+says so and offers no retry, as does a refusal, because retrying cannot resolve
+either.
+
+**Done when** an administrator can read a month's costs and set, change or
+remove a limit from this screen, no amount is drawn as zero where the meter
+recorded nothing, and an account that is not an administrator never causes a
+request.

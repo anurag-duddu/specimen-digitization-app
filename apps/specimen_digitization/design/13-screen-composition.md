@@ -519,27 +519,93 @@ for the editor, so the marker states what the header is and no gate reads a
 new number off it.
 
 ### 4.4 Intake and capture
-One scroll: the batch header, the capture card, the pre-upload checks, the
-manifest, each a section with an `s6` gap; the upload action in the decision
-bar slot; the pill visible.
 
-**Amendment, wave A slot A3 (2026-09-17), placed by polish 3.** The checks
-are under the manifest, not over it. Section 2.5 asks for the manifest's first
-row inside the first viewport, and at 200 percent text on a phone the chrome
-takes 122 dp and leaves 722: the batch header is 137 of it and the capture
-card 320, so the manifest starts at 643 with the checks after it and at 964,
-below the fold, with the checks before it. The order also reads better: the
-confirmation that releases a batch sits next to the control that sends it.
-The capture card carries the capture alone; `IntakeChecks` carries the
-caveats, the checklist, the confirmation and, where there is no frame to hold
-it, the upload action, which otherwise goes in the frame's action bar while
-there is a batch to send.
+The shared import workspace uses a connector progression: Connect → provider consent →
+photo selection. Before connection, show one brief description and one Connect
+action. After connection, keep the account in one compact row; put switching,
+disconnect/reconnect, and optional Google folder access in its overflow menu.
+Use a single-choice selector only when accounts need choosing. Folder-wide
+selection and opt-in subfolders belong in a collapsed Folder options disclosure.
+
+**Connector polish, 2026-10-21.** `UiImportWorkspace` owns one title, close action,
+source navigation and bounded content region. Desktop uses a source rail;
+compact/large-text windows use a labeled source selector. The provider pane owns
+its scrolling file list and persistent selection footer (scrolling at very short
+heights). Use named folder navigation, lazy file rows, a filter explicitly scoped
+to loaded files and Select visible photos. Google Picker returns selected photos;
+do not require selecting the same batch twice. Add N photos returns to private
+batch review, while Submit remains its separate primary action. Keep filename and
+selection on one row, with secondary text for unavailable files. Show operation
+progress during checking/adding instead of replacing the workspace with a spinner.
+Full-shell responsive/light/dark/200%-text renders live in
+`test/intake_workspace_test.dart`, alongside connector failure contracts.
+
+After a confirmed failure, show the reason and Retry. Put administrator guidance
+and Copy administrator details in a collapsed Administrator help disclosure.
+Preserve the reason and prior selections. Do not invent an approval-pending state.
+Link import starts with the link field and exposes only the providers named in
+entered links. Do not repeat privacy paragraphs or account-management buttons
+around selection; provider consent carries permission review.
+
+**Bulk intake, 2026-10-17.** Add photos → review the batch → Submit → intake
+progress → specimen pipeline. One photo creates one specimen. Acquisition
+never creates a specimen. The existing scientific Queue retains Needs Human,
+Cleared, and Deferred.
+
+An empty workspace introduces sources. A populated workspace has one compact
+Add photos action, the actual save status, and a virtualized image grid.
+`UiPhotoTile` preserves the whole image. Its checkbox selects photos for
+editing; inclusion is a separate, explicit choice. Removal has Undo. Sensitivity
+actions name their scope. The only primary batch action is Submit N photos.
+Items requiring attention stay in the draft and are counted beside that action.
+
+The grid owns vertical scrolling. An inspector sits beside it on wide windows
+and uses a full-screen route on compact windows, with zoom and previous/next.
+Continuous camera capture has a persistent thumbnail tray and Review count;
+local retention may briefly hold the shutter, but network transfer never does.
+There is no compulsory per-photo review step or competing capture-mode segment.
+
+The intake progress screen owns its list and reports a fixed submitted total,
+measured transfer progress, and per-photo outcomes. It links to specimens after
+handoff and never redraws scientific processing stages. Add more photos opens
+a separate draft. Cancellation affects remaining work; accepted specimens stay.
+
+Full-shell previews and regression tests live in `test/bulk_intake_test.dart`.
+Keep empty, populated, saving, failure, progress, and inspector compositions
+aligned at phone, tablet, and desktop widths, including 200% text.
 
 ### 4.5 Sources
 One scroll: a heading (V2-4), the import action, the rows; the pill visible.
 
 ### 4.6 Sign in, help, setup
 One scroll each; the band strip; no pill on sign in.
+
+### 4.7 Costs
+A page of its own at `/costs` (07 section 15), outside the collection frame, so
+it has no rail, no sidebar and no pill: the band when the environment is not
+production, the top bar with the back control and the page's name, then one
+scroll.
+
+| Region | Pinned | Content |
+|---|---|---|
+| Environment band | yes | The one line strip at compact, the full band above |
+| Top bar | yes | Back, "Costs" |
+| Month | scrolls | The select and its line under it |
+| Meter band | scrolls | Only when the meter is behind or has counted nothing |
+| Organization | scrolls | Three numeral tiles, one hero |
+| Organization limit | scrolls | What is left, and one button; or that the limits could not be read, and a retry |
+| Collections | scrolls | The rows, sub-collections one step in |
+| Stages, models | scrolls | Rows, largest first |
+| Figures | scrolls | When updated, and the update button |
+
+The content is a reading column, centred, with the page's gutter as its least
+edge, and the tiles step down to fewer columns as the type grows. The page has
+no primary region of 2.5: the first screenful is the month, the organization's
+figures and its limit, and `above_the_fold` has no expectation for it. The tiles
+are panes drawn opaque (14 section 3), outside any sliver list because a pane
+in one is a repeated item (09 section 3.3), and the rows are not panes, so no
+pane sits inside another. Its pinned chrome is the band and the bar, which the
+`chrome_budget` gate measures with every other screen's.
 
 ## 5. Gates
 
@@ -677,6 +743,14 @@ the reader's text scale; they have no fixed-height or line-count cap. Stage
 headings are semantic headings and announce a changed task. A state icon
 supports the heading instead of replacing it. Named busy states use the
 existing reduced-motion-aware progress primitive.
+
+The entry field and its two available actions share the form width. The email
+entry action uses the standard `md` primary button: 40 dp visual in pointer
+density, 48 in touch density, with its 48 dp target preserved. Google's action
+uses the shared rectangular brand component, 40 dp visual inside a 48 dp target.
+The controls grow with their own label metrics at larger text sizes; exact
+visual-height equality at every density or text scale is not required. Link
+confirmation and resend keep their existing sizes and behaviour.
 
 The entry field and primary action become an inbox state after sending:
 recognizable mail symbol, recipient and the supported inbox-opening action.

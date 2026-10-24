@@ -18,6 +18,7 @@ from uuid import NAMESPACE_URL, uuid5
 from .domain import AuditEvent, Principal, Scope
 from .storage import Conflict, Missing, digest
 from .workflow import OperationalBlock
+from .worker_scope import WorkerScopePolicy, worker_scope_from_env
 
 LOGGER = logging.getLogger(__name__)
 LANE_ROLES = {"operator", "reviewer", "manager", "admin"}
@@ -75,6 +76,7 @@ class DrainSettings:
     actor_uid: str
     bindings: dict = field(default_factory=dict)
     worker_job: str = ""
+    scope_policy: WorkerScopePolicy = field(default_factory=WorkerScopePolicy)
 
 
 def exact_uid(value) -> bool:
@@ -118,7 +120,8 @@ def drain_settings(env) -> DrainSettings:
     job = env.get("SPECIMEN_WORKER_JOB", "")
     if job and not JOB_NAME.fullmatch(job):
         raise ValueError("SPECIMEN_WORKER_JOB must be projects/*/locations/*/jobs/*")
-    return DrainSettings(actor, dict(collection_bindings(env)), job)
+    return DrainSettings(actor, dict(collection_bindings(env)), job,
+                         worker_scope_from_env(env, lane='worker'))
 
 
 def moment(value):
@@ -302,8 +305,12 @@ class DrainWorker:
         deadline_seconds=3600,
         lease_seconds=None,
         max_steps_per_run=500,
+        cost_allocation=None,
     ):
         self.repository, self.workflow = repository, workflow
+        # Splits shared Google costs across tenants at each drain (cost_allocator).
+        self.cost_allocation = cost_allocation
+        self._job_collections = ()
         self.user_id, self.membership_loader = user_id, membership_loader
         self.execution_id = execution_id
         self.clock = clock or (lambda: datetime.now(timezone.utc))
@@ -344,7 +351,13 @@ class DrainWorker:
             "continuation": None,
         }
         wanted = False
-        for member in self.membership_loader(self.user_id):
+        members = list(self.membership_loader(self.user_id))
+        # The collections this job serves: the cost allocation's even split falls back to them.
+        self._job_collections = tuple(
+            (member["organization_id"], member["collection_id"])
+            for member in members if member["role"] in LANE_ROLES
+        )
+        for member in members:
             if member["role"] not in LANE_ROLES:
                 continue
             if summary["status"] == "stopped" or self._stopped(stop):
@@ -573,8 +586,52 @@ class DrainWorker:
             LOGGER.warning("blocked-run recovery skipped: %s", type(exc).__name__)
         return recovered
 
+    def _sweep_costs(self, scope, stop=None):
+        """Bring the collection's cost meter up to date (cost_sweep.sweep).
+
+        Once per collection per execution, under its fence, before any run is
+        stepped: bounded by the sweep's own budget and never past the window's
+        close. Its result is logged as counts; a failure never stops the drain.
+        """
+        from .cost_sweep import sweep
+
+        try:
+            result = sweep(self.repository, scope, clock=self.clock, stop=stop, until=self.close_at)
+        except Exception as exc:  # noqa: BLE001 - the meter never stops the drain
+            LOGGER.warning("cost sweep skipped: %s", type(exc).__name__)
+            return None
+        if result["status"] != "unsupported":
+            LOGGER.info("cost sweep %s: %d pages, %d records, %d rows sent, %d skipped",
+                        result["status"], result["pages"], result["specimens"], result["rows"],
+                        result["skipped"])
+        return result
+
+    def _allocate_costs(self, scope, stop=None, sweep=None):
+        """Split shared Google costs onto the collection (cost_allocator.CostAllocator.run).
+
+        After the sweep, before any run is stepped, and only when that sweep
+        completed its pass (``sweep`` is its result): bounded by the
+        allocation's own budget and never past the window's close. Logged as
+        counts; a failure never stops the drain.
+        """
+        if self.cost_allocation is None:
+            return None
+        swept = isinstance(sweep, dict) and sweep.get("status") == "complete"
+        try:
+            result = self.cost_allocation.run(self.repository, scope, job_collections=self._job_collections,
+                                              stop=stop, until=self.close_at, swept=swept)
+        except Exception as exc:  # noqa: BLE001 - the meter never stops the drain
+            LOGGER.warning("cost allocation skipped: %s", type(exc).__name__)
+            return None
+        if result["status"] != "unsupported":
+            LOGGER.info("cost allocation %s: %d days, %d again, %d rows sent", result["status"], result["days"],
+                        result.get("reallocated", 0), result["rows"])
+        return result
+
     def _drain(self, drain, fence, previous, stop, summary):
         principal = drain.principal
+        swept = self._sweep_costs(principal.scope, stop)
+        self._allocate_costs(principal.scope, stop, swept)
         summary["recovered"] += self._recover_blocked(drain, stop)
         resume = self._resume(drain, previous)
         while True:

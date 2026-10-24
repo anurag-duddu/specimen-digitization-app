@@ -25,6 +25,8 @@ sys.path.insert(0, str(ROOT / "scripts/ci"))
 # read queries and row comparison, its B is bootstrap_release and B._prepared is scripts/data/bootstrap_admin.py.
 import release_bootstrap as reviewed  # noqa: E402
 import schema_gate  # noqa: E402
+import intake_e2e_bootstrap as intake_e2e  # noqa: E402
+import owner_collection_access as owner_access  # noqa: E402
 
 PROJECT, REGION = "specimen-digitization", "us-east4"
 INSTANCE, DATABASE = "specimen-digitization-instance", "specimen-digitization-database"
@@ -268,8 +270,10 @@ def read_artifact(encoded):
 class Release:
     """One run: the REST client, the SQL runner, the artifact secret's text and what the diff step found."""
 
-    def __init__(self, api, sql, artifact=""):
+    def __init__(self, api, sql, artifact="", intake_artifact="", owner_access_artifact=""):
         self.api, self.sql, self.artifact, self.statements = api, sql, artifact, []
+        self.intake_artifact = intake_artifact
+        self.owner_access_artifact = owner_access_artifact
 
 
 def init(run):
@@ -417,11 +421,66 @@ def bootstrap(run):
     first: identical rows are left alone, absent rows are written once and read back, and rows that differ are left
     alone with one warning, so rows added or changed after the first release never stop a later one."""
     try:
-        _bootstrap(run.api, read_artifact(run.artifact))
+        owner = read_artifact(run.artifact)
+        _bootstrap(run.api, owner)
+        if run.intake_artifact.strip():
+            bootstrap_intake_e2e(run.api, run.intake_artifact)
+        if run.owner_access_artifact.strip():
+            restore_owner_collection_access(run.api, owner, run.intake_artifact, run.owner_access_artifact)
     except Failure:
         raise
     except Exception as error:  # Nothing of an unexpected error is printed: it may quote a private value.
         raise Failure(f"bootstrap: stopped on an unexpected {type(error).__name__}; nothing more was written") from None
+
+
+def bootstrap_intake_e2e(api, encoded):
+    """Optional dedicated collection, after the institutional hierarchy; never create specimens or start work."""
+    try:
+        payload = intake_e2e.parse(encoded)
+        worker = base64.b64decode(api.call("GET", WORKER_UID_URL, private=True)["payload"]["data"]).decode().strip()
+        variables = intake_e2e.variables(payload, worker)
+
+        def read():
+            return graphql(api, "executeGraphqlRead", {"query": intake_e2e.READ, "variables": variables},
+                           "the intake test collection read")
+
+        request = intake_e2e.missing_request(payload, worker, read())
+        if request is None:
+            return say("bootstrap: intake test collection and memberships match, skipped")
+        # A lost acknowledgement is reconciled by the next run's read, never by blindly repeating this write.
+        graphql(api, "executeGraphql", request, "the intake test collection write")
+        if intake_e2e.missing_request(payload, worker, read()) is not None:
+            raise Failure("bootstrap: intake test collection readback is incomplete; re-run to reconcile")
+        say("bootstrap: created missing intake test collection/memberships; no content or work was submitted")
+    except ValueError as error:
+        raise Failure(f"bootstrap: {error}") from None
+
+
+def restore_owner_collection_access(api, owner, encoded, owner_encoded):
+    """The two owner sign-ins share Insects; preserve test collection roles and data."""
+    try:
+        payload = intake_e2e.parse(encoded)
+        binding = owner_access.parse(owner_encoded)
+        worker = base64.b64decode(api.call("GET", WORKER_UID_URL, private=True)["payload"]["data"]).decode().strip()
+        values = owner_access.variables(owner, payload, binding, worker, reviewed.B._prepared)
+
+        def read():
+            return graphql(api, "executeGraphqlRead", {"query": owner_access.READ, "variables": values},
+                           "the owner collection access read")
+
+        request = owner_access.missing_request(values, read())
+        if request is None:
+            return say("bootstrap: both owner sign-ins have Insects access, skipped")
+        graphql(api, "executeGraphql", request, "the owner collection access write")
+        try:
+            incomplete = owner_access.missing_request(values, read()) is not None
+        except ValueError:
+            raise Failure("bootstrap: owner collection access readback differs after the write; reconcile the current rows") from None
+        if incomplete:
+            raise Failure("bootstrap: owner collection access readback is incomplete; re-run to reconcile")
+        say("bootstrap: restored owner Insects access and the testing marker; existing memberships and content unchanged")
+    except ValueError as error:
+        raise Failure(f"bootstrap: {error}") from None
 
 
 def _bootstrap(api, payload):
@@ -506,8 +565,10 @@ def main() -> int:
         return 2
     # Read once and removed, so no child process inherits the artifact.
     artifact = os.environ.pop(ARTIFACT, "")
+    intake_artifact = os.environ.pop(intake_e2e.ARTIFACT, "")
+    owner_access_artifact = os.environ.pop(owner_access.ARTIFACT, "")
     try:
-        run = Release(Api(session()), node_sql, artifact)
+        run = Release(Api(session()), node_sql, artifact, intake_artifact, owner_access_artifact)
         for step in STEPS:
             step(run)
     except (Failure, GoogleAuthError) as failure:

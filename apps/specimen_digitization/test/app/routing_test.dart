@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:specimen_digitization/main.dart';
+import 'package:specimen_digitization/src/app/help_screen.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
 import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
@@ -82,6 +83,14 @@ void main() {
     // that a route without a collection is not a route with a missing one,
     // this pushed /help and was sent straight back to the queue.
     expect(find.text('Keyboard shortcuts'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Glossary'),
+      200,
+      scrollable: find.descendant(
+        of: find.byType(HelpScreen),
+        matching: find.byType(Scrollable),
+      ),
+    );
     expect(find.text('Glossary'), findsOneWidget);
 
     await systemBack(tester);
@@ -95,6 +104,14 @@ void main() {
   ) async {
     await pumpApp(tester, initialLocation: AppRoutes.help);
     expect(locationOf(tester), AppRoutes.help);
+    await tester.scrollUntilVisible(
+      find.text('Glossary'),
+      200,
+      scrollable: find.descendant(
+        of: find.byType(HelpScreen),
+        matching: find.byType(Scrollable),
+      ),
+    );
     expect(find.text('Glossary'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });

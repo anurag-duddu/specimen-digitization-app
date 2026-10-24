@@ -53,6 +53,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
+from typing import NamedTuple
 
 import logfire
 
@@ -421,9 +422,9 @@ def _literal_row(key: str, reading: Reading, literal: str, asset_id, blobs, *, t
     candidate (agreement.TRANSCRIPT), the row cites its first run of whole
     words (agreement.verbatim_runs), and its record says so ("basis":
     "transcript")."""
-    from .agreement import verbatim_runs
+    from .agreement import written_runs
 
-    runs = verbatim_runs(reading.text, literal) if transcript else []
+    runs = written_runs(key, reading.text, literal) if transcript else []
     quote_start, quote_end, start, end = _excerpt_span(reading.text, literal, runs[0][0] if runs else None)
     excerpt = reading.text[quote_start:quote_end]
     record = json.dumps({"field_key": key, "reading": reading.name, "region_id": reading.region_id,
@@ -516,7 +517,9 @@ def _refusal(task, answer, *, readings, by_name, sources):
 def _place_texts(run, tasks_by_key: Mapping[str, FieldTask], readings) -> dict[str, dict[str, frozenset[str]]]:
     """Each place value field's texts by reading (agreement.reader_literals),
     before this attempt changes any value: its task's candidates and
-    verbatims, or the run's for a field not researched in this attempt."""
+    verbatims, or the run's for a field not researched in this attempt. A
+    text of only unit words counts here (unit_words): a reading that writes
+    "Davao, Prov." writes a province, whatever the organiser cut from it."""
     from .agreement import PLACE_ORDER, reader_literals
 
     stored = None
@@ -527,7 +530,8 @@ def _place_texts(run, tasks_by_key: Mapping[str, FieldTask], readings) -> dict[s
             stored = _candidates(run, readings) if stored is None else stored
             task = FieldTask(key=key, mandatory=False, current=run.fields.get(key) or FieldValue(),
                 candidates=tuple(stored.get(key, ())), tools=())
-        found[key] = {name: frozenset(texts) for name, texts in reader_literals(task, readings).items()}
+        found[key] = {name: frozenset(texts)
+            for name, texts in reader_literals(task, readings, unit_words=True).items()}
     return found
 
 
@@ -547,7 +551,10 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     attempt has not done with it (a county needs its province settled). A place settled on
     text its expert read in the transcript (transcript_code) is written by
     each reading that writes that text as whole words
-    (agreement.verbatim_runs)."""
+    (agreement.verbatim_runs). A country no answer settled does not hold a
+    place back when the gazetteers' answers, of any field, confirm every
+    country text of every reading as one nation that the place lies in
+    (_confirmed_country)."""
     from .agreement import (
         PLACE_ORDER,
         PLACE_VALUE_FIELDS,
@@ -563,6 +570,7 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     if found is None:
         return None  # _refusal has refused it already.
     basis, candidate = found.basis, found.candidate
+    confirmed = _confirmed_country(run, readings, places, received) if task.key != "country" else {}
     named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and answer.literal in by_name[n].text]
     decided = {r.region_id: r for r in readings if r.input_source == "decided_transcript"}
     rows = {item.id: item for item in run.evidence}
@@ -600,9 +608,157 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
                 if key in pending or value is None or value.state != ValueState.SUPPORTED or not value.literal:
                     unsettled.add(key)
         refused = parents_refusal(task.key, candidate, basis, written=written, settled=settled,
-            literal=answer.literal, unsettled=frozenset(unsettled))
+            literal=answer.literal, unsettled=frozenset(unsettled), confirmed=confirmed)
         if refused is not None:
             return refused
+    return None
+
+
+def _confirmed_country(run, readings: Sequence[Reading], places: Mapping[str, Mapping[str, frozenset[str]]],
+        received: Mapping[str, Sequence[SourceAnswer]] | None) -> dict:
+    """The nation the gazetteers confirm the record's country texts as, for
+    the parents check (_misfit, agreement.parents_refusal's `confirmed`):
+    agreement.confirmed_place on the country texts of every reading
+    (`places`, before this attempt changed any value), checked against the
+    answers every field received (`received`): an expert may look up another
+    field's text. Empty when the record writes no country, when its texts
+    are not all confirmed as one nation, or when a reading writes other text
+    on a line of the record's places that may be another country
+    (_unplaced_text: another reader's "Canada: Ill. Coles Co." with no
+    candidate filed for "Canada"; round 1 of #379's review, finding 2).
+    3781e440 writes only reader 2B's "USA", which Wikidata's answer for
+    "United States of America" confirms as the United States; its reader 2A
+    writes "U.S.B.I.L." there, which every source asked found nothing for."""
+    from .agreement import confirmed_place
+
+    texts = sorted(frozenset().union(*places.get("country", {}).values())) if places.get("country") else []
+    if not texts:
+        return {}
+    answers = [item for items in (received or {}).values() for item in items]
+    found = confirmed_place(answers, texts, "country")
+    if found is None or _unplaced_text(run, readings, places, answers, found) is not None:
+        return {}
+    return {"country": found}
+
+
+# Where a line's text splits into the groups _unplaced_text weighs.
+PLACE_LINE_SEPARATORS = re.compile(r"[,;:()\[\]/]")
+
+
+def _residue_words() -> frozenset[str]:
+    """The words that, alone, name no place on a line of places
+    (_unplaced_text), folded, periods dropped: what written's tables read
+    around an elevation or a date (its headings, approximate words,
+    elevation words, units and their parts, months, range joiners), and a
+    collector's or a determiner's mark (written.PERSON_MARKS, and "lg").
+    "alt." of "alt. 1200 m", "coll." of "coll. 12.vi.1948", "leg." beside a
+    collector's name (round 1 of #381's review, finding 1)."""
+    from . import written
+
+    return (written.HEADINGS | written.APPROXIMATE | written.ELEVATION_WORDS | frozenset(written.UNIT_OF)
+        | written.UNIT_PARTS | written.MONTH_WORDS | written.JOINERS | written.PERSON_MARKS | frozenset({"lg"}))
+
+
+# A run of letters, as _unplaced_text splits what is left of a group into words.
+LETTERS = re.compile(r"[^\W\d_]+")
+
+
+def _unplaced_text(run, readings: Sequence[Reading], places: Mapping[str, Mapping[str, frozenset[str]]],
+        answers: Sequence[SourceAnswer], nation) -> str | None:
+    """Text a reading writes on a line of the record's places that may name
+    another country than `nation` (an agreement.PlaceField), or None.
+
+    The lines are those of every reading that write a country, province or
+    county text of the record as whole words (`places`, any reading's). On a
+    label whose readers all have the same number of lines, each reader's
+    line at the same place (by its index) as such a line of another reader
+    is read too: reader 1B's "Canada" over "Ill." over "Coles Co." where only
+    1A's "USA" / "Ill." / "Coles Co." are filed (round 1 of #380's review,
+    finding 3). Readers whose line counts differ (one reads a printed
+    header the other skips, or joins two lines) would pair the wrong lines,
+    so then each reader's own place lines alone are read (round 1 of #381's
+    review, finding 2).
+
+    On each line, the text the fields hold is set aside where the line
+    writes it as whole words: every place field's texts and every field's
+    organiser candidates (_candidates), and the literals and verbatims of
+    every supported value. A value not settled holds nothing: the country
+    expert's own "Canada", kept as an unresolved literal, is still weighed
+    (finding 2).
+
+    What is left, split at commas, semicolons, colons, brackets and
+    slashes, is weighed group by group, with any date, elevation or range in
+    it set aside first (written.other_kind, as often as it finds one:
+    "Canada 1948", "Canada 1200 ft"; finding 4). A group then counts for
+    nothing when it holds no letter, is only unit words (agreement.place_name
+    is empty), is only words that name no place (_residue_words: the "alt."
+    an elevation leaves, the "leg." beside a collector), was asked of the
+    sources and found by none (agreement.ruled_out: 3781e440's
+    "U.S.B.I.L."), names that nation (one of its names, or an abbreviation
+    of one by the letter rule: "United States", "U.S." and "US" beside the
+    United States; round 1 of #381's review, finding 3), or is confirmed as
+    that same nation (agreement.confirmed_place). The first group left is
+    returned: "Canada" of "Canada: Ill. Coles Co.", which no candidate
+    files."""
+    from . import written
+    from .abbreviations import fits
+    from .agreement import confirmed_place, place_keys, place_name, ruled_out, verbatim_runs
+
+    residue = _residue_words()
+
+    anchors = {text for key in ("country", "province_state", "county")
+        for texts in places.get(key, {}).values() for text in texts}
+    held = {text for texts_by_reading in places.values() for texts in texts_by_reading.values() for text in texts}
+    held |= {candidate.literal for found in _candidates(run, readings).values() for candidate in found}
+    for value in run.fields.values():
+        if value.state == ValueState.SUPPORTED:
+            held |= {text for text in (value.literal, *value.verbatim_by_observation.values()) if text}
+    parts = {part.strip() for text in held for part in text.split("\n") if part.strip()}
+
+    def same(found) -> bool:
+        return found is not None and ((found.authority_id is not None and found.authority_id == nation.authority_id)
+            or bool(place_keys(found.texts) & place_keys(nation.texts)))
+
+    def names_the_nation(group: str) -> bool:
+        return place_name(group) in place_keys(nation.texts) or any(fits(group, name) for name in nation.texts)
+
+    def places_nothing(group: str) -> bool:
+        words = LETTERS.findall(written.fold(group))
+        return bool(words) and all(word in residue for word in words)
+
+    def weighed(group: str) -> str:
+        # Each date, elevation or range in the group is another field's text.
+        for _ in range(len(group)):
+            found = written.other_kind(group, place=True)
+            if found is None or not found[1] or found[1] not in group:
+                break
+            group = group.replace(found[1], " ", 1)
+        return group.strip()
+
+    lines_of = {reading.name: reading.text.split("\n") for reading in readings}
+    own = {reading.name: {index for index, line in enumerate(lines_of[reading.name])
+        if any(verbatim_runs(line, text) for text in anchors)} for reading in readings}
+    regions: dict[str, list[Reading]] = {}
+    for reading in readings:
+        regions.setdefault(reading.region_id, []).append(reading)
+    for reading in readings:
+        lines = lines_of[reading.name]
+        group_of = regions[reading.region_id]
+        indices = set(own[reading.name])
+        if len({len(lines_of[other.name]) for other in group_of}) == 1:
+            indices |= {index for other in group_of for index in own[other.name]}
+        for index in sorted(indices):
+            free = list(lines[index])
+            for text in parts:
+                for start, end in verbatim_runs(lines[index], text):
+                    free[start:end] = " " * (end - start)
+            for group in PLACE_LINE_SEPARATORS.split("".join(free)):
+                group = weighed(group)
+                if (not any(char.isalpha() for char in group) or not place_name(group) or places_nothing(group)
+                        or ruled_out(answers, group) or names_the_nation(group)
+                        or same(confirmed_place(answers, [group], "country"))):
+                    continue
+                return group
     return None
 
 
@@ -636,6 +792,20 @@ def _settling(task, answer, sources):
 
 # A literal read from the transcript that is also another kind of field's text.
 TAKEN = "This text, read from the transcript, is also the value found for {other}."
+# A value whose text runs on into a place read from the transcript, which
+# overlaps it only partly and settles (_taken, _partly): e98a924c's
+# collection code "CNHM. E Slope Mt.", the organiser's candidate, beside its
+# precise location "E Slope Mt.\nMcKinley, Davao Prov.".
+RUNS_INTO = "This text runs into the value found for {other}."
+
+
+class Taken(NamedTuple):
+    """Why _taken sends a field to review: the field whose value holds its
+    text, and whether that field is a place it only runs into (`partly`:
+    RUNS_INTO) rather than one holding its text (TAKEN)."""
+
+    other: str
+    partly: bool = False
 
 
 def _inside_a_token(text: str, index: int) -> bool:
@@ -713,7 +883,7 @@ def _value_spans(value: FieldValue, readings: Sequence[Reading], evidence: Mappi
 
 
 def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldOutcome],
-        readings: Sequence[Reading], settled: Mapping[str, FieldValue]) -> dict[str, str]:
+        readings: Sequence[Reading], settled: Mapping[str, FieldValue]) -> dict[str, Taken]:
     """The fields whose resolved answer gives a literal its expert read in the
     transcript (agreement.literal_basis: TRANSCRIPT) when that same text is
     claimed for a field of another kind (agreement.may_share_text), each
@@ -733,8 +903,21 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     goes to review. A place inside the precise location, or an elevation
     copied to the other unit, is one kind; an elevation or a date inside
     the precise location is not. Two fields that both settle the same text
-    from the transcript both go to review."""
-    from .agreement import TRANSCRIPT, literal_basis, may_share_text, verbatim_runs
+    from the transcript both go to review.
+
+    One overlap is the other way round: a place read from the transcript
+    whose text another field, settled in this same attempt, overlaps only
+    partly (_partly: at each overlap neither holds the other) stands, and
+    that other field goes to review instead. A label line that begins with
+    another field's text and runs on into the locality is read so by the
+    place's expert, who leaves that text out, while the other field's
+    answer runs into the locality's words: e98a924c's collection code
+    "CNHM. E Slope Mt." (the organiser's candidate, the whole first line)
+    beside its precise location "E Slope Mt.\\nMcKinley, Davao Prov." (run
+    629f91eb on 616ae010). A place that holds another field's whole text,
+    or lies wholly inside it, still yields, as does one beside a value
+    settled before this attempt or by a person."""
+    from .agreement import FIELD_KINDS, TRANSCRIPT, literal_basis, may_share_text, written_runs
 
     evidence = {item.id: item for item in run.evidence}
     by_name = {reading.name: reading for reading in readings}
@@ -760,28 +943,59 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
         if task is not None and named and literal_basis(task, readings, literal, named) == TRANSCRIPT:
             regions = {r.region_id for r in named}
             mine[outcome.key] = frozenset((r.name, start, end) for r in readings if r.region_id in regions
-                for start, end in verbatim_runs(r.text, literal))
+                for start, end in written_runs(outcome.key, r.text, literal))
     for key, value in run.fields.items():
         if key not in researched and _claims_text(key, value, human):
             claims.append((key, _value_spans(value, readings, evidence)))
-    taken = {}
+    taken: dict[str, Taken] = {}
+    yielded: dict[str, str] = {}
     for key, spans in mine.items():
-        other = next((other for other, theirs in claims
-            if other != key and not may_share_text(key, other) and _overlap(spans, theirs)), None)
+        place = FIELD_KINDS.get(key) == "place"
+        partial, other = [], None
+        for claimant, theirs in claims:
+            if claimant == key or may_share_text(key, claimant) or not _overlap(spans, theirs):
+                continue
+            if place and claimant in settled and _partly(spans, theirs):
+                partial.append(claimant)
+                continue
+            other = claimant
+            break
         if other is not None:
-            taken[key] = other
+            taken[key] = Taken(other)
+        else:
+            for claimant in partial:
+                yielded.setdefault(claimant, key)
+    for claimant, key in yielded.items():
+        # The place that stands is the field it runs into (RUNS_INTO), even
+        # when its own text read from the transcript also met that place.
+        if claimant not in taken or taken[claimant].other == key:
+            taken[claimant] = Taken(key, partly=True)
     return taken
 
 
-def _taken_value(task, outcome, other: str, evidence) -> FieldValue:
+def _partly(spans, others) -> bool:
+    """Whether the spans overlap the others only partly: some overlap, in the
+    same reading, and at each neither holds the other (_taken)."""
+    pairs = [(start, end, other_start, other_end) for name, start, end in spans
+        for other, other_start, other_end in others if name == other and start < other_end and other_start < end]
+    return bool(pairs) and all(not (other_start <= start and end <= other_end) and not (start <= other_start
+        and other_end <= end) for start, end, other_start, other_end in pairs)
+
+
+def _taken_value(task, outcome, taker: Taken, evidence) -> FieldValue:
     """A field whose text from the transcript another kind of field claims
-    (_taken): unresolved, for a person, with the reason naming that field."""
+    (_taken): unresolved, for a person, with the reason naming that field;
+    or a field whose text runs into a place that settles (`taker.partly`),
+    whose reason says so (RUNS_INTO; round 1 of #380's review, finding 1:
+    the collection code's candidate was neither read from the transcript
+    nor the precise location's value)."""
     from .prompts import FIELD_LABELS
 
     answer = outcome.answer
     cited = [e for e in answer.source_evidence_ids if e in evidence and evidence[e].kind != "literal"]
+    reason = (RUNS_INTO if taker.partly else TAKEN).format(other=FIELD_LABELS.get(taker.other, taker.other))
     return _unsettled(task, ValueState.UNRESOLVED, literal=task.current.literal, cited=cited,
-        reason=f"{TAKEN.format(other=FIELD_LABELS.get(other, other))} {answer.explanation}")
+        reason=f"{reason} {answer.explanation}")
 
 
 NEAR_SPELLING_RULES = "field-research-places-v1"
@@ -1366,7 +1580,7 @@ def _taxon_literals(run, tasks: Sequence[FieldTask], outcomes: Sequence[FieldOut
 
 
 def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[FieldOutcome], *,
-        taken: Mapping[str, str], human, readings, by_name, evidence: dict, asset_id, blobs, date_rules,
+        taken: Mapping[str, Taken], human, readings, by_name, evidence: dict, asset_id, blobs, date_rules,
         received: Mapping[str, Sequence[SourceAnswer]], places, final: bool,
         decisions: dict[str, dict]) -> tuple[dict[str, FieldOutcome], dict[str, list[str]]]:
     """Each outcome, in `ordered` (the places from the country down), as its
@@ -1386,7 +1600,7 @@ def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence
         decision = decisions.setdefault(task.key, {})
         before = len(run.evidence)
         if task.key in taken:
-            decision["refusal"] = "taken"
+            decision["refusal"] = "runs_into" if taken[task.key].partly else "taken"
             run.fields[task.key] = _taken_value(task, outcome, taken[task.key], evidence)
         else:
             run.fields[task.key] = _field_value(run, task, outcome, readings=readings, by_name=by_name,
@@ -1802,6 +2016,121 @@ def _first_pass(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[Fi
         if copy.fields[key].state == ValueState.SUPPORTED and copy.fields[key].layer in SETTLED_LAYERS}
 
 
+def _claimed_texts(run, tasks_by_key: Mapping[str, FieldTask], readings: Sequence[Reading],
+        key: str) -> dict[str, frozenset[str]]:
+    """Each reading's texts for the fields of another kind than `key`'s, for
+    agreement.disputed: the organiser's candidates for those fields (their
+    tasks'), and each such field's literal where the reading writes it as
+    whole words, after this attempt's answers (d10333ff's taxon "Panorpa",
+    which only reader 3B writes). Fields of one kind (agreement.FIELD_KINDS)
+    are left out: for the country, another place field's text at that point
+    ("Texas" where the other reader writes "Mexico") is a rival reading of
+    the same place, never text of another kind (round 1 of #379's review,
+    finding 1)."""
+    from .agreement import FIELD_KINDS, verbatim_runs
+
+    kind = FIELD_KINDS.get(key, key)
+
+    def another_kind(other: str) -> bool:
+        return other != key and FIELD_KINDS.get(other, other) != kind
+
+    found: dict[str, set[str]] = {}
+    for other, task in tasks_by_key.items():
+        if another_kind(other):
+            for candidate in task.candidates:
+                if candidate.literal.strip():
+                    found.setdefault(candidate.reading, set()).add(candidate.literal)
+    for other, value in run.fields.items():
+        if another_kind(other) and value.literal and value.literal.strip():
+            for reading in readings:
+                if verbatim_runs(reading.text, value.literal):
+                    found.setdefault(reading.name, set()).add(value.literal)
+    return {name: frozenset(texts) for name, texts in found.items()}
+
+
+def _country_alternatives_are_lower_places(run, task, outcome, *, readings, received, fresh,
+        claimed: Mapping[str, Iterable[str]] | None = None) -> bool:
+    """Fresh lower-place proof for every alternative, without country counterproof.
+
+    Keep every original country alternative, including other labels, alongside
+    the expert's options. This classifies their levels, never chooses a country:
+    ordinary derivation still requires compatible qualified parent ancestry.
+    Only recognized source kinds prove a level. Nonempty unmodeled kinds give
+    neither lower-place proof nor country counterproof; missing kinds fail closed.
+
+    Two kinds of alternative hold nothing back (the third rerun of 2026-10-18):
+    - text that stands on no reading a field may settle on
+      (agreement.set_aside): a decided label's other reader's text its
+      decided reading does not write (G19), or text the two readers of a
+      label with no decided transcript dispute, the other reader writing
+      another field's text at that very point (`claimed`, _claimed_texts).
+      d10333ff's label 3, a determination label whose first pass reached its
+      token cap in one run and chose no reading in the next two, has 3A
+      "Panama" where 3B writes "Panorpa", its taxon; its label 1 was decided
+      in two of the three runs ("ILLINOIS", beside 1B's "BONITELL"). Such
+      text no longer competes with the place another label settles;
+    - text the gazetteers confirm as the very nation every newly settled
+      child lies in (agreement.confirmed_place: "USA" beside Coles County).
+    """
+    from .agreement import (
+        PLACE_ANSWERED,
+        at_level,
+        confirmed_place,
+        lies_in,
+        literal_refusal,
+        set_aside,
+        verbatim_runs,
+    )
+    from .contracts import GAZETTEERS
+    from .location_reassessment import protected_keys
+
+    value = run.fields.get("country")
+    answer = outcome.answer if outcome is not None else None
+    if (task is None or "country" in protected_keys(run)
+            or value is None or value.state != ValueState.AMBIGUOUS
+            or value.literal or value.verbatim_by_observation
+            or answer is None or answer.outcome != "several_possibilities" or not answer.options):
+        return False
+    captured = [source for sources in received.values() for source in sources
+        if source.source_id in GAZETTEERS and source.status in PLACE_ANSWERED
+        and source.evidence is not None and source.evidence.id in fresh]
+    # A newly settled administrative child must cite the direct gazetteer
+    # record that names its country; a GEOLocate query part is never ancestry.
+    children = [candidate for key in ("province_state", "county") if (child := run.fields.get(key)) is not None
+        and child.state == ValueState.SUPPORTED and child.layer in {"settled", "verbatim"} and child.authority_id
+        for source in captured if source.evidence.id in child.evidence_ids
+        and child.evidence_relations.get(source.evidence.id) in {"supports", "decides"}
+        for candidate in at_level(key, source)
+        if candidate.authority_id == child.authority_id and candidate.parents and candidate.parents[-1].name]
+    if not children:
+        return False
+    by_name = {reading.name: reading for reading in readings}
+    alternatives = [(literal, tuple(readings)) for literal in answer.options]
+    if task.current.literal:
+        alternatives.append((task.current.literal, tuple(readings)))
+    alternatives.extend((candidate.literal, (by_name[candidate.reading],)
+        if candidate.reading in by_name else ()) for candidate in task.candidates)
+    alternatives.extend((literal, tuple(reading for reading in readings if reading.observation_id == observation))
+        for observation, literal in task.current.verbatim_by_observation.items())
+    for literal, possible in alternatives:
+        if literal and set_aside(literal, readings, claimed or {}):
+            continue
+        nation = confirmed_place(captured, [literal], "country") if literal else None
+        if nation is not None and all(lies_in(child, "country", nation) for child in children):
+            continue
+        named = [reading for reading in possible if literal and verbatim_runs(reading.text, literal)]
+        if not named or literal_refusal(task, readings, literal=literal, named=named) is not None:
+            return False
+        about = [source for source in captured if _answer_can_support_location_literal(source, literal)]
+        if any(not (candidate.kind or "").strip() for source in about for candidate in source.candidates
+                if _location_name_matches_literal(literal, source, candidate)):
+            return False
+        levels = set().union(*(_answer_levels_for_literal(source, literal) for source in about))
+        if not levels or "country" in levels:
+            return False
+    return True
+
+
 def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[FieldTask],
         outcomes: Sequence[FieldOutcome], *, blobs=None, calls: Sequence[SourceCall] = (),
         asset_id: str | None = None, decisions: dict[str, dict] | None = None) -> list[str]:
@@ -1828,7 +2157,9 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     administrative marker beside the places settled is not present
     (_no_finer_place, after _corroborate), and so is one settled on only
     the text of a settled place field of the same reading
-    (_repeats_a_place).
+    (_repeats_a_place); and so is a county or a city left open whose every
+    text on the label is the text of a settled place above it
+    (_only_a_place_above).
     label_lacks_value: not present;
     sources_cannot_resolve: unresolved, except a taxon that names no genus,
     supported as written and unmatched (_unmatched_taxon); several_possibilities:
@@ -1840,7 +2171,10 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     label does not state (mark_not_on_label); the keys derived are returned.
     Last, a field whose expert's answer stood although a source it asked
     could not be reached (FieldOutcome.unreachable) ends its reason with a
-    note naming that source (_unreachable_note). ``decisions`` collects, per
+    note naming that source (_unreachable_note); the resolver's fallback is
+    no answer of the expert's, and its reason gets no such note (the second
+    rerun of 2026-10-18 blamed Getty TGN for answers that had failed their
+    checks). ``decisions`` collects, per
     field, the codes of the checks and rules that decided it (trace_fields).
     """
     from .agreement import PLACE_ORDER
@@ -1854,12 +2188,15 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
         asset_id = run.regions[0].asset_id if run.regions else None
     tasks_by_key = {task.key: task for task in tasks}
     places = _place_texts(run, tasks_by_key, readings)
+    previous_evidence = {item.id for item in run.evidence}
     _add_sources(run, outcomes, calls, readings, _taxon_literals(run, tasks, outcomes))
+    fresh = {item.id for item in run.evidence} - previous_evidence
     evidence = {item.id: item for item in run.evidence}
     human = human_keys(run)
     received: dict[str, list[SourceAnswer]] = {}
     for call in calls:
         received.setdefault(call.field_key, []).append(call.answer)
+    outcomes = _across_lines(outcomes, by_name)
     outcomes = _reconcile_location_outcomes(run, tasks_by_key, outcomes, readings=readings,
         received=received, evidence=evidence, human=human)
     # The places first, from the country down: a place below it settles only
@@ -1882,15 +2219,29 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     # locality: not present, as label_lacks_value makes it (_repeats_a_place).
     repeated = _repeats_a_place(run, tasks_by_key, applied, added, readings, evidence=evidence,
         decisions=decisions)
+    # A county or a city whose every text is a settled place's above it names
+    # no place of its own: not present, as label_lacks_value makes it
+    # (_only_a_place_above).
+    above = _only_a_place_above(run, tasks_by_key, applied, added, readings, evidence=evidence,
+        decisions=decisions, received=received)
     eligible = [key for key in field_keys(profile) if key not in human
         and (not reassessing or key in reassessing)]
+    ambiguous_country = None
+    if "country" in eligible and _country_alternatives_are_lower_places(run, tasks_by_key.get("country"),
+            next((outcome for outcome in outcomes if outcome.key == "country"), None),
+            readings=readings, received=received, fresh=fresh,
+            claimed=_claimed_texts(run, tasks_by_key, readings, "country")):
+        ambiguous_country = run.fields["country"]
+        run.fields["country"] = ambiguous_country.model_copy(update={"state": ValueState.UNRESOLVED})
     derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs, received=received)
+    if ambiguous_country is not None and "country" not in derived:
+        run.fields["country"] = ambiguous_country
     for key in derived:
         decisions.setdefault(key, {})["rule"] = "derived"
     # Last, so that a value derived above is never marked absent.
     declined: dict[str, str] = {}
     for key in mark_not_on_label(run, profile, tasks, outcomes, readings=readings, asset_id=asset_id, blobs=blobs,
-            why=declined, no_finer=no_finer, repeated=repeated):
+            why=declined, no_finer=no_finer, repeated=repeated, above=above):
         decisions.setdefault(key, {})["rule"] = "A_not_on_label"
     for key, code in declined.items():
         # A value derived above keeps "derived" (rule A declines it as present).
@@ -1899,11 +2250,34 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     rows = {item.id: item for item in run.evidence}
     for outcome in outcomes:
         value = run.fields.get(outcome.key)
-        if (outcome.failure is None and outcome.unreachable and outcome.key in tasks_by_key
+        if (outcome.failure is None and outcome.unreachable and not outcome.fallback and outcome.key in tasks_by_key
                 and outcome.key not in human and value is not None and value.layer != "derived"):
             value.reason = " ".join(part for part in (value.reason, _unreachable_note(outcome, value, rows))
                 if part)
     return derived
+
+
+def _across_lines(outcomes: Sequence[FieldOutcome], by_name: Mapping[str, Reading]) -> tuple[FieldOutcome, ...]:
+    """Each resolved answer of a field whose literal may run over consecutive
+    lines (agreement.ACROSS_LINES: precise location) with its literal as the
+    readings it names write it (agreement.across_lines), when it gives a
+    space for a line break or a line break for a space, as the experts'
+    check gives it (experts._Expert._across_lines); every other outcome as
+    it is."""
+    from .agreement import ACROSS_LINES, across_lines
+
+    found = []
+    for outcome in outcomes:
+        answer = outcome.answer
+        if (outcome.key in ACROSS_LINES and answer is not None and answer.outcome == "resolved"
+                and answer.literal and answer.reading_names
+                and all(name in by_name for name in answer.reading_names)
+                and not all(answer.literal in by_name[name].text for name in answer.reading_names)):
+            literal = across_lines(outcome.key, [by_name[name] for name in answer.reading_names], answer.literal)
+            if literal is not None:
+                outcome = replace(outcome, answer=answer.model_copy(update={"literal": literal}))
+        found.append(outcome)
+    return tuple(found)
 
 
 def _source_names(source_ids: Iterable[str]) -> str:
@@ -1943,7 +2317,13 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
     the ISO code its settling candidate carries by a parent's country code).
     So "Mindanao, P.I."
     keeps the Philippines when its province "Davao, Prov." settles on a
-    province of the Philippines. Otherwise the value is ambiguous, for review,
+    province of the Philippines. Or else when another place the label writes
+    lies inside it by the answers of two or more gazetteers about it
+    (_placed_inside: 2b02009d's "Mt. Apo" beside "P.I.": each Mount Apo that
+    Wikidata's and NGA's answers put somewhere is in the Philippines); the
+    value then cites those answers and its reason names that place
+    (PLACED_INSIDE). Otherwise
+    the value is ambiguous, for review,
     with a reason naming the initials (agreement.initialism_alone), and the
     rows its settling added are dropped, with the transcript_literal finding
     of a literal read from the transcript (_from_the_transcript). Checked
@@ -1975,6 +2355,16 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
         if any(other in settlings and settlings[other][1] is None
                 and lies_in(settlings[other][0].candidate, key, field) for other in PLACE_ORDER[index + 1:]):
             continue
+        placed = _placed_inside(run, tasks_by_key, received, key, field)
+        if placed is not None:
+            text, found, sources = placed
+            for evidence_id in found:
+                if evidence_id not in value.evidence_ids:
+                    value.evidence_ids.append(evidence_id)
+                value.evidence_relations.setdefault(evidence_id, "supports")
+            value.reason = " ".join(part for part in (value.reason, PLACED_INSIDE.format(
+                literal=value.literal, expansion=expansion, text=text, sources=_source_names(sources))) if part)
+            continue
         task, answer = tasks_by_key[key], applied[key].answer
         dropped = set(added.get(key, ()))
         run.evidence[:] = [item for item in run.evidence if item.id not in dropped]
@@ -1988,6 +2378,60 @@ def _corroborate(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[st
         del settlings[key]
         unsettled.append(key)
     return unsettled
+
+
+# The note a place settled on initials gets when another place the label
+# writes lies inside it by the gazetteers' answers about that place
+# (_corroborate, _placed_inside).
+PLACED_INSIDE = ('The initials "{literal}" read as "{expansion}" because the label\'s "{text}" lies inside it: '
+    "each place of that name that the {sources} answers about it put somewhere is there.")
+
+
+def _placed_inside(run, tasks_by_key: Mapping[str, FieldTask], received: Mapping[str, Sequence[SourceAnswer]],
+        key: str, field) -> tuple[str, list[str], list[str]] | None:
+    """For a place value settled on initials (_corroborate), another place the
+    label writes, below its field (a province, county, city or precise
+    location's text: the organiser's texts for that field, _organiser_texts,
+    where they stand in a reading), that lies inside it by its own evidence:
+    among the Getty TGN, Wikidata and NGA answers captured in this attempt
+    about that text (agreement.about; success or ambiguous, their evidence
+    stored), those of two or more of these gazetteers hold candidates of its
+    name (place_name) that name a parent, as one answer's list may be cut
+    short (Wikidata's holds at most seven), and every such candidate in
+    those answers lies inside the value (agreement.lies_in: its record,
+    names or country code). A candidate that names no parent (a ship, a
+    film) is left aside, and one of the name elsewhere stops it: 2b02009d's
+    "Mindanao" is also a village in Honduras and in Guatemala for NGA, so it
+    confirms nothing, while each Mount Apo that Wikidata's and NGA's answers
+    put somewhere is in the Philippines. A text of the value's own names
+    (its literal, value and expansions) is never another place. GEOLocate's
+    candidates take their parents from the query and confirm nothing.
+    Returns (that text, the evidence ids of the answers holding such
+    candidates, the ids of their sources), or None."""
+    from .agreement import PLACE_ANSWERED, PLACE_ORDER, about, lies_in, place_keys, place_name
+    from .contracts import GAZETTEERS
+
+    readings = run_readings(run)
+    own = place_keys(field.texts)
+    answers = [answer for answers in received.values() for answer in answers
+        if answer.source_id in GAZETTEERS and answer.status in PLACE_ANSWERED and answer.evidence is not None]
+    for other in (*PLACE_ORDER[PLACE_ORDER.index(key) + 1:], "precise_location"):
+        task = tasks_by_key.get(other)
+        if task is None:
+            continue
+        for text, spans in _organiser_texts(task, readings):
+            want = place_name(text)
+            if not spans or not want or want in own:
+                continue
+            named = {answer.evidence.id: (answer.source_id, [candidate for candidate in answer.candidates
+                if place_name(candidate.name) == want and candidate.parents])
+                for answer in answers if about(answer, text)}
+            found = [evidence_id for evidence_id, (_, candidates) in named.items() if candidates]
+            sources = list(dict.fromkeys(named[evidence_id][0] for evidence_id in found))
+            if len(sources) >= 2 and all(lies_in(candidate, key, field) for _, candidates in named.values()
+                    for candidate in candidates):
+                return text, found, sources
+    return None
 
 
 # ---- fields the label does not state (owner decision A) -------------------
@@ -2465,16 +2909,205 @@ def _repeats_a_place(run, tasks_by_key: Mapping[str, FieldTask], applied: Mappin
     return {key: (answer.literal, field)}
 
 
+# Why a county or a city whose every text on the label is the text of a
+# settled place above it has no value (_only_a_place_above), and its reason
+# when it clears as not on the label (mark_not_on_label). The place above is
+# named as the app names it (prompts.FIELD_LABELS).
+BELOW_A_PLACE = {"county": "county", "city": "city"}
+PLACE_ABOVE = 'The readings write no {key} of their own: "{text}" is the text of the {field} field.'
+PLACE_ABOVE_NOT_ON_LABEL = ('Not on the label: the readings write no {key} of their own; "{text}" is the '
+    "text of the {field} field.")
+
+
+def _places_above(run, key: str, readings: Sequence[Reading], evidence: Mapping[str, Evidence],
+        human: frozenset[str]) -> list[tuple[str, frozenset, tuple[str, ...]]]:
+    """Each place field above `key` (agreement.PLACE_ORDER), nearest first,
+    whose value claims its text (_claims_text), with where that text stands
+    and the names it goes by: its literal where it stands as whole tokens in
+    the readings of its labels (_value_spans), and each reader's verbatim it
+    keeps where that reader's reading writes it (_occurrences), each only in
+    a reading that writes it once: in "Chimaltenango, Chimaltenango" which
+    one is the province's is unknown. A verbatim counts only when it names
+    the place: by the place comparison key it is the literal, the value or
+    an expansion it settled through, or one letter from one (93e61763's
+    "Chimaltenago" for "Chimaltenango"), and never another reader's other
+    text the field keeps (48a71d53's 1B "Mindanao" beside the literal
+    "Davao Prov."). A field whose text stands nowhere so is left out. Its
+    names are those texts, its value and the expansions it settled
+    through."""
+    from specimen_digitization.application.georef_locality import one_letter_apart
+
+    from .agreement import PLACE_ORDER, place_name
+
+    def once(spans):
+        return {span for span in spans if sum(name == span[0] for name, _, _ in spans) == 1}
+
+    found = []
+    for other in reversed(PLACE_ORDER[:PLACE_ORDER.index(key)]):
+        value = run.fields.get(other)
+        if value is None or not _claims_text(other, value, human):
+            continue
+        own = [name for name in (value.literal, value.normalized, value.parsed, *_expansions(other, value, evidence))
+            if name]
+        verbatims = {observation: text for observation, text in value.verbatim_by_observation.items()
+            if text and any(place_name(text) == place_name(name) or one_letter_apart(text, name) for name in own)}
+        spans = once(_value_spans(value, readings, evidence))
+        for observation, text in verbatims.items():
+            spans |= once(_occurrences(text, [r for r in readings if r.observation_id == observation]))
+        if not spans:
+            continue
+        found.append((other, frozenset(spans), tuple(dict.fromkeys([*own, *verbatims.values()]))))
+    return found
+
+
+def _within(text: str, spans: frozenset, theirs: frozenset) -> bool:
+    """Whether every place the text stands (`spans`; at least one), less the
+    punctuation around it (_bare), lies inside one of `theirs`, in the same
+    reading."""
+    if not spans or not _bare(text):
+        return False
+    first, last = len(text) - len(LEADING.sub("", text)), len(TRAILING.sub("", text))
+    return all(any(name == theirs_name and theirs_start <= start + first and start + last <= theirs_end
+            for theirs_name, theirs_start, theirs_end in theirs)
+        for name, start, _ in spans)
+
+
+def _words_written(text: str, readings: Sequence[Reading]) -> bool:
+    """Whether some reading writes the text's words, by the place comparison
+    key (agreement.place_name), as a run of its own words."""
+    from .agreement import place_name
+
+    want = place_name(text)
+    return bool(want) and any(f" {want} " in f" {place_name(reading.text)} " for reading in readings)
+
+
+def _held_above(run, key: str, task: FieldTask, answer: FieldAnswer, readings: Sequence[Reading], *,
+        evidence: Mapping[str, Evidence], human: frozenset[str]) -> tuple[str, str] | None:
+    """(a text, the place field above that holds it) when every text the label
+    gives this county or city is the text of a place field above it that
+    claims its text (_places_above), or None. The texts are the organiser's
+    (_organiser_texts) and the answer's literal and options, each where it
+    stands in the readings as whole tokens (_occurrences). A text that stands
+    somewhere is held where every place it stands, less the punctuation
+    around it, lies inside that field's text (_within): 93e61763's
+    "Chimaltenago," inside reader 2B's verbatim "Chimaltenago" of the
+    province, never the second "Chimaltenango" of "Chimaltenango,
+    Chimaltenango". An option no reading writes is held when it is one of
+    that field's names, or one letter from one (agreement.place_name,
+    one_letter_apart: 9cc24b07's "Chimaltenango Department" for the
+    province "Chimaltenago"); one whose words a reading writes otherwise is
+    the label's own text, which no place above holds; any other is a
+    source's name for a place the label does not write (f35af3a5's "Davao
+    City"), which the label gives no field, and is left aside. At least one
+    text must be held."""
+    from specimen_digitization.application.georef_locality import one_letter_apart
+
+    from .agreement import place_name
+
+    above = _places_above(run, key, readings, evidence, human)
+    if not above:
+        return None
+    texts = list(_organiser_texts(task, readings))
+    texts += [(text, _occurrences(text, readings))
+        for text in dict.fromkeys((answer.literal, *answer.options)) if text and text.strip()]
+    held = None
+    for text, spans in texts:
+        holder = next((field for field, theirs, _ in above if _within(text, spans, theirs)), None)
+        if holder is None and not spans:
+            want = place_name(text)
+            holder = next((field for field, _, names in above if want and any(
+                want == place_name(name) or one_letter_apart(text, name) for name in names)), None)
+            if holder is None and not _words_written(text, readings):
+                continue
+        if holder is None:
+            return None
+        held = held or (text, holder)
+    return held
+
+
+def _only_a_place_above(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[str, FieldOutcome],
+        added: Mapping[str, Sequence[str]], readings: Sequence[Reading], *, evidence: dict,
+        decisions: dict[str, dict],
+        received: Mapping[str, Sequence[SourceAnswer]] | None = None) -> dict[str, tuple[str, str]]:
+    """A county or a city researched in this attempt whose expert's answer
+    left it ambiguous or unresolved (an answer and no failure, not
+    label_lacks_value, not finalized without a model call), when every text
+    the label gives it is the text of a settled place above it
+    (_held_above), names no place of its own: one
+    written place is one field's (agreement.IS_THE_PROVINCE: a province is
+    never also the county), so 93e61763's "Chimaltenango," on the line its
+    province settled on, as the department, is no county, however many
+    second-level units of that name the sources hold. The resolver's
+    fallback counts too, when its expert asked at least one source: the
+    name each of its lookups asked about (sources.place_name, the query's
+    first comma-separated part) is taken as one of its answer's options, so
+    each must be the settled place's text or a name no reading writes.
+    f35af3a5's city in the second rerun of 2026-10-18 asked about "Davao",
+    cut from the settled province "Davao, Prov.", and "Davao City"; a
+    fallback whose expert asked about a town the label writes ("Tagum")
+    keeps the field. It is not present, as
+    label_lacks_value makes it, citing the sources the answer cites, with a
+    reason naming the field that holds the text (PLACE_ABOVE), whether or not
+    every source its expert asked answered, since the text is the settled
+    place's either way; the rows its value added and its transcript_literal
+    finding are dropped. Its trace keeps the code of a check that refused
+    the expert's resolved answer, else names "place_above_text_only". The county
+    first, so a city never counts a county made so. Rule A then judges it as
+    a field whose expert found none (mark_not_on_label). Returns {key: (the
+    text, the field holding it)} for rule A. Checked once every place is in."""
+    from .prompts import FIELD_LABELS
+    from .sources import place_name
+
+    human = human_keys(run)
+    received = {} if received is None else received
+    found: dict[str, tuple[str, str]] = {}
+    for key, named in BELOW_A_PLACE.items():
+        task, outcome, value = tasks_by_key.get(key), applied.get(key), run.fields.get(key)
+        answer = outcome.answer if outcome is not None else None
+        if (task is None or answer is None or key in human or outcome.failure is not None
+                or answer.outcome == "label_lacks_value" or outcome.finalized_without_model
+                or value is None or value.state not in (ValueState.AMBIGUOUS, ValueState.UNRESOLVED)):
+            continue
+        if outcome.fallback:
+            # The fallback keeps no answer of the expert's: what it asked the
+            # sources about stands for what it tried.
+            asked = [place_name(item.query) for item in received.get(key, ())
+                if item.query and not item.query.lstrip().startswith("{")]
+            if not asked:
+                continue
+            answer = answer.model_copy(update={"options": list(dict.fromkeys(asked))})
+        held = _held_above(run, key, task, answer, readings, evidence={item.id: item for item in run.evidence},
+            human=human)
+        if held is None:
+            continue
+        dropped = set(added.get(key, ()))
+        run.evidence[:] = [item for item in run.evidence if item.id not in dropped]
+        for item_id in dropped:
+            evidence.pop(item_id, None)
+        run.findings[:] = [finding for finding in run.findings if finding.reason_code != transcript_code(key)]
+        cited = [e for e in answer.source_evidence_ids if e in evidence and evidence[e].kind != "literal"]
+        text, field = held[0], FIELD_LABELS.get(held[1], held[1])
+        run.fields[key] = _unsettled(task, ValueState.NOT_PRESENT, cited=cited,
+            reason=f"{PLACE_ABOVE.format(key=named, text=text, field=field)} {answer.explanation}")
+        # A check that refused the expert's answer first keeps its code.
+        decisions.setdefault(key, {}).setdefault("refusal", "place_above_text_only")
+        found[key] = (text, field)
+    return found
+
+
 def not_on_label_excerpt(key: str, readings: Sequence[Reading], *, markers: bool = False,
-        place: bool = False) -> str:
+        place: bool = False, above: bool = False) -> str:
     """The excerpt of a field's not-on-the-label check row: the readings it
     names, by name and observation. For a precise location whose readings
     write only an administrative marker beside the places settled
     (_no_finer_place), or whose settled literal is only a settled place's
-    text (`place`: _repeats_a_place), it says so instead."""
+    text (`place`: _repeats_a_place), and for a county or a city whose every
+    text is a settled place's above it (`above`: _only_a_place_above), it
+    says so instead."""
     names = ", ".join(r.name for r in readings)
     said = (f"beside the places settled, the readings {names} write only an administrative marker" if markers
         else f"beside the places settled, the readings {names} write no finer place" if place
+        else f"the readings {names} write only the text of a settled place above it" if above
         else f"none of the readings {names} states it and its expert found none")
     return (f"{key}: not on the label; {said}\n"
         + "readings: " + "; ".join(f"{r.name} {r.observation_id}" for r in readings))
@@ -2484,7 +3117,8 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
         outcomes: Sequence[FieldOutcome], *, readings: Sequence[Reading] | None = None,
         asset_id: str | None = None, blobs=None, why: dict[str, str] | None = None,
         no_finer: Mapping[str, str] | None = None,
-        repeated: Mapping[str, tuple[str, str]] | None = None) -> list[str]:
+        repeated: Mapping[str, tuple[str, str]] | None = None,
+        above: Mapping[str, tuple[str, str]] | None = None) -> list[str]:
     """Owner decision A (2026-10-09): a field on the profile's list
     (not_on_label_keys) that a person has not decided, researched in this
     attempt, is marked "not on the label" when all of these hold:
@@ -2494,8 +3128,9 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
        location, its expert's answer gives only an administrative marker
        beside the places settled (`no_finer`: _no_finer_place), or its
        settled literal was only a settled place's text (`repeated`:
-       _repeats_a_place), with no failure and not finalized without a model
-       call;
+       _repeats_a_place), and, for a county or a city, its every text was a
+       settled place's above it (`above`: _only_a_place_above), with no
+       failure and not finalized without a model call;
     2. its value is still not present (a value derive.fill derived is kept);
     3. label coverage is confirmed, every label has two or more readings and
        every reading has text (_whole_label_read);
@@ -2512,7 +3147,11 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
        or a precise location, a text also counts as absent when its whole
        words, by the place comparison key, are a run of the words of
        another supported place field's literal, and it writes no unit word
-       of its own (_inside_a_settled_place); and
+       of its own (_inside_a_settled_place); for a county or a city, also
+       when every place it stands, less the punctuation around it, lies
+       inside the text of a place above it that claims its text
+       (_places_above, _within: 48a71d53's "Davao Prov." under its settled
+       province "Davao Prov."); and
        for a precise location, the texts left count as absent when, beside
        the places settled, they write only an administrative marker, or
        readers differ only in one (_admin_markers);
@@ -2524,7 +3163,10 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
     row's excerpt and record and the reason say the readings write only an
     administrative marker: NO_FINER_NOT_ON_LABEL; for one in `repeated`,
     they say the readings write no finer place, the record and the reason
-    naming the field that holds its text: REPEATS_NOT_ON_LABEL). The row has no
+    naming the field that holds its text: REPEATS_NOT_ON_LABEL; for a county
+    or a city in `above`, they say the readings write only a settled place's
+    text, the record and the reason naming that place's field:
+    PLACE_ABOVE_NOT_ON_LABEL). The row has no
     observation_ids: one row may not cite readings of several labels
     (integrity.verify_evidence), so its excerpt and stored record name them
     (not_on_label_excerpt). A row an
@@ -2538,8 +3180,9 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
     why = {} if why is None else why
     no_finer = {} if no_finer is None else no_finer
     repeated = {} if repeated is None else repeated
+    above = {} if above is None else above
     lacking = {key for key, o in by_key.items() if key not in human and o.failure is None and o.answer is not None
-        and (o.answer.outcome == "label_lacks_value" or key in no_finer or key in repeated)
+        and (o.answer.outcome == "label_lacks_value" or key in no_finer or key in repeated or key in above)
         and not o.finalized_without_model}
     rows = {item.id: item for item in run.evidence}
     for key in by_key:
@@ -2554,6 +3197,7 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
         why.update(dict.fromkeys(lacking, "label_not_read_whole" if allowed else "not_listed"))
         return []
     elevation = claims = None
+    places_above: dict[str, list] = {}
     marked = []
     for key in field_keys(profile):
         outcome, value = by_key.get(key), run.fields.get(key)
@@ -2569,8 +3213,11 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
             why[key] = "value_present"
             continue
         claims = _settled_claims(run, readings) if claims is None else claims
+        if key in BELOW_A_PLACE and key not in places_above:
+            places_above[key] = _places_above(run, key, readings, rows, human)
         found = [text for text, spans in _organiser_texts(tasks_by_key[key], readings)
             if not (key in INSIDE_A_PLACE and _inside_a_settled_place(run, key, text))
+            and not any(_within(text, spans, theirs) for _, theirs, _ in places_above.get(key, ()))
             and _held_by_another_kind(key, text, spans, claims) is None]
         if found and not (key == "precise_location" and _admin_markers(run, found) is not None):
             why[key] = "organiser_found_text"
@@ -2583,14 +3230,16 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
         if key == "precise_location" and not _place_settled_below_province(run):
             why[key] = "no_city_or_county_settled"
             continue
-        markers, repeats = no_finer.get(key), repeated.get(key)
+        markers, repeats, held = no_finer.get(key), repeated.get(key), above.get(key)
         record = json.dumps({"field_key": key, "check": "not_on_label", "readings": [
             {"name": r.name, "region_id": r.region_id, "observation_id": r.observation_id,
              "input_source": r.input_source} for r in readings],
             **({"admin_markers": markers} if markers is not None else {}),
-            **({"place_field": repeats[1]} if repeats is not None else {})}, sort_keys=True).encode()
+            **({"place_field": repeats[1]} if repeats is not None else {}),
+            **({"place_above": held[1]} if held is not None else {})}, sort_keys=True).encode()
         row = Evidence(kind="derived", asset_id=asset_id, source=SOURCE, locator=NOT_ON_LABEL_CHECK,
-            excerpt=not_on_label_excerpt(key, readings, markers=markers is not None, place=repeats is not None),
+            excerpt=not_on_label_excerpt(key, readings, markers=markers is not None, place=repeats is not None,
+                above=held is not None),
             raw_ref=blobs.put(record) if blobs is not None else None,
             digest=hashlib.sha256(record).hexdigest() if blobs is not None else None)
         run.evidence.append(row)
@@ -2598,7 +3247,8 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
         value.evidence_relations[row.id] = "supports"
         said = (NO_FINER_NOT_ON_LABEL.format(markers=markers) if markers is not None
             else REPEATS_NOT_ON_LABEL.format(literal=repeats[0], field=repeats[1]) if repeats is not None
-            else NOT_ON_LABEL_REASON)
+            else PLACE_ABOVE_NOT_ON_LABEL.format(key=BELOW_A_PLACE[key], text=held[0], field=held[1])
+            if held is not None else NOT_ON_LABEL_REASON)
         value.reason = f"{said} {answer.explanation}".strip()
         marked.append(key)
     return marked
@@ -2611,7 +3261,8 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
     (`allowed`); the value is not present, with no literal, parsed,
     normalized or authority value and no reader's text; it cites as support
     a not-on-the-label check row whose readings are the run's current
-    readings (not_on_label_excerpt; for a precise location, any of its three);
+    readings (not_on_label_excerpt; for a precise location, any of its three,
+    and for a county or a city, either of its two);
     and, for a precise location, a city or a county is still supported. An
     older not-present value, with no such row, never clears."""
     if key not in allowed or value.state != ValueState.NOT_PRESENT:
@@ -2622,9 +3273,9 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
     if key == "precise_location" and not _place_settled_below_province(run):
         return False
     readings = run_readings(run)
-    expected = {not_on_label_excerpt(key, readings, markers=markers, place=place)
-        for markers, place in (((False, False), (True, False), (False, True)) if key == "precise_location"
-            else ((False, False),))}
+    variants = ({}, {"markers": True}, {"place": True}) if key == "precise_location" else (
+        ({}, {"above": True}) if key in BELOW_A_PLACE else ({},))
+    expected = {not_on_label_excerpt(key, readings, **variant) for variant in variants}
     for evidence_id in value.evidence_ids:
         row = evidence.get(evidence_id)
         if (row is not None and value.evidence_relations.get(evidence_id) == "supports" and row.kind == "derived"
@@ -2665,7 +3316,9 @@ def trace_fields(run, tasks: Sequence[FieldTask], outcomes: Sequence[FieldOutcom
     check that refused a resolved answer (or, "admin_marker_only", found
     that a precise location's answer gives no place: _no_finer_place; or,
     "place_text_only", that its settled literal is only a settled place's
-    text: _repeats_a_place) and
+    text: _repeats_a_place; or "place_above_text_only", that a county's or a
+    city's every text is a settled place's above it, when no check refused
+    its answer first: _only_a_place_above) and
     the rule that decided the field (``decisions``: apply_outcomes); each
     lookup as source and status, the sources that answered and those that
     could not be reached. The literal, the value, the authority and the
@@ -3199,26 +3852,53 @@ class FieldResearchStep:
         here, never written; lane_allowance.reserve_step reserves). A program
         allowance with less left than one expert request keeps the headroom, so
         reserve_step blocks the record as it always has; otherwise the meter's
-        cap is what is left, and a field that does not fit goes to review."""
+        cap is what is left, and a field that does not fit goes to review.
+        A monthly cap of the organization or the collection that applies
+        (TENANT_BUDGETS.md) limits it the same way, by the least any of their
+        ledgers has left this month (tenant_budget.room, read only). An
+        attempt that already holds on one of those ledgers, never sent because
+        a refusal later in the chain blocked it, reserves that same amount
+        again: recomputed, the room would be smaller by its own hold, and the
+        hold could never replay."""
         from specimen_digitization.application.domain import Scope
         from specimen_digitization.application.lane_allowance import (
             LegacyLedgerUnavailable,
             ProgramLedger,
         )
+        from specimen_digitization.application.tenant_budget import (
+            TenantBudgetUnavailable,
+            recorded_micros,
+            room,
+        )
 
         policy = specimen.run.profile.execution
-        if headroom <= 0 or policy.program_allowance_micros is None:
+        if headroom <= 0:
+            return headroom
+        held = recorded_micros(specimen.run, FIELD_RESEARCH)
+        if held is not None:
+            return held
+        try:
+            tenant_left, held = room(workflow.repository, principal, specimen, FIELD_RESEARCH, workflow.clock)
+        except (OperationalBlock, TenantBudgetUnavailable):
+            # tenant_budget.reserve_step reports it with its own code.
+            return headroom
+        if held is not None:
+            return held
+        if policy.program_allowance_micros is None and tenant_left is None:
             return headroom
         try:
             profile = profile_of(specimen.run)
             price = _route_price(profile, profile.harness_route)
-            ledger = ProgramLedger(workflow.repository, Scope(organization_id=principal.scope.organization_id,
-                collection_id=policy.program_ledger_collection), clock=workflow.clock)
-            reserved = ledger.read()["reserved_total_micros"]
+            left = [] if tenant_left is None else [tenant_left]
+            if policy.program_allowance_micros is not None:
+                ledger = ProgramLedger(workflow.repository, Scope(organization_id=principal.scope.organization_id,
+                    collection_id=policy.program_ledger_collection), clock=workflow.clock)
+                reserved = ledger.read()["reserved_total_micros"]
+                left.append(max(0, policy.program_allowance_micros - reserved))
         except (OperationalBlock, LegacyLedgerUnavailable, ValueError, TypeError, KeyError):
             # The step and reserve_step report these with their own codes.
             return headroom
-        left = max(0, policy.program_allowance_micros - reserved)
+        left = min(left)
         return headroom if left < one_request_micros(price) else min(headroom, left)
 
     def recheck(self, workflow, principal, specimen) -> None:

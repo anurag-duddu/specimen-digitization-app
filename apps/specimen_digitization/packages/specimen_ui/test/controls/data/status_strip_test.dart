@@ -121,6 +121,54 @@ void main() {
     expect(find.text(UiStatusStripStyle.factSeparator), findsOneWidget);
   });
 
+  testWidgets('narrow provenance never paints as vertical glyph columns', (
+    WidgetTester tester,
+  ) async {
+    for (final TextDirection direction in TextDirection.values) {
+      for (final double width in <double>[200, 240, 280, 320]) {
+        await tester.pumpWidget(
+          uiHarness(
+            textScaler: const TextScaler.linear(2),
+            textDirection: direction,
+            child: Center(
+              child: SizedBox(
+                width: width,
+                child: _strip(
+                  provenance: const <Widget>[Text('Run 42'), Text('Version 3')],
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final Rect strip = tester.getRect(find.byType(UiStatusStrip));
+        for (final String fact in <String>['Run 42', 'Version 3']) {
+          final RenderParagraph paragraph = tester
+              .renderObject<RenderParagraph>(find.text(fact));
+          expect(
+            paragraph.size.height,
+            lessThanOrEqualTo(strip.height),
+            reason:
+                '$fact must not wrap beyond the status line at $width, $direction',
+          );
+          final Rect bounds = tester.getRect(find.text(fact));
+          // The outer paragraph removes an ellipsised WidgetSpan from paint,
+          // so its global transform is undefined. Its local height above still
+          // must obey the one-line contract.
+          if (!bounds.top.isFinite) continue;
+          expect(bounds.top, greaterThanOrEqualTo(strip.top));
+          expect(
+            bounds.bottom,
+            lessThanOrEqualTo(strip.bottom),
+            reason:
+                '$fact must stay inside the status line at $width, $direction',
+          );
+        }
+        expect(tester.takeException(), isNull);
+      }
+    }
+  });
+
   testWidgets('a fact is a slot: a glossary term opens where it is read', (
     WidgetTester tester,
   ) async {

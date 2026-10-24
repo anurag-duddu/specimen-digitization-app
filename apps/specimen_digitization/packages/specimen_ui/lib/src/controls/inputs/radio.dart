@@ -8,6 +8,7 @@ import '../../foundation/theme.dart';
 import '../../primitives/focus_ring.dart';
 import '../../primitives/state_layer.dart';
 import '../../primitives/squircle.dart';
+import 'checkbox.dart' show UiSelectionControlSize;
 
 /// The resolved paint of one radio.
 ///
@@ -44,7 +45,10 @@ class UiRadioStyle {
   final double rowRadius;
 
   /// The style in [ui].
-  static UiRadioStyle resolve(UiThemeData ui) {
+  static UiRadioStyle resolve(
+    UiThemeData ui, {
+    UiSelectionControlSize size = UiSelectionControlSize.medium,
+  }) {
     BorderSide side(Set<WidgetState> states) => BorderSide(
       color: states.contains(WidgetState.disabled)
           ? ui.color.disabledOutline
@@ -70,8 +74,10 @@ class UiRadioStyle {
       side: WidgetStateProperty.resolveWith(side),
       dot: WidgetStateProperty.resolveWith(dot),
       label: WidgetStateProperty.resolveWith(label),
-      discSize: 20,
-      dotSize: ui.space.s2 + ui.space.s1 / 2,
+      discSize: size == UiSelectionControlSize.small ? 16 : 20,
+      dotSize: size == UiSelectionControlSize.small
+          ? ui.space.s2
+          : ui.space.s2 + ui.space.s1 / 2,
       rowRadius: ui.shape.inner,
     );
   }
@@ -96,6 +102,8 @@ class UiRadio<T> extends StatefulWidget {
     this.disabledReason,
     this.semanticsLabel,
     this.showLabel = true,
+    this.supporting,
+    this.size = UiSelectionControlSize.medium,
   });
 
   /// What this option means. Sentence case, no terminal period.
@@ -122,6 +130,12 @@ class UiRadio<T> extends StatefulWidget {
   /// False where the row around the option already names it.
   final bool showLabel;
 
+  /// Additional explanatory text included in the accessible name.
+  final String? supporting;
+
+  /// Visual dimensions independent of the minimum hit target.
+  final UiSelectionControlSize size;
+
   @override
   State<UiRadio<T>> createState() => _UiRadioState<T>();
 }
@@ -140,14 +154,16 @@ class _UiRadioState<T> extends State<UiRadio<T>> {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final UiRadioStyle style = UiRadioStyle.resolve(ui);
+    final UiRadioStyle style = UiRadioStyle.resolve(ui, size: widget.size);
     final RadioGroupRegistry<T>? registry = RadioGroup.maybeOf<T>(context);
     final bool enabled = widget.enabled && registry != null;
     return Semantics(
       container: true,
       // `RawRadio` publishes the exclusive group and the checked state; this
       // adds the words, which it has no way to know.
-      label: widget.semanticsLabel ?? widget.label,
+      label:
+          widget.semanticsLabel ??
+          [widget.label, ?widget.supporting].join('. '),
       hint: enabled ? null : widget.disabledReason,
       // `enabled` is deliberately not set here. `RawRadio` states it, and two
       // statements of one flag are incompatible configurations, which splits
@@ -168,6 +184,7 @@ class _UiRadioState<T> extends State<UiRadio<T>> {
           states: state.states,
           label: widget.label,
           showLabel: widget.showLabel,
+          supporting: widget.supporting,
         ),
       ),
     );
@@ -181,12 +198,14 @@ class _Option extends StatelessWidget {
     required this.states,
     required this.label,
     required this.showLabel,
+    this.supporting,
   });
 
   final UiRadioStyle style;
   final Set<WidgetState> states;
   final String label;
   final bool showLabel;
+  final String? supporting;
 
   @override
   Widget build(BuildContext context) {
@@ -217,7 +236,22 @@ class _Option extends StatelessWidget {
             // The node above already reads these words.
             Flexible(
               child: ExcludeSemantics(
-                child: Text(label, style: style.label.resolve(states)),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: style.label.resolve(states)),
+                    if (supporting != null)
+                      Text(
+                        supporting!,
+                        style: ui.type.bodySmall.copyWith(
+                          color: states.contains(WidgetState.disabled)
+                              ? ui.color.disabledContent
+                              : ui.color.inkSecondary,
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
           ],

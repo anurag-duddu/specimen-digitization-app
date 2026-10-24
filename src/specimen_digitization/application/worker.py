@@ -703,14 +703,19 @@ def _execute_drain(args, deadline):
     from uuid import uuid4
 
     from .collection_profiles import published_registry
+    from .cost_allocator import CostAllocator
     from .lane_dispatch import UNCONFIGURED, dispatcher_from_value
     from .lane_worker import DrainWorker, drain_settings
     from .profile_runtime import published_risk_registry
     from ..research_harness.enablement import research_harness_enabled
 
+    from .model_option import nvidia_stages
+
     try:
         settings = drain_settings(os.environ)
         research_harness = research_harness_enabled(os.environ)
+        # published_registry reads it too; checked here so --check-config sees it.
+        nvidia_stages(os.environ)
     except ValueError as exc:
         # The message names the setting, never its value.
         print(json.dumps({
@@ -756,10 +761,11 @@ def _execute_drain(args, deadline):
             repository,
             workflow,
             settings.actor_uid,
-            repository.memberships,
+            lambda user: settings.scope_policy.memberships(repository.memberships(user)),
             execution_id=holder,
             continuation=dispatcher.start if dispatcher else lambda: UNCONFIGURED,
             deadline_seconds=remaining,
+            cost_allocation=CostAllocator.from_env(os.environ),
         ).run(stop)
         print(json.dumps(summary))
     finally:

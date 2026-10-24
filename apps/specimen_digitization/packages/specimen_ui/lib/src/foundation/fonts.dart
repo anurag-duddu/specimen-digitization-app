@@ -1,4 +1,8 @@
-/// How Geist ships and how its licence is declared (09 section 4.1).
+/// How the implementation typefaces ship and declare their licences.
+///
+/// The brand reference names Söhne, which is not bundled or licensed here.
+/// Geist is the explicit implementation fallback; it is not represented as
+/// Söhne. Geist Mono carries identifiers and verbatim evidence.
 ///
 /// The files are package assets, not a runtime fetch: runtime font fetching is
 /// rejected outright, and a collection room's network is not something a
@@ -15,7 +19,10 @@ abstract final class UiFonts {
   /// The package that owns the font assets.
   static const String package = 'specimen_ui';
 
-  /// Everything proportional. Variable, `wght` 100 to 900.
+  /// Typeface named in the brand reference; not installed by this package.
+  static const String referenceSans = 'Söhne';
+
+  /// Everything proportional. Explicit fallback, variable `wght` 100 to 900.
   static const String sans = 'Geist';
 
   /// Literal, identifier, digest and code. Variable, `wght` 100 to 900.

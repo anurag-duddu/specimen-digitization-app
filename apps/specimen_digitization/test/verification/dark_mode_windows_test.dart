@@ -13,9 +13,8 @@
 //   glass      how many frosted panes are on screen against the budget of
 //              09 section 3.3, and what `ink` measures over the flat pane
 //              when that pane sits over the darkest field in the system;
-//   accent     how many separate marks are painted in `#E8FF47`, counted
-//              off the pixels rather than off the widgets, because "one use
-//              per screen" is a rule about what the eye lands on.
+//   accent     how many separate marks use the current brand accent, counted
+//              from rendered pixels as a diagnostic of visual emphasis.
 //
 // A screen that reports more than one accent mark is not automatically a
 // defect: a queue row's position marker and the navigation's current
@@ -34,7 +33,6 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../golden/golden_harness.dart';
 import 'fit_matrix_test.dart' show chooseSegment;
 import 'verification_harness.dart';
-import '../ui_finders.dart';
 import 'package:specimen_digitization/src/widgets/environment_banner.dart';
 
 /// The screens the dark pass sweeps, and how to open each one.
@@ -102,6 +100,13 @@ final Map<String, Future<void> Function(WidgetTester, Size)> darkScreens =
         brightness: Brightness.dark,
         location: AppRoutes.help,
       ),
+      'costs': (WidgetTester tester, Size size) => pumpMeasuredApp(
+        tester,
+        window: size,
+        brightness: Brightness.dark,
+        location: goldenCostsLocation,
+        repository: GoldenCostRepository(),
+      ),
     };
 
 // The former sky/count-node exceptions describe the previous presentation.
@@ -112,12 +117,17 @@ const double bandPairFloor = 4.5;
 
 /// What the environment band's own tokens declare, per mode.
 ///
-/// `environmentOnFill` on `environmentFill`: 9.31:1 in light and 8.21:1 in
-/// dark, comfortably clear of the floor. This is what the band measures
-/// wherever it is painted over the sky rather than under it.
-const Map<String, double> declaredBandPair = <String, double>{
-  'light': 9.31,
-  'dark': 8.21,
+/// Pixel measurements must match the current palette rather than a historic
+/// ratio. The separate [bandPairFloor] remains the AA requirement.
+final Map<String, double> declaredBandPair = <String, double>{
+  for (final (String name, UiStatusColors status) in <(String, UiStatusColors)>[
+    ('light', UiColor.light.status),
+    ('dark', UiColor.dark.status),
+  ])
+    name: contrastRatio(
+      status.environmentSyntheticOnFill,
+      status.environmentSyntheticFill,
+    ),
 };
 
 void main() {
@@ -224,15 +234,14 @@ void main() {
               brightness: brightness,
               location: goldenQueueLocation,
             );
-            final compactControl = uiIconButton('Test environment');
-            final contextControl = compactControl.evaluate().isNotEmpty
-                ? compactControl
-                : find.byWidgetPredicate(
-                    (widget) =>
-                        widget is UiButton &&
-                        widget.semanticsLabel ==
-                            EnvironmentBanner.headlineFor('synthetic'),
-                  );
+            // Both the compact icon and labelled sidebar action publish this
+            // same accessible name. The longer headline belongs to the modal
+            // content, not the control used to open it.
+            final contextControl = find.byWidgetPredicate(
+              (widget) =>
+                  widget is Pressable &&
+                  widget.semanticsLabel == 'Test environment',
+            );
             expect(contextControl.hitTestable(), findsOneWidget);
             await tester.tap(contextControl);
             await tester.pumpAndSettle();

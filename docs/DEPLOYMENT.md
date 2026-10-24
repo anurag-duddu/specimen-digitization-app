@@ -116,7 +116,7 @@ which only their own workflows call; see
 |---|---|
 | `Repository checks` | Sensitive-file policy, secret scans, formatting, YAML/JSON/TOML validity, shell checks, and GitHub Actions syntax |
 | `Python tests` | Locked Python environment. Backend, contract, workflow, dependency, release and unrecognized changes run the complete default pytest collection; all configured module shards must succeed and cover every collected test exactly once. Every pull request currently runs the complete collection, including Flutter-only changes. Pushes to `main` always run the complete collection. The separate mandatory SQL/Storage engine tier must also succeed and supply verified current-attempt evidence in either scope. |
-| `Flutter checks and web build` | Locked Flutter dependencies, Dart formatting, the `specimen_ui` design system's own analysis and tests, client static analysis, client widget tests, release build, immutable deployment metadata, and a loopback route smoke over the built artifact |
+| `Flutter checks and web build` | Locked Flutter dependencies, Dart formatting, the `specimen_ui` design system's own analysis and tests, client static analysis, client widget tests, a compiled cross-origin OAuth browser contract, release build, immutable deployment metadata, and a loopback route smoke over the built artifact |
 
 Pull requests use `apps/specimen_digitization/lib/firebase_options.ci.dart`.
 They receive neither the real FlutterFire configuration nor a Google OIDC
@@ -449,10 +449,19 @@ scripts/ci/verify.sh
 This is the canonical local gate. It runs repository hooks, secret scanning,
 actionlint, shellcheck, locked Python installation, Python tests, the UI
 string check, the `specimen_ui` design system's own analysis and tests, client
-dependency resolution, client analysis, client tests, Dart formatting, the
-release web build, and the route smoke over that build. If the local ignored
+dependency resolution, client analysis, client tests, the OAuth browser
+contract, Dart formatting, the release web build, and the route smoke over that
+build. If the local ignored
 production FlutterFire file is absent, it uses and then removes the
 credential-free CI placeholder. It never deploys.
+
+The OAuth browser contract (`scripts/ci/check_intake_auth_session_browser.cjs`)
+requires Node.js 22 or newer and Chrome. It compiles the production Dart intake
+authorization listener with the release build's `-O4` optimization and tests
+popup messages between two loopback origins
+in an isolated browser profile. It uses invented authorization values and no
+provider account. This catches cross-origin Window interop failures that VM
+widget tests cannot exercise; it is not live provider acceptance.
 
 It runs the same Dart formatting and route checks the `Flutter checks and web
 build` job runs, so a branch that passes here passes those two in CI. On a
@@ -990,8 +999,10 @@ environment and its own workflow file. The Hosting provider accepts `push`
 events only. The other three accept `push` and, once the owner setup below has
 run, `workflow_dispatch`. A provider is bound to the workflow's file name, so
 renaming a workflow file breaks its sign-in. The image build identity can
-write to the image registry and cannot deploy. The deploy identity can deploy
-and can only read the registry.
+write to the image registry and cannot deploy. The deploy identity can deploy;
+in the registry it can read, and create or move tags, which it uses only for
+the `deployed-<runtime>` and `rollback-<runtime>` tags described under
+[Image registry cleanup](#image-registry-cleanup). It cannot delete an image.
 
 ### Data release
 
@@ -1049,8 +1060,24 @@ script refuses to run outside GitHub Actions.
    differ, nothing is written: the step prints one warning that names which
    part differs (never a value) and the release continues, so later edits to
    these rows do not block releases. Before the organization rows are
-   written, the artifact is checked against the committed collection tree. The bootstrap inserts these prepared rows and nothing more; it
-   creates no generic runtime signup or collection-creation API.
+   written, the artifact is checked against the committed collection tree.
+   When `INTAKE_E2E_BOOTSTRAP_B64` is set, the same step then creates only the
+   missing `Intake E2E` collection under the existing Insects parent and its
+   tester/original-worker memberships. This optional artifact is checked
+   separately: conflicting existing rows stop the release without overwriting
+   them. It creates no generic signup/collection API, content or pipeline work.
+   When the optional `OWNER_COLLECTION_ACCESS_B64` configuration is present,
+   the owner's collection-access correction verifies its exact identities
+   and scopes against both existing artifacts, their shared Insects scope, the
+   existing administrator and tester memberships, and their distinct
+   identities. It inserts only the tester's missing Insects membership with
+   the same administrator and sensitive-data access as the original owner.
+   It also marks the artifact's existing test collection as `testing`, so the
+   selector can distinguish it from the museum hierarchy. Conflicting rows
+   are refused; existing test memberships, content and private drafts are
+   retained. The write checks its prerequisites transactionally and verifies
+   the resulting rows. This is the owner's bounded two-identity correction,
+   not a general membership-inheritance or account-linking mechanism.
 9. **Done.** The last line is `data release complete for <sha>`.
 
 The workflow then publishes the pinned georeferencing datasets and runs
@@ -1068,8 +1095,17 @@ unverified result. A failure does not trigger a local deployment or broadened
 IAM grants. If the existing Data identity needs configuration permissions,
 the owner's minimal setup command is
 `bash scripts/ops/owner_setup.sh --auth-only` (add `--dry-run` to inspect first).
-It creates/reconciles one six-permission custom role and binds only the existing
+It creates/reconciles one eight-permission custom role and binds only the existing
 Data identity; it does not replay general owner setup or start releases.
+[CreateShaCertificate](https://firebase.google.com/docs/projects/cloud-audit-logs#createshacertificate)
+requires the base `firebase.clients.update` permission.
+[Firebase's management-specific permission table](https://firebase.google.com/docs/projects/iam/permissions#required_permissions_for_firebase_management-specific_actions)
+also requires `clientauthconfig.clients.create` for SHA registration; it is an
+additional permission, not a replacement for `firebase.clients.update`.
+The role retains `firebase.projects.update` for the Auth CLI preflight.
+The protected release registers only the reviewed signing fingerprints on the
+existing Android app and verifies them;
+it never removes existing fingerprints.
 The owner must authorize an agent's execution first-hand, as for every other
 owner setup run. See [Google sign-in setup](execution/GOOGLE_SIGN_IN_SETUP.md)
 for the exact permissions, API scope and test/activation sequence.
@@ -1133,12 +1169,39 @@ prints the completion line and succeeds.
 
 - `DATA_BOOTSTRAP_ARTIFACT_B64`, a secret of the `data-production`
   environment: the prepared organization and collection rows, base64-encoded.
-  It is the only GitHub secret the data release reads. When the secret is
+  Together with the optional intake and owner-access inputs below, these are
+  the only GitHub secrets the data release reads. When this secret is
   unset and no organization exists, the step fails and says so. When the
   secret is unset and an organization exists, the step is skipped without
   comparing anything.
+- Optional `INTAKE_E2E_BOOTSTRAP_B64`, also in `data-production`: base64 JSON
+  containing exactly `organization_id`, `parent_collection_id`, `collection_id`
+  and `tester_uid`. `scripts/release/intake_e2e_bootstrap.py` requires the
+  existing organization and Insects parent, inserts the missing `Intake E2E`
+  collection and memberships in one transaction, and verifies their exact
+  readback. The tester is a non-sensitive operator; the original worker actor
+  from its pinned secret is an operator with sensitive access. Existing
+  conflicting rows are refused, never overwritten. An absent artifact changes
+  nothing. This provisions no content and starts no pipeline work. Remove the
+  optional artifact after verified provisioning if later permission changes
+  should no longer be compared with its initial values.
+- Optional `OWNER_COLLECTION_ACCESS_B64`, also in `data-production`: explicit
+  base64 JSON containing exactly `organization_id`, `insects_collection_id`,
+  `testing_collection_id`, `owner_uid` and `second_uid`, identifying the
+  original administrator, their second sign-in identity, the organization,
+  Insects and the existing test collection.
+  It must match both provisioning artifacts and the current memberships.
+  Without this input, no owner-access correction runs; an intake-test artifact
+  alone never authorizes a grant on Insects. No private identifiers are
+  committed or printed. This configuration grants no other membership and
+  does not link Firebase accounts or share personal OAuth credentials.
+  After the protected release and exact readback confirm the correction,
+  remove only this optional configuration and verify its absence. Keeping
+  the one-time intent indefinitely could recreate a later-deleted membership.
+  Retain it until readback succeeds so an incomplete release can be retried.
 - The Secret Manager secret `specimen-worker-actor-uid`, version 1: the
-  worker's user ID, read during the bootstrap step when the artifact is set.
+  worker's user ID, read during the bootstrap step when a provisioning or
+  owner-access input needs it.
 - Everything else the release reads is committed in this repository:
   `dataconnect/`, `storage.rules`, `firebase.auth.json`, the collection tree under
   `infra/reference/` and the release scripts.
@@ -1167,9 +1230,11 @@ The workflow has three jobs.
    `scripts/release/push_image.sh` pushes each checked image to its `api`,
    `worker` or `sam` repository under
    `us-east4-docker.pkg.dev/specimen-digitization/specimen-runtime/` with
-   the tag `sha-<commit>-<run id>-<run attempt>`. The registry does not let a
-   tag be overwritten, so the run ID and attempt keep a re-run from colliding
-   with its earlier push. The job passes the image on by digest,
+   the tag `sha-<commit>-<run id>-<run attempt>`. The run ID and attempt give
+   a re-run its own tag, so it never moves the tag of an earlier push. Once
+   the owner setup lets the registry's tags move (see
+   [Image registry cleanup](#image-registry-cleanup)), the registry itself no
+   longer refuses a moved tag. The job passes the image on by digest,
    `.../specimen-runtime/api@sha256:<digest>`, never by tag.
 3. **`release`** needs both jobs and runs in the `runtime-production`
    environment, as `specimen-runtime-release`.
@@ -1190,6 +1255,42 @@ The workflow has three jobs.
      request first, so the public invoker binding is missing. The three checks
      share about three minutes of retries while the new revision starts.
 
+   - `scripts/release/deploy_intake.py` defines the private `specimen-intake`
+     job using the API digest, one task, one CPU, 1 GiB memory, two retries, and
+     a 3,600-second timeout. It verifies the definition and scoped API invoker
+     grant without executing imports. Owner provisioning and the client enablement
+     order are described in `docs/execution/BULK_PHOTO_INTAKE.md`.
+     It creates and reads back every intake definition before checking invoker
+     policies. After a successful API smoke, the scientific-definition step also
+     runs when intake policy verification fails, so all missing jobs can receive
+     one owner setup pass. The intake failure still fails the release; processing
+     requires every preceding step to succeed.
+     Optional numbered pins in `runtime_settings.py` add exact external-email
+     admission, provider configuration and collection routing. When the routes
+     pin is configured, both definition scripts also define private dedicated
+     intake/scientific jobs with fixed collection scope and continuations, while
+     shared workers receive the same routing pin for exclusions. They retain
+     the existing actor and cumulative allowance. Unset optional pins add no
+     secret dependency or dedicated job. The owner's repository-only
+     `owner_setup.sh --intake-only` grants bounded OAuth credential creation,
+     numbered dynamic-version access/addition, parent-scoped metadata listing/inspection
+     and retired/orphan version destruction, separately pinned configuration
+     reads and scoped job invokers; it starts no release or execution.
+     Dynamic credentials are restricted in IAM to Secret Manager secret and
+     version resources in this project's `specimen-intake-` namespace.
+     Application validation additionally requires UUID secret names and positive
+     numbered versions. IAM uses the supported `startsWith` function with service
+     and resource-type guards; IAM Conditions do not support regular-expression
+     `matches`. Fixed provider clients and configuration must never use that
+     dynamic namespace. Validate condition syntax with Google's
+     [`iamPolicies.lintPolicy`](https://docs.cloud.google.com/iam/docs/reference/rest/v1/iamPolicies/lintPolicy)
+     before applying a changed expression.
+     Its optional `--intake-config-dir ABS` validates and preflights the entire
+     private configuration bundle before any IAM or configuration write,
+     creates only approved missing secrets and appends the explicitly requested
+     next numeric versions. Matching targets are skipped; differing targets
+     are refused. It never overwrites/deletes a version or changes runtime pins.
+
    - `scripts/release/deploy_models.py` deploys SAM by digest with the committed
      checkpoint, pinned secrets, 600-second startup probe, maximum one instance,
      and minimum zero at both the service and revision levels. It moves all
@@ -1199,6 +1300,27 @@ The workflow has three jobs.
      Both definitions are read back, including source SHA, image, identity,
      runtime settings and private invocation policies. The deployment starts no
      worker execution and submits no segmentation request.
+   - `scripts/release/keep_images.py` runs last, also after a failed step. It
+     reads the registry's cleanup settings back and must find the committed
+     policy (see [Image registry cleanup](#image-registry-cleanup)); before the
+     owner setup has set it, the step says so and passes. Then, for every
+     service and job the release defines (`specimen-api`, `specimen-sam`,
+     `specimen-worker`, `specimen-intake` and the collection jobs of the
+     pinned routes), it reads the image digests in service: a job's
+     definition, and for a service every revision that takes traffic or has a
+     revision tag, which after a rollback by traffic need not be the latest
+     one. It points the tag `deployed-<name>` at the main one (the revision
+     with the most traffic) and, when that moved the tag, points
+     `rollback-<name>` at the image `deployed-<name>` named before. Any other
+     image in service gets `deployed-<name>.<n>`, which stays with its image
+     while that image is in service. A tag leaves an image only when another
+     tag already holds it or it is no longer needed, so a step that fails part
+     way never takes the last tag off an image that still needs one, and
+     `deployed-<name>` moves only after `rollback-<name>` holds the image it
+     leaves, so a re-run finishes the same rotation. It reads the tags back,
+     tags
+     every runtime it can read before it fails for one it cannot (a failed
+     read of the collection routes included), and deletes nothing.
 
 A manual run may additionally select `process_queued: true` (default false).
 After deployment verification, `scripts/release/process_worker.py` warms SAM to
@@ -1233,7 +1355,7 @@ admin rights on the repository. It is idempotent: each step reads the live
 state first and changes only what is missing, so running it again is safe. It
 prints every command before running it, asks no questions and needs no
 terminal. The owner runs it; an agent runs it only when the owner has
-authorized that run first-hand. The setup part does seven things.
+authorized that run first-hand. The setup part does nine things.
 
 1. It removes four expired, time-limited role bindings left on the data
    release identity, each matched by its exact condition.
@@ -1259,16 +1381,36 @@ authorized that run first-hand. The setup part does seven things.
      `legacyObjectOwner` bucket-wide).
 3. It gives the data release database user the `cloudsqlsuperuser` database
    role, which the initialize step needs.
-4. It widens the condition of the three release providers to accept
+4. It prepares the image registry's cleanup (see
+   [Image registry cleanup](#image-registry-cleanup)): the custom role
+   `specimenRuntimeImageTags` (create and move tags, no delete) for the deploy
+   identity on the `specimen-runtime` repository, tags that can move, and the
+   committed cleanup policy in dry-run mode. Each part waits for the one
+   before it to hold.
+5. It sets up the cost meter's shared-cost split
+   (`docs/execution/golive/COST_METER.md`, "Shared Google costs"): the custom
+   role `specimenCostMeterRead`, holding only `monitoring.timeSeries.list`,
+   bound on the project to `specimen-worker-runtime`, so the worker can list
+   the project's Cloud Monitoring time series and do nothing else in
+   Monitoring; and the
+   user-defined counter log-based metric
+   `specimen_api_requests_by_organization` over `specimen-api`'s request logs,
+   labelled with the organization id in the request path. The same step alone
+   is `bash scripts/ops/owner_setup.sh --cost-meter-only` (add `--dry-run` to
+   inspect first); it needs `gcloud` signed in as a project owner, not `gh`,
+   and starts no release. Until it has run, the worker's allocation logs
+   `cost_allocation_monitoring_unavailable` once per execution and writes
+   nothing.
+6. It widens the condition of the three release providers to accept
    `workflow_dispatch` as well as `push`, and changes nothing else in it. The
    Hosting provider is not touched.
-5. It sets the repository variables `SPECIMEN_API_BASE_URL` and
+7. It sets the repository variables `SPECIMEN_API_BASE_URL` and
    `SPECIMEN_RECAPTCHA_SITE_KEY`, described next.
-6. It sets the `DATA_BOOTSTRAP_ARTIFACT_B64` secret in `data-production` from
+8. It sets the `DATA_BOOTSTRAP_ARTIFACT_B64` secret in `data-production` from
    the owner's private artifact file when that file is on the machine. The
    value goes through a pipe and is never printed. GitHub cannot show a
    secret, so this one step repeats on every run.
-7. It prints, and does not remove, what the retired process left behind: the
+9. It prints, and does not remove, what the retired process left behind: the
    `RELEASE_*` variables and the unused secrets of `data-production`, the
    `data-initialization-production` environment with its provider and service
    account, and the roles nothing uses any more.
@@ -1293,6 +1435,56 @@ exact command that shows the log.
 When a release step fails with "the owner runs scripts/ops/owner_setup.sh
 once", a grant or the bootstrap secret from this list is missing or out of
 date.
+
+### Image registry cleanup
+
+Every runtime release pushes an API, a worker and a SAM image to
+`us-east4-docker.pkg.dev/specimen-digitization/specimen-runtime/`, about
+0.55 GB of new layers a release, and nothing removed them. A read-only
+measurement on 2026-10-20 found 289 images in 46.9 GiB, about USD 4.69 a
+month, of which 286 were no longer in service.
+
+The cleanup policy is committed twice, as `CLEANUP_POLICY` in
+`scripts/ops/owner_setup.sh` (which sets it) and as `POLICY` in
+`scripts/release/keep_images.py` (which reads it back); a test holds the two
+equal. A version that matches a keep rule is kept even when the delete rule
+matches it.
+
+| Rule | Action | Matches |
+|---|---|---|
+| `keep-newest` | keep | the newest five versions of each package |
+| `keep-deployed` | keep | a version with a tag that starts with `deployed` or `rollback` |
+| `delete-old` | delete | any version, tagged or not, more than one day after its push |
+
+The image each service or job has in service, and the one it had before, are
+held by its `deployed-<name>` and `rollback-<name>` tags whatever the count, so
+the count only keeps the last few builds at hand. On 2026-10-20 the newest five of each package came to 3.30 GB of
+layers, the newest ten to 6.13 GB. The one-day floor counts from when the
+registry first stored a version, so it keeps a new image through the release
+that pushed it; pushing a digest the registry already holds does not restart
+it, and such a version stays only while the newest-five rule or a tag keeps
+it. The first release after the owner setup can tag only what runs then:
+`rollback-<name>` appears with the next release that changes a runtime's
+image, and dry run stays on at least until the rollback tags exist.
+
+Every release image is pushed with its own `sha-<commit>-<run>-<attempt>` tag. While
+the repository's tags are immutable, Google deletes no tagged image ("If a
+repository has immutable tags enabled, tagged artifacts can't be deleted") and
+no tag can move, so the owner setup lets tags move. Releases deploy by digest,
+never by tag, so a tag never decides what runs.
+
+The policy is set in dry-run mode: Google evaluates it and deletes nothing.
+Google reports what a dry run would delete only in Data Access audit logs,
+which this project does not record (no audit configuration, read on
+2026-10-20). Turning dry run off is a pull request of its own that changes
+`--dry-run` to `--no-dry-run` in `owner_setup.sh` and `DRY_RUN` in
+`keep_images.py` together; the owner then runs the setup once more.
+
+Before the owner setup has set the policy, the release's last step prints
+that the cleanup is not set up and passes; nothing can be deleted then. Once
+set, any other policy, another dry-run setting or immutable tags fail that step with
+"the owner runs scripts/ops/owner_setup.sh once", and the setup puts the
+committed settings back.
 
 ### Repository variables for the web build
 
@@ -1336,7 +1528,8 @@ The release of a merged commit is complete when all of these hold:
 2. the public Hosting marker `deployment.json` reports the commit;
 3. the API reports the commit as `source_sha` at `/version`;
 4. the smoke steps passed: the Hosting smoke at the end of "CI/CD", the API
-   smoke and worker/SAM definition verification at the end of "Runtime release";
+   smoke, worker/SAM definition verification and the registry cleanup check at
+   the end of "Runtime release";
 5. when `process_queued` was selected, the worker execution finished and both
    SAM minimums were verified at zero, followed by application acceptance.
 

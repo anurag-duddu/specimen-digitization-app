@@ -33,108 +33,96 @@ abstract final class GoogleSignInPalette {
   static const Color labelDark = Color(0xFFE3E3E3);
 }
 
-/// Ground, ink and the neutral edges (09 section 3.1).
+/// Exact seeds from the owner's SD_brand.png reference.
+///
+/// Seeds describe identity. Text and control boundaries use the accessible
+/// derived roles below; the amber-to-iris gradient is decorative brand space.
+abstract final class BrandPalette {
+  static const Color obsidian = Color(0xFF0E0E11);
+  static const Color paper = Color(0xFFFAF9F6);
+  static const Color amber = Color(0xFFF5A45B);
+  static const Color iris = Color(0xFF7B61FF);
+  static const Color mist = Color(0xFFE6E6EA);
+
+  static const Color irisContentLight = Color(0xFF5B46C4);
+  static const Color irisFillLight = Color(0xFFEEEAFE);
+  static const Color irisOnFillLight = Color(0xFF382477);
+  static const Color irisContentDark = Color(0xFFB7A8FF);
+  static const Color irisFillDark = Color(0xFF2E254E);
+  static const Color irisOnFillDark = Color(0xFFE2DBFF);
+}
+
+/// Neutral surfaces, typography and boundaries, derived from the brand seeds.
 abstract final class GroundPalette {
-  /// Neutral backgrounds keep evidence and status colour meaningful.
-  static const Color groundLight = Color(0xFFFAFAFA);
-  static const Color groundDark = Color(0xFF111111);
-
-  /// Solid surface where glass is not warranted: list bodies, tables, fields.
+  static const Color groundLight = BrandPalette.paper;
+  static const Color groundDark = BrandPalette.obsidian;
   static const Color paperLight = Color(0xFFFFFFFF);
-  static const Color paperDark = Color(0xFF181818);
+  static const Color paperDark = Color(0xFF19191E);
 
-  /// The letterbox behind a photograph. Lowest surface in light, highest in
-  /// dark, so label paper reads as paper in both.
-  static const Color matteLight = Color(0xFFFFFFFF);
-  static const Color matteDark = Color(0xFF202020);
+  /// Neutral photograph letterboxes. These never carry a brand tint.
+  static const Color matteLight = paperLight;
+  static const Color matteDark = Color(0xFF25252B);
 
-  /// Primary text, glyphs, the filled navigation disc, primary buttons.
-  static const Color inkLight = Color(0xFF171717);
-  static const Color inkDark = Color(0xFFF5F5F5);
+  static const Color inkLight = BrandPalette.obsidian;
+  static const Color inkDark = BrandPalette.paper;
+  static const Color inkSecondaryLight = Color(0xFF494950);
+  static const Color inkSecondaryDark = Color(0xFFC4C4CC);
+  static const Color inkTertiaryLight = Color(0xFF64646E);
+  static const Color inkTertiaryDark = Color(0xFFAEAEB8);
 
-  /// Supporting text, labels above fields, timestamps.
-  static const Color inkSecondaryLight = Color(0xFF4D4D4D);
-  static const Color inkSecondaryDark = Color(0xFFBDBDBD);
+  /// Decorative separation, never the only way to find a control.
+  static const Color hairlineLight = BrandPalette.mist;
+  static const Color hairlineDark = Color(0xFF36363E);
+  static const Color boundaryLight = Color(0xFF82828C);
+  static const Color boundaryDark = Color(0xFF858590);
 
-  /// Units, hints and placeholder text, above 4.5:1 on neutral surfaces.
-  static const Color inkTertiaryLight = Color(0xFF666666);
-  static const Color inkTertiaryDark = Color(0xFFA0A0A0);
-
-  /// Decorative separation. 1 dp. Never a boundary, so it stays under 3:1.
-  static const Color hairlineLight = Color(0xFFE0E0E0);
-  static const Color hairlineDark = Color(0xFF303030);
-
-  /// Actionable boundaries, above 3:1 on their neutral surfaces.
-  static const Color boundaryLight = Color(0xFF808080);
-  static const Color boundaryDark = Color(0xFF808080);
-
-  /// Text and glyphs of a disabled control. A disabled control in this product
-  /// states a server reason and has to stay readable (03 section 3.6).
-  static const Color disabledContentLight = Color(0xFF666666);
-  static const Color disabledContentDark = Color(0xFFA8A8A8);
-
-  /// Edge of a disabled control, still discernible on a neutral surface.
-  static const Color disabledOutlineLight = Color(0xFF808080);
-  static const Color disabledOutlineDark = Color(0xFF808080);
-
-  /// Opacity of the fill behind a disabled control, over [inkLight].
+  /// Disabled reasons stay readable; disabled controls do not fade their text.
+  static const Color disabledContentLight = inkTertiaryLight;
+  static const Color disabledContentDark = inkTertiaryDark;
+  static const Color disabledOutlineLight = boundaryLight;
+  static const Color disabledOutlineDark = boundaryDark;
   static const double disabledFillOpacityLight = 0.06;
   static const double disabledFillOpacityDark = 0.08;
 
-  /// Behind opaque modal surfaces.
   static const Color scrim = Color(0xFF000000);
   static const double scrimOpacityLight = 0.32;
   static const double scrimOpacityDark = 0.56;
-
-  /// Pure white. The glass highlight and the light glass fill.
-  static const Color white = Color(0xFFFFFFFF);
-
-  /// Fully transparent. M3 blends `surfaceTint` into an elevated surface,
-  /// which puts a cast on any panel next to a photograph, so the tint is
-  /// switched off everywhere.
+  static const Color white = paperLight;
   static const Color transparent = Color(0x00000000);
 }
 
-/// The mark (09 section 3.4). One hue at one value in both modes.
+/// Secondary brand emphasis. Use accessible iris roles for text and edges.
 abstract final class AccentPalette {
-  /// The current position, the active marker, the mark. Never a fill, never a
-  /// status, never a focus ring.
-  static const Color accent = Color(0xFFE8FF47);
-
-  /// Anything drawn on [accent].
-  static const Color onAccent = Color(0xFF111214);
+  static const Color accent = BrandPalette.iris;
+  static const Color onAccent = BrandPalette.obsidian;
 }
 
-/// Light-field centres and their centre alpha (09 section 3.2).
+/// Compatibility names for the former decorative field API.
 ///
-/// A field is a radial gradient from the centre colour at the centre alpha to
-/// fully transparent at its radius. Dark is not an inversion: the alphas drop
-/// by more than half so the fields read as light in a dark room.
+/// No former hue survives. Amber, Iris and Mist are the only decorative
+/// colours. Low opacities keep existing explicit field opt-ins restrained;
+/// standard application themes continue to suppress all field placements.
 abstract final class FieldPalette {
-  static const Color sunLight = Color(0xFFF2FF66);
-  static const Color sunDark = Color(0xFFB7C700);
-  static const double sunAlphaLight = 0.90;
-  static const double sunAlphaDark = 0.32;
-
-  static const Color violetLight = Color(0xFFCDBBFF);
-  static const Color violetDark = Color(0xFF6E5AD1);
-  static const double violetAlphaLight = 0.85;
-  static const double violetAlphaDark = 0.40;
-
-  static const Color roseLight = Color(0xFFFFB8D6);
-  static const Color roseDark = Color(0xFFC4568F);
-  static const double roseAlphaLight = 0.80;
-  static const double roseAlphaDark = 0.36;
-
-  static const Color mintLight = Color(0xFFA9F2D8);
-  static const Color mintDark = Color(0xFF2FA07E);
-  static const double mintAlphaLight = 0.85;
-  static const double mintAlphaDark = 0.36;
-
-  static const Color emberLight = Color(0xFFFFB466);
-  static const Color emberDark = Color(0xFFC87A2C);
-  static const double emberAlphaLight = 0.85;
-  static const double emberAlphaDark = 0.36;
+  static const Color sunLight = BrandPalette.amber;
+  static const Color sunDark = BrandPalette.amber;
+  static const double sunAlphaLight = 0.12;
+  static const double sunAlphaDark = 0.045;
+  static const Color violetLight = BrandPalette.iris;
+  static const Color violetDark = BrandPalette.iris;
+  static const double violetAlphaLight = 0.12;
+  static const double violetAlphaDark = 0.045;
+  static const Color roseLight = BrandPalette.iris;
+  static const Color roseDark = BrandPalette.iris;
+  static const double roseAlphaLight = 0.12;
+  static const double roseAlphaDark = 0.045;
+  static const Color mintLight = BrandPalette.mist;
+  static const Color mintDark = BrandPalette.mist;
+  static const double mintAlphaLight = 0.12;
+  static const double mintAlphaDark = 0.045;
+  static const Color emberLight = BrandPalette.amber;
+  static const Color emberDark = BrandPalette.amber;
+  static const double emberAlphaLight = 0.12;
+  static const double emberAlphaDark = 0.045;
 }
 
 /// Glass fills, highlights, strokes and shadows (09 section 3.3).
@@ -143,7 +131,7 @@ abstract final class FieldPalette {
 /// `foundation/glass.dart`.
 abstract final class GlassPalette {
   static const Color fillLight = GroundPalette.white;
-  static const Color fillDark = Color(0xFF1C1E22);
+  static const Color fillDark = GroundPalette.paperDark;
 
   static const double flatSigma = 16;
   static const double flatFillOpacityLight = 0.62;
@@ -168,7 +156,7 @@ abstract final class GlassPalette {
   static const double strokeOpacityDark = 0.08;
 
   /// Shadows exist at the floating and modal levels only.
-  static const Color shadowDark = Color(0xFF000000);
+  static const Color shadowDark = GroundPalette.scrim;
   static const double floatingShadowOpacityLight = 0.08;
   static const double floatingShadowOpacityDark = 0.24;
   static const double floatingShadowBlur = 16;
@@ -183,89 +171,77 @@ abstract final class GlassPalette {
   static const double opaqueFallbackOpacity = 1;
 }
 
-/// The seven hue primitives that carry every status token, plus the fixed
-/// colours that do not follow a primitive.
+/// Functional colour families and compatibility aliases.
 ///
-/// Carried from v1 (03 section 3.4) unchanged in value, as 09 section 3.5
-/// requires: they pass the composite contrast test on the v2 surfaces because
-/// `paper` and light glass are both lighter than the v1 surface ramp.
+/// Success, warning and error have distinct hues because they communicate
+/// consequences. Processing and external references share Iris. Observations
+/// and deferred work share neutrals; their labels and icons carry meaning.
 abstract final class StatusPalette {
-  // Green. A human affirmed it.
-  static const Color greenContentLight = Color(0xFF1A6D4F);
-  static const Color greenFillLight = Color(0xFFD3EFE1);
-  static const Color greenOnFillLight = Color(0xFF063D2A);
-  static const Color greenContentDark = Color(0xFF2CBB86);
-  static const Color greenFillDark = Color(0xFF0E3B2B);
-  static const Color greenOnFillDark = Color(0xFFA5E9CA);
+  // Success: a person affirmed it.
+  static const Color greenContentLight = Color(0xFF236447);
+  static const Color greenFillLight = Color(0xFFE1EFE7);
+  static const Color greenOnFillLight = Color(0xFF17432F);
+  static const Color greenContentDark = Color(0xFF8FCBA9);
+  static const Color greenFillDark = Color(0xFF20392D);
+  static const Color greenOnFillDark = Color(0xFFC7E8D5);
 
-  // Steel. A machine produced it.
-  static const Color steelContentLight = Color(0xFF2F6594);
-  static const Color steelFillLight = Color(0xFFD9E7F4);
-  static const Color steelOnFillLight = Color(0xFF0B3554);
-  static const Color steelContentDark = Color(0xFF78A9D4);
-  static const Color steelFillDark = Color(0xFF14344B);
-  static const Color steelOnFillDark = Color(0xFFB8D6F0);
+  // Informational emphasis: derived Iris, with no additional blue or teal.
+  static const Color steelContentLight = BrandPalette.irisContentLight;
+  static const Color steelFillLight = BrandPalette.irisFillLight;
+  static const Color steelOnFillLight = BrandPalette.irisOnFillLight;
+  static const Color steelContentDark = BrandPalette.irisContentDark;
+  static const Color steelFillDark = BrandPalette.irisFillDark;
+  static const Color steelOnFillDark = BrandPalette.irisOnFillDark;
+  static const Color tealContentLight = steelContentLight;
+  static const Color tealFillLight = steelFillLight;
+  static const Color tealOnFillLight = steelOnFillLight;
+  static const Color tealContentDark = steelContentDark;
+  static const Color tealFillDark = steelFillDark;
+  static const Color tealOnFillDark = steelOnFillDark;
 
-  // Teal. An external authority.
-  static const Color tealContentLight = Color(0xFF1D6A73);
-  static const Color tealFillLight = Color(0xFFCFEAEE);
-  static const Color tealOnFillLight = Color(0xFF043F46);
-  static const Color tealContentDark = Color(0xFF31B4C3);
-  static const Color tealFillDark = Color(0xFF0D383D);
-  static const Color tealOnFillDark = Color(0xFFA9E4EA);
+  // Warning: warm amber relatives, never fluorescent or yellow-green.
+  static const Color ochreContentLight = Color(0xFF805025);
+  static const Color ochreFillLight = Color(0xFFFAE9D8);
+  static const Color ochreOnFillLight = Color(0xFF573214);
+  static const Color ochreContentDark = Color(0xFFF5BA83);
+  static const Color ochreFillDark = Color(0xFF442D1D);
+  static const Color ochreOnFillDark = Color(0xFFFFDDC0);
 
-  // Ochre. Attention, not failure.
-  static const Color ochreContentLight = Color(0xFF84580B);
-  static const Color ochreFillLight = Color(0xFFF7E3B4);
-  static const Color ochreOnFillLight = Color(0xFF4A3400);
-  static const Color ochreContentDark = Color(0xFFE19512);
-  static const Color ochreFillDark = Color(0xFF43310A);
-  static const Color ochreOnFillDark = Color(0xFFF2D79B);
+  // Error: reserved for blocking and destructive outcomes.
+  static const Color oxideContentLight = Color(0xFFAC3C35);
+  static const Color oxideFillLight = Color(0xFFF8E4E1);
+  static const Color oxideOnFillLight = Color(0xFF6C2722);
+  static const Color oxideContentDark = Color(0xFFF1A49A);
+  static const Color oxideFillDark = Color(0xFF472824);
+  static const Color oxideOnFillDark = Color(0xFFF9D8D2);
 
-  // Oxide. A stop.
-  static const Color oxideContentLight = Color(0xFFA83D28);
-  static const Color oxideFillLight = Color(0xFFF8DDD6);
-  static const Color oxideOnFillLight = Color(0xFF5C1B0E);
-  static const Color oxideContentDark = Color(0xFFE1907F);
-  static const Color oxideFillDark = Color(0xFF4E241B);
-  static const Color oxideOnFillDark = Color(0xFFFFCFC3);
+  // Neutral: classification alone does not earn another decorative hue.
+  static const Color slateContentLight = GroundPalette.inkSecondaryLight;
+  static const Color slateFillLight = BrandPalette.mist;
+  static const Color slateOnFillLight = BrandPalette.obsidian;
+  static const Color slateContentDark = GroundPalette.inkSecondaryDark;
+  static const Color slateFillDark = GroundPalette.hairlineDark;
+  static const Color slateOnFillDark = BrandPalette.paper;
+  static const Color clayContentLight = slateContentLight;
+  static const Color clayFillLight = slateFillLight;
+  static const Color clayOnFillLight = slateOnFillLight;
+  static const Color clayContentDark = slateContentDark;
+  static const Color clayFillDark = slateFillDark;
+  static const Color clayOnFillDark = slateOnFillDark;
 
-  // Slate. An observation, not a decision.
-  static const Color slateContentLight = Color(0xFF546275);
-  static const Color slateFillLight = Color(0xFFDFE4EB);
-  static const Color slateOnFillLight = Color(0xFF2E3846);
-  static const Color slateContentDark = Color(0xFF99A6B5);
-  static const Color slateFillDark = Color(0xFF29313A);
-  static const Color slateOnFillDark = Color(0xFFC8D3DF);
+  static const Color diffAddedFillLight = greenFillLight;
+  static const Color diffAddedFillDark = greenFillDark;
+  static const Color diffChangedFillLight = ochreFillLight;
+  static const Color diffChangedFillDark = ochreFillDark;
 
-  // Clay. Shelved, not judged.
-  static const Color clayContentLight = Color(0xFF6D5E52);
-  static const Color clayFillLight = Color(0xFFE7E1DA);
-  static const Color clayOnFillLight = Color(0xFF3E3630);
-  static const Color clayContentDark = Color(0xFFB0A397);
-  static const Color clayFillDark = Color(0xFF332D28);
-  static const Color clayOnFillDark = Color(0xFFDED3C8);
+  // Two-tone strokes remain visible on arbitrary photographic evidence.
+  static const Color regionCasingLight = GroundPalette.white;
+  static const Color regionCasingDark = BrandPalette.obsidian;
+  static const Color regionSelectedCore = BrandPalette.iris;
+  static const Color regionSelectedCasing = BrandPalette.obsidian;
 
-  // Diff highlight fills. Body text sits directly on these, so they are tuned
-  // against ink rather than against an on-fill colour.
-  static const Color diffAddedFillLight = Color(0xFFD6F2E4);
-  static const Color diffAddedFillDark = Color(0xFF123B2C);
-  static const Color diffChangedFillLight = Color(0xFFFBEBC8);
-  static const Color diffChangedFillDark = Color(0xFF40300B);
-
-  // Region overlay casings. A stroke drawn over an arbitrary photograph needs
-  // a casing so it survives whatever pixel is behind it.
-  static const Color regionCasingLight = Color(0xFFFFFFFF);
-  static const Color regionCasingDark = Color(0xFF101311);
-
-  /// Selection over the image is transient, so it is the one token that does
-  /// not follow the mode.
-  static const Color regionSelectedCore = Color(0xFFFFC02E);
-  static const Color regionSelectedCasing = Color(0xFF101311);
-
-  // Synthetic environment band.
-  static const Color environmentFillLight = Color(0xFFF7E3B4);
-  static const Color environmentOnFillLight = Color(0xFF4A3400);
-  static const Color environmentFillDark = Color(0xFF4A3608);
-  static const Color environmentOnFillDark = Color(0xFFF2D79B);
+  static const Color environmentFillLight = ochreFillLight;
+  static const Color environmentOnFillLight = ochreOnFillLight;
+  static const Color environmentFillDark = ochreFillDark;
+  static const Color environmentOnFillDark = ochreOnFillDark;
 }

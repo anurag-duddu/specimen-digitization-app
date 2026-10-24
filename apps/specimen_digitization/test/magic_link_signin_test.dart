@@ -34,10 +34,10 @@ class NoNetworkAuth implements FirebaseAuth {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets(
-    'existing foreign verified session cannot mount a collection or send verification',
+    'existing malformed email cannot mount the child or send verification',
     (tester) async {
       final session = FirebaseSession(
-        ExistingAuth(ExistingUser('staff@elsewhere.org')),
+        ExistingAuth(ExistingUser('staff@@elsewhere.org')),
       );
       await tester.pumpWidget(
         MaterialApp(
@@ -49,7 +49,10 @@ void main() {
         ),
       );
       expect(find.text('PRIVATE COLLECTION'), findsNothing);
-      expect(find.text('Use a Field Museum account'), findsOneWidget);
+      expect(
+        find.text('Choose an account with an email address'),
+        findsOneWidget,
+      );
       expect(find.text('Send verification email'), findsNothing);
       expect(find.text('Sign out'), findsOneWidget);
       await expectLater(session.token(), throwsA(isA<ApiFailure>()));
@@ -71,7 +74,7 @@ void main() {
     },
   );
 
-  testWidgets('lookalike email is rejected before any Firebase request', (
+  testWidgets('malformed email is rejected before any Firebase request', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -83,13 +86,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byType(UiField).first,
-      'staff@fieldmuseum.org.attacker.test',
+      'staff@@fieldmuseum.org',
     );
     await tester.tap(find.text('Send link'));
     await tester.pump();
-    expect(
-      find.text('Use your fieldmuseum.org email address.'),
-      findsOneWidget,
-    );
+    expect(find.text('Enter a valid email address.'), findsOneWidget);
   });
 }

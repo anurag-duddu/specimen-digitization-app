@@ -12,7 +12,9 @@ from test_application import HEADERS, PREFIX, TOKEN, intake
 from test_hardening_concurrency import repository
 from test_model_runtime import ModelAdapters, local_model_factory
 
-from specimen_digitization.application.api import SYNTHETIC_TEXT, create_app
+from specimen_digitization.application.api import (
+    SYNTHETIC_COLLECTION, SYNTHETIC_ORG, SYNTHETIC_TEXT, create_app,
+)
 from specimen_digitization.application.storage import LocalBlobs
 
 
@@ -129,7 +131,12 @@ def test_fresh_model_children_export_linked_private_spans_before_return(
         assert attrs["specimen.id"] == row["specimen_id"]
         assert attrs["specimen.run.id"] == work["run"]["id"]
         assert attrs["specimen.model.outcome"] == "completed"
-        assert set(record["telemetry"]) == {"traceparent", "specimen_id", "run_id"}
+        assert set(record["telemetry"]) == {
+            "traceparent", "specimen_id", "run_id", "organization_id", "collection_id"}
+        # The tenant the call is charged to (COST_METER.md), ids only.
+        assert record["telemetry"]["organization_id"] == SYNTHETIC_ORG
+        assert attrs["specimen.organization.id"] == SYNTHETIC_ORG
+        assert attrs["specimen.collection.id"] == SYNTHETIC_COLLECTION
         agent = next(s for s in spans if s["name"].startswith("invoke_agent "))
         chat = next(s for s in spans if s["name"].startswith("chat "))
         assert agent["parent"]["span_id"] == effect["context"]["span_id"]
@@ -231,3 +238,48 @@ def test_model_context_excludes_baggage_tracestate_and_invalid_parent(
     else:
         assert "traceparent" not in result
     assert "PRIVATE" not in json.dumps(result)
+    assert "organization_id" not in result and "collection_id" not in result
+
+
+def test_model_context_carries_the_tenant_ids_as_explicit_keys(monkeypatch):
+    from specimen_digitization.observability import model_trace_context
+
+    monkeypatch.setattr(logfire, "get_context", lambda: {"baggage": "PRIVATE-BAGGAGE"})
+    result = model_trace_context("specimen-001", "run-001", organization_id="org-1", collection_id="coll-1")
+    assert result == {"specimen_id": "specimen-001", "run_id": "run-001",
+                      "organization_id": "org-1", "collection_id": "coll-1"}
+
+
+def test_the_sam3_request_carries_the_tenant_ids_beside_its_trace_parent(monkeypatch, tmp_path):
+    from specimen_digitization.application import bounded_effect, production
+    from specimen_digitization.application.reliability import AdapterFailure
+    from specimen_digitization.application.storage import LocalBlobs as Blobs
+    from test_lane_sam_client import isolated, lane_specimen
+
+    sent = []
+
+    def run_isolated(effect, payload, *args, **kwargs):
+        sent.append(payload["telemetry"])
+        return isolated("deadline_exceeded", "deadline")
+
+    monkeypatch.setattr(bounded_effect, "run_isolated", run_isolated)
+    specimen = lane_specimen()
+    service = production.Sam3Service("https://sam.run.app", Blobs(tmp_path), effect=lambda payload: b"")
+    with pytest.raises(AdapterFailure):
+        service.segment_per_run(specimen)
+    assert sent == [{"specimen_id": specimen.id, "run_id": specimen.run.id,
+                     "organization_id": specimen.scope.organization_id,
+                     "collection_id": specimen.scope.collection_id}]
+
+
+def test_tenant_ids_read_a_specimen_s_scope_and_never_fail_without_one():
+    from types import SimpleNamespace
+
+    from specimen_digitization.observability import model_trace_context, tenant_ids
+
+    scoped = SimpleNamespace(scope=SimpleNamespace(organization_id="org-1", collection_id="coll-1"))
+    assert tenant_ids(scoped) == {"organization_id": "org-1", "collection_id": "coll-1"}
+    # A stand-in with no scope names no tenant, and the context carries none.
+    assert tenant_ids(SimpleNamespace()) == {"organization_id": None, "collection_id": None}
+    context = model_trace_context("specimen-001", "run-001", **tenant_ids(SimpleNamespace()))
+    assert "organization_id" not in context and "collection_id" not in context

@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
+import 'costs.dart';
 import 'models.dart';
 import 'sources.dart';
 import 'vocabulary.dart';
+import 'screens/intake/bulk_intake_repository.dart';
 
 /// How long the client waits for one exchange with the runtime API.
 ///
@@ -26,6 +28,8 @@ class ApiSpecimenRepository
         CandidateReviewBatchRepository,
         SpecimenHistoryRepository,
         SourceRepository,
+        CostRepository,
+        BulkIntakeRepository,
         AccessFailureSource {
   ApiSpecimenRepository({
     required this.baseUrl,
@@ -69,6 +73,63 @@ class ApiSpecimenRepository
   /// it the App Check token is read once per request, and a refusal stands.
   final Future<String?> Function()? freshAppCheckToken;
   final http.Client _client;
+
+  String _intakeRoot(CollectionScope scope) =>
+      '${_root(scope)}/collections/${Uri.encodeComponent(scope.collectionId)}/intake';
+
+  @override
+  Future<Json> intakeRequest(
+    CollectionScope scope,
+    String method,
+    String path, {
+    Json? body,
+    Map<String, String>? query,
+    Uint8List? bytes,
+    int? offset,
+  }) => request(
+    method,
+    '${_intakeRoot(scope)}$path',
+    body: body,
+    query: query,
+    bytes: bytes,
+    headers: offset == null ? null : {'Upload-Offset': '$offset'},
+  );
+
+  @override
+  Future<Uint8List> intakePreview(
+    CollectionScope scope,
+    String itemId, {
+    bool full = false,
+  }) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
+    final uri = baseUrl.replace(
+      path:
+          '${baseUrl.path.replaceFirst(RegExp(r'/$'), '')}${_intakeRoot(scope)}/items/${Uri.encodeComponent(itemId)}/preview',
+      queryParameters: {'full': '$full'},
+    );
+    http.Request build(Map<String, String> credentials) =>
+        http.Request('GET', uri)
+          ..followRedirects = false
+          ..headers.addAll(credentials);
+    final response = await http.Response.fromStream(
+      await _send(build, await _credentials(epoch, userId), epoch, userId),
+    ).timeout(apiRequestTimeout);
+    _checkAccess(epoch, userId);
+    if (response.statusCode != 200) {
+      throw _deny(
+        ApiFailure(
+          'This preview is not available. Retry after the photo saves.',
+          code: 'preview_unavailable',
+          status: response.statusCode,
+        ),
+        epoch,
+        userId,
+      );
+    }
+    return response.bodyBytes;
+  }
+
   @override
   String mode = 'production';
   @override
@@ -617,6 +678,7 @@ class ApiSpecimenRepository
         );
       }
       final collections = <String, Json>{};
+      final catalogs = <String, List<CollectionCatalogNode>>{};
       for (final org
           in memberships.map((m) => m['organization_id'].toString()).toSet()) {
         final data = await request(
@@ -637,6 +699,7 @@ class ApiSpecimenRepository
         for (final c in objects(data['items'])) {
           collections['$org/${c['collection_id']}'] = c;
         }
+        catalogs[org] = _collectionCatalog(data, org);
       }
       if (memberships.any(
         (m) => !collections.containsKey(
@@ -665,6 +728,11 @@ class ApiSpecimenRepository
                 m['role'].toString(),
                 ...(m['permissions'] as List? ?? []).map((p) => p.toString()),
               ],
+              catalogNodes:
+                  catalogs[m['organization_id'].toString()] ?? const [],
+              defaultSelection:
+                  collections['${m['organization_id']}/${m['collection_id']}']?['is_default'] ==
+                  true,
             ),
           )
           .toList();
@@ -689,6 +757,53 @@ class ApiSpecimenRepository
       }
       rethrow;
     }
+  }
+
+  /// Catalog relationships describe the chooser; they never create scopes.
+  List<CollectionCatalogNode> _collectionCatalog(
+    Json data,
+    String organizationId,
+  ) {
+    final raw = data['hierarchy'];
+    if (raw == null) return const [];
+    bool named(Object? value) => value is String && value.trim().isNotEmpty;
+    Never invalid() => throw const ApiFailure(
+      'The collection hierarchy could not be verified. Check access again.',
+      code: 'invalid_collections',
+      status: 403,
+    );
+    if (raw is! List) invalid();
+    final nodes = <String, CollectionCatalogNode>{};
+    for (final row in raw) {
+      if (row is! Map ||
+          !named(row['collection_id']) ||
+          !named(row['display_name']) ||
+          (row['parent_collection_id'] != null &&
+              !named(row['parent_collection_id'])) ||
+          (row['organization_id'] != null &&
+              row['organization_id'] != organizationId) ||
+          (row['kind'] != null &&
+              !['museum', 'testing'].contains(row['kind']))) {
+        invalid();
+      }
+      final id = row['collection_id'] as String;
+      if (nodes.containsKey(id)) invalid();
+      nodes[id] = CollectionCatalogNode(
+        collectionId: id,
+        name: row['display_name'] as String,
+        parentCollectionId: row['parent_collection_id'] as String?,
+        testing: row['kind'] == 'testing',
+      );
+    }
+    for (final node in nodes.values) {
+      final seen = <String>{node.collectionId};
+      var parent = node.parentCollectionId;
+      while (parent != null) {
+        if (!seen.add(parent) || !nodes.containsKey(parent)) invalid();
+        parent = nodes[parent]!.parentCollectionId;
+      }
+    }
+    return List.unmodifiable(nodes.values);
   }
 
   @override
@@ -1835,6 +1950,50 @@ class ApiSpecimenRepository
     );
     _checkAccess(epoch, userId);
     return this.specimen(scope, specimen.id);
+  }
+
+  String _costRoot(String organizationId) =>
+      '/v1/organizations/${Uri.encodeComponent(organizationId)}/costs';
+
+  @override
+  Future<CostReport> costs(
+    String organizationId, {
+    required String from,
+    required String to,
+  }) async {
+    final Json body = await request(
+      'GET',
+      _costRoot(organizationId),
+      query: <String, String>{'from': from, 'to': to},
+    );
+    // Reads every field defensively and refuses what is not a report with an
+    // `ApiFailure`, so a body of the wrong shape ends as a message on screen.
+    return CostReport.fromWire(body);
+  }
+
+  @override
+  Future<bool> refreshCosts(String organizationId) async {
+    final Json result = await request(
+      'POST',
+      '${_costRoot(organizationId)}/refresh',
+    );
+    return result['started'] == true;
+  }
+
+  @override
+  Future<void> setCostLimit(
+    String organizationId, {
+    String? collectionId,
+    int? micros,
+  }) async {
+    await request(
+      'PUT',
+      '${_costRoot(organizationId)}/caps',
+      body: <String, dynamic>{
+        'collection_id': collectionId,
+        'monthly_cap_micros': micros,
+      },
+    );
   }
 
   @override

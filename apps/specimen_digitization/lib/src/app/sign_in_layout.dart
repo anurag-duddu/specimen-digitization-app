@@ -69,7 +69,14 @@ class SignInLayout extends StatelessWidget {
             constraints.maxWidth,
           ).isCompact;
           final double gutter = compact ? ui.space.s4 : ui.space.s6;
-          final double stageInset = compact ? ui.space.s0 : ui.space.s8;
+          // Short desktop windows and landscape phones need the same form
+          // access as a portrait window, without shrinking controls or type.
+          final bool short = constraints.maxHeight < ui.space.readingMax;
+          final double stageInset = compact
+              ? ui.space.s0
+              : short
+              ? ui.space.s4
+              : ui.space.s8;
           return FocusTraversalGroup(
             policy: ReadingOrderTraversalPolicy(),
             child: CustomScrollView(
@@ -78,7 +85,11 @@ class SignInLayout extends StatelessWidget {
                 SliverPadding(
                   padding: EdgeInsetsDirectional.fromSTEB(
                     gutter,
-                    compact ? ui.space.s6 : ui.space.s10,
+                    short
+                        ? ui.space.s4
+                        : compact
+                        ? ui.space.s6
+                        : ui.space.s10,
                     gutter,
                     gutter + MediaQuery.viewInsetsOf(context).bottom,
                   ),
@@ -92,7 +103,7 @@ class SignInLayout extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
                             _masthead(ui),
-                            SizedBox(height: ui.space.s8),
+                            SizedBox(height: short ? ui.space.s4 : ui.space.s8),
                             // Keep this wrapper at both widths so changing
                             // the frame does not remount fields or their focus.
                             // At compact it paints the page with no edge or
@@ -146,27 +157,16 @@ class SignInLayout extends StatelessWidget {
                                     SizedBox(height: ui.space.s4),
                                   ],
                                   Semantics(
-                                    header: true,
                                     liveRegion: true,
-                                    child: Text(
-                                      title,
+                                    child: UiSectionHeader(
                                       key: const ValueKey<String>(
                                         'sign-in-stage-title',
                                       ),
-                                      style: ui.type.headline.copyWith(
-                                        color: ui.color.ink,
-                                      ),
+                                      title: title,
+                                      role: UiSectionHeaderRole.page,
+                                      supporting: purpose,
                                     ),
                                   ),
-                                  if (purpose != null) ...<Widget>[
-                                    SizedBox(height: ui.space.s2),
-                                    Text(
-                                      purpose!,
-                                      style: ui.type.body.copyWith(
-                                        color: ui.color.inkSecondary,
-                                      ),
-                                    ),
-                                  ],
                                   if (children.isNotEmpty) ...<Widget>[
                                     SizedBox(height: ui.space.s6),
                                     ...children,
@@ -197,27 +197,27 @@ class SignInLayout extends StatelessWidget {
     );
   }
 
-  Widget _masthead(UiThemeData ui) => Row(
-    crossAxisAlignment: CrossAxisAlignment.center,
+  Widget _masthead(UiThemeData ui) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    mainAxisSize: MainAxisSize.min,
     children: <Widget>[
-      const ExcludeSemantics(child: UiMark.mono(label: productName)),
-      SizedBox(width: ui.space.s3),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(
-              productName,
-              style: ui.type.title.copyWith(color: ui.color.ink),
+      // The brand region is separate from copy and from the active form.
+      // Keep the same subtree at every width to preserve field focus.
+      UiBrandAccent(height: ui.space.s3),
+      SizedBox(height: ui.space.s4),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          const ExcludeSemantics(child: UiMark(label: productName)),
+          SizedBox(width: ui.space.s3),
+          const Expanded(
+            child: UiSectionHeader(
+              title: productName,
+              role: UiSectionHeaderRole.card,
+              supporting: institutionName,
             ),
-            SizedBox(height: ui.space.s1),
-            Text(
-              institutionName,
-              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     ],
   );

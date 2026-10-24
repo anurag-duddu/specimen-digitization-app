@@ -53,10 +53,17 @@ class CaptureActivity {
 /// An accepted photo and the sensitivity selected when it was taken or reviewed.
 @immutable
 class CapturedPhoto {
-  const CapturedPhoto({required this.file, required this.sensitive});
+  const CapturedPhoto({
+    required this.file,
+    required this.sensitive,
+    this.admissionAttempt,
+  });
 
   final XFile file;
   final bool sensitive;
+
+  /// Stable across a failed save and its retake, scoped to this camera route.
+  final Object? admissionAttempt;
 }
 
 /// What the capture route hands back to the intake screen.
@@ -93,6 +100,11 @@ class CaptureScreen extends StatefulWidget {
     required this.camera,
     this.onAccepted,
     this.onCaptured,
+    this.onCapturedDurably,
+    this.batchTray,
+    this.initialReview,
+    this.canRemovePhoto,
+    this.removePhoto,
     this.initialSensitive = false,
     this.autoIngest = false,
     this.onAutoIngestChanged,
@@ -101,6 +113,7 @@ class CaptureScreen extends StatefulWidget {
     this.statusLabel,
     this.statusBlocked = false,
     this.deviceFallbackAvailable = true,
+    this.bulkDraft = false,
   });
 
   /// Builds the camera. Injected so a widget test runs against a fake, since
@@ -115,6 +128,20 @@ class CaptureScreen extends StatefulWidget {
   /// Supplying this callback enables both Sensitive controls. When null,
   /// neither control is shown and no [CapturedPhoto] is produced.
   final ValueChanged<CapturedPhoto>? onCaptured;
+
+  /// Waits only for durable local retention, never for network transfer.
+  final Future<void> Function(CapturedPhoto)? onCapturedDurably;
+
+  /// A lazily built tray owned by the shared batch workspace.
+  final WidgetBuilder? batchTray;
+
+  /// Opens the existing optional rotation/crop tools without starting a camera.
+  final XFile? initialReview;
+
+  /// Intake checks ownership and Ready state both when showing and invoking
+  /// the last-shot action. A stale open menu cannot cancel a running upload.
+  final bool Function(XFile)? canRemovePhoto;
+  final bool Function(XFile)? removePhoto;
 
   /// The starting choice for this camera session; never persisted here.
   final bool initialSensitive;
@@ -148,6 +175,9 @@ class CaptureScreen extends StatefulWidget {
   /// Browser and desktop webcams have no second camera path to offer.
   final bool deviceFallbackAvailable;
 
+  /// Continuous capture into a draft. The parent owns the later Submit action.
+  final bool bulkDraft;
+
   /// The route the intake screen pushes.
   ///
   /// Both Sensitive controls appear only when [onCaptured] is non-null.
@@ -163,6 +193,11 @@ class CaptureScreen extends StatefulWidget {
     CaptureCameraFactory camera, {
     ValueChanged<XFile>? onAccepted,
     ValueChanged<CapturedPhoto>? onCaptured,
+    Future<void> Function(CapturedPhoto)? onCapturedDurably,
+    WidgetBuilder? batchTray,
+    XFile? initialReview,
+    bool Function(XFile)? canRemovePhoto,
+    bool Function(XFile)? removePhoto,
     bool initialSensitive = false,
     bool autoIngest = false,
     ValueChanged<bool>? onAutoIngestChanged,
@@ -171,11 +206,17 @@ class CaptureScreen extends StatefulWidget {
     String? statusLabel,
     bool statusBlocked = false,
     bool deviceFallbackAvailable = true,
+    bool bulkDraft = false,
   }) => MaterialPageRoute<CaptureResult>(
     builder: (BuildContext context) => CaptureScreen(
       camera: camera,
       onAccepted: onAccepted,
       onCaptured: onCaptured,
+      onCapturedDurably: onCapturedDurably,
+      batchTray: batchTray,
+      initialReview: initialReview,
+      canRemovePhoto: canRemovePhoto,
+      removePhoto: removePhoto,
       initialSensitive: initialSensitive,
       autoIngest: autoIngest,
       onAutoIngestChanged: onAutoIngestChanged,
@@ -184,6 +225,7 @@ class CaptureScreen extends StatefulWidget {
       statusLabel: statusLabel,
       statusBlocked: statusBlocked,
       deviceFallbackAvailable: deviceFallbackAvailable,
+      bulkDraft: bulkDraft,
     ),
     fullscreenDialog: true,
   );
@@ -238,6 +280,9 @@ class _CaptureScreenState extends State<CaptureScreen>
   bool _foreground = true;
   int _cameraGeneration = 0;
   int _acceptedCount = 0;
+  Object _admissionAttempt = Object();
+  XFile? _lastAccepted;
+  final _lastShotMenu = PopoverController();
   Rect _crop = const Rect.fromLTWH(0.06, 0.06, 0.88, 0.88);
   XFile? _review;
   Uint8List? _reviewBytes;
@@ -252,9 +297,36 @@ class _CaptureScreenState extends State<CaptureScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _autoIngest = widget.autoIngest;
+    _autoIngest = widget.bulkDraft || widget.autoIngest;
     _sensitive = widget.initialSensitive;
-    _requestCameraStart();
+    if (widget.initialReview == null) {
+      _requestCameraStart();
+    } else {
+      unawaited(_loadInitialReview());
+    }
+  }
+
+  Future<void> _loadInitialReview() async {
+    try {
+      final file = widget.initialReview!;
+      final bytes = await readCapture(file);
+      final dimensions = await captureDimensions(bytes);
+      if (!mounted) return;
+      setState(() {
+        _review = file;
+        _setReviewBytes(bytes);
+        _reviewDimensions = dimensions;
+        _reviewSensitive = widget.initialSensitive;
+        _starting = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _unavailable = CaptureUnavailable.failed;
+          _starting = false;
+        });
+      }
+    }
   }
 
   @override
@@ -292,7 +364,7 @@ class _CaptureScreenState extends State<CaptureScreen>
   void didUpdateWidget(covariant CaptureScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.autoIngest != widget.autoIngest && !_capturing) {
-      _autoIngest = widget.autoIngest;
+      _autoIngest = widget.bulkDraft || widget.autoIngest;
     }
   }
 
@@ -313,6 +385,7 @@ class _CaptureScreenState extends State<CaptureScreen>
   }
 
   void _requestCameraStart() {
+    if (widget.initialReview != null) return;
     final int generation = ++_cameraGeneration;
     if (mounted && !_starting) setState(() => _starting = true);
     _queueCameraLifecycle(() => _start(generation));
@@ -477,7 +550,7 @@ class _CaptureScreenState extends State<CaptureScreen>
           bytes: bytes,
         );
         if (!isCurrent()) return;
-        _accept(normalized, bytes: bytes, sensitive: sensitive);
+        await _accept(normalized, bytes: bytes, sensitive: sensitive);
         return;
       }
       final CaptureDimensions dimensions = await captureDimensions(bytes);
@@ -556,34 +629,71 @@ class _CaptureScreenState extends State<CaptureScreen>
     );
   }
 
-  void _retake() => setState(() {
-    _review = null;
-    _setReviewBytes(null);
-    _reviewDimensions = null;
-    _cropping = false;
-    _editError = null;
-  });
+  void _retake() {
+    if (widget.initialReview != null) {
+      _finish();
+      return;
+    }
+    setState(() {
+      _review = null;
+      _setReviewBytes(null);
+      _reviewDimensions = null;
+      _cropping = false;
+      _editError = null;
+    });
+  }
 
   /// Batch mode: accepting returns straight to the viewfinder for the next
   /// specimen rather than back to the intake screen.
-  void _use() {
+  Future<void> _use() async {
     final XFile? file = _review;
     if (file == null) return;
-    _accept(file, bytes: _reviewBytes!, sensitive: _reviewSensitive);
+    await _accept(file, bytes: _reviewBytes!, sensitive: _reviewSensitive);
+    if (widget.initialReview != null) _finish();
   }
 
-  void _accept(
+  Future<void> _accept(
     XFile file, {
     required Uint8List bytes,
     required bool sensitive,
-  }) {
+  }) async {
+    _lastShotMenu.close();
+    final attempt = _admissionAttempt;
     final ValueChanged<XFile>? onAccepted = widget.onAccepted;
     final ValueChanged<CapturedPhoto>? onCaptured = widget.onCaptured;
+    try {
+      await widget.onCapturedDurably?.call(
+        CapturedPhoto(
+          file: file,
+          sensitive: sensitive,
+          admissionAttempt: attempt,
+        ),
+      );
+    } catch (_) {
+      final dimensions = await captureDimensions(bytes);
+      if (!mounted) return;
+      setState(() {
+        _review = file;
+        _setReviewBytes(bytes);
+        _reviewDimensions = dimensions;
+        _reviewSensitive = sensitive;
+        _editError =
+            'Photo was not saved. Keep this screen open and retry after freeing storage or making room in the batch.';
+      });
+      return;
+    }
+    if (!mounted) return;
+    _admissionAttempt = Object();
     setState(() {
       _acceptedCount++;
+      _lastAccepted = file;
       // A streamed photo is owned by Intake as soon as the callback returns.
       // Keep no result-file list for either streaming interface.
-      if (onAccepted == null && onCaptured == null) _accepted.add(file);
+      if (onAccepted == null &&
+          onCaptured == null &&
+          widget.onCapturedDurably == null) {
+        _accepted.add(file);
+      }
       // The resized provider bounds decoded pixels, but its cache key also
       // retains the encoded bytes. Evict the old key when replacing the photo.
       _setLastShotBytes(bytes);
@@ -594,7 +704,13 @@ class _CaptureScreenState extends State<CaptureScreen>
       _editError = null;
     });
     onAccepted?.call(file);
-    onCaptured?.call(CapturedPhoto(file: file, sensitive: sensitive));
+    onCaptured?.call(
+      CapturedPhoto(
+        file: file,
+        sensitive: sensitive,
+        admissionAttempt: attempt,
+      ),
+    );
   }
 
   void _setAutoIngest(bool value) {
@@ -727,7 +843,9 @@ class _CaptureScreenState extends State<CaptureScreen>
     Navigator.of(context).pop(
       CaptureResult(
         files: List<XFile>.unmodifiable(_accepted),
-        streamed: widget.onAccepted != null || widget.onCaptured != null,
+        streamed:
+            widget.onAccepted != null ||
+            (widget.onCaptured != null || widget.onCapturedDurably != null),
         unavailable: unavailable,
       ),
     );
@@ -735,6 +853,7 @@ class _CaptureScreenState extends State<CaptureScreen>
 
   @override
   void dispose() {
+    _lastShotMenu.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _setLastShotBytes(null);
     _setReviewBytes(null);
@@ -945,11 +1064,10 @@ class _CaptureScreenState extends State<CaptureScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  Text('Photo ${_acceptedCount + 1}', style: ui.type.title),
-                  SizedBox(height: ui.space.s2),
-                  Text(
-                    'All labels sharp and in frame?',
-                    style: ui.type.body.copyWith(color: ui.color.ink),
+                  UiSectionHeader(
+                    title: 'Photo ${_acceptedCount + 1}',
+                    role: UiSectionHeaderRole.card,
+                    supporting: 'All labels sharp and in frame?',
                   ),
                   if (_editError != null) ...<Widget>[
                     SizedBox(height: ui.space.s3),
@@ -975,7 +1093,9 @@ class _CaptureScreenState extends State<CaptureScreen>
                       ),
                     )
                   else ...<Widget>[
-                    Row(
+                    Wrap(
+                      spacing: ui.space.s2,
+                      runSpacing: ui.space.s2,
                       children: <Widget>[
                         UiButton(
                           key: const ValueKey<String>('capture-rotate'),
@@ -984,7 +1104,6 @@ class _CaptureScreenState extends State<CaptureScreen>
                           leading: UiIcons.rotateView,
                           onPressed: _editing ? null : _rotate,
                         ),
-                        SizedBox(width: ui.space.s2),
                         UiButton(
                           key: const ValueKey<String>('capture-crop'),
                           label: 'Crop',
@@ -1004,7 +1123,8 @@ class _CaptureScreenState extends State<CaptureScreen>
                         ),
                       ],
                     ),
-                    if (widget.onCaptured != null)
+                    if ((widget.onCaptured != null ||
+                        widget.onCapturedDurably != null))
                       UiSwitch(
                         key: const ValueKey('capture-review-sensitive'),
                         label: _sensitiveLabel,
@@ -1037,11 +1157,15 @@ class _CaptureScreenState extends State<CaptureScreen>
   Widget _reviewDecisions() {
     final send = UiButton(
       key: const ValueKey<String>('capture-send'),
-      label: 'Send',
+      label: widget.initialReview != null
+          ? 'Save edit'
+          : widget.bulkDraft
+          ? 'Add photo'
+          : 'Send',
       onPressed: _editing ? null : _use,
     );
     final retake = UiButton(
-      label: 'Retake',
+      label: widget.initialReview != null ? 'Cancel edit' : 'Retake',
       variant: UiButtonVariant.secondary,
       onPressed: _editing ? null : _retake,
     );
@@ -1117,15 +1241,17 @@ class _CaptureScreenState extends State<CaptureScreen>
               _closeButton(),
               SizedBox(width: ui.space.s2),
               Expanded(
-                child: UiSegmented<bool>(
-                  key: const ValueKey('capture-auto-ingest'),
-                  segments: const [
-                    UiSegment(value: false, label: 'Review'),
-                    UiSegment(value: true, label: 'Send now'),
-                  ],
-                  value: _autoIngest,
-                  onChanged: _capturing ? null : _setAutoIngest,
-                ),
+                child: widget.bulkDraft
+                    ? Text('Add photos to your batch', style: ui.type.label)
+                    : UiSegmented<bool>(
+                        key: const ValueKey('capture-auto-ingest'),
+                        segments: const [
+                          UiSegment(value: false, label: 'Review'),
+                          UiSegment(value: true, label: 'Send now'),
+                        ],
+                        value: _autoIngest,
+                        onChanged: _capturing ? null : _setAutoIngest,
+                      ),
               ),
             ],
           ),
@@ -1136,6 +1262,21 @@ class _CaptureScreenState extends State<CaptureScreen>
               final preview = _viewfinderPreview(camera);
               final guidance = _viewfinderGuidance();
               final controls = _viewfinderControls();
+              if (widget.bulkDraft) {
+                return Column(
+                  children: [
+                    Expanded(child: preview),
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: ui.space.s4),
+                      child: Text(
+                        'Keep labels readable. Review the batch when you are ready.',
+                        style: ui.type.bodySmall,
+                      ),
+                    ),
+                    controls,
+                  ],
+                );
+              }
               // Use the available window, not the device or its orientation.
               if (constraints.maxWidth >= WindowClass.mediumMin &&
                   constraints.maxWidth > constraints.maxHeight) {
@@ -1259,7 +1400,52 @@ class _CaptureScreenState extends State<CaptureScreen>
     );
   }
 
-  Widget _viewfinderControls() {
+  Widget _viewfinderControls() => widget.activity == null
+      ? _buildViewfinderControls()
+      : ListenableBuilder(
+          listenable: widget.activity!,
+          builder: (context, _) => _buildViewfinderControls(),
+        );
+
+  Widget _lastShotControl(Widget visual) {
+    final file = _lastAccepted;
+    if (!_autoIngest ||
+        file == null ||
+        widget.removePhoto == null ||
+        widget.canRemovePhoto?.call(file) != true) {
+      if (_lastShotMenu.isOpen) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _lastShotMenu.close();
+        });
+      }
+      return visual;
+    }
+    return UiPopoverMenu(
+      controller: _lastShotMenu,
+      items: [
+        UiMenuItem(
+          label: 'Remove last photo',
+          icon: UiIcons.close,
+          onSelected: () {
+            if (widget.removePhoto?.call(file) != true || !mounted) return;
+            setState(() {
+              _acceptedCount--;
+              _lastAccepted = null;
+              _setLastShotBytes(null);
+            });
+          },
+        ),
+      ],
+      child: Pressable(
+        semanticsLabel: 'Last photo options',
+        onPressed: _lastShotMenu.toggle,
+        radius: context.ui.shape.inner,
+        builder: (context, states) => visual,
+      ),
+    );
+  }
+
+  Widget _buildViewfinderControls() {
     final ui = context.ui;
     final thumbnail = _lastShotThumbnail;
     return Padding(
@@ -1267,7 +1453,8 @@ class _CaptureScreenState extends State<CaptureScreen>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (widget.onCaptured != null) ...[
+          if ((widget.onCaptured != null ||
+              widget.onCapturedDurably != null)) ...[
             UiSwitch(
               key: const ValueKey('capture-sensitive'),
               label: _sensitiveLabel,
@@ -1278,39 +1465,42 @@ class _CaptureScreenState extends State<CaptureScreen>
             ),
             SizedBox(height: ui.space.s2),
           ],
+          if (widget.batchTray != null) widget.batchTray!(context),
           Row(
             children: [
               Expanded(
                 child: Align(
                   alignment: AlignmentDirectional.centerStart,
-                  child: Semantics(
-                    container: true,
-                    liveRegion: true,
-                    label: _acceptedCount == 1
-                        ? '1 photo'
-                        : '$_acceptedCount photos',
-                    excludeSemantics: true,
-                    child: Stack(
-                      key: const ValueKey('capture-last-shot'),
-                      children: [
-                        SizedBox.square(
-                          dimension: ui.space.targetMin + ui.space.s2,
-                          child: thumbnail == null
-                              ? const UiIcon(UiIcons.image)
-                              : Image(
-                                  image: thumbnail,
-                                  fit: BoxFit.cover,
-                                  gaplessPlayback: true,
-                                  errorBuilder: (context, error, stack) =>
-                                      const UiIcon(UiIcons.image),
-                                ),
-                        ),
-                        PositionedDirectional(
-                          bottom: 0,
-                          end: 0,
-                          child: UiBadge(_acceptedCount),
-                        ),
-                      ],
+                  child: _lastShotControl(
+                    Semantics(
+                      container: true,
+                      liveRegion: true,
+                      label: _acceptedCount == 1
+                          ? '1 photo'
+                          : '$_acceptedCount photos',
+                      excludeSemantics: true,
+                      child: Stack(
+                        key: const ValueKey('capture-last-shot'),
+                        children: [
+                          SizedBox.square(
+                            dimension: ui.space.targetMin + ui.space.s2,
+                            child: thumbnail == null
+                                ? const UiIcon(UiIcons.image)
+                                : Image(
+                                    image: thumbnail,
+                                    fit: BoxFit.cover,
+                                    gaplessPlayback: true,
+                                    errorBuilder: (context, error, stack) =>
+                                        const UiIcon(UiIcons.image),
+                                  ),
+                          ),
+                          PositionedDirectional(
+                            bottom: 0,
+                            end: 0,
+                            child: UiBadge(_acceptedCount),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -1323,7 +1513,9 @@ class _CaptureScreenState extends State<CaptureScreen>
                 child: Align(
                   alignment: AlignmentDirectional.centerEnd,
                   child: UiButton(
-                    label: CaptureScreen.doneLabel,
+                    label: widget.bulkDraft
+                        ? 'Review $_acceptedCount'
+                        : CaptureScreen.doneLabel,
                     variant: UiButtonVariant.secondary,
                     onPressed: _finish,
                   ),

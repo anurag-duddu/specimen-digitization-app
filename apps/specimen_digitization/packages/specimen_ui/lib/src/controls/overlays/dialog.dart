@@ -4,7 +4,8 @@ library;
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/theme.dart';
-import '../../primitives/label.dart';
+import '../../foundation/type.dart';
+import 'modal_content_layout.dart';
 import '../../primitives/modal_routes.dart';
 import '../actions/button.dart';
 import 'sheet.dart';
@@ -47,7 +48,7 @@ class UiDialog extends StatelessWidget {
   /// The way out.
   final UiButton? secondaryAction;
 
-  /// True to scroll [child] inside the height the chrome leaves it.
+  /// True to scroll the wrapping title and [child] together inside the pane.
   ///
   /// The default, and what [UiSheet] does with the same parameter, so a body
   /// written for [UiDialog.showAdaptive] never has to know which of the two
@@ -134,26 +135,21 @@ class UiDialog extends StatelessWidget {
         style ?? UiModalStyle.resolve(context.ui, context);
     return Padding(
       padding: paint.padding,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Semantics(
-            header: true,
-            child: UiLabel(
-              title,
-              style: paint.title.copyWith(color: paint.titleColor),
-            ),
+      child: ModalContentLayout(
+        heading: Semantics(
+          header: true,
+          child: Text(
+            title,
+            style: paint.title.copyWith(color: paint.titleColor),
+            strutStyle: UiType.strutOf(paint.title),
           ),
-          SizedBox(height: paint.gap),
-          Flexible(
-            child: scrollBody ? SingleChildScrollView(child: child) : child,
-          ),
-          if (primaryAction != null || secondaryAction != null) ...<Widget>[
-            SizedBox(height: paint.gap),
-            UiModalActions(primary: primaryAction, secondary: secondaryAction),
-          ],
-        ],
+        ),
+        body: child,
+        gap: paint.gap,
+        scrollBody: scrollBody,
+        actions: primaryAction != null || secondaryAction != null
+            ? UiModalActions(primary: primaryAction, secondary: secondaryAction)
+            : null,
       ),
     );
   }

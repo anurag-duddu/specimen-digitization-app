@@ -697,7 +697,7 @@ class WorkspaceController extends ChangeNotifier {
       _scopesVerified = true;
       _scopesLoaded = true;
       _scopes = scopes;
-      _scope = scopes.isEmpty ? null : scopes.first;
+      _scope = _preferredScope;
       _loading = false;
       _notify();
       if (_scope != null) await refresh();
@@ -743,10 +743,20 @@ class WorkspaceController extends ChangeNotifier {
     return true;
   }
 
-  /// The route key for the collection a window should open by default.
+  /// The server-preferred institutional scope for a fresh session.
+  CollectionScope? get _preferredScope {
+    for (final scope in _scopes) {
+      if (scope.defaultSelection) return scope;
+    }
+    for (final scope in _scopes) {
+      if (scope.configuration['kind'] != 'testing') return scope;
+    }
+    return _scopes.isEmpty ? null : _scopes.first;
+  }
+
+  /// Preserves the current or explicitly routed scope before the default.
   String? get defaultRouteKey {
-    final CollectionScope? scope =
-        _scope ?? (_scopes.isEmpty ? null : _scopes.first);
+    final CollectionScope? scope = _scope ?? _preferredScope;
     return scope == null ? null : encodeCollectionKey(scope.key);
   }
 
@@ -1033,9 +1043,10 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   /// Clears the search, the segment and every filter.
-  Future<void> clearFilters() {
+  Future<void> clearFilters({String disposition = 'needs_human_review'}) {
+    _search?.cancel();
     _query = '';
-    _disposition = 'needs_human_review';
+    _disposition = disposition;
     _filters = <String, String>{};
     _notify();
     return refresh();

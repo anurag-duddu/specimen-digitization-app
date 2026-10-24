@@ -82,3 +82,21 @@ def test_timeout_hides_capability_without_starting_work(readiness):
         raise TimeoutError('private transport detail')
     readiness.dispatcher.session = lambda:SimpleNamespace(get=unavailable)
     assert readiness.check(readiness.principal, readiness.specimen) is False
+
+
+def test_readiness_checks_the_exact_collection_routed_job(readiness):
+    from specimen_digitization.application.lane_dispatch import CollectionJobDispatcher
+
+    r = readiness
+    r.principal.scope.organization_id = 'organization'
+    dedicated_job = JOB + '-e2e'
+    r.dispatcher.job = dedicated_job
+    r.metadata['name'] = dedicated_job
+    r.check.config.collection_worker_jobs = (('organization/collection', {'worker_job': dedicated_job}),)
+    r.check.dispatcher = CollectionJobDispatcher(
+        SimpleNamespace(job=JOB, session=lambda: pytest.fail('Shared job must not be read')),
+        {'organization/collection': r.dispatcher})
+    assert r.check(r.principal, r.specimen) is True
+    assert r.calls == [(RUN_API + dedicated_job, 3)]
+    r.check.dispatcher = CollectionJobDispatcher(None, {'organization/collection': None})
+    assert r.check(r.principal, r.specimen) is False
