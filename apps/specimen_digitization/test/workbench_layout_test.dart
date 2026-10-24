@@ -231,12 +231,94 @@ void main() {
         find.byKey(const ValueKey<String>('review-inspector')),
       );
       expect(source.right, lessThanOrEqualTo(inspector.left));
-      expect(source.width, greaterThan(0));
+      expect(
+        source.width,
+        greaterThan(inspector.width),
+        reason: 'the source photograph is the dominant review region',
+      );
       expect(inspector.width, greaterThan(0));
+      expect(inspector.width, lessThanOrEqualTo(520));
+      expect(find.text('Record review'), findsOneWidget);
+      expect(find.text('1 field · 2 labels'), findsOneWidget);
       expect(find.text('History'), findsOneWidget);
       expect(find.byType(AuditHistoryPanel), findsNothing);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets(
+      'review summary and tabs scroll while decisions remain reachable',
+      (tester) async {
+        useWindow(tester, const Size(1000, 600));
+        final initial = record();
+        await tester.pumpWidget(
+          host(
+            Specimen({
+              ...initial.data,
+              'fields': [
+                ...initial.fields,
+                for (final (key, name) in const [
+                  ('collector', 'Collector'),
+                  ('collection_date', 'Collection date'),
+                  ('province_state', 'Province/state'),
+                  ('county', 'County'),
+                  ('city', 'City'),
+                  ('precise_location', 'Precise location'),
+                ])
+                  {
+                    'field_key': key,
+                    'display_name': name,
+                    'required': true,
+                    'state': 'unknown',
+                  },
+              ],
+            }),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final overview = find.byKey(const ValueKey<String>('review-overview'));
+        final before = tester.getTopLeft(overview);
+        final decisions = tester.getRect(find.byType(WorkbenchDecisionBar));
+        await tester.drag(find.byKey(evidenceScrollKey), const Offset(0, -200));
+        await tester.pumpAndSettle();
+        expect(tester.getTopLeft(overview).dy, lessThan(before.dy));
+        expect(tester.getRect(find.byType(WorkbenchDecisionBar)), decisions);
+        expect(find.byType(WorkbenchDecisionBar).hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'the inspector measure grows with enlarged text on a wide desk',
+      (tester) async {
+        useWindow(tester, const Size(2400, 1200));
+        await tester.pumpWidget(
+          workbenchHost(
+            Builder(
+              builder: (context) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: const TextScaler.linear(2)),
+                child: ReviewWorkbench(
+                  specimen: record(),
+                  onChange: (_) async => false,
+                  onRetry: (_) async {},
+                  onRefresh: () {},
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Record review'), findsOneWidget);
+        final inspector = tester.getRect(
+          find.byKey(const ValueKey<String>('review-inspector')),
+        );
+        expect(inspector.width, greaterThan(520));
+        expect(inspector.width, lessThanOrEqualTo(1040));
+        expect(find.byType(WorkbenchDecisionBar).hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets(
       'wide History stays a tab and restores Labels without moving source',

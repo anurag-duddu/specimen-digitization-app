@@ -122,6 +122,8 @@ Future<void> openWorkspace(
     repository: repo,
   );
   await tester.ensureVisible(find.widgetWithText(UiButton, source));
+  await tester.pumpAndSettle();
+  expect(find.widgetWithText(UiButton, source).hitTestable(), findsOneWidget);
   await tester.tap(find.widgetWithText(UiButton, source));
   await tester.pumpAndSettle();
   expect(find.byType(IntakeImportWorkspace), findsOneWidget);

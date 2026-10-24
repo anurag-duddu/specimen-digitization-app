@@ -269,7 +269,7 @@ void main() {
   }
 
   testWidgets(
-    'the geometry the owner approved on Specimens is unchanged: numbers',
+    'the branded workspace preserves exact bar and account geometry',
     (WidgetTester tester) async {
       for (final double top in <double>[0, 24, 47]) {
         for (final String location in <String>[
@@ -283,7 +283,13 @@ void main() {
           expect(bar.width, 390);
           expect(bar.height, top + 64, reason: '8 + 48 + 8 under the inset');
           final Rect switcher = tester.getRect(_switcher);
-          expect(switcher.left, 8, reason: 'switcher 8 dp from the start');
+          final mark = tester.getRect(find.byType(UiMark));
+          expect(mark, Rect.fromLTWH(16, top + 16, 32, 32));
+          expect(
+            switcher.left,
+            56,
+            reason: 'collection follows the brand mark and 8 dp gap',
+          );
           expect(switcher.top, top + 8, reason: '8 dp under the inset');
           expect(switcher.height, 48);
           final Rect account = tester.getRect(_account);

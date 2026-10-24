@@ -287,26 +287,35 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             context.ui.space.s3,
             context.ui.space.s1,
           ),
-          child: Semantics(
-            header: true,
-            child: Wrap(
-              spacing: context.ui.space.s2,
-              runSpacing: context.ui.space.s1,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: <Widget>[
-                Text(title, style: context.ui.type.label),
-                if (reviewCount > 0)
-                  Text(
+          child: UiSectionHeader(
+            title: title,
+            role: UiSectionHeaderRole.section,
+            meta: reviewCount == 0
+                ? null
+                : Text(
                     '$reviewCount to review',
                     style: context.ui.type.labelSmall.copyWith(
                       color: context.ui.color.status.needsReview.content,
                     ),
                   ),
-              ],
-            ),
           ),
         ),
-        for (final field in fields) _field(context, field),
+        Padding(
+          padding: EdgeInsetsDirectional.symmetric(
+            horizontal: context.ui.space.s3,
+          ),
+          child: const UiHairline(),
+        ),
+        for (final (index, field) in fields.indexed) ...<Widget>[
+          _field(context, field),
+          if (index < fields.length - 1)
+            Padding(
+              padding: EdgeInsetsDirectional.symmetric(
+                horizontal: context.ui.space.s3,
+              ),
+              child: const UiHairline(),
+            ),
+        ],
       ],
     );
   }

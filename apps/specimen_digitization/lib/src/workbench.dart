@@ -1738,8 +1738,9 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
+                        _reviewOverview(context),
                         _contextHeader(context, regime),
-                        SizedBox(height: context.ui.space.s1),
+                        SizedBox(height: context.ui.space.s4),
                         content,
                         const UiHairline(),
                         decision,
@@ -1749,14 +1750,24 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
-                      _contextHeader(context, regime),
-                      const UiHairline(),
                       Expanded(
                         child: SingleChildScrollView(
                           key: evidenceScrollKey,
                           controller: _evidenceScroll,
-                          padding: EdgeInsets.symmetric(vertical: metrics.gap),
-                          child: content,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _reviewOverview(context),
+                              _contextHeader(context, regime),
+                              const UiHairline(),
+                              Padding(
+                                padding: EdgeInsets.symmetric(
+                                  vertical: metrics.gap,
+                                ),
+                                child: content,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       const UiHairline(),
@@ -1766,6 +1777,32 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           ),
         );
       },
+    );
+  }
+
+  /// The desk's inspector names the review and its retained contents once.
+  /// This is content, so it travels with the inspector on short windows.
+  Widget _reviewOverview(BuildContext context) {
+    final ui = context.ui;
+    final record = widget.specimen;
+    final fieldCount = record.fields.length;
+    final labelCount = record.regions.length;
+    return Padding(
+      key: const ValueKey<String>('review-overview'),
+      padding: EdgeInsets.only(bottom: ui.space.s4),
+      child: UiSectionHeader(
+        title: 'Record review',
+        role: UiSectionHeaderRole.section,
+        meta: StatusChip(
+          SpecimenStatus.ofRecord(
+            disposition: record.disposition,
+            state: record.state,
+          ),
+        ),
+        supporting:
+            '$fieldCount ${fieldCount == 1 ? 'field' : 'fields'} · '
+            '$labelCount ${labelCount == 1 ? 'label' : 'labels'}',
+      ),
     );
   }
 
@@ -2267,9 +2304,19 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         textScaler: MediaQuery.textScalerOf(context),
       );
       final available = metrics.contentWidth - metrics.gap;
-      final inspectorWidth = (available * .45).clamp(
+      final readingSize = context.ui.type.bodySmall.fontSize!;
+      // Forty secondary-text ems bound the field-value reading measure.
+      // Scale the actual text role so nonlinear text scaling stays readable.
+      final inspectorMaxWidth =
+          MediaQuery.textScalerOf(
+            context,
+          ).scale(readingSize).clamp(readingSize, double.infinity) *
+          40;
+      // Keep the photograph dominant. The inspector has its own readable
+      // measure and stops growing once it has enough room for field evidence.
+      final inspectorWidth = (available * .40).clamp(
         metrics.minColumnWidth,
-        metrics.readableMax,
+        inspectorMaxWidth,
       );
       final short =
           constraints.maxHeight <
@@ -2282,11 +2329,29 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Expanded(child: _sourcePane(context)),
+            Expanded(
+              child: Surface(
+                key: const ValueKey<String>('review-source-surface'),
+                role: SurfaceRole.matte,
+                radius: context.ui.shape.tile,
+                hairline: true,
+                clip: true,
+                child: _sourcePane(context),
+              ),
+            ),
             SizedBox(width: metrics.gap),
             SizedBox(
               width: inspectorWidth,
-              child: _evidencePane(context, regime),
+              child: Surface(
+                key: const ValueKey<String>('review-inspector-surface'),
+                radius: context.ui.shape.tile,
+                hairline: true,
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.ui.space.s3,
+                  vertical: short ? context.ui.space.s1 : context.ui.space.s4,
+                ),
+                child: _evidencePane(context, regime),
+              ),
             ),
           ],
         ),

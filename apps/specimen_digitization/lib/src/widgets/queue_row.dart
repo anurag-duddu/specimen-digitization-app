@@ -182,27 +182,51 @@ class QueueRow extends StatelessWidget {
   Widget _row(BuildContext context, double available) {
     final UiThemeData ui = context.ui;
     if (concise) {
+      // A list response may have a composite but no contributing signals.
+      // A number without its explanation is not useful evidence to rank by.
       final showScore =
           riskComposite != null &&
+          riskComponents.isNotEmpty &&
           riskCalibrated &&
           riskComposite!.isFinite &&
           riskComposite! >= 0 &&
           riskComposite! <= 100;
-      return UiListRow(
-        size: UiSize.sm,
-        title: title,
-        semanticsLabel: <String>[
-          title,
-          if (showStatus) status.semanticsLabel,
-          if (showScore) 'Risk $riskComposite of 100',
-        ].join(', '),
-        selected: selected,
-        focusNode: focusNode,
-        onPressed: onOpen,
-        leading: thumbnail == null ? null : SpecimenThumbnail(bytes: thumbnail),
-        trailing: showScore
-            ? Text('$riskComposite', style: ui.type.mono.identifier)
-            : null,
+      final updated = updatedAt;
+      final supporting = <String>[
+        if (showStatus) status.label,
+        if (reason.isNotEmpty) reason,
+        if (updated != null) 'Updated ${relativeAge(updated, now: now)}',
+      ];
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: ui.color.hairline)),
+        ),
+        child: UiListRow(
+          title: title,
+          subtitle: supporting.isEmpty ? null : supporting.join(' · '),
+          semanticsLabel: <String>[
+            title,
+            if (showStatus) status.semanticsLabel,
+            if (reason.isNotEmpty) reason,
+            if (updated != null) 'updated ${absoluteTime(updated)}',
+            if (showScore)
+              'Risk $riskComposite of 100, ${riskComponents.join(', ')}',
+          ].join(', '),
+          selected: selected,
+          focusNode: focusNode,
+          onPressed: onOpen,
+          leading: thumbnail == null
+              ? null
+              : SpecimenThumbnail(bytes: thumbnail),
+          trailing: showScore
+              ? RiskMeter(
+                  composite: riskComposite,
+                  components: riskComponents,
+                  calibrated: riskCalibrated,
+                  compact: true,
+                )
+              : null,
+        ),
       );
     }
     final bool beside = !available.isFinite || available >= _metaBesideTextMin;

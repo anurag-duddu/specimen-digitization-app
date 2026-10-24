@@ -375,7 +375,18 @@ class _AppShellState extends State<AppShell> {
   }) => UiTopBar(
     key: const ValueKey<String>('shell-top-bar'),
     form: UiTopBarForm.workspace,
-    leading: _CollectionSwitcher(controller: controller, sheet: true),
+    leading: Row(
+      children: [
+        Padding(
+          padding: EdgeInsetsDirectional.only(start: context.ui.space.s2),
+          child: UiMark(label: AppShell.markLabel, size: context.ui.space.s8),
+        ),
+        SizedBox(width: context.ui.space.s2),
+        Expanded(
+          child: _CollectionSwitcher(controller: controller, sheet: true),
+        ),
+      ],
+    ),
     actions: <Widget>[
       // Only the Specimens list has a selection to finish.
       if (listRoute) ?widget.specimensActions,
@@ -561,6 +572,13 @@ class _AppShellState extends State<AppShell> {
                   padding: EdgeInsets.symmetric(vertical: ui.space.s2),
                   child: Column(
                     children: <Widget>[
+                      Padding(
+                        padding: EdgeInsets.symmetric(vertical: ui.space.s4),
+                        child: UiMark(
+                          label: AppShell.markLabel,
+                          size: ui.space.s8,
+                        ),
+                      ),
                       UiRail(
                         destinations: AppShell.destinations,
                         currentIndex: widget.destination.index,

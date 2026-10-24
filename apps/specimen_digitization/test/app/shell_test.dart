@@ -56,6 +56,11 @@ void main() {
         mobile ? findsNothing : findsOneWidget,
       );
       expect(find.byType(UiPillNav), findsNothing);
+      expect(find.byType(UiMark), findsOneWidget);
+      expect(
+        tester.widget<UiMark>(find.byType(UiMark)).label,
+        AppShell.markLabel,
+      );
       // The docked destinations are the design system's rail, inside the
       // rail column and in the frame's navigation slot, not a copy of it.
       expect(find.byType(UiRail), mobile ? findsNothing : findsOneWidget);
@@ -112,7 +117,7 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(find.text('No record open'), findsOneWidget);
+      expect(find.text('From specimens to knowledge.'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     },
   );

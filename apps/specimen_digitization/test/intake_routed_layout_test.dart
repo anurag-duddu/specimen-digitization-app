@@ -105,12 +105,12 @@ void main() {
         await tester.tap(uiDestination('Specimens'));
         await tester.pumpAndSettle();
         final specimensCollection = tester.getRect(_collection);
-        final search = tester.getRect(uiField('Search by specimen ID'));
+        final queueHeading = tester.getRect(find.text('Review queue'));
         expect(specimensCollection.top, collection.top);
         expect(specimensCollection.height, collection.height);
         expect(
           title.top - collection.bottom,
-          search.top - specimensCollection.bottom,
+          queueHeading.top - specimensCollection.bottom,
           reason: 'both first regions use the same gap below collection',
         );
         await tester.tap(uiDestination('Intake'));

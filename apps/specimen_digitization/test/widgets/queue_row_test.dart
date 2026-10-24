@@ -219,6 +219,100 @@ void main() {
     }
   });
 
+  testWidgets('concise rows keep the issue and an absolute accessible time', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await pumpComponent(
+      tester,
+      SizedBox(
+        width: 280,
+        child: QueueRow(
+          id: 'fixture-001',
+          title: 'FMNH-0001',
+          reason: 'Two readings disagree on the locality',
+          status: SpecimenStatus.needsReview,
+          concise: true,
+          showStatus: false,
+          updatedAt: _updated,
+          now: _now,
+          onOpen: () {},
+        ),
+      ),
+    );
+    expect(
+      find.text('Two readings disagree on the locality · Updated 18 h'),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel(
+        RegExp(
+          r'FMNH-0001, Two readings disagree on the locality, updated 13 Sep 2026, 14:32 CDT',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Needs a human'), findsNothing);
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets('concise rows omit a composite without contributing signals', (
+    tester,
+  ) async {
+    await pumpComponent(
+      tester,
+      SizedBox(
+        width: 280,
+        child: QueueRow(
+          id: 'fixture-001',
+          title: 'FMNH-0001',
+          reason: '',
+          status: SpecimenStatus.needsReview,
+          concise: true,
+          showStatus: false,
+          riskComposite: 62,
+          onOpen: () {},
+        ),
+      ),
+    );
+    expect(find.text('62'), findsNothing);
+    expect(find.byType(RiskMeter), findsNothing);
+    expect(find.text('Not measured'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'concise rows fit a scaled narrow list without hiding its issue',
+    (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      for (final theme in productThemes.values) {
+        await pumpComponent(
+          tester,
+          SizedBox(
+            width: 280,
+            child: QueueRow(
+              id: 'fixture-001',
+              title: 'FMNH-0001',
+              reason: 'A label needs another reading',
+              status: SpecimenStatus.unknown,
+              concise: true,
+              onOpen: () {},
+            ),
+          ),
+          theme: theme,
+        );
+        expect(
+          find.text('State unknown · A label needs another reading'),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+        await expectAccessible(tester);
+      }
+    },
+  );
+
   for (final double width in <double>[320, 360, 500]) {
     testWidgets('fits at $width dp with no overflow', (
       WidgetTester tester,

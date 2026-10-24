@@ -55,9 +55,10 @@ Future<TestSession> pumpQueue(
   WidgetTester tester,
   ScriptedRepository repository, {
   bool settle = true,
+  Size window = queueWindow,
 }) async {
   tester.view.devicePixelRatio = 1;
-  tester.view.physicalSize = queueWindow;
+  tester.view.physicalSize = window;
   addTearDown(tester.view.reset);
   final TestSession session = TestSession();
   addTearDown(session.controller.close);
@@ -73,6 +74,55 @@ String locationOf(WidgetTester tester) => GoRouter.of(
 ).routerDelegate.currentConfiguration.uri.toString();
 
 void main() {
+  testWidgets('wide queue introduces review and opens the real first record', (
+    tester,
+  ) async {
+    final repository = ScriptedRepository()
+      ..results = const [
+        Specimen({
+          'specimen_id': 'SD-1',
+          'filename': 'First record',
+          'disposition': 'needs_human_review',
+        }),
+        Specimen({
+          'specimen_id': 'SD-2',
+          'filename': 'Second record',
+          'disposition': 'needs_human_review',
+        }),
+      ];
+    await pumpQueue(tester, repository, window: const Size(1440, 900));
+    expect(find.text('From specimens to knowledge.'), findsOneWidget);
+    expect(find.text('2 records are loaded in this view.'), findsOneWidget);
+    expect(find.text('Review queue'), findsOneWidget);
+    await tester.tap(uiButton('Open first record'));
+    await tester.pumpAndSettle();
+    expect(locationOf(tester), endsWith('/queue/SD-1'));
+    expect(find.byType(WorkbenchScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a loading wide queue does not claim the collection is empty', (
+    tester,
+  ) async {
+    final repository = ScriptedRepository()..gate = Completer<void>();
+    await pumpQueue(
+      tester,
+      repository,
+      window: const Size(1440, 900),
+      settle: false,
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('The specimen list is loading.'), findsOneWidget);
+    expect(find.text('Open first record'), findsNothing);
+    expect(find.text('No specimens yet'), findsNothing);
+    repository.gate!.complete();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   group('queue status controls', () {
     testWidgets('supported status controls retain their backend meanings', (
       tester,

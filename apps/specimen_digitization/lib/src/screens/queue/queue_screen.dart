@@ -94,24 +94,105 @@ class QueueScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shell = AppSidebarScope.maybeOf(context);
-    return shell?.mobileSpecimens ?? const _NoRecordSelected();
+    return shell?.mobileSpecimens ?? const _ReviewWelcome();
   }
 }
 
-class _NoRecordSelected extends StatelessWidget {
-  const _NoRecordSelected();
+/// The queue's wide workspace, before a photograph is opened.
+///
+/// The list remains in its retained sidebar. Its count describes only the
+/// current response, never an invented total for the collection.
+class _ReviewWelcome extends StatelessWidget {
+  const _ReviewWelcome();
+
+  Future<void> _openFirst(
+    BuildContext context,
+    WorkspaceController controller,
+  ) async {
+    final scope = controller.scope;
+    final specimen = controller.items.firstOrNull;
+    if (scope == null || specimen == null) return;
+    if (!await controller.mayLeaveReview() ||
+        !context.mounted ||
+        !identical(scope, controller.scope)) {
+      return;
+    }
+    context.go(
+      AppRoutes.specimenOf(encodeCollectionKey(scope.key), specimen.id),
+    );
+  }
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: context.ui.color.ground,
-    child: const Center(
-      child: UiEmptyState(
-        icon: UiIcons.record,
-        title: 'No record open',
-        body: 'Choose a specimen to review.',
+  Widget build(BuildContext context) {
+    final controller = WorkspaceScope.of(context);
+    final ui = context.ui;
+    final count = controller.items.length;
+    final summary = !controller.listAnswered
+        ? controller.error?.message ?? 'The specimen list is loading.'
+        : count == 0
+        ? 'No records are loaded in this view.'
+        : '${count == 1 ? '1 record is' : '$count records are'} loaded in this view.'
+              '${controller.nextCursor == null ? '' : ' More records are available in the list.'}';
+    return ColoredBox(
+      color: ui.color.ground,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final layout = UiLayoutMetrics.fromConstraints(
+            constraints,
+            textScaler: MediaQuery.textScalerOf(context),
+          );
+          return ListView(
+            padding: EdgeInsets.all(layout.gutter),
+            children: [
+              Align(
+                alignment: AlignmentDirectional.topStart,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: layout.readableMax),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      UiBrandHero(
+                        key: const ValueKey('queue-review-welcome'),
+                        title: 'From specimens to knowledge.',
+                        eyebrow: 'Your review workspace',
+                        description:
+                            'Compare photographs and readings. Resolve what needs attention. Keep the evidence behind every decision.',
+                        actions: [
+                          if (count > 0)
+                            UiButton(
+                              label: 'Open first record',
+                              leading: UiIcons.record,
+                              onPressed: controller.loading
+                                  ? null
+                                  : () => unawaited(
+                                      _openFirst(context, controller),
+                                    ),
+                            ),
+                        ],
+                      ),
+                      SizedBox(height: ui.space.s6),
+                      UiSectionHeader(
+                        title: 'Choose your next specimen',
+                        role: UiSectionHeaderRole.card,
+                        supporting: summary,
+                      ),
+                      SizedBox(height: ui.space.s4),
+                      Text(
+                        'The list keeps your place while you review. Search by specimen ID, or switch views to find the next record.',
+                        style: ui.type.bodySmall.copyWith(
+                          color: ui.color.inkSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
-    ),
-  );
+    );
+  }
 }
 
 /// Commands routed from the common workspace shortcut scope to the queue.
@@ -662,6 +743,11 @@ class _QueuePaneState extends State<QueuePane> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
+                const UiSectionHeader(
+                  title: 'Review queue',
+                  role: UiSectionHeaderRole.card,
+                ),
+                SizedBox(height: ui.space.s3),
                 _SearchRow(
                   controller: _search,
                   focusNode: _searchFocus,
@@ -859,6 +945,9 @@ class _QueuePaneState extends State<QueuePane> {
               key: ValueKey<String>('queue-row-${items[index].id}'),
               child: _QueueListRow(
                 specimen: items[index],
+                showStatus:
+                    controller.disposition.isEmpty ||
+                    items[index].disposition != controller.disposition,
                 selected: _selection.isSelected(items[index]),
                 disabledReason: controller.mutating || _checkingDecision
                     ? 'Wait for the current selection check or decision to finish.'
@@ -893,6 +982,7 @@ class _QueuePaneState extends State<QueuePane> {
 class _QueueListRow extends StatelessWidget {
   const _QueueListRow({
     required this.specimen,
+    required this.showStatus,
     required this.selected,
     required this.disabledReason,
     required this.showCheckbox,
@@ -905,6 +995,7 @@ class _QueueListRow extends StatelessWidget {
   });
 
   final Specimen specimen;
+  final bool showStatus;
   final bool selected;
   final String? disabledReason;
   final bool showCheckbox;
@@ -929,7 +1020,7 @@ class _QueueListRow extends StatelessWidget {
       id: specimen.id,
       title: specimen.displayReference,
       concise: true,
-      showStatus: false,
+      showStatus: showStatus,
       reason: queueReason(specimen),
       status: SpecimenStatus.ofRecord(
         disposition: specimen.disposition,
@@ -938,10 +1029,9 @@ class _QueueListRow extends StatelessWidget {
       riskComposite: specimen.data['risk'] is num
           ? specimen.data['risk'] as num
           : null,
-      // The search endpoint answers a bare composite and leaves the
-      // contributing signals on the record. The compact meter never draws
-      // them, so the row says nothing rather than naming a signal the list
-      // response did not carry.
+      // The list leaves contributing signals on the record. A bare score
+      // cannot explain itself, so concise rows omit it until those signals
+      // are available instead of inventing a justification.
       riskComponents: const <String>[],
       riskCalibrated: specimen.data['risk_calibrated'] == true,
       updatedAt: queueUpdatedAt(specimen),
@@ -1184,7 +1274,7 @@ class _StatusControlsState extends State<_StatusControls> {
           decoration: ShapeDecoration(
             shape: Squircle.border(ui.shape.inner),
             color: selected
-                ? ui.color.ground
+                ? ui.brand.secondary.fill
                 : ui.color.paper.withValues(alpha: 0),
           ),
           child: ConstrainedBox(
@@ -1196,10 +1286,23 @@ class _StatusControlsState extends State<_StatusControls> {
                     ? MainAxisAlignment.start
                     : MainAxisAlignment.center,
                 children: [
-                  UiIcon(view.icon, size: UiIconSize.inline),
+                  UiIcon(
+                    view.icon,
+                    size: UiIconSize.inline,
+                    color: selected
+                        ? ui.brand.secondary.content
+                        : ui.color.inkSecondary,
+                  ),
                   if (selected) ...[
                     SizedBox(width: ui.space.s2),
-                    Expanded(child: Text(view.label, style: ui.type.label)),
+                    Expanded(
+                      child: Text(
+                        view.label,
+                        style: ui.type.label.copyWith(
+                          color: ui.brand.secondary.content,
+                        ),
+                      ),
+                    ),
                   ],
                 ],
               ),
