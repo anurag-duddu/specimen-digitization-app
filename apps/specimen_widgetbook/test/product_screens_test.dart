@@ -409,4 +409,50 @@ void main() {
       await closeProduct(tester);
     }
   });
+
+  testWidgets('Workbench preview uses the production evidence disclosures', (
+    tester,
+  ) async {
+    await showProduct(tester, ProductPreviewCase.workbench);
+    Finder disclosure(String title) => find.byWidgetPredicate(
+      (widget) => widget is UiDisclosure && widget.title == title,
+    );
+    Future<void> expand(String title) async {
+      final header = find
+          .descendant(
+            of: disclosure(title),
+            matching: find.byWidgetPredicate(
+              (widget) => widget is Pressable && widget.onPressed != null,
+            ),
+          )
+          .first;
+      await tester.ensureVisible(header);
+      await tester.pumpAndSettle();
+      await tester.tap(header);
+      await tester.pumpAndSettle();
+    }
+
+    await expand('City');
+    expect(disclosure('Evidence details'), findsOneWidget);
+    await expand('Evidence details');
+    final details = disclosure('Evidence details');
+    for (final reader in ['Synthetic reader A', 'Synthetic reader B']) {
+      expect(
+        find.descendant(
+          of: details,
+          matching: find.text('Source reader: $reader'),
+        ),
+        findsOneWidget,
+      );
+    }
+    await expand('City');
+    await expand('Date visited from');
+    expect(find.text('1912'), findsNothing);
+    expect(find.text('1917'), findsNothing);
+    await expand('Label readings');
+    expect(find.text('1912'), findsOneWidget);
+    expect(find.text('1917'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await closeProduct(tester);
+  });
 }

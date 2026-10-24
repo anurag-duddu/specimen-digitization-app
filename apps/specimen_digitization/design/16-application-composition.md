@@ -32,12 +32,21 @@ leads according to available width, the alternative stays visible, and named
 remote sources sit in a disclosure. The saved-batch dialog has an explicit
 Close action and returns focus to its trigger when dismissed.
 
-Field observations remain visible as written. Retained source summaries and
-responses are distinct evidence, even when they resemble those observations;
-place them behind named Evidence details with explicit labels tied to each
-source label (or Record when no label is retained). When there is
-no observation, the source summary remains visible. Never guess equivalence
+One field reading remains visible as written; multiple readings are peers in
+a counted Label readings disclosure. Preserve each observation's identity,
+including when wording matches, and attribute it only through retained source
+references. A decided transcript must not be presented as a reader's raw text.
+Retained source summaries and responses are distinct evidence: place multiple
+summaries, or summaries alongside readings, behind named Evidence details.
+One summary without a reading remains visible. Keep each source's label and
+reader identifiable; missing metadata stays explicit. Never guess equivalence
 from punctuation or discard a conflicting source to simplify presentation.
+
+Technical detail viewers bound the displayed text by both character and line
+count, so large retained payloads cannot monopolize layout or accessibility
+traversal. A shortened preview says so and exposes one Copy full payload action;
+copying preserves the complete text. Close remains reachable at phone widths
+and enlarged text sizes.
 
 Counts describe the response actually loaded. Missing scores, thumbnails and
 timestamps remain missing; a page layout must not invent them. Existing roles,
