@@ -56,6 +56,16 @@ const Map<String, String> glossary = <String, String>{
   'processing blocked':
       'Processing stopped before it finished, which is an operational fault '
       'rather than a finding about the specimen.',
+  'retry scheduled':
+      'Processing stopped and will try again on its own at the time shown, '
+      'which is an operational fault rather than a finding about the '
+      'specimen.',
+  'paused':
+      'Processing is paused on this record, which stops the run without '
+      'saying anything about the specimen.',
+  'cancelled':
+      'Processing was cancelled on this record, which ends the run without '
+      'saying anything about the specimen.',
   'state unknown':
       'The server reported a state this client has no treatment for, so it '
       'is shown rather than hidden.',
