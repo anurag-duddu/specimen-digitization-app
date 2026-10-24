@@ -1478,8 +1478,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                 key: ValueKey('record-requirements:$_requirementsReveal'),
                 initiallyExpanded: _requirementsReveal > 0,
                 title: 'Record review requirements',
-                summary:
-                    'Some requirements still need attention before clearance.',
+                summary: recordIssues.first.message,
+                hideSummaryWhenExpanded: true,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisSize: MainAxisSize.min,
@@ -1780,29 +1780,25 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     );
   }
 
-  /// The desk's inspector names the review and its retained contents once.
-  /// This is content, so it travels with the inspector on short windows.
+  /// The review task already names the baseline disposition. A changed or
+  /// exceptional state still matters when opening a record directly.
   Widget _reviewOverview(BuildContext context) {
-    final ui = context.ui;
     final record = widget.specimen;
-    final fieldCount = record.fields.length;
-    final labelCount = record.regions.length;
+    final status = SpecimenStatus.ofRecord(
+      disposition: record.disposition,
+      state: record.state,
+    );
     return Padding(
       key: const ValueKey<String>('review-overview'),
-      padding: EdgeInsets.only(bottom: ui.space.s4),
-      child: UiSectionHeader(
-        title: 'Record review',
-        role: UiSectionHeaderRole.section,
-        meta: StatusChip(
-          SpecimenStatus.ofRecord(
-            disposition: record.disposition,
-            state: record.state,
-          ),
-        ),
-        supporting:
-            '$fieldCount ${fieldCount == 1 ? 'field' : 'fields'} · '
-            '$labelCount ${labelCount == 1 ? 'label' : 'labels'}',
+      padding: EdgeInsets.only(
+        bottom: status == SpecimenStatus.needsReview ? 0 : context.ui.space.s3,
       ),
+      child: status == SpecimenStatus.needsReview
+          ? const SizedBox.shrink()
+          : Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: StatusChip(status),
+            ),
     );
   }
 

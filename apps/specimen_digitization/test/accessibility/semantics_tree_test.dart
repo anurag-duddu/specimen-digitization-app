@@ -103,7 +103,7 @@ void main() {
     for (final String name in <String>[
       'Specimens',
       'Intake',
-      'Needs a human',
+      'Needs review',
       'Deferred',
       'Cleared',
       'Account menu',

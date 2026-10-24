@@ -440,7 +440,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
                         ],
                       ),
                     ),
-                    if (c.visible.isNotEmpty) _submissionBar(context),
+                    if (c.visible.isNotEmpty) _submissionBar(context, wide),
                   ],
                 );
               },
@@ -491,6 +491,18 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
     );
   }
 
+  List<IntakeDraftItem> get _attentionPhotos => c.visible
+      .where(
+        (item) =>
+            item.included &&
+            (item.state == 'needs_attention' || item.error != null),
+      )
+      .toList();
+
+  String get _batchStatus => _attentionPhotos.isEmpty
+      ? c.saveLabel
+      : '${_attentionPhotos.length} ${_attentionPhotos.length == 1 ? 'needs' : 'need'} attention';
+
   Widget _header(BuildContext context) {
     final ui = context.ui;
     return Column(
@@ -506,44 +518,28 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
             ),
           )
         else
-          LayoutBuilder(
-            builder: (context, constraints) => UiSectionHeader(
-              title: 'Your batch',
-              role: UiSectionHeaderRole.page,
-              actions: [
-                if (c.visible.isNotEmpty &&
-                    constraints.maxWidth < ui.space.readingMax)
-                  UiIconButton(
-                    icon: UiIcons.history,
-                    semanticsLabel: 'Your batches',
-                    onPressed: _history,
-                  )
-                else
-                  UiButton(
-                    label: 'Your batches',
-                    variant: UiButtonVariant.ghost,
-                    onPressed: _history,
-                  ),
-                if (c.visible.isNotEmpty)
-                  UiButton(
-                    label: 'Add photos',
-                    leading: UiIcons.add,
-                    variant: UiButtonVariant.secondary,
-                    onPressed: _add,
-                  ),
-              ],
-            ),
+          UiSectionHeader(
+            title: 'Your batch',
+            role: UiSectionHeaderRole.section,
+            supporting:
+                '${c.visible.length} ${c.visible.length == 1 ? 'photo' : 'photos'} · $_batchStatus',
+            supportingLiveRegion: true,
+            actions: [
+              UiButton(
+                label: 'Batches',
+                semanticsLabel: 'Your batches',
+                size: UiSize.sm,
+                variant: UiButtonVariant.ghost,
+                onPressed: _history,
+              ),
+              UiButton(
+                label: 'Add photos',
+                size: UiSize.sm,
+                variant: UiButtonVariant.secondary,
+                onPressed: _add,
+              ),
+            ],
           ),
-        if (c.visible.isNotEmpty) ...[
-          SizedBox(height: ui.space.s2),
-          Semantics(
-            liveRegion: true,
-            child: Text(
-              '${c.visible.length} ${c.visible.length == 1 ? 'photo' : 'photos'} · ${c.saveLabel}',
-              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-            ),
-          ),
-        ],
         if (c.preparingFiles || c.addingSources) ...[
           SizedBox(height: ui.space.s2),
           Semantics(
@@ -619,7 +615,7 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
     );
   }
 
-  Widget _submissionBar(BuildContext context) {
+  Widget _submissionBar(BuildContext context, bool wide) {
     final ui = context.ui;
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -640,6 +636,15 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
                 variant: UiButtonVariant.secondary,
                 onPressed: _editSelected,
               )
+            else if (_attentionPhotos.isNotEmpty)
+              UiButton(
+                label:
+                    'Review ${_attentionPhotos.length} ${_attentionPhotos.length == 1 ? 'photo' : 'photos'}',
+                variant: c.readyCount == 0
+                    ? UiButtonVariant.primary
+                    : UiButtonVariant.secondary,
+                onPressed: () => _open(_attentionPhotos.first, wide),
+              )
             else
               Text(
                 c.readyCount == c.visible.length
@@ -647,21 +652,22 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
                     : '${c.visible.length - c.readyCount} ${c.visible.length - c.readyCount == 1 ? 'photo' : 'photos'} will remain in your draft.',
                 style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
               ),
-            UiButton(
-              label:
-                  'Submit ${c.readyCount} ${c.readyCount == 1 ? 'photo' : 'photos'}',
-              leading: UiIcons.cloudUpload,
-              loading: c.submitting,
-              onPressed:
-                  c.readyCount == 0 || c.preparingFiles || c.addingSources
-                  ? null
-                  : _submit,
-              disabledReason: c.preparingFiles || c.addingSources
-                  ? 'Wait for the selected photos to be added.'
-                  : c.readyCount == 0
-                  ? 'Add readable photos to submit.'
-                  : null,
-            ),
+            if (c.readyCount > 0 || _attentionPhotos.isEmpty)
+              UiButton(
+                label:
+                    'Submit ${c.readyCount} ${c.readyCount == 1 ? 'photo' : 'photos'}',
+                leading: UiIcons.cloudUpload,
+                loading: c.submitting,
+                onPressed:
+                    c.readyCount == 0 || c.preparingFiles || c.addingSources
+                    ? null
+                    : _submit,
+                disabledReason: c.preparingFiles || c.addingSources
+                    ? 'Wait for the selected photos to be added.'
+                    : c.readyCount == 0
+                    ? 'Add readable photos to submit.'
+                    : null,
+              ),
           ],
         ),
       ),
@@ -671,102 +677,65 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
   Widget _empty(BuildContext context, bool dragging) {
     final ui = context.ui;
     final cameraFirst = WindowClass.of(context).isCompact;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        UiBrandHero(
-          title: dragging ? 'Drop photos into your batch' : 'Add photos',
-          padding: EdgeInsets.all(ui.space.s4),
-          actions: [
-            UiButton(
-              label: cameraFirst ? 'Take photos' : 'Choose files',
-              leading: cameraFirst ? UiIcons.camera : UiIcons.uploadFile,
-              onPressed: cameraFirst ? _camera : _files,
+    return Align(
+      alignment: AlignmentDirectional.topStart,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: ui.space.readingMax),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UiSectionHeader(
+              title: dragging ? 'Drop photos into your batch' : 'Add photos',
+              role: UiSectionHeaderRole.page,
+              supporting:
+                  'Add up to 500 photos to a private draft. Review them before submitting.',
             ),
-            UiButton(
-              label: cameraFirst ? 'Choose files' : 'Take photos',
-              leading: cameraFirst ? UiIcons.uploadFile : UiIcons.camera,
-              variant: UiButtonVariant.secondary,
-              onPressed: cameraFirst ? _files : _camera,
+            SizedBox(height: ui.space.s6),
+            Wrap(
+              spacing: ui.space.s3,
+              runSpacing: ui.space.s3,
+              children: [
+                UiButton(
+                  label: cameraFirst ? 'Take photos' : 'Choose files',
+                  leading: cameraFirst ? UiIcons.camera : UiIcons.uploadFile,
+                  onPressed: cameraFirst ? _camera : _files,
+                ),
+                UiButton(
+                  label: cameraFirst ? 'Choose files' : 'Take photos',
+                  leading: cameraFirst ? UiIcons.uploadFile : UiIcons.camera,
+                  variant: UiButtonVariant.secondary,
+                  onPressed: cameraFirst ? _files : _camera,
+                ),
+              ],
+            ),
+            SizedBox(height: ui.space.s6),
+            UiDisclosure(
+              title: 'Import from a source',
+              summary: 'Google Drive, Dropbox, storage or links',
+              hideSummaryWhenExpanded: true,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final source in [
+                    ('Google Drive', 'google_drive'),
+                    ('Dropbox', 'dropbox'),
+                    ('Storage', 'storage'),
+                    ('Import links', 'url'),
+                  ])
+                    UiListRow(
+                      title: source.$1,
+                      trailing: const UiIcon(
+                        UiIcons.next,
+                        size: UiIconSize.inline,
+                      ),
+                      onPressed: () => _source(source.$2),
+                    ),
+                ],
+              ),
             ),
           ],
         ),
-        SizedBox(height: ui.space.s4),
-        Text(
-          'Capture or import up to 500 photos. Review your private draft before you submit.',
-          style: ui.type.body.copyWith(color: ui.color.inkSecondary),
-        ),
-        SizedBox(height: ui.space.s6),
-        const UiSectionHeader(
-          title: 'Import from a source',
-          supporting: 'Photos from every source join the same draft.',
-        ),
-        SizedBox(height: ui.space.s4),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final layout = UiLayoutMetrics.fromConstraints(
-              constraints,
-              textScaler: MediaQuery.textScalerOf(context),
-            );
-            final columns = layout.columns(maxColumns: 2);
-            final width =
-                (constraints.maxWidth - ui.space.s4 * (columns - 1)) / columns;
-            return Wrap(
-              spacing: ui.space.s4,
-              runSpacing: ui.space.s4,
-              children: [
-                for (final source in [
-                  (
-                    'Google Drive',
-                    'google_drive',
-                    'Browse photos and folders.',
-                  ),
-                  ('Dropbox', 'dropbox', 'Choose photos from your account.'),
-                  (
-                    'Storage',
-                    'storage',
-                    'Browse registered collection storage.',
-                  ),
-                  ('Import links', 'url', 'Paste photo or folder links.'),
-                ])
-                  SizedBox(
-                    width: width,
-                    child: Surface(
-                      hairline: true,
-                      radius: ui.shape.tile,
-                      padding: EdgeInsets.all(ui.space.s4),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          UiButton(
-                            label: source.$1,
-                            leading: source.$2 == 'url'
-                                ? UiIcons.sourceImport
-                                : UiIcons.source,
-                            variant: UiButtonVariant.secondary,
-                            onPressed: () => _source(source.$2),
-                          ),
-                          SizedBox(height: ui.space.s2),
-                          Text(
-                            source.$3,
-                            style: ui.type.bodySmall.copyWith(
-                              color: ui.color.inkSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-        SizedBox(height: ui.space.s6),
-        Text(
-          'Add photos · Review your batch · Submit for processing',
-          style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-        ),
-      ],
+      ),
     );
   }
 
@@ -805,6 +774,8 @@ class _BulkIntakeScreenState extends State<BulkIntakeScreen>
             name: item.name,
             selected: c.selected.contains(item.id),
             included: item.included,
+            showStatus:
+                item.state != 'ready' || item.error != null || item.sensitive,
             status:
                 item.error ??
                 (item.sensitive

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,7 +87,7 @@ void main() {
           'Synthetic queue failure. Retry to load the example. '
           'No records have been loaded yet.',
         ),
-        findsNWidgets(2),
+        findsOneWidget,
       );
       await WorkspaceScope.read(
         tester.element(find.byType(QueueScreen)),
@@ -95,6 +97,71 @@ void main() {
       expect(find.textContaining('Synthetic queue failure'), findsNothing);
       expect(tester.takeException(), isNull);
       await closeProduct(tester);
+    },
+  );
+  testWidgets(
+    'asset completion before the next frame preserves the initial route',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(1440, 900);
+      addTearDown(tester.view.reset);
+      final pixels = ByteData.sublistView(
+        File('assets/synthetic-label.png').readAsBytesSync(),
+      );
+      for (final example in [
+        ProductPreviewCase.intakeSaved,
+        ProductPreviewCase.workbench,
+      ]) {
+        final asset = Completer<ByteData?>();
+        tester.binding.defaultBinaryMessenger.setMockMessageHandler(
+          'flutter/assets',
+          (message) {
+            expect(
+              utf8.decode(
+                message!.buffer.asUint8List(
+                  message.offsetInBytes,
+                  message.lengthInBytes,
+                ),
+              ),
+              'assets/synthetic-label.png',
+            );
+            return asset.future;
+          },
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMessageHandler(
+            'flutter/assets',
+            null,
+          ),
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, _) => SpecimenEnvironmentScope(
+              setting: const SpecimenEnvironment(reduceMotion: true),
+              child: ProductPreview(key: ValueKey(example), example: example),
+            ),
+          ),
+        );
+        expect(find.byType(BulkIntakeScreen), findsNothing);
+        expect(find.byType(WorkbenchScreen), findsNothing);
+        // Match a browser asset callback between frames: drain all immediately
+        // answered repository futures before the newly scheduled frame mounts
+        // the inner Router. Reconfiguring an unmounted router loses its target.
+        asset.complete(pixels);
+        await tester.idle();
+        await tester.pumpAndSettle();
+        if (example == ProductPreviewCase.intakeSaved) {
+          expect(find.byType(BulkIntakeScreen), findsOneWidget);
+          expect(find.text('synthetic-label.png'), findsWidgets);
+          expect(button('Retry saving'), findsNothing);
+        } else {
+          expect(find.byType(WorkbenchScreen), findsOneWidget);
+          expect(find.byType(ReviewWorkbench), findsOneWidget);
+        }
+        expect(find.byType(QueueScreen), findsNothing);
+        expect(tester.takeException(), isNull);
+        await closeProduct(tester);
+      }
     },
   );
   testWidgets('empty and saved Intake initialize without a save failure', (
@@ -273,7 +340,7 @@ void main() {
       final photo = find.byWidgetPredicate(
         (widget) =>
             widget is Pressable &&
-            widget.semanticsLabel == 'Review synthetic-label.png',
+            widget.semanticsLabel == 'Review synthetic-label.png. Saved',
       );
       await tester.ensureVisible(photo);
       await tester.tap(photo);

@@ -48,31 +48,23 @@ class _SidebarHostState extends State<_SidebarHost> {
   );
 }
 
-/// The leading bar of the row labelled [label], drawn or not.
-///
-/// `UiListRow` paints the bar as a positioned `ColoredBox` in the row's own
-/// stack, and only on a selected row; the gutter it sits in is reserved on
-/// every row by padding, so nothing shifts when a row becomes current.
-Finder _bar(WidgetTester tester, String label) => find.descendant(
-  of: find.bySemanticsLabel(label),
-  matching: find.byWidgetPredicate(
-    (Widget widget) => widget is ColoredBox && widget.child == null,
-  ),
-);
-
-/// The fill behind the row labelled [label].
-Color _fill(WidgetTester tester, String label) => tester
-    .widget<ColoredBox>(
-      find
-          .descendant(
-            of: find.bySemanticsLabel(label),
-            matching: find.byWidgetPredicate(
-              (Widget widget) => widget is ColoredBox && widget.child != null,
-            ),
-          )
-          .first,
-    )
-    .color;
+/// Selection surface, distinct from the independent keyboard focus ring.
+BoxDecoration _surface(WidgetTester tester, String label) =>
+    tester
+            .widget<DecoratedBox>(
+              find
+                  .descendant(
+                    of: find.bySemanticsLabel(label),
+                    matching: find.byWidgetPredicate(
+                      (Widget widget) =>
+                          widget is DecoratedBox &&
+                          widget.decoration is BoxDecoration,
+                    ),
+                  )
+                  .first,
+            )
+            .decoration
+        as BoxDecoration;
 
 /// The glyph of the row labelled [label].
 IconData _glyph(WidgetTester tester, String label) => tester
@@ -87,6 +79,21 @@ IconData _glyph(WidgetTester tester, String label) => tester
     .icon!;
 
 void main() {
+  testWidgets('selected navigation text meets contrast in both modes', (
+    tester,
+  ) async {
+    for (final brightness in Brightness.values) {
+      await tester.pumpWidget(
+        uiHarness(
+          brightness: brightness,
+          child: const _SidebarHost(destinations: threeDestinations),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+    }
+  });
+
   testWidgets('a pointer selects the row it lands on', (
     WidgetTester tester,
   ) async {
@@ -125,66 +132,67 @@ void main() {
     expect(selected, <int>[1]);
   });
 
-  testWidgets('it is 280 dp wide and carries one matte flat surface', (
+  testWidgets('the pane is flat and scales its label measure with text', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
       uiHarness(child: const _SidebarHost(destinations: threeDestinations)),
     );
     await tester.pumpAndSettle();
-    expect(tester.getSize(find.byType(UiSidebar)).width, 280);
-    expect(UiSidebar.widthOf(tester.element(find.byType(UiSidebar))), 280);
+    final normalWidth = tester.getSize(find.byType(UiSidebar)).width;
+    expect(normalWidth, lessThan(280));
     expect(glassPaneCount(), 0);
-    expect(
-      find.byWidgetPredicate(
-        (Widget widget) =>
-            widget is GlassSurface && widget.level == GlassLevel.flat,
+    expect(find.byType(GlassSurface), findsNothing);
+    await tester.pumpWidget(
+      uiHarness(
+        textScaler: const TextScaler.linear(2),
+        child: const _SidebarHost(destinations: threeDestinations),
       ),
-      findsOneWidget,
     );
+    await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.byType(UiSidebar)).width,
+      greaterThan(normalWidth),
+    );
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the current row carries the bar, the fill and the fill glyph', (
+  testWidgets('selection is a quiet fill and weight without a stripe or jump', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
       uiHarness(child: const _SidebarHost(destinations: threeDestinations)),
     );
     await tester.pumpAndSettle();
-    final UiThemeData ui = tester.element(find.byType(UiSidebar)).ui;
-
-    expect(_bar(tester, 'Queue'), findsOneWidget);
-    expect(
-      tester.widget<ColoredBox>(_bar(tester, 'Queue').first).color,
-      ui.color.ink,
-    );
-    expect(
-      tester.getSize(_bar(tester, 'Queue').first).width,
-      ui.shape.stroke.bar,
-    );
-    expect(tester.getSize(_bar(tester, 'Queue').first).width, 3);
-    expect(
-      _fill(tester, 'Queue'),
-      ui.color.stateLayer(UiListRowStyle.selectedFillOpacity),
-      reason: 'a selected row fills ink at 6 percent (10 section 4.5)',
-    );
-    expect(_bar(tester, 'Intake'), findsNothing);
-    expect(_fill(tester, 'Intake').a, 0);
-    expect(_glyph(tester, 'Queue'), UiIcons.queue.filled);
+    expect(_surface(tester, 'Queue').color, isNotNull);
+    expect(_surface(tester, 'Queue').border, isNull);
+    expect(_surface(tester, 'Intake').color, isNull);
+    expect(_glyph(tester, 'Queue'), UiIcons.queue.glyph);
     expect(_glyph(tester, 'Intake'), UiIcons.intake.glyph);
-
-    // The bar's gutter is reserved whether or not the bar is drawn, so a row
-    // becoming current never shifts its words sideways.
-    final double before = tester.getTopLeft(find.text('Intake')).dx;
+    final before = tester.getTopLeft(find.text('Intake'));
     await tester.tap(find.bySemanticsLabel('Intake'));
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.text('Intake')).dx, before);
+    expect(tester.getTopLeft(find.text('Intake')), before);
+    expect(_surface(tester, 'Intake').color, isNotNull);
+    expect(_surface(tester, 'Intake').border, isNull);
+    expect(_surface(tester, 'Queue').color, isNull);
     expect(
-      tester.widget<ColoredBox>(_bar(tester, 'Intake').first).color,
-      ui.color.ink,
+      tester.widget<Text>(find.text('Intake')).style!.fontWeight,
+      FontWeight.w600,
     );
-    expect(_glyph(tester, 'Intake'), UiIcons.intake.filled);
-    expect(_bar(tester, 'Queue'), findsNothing);
+    final icon = tester.widget<Icon>(
+      find
+          .descendant(
+            of: find.bySemanticsLabel('Intake'),
+            matching: find.byType(Icon),
+          )
+          .first,
+    );
+    expect(icon.size, UiIconSize.inline.dimension);
+    expect(
+      tester.getSize(find.bySemanticsLabel('Intake')).height,
+      greaterThanOrEqualTo(48),
+    );
   });
 
   testWidgets('the header sits above the rows and the footer below', (
@@ -300,15 +308,14 @@ void main() {
     expect(find.text('Specimen Digitization'), findsOneWidget);
     expect(find.text('Signed in as a reviewer'), findsOneWidget);
 
-    // The last destination is off the bottom of the list and reachable by
-    // scrolling rather than lost with the pane clipped over it.
+    // The entire pane scrolls, including account/footer content.
     await tester.drag(
       find.byType(SingleChildScrollView),
       const Offset(0, -400),
     );
     await tester.pumpAndSettle();
     expect(
-      tester.getRect(find.bySemanticsLabel('Account')).bottom,
+      tester.getRect(find.text('Signed in as a reviewer')).bottom,
       lessThanOrEqualTo(tester.getRect(find.byType(UiSidebar)).bottom),
     );
   });

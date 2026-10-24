@@ -46,6 +46,38 @@ Rect _visibleContents(WidgetTester tester, String label) {
 }
 
 void main() {
+  testWidgets(
+    'labelled glyphs follow text size without growing the hit box alone',
+    (tester) async {
+      for (final size in UiSize.values) {
+        for (final scale in [1.0, 2.0]) {
+          await tester.pumpWidget(
+            uiHarness(
+              textScaler: TextScaler.linear(scale),
+              child: UiButton(
+                label: 'Save',
+                size: size,
+                leading: UiIcons.save,
+                onPressed: _noop,
+              ),
+            ),
+          );
+          await tester.pump();
+          final glyph = tester.getRect(find.byType(UiIcon));
+          expect(glyph.height, (size == UiSize.lg ? 20 : 16) * scale);
+          final capsule = _capsule(tester);
+          expect(capsule.contains(glyph.topLeft), isTrue);
+          expect(capsule.contains(glyph.bottomRight), isTrue);
+          expect(
+            tester.getSize(find.byType(UiButton)).height,
+            greaterThanOrEqualTo(48),
+          );
+          expect(tester.takeException(), isNull);
+        }
+      }
+    },
+  );
+
   testWidgets('local busy feedback paints below text and inside the capsule', (
     tester,
   ) async {

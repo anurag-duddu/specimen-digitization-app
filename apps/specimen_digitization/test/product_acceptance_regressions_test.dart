@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart' show UiDecisionBar;
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/auth.dart';
@@ -134,6 +135,11 @@ Future<void> confirmReason(
   String action, {
   bool settle = true,
 }) async {
+  if (find.text(action).evaluate().isEmpty) {
+    await tester.tap(uiMenuTrigger(UiDecisionBar.defaultOverflowLabel));
+    await tester.pumpAndSettle();
+  }
+  expect(find.text(action).last.hitTestable(), findsOneWidget);
   await tester.tap(find.text(action).last);
   await tester.pumpAndSettle();
   await tester.enterText(

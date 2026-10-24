@@ -276,12 +276,12 @@ void main() {
         location: goldenSpecimenLocation,
         repository: GoldenQueueRepository(goldenQueue(3)),
       );
-      // The narrower inspector must keep the primary decision fully labelled;
-      // navigation then moves to the same menu as secondary decisions. A wide
-      // inspector keeps the direct edge controls. Exercise both arrangements.
+      // At 1180 the companion queue is closed and the inspector has room for
+      // direct navigation. At 1440 the open queue leaves a narrower inspector,
+      // so navigation shares the named secondary-action menu.
       expect(
         uiIconButton('Next specimen'),
-        window == keyboardWindow ? findsNothing : findsOneWidget,
+        window == keyboardWindow ? findsOneWidget : findsNothing,
       );
       await pressDecisionNavigation(tester, 'Next specimen');
       expect(locationOf(tester), endsWith('/fixture-002'));

@@ -6,12 +6,13 @@
 // at 200 percent text therefore drew the phone's tab bar and a desktop's
 // dialog at once. Both questions now go to `WindowArrangement`, so these
 // windows get the tab bar and the sheet together, and the docked windows get
-// the rail and the dialog together.
+// the labelled sidebar and the dialog together.
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/app/shell.dart';
+import 'package:specimen_digitization/src/workspace.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../ui_finders.dart';
@@ -76,10 +77,9 @@ void main() {
     });
   }
 
-  // The band spans the page beside the docked navigation, as it did before
-  // the rail was `UiRail`: an error, a blocker or the 4 dp strip of every
-  // load must not move the rail and the list pane (UiNavPlacement.edge).
-  testWidgets('a band never moves the docked rail or the list pane', (
+  // The queue is now the main page. The band precedes its content while
+  // global navigation remains fixed at the edge.
+  testWidgets('a band keeps navigation fixed and precedes the central queue', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -104,13 +104,66 @@ void main() {
     final railWith = tester.getRect(rail);
     final paneWith = tester.getRect(pane);
     expect(railWith.top, 0);
-    expect(paneWith.top, 0);
+    expect(paneWith.top, greaterThanOrEqualTo(tester.getRect(band).bottom));
     expect(
       tester.getRect(band).left,
-      greaterThanOrEqualTo(paneWith.right),
-      reason: 'the band spans the page beside the list pane',
+      greaterThanOrEqualTo(railWith.right),
+      reason: 'the band belongs to the main page beside global navigation',
     );
 
+    await tester.tap(uiControl('Dismiss'));
+    await tester.pumpAndSettle();
+    expect(band, findsNothing);
+    expect(tester.getRect(rail), railWith);
+    final paneWithout = tester.getRect(pane);
+    expect(paneWithout.left, paneWith.left);
+    expect(paneWithout.width, paneWith.width);
+    expect(paneWithout.top, lessThan(paneWith.top));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a record band never moves navigation or its companion queue', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1440, 900);
+    addTearDown(tester.view.reset);
+    final repository = FlakyRepository();
+    final session = TestSession();
+    addTearDown(session.controller.close);
+    await tester.pumpWidget(
+      SpecimenDigitizationApp(session: session, repository: repository),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('fixture-001'));
+    await tester.tap(find.text('fixture-001'));
+    await tester.pumpAndSettle();
+    final controller = WorkspaceScope.read(
+      tester.element(find.byType(AppShell)),
+    );
+    repository.failNext = true;
+    await controller.refresh();
+    await tester.pumpAndSettle();
+    final band = find.byWidgetPredicate(
+      (Widget widget) =>
+          widget is UiBanner &&
+          widget.message.startsWith('The service could not be reached.'),
+      description: 'the record failure band',
+    );
+    expect(band, findsOneWidget);
+    final rail = find.byKey(const ValueKey('global-rail'));
+    final pane = find.byKey(const ValueKey('global-sidebar'));
+    final railWith = tester.getRect(rail);
+    final paneWith = tester.getRect(pane);
+    expect(railWith.top, 0);
+    expect(paneWith.top, 0);
+    expect(tester.getRect(band).left, greaterThanOrEqualTo(paneWith.right));
+    if (uiControl('Dismiss').evaluate().isEmpty) {
+      // The narrower record work area can use the banner's strip variant;
+      // its recovery and dismissal remain available in the opened sheet.
+      await tester.tap(band);
+      await tester.pumpAndSettle();
+    }
     await tester.tap(uiControl('Dismiss'));
     await tester.pumpAndSettle();
     expect(band, findsNothing);
@@ -119,16 +172,13 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('the docked rail keeps its arrow keys, Enter and its name', (
+  testWidgets('the docked sidebar keeps its arrow keys, Enter and its name', (
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
     await _pump(tester, const Size(1440, 900), 1);
     final rail = find.byKey(const ValueKey('global-rail'));
-    expect(
-      find.descendant(of: rail, matching: find.byType(UiRail)),
-      findsOneWidget,
-    );
+    expect(tester.widget(rail), isA<UiSidebar>());
     expect(
       find.bySemanticsLabel(AppShell.navigationLabel),
       findsOneWidget,
@@ -163,7 +213,9 @@ void main() {
     expect(nodes.last.focusNode!.hasPrimaryFocus, isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    final current = tester.widget<UiRail>(find.byType(UiRail)).currentIndex;
+    final current = tester
+        .widget<UiSidebar>(find.byType(UiSidebar))
+        .currentIndex;
     expect(AppShell.destinations[current].label, 'Intake');
     semantics.dispose();
     await tester.pumpWidget(const SizedBox());

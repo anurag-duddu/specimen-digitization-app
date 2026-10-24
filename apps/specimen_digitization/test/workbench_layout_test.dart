@@ -238,8 +238,8 @@ void main() {
       );
       expect(inspector.width, greaterThan(0));
       expect(inspector.width, lessThanOrEqualTo(520));
-      expect(find.text('Record review'), findsOneWidget);
-      expect(find.text('1 field · 2 labels'), findsOneWidget);
+      expect(find.text('Record review'), findsNothing);
+      expect(find.text('1 field · 2 labels'), findsNothing);
       expect(find.text('History'), findsOneWidget);
       expect(find.byType(AuditHistoryPanel), findsNothing);
       expect(tester.takeException(), isNull);
@@ -309,7 +309,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('Record review'), findsOneWidget);
+        expect(find.text('Record review'), findsNothing);
         final inspector = tester.getRect(
           find.byKey(const ValueKey<String>('review-inspector')),
         );
@@ -491,7 +491,10 @@ void main() {
         await tester.pumpAndSettle();
         final Finder finding = find.text('A supported country is required');
         expect(finding, findsNothing);
-        expect(find.text('Needs review · Unknown · Required'), findsOneWidget);
+        expect(
+          find.text('Unknown · A supported country is required'),
+          findsOneWidget,
+        );
         expect(find.text('Country'), findsOneWidget);
         final Finder disclosure = uiDisclosure('Country');
         final Finder header = find.descendant(

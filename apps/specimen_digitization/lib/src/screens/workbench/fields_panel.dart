@@ -235,7 +235,6 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
                     : fieldReviewName(left).compareTo(fieldReviewName(right));
               }),
     };
-    final reviewCount = fields.where(_needsReview).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -247,22 +246,6 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             why: 'Required field checks have not run for this record.',
           )
         else ...<Widget>[
-          Padding(
-            padding: EdgeInsetsDirectional.fromSTEB(
-              context.ui.space.s3,
-              0,
-              context.ui.space.s3,
-              context.ui.space.s3,
-            ),
-            child: Text(
-              reviewCount == 0
-                  ? 'Open a field to inspect its value and evidence.'
-                  : '${reviewCount == 1 ? '1 field needs' : '$reviewCount fields need'} review. Open a field to inspect its evidence or correct its value.',
-              style: context.ui.type.bodySmall.copyWith(
-                color: context.ui.color.inkSecondary,
-              ),
-            ),
-          ),
           for (final entry in groups.entries)
             if (entry.value.isNotEmpty) ...<Widget>[
               _group(context, entry.key, entry.value),
@@ -274,7 +257,6 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
   }
 
   Widget _group(BuildContext context, String title, List<Json> fields) {
-    final reviewCount = fields.where(_needsReview).length;
     return Column(
       key: ValueKey<String>('field-group:$title'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -287,24 +269,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             context.ui.space.s3,
             context.ui.space.s1,
           ),
-          child: UiSectionHeader(
-            title: title,
-            role: UiSectionHeaderRole.section,
-            meta: reviewCount == 0
-                ? null
-                : Text(
-                    '$reviewCount to review',
-                    style: context.ui.type.labelSmall.copyWith(
-                      color: context.ui.color.status.needsReview.content,
-                    ),
-                  ),
-          ),
-        ),
-        Padding(
-          padding: EdgeInsetsDirectional.symmetric(
-            horizontal: context.ui.space.s3,
-          ),
-          child: const UiHairline(),
+          child: UiSectionHeader(title: title, role: UiSectionHeaderRole.card),
         ),
         for (final (index, field) in fields.indexed) ...<Widget>[
           _field(context, field),
@@ -369,10 +334,6 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     final state = SpecimenStatus.fromWire(
       pending?.state ?? field['state'] as String?,
     );
-    final needsReview = fieldNeedsReview(
-      pending?.state ?? field['state'] as String?,
-      hasIssues: issues.isNotEmpty,
-    );
     final layers = <FieldLayer, String?>{
       for (final layer in FieldLayer.values)
         layer: _layerValue(field, pending, layer),
@@ -381,11 +342,14 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
         .where((layer) => layers[layer] != null)
         .firstOrNull;
     final value = currentLayer == null ? null : layers[currentLayer];
+    // A supported value is the content, not a badge. Other states qualify
+    // the value explicitly, and a concrete issue stays visible before opening.
     final summary = <String>[
-      if (needsReview) 'Needs review',
-      state.label,
+      if (state != SpecimenStatus.supported) state.label,
       ?value,
-      if (field['required'] == true) 'Required',
+      if (issues.isNotEmpty) issues.first.message,
+      if (state == SpecimenStatus.supported && value == null)
+        'Supported, no value recorded',
     ].join(' · ');
     final authority = _authorityLine(field, pending);
     // A correction not yet saved is a person's decision, not the stored
@@ -415,9 +379,11 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
           key: ValueKey<String>('field-row:${widget.specimen.id}:$key'),
           title: name,
           summary: summary,
-          trailing: basis == null ? null : valueBasisChip(basis),
+          hideSummaryWhenExpanded: true,
+          style: UiDisclosureStyle.value(ui),
           semanticsLabel:
-              '$name${field['required'] == true ? ', required' : ', optional'}. $summary'
+              '$name${field['required'] == true ? ', required' : ', optional'}. '
+              '${state == SpecimenStatus.supported ? 'Supported. ' : ''}$summary'
               '${basis == null ? '' : '. ${basis.semanticsLabel}'}',
           onExpansionChanged: (expanded) {
             if (expanded) {
@@ -428,6 +394,18 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              Text(
+                '${field['required'] == true ? 'Required field' : 'Optional field'} · ${state.label}',
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+              ),
+              if (basis != null) ...<Widget>[
+                SizedBox(height: ui.space.s2),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: valueBasisChip(basis),
+                ),
+              ],
+              SizedBox(height: ui.space.s3),
               if (value != null) ...<Widget>[
                 Text(
                   'Current value · ${currentLayer!.label}',

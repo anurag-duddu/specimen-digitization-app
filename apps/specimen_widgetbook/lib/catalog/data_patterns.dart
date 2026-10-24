@@ -8,6 +8,14 @@ List<WidgetbookComponent> get dataPatternComponents => <WidgetbookComponent>[
   WidgetbookComponent(
     name: 'Section header',
     useCases: <WidgetbookUseCase>[
+      WidgetbookUseCase(
+        name: 'Compact contextual action',
+        builder: (_) => const _DataFrame(
+          description:
+              'A named contextual command remains beside the wrapping heading at large text sizes. The target stays 48 dp.',
+          child: _CompactHeaderExample(),
+        ),
+      ),
       for (final avatar in [false, true])
         for (final tabs in [false, true])
           for (final command in ['Actions', 'Search', 'Button group'])
@@ -193,6 +201,28 @@ class _DataFrame extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CompactHeaderExample extends StatefulWidget {
+  const _CompactHeaderExample();
+
+  @override
+  State<_CompactHeaderExample> createState() => _CompactHeaderExampleState();
+}
+
+class _CompactHeaderExampleState extends State<_CompactHeaderExample> {
+  bool _selecting = false;
+
+  @override
+  Widget build(BuildContext context) => UiSectionHeader(
+    title: 'Review queue',
+    supporting: _selecting ? 'Selection mode' : null,
+    trailingAction: UiIconButton(
+      icon: _selecting ? UiIcons.check : UiIcons.selectAll,
+      semanticsLabel: _selecting ? 'Done selecting' : 'Select specimens',
+      onPressed: () => setState(() => _selecting = !_selecting),
+    ),
+  );
 }
 
 class _HeaderExample extends StatefulWidget {

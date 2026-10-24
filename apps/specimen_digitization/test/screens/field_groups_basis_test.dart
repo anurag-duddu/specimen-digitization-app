@@ -183,6 +183,18 @@ Future<void> show(
   size: size,
 );
 
+Future<void> toggleField(WidgetTester tester, String name) async {
+  final header = find
+      .descendant(
+        of: uiDisclosure(name),
+        matching: find.byWidgetPredicate((widget) => widget is Pressable),
+      )
+      .first;
+  await tester.ensureVisible(header);
+  await tester.tap(header);
+  await tester.pumpAndSettle();
+}
+
 double top(WidgetTester tester, Finder finder) => tester.getTopLeft(finder).dy;
 
 void main() {
@@ -221,12 +233,14 @@ void main() {
     );
   });
 
-  testWidgets('each row carries the basis its layer and values give', (
+  testWidgets('each field discloses the basis its layer and values give', (
     tester,
   ) async {
     await show(tester);
 
+    expect(find.byType(UiChip), findsNothing);
     for (final entry in chipOf.entries) {
+      await toggleField(tester, entry.key);
       final chips = find.descendant(
         of: uiDisclosure(entry.key),
         matching: find.byType(UiChip),
@@ -244,28 +258,23 @@ void main() {
           reason: '${entry.key} reads ${entry.value}',
         );
       }
+      await toggleField(tester, entry.key);
     }
-    expect(find.byType(UiChip), findsNWidgets(11));
-    expect(uiChip('As written'), findsNWidgets(7));
-    expect(uiChip('Derived'), findsNWidgets(3));
-    expect(uiChip('Inferred'), findsOneWidget);
+    expect(find.byType(UiChip), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the review state reads exactly as it did without a chip', (
+  testWidgets('values lead while exceptional field states stay explicit', (
     tester,
   ) async {
     await show(tester);
 
-    expect(find.text('Supported · Philippines · Required'), findsOneWidget);
-    expect(find.text('Needs review · Unknown · Required'), findsOneWidget);
-    expect(find.text('Needs review · Ambiguous · F.G. Werner'), findsOneWidget);
-    expect(find.text('Supported · Carabidae'), findsOneWidget);
-    // Each group's own count is untouched too: IDs has none.
-    expect(find.text('5 to review'), findsOneWidget);
-    expect(find.text('2 to review'), findsOneWidget);
-    expect(find.text('1 to review'), findsOneWidget);
-    expect(find.textContaining('to review'), findsNWidgets(3));
+    expect(find.text('Philippines'), findsOneWidget);
+    expect(find.text('Unknown'), findsNWidgets(7));
+    expect(find.text('Ambiguous · F.G. Werner'), findsOneWidget);
+    expect(find.text('Carabidae'), findsOneWidget);
+    expect(find.textContaining('to review'), findsNothing);
+    expect(find.textContaining('Needs review'), findsNothing);
   });
 
   testWidgets('a screen reader hears the basis with the row', (tester) async {
@@ -274,20 +283,20 @@ void main() {
 
     expect(
       find.bySemanticsLabel(
-        'Country, required. Supported · Philippines · Required. '
+        'Country, required. Supported. Philippines. '
         'Basis: derived',
       ),
       findsOneWidget,
     );
     expect(
       find.bySemanticsLabel(
-        'Habitat, optional. Supported · Mossy forest. Basis: inferred',
+        'Habitat, optional. Supported. Mossy forest. Basis: inferred',
       ),
       findsOneWidget,
     );
     // A row with no chip says nothing about a basis.
     expect(
-      find.bySemanticsLabel('City, optional. Supported · Manila'),
+      find.bySemanticsLabel('City, optional. Supported. Manila'),
       findsOneWidget,
     );
     expect(
@@ -326,7 +335,11 @@ void main() {
       ),
       findsNothing,
     );
-    expect(find.byType(UiChip), findsNWidgets(10));
+    await toggleField(tester, 'Country');
+    expect(find.byType(UiChip), findsNothing);
+    expect(find.textContaining('Not saved yet:'), findsOneWidget);
+    await toggleField(tester, 'Habitat');
+    expect(uiChip('Inferred'), findsOneWidget);
   });
 
   /// How much of [name]'s title the row draws, against what it needs.
@@ -370,73 +383,46 @@ void main() {
       await show(tester, size: Size(width, 9000));
 
       expect(tester.takeException(), isNull, reason: 'nothing overflows');
-      expect(find.byType(UiChip), findsNWidgets(11));
+      expect(find.byType(UiChip), findsNothing);
       for (final name in chipOf.keys) {
         expectWholeTitle(tester, name, 'at $width wide, ${scale}x');
-        // The chip is whole too: all of its label is drawn, beside the title
-        // where the title leaves room and under the text where it does not.
-        final chip = chipOf[name];
-        if (chip != null) {
-          final box = find.descendant(
-            of: uiDisclosure(name),
-            matching: uiChip(chip),
-          );
-          expect(box, findsOneWidget, reason: name);
-          expect(tester.getSize(box).width, lessThanOrEqualTo(width));
-          // The chip never costs the row the end of its review state: the
-          // summary is drawn whole, whichever line the chip is on.
-          final summary = find.descendant(
-            of: uiDisclosure(name),
-            matching: find.textContaining(RegExp('^(Supported|Needs review)')),
-          );
-          expect(summary, findsOneWidget, reason: '$name summary');
-          expect(
-            tester.renderObject<RenderParagraph>(summary).didExceedMaxLines,
-            isFalse,
-            reason: '$name summary is cut at $width wide, ${scale}x',
-          );
-        }
+        final text = tester.widget<UiDisclosure>(uiDisclosure(name)).summary!;
+        final summary = find.descendant(
+          of: uiDisclosure(name),
+          matching: find.text(text),
+        );
+        expect(summary, findsOneWidget);
+        expect(
+          tester.renderObject<RenderParagraph>(summary).didExceedMaxLines,
+          isFalse,
+          reason: '$name value or state remains readable at $width/$scale',
+        );
       }
     });
   }
 
-  testWidgets(
-    'a chip moves under the text only where the title needs the line',
-    (tester) async {
-      await show(tester, size: const Size(390, 9000));
-      final wide = tester.getRect(
-        find.descendant(
-          of: uiDisclosure('Country'),
-          matching: find.text('Country'),
-        ),
-      );
-      final wideChip = tester.getRect(
-        find.descendant(
-          of: uiDisclosure('Country'),
-          matching: uiChip('Derived'),
-        ),
-      );
-      expect(wideChip.left, greaterThan(wide.right), reason: 'beside at 1x');
-
-      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+  testWidgets('basis stays in the details at normal and enlarged text', (
+    tester,
+  ) async {
+    for (final scale in [1.0, 2.0]) {
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpWidget(const SizedBox.shrink());
       await show(tester, size: const Size(390, 9000));
-      final title = tester.getRect(
-        find.descendant(
-          of: uiDisclosure('Elevation from (m)'),
-          matching: find.text('Elevation from (m)'),
-        ),
+      expect(uiChip('Derived'), findsNothing);
+      await toggleField(tester, 'Country');
+      final chip = find.descendant(
+        of: uiDisclosure('Country'),
+        matching: uiChip('Derived'),
       );
-      final chip = tester.getRect(
-        find.descendant(
-          of: uiDisclosure('Elevation from (m)'),
-          matching: uiChip('Derived'),
-        ),
+      expect(chip, findsOneWidget);
+      expect(
+        tester.getTopLeft(chip).dy,
+        greaterThan(tester.getBottomLeft(find.text('Country')).dy),
       );
-      expect(chip.left, title.left, reason: 'under the text at 2x, not beside');
-      expect(chip.top, greaterThan(title.bottom));
-    },
-  );
+      expect(tester.takeException(), isNull);
+    }
+  });
 
   testWidgets('a narrow window at double text size leaves no overflow', (
     tester,
@@ -445,8 +431,9 @@ void main() {
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await show(tester, size: const Size(320, 9000));
 
-    expect(find.byType(UiChip), findsNWidgets(11));
-    expect(uiChip('As written'), findsNWidgets(7));
+    expect(find.byType(UiChip), findsNothing);
+    await toggleField(tester, 'Province or state');
+    expect(uiChip('As written'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -1,6 +1,8 @@
 /// One row of a list (10 section 4.5, `UiListRow`).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/density.dart';
@@ -10,6 +12,7 @@ import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
 import '../actions/button.dart' show UiSize;
+import '../actions/chip.dart';
 
 /// What pressing a row does, and therefore what a screen reader calls it.
 enum UiListRowMode {
@@ -35,7 +38,6 @@ class UiListRowStyle {
   /// Binds every token a row draws with.
   const UiListRowStyle({
     required this.background,
-    required this.bar,
     required this.title,
     required this.subtitle,
     required this.titleColor,
@@ -44,7 +46,6 @@ class UiListRowStyle {
     required this.gap,
     required this.stackGap,
     required this.minHeight,
-    required this.barWidth,
     required this.trailingLabel,
     required this.trailingColor,
     required this.titleMin,
@@ -53,9 +54,6 @@ class UiListRowStyle {
 
   /// The fill, by state. Transparent except when the row is selected.
   final WidgetStateProperty<Color> background;
-
-  /// The leading bar on a selected row, by state.
-  final WidgetStateProperty<Color> bar;
 
   /// The title's type role.
   final TextStyle title;
@@ -69,7 +67,7 @@ class UiListRowStyle {
   /// The subtitle's colour, by state.
   final WidgetStateProperty<Color> subtitleColor;
 
-  /// The padding inside the row, outside the leading bar's gutter.
+  /// Content padding, retained when text wraps or selection changes.
   final EdgeInsetsGeometry padding;
 
   /// The space between the leading slot, the text and the trailing slot.
@@ -84,10 +82,6 @@ class UiListRowStyle {
 
   /// The row's minimum height.
   final double minHeight;
-
-  /// The leading bar's width, which is also the gutter reserved for it on
-  /// every row whether or not it is drawn.
-  final double barWidth;
 
   /// The type role a [UiRowTrailing] sets its label in.
   final TextStyle trailingLabel;
@@ -115,9 +109,6 @@ class UiListRowStyle {
   /// disabled.
   static const double leadingExtent = 40;
 
-  /// 10 section 4.5: a selected row fills `ink` at 6 percent.
-  static const double selectedFillOpacity = 0.06;
-
   /// The row's height in [ui].
   ///
   /// `density.rowHeight` floored at the hit box. 09 section 6 gives the
@@ -134,7 +125,7 @@ class UiListRowStyle {
   static UiListRowStyle resolve(UiThemeData ui, UiSize size) {
     final bool dense = size == UiSize.sm;
     Color fill(Set<WidgetState> states) => states.contains(WidgetState.selected)
-        ? ui.color.stateLayer(selectedFillOpacity)
+        ? ui.brand.secondary.fill
         : ui.color.ground.withValues(alpha: 0);
 
     // The row's tone follows its state, as every other control's does. A row
@@ -153,18 +144,20 @@ class UiListRowStyle {
 
     return UiListRowStyle(
       background: WidgetStateProperty.resolveWith(fill),
-      bar: WidgetStateProperty.resolveWith(content),
-      title: dense ? ui.type.body : ui.type.title,
+      title: ui.type.body.copyWith(
+        fontWeight: FontWeight.w500,
+        fontVariations: const <FontVariation>[FontVariation('wght', 500)],
+      ),
       subtitle: ui.type.bodySmall,
       titleColor: WidgetStateProperty.resolveWith(content),
       subtitleColor: WidgetStateProperty.resolveWith(secondary),
       padding: EdgeInsetsDirectional.symmetric(
         horizontal: dense ? ui.space.s2 : ui.space.s3,
+        vertical: dense ? ui.space.s1 : ui.space.s3,
       ),
       gap: ui.space.s3,
       stackGap: ui.space.s2,
       minHeight: heightOf(ui),
-      barWidth: ui.shape.stroke.bar,
       trailingLabel: ui.type.label,
       trailingColor: WidgetStateProperty.resolveWith(secondary),
       titleMin: ui.space.labelMin,
@@ -299,7 +292,7 @@ class UiListRow extends StatelessWidget {
     this.statesController,
   });
 
-  /// The row's own line. `type.title` at `md`, `type.body` at `sm`.
+  /// The row's primary line, set in the body role with medium weight.
   final String title;
 
   /// One supporting line under the title, up to two lines long.
@@ -411,29 +404,12 @@ class UiListRow extends StatelessWidget {
     Set<WidgetState> states,
   ) => ColoredBox(
     color: style.background.resolve(states),
-    child: Stack(
-      children: <Widget>[
-        if (selected)
-          PositionedDirectional(
-            start: 0,
-            top: 0,
-            bottom: 0,
-            width: style.barWidth,
-            child: ColoredBox(color: style.bar.resolve(states)),
-          ),
-        Padding(
-          // The bar's gutter is reserved on every row, drawn or not, so
-          // selecting one never shifts its content sideways.
-          padding: EdgeInsetsDirectional.only(start: style.barWidth),
-          child: Padding(
-            padding: style.padding,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: style.minHeight),
-              child: _fitted(context, style, states),
-            ),
-          ),
-        ),
-      ],
+    child: ConstrainedBox(
+      constraints: BoxConstraints(minHeight: style.minHeight),
+      child: Padding(
+        padding: style.padding,
+        child: _fitted(context, style, states),
+      ),
     ),
   );
 
@@ -447,11 +423,11 @@ class UiListRow extends StatelessWidget {
   /// on a line of its own, which is the variant 11 section 3.3 declares for a
   /// column too narrow to hold both.
   ///
-  /// A trailing the row cannot read (a chip, a switch, a time) has no glyph
-  /// rung, so it goes from the line to under the title in one step, at the
-  /// point where the line would leave it less than [UiListRowStyle.trailingMin].
-  /// It used to be squeezed into whatever the title left instead, which at
-  /// 200 dp was thirteen logical pixels of chip.
+  /// A chip has no glyph-only rung: its measured label moves below the text
+  /// when it no longer fits beside a readable title. Unknown trailing widgets
+  /// retain at least [UiListRowStyle.trailingMin]. The title's minimum follows
+  /// its text scale, so large text does not compete with a full-sized badge
+  /// for the same narrow column.
   Widget _fitted(
     BuildContext context,
     UiListRowStyle style,
@@ -459,20 +435,32 @@ class UiListRow extends StatelessWidget {
   ) {
     final Widget? end = trailing;
     if (end == null) return _line(style, states, null);
+    // A disclosure glyph describes the whole row and has no label to reflow.
+    // Keep it at the trailing edge; the row itself supplies the hit target.
+    if (end is UiIcon) return _line(style, states, end);
 
-    // What the line owes to everything that is not the title: its own
-    // padding, the bar's gutter and the leading slot.
-    final double chrome =
-        style.padding.resolve(Directionality.of(context)).horizontal +
-        style.barWidth +
-        (leading == null ? 0 : UiListRowStyle.leadingExtent + style.gap);
+    // This builder is already inside the row's padding. Only the leading
+    // slot and the gap to the trailing use this inner width.
+    final double chrome = leading == null
+        ? 0
+        : UiListRowStyle.leadingExtent + style.gap;
     final double beside = chrome + style.gap;
+    final double titleFontSize = style.title.fontSize!;
+    final double titleScale =
+        MediaQuery.textScalerOf(context).scale(titleFontSize) / titleFontSize;
+    final double titleMin = math.min(
+      style.titleMin * titleScale,
+      measureLabel(context, title, style.title).width,
+    );
 
     if (end is! UiRowTrailing) {
+      final double trailingMin = end is UiChip
+          ? end.intrinsicWidthIn(context)
+          : style.trailingMin;
       return LayoutBuilder(
         builder: (BuildContext context, BoxConstraints constraints) {
-          final double room = constraints.maxWidth - beside - style.titleMin;
-          if (room < style.trailingMin) return _stacked(style, states, end);
+          final double room = constraints.maxWidth - beside - titleMin;
+          if (room < trailingMin) return _stacked(style, states, end);
           // Bounded rather than free: the title keeps its minimum and a
           // trailing wider than the room left ellipsises through its own
           // label instead of running off the end of the row.
@@ -505,18 +493,16 @@ class UiListRow extends StatelessWidget {
     return FitBuilder(
       variants: <FitVariant>[
         FitVariant(
-          intrinsicWidth:
-              beside + style.titleMin + full.widthIn(context, style),
+          intrinsicWidth: beside + titleMin + full.widthIn(context, style),
           builder: (BuildContext context, bool _) => _line(style, states, full),
         ),
         FitVariant(
-          intrinsicWidth:
-              beside + style.titleMin + glyph.widthIn(context, style),
+          intrinsicWidth: beside + titleMin + glyph.widthIn(context, style),
           builder: (BuildContext context, bool _) =>
               _line(style, states, glyph),
         ),
         FitVariant(
-          intrinsicWidth: chrome + style.titleMin,
+          intrinsicWidth: chrome + titleMin,
           builder: (BuildContext context, bool _) =>
               _stacked(style, states, full),
         ),
@@ -573,7 +559,8 @@ class UiListRow extends StatelessWidget {
           maxLines: contentMaxLines,
           overflow: TextOverflow.ellipsis,
         ),
-        if (second != null)
+        if (second != null) ...<Widget>[
+          SizedBox(height: style.stackGap / 2),
           Text(
             second,
             style: style.subtitle.copyWith(
@@ -582,6 +569,7 @@ class UiListRow extends StatelessWidget {
             maxLines: contentMaxLines,
             overflow: TextOverflow.ellipsis,
           ),
+        ],
         if (under != null) ...<Widget>[
           SizedBox(height: style.stackGap),
           Align(alignment: AlignmentDirectional.centerStart, child: under),

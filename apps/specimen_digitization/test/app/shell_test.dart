@@ -1,6 +1,5 @@
-// The approved shell uses the brand phone tab bar and, on a docked window, the
-// design system's rail in the scaffold's navigation slot. Collection selection
-// and specimen rows share one list pane on larger windows.
+// Compact windows use the brand tab bar. Docked windows use the shared
+// labelled sidebar; the specimen queue is central content, not navigation.
 import 'package:flutter/cupertino.dart' show CupertinoTabBar;
 import 'package:flutter/material.dart' show NavigationBar;
 import 'package:flutter/widgets.dart';
@@ -61,22 +60,14 @@ void main() {
         tester.widget<UiMark>(find.byType(UiMark)).label,
         AppShell.markLabel,
       );
-      // The docked destinations are the design system's rail, inside the
-      // rail column and in the frame's navigation slot, not a copy of it.
-      expect(find.byType(UiRail), mobile ? findsNothing : findsOneWidget);
+      // Desktop consumes the same shared sidebar that the catalog displays.
+      expect(find.byType(UiRail), findsNothing);
+      expect(find.byType(UiSidebar), mobile ? findsNothing : findsOneWidget);
       if (!mobile) {
-        expect(
-          find.descendant(
-            of: find.byKey(const ValueKey('global-rail')),
-            matching: find.byType(UiRail),
-          ),
-          findsOneWidget,
-        );
         final scaffold = tester.widget<UiScaffold>(find.byType(UiScaffold));
         expect(scaffold.nav, isNotNull);
         expect(scaffold.navPlacement, UiNavPlacement.edge);
       }
-      expect(find.byType(UiSidebar), findsNothing);
       expect(uiDestination('Specimens'), findsOneWidget);
       expect(uiDestination('Intake'), findsOneWidget);
       expect(find.byType(QueuePane), findsOneWidget);
@@ -101,7 +92,7 @@ void main() {
   }
 
   testWidgets(
-    'large windows group the collection and specimen list beside the content',
+    'large windows put the collection in navigation and the queue in content',
     (tester) async {
       await pumpAt(tester, 1300);
       final sidebar = find.byKey(const ValueKey('global-sidebar'));
@@ -112,12 +103,13 @@ void main() {
       );
       expect(
         find.descendant(
-          of: sidebar,
+          of: find.byType(UiSidebar),
           matching: find.bySemanticsLabel(RegExp('^Authorized collection,')),
         ),
         findsOneWidget,
       );
-      expect(find.text('From specimens to knowledge.'), findsOneWidget);
+      expect(find.text('From specimens to knowledge.'), findsNothing);
+      expect(tester.getSize(find.byType(QueuePane)).width, greaterThan(900));
       await tester.pumpWidget(const SizedBox());
     },
   );

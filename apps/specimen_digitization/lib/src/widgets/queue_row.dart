@@ -195,7 +195,6 @@ class QueueRow extends StatelessWidget {
       final supporting = <String>[
         if (showStatus) status.label,
         if (reason.isNotEmpty) reason,
-        if (updated != null) 'Updated ${relativeAge(updated, now: now)}',
       ];
       return DecoratedBox(
         decoration: BoxDecoration(
@@ -272,11 +271,7 @@ class QueueRow extends StatelessWidget {
           ExcludeSemantics(
             child: Padding(
               padding: EdgeInsetsDirectional.only(
-                start:
-                    ui.shape.stroke.bar +
-                    ui.space.s3 +
-                    UiListRowStyle.leadingExtent +
-                    ui.space.s3,
+                start: ui.space.s3 + UiListRowStyle.leadingExtent + ui.space.s3,
                 end: ui.space.s3,
                 bottom: ui.space.s2,
               ),

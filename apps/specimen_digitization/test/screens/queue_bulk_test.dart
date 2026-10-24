@@ -9,11 +9,13 @@
 // a count that moved under the reviewer while they read it would not be.
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -194,6 +196,55 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   group('picking records', () {
+    for (final scenario in [
+      (size: const Size(1440, 900), scale: 1.0),
+      (size: const Size(390, 844), scale: 2.0),
+      (size: const Size(768, 480), scale: 2.0),
+    ]) {
+      testWidgets(
+        'selection footer stays full width and bottom anchored at ${scenario.size}, ${scenario.scale}',
+        (tester) async {
+          tester.platformDispatcher.textScaleFactorTestValue = scenario.scale;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          final repository = BulkRepository(queue(4));
+          await pumpQueue(tester, repository, window: scenario.size);
+          await tester.tap(uiIconButton('Select specimens'));
+          await tester.pumpAndSettle();
+          await tester.ensureVisible(rowBoxes.first);
+          await tester.tap(rowBoxes.first);
+          await tester.pumpAndSettle();
+          final pane = tester.getRect(find.byType(QueuePane));
+          final footerFinder = find.byKey(
+            const ValueKey('queue-selection-footer'),
+          );
+          final footer = tester.getRect(footerFinder);
+          expect(footer.left, pane.left);
+          expect(footer.right, pane.right);
+          expect(footer.bottom, pane.bottom);
+          expect(
+            tester.getSize(footerFinder).height,
+            lessThanOrEqualTo(pane.height * .4),
+          );
+          // The last command remains reachable even when the footer has to
+          // scroll at enlarged text or in a short window.
+          final bar = find.descendant(
+            of: footerFinder,
+            matching: find.byType(SelectionBar),
+          );
+          final commands = find.descendant(
+            of: bar,
+            matching: find.byType(UiButton),
+          );
+          await tester.ensureVisible(commands.last);
+          await tester.pumpAndSettle();
+          expect(commands.last.hitTestable(), findsOneWidget);
+          expect(repository.calls, isEmpty);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox());
+        },
+      );
+    }
+
     testWidgets(
       'a wide window selects by long press and can finish selecting',
       (WidgetTester tester) async {

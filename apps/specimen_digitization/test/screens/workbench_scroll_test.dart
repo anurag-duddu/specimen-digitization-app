@@ -296,6 +296,21 @@ void main() {
               : LogicalKeyboardKey.keyH,
         );
         await tester.pumpAndSettle();
+        if (segment == WorkbenchSegment.fields) {
+          // Collapsed summaries now fit comfortably. Open real field detail
+          // so this test still exercises the long-content scrolling path.
+          await tester.ensureVisible(uiDisclosure('Country'));
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find
+                .descendant(
+                  of: uiDisclosure('Country'),
+                  matching: find.byType(Pressable),
+                )
+                .first,
+          );
+          await tester.pumpAndSettle();
+        }
         final position = tester
             .state<ScrollableState>(evidenceScrollable())
             .position;
@@ -304,7 +319,7 @@ void main() {
         position.jumpTo(0);
         await tester.pumpAndSettle();
         final endpoint = segment == WorkbenchSegment.fields
-            ? find.text('Habitat')
+            ? find.text('Elevation from (m)')
             : find.textContaining('operator-1 ·');
         final decision = find.byType(WorkbenchDecisionBar);
         final decisionRect = tester.getRect(decision);
@@ -450,6 +465,20 @@ void routedScrolling() {
       await tester.tap(find.text('fixture-001'));
       await tester.pumpAndSettle();
 
+      // The summary is deliberately short. Scrolling is needed after the
+      // reviewer opens a field's retained value and evidence.
+      await tester.ensureVisible(uiDisclosure('Country'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find
+            .descendant(
+              of: uiDisclosure('Country'),
+              matching: find.byType(Pressable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Required field · Unknown'), findsOneWidget);
       expect(nativeNavigation(), findsNothing);
       final Rect content = contentAboveNativeNavigation(tester);
       expect(content.top, 44);

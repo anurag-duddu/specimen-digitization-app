@@ -240,10 +240,7 @@ void main() {
         ),
       ),
     );
-    expect(
-      find.text('Two readings disagree on the locality · Updated 18 h'),
-      findsOneWidget,
-    );
+    expect(find.text('Two readings disagree on the locality'), findsOneWidget);
     expect(
       find.bySemanticsLabel(
         RegExp(

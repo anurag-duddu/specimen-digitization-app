@@ -222,11 +222,9 @@ Future<void> pumpMeasuredApp(
 /// Selects the current inline Deferred filter and verifies the actual state.
 Future<void> chooseDeferredQueue(WidgetTester tester) async {
   await pickSpecimenQueue(tester, 'Deferred');
-  for (final status in ['needs_human_review', 'deferred', 'cleared']) {
-    final control = find.byKey(ValueKey('queue-filter-$status'));
-    expect(control.hitTestable(), findsOneWidget);
-    expect(tester.widget<Pressable>(control).selected, status == 'deferred');
-  }
+  final control = find.byKey(const ValueKey<String>('queue-view'));
+  expect(control.hitTestable(), findsOneWidget);
+  expect(tester.widget<UiSegmented<String>>(control).value, 'deferred');
 }
 
 /// The pixels currently under [verificationBoundary].

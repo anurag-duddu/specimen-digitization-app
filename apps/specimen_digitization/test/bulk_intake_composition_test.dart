@@ -10,6 +10,36 @@ import 'golden/golden_harness.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  testWidgets(
+    'attention replaces passive saving with a reachable recovery action',
+    (tester) async {
+      final repo = BulkFixtureRepository(20, state: 'needs_attention');
+      await pumpGoldenApp(
+        tester,
+        window: const Size(390, 844),
+        brightness: Brightness.light,
+        textScale: 2,
+        location: goldenIntakeLocation,
+        repository: repo,
+      );
+      expect(
+        find.text('20 photos · 20 need attention').hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.text('Submit 0 photos'), findsNothing);
+      final review = find.widgetWithText(UiButton, 'Review 20 photos');
+      expect(review.hitTestable(), findsOneWidget);
+      await tester.tap(review);
+      await tester.pumpAndSettle();
+      expect(find.byType(BulkPhotoInspector), findsOneWidget);
+      expect(find.text('Choose the original photo again.'), findsWidgets);
+      expect(repo.submitted, isFalse);
+      expect(repo.photos.length, 20);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   for (final size in [
     const Size(320, 740),
     const Size(390, 844),
@@ -30,7 +60,13 @@ void main() {
         );
 
         expect(find.byType(BulkIntakeScreen), findsOneWidget);
-        expect(find.byType(UiBrandHero), findsOneWidget);
+        expect(find.byType(UiBrandHero), findsNothing);
+        expect(find.text('Add photos'), findsOneWidget);
+        final sources = find.widgetWithText(
+          UiDisclosure,
+          'Import from a source',
+        );
+        expect(find.widgetWithText(UiListRow, 'Google Drive'), findsNothing);
         final firstSource = find.widgetWithText(
           UiButton,
           size.width < WindowClass.mediumMin ? 'Take photos' : 'Choose files',
@@ -42,19 +78,28 @@ void main() {
           find.descendant(of: scroll, matching: find.byType(Scrollable)),
           findsOneWidget,
         );
-        for (final label in [
-          'Take photos',
-          'Choose files',
-          'Google Drive',
-          'Dropbox',
-          'Storage',
-          'Import links',
-        ]) {
+        for (final label in ['Take photos', 'Choose files']) {
           final button = find.widgetWithText(UiButton, label);
           await tester.ensureVisible(button);
           await tester.pumpAndSettle();
           expect(button.hitTestable(), findsOneWidget);
           expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
+          expect(tester.takeException(), isNull);
+        }
+        await tester.ensureVisible(sources);
+        await tester.tap(find.text('Import from a source'));
+        await tester.pumpAndSettle();
+        for (final label in [
+          'Google Drive',
+          'Dropbox',
+          'Storage',
+          'Import links',
+        ]) {
+          final row = find.widgetWithText(UiListRow, label);
+          await tester.ensureVisible(row);
+          await tester.pumpAndSettle();
+          expect(row.hitTestable(), findsOneWidget);
+          expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
           expect(tester.takeException(), isNull);
         }
         await tester.pumpWidget(const SizedBox.shrink());
@@ -74,6 +119,12 @@ void main() {
         repository: repo,
       );
       expect(find.byType(UiBrandHero), findsNothing);
+      expect(find.widgetWithText(UiButton, 'Batches'), findsOneWidget);
+      expect(
+        find.text('Saved'),
+        findsNothing,
+        reason: 'The shared tile suppresses the repeated settled baseline.',
+      );
       final scroll = find.byKey(const ValueKey('bulk-photo-grid'));
       final submit = find.widgetWithText(UiButton, 'Submit 100 photos');
       expect(submit.hitTestable(), findsOneWidget);

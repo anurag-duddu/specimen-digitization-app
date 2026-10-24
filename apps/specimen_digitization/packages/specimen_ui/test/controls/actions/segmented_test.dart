@@ -123,6 +123,14 @@ Color _segmentFill(WidgetTester tester, String label) => tester
     )
     .color;
 
+FocusNode _segmentNode(WidgetTester tester, String label) => tester
+    .widget<Pressable>(
+      find.byWidgetPredicate(
+        (widget) => widget is Pressable && widget.semanticsLabel == label,
+      ),
+    )
+    .focusNode!;
+
 void main() {
   setUp(() {
     FocusManager.instance.highlightStrategy =
@@ -297,6 +305,123 @@ void main() {
     await tester.pumpAndSettle();
     expect(reported, <_Pane>[_Pane.history]);
   });
+
+  testWidgets(
+    'removing the current fourth view preserves focus and Tab entry',
+    (tester) async {
+      var value = 'All';
+      const views = ['Review', 'Deferred', 'Cleared'];
+      final after = FocusNode(debugLabel: 'After the view control');
+      addTearDown(after.dispose);
+      await tester.pumpWidget(
+        uiHarness(
+          child: StatefulBuilder(
+            builder: (context, change) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                UiSegmented<String>(
+                  value: value,
+                  segments: [
+                    if (value == 'All')
+                      const UiSegment(value: 'All', label: 'All'),
+                    for (final view in views)
+                      UiSegment(value: view, label: view),
+                  ],
+                  onChanged: (next) => change(() => value = next),
+                ),
+                UiButton(label: 'After', focusNode: after, onPressed: () {}),
+              ],
+            ),
+          ),
+        ),
+      );
+      final cleared = _segmentNode(tester, 'Cleared');
+      cleared.requestFocus();
+      await tester.pumpAndSettle();
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(value, 'Cleared');
+      expect(find.text('All'), findsNothing);
+      expect(_segmentNode(tester, 'Cleared'), same(cleared));
+      expect(FocusManager.instance.primaryFocus, same(cleared));
+      expect(views.where((view) => !_segmentNode(tester, view).skipTraversal), [
+        'Cleared',
+      ]);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus, same(after));
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.pumpAndSettle();
+      expect(FocusManager.instance.primaryFocus, same(cleared));
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(value, 'Deferred');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final removeFocused in [false, true]) {
+    testWidgets(
+      removeFocused
+          ? 'removing the focused value moves focus to the selected value'
+          : 'reordering values keeps focus on the same choice and updates arrows',
+      (tester) async {
+        var value = 'A';
+        var views = ['A', 'B', 'C'];
+        late StateSetter change;
+        await tester.pumpWidget(
+          uiHarness(
+            child: StatefulBuilder(
+              builder: (context, setter) {
+                change = setter;
+                return UiSegmented<String>(
+                  value: value,
+                  segments: [
+                    for (final view in views)
+                      UiSegment(value: view, label: view),
+                  ],
+                  onChanged: (next) => change(() => value = next),
+                );
+              },
+            ),
+          ),
+        );
+        final focused = _segmentNode(tester, 'C');
+        focused.requestFocus();
+        await tester.pumpAndSettle();
+        change(() {
+          views = removeFocused ? ['A', 'B'] : ['C', 'A', 'B'];
+          if (removeFocused) value = 'B';
+        });
+        await tester.pumpAndSettle();
+        final expected = removeFocused ? 'B' : 'C';
+        expect(
+          FocusManager.instance.primaryFocus,
+          same(_segmentNode(tester, expected)),
+        );
+        expect(
+          views.where((view) => !_segmentNode(tester, view).skipTraversal),
+          [expected],
+        );
+        if (!removeFocused) {
+          expect(_segmentNode(tester, 'C'), same(focused));
+          await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+          await tester.pumpAndSettle();
+          expect(
+            FocusManager.instance.primaryFocus,
+            same(_segmentNode(tester, 'A')),
+          );
+        }
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+        expect(value, removeFocused ? 'B' : 'A');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('the selected choice stays at the reading start under RTL', (
     WidgetTester tester,

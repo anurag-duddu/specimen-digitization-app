@@ -129,8 +129,13 @@ class _ProductApplicationState extends State<_ProductApplication> {
       _notifier = notifier;
       _router = router;
       _routes = routes;
-      workspace.start();
       setState(() {});
+      // The asset can finish between frames. Mount the Router before immediate
+      // scope answers replace its routing configuration; otherwise GoRouter
+      // restores an empty match list and discards the requested initial page.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) workspace.start();
+      });
     } catch (error) {
       if (mounted) setState(() => _failure = error);
     }

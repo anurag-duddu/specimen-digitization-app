@@ -19,6 +19,7 @@ class UiPhotoTile extends StatelessWidget {
     required this.onSelected,
     required this.onOpen,
     this.included = true,
+    this.showStatus = true,
   });
 
   /// Image content, normally fitted with `BoxFit.contain`.
@@ -29,6 +30,11 @@ class UiPhotoTile extends StatelessWidget {
 
   /// A factual saving or attention state.
   final String status;
+
+  /// Shows the status caption. A host may hide a settled baseline it already
+  /// reports for the batch; the inspection target still announces it.
+  /// Excluded photos always retain their visible exception.
+  final bool showStatus;
 
   /// Whether this tile belongs to the current bulk editing selection.
   final bool selected;
@@ -55,7 +61,8 @@ class UiPhotoTile extends StatelessWidget {
             boundary: selected,
             clip: true,
             child: Pressable(
-              semanticsLabel: 'Review $name',
+              semanticsLabel:
+                  'Review $name. ${included ? status : 'Excluded from submission'}',
               onPressed: onOpen,
               radius: ui.shape.inner,
               builder: (context, states) =>
@@ -81,15 +88,16 @@ class UiPhotoTile extends StatelessWidget {
             ),
           ],
         ),
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: ui.space.s2),
-          child: Text(
-            included ? status : 'Excluded from submission',
-            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+        if (showStatus || !included)
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: ui.space.s2),
+            child: Text(
+              included ? status : 'Excluded from submission',
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
-        ),
       ],
     );
   }

@@ -272,6 +272,66 @@ void main() {
   });
 
   group('geometry', () {
+    testWidgets(
+      'application labels stay centered and separate at double text',
+      (tester) async {
+        const destinations = [
+          UiNavDestination(label: 'Specimens', icon: UiIcons.queue),
+          UiNavDestination(label: 'Intake', icon: UiIcons.intake),
+        ];
+        for (final brightness in Brightness.values) {
+          for (final width in [320.0, 390.0]) {
+            await _pumpBar(
+              tester,
+              destinations: destinations,
+              size: Size(width, 844),
+              brightness: brightness,
+              textScaler: const TextScaler.linear(2),
+            );
+            for (final selected in destinations) {
+              await tester.tap(find.text(selected.label));
+              await tester.pumpAndSettle();
+              Rect? previous;
+              for (final destination in destinations) {
+                final paragraph = tester.renderObject<RenderParagraph>(
+                  find.text(destination.label),
+                );
+                expect(paragraph.didExceedMaxLines, isFalse);
+                final boxes = paragraph.getBoxesForSelection(
+                  TextSelection(
+                    baseOffset: 0,
+                    extentOffset: destination.label.length,
+                  ),
+                );
+                final bounds = boxes
+                    .map((box) => box.toRect())
+                    .reduce((a, b) => a.expandToInclude(b))
+                    .shift(paragraph.localToGlobal(Offset.zero));
+                final cell = tester.getRect(
+                  find.bySemanticsLabel(destination.label),
+                );
+                expect(bounds.left, greaterThanOrEqualTo(cell.left));
+                expect(bounds.right, lessThanOrEqualTo(cell.right));
+                expect(
+                  bounds.center.dx,
+                  closeTo(cell.center.dx, 1),
+                  reason: '${destination.label} $brightness $width',
+                );
+                if (previous != null) {
+                  expect(
+                    bounds.left - previous.right,
+                    greaterThan(16),
+                    reason: 'adjacent names must not read as one joined label',
+                  );
+                }
+                previous = bounds;
+              }
+            }
+          }
+        }
+      },
+    );
+
     testWidgets('every cell is at least 48 by 48 and is all hit box', (
       WidgetTester tester,
     ) async {
