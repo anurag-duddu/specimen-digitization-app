@@ -372,13 +372,13 @@ void main() {
     expect(code, isNot(contains('sheet: !_docked')));
     expect('UiTopBar('.allMatches(code).length, 1);
     expect(code, contains('UiTopBarForm.workspace'));
-    // The docked sidebar's header reuses the same switcher widget and has no
-    // account or environment of its own: those belong to the compact bar and
-    // the rail.
-    final String sidebar = code.substring(
-      code.indexOf('Widget _sidebar('),
-      code.indexOf('Widget _rail('),
-    );
+    // The retained queue pane has no account or environment of its own:
+    // those belong to global navigation or the compact workspace bar.
+    final int sidebarStart = code.indexOf('Widget _sidebar(');
+    final int navigationStart = code.indexOf('Widget _dockedNavigation(');
+    expect(sidebarStart, greaterThanOrEqualTo(0));
+    expect(navigationStart, greaterThan(sidebarStart));
+    final String sidebar = code.substring(sidebarStart, navigationStart);
     expect(sidebar, isNot(contains('ShellAccountMenu')));
     expect(sidebar, isNot(contains('_EnvironmentContext')));
   });

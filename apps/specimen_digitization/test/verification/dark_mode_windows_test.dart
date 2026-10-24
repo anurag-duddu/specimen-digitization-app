@@ -33,7 +33,6 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../golden/golden_harness.dart';
 import 'fit_matrix_test.dart' show chooseSegment;
 import 'verification_harness.dart';
-import '../ui_finders.dart';
 import 'package:specimen_digitization/src/widgets/environment_banner.dart';
 
 /// The screens the dark pass sweeps, and how to open each one.
@@ -235,15 +234,14 @@ void main() {
               brightness: brightness,
               location: goldenQueueLocation,
             );
-            final compactControl = uiIconButton('Test environment');
-            final contextControl = compactControl.evaluate().isNotEmpty
-                ? compactControl
-                : find.byWidgetPredicate(
-                    (widget) =>
-                        widget is UiButton &&
-                        widget.semanticsLabel ==
-                            EnvironmentBanner.headlineFor('synthetic'),
-                  );
+            // Both the compact icon and labelled sidebar action publish this
+            // same accessible name. The longer headline belongs to the modal
+            // content, not the control used to open it.
+            final contextControl = find.byWidgetPredicate(
+              (widget) =>
+                  widget is Pressable &&
+                  widget.semanticsLabel == 'Test environment',
+            );
             expect(contextControl.hitTestable(), findsOneWidget);
             await tester.tap(contextControl);
             await tester.pumpAndSettle();
