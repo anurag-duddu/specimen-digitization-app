@@ -25679,3 +25679,13 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 - Validation: `git fetch origin main`; `git merge origin/main` exited 0; `rg` found no `<<<<<<<` markers; `docs/SESSION_LEARNINGS.md` verified as `origin/main` prefix plus the prior desktop append; `firebase_options.ci.dart` and `.metadata` still list linux/macos/windows with `:ci-placeholder` app ids. No conflicting intents. No complicated conflicts left unresolved.
 - Durable learnings: with `.gitattributes` `merge=union` on the session log, a clean auto-merge can still place branch-only entries in the middle of newer `main` text; always check that `origin/main`'s bytes are an exact prefix after merging.
 - Remaining follow-ups: push the merge and session-log order fix; Windows and macOS release binaries still need their host OS; Linux release was built earlier in this session and is not part of this merge commit.
+
+### 2026-10-24 — Flutter CI: desktop Firebase platform capability
+
+- Task: cloud agent `bc-78e1a1fb-1509-4934-bb1a-5a6dded53c17`
+- Branch/worktree: `cursor/desktop-platforms-3c17` at `/workspace`
+- Outcome: Completed, pull request not merged
+- Commits/PRs: fix for failing "Flutter checks and web build" on https://github.com/anurag-duddu/specimen-digitization-app/pull/372 head after the main merge. Root cause: `lib/firebase_options.ci.dart` `DefaultFirebaseOptions.currentPlatform` switches on five `TargetPlatform` values (android, iOS, linux, macOS, windows) while `platformCapabilities` still allowed two.
+- Implementation: raised `targetPlatformType` from 2 to 5 on that capability and attached a fresh `owner-approved` quotation of the owner's 2026-10-17 words "I see, linux windows, mac should all work".
+- Validation: `flutter test test/theme/no_platform_branching_test.dart` 23 passed; `flutter test test/theme/exemptions_owner_approved_test.dart` 18 passed, including "nothing loosened since the base without the owner signing it". CI re-run after push: Not confirmed at closeout.
+- Remaining follow-ups: wait for the Flutter checks job on the new head.

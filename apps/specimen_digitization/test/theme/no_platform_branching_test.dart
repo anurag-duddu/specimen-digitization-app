@@ -52,12 +52,16 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
     <String, int>{webFlag: 1, targetPlatform: 1, targetPlatformType: 1},
     'imports the three names the stand-in options switch on',
   ),
+  // owner-approved: 2026-10-17 "I see, linux windows, mac should all work"
+  // (owner, cloud agent session bc-78e1a1fb-1509-4934-bb1a-5a6dded53c17,
+  // after the Linux desktop launch, directing that Linux, Windows and macOS
+  // are part of the client)
   PlatformCapability(
     'lib/firebase_options.ci.dart',
     'DefaultFirebaseOptions.currentPlatform',
-    <String, int>{webFlag: 1, targetPlatform: 1, targetPlatformType: 2},
+    <String, int>{webFlag: 1, targetPlatform: 1, targetPlatformType: 5},
     'the committed stand-in for the generated options, which pick a Firebase '
-        'app per platform',
+        'app per platform including Linux, macOS and Windows',
   ),
   PlatformCapability(
     'lib/main.dart',
