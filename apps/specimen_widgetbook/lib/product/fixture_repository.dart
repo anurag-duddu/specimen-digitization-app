@@ -211,10 +211,95 @@ class PreviewRepository implements SpecimenRepository, BulkIntakeRepository {
   final Uint8List pixels;
   final Specimen record;
   bool _queueFailed = false;
+
+  /// Synthetic IDs with the recovered museum names and parent relationships.
+  static const catalog = <CollectionCatalogNode>[
+    CollectionCatalogNode(collectionId: 'zoology', name: 'Zoology'),
+    CollectionCatalogNode(
+      collectionId: 'synthetic',
+      name: 'Insects',
+      parentCollectionId: 'zoology',
+    ),
+    CollectionCatalogNode(
+      collectionId: 'mammals',
+      name: 'Mammals',
+      parentCollectionId: 'zoology',
+    ),
+    CollectionCatalogNode(
+      collectionId: 'birds',
+      name: 'Birds',
+      parentCollectionId: 'zoology',
+    ),
+    CollectionCatalogNode(
+      collectionId: 'fishes',
+      name: 'Fishes',
+      parentCollectionId: 'zoology',
+    ),
+    CollectionCatalogNode(
+      collectionId: 'amphibians-and-reptiles',
+      name: 'Amphibians and Reptiles',
+      parentCollectionId: 'zoology',
+    ),
+    CollectionCatalogNode(
+      collectionId: 'invertebrate-zoology',
+      name: 'Invertebrate Zoology',
+      parentCollectionId: 'zoology',
+    ),
+    CollectionCatalogNode(collectionId: 'botany', name: 'Botany'),
+    CollectionCatalogNode(
+      collectionId: 'seed-plants',
+      name: 'Seed Plants',
+      parentCollectionId: 'botany',
+    ),
+    CollectionCatalogNode(
+      collectionId: 'bryophytes',
+      name: 'Bryophytes',
+      parentCollectionId: 'botany',
+    ),
+    CollectionCatalogNode(
+      collectionId: 'lichens',
+      name: 'Lichens',
+      parentCollectionId: 'botany',
+    ),
+    CollectionCatalogNode(
+      collectionId: 'pteridophytes',
+      name: 'Pteridophytes',
+      parentCollectionId: 'botany',
+    ),
+    CollectionCatalogNode(
+      collectionId: 'fungi',
+      name: 'Fungi',
+      parentCollectionId: 'botany',
+    ),
+    CollectionCatalogNode(collectionId: 'anthropology', name: 'Anthropology'),
+    CollectionCatalogNode(collectionId: 'geology', name: 'Geology'),
+    CollectionCatalogNode(
+      collectionId: 'fossil-invertebrates',
+      name: 'Fossil Invertebrates',
+      parentCollectionId: 'geology',
+    ),
+    CollectionCatalogNode(
+      collectionId: 'fossil-vertebrates',
+      name: 'Fossil Vertebrates',
+      parentCollectionId: 'geology',
+    ),
+    CollectionCatalogNode(
+      collectionId: 'paleobotany',
+      name: 'Paleobotany',
+      parentCollectionId: 'geology',
+    ),
+    CollectionCatalogNode(
+      collectionId: 'preview-testing',
+      name: 'Intake example',
+      testing: true,
+    ),
+  ];
   static const scope = CollectionScope(
     organizationId: 'widgetbook',
     collectionId: 'synthetic',
-    name: 'Synthetic collection',
+    name: 'Insects',
+    defaultSelection: true,
+    catalogNodes: catalog,
     permissions: ['reviewer'],
   );
   static const writeMessage =
@@ -225,7 +310,17 @@ class PreviewRepository implements SpecimenRepository, BulkIntakeRepository {
   @override
   List<dynamic> get blockers => const [];
   @override
-  Future<List<CollectionScope>> scopes() async => [scope];
+  Future<List<CollectionScope>> scopes() async => [
+    scope,
+    const CollectionScope(
+      organizationId: 'widgetbook',
+      collectionId: 'preview-testing',
+      name: 'Intake example',
+      configuration: {'kind': 'testing'},
+      permissions: ['reviewer'],
+      catalogNodes: catalog,
+    ),
+  ];
   @override
   Future<List<Json>> profiles(CollectionScope scope) async => [];
   @override

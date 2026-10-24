@@ -1,0 +1,8 @@
+# Names and parentage are navigation metadata, never collection authorization.
+query ListCollectionHierarchy($organizationId: UUID!, $actorUid: String!) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid})
+    @check(expr: "this.active == true") { active }
+  collections(where: {organizationId: {eq: $organizationId}}, orderBy: {id: ASC}, limit: 1001) {
+    id name parentId kind
+  }
+}

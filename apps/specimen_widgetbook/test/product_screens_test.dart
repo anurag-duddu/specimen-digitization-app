@@ -68,6 +68,56 @@ void main() {
     );
     expect(cases, hasLength(6));
   });
+  test('preview catalog retains the recovered museum hierarchy names', () {
+    final reference =
+        jsonDecode(
+              File(
+                '../../infra/reference/fieldmuseum-collection-tree.json',
+              ).readAsStringSync(),
+            )
+            as Map;
+    final expected = {
+      for (final node in reference['collections'] as List)
+        node['name'] as String,
+    };
+    expect(
+      PreviewRepository.catalog
+          .where((node) => !node.testing)
+          .map((node) => node.name)
+          .toSet(),
+      expected,
+    );
+  });
+  testWidgets(
+    'product chooser shows the real grouped shell and unavailable museum collections',
+    (tester) async {
+      await showProduct(tester, ProductPreviewCase.queueLoaded);
+      await tester.tap(
+        find.bySemanticsLabel(RegExp('^Authorized collection,')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Zoology'), findsOneWidget);
+      expect(find.text('Botany'), findsOneWidget);
+      expect(find.text('Testing'), findsOneWidget);
+      final menu = tester
+          .widgetList<UiPopoverMenu>(find.byType(UiPopoverMenu))
+          .firstWhere((menu) => menu.semanticsLabel == 'Choose a collection');
+      expect(
+        menu.items.where((item) => item.enabled).map((item) => item.label),
+        ['Insects', 'Intake example'],
+      );
+      expect(
+        menu.items
+            .singleWhere((item) => item.label == 'Mammals')
+            .disabledReason,
+        isNotEmpty,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(find.text('Zoology'), findsNothing);
+      await closeProduct(tester);
+    },
+  );
   testWidgets(
     'Queue previews render production screens and recover from failure',
     (tester) async {

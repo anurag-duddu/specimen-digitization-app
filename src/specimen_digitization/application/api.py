@@ -826,11 +826,28 @@ def create_app(
 
     @app.get(prefix + "/collections")
     def collections(organization_id: str, user=Depends(identity)):
+        members = [m for m in member_rows(user) if m['organization_id'] == organization_id]
+        if not members:
+            # Catalog names are still organization information. Check the caller
+            # before even asking the repository for another organization's tree.
+            raise PermissionError()
+        load_hierarchy = getattr(repository, 'collection_hierarchy', None)
+        hierarchy = load_hierarchy(organization_id, user) if callable(load_hierarchy) else []
+        authorized = {m['collection_id'] for m in members}
+        hierarchy = [node for node in hierarchy if node['kind'] != 'testing' or node['collection_id'] in authorized]
+        nodes = {node['collection_id']: node for node in hierarchy}
+        if callable(load_hierarchy) and not authorized.issubset(nodes):
+            raise OperationalBlock('collection_hierarchy_incomplete')
+        preferred = next((node['collection_id'] for node in hierarchy
+                          if node['collection_id'] in authorized and node['kind'] != 'testing'), None)
         return {
             "items": [
                 {
                     "collection_id": m["collection_id"],
                     "display_name": m.get("collection_name") or m["collection_id"],
+                    "parent_collection_id": nodes.get(m['collection_id'], {}).get('parent_collection_id'),
+                    "kind": nodes.get(m['collection_id'], {}).get('kind', 'museum'),
+                    "is_default": m['collection_id'] == preferred,
                     "role": m["role"],
                     "profiles": [p.model_dump(mode="json") for p in registry.profiles],
                     "profile_registry_version": registry.version,
@@ -838,9 +855,9 @@ def create_app(
                         node.model_dump(mode="json") for node in registry.nodes
                     ],
                 }
-                for m in member_rows(user)
-                if m["organization_id"] == organization_id
+                for m in members
             ],
+            "hierarchy": hierarchy,
             "next_cursor": None,
         }
 

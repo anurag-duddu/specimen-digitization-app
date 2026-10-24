@@ -17,6 +17,7 @@ import '../screens/costs/costs_screen.dart' show CostsScreenCopy;
 import '../widgets/widgets.dart';
 import '../workspace.dart';
 import 'routes.dart';
+import 'collection_choices.dart';
 
 /// The navigation frame every collection screen is drawn inside.
 class AppShell extends StatefulWidget {
@@ -648,7 +649,8 @@ class _Chrome extends StatelessWidget {
 /// The collection switcher.
 ///
 /// A dropdown where there is room, and a touch sheet in narrow windows.
-/// Both are sourced exclusively from the session's authorized scopes.
+/// Catalog context comes from the server; only session-authorized scopes
+/// can be selected.
 class _CollectionSwitcher extends StatelessWidget {
   const _CollectionSwitcher({required this.controller, required this.sheet});
 
@@ -679,29 +681,50 @@ class _CollectionSwitcher extends StatelessWidget {
     return UiMenuTrigger(
       label: name,
       icon: UiIcons.expand,
+      trailingIcon: true,
       semanticsLabel: '${AppShell.switcherLabel}, $name. Switch collection',
       menuLabel: 'Choose a collection',
+      menuMaxHeight: 520,
+      menuSurface: PopoverSurface.paper,
+      menuDescription:
+          controller.scopes.any((scope) => scope.catalogNodes.isNotEmpty)
+          ? 'Only enabled collections can be opened.'
+          : null,
       items: <UiMenuItem>[
-        for (final CollectionScope scope in controller.scopes)
+        for (final choice in collectionChoices(
+          controller.scopes,
+          selectedKey: controller.scope?.key,
+        ))
           UiMenuItem(
-            label: scope.name,
-            icon: UiIcons.collection,
-            disabledReason: blocked,
-            onSelected: blocked != null
+            label: choice.name,
+            groupLabel: choice.groupLabel,
+            indent: choice.depth,
+            isHeading: choice.headingOnly,
+            selected: choice.key == controller.scope?.key,
+            disabledReason: choice.scope == null
+                ? 'This collection is not enabled for this account.'
+                : blocked,
+            onSelected: blocked != null || choice.scope == null
                 ? null
-                : () async {
-                    if (await controller.mayLeaveReview() && context.mounted) {
-                      context.go(
-                        AppRoutes.queueOf(encodeCollectionKey(scope.key)),
-                      );
-                    }
-                  },
+                : () => unawaited(_select(context, choice.key)),
           ),
       ],
     );
   }
 
   Future<void> _choose(BuildContext context) async {
+    final currentRow = GlobalKey();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = currentRow.currentContext;
+      if (target != null) {
+        unawaited(
+          Scrollable.ensureVisible(
+            target,
+            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+          ),
+        );
+      }
+    });
     final String? selected = await UiSheet.show<String>(
       context: context,
       title: 'Choose a collection',
@@ -714,31 +737,88 @@ class _CollectionSwitcher extends StatelessWidget {
         animation: controller,
         builder: (BuildContext context, Widget? child) => Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            for (final CollectionScope scope in controller.scopes)
-              UiListRow(
-                title: scope.name,
-                subtitle: scope.key == controller.scope?.key
-                    ? 'Current collection'
-                    : null,
-                leading: const UiIcon(UiIcons.collection),
-                onPressed: controller.mutating
-                    ? null
-                    : () => Navigator.of(sheetContext).pop(scope.key),
+            if (controller.scopes.any((scope) => scope.catalogNodes.isNotEmpty))
+              Padding(
+                padding: EdgeInsets.all(context.ui.space.s3),
+                child: Text(
+                  'Only enabled collections can be opened.',
+                  style: context.ui.type.labelSmall.copyWith(
+                    color: context.ui.color.inkSecondary,
+                  ),
+                ),
               ),
+            for (final choice in collectionChoices(
+              controller.scopes,
+              selectedKey: controller.scope?.key,
+            )) ...[
+              if ((choice.headingOnly ? choice.name : choice.groupLabel)
+                  case final String group)
+                Padding(
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                    context.ui.space.s3,
+                    context.ui.space.s4,
+                    context.ui.space.s3,
+                    context.ui.space.s2,
+                  ),
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      group,
+                      style: context.ui.type.labelSmall.copyWith(
+                        color: context.ui.color.inkSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              if (!choice.headingOnly)
+                Padding(
+                  padding: EdgeInsetsDirectional.only(
+                    start: (choice.depth * context.ui.space.s4)
+                        .clamp(0, context.ui.space.s12)
+                        .toDouble(),
+                  ),
+                  child: UiListRow(
+                    key: choice.key == controller.scope?.key
+                        ? currentRow
+                        : null,
+                    title: choice.name,
+                    selected: choice.key == controller.scope?.key,
+                    trailing: choice.key == controller.scope?.key
+                        ? const UiIcon(UiIcons.check, size: UiIconSize.inline)
+                        : null,
+                    disabledReason: choice.scope == null
+                        ? 'This collection is not enabled for this account.'
+                        : _blockedReason,
+                    onPressed: controller.mutating || choice.scope == null
+                        ? null
+                        : () => Navigator.of(sheetContext).pop(choice.key),
+                  ),
+                ),
+            ],
           ],
         ),
       ),
     );
-    if (!context.mounted ||
-        selected == null ||
-        controller.mutating ||
+    if (!context.mounted || selected == null) return;
+    await _select(context, selected);
+  }
+
+  Future<void> _select(BuildContext context, String selected) async {
+    if (controller.mutating ||
         !controller.scopes.any(
           (CollectionScope scope) => scope.key == selected,
         )) {
       return;
     }
-    if (!await controller.mayLeaveReview() || !context.mounted) return;
+    if (selected == controller.scope?.key) return;
+    if (!await controller.mayLeaveReview() ||
+        !context.mounted ||
+        controller.mutating ||
+        !controller.scopes.any((scope) => scope.key == selected)) {
+      return;
+    }
     context.go(AppRoutes.queueOf(encodeCollectionKey(selected)));
   }
 }

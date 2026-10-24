@@ -16,6 +16,7 @@ type Collection @table(key: ["organizationId", "id"]) {
   id: UUID! @default(expr: "uuidV4()")
   name: String!
   parentId: UUID
+  kind: String
   parent: Collection @ref(constraintName: "scope_ref_1", fields: ["organizationId", "parentId"])
 }
 type CollectionMember @table(key: ["organizationId", "collectionId", "uid"]) {
