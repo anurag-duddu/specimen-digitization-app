@@ -318,7 +318,7 @@ void main() {
       expect(
         said('Known cost in October 2026'),
         r"Known cost in October 2026, $11.85. After Google's free allowance. "
-        r'$2.00 of it is estimated from bills or recorded usage.',
+        r'$2.00 of it estimated.',
       );
       expect(
         said('Held, cost unknown'),
@@ -524,8 +524,7 @@ void main() {
 
       expect(
         find.text(
-          "After Google's free allowance. \$2.00 of it is estimated from "
-          'bills or recorded usage.',
+          "After Google's free allowance. \$2.00 of it estimated.",
         ),
         findsOneWidget,
       );

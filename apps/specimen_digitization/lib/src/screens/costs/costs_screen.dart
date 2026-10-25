@@ -75,10 +75,10 @@ abstract final class CostsScreenCopy {
   static const String includesHeld = 'Includes what is held.';
 
   /// How much of the known cost was estimated after the call, from the
-  /// provider's bill for the day or from the usage the call recorded.
+  /// provider's bill for the day or from the usage the call recorded. Short,
+  /// so the hero's spoken label stays within 100 characters (02 section 4.16).
   static String estimated(int micros) =>
-      '${formatMicros(micros)} of it is estimated from bills or recorded '
-      'usage.';
+      '${formatMicros(micros)} of it estimated.';
 
   /// The line under the hero. [known] is true when the hero is the known
   /// cost, and false when it is the whole count, what is held included.
