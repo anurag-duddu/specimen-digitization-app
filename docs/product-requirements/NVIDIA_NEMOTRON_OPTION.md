@@ -6,6 +6,15 @@ Nemotron team. The owner asked for it on 2026-10-18, typed in the
 coordinator session: "We have to enable Nvidia across the pipeline as
 another option also see how this impacts the UI and backend".
 
+On 2026-10-25 the owner changed the readers stage, typed (relayed to this
+change by the coordinator): "make it reader C, functionality doesn't really
+change, it is just one more in the readers. the LLM that consolidates before
+it gives to harness given the same but this time works with 3, and raw of 3
+are available. Ideally this can be n so its a small logic update." The
+readers stage now adds Nemotron as a third reader, C, instead of replacing
+Qwen, and the reading pipeline takes from two readers up to eight, the most a
+profile may name (section 1, "Three readers, and up to eight").
+
 This document covers what the option is, how it is switched, what it
 changes in the backend and the app, and what was measured. The plain-language
 story for NVIDIA is [`docs/outreach/NEMOTRON_STORY.md`](../outreach/NEMOTRON_STORY.md).
@@ -19,9 +28,9 @@ automatic provider routing.
 
 | Stage | Today | NVIDIA option |
 |---|---|---|
-| Readers (two independent readings of each label) | `handwriting-qwen`: Qwen3-VL-30B-A3B on Novita; `handwriting-muse`: Muse-Glimmer-30B on DeepInfra | `handwriting-nemotron` takes reader A's place; Muse stays reader B |
-| Parse (turns reader A's text into field candidates) | runs on reader A's route (`harness.py` uses `run.profile.routes[0]`) | follows reader A, so it runs on Nemotron when the readers stage is on |
-| First pass (compares the two readings with the image) | `first-pass-glm`: GLM-5.3-Flash on Novita | `first-pass-nemotron` |
+| Readers (independent readings of each label, in the profile's route order) | reader A `handwriting-qwen`: Qwen3-VL-30B-A3B on Novita; reader B `handwriting-muse`: Muse-Glimmer-30B on DeepInfra | `handwriting-nemotron` added as reader C; Qwen and Muse keep their places |
+| Parse (the organiser: turns every reading into field candidates) | runs on reader A's route (`harness.py` uses `run.profile.routes[0]`) | unchanged: reader A stays Qwen, and the call also receives reader C's readings |
+| First pass (compares the readings with the image) | `first-pass-glm`: GLM-5.3-Flash on Novita | `first-pass-nemotron` |
 | Field research (20 field experts with lookups) | `harness-deepseek`: DeepSeek-V4.1-Flash on DeepInfra | `harness-nemotron` |
 | Label finding (SAM 3) | not a language model | unchanged |
 
@@ -52,10 +61,52 @@ Checked 2026-10-18 (full research: section 9).
   Enterprise licence or a partner host such as Baseten. If NVIDIA offers
   credits on its own API, section 8 says what that path needs.
 - No second NVIDIA vision model has a Hugging Face provider, so the option
-  cannot supply two independent NVIDIA readers. Two readings from one model
-  fail together, which defeats the reason for two readers. Nemotron
-  therefore takes one reader slot. Section 7 shows why reader A: Muse plus
-  Nemotron covered slightly more facts than Muse plus Qwen.
+  cannot supply two independent NVIDIA readers: two readings from one model
+  fail together. Nemotron is therefore one reader. The first build put it in
+  reader A's place (section 7: Muse plus Nemotron covered slightly more facts
+  than Muse plus Qwen); since 2026-10-25 it is reader C, beside both
+  (section 7, "Three readers").
+
+### Three readers, and up to eight
+
+The reading pipeline takes two to eight readers; nothing in it is specific to
+three. Tests: `tests/test_three_readers.py`, `tests/test_first_pass.py`,
+`tests/test_reading_evidence.py`, `tests/test_projection.py`.
+
+- Every label is read once by each reader, in the profile's route order.
+- Every pair of a label's readings is compared with the existing alignment
+  (`reading_evidence.pairwise_alignments`). The label's `alignment_status`,
+  reasons and `disagreement_ratio` come from its least-agreeing pair; a pair
+  that cannot be measured leaves the label unmeasured, with every blocked
+  pair's reasons (`label_comparison`). A label whose readings are all
+  identical, and measured, resolves as before (`identical_readings`), with no
+  first pass.
+- A label whose readings differ goes to the first pass with every reading,
+  lettered A, B, C. Each numbered difference lists one span per reader, an
+  empty one where a reader has nothing there. For two readings the request is
+  byte for byte the one sent before. A verdict supports the picked reading
+  when it names that reader, or a reader whose text at that difference is the
+  same, compared lower-cased as materiality is (`first_pass.supports`, used
+  by G19's check in the first pass, the workflow and the evidence check).
+- Every reading is handed to the harness: the picked one as the decided
+  transcript and the others as raw readings, or all of them raw when nothing
+  is picked. The organiser and field research already name every reading of
+  a label (1A, 1B, 1C: `field_harness.labelled`).
+- A reader that gives up leaves its label with the other two readings, which
+  are compared as a pair. The queue decision's rule that a label needs
+  readings from two distinct routes and models (`policy.py`,
+  `field_research/step.py`) is unchanged, and such a label meets it.
+- Each pair is recorded: on the transcript (`Transcript.comparisons`, absent
+  for two readings), as one `ReadingComparison` row, and in the label's
+  comparison artifact (`/disagreements/{region}`), which keeps the reported
+  pair's fields and adds `comparisons` with every pair. Two-reading records
+  keep their shape.
+- A profile may name at most 8 readers, the label risk budget
+  (`review_risk.MAX_LABEL_READINGS`): every pair of a label's readings is
+  scored, and that measure takes 8 readings and 28 pairs. The profile is
+  refused at validation when it names more. The first pass itself letters
+  readers A to Z and could take 26 readings, but the profile limit is the one
+  that holds.
 
 ## 2. The switch
 
@@ -66,6 +117,8 @@ value stops the process at start-up with an error that names the setting.
 Examples:
 
 - unset: today's pipeline, unchanged;
+- `readers`: Nemotron reads every label as reader C, everything else
+  unchanged;
 - `first_pass`: Nemotron compares the readings, everything else unchanged;
 - `readers,first_pass,field_research`: Nemotron everywhere it can be.
 
@@ -73,10 +126,20 @@ The switch is read where the published collection profiles are loaded
 (`published_registry()`). With any stage on, the loaded profile is a
 variant of the published one:
 
-- the stage's route fields change (`model_routes` becomes
-  `("handwriting-nemotron", "handwriting-muse")`, `first_pass_route`
-  becomes `first-pass-nemotron`, `harness_route` becomes
-  `harness-nemotron`);
+- the stage's route fields change: the readers stage appends
+  `handwriting-nemotron` to `model_routes`, which becomes
+  `("handwriting-qwen", "handwriting-muse", "handwriting-nemotron")`;
+  `first_pass_route` becomes `first-pass-nemotron` and `harness_route`
+  becomes `harness-nemotron`;
+- with the readers stage, the run's token and weighted-call limits rise by
+  readers over published readers, from 480,000 tokens and 96 calls to
+  720,000 and 144 (`model_option.label_scaled_limit`). Every attempt at a
+  reading or a first pass reserves 16,000 tokens and weighs 2 calls, so a
+  third reader makes a label cost up to 3/2 as much of both limits. With the
+  raised limits a slide fits as many labels as before, counting one attempt
+  per step: 8 labels that need a first pass become 10, and 13 whose readings
+  agree stay 13 (`tests/test_nvidia_option.py`). The USD 1 run cost limit is
+  unchanged;
 - its version gains semantic-versioning build metadata naming the stages,
   for example `1.0.0+nvidia.readers.first-pass.field-research`, and the
   collection mapping points at that version.
@@ -145,15 +208,16 @@ properly."
   The price list has no cached-input column, so reservations and the
   meter use the uncached price, the upper bound. The bill is lower when
   Baseten's cache hits.
-- Parse runs on reader A's route, so with the readers stage on it is
-  reserved and charged at Nemotron's row. Its reservation is two whole
-  requests at the route's context, as today.
+- Parse runs on reader A's route, which stays Qwen with the readers stage
+  on, so its reservation (two whole Qwen requests, 58,164 micro-dollars) and
+  its charge are today's.
 - What a call reserves before it is sent, in micro-dollars (pinned in
   `tests/test_nvidia_option.py`): a Nemotron reading 20,000 (the stage
-  floor; a pilot crop's worst case is lower), parse 423,528, first pass
-  423,528 (GLM's is 318,670), one field-research expert request 10,727. Two
-  first-pass calls whose outcome stays unknown hold 847,056 of the USD 1 run
-  limit, so a third waits; with GLM a third fits.
+  floor; a pilot crop's worst case is lower), first pass 423,528 (GLM's is
+  318,670), one field-research expert request 10,727. Two first-pass calls
+  whose outcome stays unknown hold 847,056 of the USD 1 run limit, so a third
+  waits; with GLM a third fits. As reader C, Nemotron adds one reading per
+  label, so each label reserves one more reader floor against that limit.
 - The research harness's older "on" mode pins DeepSeek's tokenizer files
   for its request bound, so it refuses `harness-nemotron`
   (`research_committed_tokenizer_unpinned`) before any paid call until
@@ -198,7 +262,9 @@ different infrastructure. With a stage on:
   catalog change.
 
 Baseten is the only provider of this model on Hugging Face. That is the
-main operational risk of the option, and a reason to keep Muse as reader B.
+main operational risk of the option. As reader C, a Nemotron reading that
+fails leaves its label with Qwen's and Muse's readings, compared as a pair
+(section 1, "Three readers, and up to eight").
 
 ## 6. Provenance, audit and the app
 
@@ -220,16 +286,18 @@ Nothing new is needed; the NVIDIA routes fill the same records:
 
 ### What a reviewer sees
 
-The app shows only what each reading records. With the readers stage on, a
-reading card names `nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4` and
-the provider `baseten`, in the same place Qwen's name appears today. The
-reader brand marks exist for Qwen and Muse only, and "unknown families
-receive no mark" (`assets/reader-brands/README.md`), so the card shows the
-name as text. Adding NVIDIA's mark would need NVIDIA's brand permission.
+The app shows only what each reading records. With the readers stage on,
+Nemotron's readings record `nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4`
+and the provider `baseten`, beside Qwen's and Muse's. The reader brand marks
+exist for Qwen and Muse only, and "unknown families receive no mark"
+(`assets/reader-brands/README.md`), so a Nemotron reading shows the name as
+text. Adding NVIDIA's mark would need NVIDIA's brand permission.
 
 The app does not show the first-pass model, the field-research model, the
-active option or any cost, today or with the option. Nothing in the app
-needs to change for the option to work.
+active option or any cost, today or with the option. Not confirmed: how the
+workbench shows a label's third reading, its three pairs and three-way
+differences. The backend keeps two-reading records in their old shape, but
+the app was neither changed nor run with three readers.
 
 If the owner wants reviewers to see the option, the smallest useful change
 is one "Models" row in Review details > Processing that lists each stage's
@@ -259,8 +327,8 @@ of a few points is noise; the large differences are not.
 
 | Stage | Nemotron compared with today | Recommendation |
 |---|---|---|
-| Readers | Weaker alone, never failed, 4x faster, same cost; with Muse it covers as many facts as today's pair | Ready: the best NVIDIA stage |
-| Parse | About as accurate as Qwen, fewer wrongly filled fields, 20x faster, cheaper, less repeatable | Ready; it follows the readers stage |
+| Readers | Weaker alone, never failed, 4x faster, same cost; as reader C beside Qwen and Muse, at least one of the three had 95.9% of facts right, against 94.6% for today's pair | Ready as reader C: the best NVIDIA stage |
+| Parse | About as accurate as Qwen, fewer wrongly filled fields, 20x faster, cheaper, less repeatable | Not used: parse runs on reader A, which stays Qwen |
 | First pass | Wrong picks as rare as GLM's, but a third of labels left undecided and 3x the cost | Not yet: keep GLM |
 | Field research | Half of its field experts fail the answer checks; dearer than DeepSeek | Not yet: keep DeepSeek |
 
@@ -280,8 +348,9 @@ elevations).
 
 How often at least one of the two readers had a fact right, which is what
 the first pass can choose from: Muse with Nemotron 94.9%, Muse with Qwen
-94.6%, Nemotron with Qwen 89.8%. So Nemotron takes reader A's place, not
-Muse's.
+94.6%, Nemotron with Qwen 89.8%. So the first build put Nemotron in reader
+A's place, not Muse's; since the owner's change of 2026-10-25 it is reader C
+instead (below).
 
 Nemotron reads places well (87 of 96) and is weakest on handwritten digits:
 it read the writer's "2" as "a" or "D" in codes and dates (`IV- a9-68-4`,
@@ -290,6 +359,30 @@ copied the printed catalog number beside a label, 2 had it one digit off
 (slide 326, 4486778 for 4486779). Qwen's 12 failures were its output failing validation
 twice, always on the same five labels; that is a finding about today's
 reader, outside this option.
+
+### Three readers
+
+Re-scored offline on 2026-10-25 from the same 45 readings per reader, with
+the measurement folder's own scoring (`label_facts.score`); no new calls. The
+script is `triple_analysis.py` in the same measurement folder (run
+`python3 -I -B triple_analysis.py` from it; it prints these figures and
+reproduces the pair figures above exactly). A fact slot is one of
+the 98 facts in one of the 3 repeats: 294 slots, 225 of them key facts. A
+failed call misses every fact of its crop.
+
+| Readers | At least one right | Key facts, at least one right | Two or more right | Exactly one right |
+|---|---|---|---|---|
+| Muse and Qwen (today's pair) | 278 of 294 (94.6%) | 216 of 225 | both: 194 of 294 (66.0%) | 84 |
+| Muse, Qwen and Nemotron | 282 of 294 (95.9%) | 216 of 225 | 257 of 294 (87.4%) | 25 |
+
+- A third reader adds 4 slots that at least one reader has right, and no key
+  fact. Two or more readers have a fact right on 257 slots; today's pair has
+  both right on 194 and splits on 84.
+- On the 12 slots where Qwen's call failed, Nemotron gave each a reading, so
+  each kept two readings (Muse's and Nemotron's) where today's pair kept one.
+- Caveats: 15 crops and 3 repeats; the references are earlier sessions'
+  readings, not a human-checked transcript; the first pass on three readings
+  has not been measured.
 
 ### First pass
 
@@ -370,8 +463,14 @@ and Baseten's cached rate for Nemotron:
 | Pipeline | AI cost a specimen (estimate) |
 |---|---|
 | Today | about 1.1 cents |
-| Nemotron readers and parse (recommended) | about 1.1 cents |
-| Nemotron in every stage | about 4.0 cents |
+| Nemotron as reader C (readers stage) | about 1.1 cents: today's plus two Nemotron readings at USD 0.00033 |
+| Nemotron in every stage (reader C, first pass, field research) | about 4.1 cents |
+
+Before 2026-10-25 the readers stage replaced Qwen, and these rows read
+"Nemotron readers and parse", about 1.1 cents, and "Nemotron in every
+stage", about 4.0 cents. As reader C, Qwen's reading and Qwen's parse stay:
+USD 0.0007 more for every stage. Not measured: the first pass's longer
+request with three readings.
 
 The billed-cost workbook of 2026-10-18 measured today's actual cost at about
 2.9 cents a specimen, 1.7 of it AI and 1.2 machines; the estimate above is
@@ -397,6 +496,9 @@ need no code change.
   (`nemotron-research.md` in the measurement folder of section 7).
 - Route surface map (2026-10-18): every file the option touches
   (`route-surface-map.md`, same folder).
+- Three-reader re-score (2026-10-25): `triple_analysis.py` in that folder, an
+  offline script over its `readers_full.json` and `label_facts.py` (section 7,
+  "Three readers"); the script and its data stay outside the repository.
 - Model card: https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4
 - Provider mapping: https://huggingface.co/api/models/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4?expand[]=inferenceProviderMapping
 - Router catalog and prices: https://router.huggingface.co/v1/models

@@ -54,13 +54,13 @@ _STRUCTURED_EXTRACTION_DEFAULT = """
 You are the field organiser for {{collection_name}} using collection profile
 {{collection_profile_id}} and output schema {{schema_version}}.
 
-You are given every reading of every label on one specimen. Two independent
-readers read each label, and a reading is named by its label number and a
-letter: 1A, 1B, 2A and so on. A decided transcript is the reading chosen for its
-label; a raw reading is another reader's reading of it; a label with no decided
-transcript has raw readings only. What the specimen records is often spread over
-several labels and over both readers' readings, so read all of them before you
-answer.
+You are given every reading of every label on one specimen. Two or more
+independent readers read each label, and a reading is named by its label number
+and a letter: 1A, 1B, 1C, 2A and so on. A decided transcript is the reading
+chosen for its label; a raw reading is another reader's reading of it; a label
+with no decided transcript has raw readings only. What the specimen records is
+often spread over several labels and over every reader's readings, so read all
+of them before you answer.
 
 Organise what the readings state into field-value candidates:
 - Give a candidate only where a reading plainly states a value for the field.
@@ -77,9 +77,8 @@ Organise what the readings state into field-value candidates:
   identified_by_irn is the number of a record in another system and no label
   states it: give no candidate for it.
 - Where a field is stated, give a candidate for each reading that states it.
-  When two readers or two labels give the same value, give both. When they
-  differ, give each differing value; do not choose between them and do not
-  merge them.
+  When readers or labels give the same value, give each. When they differ,
+  give each differing value; do not choose between them and do not merge them.
 - "reading" is the one reading you take the value from, named as in the request.
 - "literal" is the value exactly as that reading writes it, line breaks
   included. Never normalize, expand, correct, translate, convert, complete or

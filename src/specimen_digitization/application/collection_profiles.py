@@ -335,6 +335,16 @@ class CollectionProfile(FrozenRecord):
             raise ValueError("field groups must be nonblank and disjoint")
         if len(set(self.model_routes)) < 2:
             raise ValueError("two independent model routes required")
+        # Lazy, like storage.digest: collection_profiles stays light to import.
+        from .review_risk import MAX_LABEL_READINGS
+
+        if len(self.model_routes) > MAX_LABEL_READINGS:
+            # The first pass could letter 26 readers, but every pair of a
+            # label's readings is risk-scored, and that measure takes this many.
+            raise ValueError(
+                f"a profile names at most {MAX_LABEL_READINGS} readers "
+                "(the label risk budget)"
+            )
         if not set(self.field_tools) <= set(fields) or any(
             tool not in self.tools for tools in self.field_tools.values() for tool in tools
         ):

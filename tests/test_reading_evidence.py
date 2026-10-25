@@ -346,3 +346,74 @@ def test_small_edit_distance_matches_independent_recursive_oracle():
         for b in examples:
             result = align_readings(reading(a), reading(b, "right"))
             assert result.edit_distance == distance(a, b)
+
+
+# A label with more than two readings (NVIDIA_NEMOTRON_OPTION.md: reader C).
+
+
+def readings(*texts):
+    return [reading(text, observation) for text, observation in zip(texts, "abcdef")]
+
+
+def test_every_pair_of_readings_is_aligned_in_reading_order():
+    from specimen_digitization.application.reading_evidence import pairwise_alignments
+
+    pairs = pairwise_alignments(readings("Mt. Apo", "Mt. Apo", "Mt. Apa"))
+
+    assert [(p.left.observation_id, p.right.observation_id) for p in pairs] == [
+        ("a", "b"),
+        ("a", "c"),
+        ("b", "c"),
+    ]
+    assert [p.status for p in pairs] == ["agreement", "disagreement", "disagreement"]
+    assert pairwise_alignments(readings("x", "y")) == (
+        align_readings(reading("x", "a"), reading("y", "b")),
+    )
+    assert pairwise_alignments(readings("x")) == ()
+
+
+def test_a_label_reports_its_least_agreeing_pair():
+    from specimen_digitization.application.reading_evidence import (
+        disagreement_ratio,
+        label_comparison,
+        pairwise_alignments,
+    )
+
+    pairs = pairwise_alignments(readings("Mt. Apo 1946", "Mt. Apo 1948", "Mt. Apa 1946"))
+    comparison = label_comparison(pairs)
+
+    # (b, c) differs at two characters of 12, (a, b) and (a, c) at one.
+    assert [disagreement_ratio(p) for p in pairs] == [1 / 12, 1 / 12, 2 / 12]
+    assert (comparison.alignment.left.observation_id, comparison.alignment.right.observation_id) == ("b", "c")
+    assert (comparison.status, comparison.reasons) == ("disagreement", ("raw_readings_disagree",))
+    # On a tie, the first such pair in reading order.
+    tied = label_comparison(pairwise_alignments(readings("abc", "abd", "abe")))
+    assert (tied.alignment.left.observation_id, tied.alignment.right.observation_id) == ("a", "b")
+    # A label agrees only when every pair does.
+    agreeing = label_comparison(pairwise_alignments(readings("same", "same", "same")))
+    assert (agreeing.status, disagreement_ratio(agreeing.alignment)) == ("agreement", 0)
+    assert label_comparison(pairwise_alignments(readings("same", "same", "sane"))).status == "disagreement"
+    assert label_comparison(()) is None
+
+
+def test_one_unmeasured_pair_leaves_the_label_unmeasured_with_every_blocked_reason():
+    from specimen_digitization.application.reading_evidence import (
+        disagreement_ratio,
+        label_comparison,
+        pairwise_alignments,
+    )
+
+    # An empty reading is never agreement: both its pairs are blocked.
+    pairs = pairwise_alignments(readings("Mt. Apo", "Mt. Apo", ""))
+    comparison = label_comparison(pairs)
+
+    assert [p.status for p in pairs] == ["agreement", "policy_blocked", "policy_blocked"]
+    assert comparison.status == "policy_blocked"
+    assert comparison.reasons == ("empty_reading_not_agreement",)
+    assert comparison.alignment is pairs[1] and disagreement_ratio(pairs[1]) is None
+    # Reasons from different blocked pairs are all kept, once each, in pair order.
+    mixed = label_comparison(
+        pairwise_alignments(readings("Mt", "", "Mt. Apo"), ReadingLimits(max_codepoints=5))
+    )
+    assert mixed.status == "policy_blocked"
+    assert mixed.reasons == ("empty_reading_not_agreement", "reading_codepoint_limit")
