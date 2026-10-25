@@ -295,9 +295,16 @@ TODAY = ["handwriting-qwen", "handwriting-muse", "first-pass-glm", "harness-deep
         (None, TODAY),
         ("", TODAY),
         ("first_pass", ["handwriting-qwen", "handwriting-muse", "first-pass-nemotron", "harness-deepseek"]),
+        # Nemotron is reader C: added after today's readers.
+        (
+            "readers",
+            ["handwriting-qwen", "handwriting-muse", "handwriting-nemotron", "first-pass-glm",
+             "harness-deepseek"],
+        ),
         (
             "readers,first_pass,field_research",
-            ["handwriting-nemotron", "handwriting-muse", "first-pass-nemotron", "harness-nemotron"],
+            ["handwriting-qwen", "handwriting-muse", "handwriting-nemotron", "first-pass-nemotron",
+             "harness-nemotron"],
         ),
     ],
 )

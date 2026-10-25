@@ -354,6 +354,26 @@ def test_other_words_no_field_holds_are_no_dispute():
     assert agreement.set_aside("Panama", readings, {"3B": {"Panorpa sp. ?"}})
 
 
+def test_three_readers_dispute_a_text_only_when_every_other_reader_does():
+    """A third reader of label 3 (NVIDIA_NEMOTRON_OPTION.md 1): the label's
+    readers dispute 3A's "Panama" when each other reader passes the test two
+    readers have."""
+    base = d10333ff_readings()
+    disputing = Reading("3C", "label3", "obs3c", "raw_reading", LABEL_3B)
+    readings = (*base, disputing)
+    taxon = {"3B": {"Panorpa"}, "3C": {"Panorpa"}}
+    assert agreement.disputed("Panama", readings[2], readings, taxon)
+    assert agreement.set_aside("Panama", readings, taxon)
+    # Reader C's words there are no field of its own: C does not dispute it.
+    assert not agreement.disputed("Panama", readings[2], readings, {"3B": {"Panorpa"}})
+    assert not agreement.set_aside("Panama", readings, {"3B": {"Panorpa"}})
+    # Reader C writes "Panama" too: two readers of three write it, and it stands.
+    agreeing = Reading("3C", "label3", "obs3c", "raw_reading", LABEL_3A)
+    readings = (*base, agreeing)
+    assert not agreement.disputed("Panama", readings[2], readings, taxon)
+    assert not agreement.set_aside("Panama", readings, taxon)
+
+
 def two_label_rig(tmp_path, *, first, second, candidates):
     """build_rig's run with two labels: label 1's readers write `first` (two
     texts; the first pass decided 1A's), label 2's write `second` (two

@@ -23,6 +23,11 @@ ROUTES = {
     "handwriting-qwen": ("Qwen/Qwen3-VL-30B-A3B-Instruct", "novita"),
     "handwriting-muse": ("meta-models/Muse-Glimmer-30B", "deepinfra"),
 }
+# The NVIDIA option's reader C (docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md).
+THREE_ROUTES = {
+    **ROUTES,
+    "handwriting-nemotron": ("nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4", "baseten"),
+}
 
 
 def decision():
@@ -49,7 +54,7 @@ def write(root, name, value):
     return {"path": name, "sha256": file_digest(path)}
 
 
-def packet(root):
+def packet(root, routes=ROUTES):
     source = manifest()
     report = claimed_live_report(root)
     report["scope_sha256"] = SCOPE_SHA
@@ -76,7 +81,7 @@ def packet(root):
         crop_sha = file_digest(crop)
         region = {"id": ident + "-region", "method": "sam3", "version": SAM3_MODEL.revision, "mask_ref": mask_sha + ":3"}
         observations, raws, crops = [], {}, {}
-        for route, (model, provider) in ROUTES.items():
+        for route, (model, provider) in routes.items():
             obs_id = ident + route
             output = {"verbatim_text": "Literal\n[unreadable]", "lines": ["Literal", "[unreadable]"], "unreadable_spans": ["[unreadable]"]}
             raw = write(root, obs_id + ".json", [{"kind": "response", "finish_reason": "stop", "parts": [{"part_kind": "tool-call", "args": output}]}])
@@ -145,6 +150,45 @@ def test_human_scope_can_be_ready_while_full_prd_is_incomplete(tmp_path):
     assert len(result["full_prd_pending"]) == 20
     assert result["release_accepted"] is False
     assert result["full_prd_qualified"] is False
+
+
+@pytest.mark.parametrize("routes", [ROUTES, THREE_ROUTES], ids=["two-readers", "three-readers"])
+def test_a_run_with_two_or_three_readers_per_region_is_accepted(tmp_path, routes):
+    source, report = packet(tmp_path, routes)
+    assert all(len(row["raw_observations"]) == len(routes) for row in report["human_records"])
+    for row in report["results"]:
+        if row["case_id"].startswith("PRD-"):
+            row.update(status="not_run", reason="Full criterion remains unqualified")
+    result = check(tmp_path, source, report)
+    assert "HUMAN-RECORDS" not in result["pending"]
+    assert result["human_review_preflight"] == "ready_for_independent_review"
+
+
+@pytest.mark.parametrize("edit", [
+    # Nemotron without Muse is not a set of readers the run may have.
+    lambda obs: [o for o in obs if o["route_id"] != "handwriting-muse"],
+    # One reader twice.
+    lambda obs: [dict(o, route_id="handwriting-qwen") if o["route_id"] == "handwriting-nemotron" else o for o in obs],
+    # A reader the profile does not name.
+    lambda obs: [dict(o, route_id="handwriting-other") if o["route_id"] == "handwriting-nemotron" else o for o in obs],
+], ids=["no-muse", "duplicate", "unknown-route"])
+def test_a_three_reader_run_cannot_drop_or_repeat_a_reader(tmp_path, edit):
+    source, report = packet(tmp_path, THREE_ROUTES)
+    for field in ("before_review", "after_save", "after_reload"):
+        mutate_file(tmp_path, report, field, lambda p: p["run"].update(observations=edit(p["run"]["observations"])))
+    with pytest.raises(InvalidEvidence, match="same readers"):
+        check(tmp_path, source, report)
+
+
+@pytest.mark.parametrize("model,provider", [("nvidia/other", "baseten"), ("nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4", "novita")])
+def test_the_third_reader_must_be_the_approved_model_and_provider(tmp_path, model, provider):
+    source, report = packet(tmp_path, THREE_ROUTES)
+    def edit(payload):
+        next(o for o in payload["run"]["observations"] if o["route_id"] == "handwriting-nemotron").update(model_id=model, provider=provider)
+    for field in ("before_review", "after_save", "after_reload"):
+        mutate_file(tmp_path, report, field, edit)
+    with pytest.raises(InvalidEvidence, match="Unapproved reader route"):
+        check(tmp_path, source, report)
 
 
 def test_all_generic_passes_without_actual_records_remain_pending(tmp_path):
