@@ -80,6 +80,46 @@ void main() {
     expect(readerNames([a])[readerIdentity(a)], 'shared-model-v4');
   });
 
+  test('three readers keep their names and order whichever reads first', () {
+    final qwen = <String, dynamic>{
+      'model_id': 'Qwen/Qwen3-VL-30B-A3B-Instruct',
+      'provider': 'novita',
+    };
+    final muse = <String, dynamic>{
+      'model_id': 'meta-models/Muse-Glimmer-30B',
+      'provider': 'deepinfra',
+    };
+    final third = <String, dynamic>{
+      'model_id': 'nvidia/nemotron-nano-vl',
+      'provider': 'nvidia',
+    };
+    final names = readerNames([qwen, muse, third]);
+    expect(names.values.toSet(), {
+      'Qwen/Qwen3-VL-30B-A3B-Instruct',
+      'meta-models/Muse-Glimmer-30B',
+      'nvidia/nemotron-nano-vl',
+    });
+    expect(readerNames([third, qwen, muse]), names);
+    expect(readerNames([muse, third, qwen]), names);
+    expect({
+      readerIdentity(qwen),
+      readerIdentity(muse),
+      readerIdentity(third),
+    }, hasLength(3));
+  });
+
+  test('a reader from a family with no verified mark gets none', () {
+    expect(readerBrand({'model_id': 'nvidia/nemotron-nano-vl'}), isNull);
+    expect(
+      readerBrand({
+        'model_id': 'alias',
+        'provider_model_id': 'nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-BF16',
+        'provider': 'nvidia',
+      }),
+      isNull,
+    );
+  });
+
   test(
     'marks are matched to actual families, never their inference provider',
     () {
