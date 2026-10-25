@@ -1001,9 +1001,12 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
         .take(1)
         .toList();
     // The API serves one comparison per label (`disagreements/<label id>`,
-    // the first row it holds for that label). With three readers the label
-    // holds a row for each pair, and a request per row would repeat the same
-    // answer under the same key, so the first row stands for the label.
+    // the first row it holds for that label). The backend writes one
+    // `run.disagreements` entry per label, with two readers or more: for three
+    // or more readings the artifact keeps the reported (least-agreeing) pair's
+    // fields at its top level and adds a `comparisons` list with every pair.
+    // So the first row for the label is the label's row, and a request per row
+    // would repeat the same answer under the same key.
     final Json? comparison = objects(
       run['disagreements'],
     ).where((Json d) => d['region_id'] == selectedRegionId).firstOrNull;
