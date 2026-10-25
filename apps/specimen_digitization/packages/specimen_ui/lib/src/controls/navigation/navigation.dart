@@ -24,3 +24,4 @@ export 'sticky_bar.dart';
 export 'tab_bar.dart';
 export 'top_bar.dart';
 export 'workspace_header.dart';
+export 'view_tabs.dart';

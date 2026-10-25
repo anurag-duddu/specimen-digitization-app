@@ -86,6 +86,7 @@ Specimen goldenSpecimen() {
     'revision': wire['revision'],
     'operational_state': 'completed',
     'disposition': 'needs_human_review',
+    'review_summary': {'review': 2, 'missing': 3},
     'reason_codes': wire['reason_codes'],
     'profile_version': wire['profile_version'],
     'available_actions': <String>[

@@ -1,6 +1,7 @@
 """Bounded current-metadata search; cursors carry no authorization authority."""
 
 from .lane import SQLITE_STATUS
+from .review_summary import review_summary
 
 import base64
 import hashlib
@@ -213,6 +214,9 @@ def sql_item(row, scope):
     result.update(scope.model_dump())
     result["record_version_id"] = f"{result['active_run_id']}:{result['revision']}"
     result["risk_calibrated"] = False
+    result["review_summary"] = review_summary(
+        row.get("fieldReviewStates"), result["reason_codes"]
+    )
     return result
 
 
@@ -245,6 +249,15 @@ def sqlite_search(
         "synthetic": "json_extract(payload,'$.run.profile.synthetic')",
         "sensitive": "json_extract(payload,'$.asset.sensitive')",
         "reason_codes": "json_extract(payload,'$.run.reasons')",
+        "field_review_states": """(SELECT json_group_object(field.key, CASE WHEN field.type = 'object' THEN json_object(
+            'state', json_extract(field.value, '$.state'),
+            'has_value', json(CASE WHEN
+              length(trim(CASE WHEN json_type(field.value,'$.normalized')='text' THEN json_extract(field.value,'$.normalized') ELSE '' END,char(9,10,11,12,13,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279))) > 0 OR
+              length(trim(CASE WHEN json_type(field.value,'$.parsed')='text' THEN json_extract(field.value,'$.parsed') ELSE '' END,char(9,10,11,12,13,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279))) > 0 OR
+              length(trim(CASE WHEN json_type(field.value,'$.literal')='text' THEN json_extract(field.value,'$.literal') ELSE '' END,char(9,10,11,12,13,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279))) > 0
+            THEN 'true' ELSE 'false' END)) ELSE NULL END)
+          FROM json_each(CASE WHEN json_type(payload,'$.run.fields')='object'
+            THEN json_extract(payload,'$.run.fields') ELSE '{}' END) AS field)""",
         "risk": "CASE WHEN json_type(payload,'$.run.review_risk.composite') IN ('integer','real') AND json_extract(payload,'$.run.review_risk.composite') BETWEEN 0 AND 100 THEN json_extract(payload,'$.run.review_risk.composite') END",
         # Mirrors lane.run_status; the SQLite state column holds the raw stage.
         "status": SQLITE_STATUS,
@@ -298,5 +311,8 @@ def sqlite_search(
         row["synthetic"] = bool(row["synthetic"])
         row["record_version_id"] = f"{row['active_run_id']}:{row['revision']}"
         row["risk_calibrated"] = False
+        row["review_summary"] = review_summary(
+            json.loads(row.pop("field_review_states") or "null"), row["reason_codes"]
+        )
         result.append(row)
     return result

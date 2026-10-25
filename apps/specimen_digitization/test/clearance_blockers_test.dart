@@ -46,6 +46,92 @@ List<String> messages(Specimen specimen) => blockersFor(
 ).map((ClearanceBlocker blocker) => blocker.message).toList();
 
 void main() {
+  test('message-less provenance notes use their recorded meaning', () {
+    final specimen = Specimen({
+      'fields': [
+        {
+          'field_key': 'country',
+          'state': 'supported',
+          'literal_value': 'Philippines',
+        },
+      ],
+      'validation_findings': [
+        for (final code in ['transcript_literal', 'near_spelling'])
+          {'field_key': 'country', 'severity': 'info', 'reason_code': code},
+      ],
+    });
+    expect(blockersFor(specimen), isEmpty);
+    expect(fieldNotesFor(specimen).map((note) => note.message), [
+      'Read from the label transcript',
+      'Matched using a close spelling',
+    ]);
+  });
+
+  test(
+    'warning and info findings retain context without creating blockers',
+    () {
+      final specimen = Specimen({
+        'specimen_id': 'context',
+        'fields': [
+          {
+            'field_key': 'country',
+            'state': 'supported',
+            'literal_value': 'Philippines',
+          },
+        ],
+        'validation_findings': [
+          {
+            'field_key': 'country',
+            'severity': 'info',
+            'rule_id': 'transcript_literal',
+            'message': 'The label states P.I.',
+          },
+          {
+            'field_key': 'country',
+            'severity': 'warning',
+            'rule_id': 'normalization_note',
+            'message': 'Original punctuation retained in the label wording.',
+          },
+        ],
+      });
+      expect(blockersFor(specimen), isEmpty);
+      final notes = fieldNotesFor(specimen);
+      expect(notes, hasLength(2));
+      expect(notes.every((note) => !note.isBlocking), isTrue);
+      expect(
+        notes.map((note) => note.message),
+        contains('The label states P.I.'),
+      );
+    },
+  );
+
+  test('context cannot suppress an identical actual blocking reason', () {
+    final specimen = Specimen({
+      'specimen_id': 'context-plus-gate',
+      'fields': [
+        {
+          'field_key': 'country',
+          'state': 'supported',
+          'literal_value': 'Philippines',
+        },
+      ],
+      'reason_codes': ['evidence_missing:country'],
+      'validation_findings': [
+        {
+          'field_key': 'country',
+          'severity': 'info',
+          'reason_code': 'evidence_missing:country',
+          'message': 'Retained note',
+        },
+      ],
+    });
+    final blockers = blockersFor(specimen);
+    expect(blockers, hasLength(1));
+    expect(blockers.single.isBlocking, isTrue);
+    expect(blockers.single.fieldKey, 'country');
+    expect(fieldNotesFor(specimen).single.message, 'Retained note');
+  });
+
   test('identical readings are never said to differ', () {
     final List<String> said = messages(
       pilotRecord(alternatives: <String>['Chicago 1912']),

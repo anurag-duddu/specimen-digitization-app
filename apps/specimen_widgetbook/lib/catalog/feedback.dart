@@ -174,6 +174,45 @@ List<WidgetbookComponent> get feedbackComponents => [
   WidgetbookComponent(
     name: 'UiDisclosure',
     useCases: [
+      story(
+        'Value review hierarchy',
+        'Compact provenance stays visible. Supported values use secondary ink and a check; fields needing attention keep full emphasis. Both reveal their evidence on activation.',
+        (context) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            UiSectionHeader(
+              title: 'Collection',
+              meta: Text(
+                '1 review · 1 missing',
+                style: context.ui.type.bodySmall,
+              ),
+            ),
+            SizedBox(height: context.ui.space.s4),
+            UiDisclosure(
+              title: 'Country',
+              summary: 'Philippines',
+              metadata: 'Derived',
+              collapsedIcon: UiIcons.check,
+              semanticsLabel: 'Country. Supported. Philippines. Basis: derived',
+              style: UiDisclosureStyle.value(context.ui, subdued: true),
+              child: const Text(
+                'The retained label states P.I.; the supported interpretation is Philippines.',
+              ),
+            ),
+            const UiHairline(),
+            UiDisclosure(
+              title: 'City',
+              summary: 'Unresolved',
+              semanticsLabel: 'City. Unresolved. Review needed',
+              style: UiDisclosureStyle.value(context.ui),
+              child: const Text(
+                'No supported city has been recorded. Inspect the retained label evidence before correcting this field.',
+              ),
+            ),
+          ],
+        ),
+      ),
       for (final expanded in [false, true])
         story(
           expanded ? 'Expanded' : 'Collapsed',

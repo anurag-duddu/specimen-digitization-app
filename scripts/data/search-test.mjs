@@ -23,6 +23,12 @@ ok(await raw(`mutation @transaction {
  collectionMember_insert(data:{organizationId:"${organizationId}",collectionId:"${collectionId}",uid:"${actorUid}",active:true,role:"reviewer",canViewSensitive:true})
 }`));
 const count=2037;
+const reviewFields = {
+  country: {state: 'supported', normalized: '  ', literal: 'USA'},
+  city: {state: 'supported', literal: ' \t\n'},
+  county: {state: 'not_present'},
+  taxon: {state: 'unknown', verbatim_by_observation: {reader: 'Unsettled text'}},
+};
 // Use parameter-free locally generated SQL to seed realistic immutable histories
 // efficiently; all values originate here and no network credentials are used.
 const psql=sql=>execFileSync(process.env.PSQL_BIN||'/opt/homebrew/opt/postgresql@18/bin/psql',['-h','127.0.0.1','-p',process.env.SPECIMEN_TEST_PG_PORT||'5599','-d','specimen-digitization-database','-v','ON_ERROR_STOP=1','-At'],{input:sql,encoding:'utf8',maxBuffer:4*1024*1024});
@@ -32,12 +38,21 @@ for(let start=0;start<count;start+=100){
  const summaries=[],snapshots=[];
  for(let n=start;n<Math.min(start+100,count);n++){
   summaries.push(`('${organizationId}','${collectionId}','${ident(n)}',2,'${n%2?'running':'completed'}',${n%2?'NULL':"'cleared'"},${n%11===0},'${actorUid}','${n<1000?past:nextDay}','${past}')`);
-  for(const revision of [1,2]){const p=payload(n);if(revision===1){p.batch_id='historical-only';p.run.review_risk={composite:99};}snapshots.push(`('${organizationId}','${collectionId}','${ident(n)}',${revision},'0.2',${q(JSON.stringify(p))}::jsonb,'${'a'.repeat(64)}','${past}')`);}
+  for(const revision of [1,2]){const p=payload(n);if(n===0)p.run.fields=reviewFields;if(revision===1){p.batch_id='historical-only';p.run.review_risk={composite:99};p.run.fields={historical:{state:'supported',literal:'Never count this'}};}snapshots.push(`('${organizationId}','${collectionId}','${ident(n)}',${revision},'0.2',${q(JSON.stringify(p))}::jsonb,'${'a'.repeat(64)}','${past}')`);}
  }
  psql(`INSERT INTO specimen (organization_id,collection_id,id,revision,state,disposition,sensitive,created_by,created_at,updated_at) VALUES ${summaries}; INSERT INTO specimen_snapshot (organization_id,collection_id,specimen_id,revision,contract_version,snapshot,sha256,created_at) VALUES ${snapshots};`);
 }
 let rows=await search({limit:3});assert.equal(rows.length,3);assert.equal(rows[0].synthetic,true);assert.ok(rows[0].createdAt.startsWith('2020-01-01'));assert.equal(rows[0].activeRunId,'run-0');assert.equal(rows[0].domainCreatedAt,'1999-01-01T00:00:00Z');assert.ok(!('snapshot' in rows[0]));
 assert.equal((await search({batchId:'historical-only'})).length,0);
+assert.deepEqual(rows[0].fieldReviewStates, {
+  country: {state: 'supported', has_value: true},
+  city: {state: 'supported', has_value: false},
+  county: {state: 'not_present', has_value: false},
+  taxon: {state: 'unknown', has_value: false},
+});
+assert.equal(rows[1].fieldReviewStates, null);
+assert.ok(!JSON.stringify(rows[0].fieldReviewStates).includes('USA'));
+console.log('PASS current-only compact review projection, empty values, absent fields and no field content');
 const checks=[['batchId','batch-a',n=>n%2===0],['uploader','uploader-a',n=>n%3===0],['status','completed',n=>n%2===0],['stage','classify',n=>n%2===1],['disposition','cleared',n=>n%2===0],['profileVersion','v1',n=>n%3===0],['reasonCode','reason-a',n=>n%5===0],['blocker','blocker-a',n=>n%7===0],['riskMin',50,n=>n%4===2],['riskMax',0,n=>n%4===1]];
 for(const [key,value,predicate] of checks){rows=await search({[key]:value});assert.equal(rows.length,100,key);for(const r of rows)assert.ok(predicate(parseInt(r.id.slice(-12),16)),key);}
 for(const [key,value] of [['specimenId',ident(42)],['assetId','asset-42'],['activeRunId','run-42']])assert.deepEqual((await search({[key]:value})).map(r=>r.id),[ident(42)]);

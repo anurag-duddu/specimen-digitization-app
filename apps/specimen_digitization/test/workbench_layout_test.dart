@@ -491,12 +491,13 @@ void main() {
         await tester.pumpAndSettle();
         final Finder finding = find.text('A supported country is required');
         expect(finding, findsNothing);
-        expect(
-          find.text('Unknown · A supported country is required'),
-          findsOneWidget,
-        );
         expect(find.text('Country'), findsOneWidget);
         final Finder disclosure = uiDisclosure('Country');
+        expect(
+          find.descendant(of: disclosure, matching: find.text('Unknown')),
+          findsOneWidget,
+        );
+        expect(find.text('1 review · 1 missing'), findsOneWidget);
         final Finder header = find.descendant(
           of: disclosure,
           matching: find.byWidgetPredicate(

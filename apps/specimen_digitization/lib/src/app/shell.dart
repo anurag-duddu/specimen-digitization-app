@@ -1,4 +1,4 @@
-/// Adaptive collection navigation with labelled desktop destinations and
+/// Adaptive collection navigation with a named active destination and
 /// compact bottom tabs. The queue is content, not global navigation.
 library;
 
@@ -422,6 +422,7 @@ class _AppShellState extends State<AppShell> {
   Widget _mobileNav(BuildContext context) => UiTabBar(
     key: const ValueKey<String>('mobile-navigation'),
     destinations: AppShell.destinations,
+    labels: UiNavigationLabels.selectedOnly,
     currentIndex: widget.destination.index,
     iconKeyOf: (index) => ValueKey<String>(
       'mobile-nav-${AppShell.destinations[index].label.toLowerCase()}',
@@ -535,6 +536,7 @@ class _AppShellState extends State<AppShell> {
         child: UiSidebar(
           key: const ValueKey<String>('global-rail'),
           destinations: AppShell.destinations,
+          labels: UiNavigationLabels.selectedOnly,
           currentIndex: widget.destination.index,
           semanticsLabel: AppShell.navigationLabel,
           onSelect: (index) => _select(WorkspaceDestination.values[index]),
