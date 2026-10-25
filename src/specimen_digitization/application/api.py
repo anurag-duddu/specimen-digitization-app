@@ -1940,7 +1940,8 @@ def create_app(
         bound = binding(p.scope, filters, user, sensitive)
         cutoff, after_created, after_id = decode_cursor(cursor, bound)
         items = repository.search(
-            p.scope, filters, cutoff, after_created, after_id, limit, sensitive
+            p.scope, filters, cutoff, after_created, after_id, limit, sensitive,
+            hydrate_review=True,
         )
         # A full page may have an empty terminal page. This keeps each DB query <=100.
         following = (
@@ -1948,7 +1949,8 @@ def create_app(
         )
         for item in items:
             # Metadata rows lack pilot pins and lease state. Fetch scoped detail/
-            # workspace before offering mutations; do not reconstruct paged graphs.
+            # workspace before offering mutations. Legacy queue count reads do not
+            # reconstruct models or grant any actions from graph metadata.
             item["available_actions"] = []
         return {"items": items, "next_cursor": following, "cutoff": cutoff}
 
