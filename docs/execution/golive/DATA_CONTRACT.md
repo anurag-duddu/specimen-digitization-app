@@ -186,7 +186,7 @@ region.
 | `PipelineRun` | `traceId` (32 lowercase hex, recorded once) |
 | `LabelRegion` | `domainRegionId` (the domain's region id: SAM's, a corrected one, or `new-{microseconds}` for a region a person added; the row's own id is per run, section 5) |
 | `ModelObservation` | `routeId`, `unreadableSpans: [String!]` |
-| `TranscriptionVersion` | `regionId` (CONTRACTS.md 185), `decisionKind` (`identical_readings`, `first_pass` or `human`), `selectedObservationId` (the reading whose raw transcript the harness runs against; null only when no reading was selected), `firstPassObservationId` (the first pass's model call), `rationale`. `unresolved` follows the one rule in section 4.2 |
+| `TranscriptionVersion` | `regionId` (CONTRACTS.md 185), `decisionKind` (`identical_readings`, `first_pass` or `human`), `selectedObservationId` (the reading the first pass preferred: advice to the harness, which may settle a field on another reader's text when evidence backs it; null only when no reading was selected), `firstPassObservationId` (the first pass's model call), `rationale`. `unresolved` follows the one rule in section 4.2 |
 | `FieldCandidate` | `inputSource` (`decided_transcript` or `raw_reading`), `sourceTranscriptionId`, `sourceObservationId` |
 | `ResolvedField` | `fieldGroup` (`mandatory` or `optional`) |
 | `ValidationFinding` | `evidenceIds: [UUID!]` (the evidence behind the finding, all of the record version's run) |
