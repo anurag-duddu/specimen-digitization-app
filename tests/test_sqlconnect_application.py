@@ -80,7 +80,11 @@ def test_real_sql_adapter_workflow_cas_and_reconstruction(tmp_path):
     from specimen_digitization.application.search import SearchFilters
     from specimen_digitization.application.domain import now
 
-    rows = repo.search(scope, SearchFilters(specimen_id=result.id), now())
+    filters = SearchFilters(specimen_id=result.id)
+    cutoff = now()
+    assert result.asset.sensitive is True
+    assert repo.search(scope, filters, cutoff) == []
+    rows = repo.search(scope, filters, cutoff, include_sensitive=True)
     assert len(rows) == 1
     assert rows[0]["revision"] == result.version
     assert rows[0]["review_summary"] == summary(result)["review_summary"]
