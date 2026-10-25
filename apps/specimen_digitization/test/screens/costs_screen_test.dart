@@ -523,9 +523,7 @@ void main() {
       await pumpCosts(tester, FakeCostRepository());
 
       expect(
-        find.text(
-          "After Google's free allowance. \$2.00 of it estimated.",
-        ),
+        find.text("After Google's free allowance. \$2.00 of it estimated."),
         findsOneWidget,
       );
     });
