@@ -109,23 +109,14 @@ void main() {
           await tester.tap(uiDestination('Specimens'));
           await tester.pumpAndSettle();
           final specimensCollection = tester.getRect(_collection);
-          final queueHeading = tester.getRect(find.text('Review queue'));
+          final queueSearch = tester.getRect(find.byType(UiSearchField));
+          expect(find.text('Review queue'), findsNothing);
           expect(specimensCollection.top, collection.top);
           expect(specimensCollection.height, collection.height);
           final queuePane = tester.getRect(find.byType(QueuePane));
           expect(queuePane.top, tester.getRect(_header).bottom);
-          expect(queueHeading.top - queuePane.top, ui.space.s6);
-          final queueHeader = tester.widget<UiSectionHeader>(
-            find.ancestor(
-              of: find.text('Review queue'),
-              matching: find.byType(UiSectionHeader),
-            ),
-          );
-          expect(
-            queueHeader.role,
-            UiSectionHeaderRole.page,
-            reason: 'the standalone queue owns a page heading, not pane chrome',
-          );
+          expect(queueSearch.top - queuePane.top, ui.space.s6);
+          expect(uiDestination('Specimens'), findsOneWidget);
           await tester.tap(uiDestination('Intake'));
           await tester.pumpAndSettle();
           final scroll = find.descendant(

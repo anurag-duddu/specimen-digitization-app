@@ -139,18 +139,17 @@ void main() {
       await pumpQueue(tester, repository, window: const Size(1440, 900));
       expect(find.byType(UiBrandHero), findsNothing);
       expect(find.text('#First record'), findsOneWidget);
-      expect(find.text('Review queue'), findsOneWidget);
-      final heading = tester.getRect(find.text('Review queue'));
+      expect(find.text('Review queue'), findsNothing);
       final search = tester.getRect(find.byType(UiSearchField));
       final ui = tester.element(find.byType(QueuePane)).ui;
-      expect(search.left, heading.left);
-      expect(search.width, ui.space.readingMax);
+      final command = tester.getRect(uiButton('Select'));
+      expect(search.width + ui.space.s2 + command.width, ui.space.readingMax);
+      expect(search.center.dy, command.center.dy);
       final selector = tester.getRect(
         find.byKey(const ValueKey<String>('queue-view')),
       );
       expect(selector.width, lessThan(search.width));
-      final command = tester.getRect(uiIconButton('Select specimens'));
-      expect(command.top, heading.top);
+
       await tester.tap(find.text('#First record'));
       await tester.pumpAndSettle();
       expect(locationOf(tester), endsWith('/queue/SD-1'));
@@ -193,6 +192,7 @@ void main() {
             Specimen({
               'specimen_id': 'SD-summary',
               'filename': 'Collection specimen with a long reference',
+              'review_summary': {'review': 3, 'missing': 2},
               'disposition': 'needs_human_review',
               'reason_codes': [
                 'human_approval_required',
@@ -209,7 +209,8 @@ void main() {
         await tester.ensureVisible(row);
         await tester.pumpAndSettle();
         expect(row.hitTestable(), findsOneWidget);
-        expect(find.text('Taxon needs a supported value'), findsOneWidget);
+        expect(find.text('3 fields to review · 2 missing'), findsOneWidget);
+        expect(find.text('Taxon needs a supported value'), findsNothing);
         expect(find.textContaining('mandatory_unresolved'), findsNothing);
         expect(find.textContaining('Updated '), findsNothing);
         expect(find.byType(StatusChip), findsNothing);
@@ -319,7 +320,7 @@ void main() {
       expect(repository.requests.last['disposition'], 'cleared');
       expect(
         tester.getSemantics(find.bySemanticsLabel('Cleared')),
-        containsSemantics(isChecked: true, isInMutuallyExclusiveGroup: true),
+        containsSemantics(isSelected: true),
       );
       semantics.dispose();
       await tester.pumpWidget(const SizedBox());

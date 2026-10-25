@@ -91,27 +91,28 @@ class UiDisclosureStyle {
 
   /// A named value with details behind it. The small field name provides
   /// context; the value or problem is the primary scanning line.
-  static UiDisclosureStyle value(UiThemeData ui) => UiDisclosureStyle(
-    title: ui.type.bodySmall,
-    summary: ui.type.body,
-    titleColor: ui.color.inkSecondary,
-    summaryColor: ui.color.ink,
-    caretColor: ui.color.inkSecondary,
-    padding: EdgeInsetsDirectional.symmetric(
-      horizontal: ui.space.s3,
-      vertical: ui.space.s3,
-    ),
-    bodyPadding: EdgeInsetsDirectional.fromSTEB(
-      ui.space.s3,
-      0,
-      ui.space.s3,
-      ui.space.s3,
-    ),
-    gap: ui.space.s3,
-    summaryGap: ui.space.s1,
-    minHeight: ui.density.rowHeight,
-    radius: ui.shape.inner,
-  );
+  static UiDisclosureStyle value(UiThemeData ui, {bool subdued = false}) =>
+      UiDisclosureStyle(
+        title: ui.type.bodySmall,
+        summary: ui.type.body,
+        titleColor: ui.color.inkSecondary,
+        summaryColor: subdued ? ui.color.inkSecondary : ui.color.ink,
+        caretColor: ui.color.inkSecondary,
+        padding: EdgeInsetsDirectional.symmetric(
+          horizontal: ui.space.s3,
+          vertical: ui.space.s3,
+        ),
+        bodyPadding: EdgeInsetsDirectional.fromSTEB(
+          ui.space.s3,
+          0,
+          ui.space.s3,
+          ui.space.s3,
+        ),
+        gap: ui.space.s3,
+        summaryGap: ui.space.s1,
+        minHeight: ui.density.rowHeight,
+        radius: ui.shape.inner,
+      );
 
   /// Half a turn. The caret points down when closed and up when open, and the
   /// glyph is the same one either way so the two states are one object moving
@@ -137,6 +138,8 @@ class UiDisclosure extends StatefulWidget {
     required this.title,
     required this.child,
     this.summary,
+    this.metadata,
+    this.collapsedIcon,
     this.trailing,
     this.hideSummaryWhenExpanded = false,
     this.initiallyExpanded = false,
@@ -153,6 +156,17 @@ class UiDisclosure extends StatefulWidget {
 
   /// A second line under the title, saying what is behind the row.
   final String? summary;
+
+  /// Compact, non-interactive context beside the title, wrapping as needed.
+  ///
+  /// Included in default semantics. When overriding [semanticsLabel], include
+  /// this information there as well. It remains visible while expanded.
+  final String? metadata;
+
+  /// Optional state glyph while closed, such as a check for a completed value.
+  /// The open state keeps the disclosure caret. State meaning must also be
+  /// present in [semanticsLabel]; the glyph never supplies semantics alone.
+  final IconSpec? collapsedIcon;
 
   /// A chip that qualifies the row: at the end of the header, before the
   /// caret, while the title fits beside it, and on a line of its own under the
@@ -203,7 +217,7 @@ class _UiDisclosureState extends State<UiDisclosure> {
     final String? given = widget.semanticsLabel;
     if (given != null) return given;
     final String? summary = _visibleSummary;
-    return summary == null ? widget.title : '${widget.title}. $summary';
+    return <String>[widget.title, ?summary, ?widget.metadata].join('. ');
   }
 
   /// The title over its summary, which takes whatever the line has left, and
@@ -213,7 +227,25 @@ class _UiDisclosureState extends State<UiDisclosure> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(widget.title, style: title, strutStyle: UiType.strutOf(title)),
+          Wrap(
+            spacing: style.gap,
+            runSpacing: style.summaryGap,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
+              Text(
+                widget.title,
+                style: title,
+                strutStyle: UiType.strutOf(title),
+              ),
+              if (widget.metadata case final metadata?)
+                Text(
+                  '· $metadata',
+                  style: context.ui.type.bodySmall.copyWith(
+                    color: context.ui.color.inkSecondary,
+                  ),
+                ),
+            ],
+          ),
           // The summary is content, not a label: it is the row's second line,
           // the same object a list row's subtitle is, so it wraps to two
           // lines before it is cut (11 section 3.3).
@@ -270,7 +302,9 @@ class _UiDisclosureState extends State<UiDisclosure> {
       duration: ui.motion.short,
       curve: MotionTokens.standardCurve,
       child: UiIcon(
-        UiIcons.expand,
+        !_open && widget.collapsedIcon != null
+            ? widget.collapsedIcon!
+            : UiIcons.expand,
         size: UiIconSize.inline,
         color: style.caretColor,
       ),

@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/pressable.dart';
+import '../overlays/tooltip.dart';
 import 'nav_destination.dart';
 import 'nav_group.dart';
 
@@ -122,6 +123,7 @@ class UiSidebar extends StatelessWidget {
     this.header,
     this.footer,
     this.semanticsLabel,
+    this.labels = UiNavigationLabels.all,
   });
 
   /// The destinations, in order.
@@ -144,6 +146,9 @@ class UiSidebar extends StatelessWidget {
 
   /// Accessible name when the page contains other navigation groups.
   final String? semanticsLabel;
+
+  /// Inactive names may be shown on hover while the current name stays visible.
+  final UiNavigationLabels labels;
 
   /// The pane's intrinsic width for these destinations and this reader.
   static double widthOf(
@@ -239,7 +244,8 @@ class UiSidebar extends StatelessWidget {
     final ui = context.ui;
     final destination = destinations[index];
     final ink = current ? style.currentContent : style.restContent;
-    return Pressable(
+    final showLabel = current || labels == UiNavigationLabels.all;
+    final row = Pressable(
       semanticsLabel: destination.label,
       role: PressableRole.tab,
       selected: current,
@@ -261,23 +267,34 @@ class UiSidebar extends StatelessWidget {
                 textStyle: ui.type.body,
                 color: ink,
               ),
-              SizedBox(width: ui.space.s2),
-              Expanded(
-                child: Text(
-                  destination.label,
-                  style: ui.type.body.copyWith(
-                    color: ink,
-                    fontWeight: current ? FontWeight.w600 : FontWeight.w400,
-                    fontVariations: [
-                      FontVariation('wght', current ? 600 : 400),
-                    ],
+              if (showLabel) ...[
+                SizedBox(width: ui.space.s2),
+                Expanded(
+                  child: Text(
+                    destination.label,
+                    style: ui.type.body.copyWith(
+                      color: ink,
+                      fontWeight: current ? FontWeight.w600 : FontWeight.w400,
+                      fontVariations: [
+                        FontVariation('wght', current ? 600 : 400),
+                      ],
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
       ),
     );
+    return showLabel
+        ? row
+        : MergeSemantics(
+            child: UiTooltip(
+              message: destination.label,
+              excludeSemantics: true,
+              child: row,
+            ),
+          );
   }
 }

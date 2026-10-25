@@ -30,6 +30,7 @@ class ClearanceBlocker {
     this.kind = ClearanceBlockerKind.record,
     this.rawCode,
     this.diagnosticRuleId,
+    this.isBlocking = true,
   });
 
   /// What is outstanding, as a sentence a reviewer can act on.
@@ -54,6 +55,9 @@ class ClearanceBlocker {
 
   /// The original validator identity, retained without displaying it as copy.
   final String? diagnosticRuleId;
+
+  /// False for retained warning/info notes, which never block clearance.
+  final bool isBlocking;
 
   bool get isOperational => kind == ClearanceBlockerKind.processing;
   bool get isTargeted => fieldKey != null || regionId != null;
@@ -125,6 +129,7 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
   }
 
   for (final Json f in specimen.findings) {
+    if (_isContextualFinding(f)) continue;
     final String code = textOf(
       f['reason_code'] ?? f['code'],
       textOf(f['rule_id'], ''),
@@ -153,6 +158,24 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
 
   return blockers;
 }
+
+bool _isContextualFinding(Json finding) =>
+    const {'warning', 'info'}.contains(finding['severity']);
+
+/// Retained field context that does not create a clearance or review gate.
+/// The evidence disclosure displays these notes without increasing counts.
+List<ClearanceBlocker> fieldNotesFor(Specimen specimen) => [
+  for (final finding in specimen.findings)
+    if (_isContextualFinding(finding))
+      _issueFor(
+        specimen,
+        textOf(
+          finding['reason_code'] ?? finding['code'],
+          textOf(finding['rule_id'], ''),
+        ),
+        finding: finding,
+      ),
+].where((note) => note.fieldKey != null).toList();
 
 /// The exact fields named by the specimen contract. A reason suffix is a
 /// routing hint only when it names a real field in this response.
@@ -438,8 +461,15 @@ ClearanceBlocker _issueFor(
   }
 
   return ClearanceBlocker(
-    message: message ?? 'A specimen check needs review before approval',
-    detail: detail,
+    message: _isContextualFinding(finding)
+        ? _humanMessage(finding['message']) ??
+              switch (base) {
+                'transcript_literal' => 'Read from the label transcript',
+                'near_spelling' => 'Matched using a close spelling',
+                _ => 'Recorded field note',
+              }
+        : message ?? 'A specimen check needs review before approval',
+    detail: _isContextualFinding(finding) ? null : detail,
     segment: field != null || region == null
         ? WorkbenchSegment.fields
         : WorkbenchSegment.readings,
@@ -448,6 +478,7 @@ ClearanceBlocker _issueFor(
     kind: kind,
     rawCode: code.isEmpty ? null : code,
     diagnosticRuleId: _nonempty(finding['rule_id']),
+    isBlocking: !_isContextualFinding(finding),
   );
 }
 

@@ -74,6 +74,18 @@ def test_real_sql_adapter_workflow_cas_and_reconstruction(tmp_path):
     )
     assert result.run.disposition.value == "needs_human_review"
     assert len(result.run.observations) == 2
+    # Search uses the same current fields as the workspace, without loading
+    # snapshots per row or exporting their values through the list response.
+    from specimen_digitization.application.api import summary
+    from specimen_digitization.application.search import SearchFilters
+    from specimen_digitization.application.domain import now
+
+    rows = repo.search(scope, SearchFilters(specimen_id=result.id), now())
+    assert len(rows) == 1
+    assert rows[0]["revision"] == result.version
+    assert rows[0]["review_summary"] == summary(result)["review_summary"]
+    assert rows[0]["review_summary"] is not None
+    assert "fieldReviewStates" not in rows[0] and "fields" not in rows[0]
     old = result.version
     result.run.human_approved = True
     from specimen_digitization.application.policy import finalize

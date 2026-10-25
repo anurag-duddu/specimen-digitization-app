@@ -64,6 +64,7 @@ const Map<String, String> publicControlComponents = <String, String>{
   'UiSteps': 'navigation/uisteps',
   'UiStickyBar': 'compositions/uistickybar',
   'UiTabBar': 'navigation/uitabbar',
+  'UiViewTabs': 'navigation/uiviewtabs',
   'UiTopBarAction': 'navigation/uitopbar',
   'UiTopBar': 'navigation/uitopbar',
   'UiWorkspaceHeader': 'compositions/uiworkspaceheader',
