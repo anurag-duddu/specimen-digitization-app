@@ -29,6 +29,8 @@ type SpecimenSearch @view(sql: """
       WHEN s.id::text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN substring(s.id::text FROM 1 FOR 8)
       ELSE s.id::text
     END AS display_reference,
+    CASE WHEN jsonb_typeof(v.snapshot #> '{active_graph,field_review}') = 'object'
+      THEN v.snapshot #> '{active_graph,field_review,fields}' ELSE
     (SELECT jsonb_object_agg(field.key, CASE WHEN jsonb_typeof(field.value) = 'object' THEN jsonb_build_object(
       'state', field.value -> 'state',
       'has_value', length(btrim(CASE WHEN jsonb_typeof(field.value -> 'normalized') = 'string' THEN field.value ->> 'normalized' ELSE '' END, whitespace.chars)) > 0
@@ -36,7 +38,8 @@ type SpecimenSearch @view(sql: """
         OR length(btrim(CASE WHEN jsonb_typeof(field.value -> 'literal') = 'string' THEN field.value ->> 'literal' ELSE '' END, whitespace.chars)) > 0) ELSE NULL END)
       FROM jsonb_each(CASE WHEN jsonb_typeof(v.snapshot #> '{run,fields}') = 'object'
         THEN v.snapshot #> '{run,fields}' ELSE '{}'::jsonb END) AS field
-    ) AS field_review_states
+    ) END AS field_review_states,
+    v.snapshot -> 'active_graph' AS active_graph
   FROM public.specimen s JOIN public.specimen_snapshot v
     ON v.organization_id = s.organization_id AND v.collection_id = s.collection_id
     AND v.specimen_id = s.id AND v.revision = s.revision
@@ -70,4 +73,5 @@ type SpecimenSearch @view(sql: """
   synthetic: Boolean
   displayReference: String
   fieldReviewStates: Any
+  activeGraph: Any
 }

@@ -404,13 +404,35 @@ class LocalBlobs:
             data = read_limited(source.read, max_bytes)
         return verify_digest(data, ref)
 
+    def get_bounded_until(self, ref: str, max_bytes: int, deadline: float) -> bytes:
+        """Queue compatibility read with an ordinary, monotonic I/O deadline."""
+        import time
+        from .blob_limits import read_limited, verify_digest
+
+        if len(ref) != 64 or any(c not in "0123456789abcdef" for c in ref):
+            raise Missing("Invalid blob reference")
+
+        def read(source, count):
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Graph count read expired")
+            return source.read(count)
+
+        with (self.root / ref).open("rb") as source:
+            data = read_limited(lambda count: read(source, count), max_bytes)
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Graph count read expired")
+        return verify_digest(data, ref)
+
 
 class SQLiteRepository:
     """One transaction commits current state, immutable snapshot and retry receipt."""
 
     def __init__(self, path: Path):
+        from .graph_review_summary import GraphReviewCache
+
         self.path = path
         self.graph_blobs = LocalBlobs(path.parent / (path.stem + "-graphs"))
+        self.review_graph_cache = GraphReviewCache()
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript("""
@@ -510,6 +532,8 @@ class SQLiteRepository:
         after_id="",
         limit=50,
         include_sensitive=False,
+        *,
+        hydrate_review=False,
     ):
         from .search import sqlite_search
 
@@ -524,6 +548,7 @@ class SQLiteRepository:
             after_id,
             limit,
             include_sensitive,
+            hydrate_review=hydrate_review,
         )
 
     def history_page(
