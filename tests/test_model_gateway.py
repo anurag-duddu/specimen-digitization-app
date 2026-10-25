@@ -513,3 +513,54 @@ def test_an_nvidia_route_calls_the_router_with_its_pinned_provider(
     assert url == "https://router.huggingface.co/v1/chat/completions"
     assert body["model"] == f"{NEMOTRON}:baseten"
     assert (body["tool_choice"], body.get("reasoning_effort")) == expected
+
+
+def test_the_provider_s_cached_prompt_tokens_reach_the_usage_and_the_meter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DeepInfra reports prompt-cache hits as usage.prompt_tokens_details.cached_tokens.
+
+    Pydantic AI's Hugging Face usage dropped them, so a field expert's request
+    settled as if every input token were uncached (the October 2026 bill was
+    about 14% of that). An answer without the detail stays uncached.
+    """
+    from specimen_digitization.field_research.budget import CostMeter, MeteredModel
+
+    route = HUGGINGFACE_ROUTES["harness-deepseek"]
+    monkeypatch.setitem(
+        HARDCODED_MODEL_INFERENCE_MAPPING,
+        route.provider,
+        {
+            route.model_id: InferenceProviderMapping(
+                provider=route.provider, hf_model_id=route.model_id, providerId=route.model_id,
+                status="live", task="conversational",
+            )
+        },
+    )
+    usages = iter([
+        {"prompt_tokens": 10_000, "completion_tokens": 50, "total_tokens": 10_050,
+         "prompt_tokens_details": {"cached_tokens": 9_600}},
+        {"prompt_tokens": 10_000, "completion_tokens": 50, "total_tokens": 10_050},
+    ])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={**_completion({"role": "assistant", "content": "done"}),
+                                         "model": route.model_id, "usage": next(usages)})
+
+    monkeypatch.setattr(
+        hf_http,
+        "_GLOBAL_ASYNC_CLIENT_FACTORY",
+        lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    meter = CostMeter(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000,
+                      cached_input_micros_per_million=6_000)
+    model = HuggingFaceModelGateway(token="hf_test").model_for(route.route_id)
+    first = Agent(MeteredModel(model, meter)).run_sync("Read the label.")
+    assert first.usage.cache_read_tokens == 9_600
+    # 400 x 0.2 + 9,600 x 0.006 + 50 x 0.6 = 80 + 57.6 + 30, rounded up: 168 micro-USD (list: 2,030).
+    assert meter.spent_micros == 168
+    second = Agent(MeteredModel(model, meter)).run_sync("Read the label.")
+    assert second.usage.cache_read_tokens == 0
+    assert meter.spent_micros == 168 + 2_030
+    assert meter.reported == {"requests": 2, "input_tokens": 20_000, "cached_input_tokens": 9_600,
+                              "output_tokens": 100}

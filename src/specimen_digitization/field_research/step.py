@@ -3757,23 +3757,31 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
 
 # ---- the workflow step ----------------------------------------------------
 
-def record_cost(run, route_id: str, *, reserved: int, spent: int | None, outcome: str, model_calls: int = 0) -> None:
+def record_cost(run, route_id: str, *, reserved: int, spent: int | None, outcome: str, model_calls: int = 0,
+                tokens: dict | None = None) -> None:
     """The step's one paid-call entry, in lane_costs' shape (LANE.md T2c).
 
     ``spent`` is the meter's settled spend; None when the spend is unknown,
     and then the whole reservation stays held (cost_basis "reserved").
+    ``tokens`` are the tokens of the requests that reported their usage
+    (CostMeter.reported: ``reported_requests`` of the ``model_calls``), cached
+    input included, so the cost meter can see what the provider was asked to bill.
     """
     prices = run.profile.execution.price_list
     if prices is None:
         return
     known = spent is not None
+    usage = {"model_calls": model_calls}
+    if tokens is not None:
+        usage.update(reported_requests=tokens["requests"], input_tokens=tokens["input_tokens"],
+                     cached_input_tokens=tokens["cached_input_tokens"], output_tokens=tokens["output_tokens"])
     run.paid_calls.append({
         "step": STEP,
         "attempt": run.attempts.get(STEP, 1),
         "kind": "model",
         "route_id": route_id,
         "reserved_micros": reserved,
-        "usage": {"model_calls": model_calls} if known else None,
+        "usage": usage if known else None,
         "outcome": outcome,
         "cost_micros": spent if known else reserved,
         "cost_basis": "computed" if known else "reserved",
@@ -3797,7 +3805,8 @@ def cost_meter(cap_micros: int, price):
     from .budget import CostMeter
 
     return CostMeter(cap_micros, input_micros_per_million=price.input_micros_per_million,
-        output_micros_per_million=price.output_micros_per_million)
+        output_micros_per_million=price.output_micros_per_million,
+        cached_input_micros_per_million=getattr(price, "cached_input_micros_per_million", None))
 
 
 def one_request_micros(price) -> int:
@@ -3995,7 +4004,8 @@ class FieldResearchStep:
                 record_cost(run, route, reserved=cap_micros,
                     spent=meter.spent_micros if known else None,
                     outcome="completed" if outcomes is not None else "failed" if known else "unknown",
-                    model_calls=sum(o.model_calls for o in outcomes or ()))
+                    model_calls=sum(o.model_calls for o in outcomes or ()),
+                    tokens=getattr(meter, "reported", None))
             try:
                 apply_outcomes(research_run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=calls,
                     asset_id=specimen.asset.id, decisions=decisions)

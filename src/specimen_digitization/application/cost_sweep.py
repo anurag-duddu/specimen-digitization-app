@@ -49,8 +49,12 @@ def _moment(value) -> bool:
         return False
 
 
-def _cursor(repository, scope):
-    """The stored watermark; a missing or unreadable one starts a pass over everything."""
+def _cursor(repository, scope, rules):
+    """The stored watermark; a missing or unreadable one starts a pass over everything.
+
+    So does one written under other rules (``cost_ledger.rules_version``: the
+    true-up rules and the committed bills), so every earlier row is derived again.
+    """
     from .lane_worker import stored_integer
 
     fresh = {"swept_since": EPOCH, "after_id": "", "pass_started_at": None}
@@ -62,6 +66,9 @@ def _cursor(repository, scope):
     since, after, started = stored.get("swept_since"), stored.get("after_id"), stored.get("pass_started_at")
     if not _moment(since) or not isinstance(after, str) or (after and not _moment(started)):
         LOGGER.warning("cost sweep cursor unreadable; sweeping everything again")
+        return {"revision": revision, **fresh}
+    if stored.get("rules") != rules:
+        LOGGER.info("cost sweep rules changed; sweeping everything again")
         return {"revision": revision, **fresh}
     return {"revision": revision, "swept_since": since, "after_id": after,
             "pass_started_at": started if after else None}
@@ -106,7 +113,10 @@ def sweep(repository, scope, *, clock=None, stop=None, until=None, seconds=SWEEP
         return (stop is not None and stop.is_set()) or clock() >= stop_at
 
     try:
-        cursor = _cursor(repository, scope)
+        from .cost_ledger import rules_version
+
+        rules = rules_version()
+        cursor = _cursor(repository, scope, rules)
     except Exception as error:  # noqa: BLE001 - the sweep never stops the drain
         LOGGER.warning("cost sweep stopped: %s", _code(error))
         result["status"] = "failed"
@@ -149,7 +159,7 @@ def sweep(repository, scope, *, clock=None, stop=None, until=None, seconds=SWEEP
             payload = {"swept_since": since, "after_id": after, "pass_started_at": pass_started}
         if result["pages"]:
             repository.put_document(scope, CURSOR_KIND, cursor_id(scope),
-                                    {"sensitive": False, **payload}, cursor["revision"])
+                                    {"sensitive": False, **payload, "rules": rules}, cursor["revision"])
     except Exception as error:  # noqa: BLE001 - the next pass starts from the old watermark
         failure = failure or error
     if failure is not None:

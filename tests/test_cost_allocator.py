@@ -12,6 +12,7 @@ import pytest
 from specimen_digitization.application import cost_allocator, cost_sweep
 from specimen_digitization.application.cost_allocation import day_bounds, day_hours
 from specimen_digitization.application.cost_allocator import CURSOR_KIND, CostAllocator, cursor_id
+from specimen_digitization.application.cost_ledger import SAM_DIRECT_RULES
 from specimen_digitization.application.cost_monitoring import MonitoringClient, MonitoringFailed, MonitoringUnavailable
 from specimen_digitization.application.domain import Scope
 from specimen_digitization.application.lane_worker import DrainWorker
@@ -137,7 +138,7 @@ def test_every_due_day_is_written_for_this_collection_only_and_the_cursor_follow
     assert {(row["organization_id"], row["collection_id"]) for _, rows in repo.sent for row in rows} == {
         (ORG, COLLECTION)}
     assert result["rows"] == sum(len(rows) for _, rows in repo.sent) > 0
-    assert repo.cursor() == {"sensitive": False, "allocated_through": "2026-10-04", "revision": 4}
+    assert repo.cursor() == {"sensitive": False, "allocated_through": "2026-10-04", "direct_rules": SAM_DIRECT_RULES, "revision": 4}
     # Monitoring is read once for the invoice month so far, and each day's measures once.
     assert {(start, end) for _, start, end, _ in monitoring.calls} - {
         (datetime(2026, 9, 30, 7, tzinfo=UTC), day_bounds(date(2026, 10, 4))[1])} == {
@@ -178,15 +179,47 @@ def test_the_last_two_complete_days_are_allocated_again_and_older_days_stay_as_w
                       "through": "2026-10-04"}
     # The late 3,000 counts on the two most recent days; the 1st and 2nd keep what they were written with.
     assert residuals(later) == {"2026-10-03": 850, "2026-10-04": 850}
-    assert later.cursor() == repo.cursor() == {"sensitive": False, "allocated_through": "2026-10-04", "revision": 4}
+    assert later.cursor() == repo.cursor() == {"sensitive": False, "allocated_through": "2026-10-04", "direct_rules": SAM_DIRECT_RULES, "revision": 4}
     details = next(row for _, rows in later.sent for row in rows)["allocation_method_details"]
     assert details["reallocated_while_within_last_days"] == 2
     # Once the 5th is complete it is due, and the 4th and 5th are the two allocated again.
     after = Late()
     after.documents = dict(later.documents)
-    result = allocator(clock=lambda: NOW + timedelta(days=1)).run(after, SCOPE, swept=True, job_collections=SERVED)
+    result = allocator(Monitoring(days=(1, 2, 3, 4, 5)), clock=lambda: NOW + timedelta(days=1)).run(
+        after, SCOPE, swept=True, job_collections=SERVED)
     assert (result["days"], result["reallocated"], result["through"]) == (1, 1, "2026-10-05")
     assert sorted(residuals(after)) == ["2026-10-04", "2026-10-05"]
+
+
+def test_a_day_whose_sam_readings_are_missing_gets_no_residual_to_cancel_its_direct_charges():
+    # The 5th had SAM 3 requests (500 charged directly) and no billable reading at all, as
+    # a day past Monitoring's retention: before 2026-10-25 its residual was -500 and the
+    # day's SAM 3 cost added up to zero.
+    repo = Repo()
+    result = allocator(clock=lambda: NOW + timedelta(days=1)).run(repo, SCOPE, swept=True, job_collections=SERVED)
+    assert result["through"] == "2026-10-05"
+    assert sorted(residuals(repo)) == ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"]
+    fifth = [row for _, rows in repo.sent for row in rows if row["billing_day"] == "2026-10-05"]
+    assert fifth and not [row for row in fifth if row["resource"] == "specimen-sam"]
+
+
+def test_days_allocated_under_other_direct_sam_rules_are_allocated_again_from_the_first_day(caplog):
+    repo = Repo()
+    allocator().run(repo, SCOPE, swept=True, job_collections=SERVED)
+    # As the cursor stood before 2026-10-25: no direct_rules, days 1 to 4 allocated.
+    key = (COLLECTION, CURSOR_KIND, cursor_id(SCOPE))
+    repo.documents[key] = {k: v for k, v in repo.documents[key].items() if k != "direct_rules"}
+    repo.sent = []
+    with caplog.at_level(logging.INFO):
+        result = allocator().run(repo, SCOPE, swept=True, job_collections=SERVED)
+    assert (result["days"], result["reallocated"], result["through"]) == (4, 0, "2026-10-04")
+    assert sorted(residuals(repo)) == ["2026-10-01", "2026-10-02", "2026-10-03", "2026-10-04"]
+    assert repo.cursor()["direct_rules"] == SAM_DIRECT_RULES
+    assert "cost allocation: direct SAM 3 rules changed; allocating again from the first day" in caplog.messages
+    # Under the same rules, the next pass allocates only the last two days again.
+    repo.sent = []
+    result = allocator().run(repo, SCOPE, swept=True, job_collections=SERVED)
+    assert (result["days"], result["reallocated"]) == (0, 2)
 
 
 def test_a_pass_whose_sweep_is_not_caught_up_reads_and_writes_nothing(caplog):

@@ -512,7 +512,13 @@ def allocate_day(day: date, collections: list[Tenant], usage: Usage, table: dict
     rate = _per_second(run["services"][SAM_SERVICE], run["instance_based"])
     listed = seconds * rate
     direct = sum(t.sam_direct_micros for t in collections)
-    residual = whole(listed) - direct
+    # A day with SAM 3 requests was billed some instance time. No reading at all
+    # for it means the readings are missing (a day past Monitoring's six-week
+    # retention): no residual and no credit then, rather than a residual that
+    # cancels the direct charges. (Less time than the requests' seconds is not
+    # proof: a request's older measure, the worker's wall time, counts its wait.)
+    complete = seconds > 0 or not any(t.sam_seconds > 0 or t.sam_direct_micros > 0 for t in collections)
+    residual = whole(listed) - direct if complete else 0
     weights, basis = choose({key: t.sam_seconds for key, t in by_key.items()},
                             {key: t.month_sam_seconds for key, t in by_key.items()}, everyone)
     measure = "SAM 3 request seconds of the collection's paid calls (usage.instance.request_seconds, else usage.seconds)"
@@ -534,7 +540,8 @@ def allocate_day(day: date, collections: list[Tenant], usage: Usage, table: dict
                             "not in it.")}
         rows.append(_row(day, key, SAM_SERVICE, STAGES[SAM_SERVICE], SAM_METHOD, part, part, sam_usage(key),
                          details, table))
-    rows += _credit_rows(day, SAM_SERVICE, STAGES[SAM_SERVICE], credits.get(SAM_SERVICE, Decimal(0)), weights,
+    rows += _credit_rows(day, SAM_SERVICE, STAGES[SAM_SERVICE],
+                         credits.get(SAM_SERVICE, Decimal(0)) if complete else Decimal(0), weights,
                          measure, basis, sam_usage, pools, "instance_based", table)
 
     # 3. The API: its billable time and requests, split by organization, then by collection.
