@@ -467,7 +467,7 @@ class _Expert:
         space for a line break (or a line break for a space), as the text the
         readings it names write (agreement.across_lines): e98a924c's "E Slope
         Mt. McKinley, Davao Prov." is "E Slope Mt.\\nMcKinley, Davao Prov." in
-        both readers. The answer as it is otherwise."""
+        every reader. The answer as it is otherwise."""
         literal = answer.literal
         named = [self.by_label[_label(n)] for n in answer.reading_names if _label(n) in self.by_label]
         if (not literal or not named or len(named) != len(answer.reading_names)

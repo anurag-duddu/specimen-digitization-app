@@ -41,6 +41,12 @@ VARIANT = "1.0.0+nvidia.readers.first-pass.field-research"
 NEMOTRON = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
 BASETEN = {"model_id": NEMOTRON, "provider": "baseten"}
 MUSE = {"model_id": "meta-models/Muse-Glimmer-30B", "provider": "deepinfra"}
+QWEN = {"model_id": "Qwen/Qwen3-VL-30B-A3B-Instruct", "provider": "novita"}
+# Nemotron is reader C, after today's Qwen (A) and Muse (B).
+THREE_READERS = ["handwriting-qwen", "handwriting-muse", "handwriting-nemotron"]
+# The published limits, 480,000 tokens and 96 weighted calls, x 3/2 for three
+# readers (model_option.label_scaled_limit).
+THREE_READER_LIMITS = {"max_tokens": 720_000, "max_external_calls": 144}
 
 
 def as_published() -> CollectionProfileRegistry:
@@ -137,7 +143,7 @@ def test_a_mistyped_switch_stops_the_profiles_from_loading(monkeypatch):
 @pytest.mark.parametrize(
     "value,suffix,changes",
     [
-        ("readers", "readers", {"model_routes": ["handwriting-nemotron", "handwriting-muse"]}),
+        ("readers", "readers", {"model_routes": THREE_READERS}),
         ("first_pass", "first-pass", {"first_pass_route": "first-pass-nemotron"}),
         ("field_research", "field-research", {"harness_route": "harness-nemotron"}),
         (
@@ -149,7 +155,7 @@ def test_a_mistyped_switch_stops_the_profiles_from_loading(monkeypatch):
             ALL,
             "readers.first-pass.field-research",
             {
-                "model_routes": ["handwriting-nemotron", "handwriting-muse"],
+                "model_routes": THREE_READERS,
                 "first_pass_route": "first-pass-nemotron",
                 "harness_route": "harness-nemotron",
             },
@@ -158,11 +164,15 @@ def test_a_mistyped_switch_stops_the_profiles_from_loading(monkeypatch):
 )
 def test_each_stage_changes_only_its_own_routes_and_the_version(value, suffix, changes):
     profile = published_registry(environ={SETTING: value}).resolve("insects").profile
+    published = published_profile()
+    if "readers" in value:
+        # A third reader raises the run's token and weighted-call limits.
+        changes = {**changes, "processing": {**published["processing"], **THREE_READER_LIMITS}}
 
-    # Everything else, the processing allowance and its price list included,
-    # is the published profile's.
+    # Everything else, the price list and the cost limit included, is the
+    # published profile's.
     assert profile.model_dump(mode="json") == {
-        **published_profile(),
+        **published,
         **changes,
         "version": "1.0.0+nvidia." + suffix,
     }
@@ -236,15 +246,16 @@ def test_a_run_classified_under_the_variant_pins_the_nvidia_routes_on_baseten(
     run = variant_run(tmp_path, monkeypatch).run
 
     assert (run.profile.id, run.profile.version) == ("zoology_insects_slides", VARIANT)
-    assert run.profile.routes == ("handwriting-nemotron", "handwriting-muse")
+    assert run.profile.routes == tuple(THREE_READERS)
     assert run.profile.first_pass_route == "first-pass-nemotron"
     assert (run.profile_snapshot["version"], run.profile_snapshot["harness_route"]) == (
         VARIANT,
         "harness-nemotron",
     )
     assert run.dependencies["routes"] == {
-        "handwriting-nemotron": BASETEN,
+        "handwriting-qwen": QWEN,
         "handwriting-muse": MUSE,
+        "handwriting-nemotron": BASETEN,
         "first-pass-nemotron": BASETEN,
     }
     # The checks that tie a run to its snapshot accept the variant.
@@ -252,6 +263,10 @@ def test_a_run_classified_under_the_variant_pins_the_nvidia_routes_on_baseten(
     # Field research mounts on the variant's harness route ("fields" mode).
     assert committed_harness_route(run.profile_snapshot) == "harness-nemotron"
     assert run.profile.execution.price_list["version"] == "pilot-prices-2026-10-18"
+    execution = run.profile.execution
+    assert {"max_tokens": execution.max_tokens, "max_external_calls": execution.max_external_calls} == (
+        THREE_READER_LIMITS
+    )
 
 
 def test_a_run_queued_with_the_switch_off_is_priced_for_every_nvidia_route(tmp_path, monkeypatch):
@@ -314,18 +329,22 @@ def test_a_variant_reading_reserves_from_the_nemotron_row(tmp_path, monkeypatch)
     assert step_reservation(run, step) == 20_000
 
 
-def test_variant_parse_and_first_pass_reserve_two_whole_nemotron_contexts(tmp_path, monkeypatch):
+def test_variant_parse_stays_on_qwen_and_first_pass_reserves_two_whole_nemotron_contexts(
+    tmp_path, monkeypatch
+):
     from specimen_digitization.application.lane_reservations import step_reservation
 
     specimen = variant_run(tmp_path, monkeypatch)
     region = with_region(specimen, 600, 400)
 
-    # Parse runs on reader A's route (harness.extract_with_agent), now Nemotron's.
-    assert step_reservation(specimen.run, "parse") == NEMOTRON_TWO_REQUESTS == 423_528
-    assert step_reservation(specimen.run, f"first_pass:{region.id}") == 423_528
+    # Parse runs on reader A's route (harness.extract_with_agent), still Qwen's:
+    # two whole Qwen contexts, as with the option off (test_lane_routes).
+    assert specimen.run.profile.routes[0] == "handwriting-qwen"
+    assert step_reservation(specimen.run, "parse") == 58_164
+    assert step_reservation(specimen.run, f"first_pass:{region.id}") == NEMOTRON_TWO_REQUESTS == 423_528
 
 
-def test_variant_parse_settles_at_the_nemotron_price(tmp_path, monkeypatch):
+def test_variant_parse_settles_at_the_qwen_price(tmp_path, monkeypatch):
     from specimen_digitization.application.lane_costs import record_step
 
     specimen = variant_run(tmp_path, monkeypatch)
@@ -339,13 +358,13 @@ def test_variant_parse_settles_at_the_nemotron_price(tmp_path, monkeypatch):
     )
 
     (call,) = run.paid_calls
-    # 10,000 x 0.20 + 1,000 x 0.50 = 2,500 micro-dollars (Qwen's row: 2,700).
+    # 10,000 x 0.20 + 1,000 x 0.70 = 2,700 micro-dollars, Qwen's row.
     assert (call["route_id"], call["cost_micros"], call["cost_basis"]) == (
-        "handwriting-nemotron",
-        2_500,
+        "handwriting-qwen",
+        2_700,
         "computed",
     )
-    assert call["reserved_micros"] == 423_528
+    assert call["reserved_micros"] == 58_164
     assert call["price_list"]["version"] == "pilot-prices-2026-10-18"
 
 
@@ -372,15 +391,16 @@ def test_variant_circuits_are_keyed_by_baseten(tmp_path, monkeypatch):
 
     providers = {
         step: circuit_for(workflow, principal, specimen.run, step)[1].provider
-        for step in ("transcribe:r:handwriting-nemotron", "transcribe:r:handwriting-muse",
-                     "first_pass:r", "parse")
+        for step in ("transcribe:r:handwriting-qwen", "transcribe:r:handwriting-muse",
+                     "transcribe:r:handwriting-nemotron", "first_pass:r", "parse")
     }
 
     assert providers == {
-        "transcribe:r:handwriting-nemotron": "baseten",
+        "transcribe:r:handwriting-qwen": "novita",
         "transcribe:r:handwriting-muse": "deepinfra",
+        "transcribe:r:handwriting-nemotron": "baseten",
         "first_pass:r": "baseten",
-        "parse": "baseten",
+        "parse": "novita",
     }
 
 
@@ -472,3 +492,126 @@ def test_on_mode_pins_refuse_a_harness_model_whose_tokenizer_is_not_pinned():
         build_committed_pins(variant, organization_id="org", collection_id="insects")
     pins = build_committed_pins(published, organization_id="org", collection_id="insects")
     assert {row["route_id"] for row in pins["sources"]["model_prices"].values()} == {"harness-deepseek"}
+
+
+# Reader C: the readers stage adds Nemotron as a third reader.
+
+
+def test_the_readers_stage_adds_nemotron_as_reader_c_and_parse_stays_on_reader_a(
+    tmp_path, monkeypatch
+):
+    specimen = variant_run(tmp_path, monkeypatch, "readers")
+    run = specimen.run
+
+    assert run.profile.version == "1.0.0+nvidia.readers"
+    assert run.profile.routes == ("handwriting-qwen", "handwriting-muse", "handwriting-nemotron")
+    # The other stages keep today's routes.
+    assert run.profile.first_pass_route == "first-pass-glm"
+    assert run.profile_snapshot["harness_route"] == "harness-deepseek"
+    assert run.dependencies["routes"] == {
+        "handwriting-qwen": QWEN,
+        "handwriting-muse": MUSE,
+        "handwriting-nemotron": BASETEN,
+        "first-pass-glm": {"model_id": "zai-org/GLM-5.3-Flash", "provider": "novita"},
+    }
+    # One reading per label per reader, in route order (Workflow.next_step).
+    from specimen_digitization.application.workflow import Workflow
+
+    region = with_region(specimen, 600, 400)
+    steps = []
+    run.completed_steps = ["pin_dependencies", "classify", "quality_check", "segment"]
+    while (step := Workflow.next_step(run)).startswith("transcribe:"):
+        steps.append(step)
+        run.completed_steps.append(step)
+    assert steps == [f"transcribe:{region.id}:{route}" for route in THREE_READERS]
+
+
+def test_a_profile_that_already_names_nemotron_as_a_reader_keeps_its_readers_and_limits():
+    data = json.loads(PUBLISHED_PROFILES.read_text())
+    data["profiles"][0]["model_routes"] = ["handwriting-qwen", "handwriting-nemotron"]
+    registry = CollectionProfileRegistry.model_validate(data)
+
+    profile = nvidia_variant(registry, ("readers",)).profiles[0]
+
+    assert profile.model_routes == ("handwriting-qwen", "handwriting-nemotron")
+    assert (profile.processing.max_tokens, profile.processing.max_external_calls) == (480_000, 96)
+
+
+@pytest.mark.parametrize(
+    "readers,published,expected",
+    [(2, 2, 480_000), (3, 2, 720_000), (4, 2, 960_000), (3, 3, 480_000), (4, 3, 640_000)],
+)
+def test_a_limit_grows_by_the_readers_over_the_published_readers(readers, published, expected):
+    from specimen_digitization.application.model_option import label_scaled_limit
+
+    assert label_scaled_limit(480_000, readers, published) == expected
+    # Rounded up, never down.
+    assert label_scaled_limit(95, 3, 2) == 143
+
+
+# What a label costs the run's limits (workflow.py, before each step): every
+# attempt at a reading or a first pass reserves 16,000 tokens and weighs 2
+# calls. The fixed steps a slide takes whatever its labels: segment and classify
+# (16,000 tokens, 1 call each), parse (16,000, 2) and field research (16,000, 1).
+ATTEMPT_TOKENS, ATTEMPT_CALLS = 16_000, 2
+FIXED_TOKENS, FIXED_CALLS = 4 * 16_000, 1 + 1 + 2 + 1
+
+
+def label_steps(routes, labels, readings_agree):
+    """The reading and first-pass steps of a slide's labels, in Workflow.next_step order."""
+    from specimen_digitization.application.domain import Observation
+    from specimen_digitization.application.workflow import Workflow
+
+    run = Run(profile=Profile(routes=tuple(routes)))
+    run.regions = [
+        Region(asset_id="a", x=0, y=0, width=9, height=9, order=n, method="m", version="1")
+        for n in range(labels)
+    ]
+    run.completed_steps = ["pin_dependencies", "classify", "quality_check", "segment"]
+    steps = []
+    while (step := Workflow.next_step(run)) != "adjudicate":
+        steps.append(step)
+        run.completed_steps.append(step)
+        if step.startswith("transcribe:"):
+            _, region, route = step.split(":")
+            text = "same" if readings_agree else route
+            run.observations.append(Observation(
+                region_id=region, route_id=route, model_id="m", provider="p",
+                prompt_version="v", input_sha256="0" * 64, literal_text=text,
+                raw_ref="r", raw_sha256="1" * 64,
+            ))
+    return steps
+
+
+def most_labels(routes, max_tokens, max_calls, readings_agree):
+    """The most labels a slide can have, one attempt per step, within both limits."""
+    labels = 0
+    while True:
+        steps = len(label_steps(routes, labels + 1, readings_agree))
+        if (
+            FIXED_TOKENS + steps * ATTEMPT_TOKENS > max_tokens
+            or FIXED_CALLS + steps * ATTEMPT_CALLS > max_calls
+        ):
+            return labels
+        labels += 1
+
+
+@pytest.mark.parametrize("readings_agree", [False, True], ids=["first pass", "no first pass"])
+def test_a_third_reader_fits_as_many_labels_per_slide_within_the_raised_limits(readings_agree):
+    two = ("handwriting-qwen", "handwriting-muse")
+    three = (*two, "handwriting-nemotron")
+    # A label is one step per reader, plus a first pass when its readings differ.
+    assert len(label_steps(three, 1, readings_agree)) == 3 + (not readings_agree)
+
+    published = most_labels(two, 480_000, 96, readings_agree)
+    variant = most_labels(three, THREE_READER_LIMITS["max_tokens"],
+        THREE_READER_LIMITS["max_external_calls"], readings_agree)
+
+    # The published limits fit 8 labels that need a first pass, or 13 whose
+    # readings agree (tokens bind first); three readers fit 10 or 13.
+    assert (published, variant) == ((8, 10) if not readings_agree else (13, 13))
+    assert most_labels(three, 480_000, 96, readings_agree) < published
+    # Scaling by (readers + 1) / (published readers + 1) would fit fewer labels
+    # whose readings agree (12 of 13): x 3/2 is what keeps both.
+    four_thirds = most_labels(three, 640_000, 128, readings_agree)
+    assert four_thirds >= published if not readings_agree else four_thirds == 12 < published

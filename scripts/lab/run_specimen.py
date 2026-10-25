@@ -21,8 +21,10 @@ import lab_checks
 
 BUCKET = "specimen-digitization.firebasestorage.app"
 PREFIX = "microscopic-slides/"
-# USD per million tokens, input then output (docs/execution/LIVE_PILOT_COST.md 42-47).
-PRICES = {"handwriting-qwen": (0.20, 0.70), "handwriting-muse": (0.30, 1.20)}
+# USD per million tokens, input then output (docs/execution/LIVE_PILOT_COST.md 42-47), and the NVIDIA
+# option's reader C at its published row (profiles/published.json, pilot-prices-2026-10-18).
+PRICES = {"handwriting-qwen": (0.20, 0.70), "handwriting-muse": (0.30, 1.20),
+          "handwriting-nemotron": (0.20, 0.50)}
 # What PLAN 7.7 keeps out of shared logs and issues: token values, instance addresses (the app pins the
 # SAM 3 endpoint into a run's dependencies, so it reaches snapshot.json) and billing ids. Private values
 # such as the administrator's UID come from the file LAB_REDACT_VALUES_FILE names.

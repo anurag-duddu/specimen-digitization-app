@@ -117,7 +117,7 @@ def writes(
 
     for observation in run.observations:
         result.append(_reading(run, observation, asset(observation.raw_ref, "raw_response")))
-    result += [c for t in run.transcripts if (c := _comparison(run, t)) is not None]
+    result += [c for t in run.transcripts for c in _comparisons(run, t)]
     decisions: dict[str, str] = {}
     for transcript in run.transcripts:
         result += _first_pass(run, transcript, asset, decisions, reviewer)
@@ -328,14 +328,47 @@ def _reading(
     )
 
 
-def _comparison(run: Run, transcript: Transcript) -> Write | None:
-    if len(transcript.observation_ids) != 2 or not transcript.alignment_algorithm:
+def _comparisons(run: Run, transcript: Transcript) -> list[Write]:
+    """One ReadingComparison row per pair of the region's readings: a
+    two-reading transcript's own pair, or each pair a transcript of more
+    readings keeps (Transcript.comparisons)."""
+    if len(transcript.observation_ids) == 2:
+        row = _comparison(
+            run,
+            transcript,
+            transcript.observation_ids,
+            transcript.disagreement_ratio,
+            transcript.alignment_status,
+            transcript.alignment_reasons,
+        )
+        return [row] if row is not None else []
+    if len(transcript.observation_ids) < 2:
+        return []
+    rows = [
+        _comparison(
+            run,
+            transcript,
+            (pair.left_observation_id, pair.right_observation_id),
+            pair.disagreement_ratio,
+            pair.status,
+            pair.reasons,
+        )
+        for pair in transcript.comparisons
+        if {pair.left_observation_id, pair.right_observation_id}
+        <= set(transcript.observation_ids)
+    ]
+    return [row for row in rows if row is not None]
+
+
+def _comparison(
+    run: Run, transcript: Transcript, ids, ratio, status, reasons
+) -> Write | None:
+    if not transcript.alignment_algorithm:
         return None
     readings = {o.id: o for o in run.observations}
-    if not all(i in readings for i in transcript.observation_ids):
+    if not all(i in readings for i in ids):
         return None
-    left, right = _fixed_order(*transcript.observation_ids)
-    ratio = transcript.disagreement_ratio
+    left, right = _fixed_order(*ids)
     length_basis = max(1, *(len(readings[i].literal_text) for i in (left, right)))
     return _write(
         "AppendReadingComparisonV1",
@@ -349,8 +382,8 @@ def _comparison(run: Run, transcript: Transcript) -> Write | None:
             "ratio": ratio,
             "editDistance": None if ratio is None else round(ratio * length_basis),
             "lengthBasis": length_basis,
-            "status": transcript.alignment_status or "unknown",
-            "reasons": list(transcript.alignment_reasons),
+            "status": status or "unknown",
+            "reasons": list(reasons),
         },
     )
 

@@ -174,15 +174,22 @@ def test_bindings_translate_private_identifiers_and_stay_private():
 
 
 @pytest.mark.parametrize(
-    "stages,version,routes",
+    "stages,version,routes,limits",
     [
-        ("", "1.0.0", ("handwriting-qwen", "handwriting-muse")),
-        ("readers", "1.0.0+nvidia.readers", ("handwriting-nemotron", "handwriting-muse")),
+        ("", "1.0.0", ("handwriting-qwen", "handwriting-muse"), (480_000, 96)),
+        # Nemotron is reader C; the run's limits grow with the readers
+        # (model_option.label_scaled_limit: x 3/2).
+        (
+            "readers",
+            "1.0.0+nvidia.readers",
+            ("handwriting-qwen", "handwriting-muse", "handwriting-nemotron"),
+            (720_000, 144),
+        ),
     ],
     ids=["nvidia-off", "nvidia-readers"],
 )
 def test_intake_test_collection_inherits_profile_and_uses_existing_program_ledger(
-    tmp_path, monkeypatch, stages, version, routes
+    tmp_path, monkeypatch, stages, version, routes, limits
 ):
     from specimen_digitization.application.lane import queue
 
@@ -195,7 +202,9 @@ def test_intake_test_collection_inherits_profile_and_uses_existing_program_ledge
     assert published_registry().resolve("intake-e2e").reason == "unknown_collection"
     assert inherited.digest == bound.resolve(COLLECTION_UUID).profile.digest
     assert (inherited.version, inherited.model_routes) == (version, routes)
-    assert inherited.processing == original.processing
+    assert inherited.processing == original.processing.model_copy(
+        update=dict(zip(("max_tokens", "max_external_calls"), limits))
+    )
     assert bound.bindings == bindings
     assert bound.bound_collections("insects") == [COLLECTION_UUID]
     assert bound.bound_collections("intake-e2e") == [test_collection]
@@ -211,6 +220,7 @@ def test_intake_test_collection_inherits_profile_and_uses_existing_program_ledge
     assert (specimen.run.profile.version, specimen.run.profile.routes) == (version, routes)
     assert specimen.run.profile_snapshot == inherited.model_dump(mode="json")
     execution = specimen.run.profile.execution
+    assert (execution.max_tokens, execution.max_external_calls) == limits
     assert execution.program_ledger_collection == COLLECTION_UUID
     assert execution.program_allowance_micros == original.processing.program_allowance.allowance_micros
     assert execution.approved_cost_limit_micros == original.processing.run_cost_limit_micros

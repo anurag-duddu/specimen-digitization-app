@@ -608,7 +608,10 @@ def test_only_capitalization_is_not_material(a, b, material):
     [
         ({"approved": False}, "provider_data_policy_and_spending_approval_required"),
         ({"count": 1}, "first_pass_reading_count_unsupported"),
-        ({"count": 3}, "first_pass_reading_count_unsupported"),
+        # Three readings are supported; this third reader is not the profile's.
+        ({"count": 3}, "first_pass_contract_invalid"),
+        # One reader letter each, A to Z: a 27th reading has none.
+        ({"count": 27}, "first_pass_reading_count_unsupported"),
         ({"profile": Profile()}, "pinned_model_route_unavailable"),
         (
             {"profile": Profile(first_pass_route="fp-unregistered")},
@@ -645,7 +648,8 @@ def test_only_capitalization_is_not_material(a, b, material):
     ids=[
         "no spending approval",
         "one reading",
-        "three readings",
+        "three readings, the third not the profile's",
+        "twenty-seven readings",
         "no first-pass route",
         "an unregistered route",
         "a route pinned to another provider",
@@ -667,6 +671,8 @@ def test_each_block_stops_the_first_pass_before_any_request(
             ("handwriting-third", QWEN),
         )
     ][:count]
+    if count > len(readings):
+        readings = [reading(f"reader-{n}", QWEN) for n in range(count)]
     calls = []
 
     with pytest.raises(OperationalBlock, match=f"^{code}$"):
@@ -788,3 +794,260 @@ def test_a_call_returned_for_another_route_or_asset_is_refused(
 
     with pytest.raises(OperationalBlock, match="^external_outcome_unknown$"):
         invoke_first_pass(tmp_path, readings, None)
+
+
+# Two or more readings: Nemotron as reader C (NVIDIA_NEMOTRON_OPTION.md 1).
+
+from specimen_digitization.application.domain import FirstPassDifference  # noqa: E402
+from specimen_digitization.application.first_pass import (  # noqa: E402
+    g19_pick,
+    reading_differences_among,
+    supports,
+    synthetic_decision,
+)
+
+THREE_ROUTES = ("handwriting-qwen", "handwriting-muse", "handwriting-nemotron")
+# Reader C agrees with B on the taxon and with A on the capitalization.
+READER_C = "VI-24-68-7\nEpipsocus\nsp.1\n♀ terminalia"
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [(QWEN, MUSE), (COMPACT, SPACED), ("", "abc"), ("abc def", ""), ("Chicago, Ill.", "Chicago, Il1.")],
+)
+def test_two_readings_keep_the_pairwise_differences(first, second):
+    assert reading_differences_among([first, second]) == reading_differences(first, second)
+
+
+def test_the_request_for_two_readings_is_byte_for_byte_the_one_before_reader_c():
+    # SHA-256 of the request first_pass_direct built for these readings at
+    # origin/main 8f748c2f8, before the first pass took more than two readings.
+    readings = [reading("handwriting-qwen", QWEN), reading("handwriting-muse", MUSE)]
+
+    request, letters = build_request(readings, reading_differences_among([QWEN, MUSE]))
+
+    assert list(letters) == ["A", "B"]
+    assert hashlib.sha256(request.encode()).hexdigest() == (
+        "b9757ca6d5000039cb137c906f831b81704c8d4837561714a2309f7d99353dc8"  # pragma: allowlist secret
+    )
+
+
+@pytest.mark.parametrize(
+    "texts,expected",
+    [
+        # One reader dissents: one difference, the agreeing readers' text twice.
+        (["Mt. Apo 1946", "Mt. Apo 1946", "Mt. Apa 1946"], [(("Apo", 4), ("Apo", 4), ("Apa", 4))]),
+        # An insertion: empty spans where the others have nothing, each at the
+        # offset where the inserted text would be.
+        (["Davao Prov.", "Davao Prov.", "Davao, Prov."], [(("", 5), ("", 5), (",", 5))]),
+        (["a c", "a c", "a b c"], [(("", 1), ("", 1), ("b", 2))]),
+        # Differences in whitespace alone are no difference.
+        (["E Slope, Elev. 6400", "ESlope, Elev.6400", "E Slope , Elev. 6400"], []),
+        # An empty reading: one difference over the whole label.
+        (["Mt. Apo", "Mt. Apo", ""], [(("Mt. Apo", 0), ("Mt. Apo", 0), ("", 0))]),
+        (["", "Mt. Apo", "Mt. Apo"], [(("", 0), ("Mt. Apo", 0), ("Mt. Apo", 0))]),
+        # Two readers' differences at different words stay two differences.
+        (["a b c d", "a X c d", "a b Y d"], [(("b", 2), ("X", 2), ("b", 2)), (("c", 4), ("c", 4), ("Y", 4))]),
+        # A block one reader replaces word by word is split where the alignments allow.
+        (
+            ["a b c d e", "a b X d e", "a Q R S e"],
+            [(("b", 2), ("b", 2), ("Q", 2)), (("c", 4), ("X", 4), ("R", 4)), (("d", 6), ("d", 6), ("S", 6))],
+        ),
+        (
+            [QWEN, MUSE, READER_C],
+            [
+                ((".", 10), ("", 10), ("", 10)),
+                (("Epipocous", 12), ("Epipsocus", 11), ("Epipsocus", 11)),
+                (("sp", 22), ("Sp", 21), ("sp", 21)),
+            ],
+        ),
+    ],
+    ids=[
+        "one dissenter",
+        "an inserted comma",
+        "an inserted word",
+        "whitespace alone",
+        "an empty last reading",
+        "an empty first reading",
+        "two readers at two words",
+        "a replaced block, word by word",
+        "three readers of the pilot label",
+    ],
+)
+def test_three_readings_give_one_exact_span_per_reading_per_difference(texts, expected):
+    differences = reading_differences_among(texts)
+
+    assert [tuple((span.text, span.start) for span in group) for group in differences] == expected
+    for group in differences:
+        assert len(group) == len(texts)
+        for text, span in zip(texts, group):
+            assert text[span.start : span.end] == span.text
+
+
+def test_a_difference_grows_until_every_reader_is_aligned_at_its_ends():
+    # Reader B replaces thirteen words, a block too long to align word by word
+    # (reading_differences); reader C changes the seventh. No point inside B's
+    # block is aligned with A, so the two make one difference.
+    words = [f"w{n}" for n in range(1, 14)]
+    first = " ".join(["x", *words, "y"])
+    second = " ".join(["x", *(f"q{n}" for n in range(1, 14)), "y"])
+    third = first.replace("w7", "R")
+
+    differences = reading_differences_among([first, second, third])
+
+    assert [tuple(span.text for span in group) for group in differences] == [
+        (" ".join(words), second[2:-2], third[2:-2])
+    ]
+    # Without reader B, C's change is one word.
+    assert [tuple(s.text for s in g) for g in reading_differences_among([first, first, third])] == [
+        ("w7", "w7", "R")
+    ]
+
+
+def test_the_request_lists_every_reader_by_letter():
+    readings = [reading(route, text) for route, text in zip(THREE_ROUTES, (QWEN, MUSE, READER_C))]
+
+    request, letters = build_request(readings, reading_differences_among([QWEN, MUSE, READER_C]))
+
+    assert list(letters) == ["A", "B", "C"] and letters["C"] is readings[2]
+    assert "Reader C:\n<<<\n" + READER_C + "\n>>>" in request
+    assert (
+        '2. Reader A: "Epipocous" (in line "Epipocous") | Reader B: "Epipsocus" '
+        '(in line "Epipsocus") | Reader C: "Epipsocus" (in line "Epipsocus")'
+    ) in request
+    assert "nemotron" not in request.lower()
+
+
+def difference(spans, verdict):
+    texts = dict(zip("ABC", spans))
+    return FirstPassDifference(
+        number=1,
+        spans={key: ReadingSpan(start=0, end=len(text), text=text) for key, text in texts.items()},
+        verdict=verdict,
+        material=first_pass_module.is_material(
+            [ReadingSpan(start=0, end=len(t), text=t) for t in texts.values()]
+        ),
+    )
+
+
+@pytest.mark.parametrize("selected", ["A", "B", None])
+@pytest.mark.parametrize("verdict", ["A", "B", "neither", "uncertain"])
+@pytest.mark.parametrize("spans", [("Apo", "Apa"), ("sp", "Sp"), ("", ".")])
+def test_with_two_readings_a_verdict_supports_only_the_reading_it_names(spans, verdict, selected):
+    # The rule before reader C: a material difference whose verdict is not the
+    # selected reading returns no reading.
+    item = difference(spans, verdict)
+    before = None if (item.verdict != selected and item.material) else selected
+
+    assert g19_pick(selected, [item]) == before
+
+
+@pytest.mark.parametrize(
+    "spans,verdict,selected,expected",
+    [
+        # B and C read "Apo"; a verdict for B supports C's identical text.
+        (("Apa", "Apo", "Apo"), "B", "C", "C"),
+        (("Apa", "Apo", "Apo"), "C", "B", "B"),
+        # Compared as materiality is: lower-cased.
+        (("Apa", "APO", "apo"), "B", "C", "C"),
+        (("Apa", "Apo", "Apo"), "A", "C", None),
+        (("Apa", "Apo", "Apo"), "neither", "C", None),
+        (("Apa", "Apo", "Apo"), "uncertain", "B", None),
+        # An empty span is a text too: "" supports "" only.
+        (("", ".", ""), "C", "A", "A"),
+        (("", ".", ""), "B", "A", None),
+        # No pick stays no pick.
+        (("Apa", "Apo", "Apo"), "B", None, None),
+    ],
+)
+def test_with_three_readings_a_verdict_supports_every_reading_with_its_text(
+    spans, verdict, selected, expected
+):
+    item = difference(spans, verdict)
+
+    assert supports(item, selected) is (expected is not None)
+    assert g19_pick(selected, [item]) == expected
+
+
+def test_capitalization_alone_never_blocks_a_pick_of_three():
+    item = difference(("Sp", "sp", "SP"), "uncertain")
+
+    assert not item.material and g19_pick("A", [item]) == "A"
+
+
+@pytest.mark.parametrize(
+    "verdicts,expected",
+    [
+        (["B", "B", "C"], "C"),  # Every material difference supports C's text.
+        (["C", "C", "uncertain"], "C"),  # The third is capitalization alone.
+        (["B", "A", "C"], None),  # At difference 2, A's text is not C's.
+    ],
+)
+def test_the_first_pass_takes_three_readings_and_judges_each_reader_by_its_text(
+    monkeypatch, tmp_path, verdicts, expected
+):
+    readings = [reading(route, text) for route, text in zip(THREE_ROUTES, (QWEN, MUSE, READER_C))]
+    answer = {
+        "selected_reader": "C",
+        "verdicts": [{"number": n, "supported": s} for n, s in enumerate(verdicts, 1)],
+        "rationale": "The image shows Epipsocus.",
+        "reader_notes": {"A": "misread", "B": "close", "C": "matches"},
+    }
+    calls = []
+
+    decision, _ = direct_first_pass(
+        monkeypatch,
+        tmp_path,
+        calls,
+        answer,
+        readings=readings,
+        profile=Profile(routes=THREE_ROUTES, first_pass_route=ROUTE.route_id),
+    )
+
+    ids = {letter: r.id for letter, r in zip("ABC", readings)}
+    assert len(calls) == 1
+    assert any("Reader C:" in str(part.content) for part in calls[0][0].parts)
+    assert decision.selected_observation_id == ids.get(expected)
+    assert decision.notes == {ids["A"]: "misread", ids["B"]: "close", ids["C"]: "matches"}
+    assert [set(d.spans) for d in decision.differences] == [set(ids.values())] * 3
+    assert [d.material for d in decision.differences] == [True, True, False]
+    assert [d.verdict for d in decision.differences] == [ids.get(v, v) for v in verdicts]
+    request, _ = build_request(readings, reading_differences_among([QWEN, MUSE, READER_C]))
+    assert decision.call.request_sha256 == hashlib.sha256(request.encode()).hexdigest()
+
+
+def test_the_first_pass_refuses_three_readings_out_of_route_order(monkeypatch, tmp_path):
+    a, b, c = (reading(route, text) for route, text in zip(THREE_ROUTES, (QWEN, MUSE, READER_C)))
+
+    with pytest.raises(OperationalBlock, match="^first_pass_contract_invalid$"):
+        direct_first_pass(
+            monkeypatch, tmp_path, [], VALID, readings=[a, c, b],
+            profile=Profile(routes=THREE_ROUTES, first_pass_route=ROUTE.route_id),
+        )
+
+
+def test_two_of_three_readings_in_route_order_are_compared(monkeypatch, tmp_path):
+    # Reader B gave up: A and C, still in route order, are the label's readings.
+    a, c = reading(THREE_ROUTES[0], QWEN), reading(THREE_ROUTES[2], READER_C)
+    answer = dict(VALID, verdicts=VALID["verdicts"][:2], reader_notes={"A": "a", "B": "b"})
+
+    decision, _ = direct_first_pass(
+        monkeypatch, tmp_path, [], answer, readings=[a, c],
+        profile=Profile(routes=THREE_ROUTES, first_pass_route=ROUTE.route_id),
+    )
+
+    assert decision.selected_observation_id == c.id
+    assert [set(d.spans) for d in decision.differences] == [{a.id, c.id}] * 2
+
+
+def test_the_synthetic_first_pass_lists_every_reading_at_every_difference(tmp_path):
+    readings = [reading(route, text) for route, text in zip(THREE_ROUTES, (QWEN, MUSE, READER_C))]
+
+    decision = synthetic_decision(LocalBlobs(tmp_path), REGION, readings)
+
+    assert decision.selected_observation_id is None
+    assert [
+        tuple(d.spans[r.id].text for r in readings) for d in decision.differences
+    ] == [(".", "", ""), ("Epipocous", "Epipsocus", "Epipsocus"), ("sp", "Sp", "sp")]
+    assert {d.verdict for d in decision.differences} == {"uncertain"}
+    assert decision.notes == {r.id: "Synthetic fixture reading." for r in readings}
