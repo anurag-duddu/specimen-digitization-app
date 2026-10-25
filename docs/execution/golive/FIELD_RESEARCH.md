@@ -1337,11 +1337,16 @@ handover runs field research instead of the six specialists:
    - **105526330's province.** The reading the first pass preferred writes
      "Chimaltenago" and Getty TGN knows only "Chimaltenango". Until
      2026-10-25 an answer that took the other reader's "Chimaltenango" as its
-     literal was refused (G19); since then it settles when TGN was asked the
-     preferred reading's "Chimaltenago" too and found nothing, a source
-     confirming exactly one reader's text, and the preferred spelling is
-     then sent back for it
-     (`test_a_source_that_confirms_the_other_reader_exactly_overrides_the_preferred_near_spelling`).
+     literal was refused (G19). Since the real-run measurement of 2026-10-25
+     (t1-329), where the first pass confirmed "Chimaltenago" against the
+     image, TGN's exact match of the other reader's one-letter correction
+     keeps the preferred spelling as the literal and gives the department as
+     its value through that near spelling (`agreement._preferred_spelling`:
+     `near_spelling` and `first_pass_followed`, the reason naming the reader
+     whose text matched), and a county is never another reader's spelling of
+     the settled province (`step._province_spelling`), nor any field
+     another reader's spelling, one letter off on the same label, of text a
+     field of another kind settled (`step._spelled_alike` in `_taken`).
      Where both readers write "Chimaltenago", or the first pass preferred it
      and nothing backs the other reader's text, an answer that
      keeps "Chimaltenago" as the literal, as written (G27), and takes TGN's

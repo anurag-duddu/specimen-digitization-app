@@ -25,6 +25,7 @@ verdict beside a pick is a unit case of agreement.labels.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import json
@@ -577,3 +578,128 @@ def test_a_verdict_on_a_word_that_only_contains_the_other_readers_text_is_no_con
         FIELD_TOOLS["collection_code"])
     found = agreement.labels(task, readings, [])["r1"]
     assert (found.settled, found.preference) == (frozenset({"la"}), "overridden")
+
+
+# ---- t1-329 (the real-run measurement of 2026-10-25) ------------------------
+# Reader 1A, the first pass's pick, writes "Chimaltenago,", reader 1B
+# "Chimaltenango,"; the first pass's verdict at that difference names 1A.
+
+T1_329 = [label_with(country="Guatemala", province_state=name, county=None, city=None)
+    for name in ("Chimaltenago,", "Chimaltenango,")]
+
+
+def t1_329_rig(tmp_path, province_readers=("1A", "1B")):
+    """The t1-329 shape: the organiser's province candidates for
+    `province_readers` (1A "Chimaltenago", 1B "Chimaltenango") and the
+    country for both; the first pass preferred 1A."""
+    texts = {"1A": "Chimaltenago", "1B": "Chimaltenango"}
+    rig = build_rig(tmp_path, *T1_329, candidates=[*COLLECTORS,
+        *(("country", name, "Guatemala", "country: Guatemala") for name in ("1A", "1B")),
+        *(("province_state", name, texts[name], f"province_state: {texts[name]},") for name in province_readers)])
+    prefer(rig, 0)
+    return rig
+
+
+def province_on(literal, reading, value=None):
+    async def script(task, readings, tools):
+        found = await tools.lookup("tgn", "Chimaltenango", field_key=task.key)
+        missing = await tools.lookup("tgn", "Chimaltenago", field_key=task.key)
+        return FieldOutcome(task.key, resolved(literal, reading=reading, value=value, authority_id="tgn:1000565",
+            cited=[found.evidence.id]), evidence=[found.evidence, missing.evidence], model_calls=1)
+    return script
+
+
+@pytest.mark.parametrize(("literal", "reading", "value", "settles"), [
+    ("Chimaltenago", "1A", "Chimaltenango", True), ("Chimaltenango", "1B", None, False)])
+def test_a_source_confirming_the_other_readers_one_letter_correction_keeps_the_preferred_spelling(tmp_path,
+        literal, reading, value, settles):
+    """TGN confirms 1B's "Chimaltenango" by its own name and finds nothing for
+    1A's "Chimaltenago". The first pass confirmed 1A's spelling against the
+    image, so the label writes "Chimaltenago": the province's literal is 1A's
+    and its value the department, through a near spelling of 1B's
+    correction, with near_spelling and first_pass_followed (no override), the
+    reason naming reader 1B. An answer with 1B's text is sent back for 1A's.
+    The real run (Wikidata, "Chimaltenango Department") settled 1B's
+    literal with first_pass_overridden, as did this branch before the fix."""
+    rig = t1_329_rig(tmp_path)
+    run = rig.specimen.run
+    settle(rig, guatemalan(province_state=province_on(literal, reading, value)), tools=Gazetteer(rig.blobs))
+    place = run.fields["province_state"]
+    region = run.regions[0].id
+    if not settles:
+        assert (place.state, place.literal) == (ValueState.AMBIGUOUS, None)
+        assert first_pass_findings(run) == []
+        readings = field_step.run_readings(run)
+        [task] = [task for task in field_step.build_tasks(run)[1] if task.key == "province_state"]
+        answers = [asyncio.run(Gazetteer(rig.blobs).lookup("tgn", query, field_key="province_state"))
+            for query in ("Chimaltenango", "Chimaltenago")]
+        refused = agreement.refusal(task, readings, literal="Chimaltenango", named=[readings[1]], value=None,
+            authority_id="tgn:1000565", cited=answers[:1], received=answers)
+        assert "Your source confirms reader 1B's 'Chimaltenango'" in refused.retry
+        assert "the label writes 'Chimaltenago'" in refused.retry
+        return
+    assert (place.state, place.literal, place.normalized, place.authority_id) == (
+        ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango", "tgn:1000565")
+    assert "near_spelling:province_state" in [f.reason_code for f in run.findings]
+    assert first_pass_findings(run) == [(f"first_pass_followed:province_state:{region}", "info")]
+    assert "reader 1B's 'Chimaltenango'" in place.reason
+
+
+class WithMunicipio(Gazetteer):
+    """Gazetteer, with the municipio of Chimaltenango, a second-level unit
+    inside the department, among TGN's answer for "Chimaltenango" (as
+    Wikidata's Q1002552 stood beside the department in the real run)."""
+
+    PLACES = {**Gazetteer.PLACES, "Chimaltenango": [*Gazetteer.PLACES["Chimaltenango"],
+        ("Chimaltenango", "tgn:chimaltenango-municipio", "second level subdivisions (political entities)",
+            (("Chimaltenango", "tgn:1000565"), ("Guatemala", "tgn:7005493")))]}
+
+
+def test_a_county_never_takes_another_readers_spelling_of_the_settled_province(tmp_path):
+    """t1-329's county: the organiser filed the province only from 1B, so 1A
+    writes no province text, and the province settles on 1B's
+    "Chimaltenango" by TGN's exact match. The county's expert then read 1A's
+    "Chimaltenago," from the transcript, one letter from the municipio
+    Chimaltenango, in Guatemala: the same word of the label as the
+    province's, in another reader's spelling, so it is refused
+    (IS_THE_PROVINCE) and the county does not settle. The real run settled
+    it as "Chimaltenago,", which the reference scores wrong."""
+    rig = t1_329_rig(tmp_path, province_readers=("1B",))
+    run = rig.specimen.run
+
+    async def county(task, readings, tools):
+        found = await tools.lookup("tgn", "Chimaltenango", field_key=task.key)
+        missing = await tools.lookup("tgn", "Chimaltenago", field_key=task.key)
+        return FieldOutcome(task.key, resolved("Chimaltenago,", reading="1A", value="Chimaltenango",
+            authority_id="tgn:chimaltenango-municipio", cited=[found.evidence.id]),
+            evidence=[found.evidence, missing.evidence], model_calls=1)
+    settle(rig, guatemalan(province_state=province_on("Chimaltenango", "1B"), county=county),
+        tools=WithMunicipio(rig.blobs))
+    province = run.fields["province_state"]
+    assert (province.state, province.literal) == (ValueState.SUPPORTED, "Chimaltenango")
+    place = run.fields["county"]
+    assert (place.state, place.literal) == (ValueState.UNRESOLVED, None)
+    assert place.reason.startswith(agreement.IS_THE_PROVINCE)
+    assert "mandatory_unresolved:county" in run.reasons
+    assert "near_spelling:county" not in [f.reason_code for f in run.findings]
+
+
+def test_another_readers_spelling_of_a_settled_text_of_another_kind_is_taken():
+    """The same rule for fields of different kinds (step._taken): the
+    collectors settled on 1A's "J. Smith", and the habitat's expert read
+    1B's "J. Smyth" from the transcript, one letter from it on the same
+    label. Before, only the same string claimed text, so the habitat
+    settled on the collector's name."""
+    readings = (Reading("1A", "r1", "o1a", "raw_reading", "Guatemala\nleg. J. Smith"),
+        Reading("1B", "r1", "o1b", "raw_reading", "Guatemala\nleg. J. Smyth"))
+    tasks = {key: FieldTask(key, True, FieldValue(), (), FIELD_TOOLS[key]) for key in ("collectors", "habitat")}
+    outcomes = [FieldOutcome("collectors", FieldAnswer(outcome="resolved", literal="J. Smith", reading_names=["1A"],
+            explanation="Settled.")),
+        FieldOutcome("habitat", FieldAnswer(outcome="resolved", literal="J. Smyth", reading_names=["1B"],
+            explanation="Settled."))]
+    settled = {"collectors": FieldValue(state=ValueState.SUPPORTED, literal="J. Smith", layer="verbatim",
+        source_region_id="r1")}
+    run = SimpleNamespace(evidence=[], fields={}, dependencies={})
+    taken = field_step._taken(run, tasks, outcomes, readings, settled)
+    assert taken == {"habitat": field_step.Taken("collectors")}
+    assert not field_step._spelled_alike("1a", "la") and field_step._spelled_alike("J. Smyth,", "j. smith")

@@ -601,11 +601,14 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     (agreement.verbatim_runs). A country no answer settled does not hold a
     place back when the gazetteers' answers, of any field, confirm every
     country text of every reading as one nation that the place lies in
-    (_confirmed_country)."""
+    (_confirmed_country). A county is never the settled province's text in
+    any reader's spelling (_province_spelling)."""
     from .agreement import (
+        IS_THE_PROVINCE,
         PLACE_ORDER,
         PLACE_VALUE_FIELDS,
         PlaceField,
+        Refusal,
         parents_refusal,
         place_name,
         verbatim_runs,
@@ -616,6 +619,8 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     found = _settling(task, answer, sources)
     if found is None:
         return None  # _refusal has refused it already.
+    if task.key == "county" and "province_state" not in pending and _province_spelling(run, answer.literal, places):
+        return Refusal(IS_THE_PROVINCE, IS_THE_PROVINCE)
     basis, candidate = found.basis, found.candidate
     confirmed = _confirmed_country(run, readings, places, received) if task.key != "country" else {}
     named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and answer.literal in by_name[n].text]
@@ -658,6 +663,28 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
         if refused is not None:
             return refused
     return None
+
+
+def _province_spelling(run, literal: str | None, places: Mapping[str, Mapping[str, frozenset[str]]]) -> bool:
+    """Whether a county's literal is the settled province's text in some
+    reader's spelling: the province's value is supported with a literal, and
+    the county's literal is, letter case, accents and punctuation aside
+    (georef_locality.fold, unit words kept), or one letter apart
+    (one_letter_apart), its literal, its value or any reader's province text
+    one letter from it or the same. t1-329 (the real-run measurement of
+    2026-10-25): the province settled on reader 1B's "Chimaltenango", and
+    the county on 1A's "Chimaltenago,", the same word of the label, which
+    agreement.parents_refusal's IS_THE_PROVINCE compared only with the
+    spellings of the county's own reading."""
+    from specimen_digitization.application.georef_locality import fold, one_letter_apart
+
+    province = run.fields.get("province_state")
+    if not literal or province is None or province.state != ValueState.SUPPORTED or not province.literal:
+        return False
+    names = [text for text in (province.literal, province.normalized, province.parsed) if text]
+    texts = {text for spellings in places.get("province_state", {}).values() for text in spellings
+        if any(fold(text) == fold(name) or one_letter_apart(text, name) for name in names)}
+    return any(fold(literal) == fold(text) or one_letter_apart(literal, text) for text in {*names, *texts})
 
 
 def _confirmed_country(run, readings: Sequence[Reading], places: Mapping[str, Mapping[str, frozenset[str]]],
@@ -917,15 +944,46 @@ def _claims_text(key: str, value: FieldValue, human: frozenset[str]) -> bool:
         and (value.layer in SETTLED_LAYERS or (key in human and value.layer != "derived")))
 
 
-def _value_spans(value: FieldValue, readings: Sequence[Reading], evidence: Mapping[str, Evidence]):
-    """Where a stored value's literal stands as whole tokens (_occurrences) in
-    the readings of its labels: its source region, the regions of its label
-    rows, and those of the readings it keeps a verbatim of or was settled by."""
+def _value_regions(value: FieldValue, readings: Sequence[Reading], evidence: Mapping[str, Evidence]) -> set:
+    """The labels of a stored value: its source region, the regions of its
+    label rows, and those of the readings it keeps a verbatim of or was
+    settled by."""
     observed = {*value.verbatim_by_observation, *value.settled_observation_ids}
-    regions = ({value.source_region_id} - {None}) | {evidence[i].region_id for i in value.evidence_ids
+    return ({value.source_region_id} - {None}) | {evidence[i].region_id for i in value.evidence_ids
         if i in evidence and evidence[i].kind == "literal"} | {r.region_id for r in readings
         if r.observation_id in observed}
+
+
+def _value_spans(value: FieldValue, readings: Sequence[Reading], evidence: Mapping[str, Evidence]):
+    """Where a stored value's literal stands as whole tokens (_occurrences) in
+    the readings of its labels (_value_regions)."""
+    regions = _value_regions(value, readings, evidence)
     return _occurrences(value.literal, [r for r in readings if r.region_id in regions])
+
+
+# The shortest text, edge punctuation aside, that _spelled_alike compares by
+# one letter: shorter texts ("1a", "IV") are one letter from too many others.
+MIN_NEAR_TEXT = 4
+
+
+def _spelled_alike(first: str, second: str) -> bool:
+    """Whether two literals are one reader's and another's spelling of the
+    same text (_taken): after checks.collapse, letter case and the
+    characters other than letters and digits at their edges aside ("J.
+    Smyth," and "j. smyth"), they are the same, or, both MIN_NEAR_TEXT long
+    or longer, one insertion, deletion or substitution apart
+    (georef_locality.letters_apart)."""
+    from specimen_digitization.application.georef_locality import letters_apart
+
+    from .checks import collapse
+
+    def bare(text: str) -> str:
+        return re.sub(r"^[^\w]+|[^\w]+$", "", collapse(text)).casefold()
+
+    one, other = bare(first), bare(second)
+    if not one or not other:
+        return False
+    return one == other or (min(len(one), len(other)) >= MIN_NEAR_TEXT and letters_apart(one, other) == 1)
 
 
 def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldOutcome],
@@ -971,6 +1029,11 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     human = human_keys(run)
     claims: list[tuple[str, frozenset]] = []
     mine: dict[str, frozenset] = {}
+    # Each claim's literal and labels, and each answer's literal and labels:
+    # another reader's spelling of a claimed text on the same label is taken
+    # too (_spelled_alike; t1-329, the real-run measurement of 2026-10-25).
+    claim_texts: list[tuple[str, str, set]] = []
+    mine_texts: dict[str, tuple[str, set]] = {}
     for outcome in outcomes:
         answer = outcome.answer
         if outcome.failure is not None or answer is None:
@@ -981,6 +1044,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
                 if n in by_name and value.literal in by_name[n].text]
             regions = {r.region_id for r in named} or {r.region_id for r in readings if value.literal in r.text}
             claims.append((outcome.key, _occurrences(value.literal, [r for r in readings if r.region_id in regions])))
+            claim_texts.append((outcome.key, value.literal, regions))
         literal = answer.literal
         if answer.outcome != "resolved" or not literal or not literal.strip():
             continue
@@ -990,9 +1054,11 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             regions = {r.region_id for r in named}
             mine[outcome.key] = frozenset((r.name, start, end) for r in readings if r.region_id in regions
                 for start, end in written_runs(outcome.key, r.text, literal))
+            mine_texts[outcome.key] = (literal, regions)
     for key, value in run.fields.items():
         if key not in researched and _claims_text(key, value, human):
             claims.append((key, _value_spans(value, readings, evidence)))
+            claim_texts.append((key, value.literal, _value_regions(value, readings, evidence)))
     taken: dict[str, Taken] = {}
     yielded: dict[str, str] = {}
     for key, spans in mine.items():
@@ -1006,6 +1072,10 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
                 continue
             other = claimant
             break
+        if other is None:
+            literal, regions = mine_texts[key]
+            other = next((claimant for claimant, text, theirs in claim_texts if claimant != key
+                and not may_share_text(key, claimant) and regions & theirs and _spelled_alike(literal, text)), None)
         if other is not None:
             taken[key] = Taken(other)
         else:
@@ -2372,6 +2442,15 @@ def _first_pass_preference(run, task, outcome: FieldOutcome, *, readings, by_nam
             continue
         cited = [i for i in value.evidence_ids if value.evidence_relations.get(i) == "supports"
             and (row := rows.get(i)) is not None and row.kind == "literal" and row.region_id == region]
+        if label.matched:
+            # The other reader's text the source confirmed: its row stays
+            # cited, and the reason says which reader's it was.
+            matched = {by_name[name].observation_id for name in label.matched_by if name in by_name}
+            cited += [i for i in value.evidence_ids if i not in cited and (row := rows.get(i)) is not None
+                and row.kind == "literal" and row.region_id == region and set(row.observation_ids) & matched]
+            note = (f"The source confirmed reader {', '.join(label.matched_by)}'s {label.matched!r}, one letter "
+                f"from the text the first pass confirmed, {value.literal!r}, which the label writes.")
+            value.reason = " ".join(part for part in (value.reason, note) if part)
         run.findings.append(RunFinding(rule_id="first_pass_preference", rule_version=FIRST_PASS_RULES,
             severity="info", field_key=task.key, reason_code=first_pass_code(label.preference, task.key, region),
             evidence_ids=cited))

@@ -1264,6 +1264,11 @@ class Label:
     # The reading that holds the label's transcript a person decided
     # (FirstPassAdvice.person_decided), which binds its text; None otherwise.
     person: str | None = None
+    # For a label settled on its preferred reader's spelling through another
+    # reader's text one letter from it, which a source confirms by its own
+    # name (_preferred_spelling): that text and the readers that write it.
+    matched: str | None = None
+    matched_by: tuple[str, ...] = ()
 
 
 def _places(text: str, literal: str) -> list[tuple[int, int]]:
@@ -1338,6 +1343,26 @@ def _preference(settled: frozenset[str], preferred: Reading | None, mine: frozen
     return FOLLOWED if any(agreement_key(text) in keys for text in settled) else OVERRIDDEN
 
 
+def _preferred_spelling(task: FieldTask, preferred: Reading | None, group: Sequence[Reading],
+        mine: frozenset[str], confirmed: str, literals: Mapping[str, Iterable[str]]) -> str | None:
+    """For a place value field, the preferred reader's text that a source's
+    exact confirmation of another reader's text corrects rather than
+    overrides, or None: the preferred reader has exactly one text one letter
+    from the confirmed one (application.georef_locality.one_letter_apart),
+    and the first pass confirmed its preferred reader against the image where
+    the other reader writes the confirmed text (confirmed_against_image). The
+    label then writes the preferred reader's spelling, and the confirmed name
+    is its value through a near spelling (t1-329's province: the preferred
+    "Chimaltenago" beside the other reader's "Chimaltenango"; the
+    coordinator's ruling of 2026-10-25 after the real-run measurement)."""
+    if task.key not in PLACE_VALUE_FIELDS or preferred is None:
+        return None
+    near = [text for text in mine if one_letter_apart(text, confirmed)]
+    if len(near) != 1 or not confirmed_against_image(preferred, group, confirmed, literals):
+        return None
+    return near[0]
+
+
 def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[SourceAnswer], *,
         transcript: str | None = None, named: Sequence[Reading] = ()) -> dict[str, Label]:
     """Each label that writes the field, by region, settled on its own
@@ -1384,7 +1409,11 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
     sources say, as the person saw the image (the coordinator's ruling of
     2026-10-25); lookups still work on the person's text.
     A source's exact confirmation (BY_SOURCE) settles against the first
-    pass's preference anywhere. A near spelling or another label settles
+    pass's preference anywhere, except that a place whose preferred reader
+    writes a text one letter from the confirmed one, where the first pass
+    confirmed it, keeps the preferred reader's spelling as its literal, the
+    confirmed name its value through a near spelling (_preferred_spelling;
+    BY_NEAR_SPELLING, FOLLOWED, Label.matched). A near spelling or another label settles
     against it too, except where the first pass judged the image at that
     difference and found its preferred reader's text there
     (confirmed_against_image): then the label does not settle either way,
@@ -1485,8 +1514,15 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
         confirmed = {text: identities(answers, text, task.key) for text in texts} if sourced else {}
         if sourced and (label := _by_source(task, texts, texts, answers)) is not None:
             preference = _preference(label.settled, preferred, mine)
-            if (label.basis == BY_NEAR_SPELLING and preference == OVERRIDDEN
-                    and confirmed_against_image(preferred, group, next(iter(label.settled)), literals)):
+            [one] = label.settled
+            spelled = (_preferred_spelling(task, preferred, group, mine, one, literals)
+                if label.basis == BY_SOURCE and preference == OVERRIDDEN else None)
+            if spelled is not None:
+                found[region] = Label(texts, frozenset({spelled}), by_source=True, basis=BY_NEAR_SPELLING,
+                    preference=FOLLOWED, matched=one, matched_by=tuple(r.name for r in group if r is not preferred
+                        and any(agreement_key(text) == agreement_key(one) for text in literals.get(r.name, ()))))
+            elif (label.basis == BY_NEAR_SPELLING and preference == OVERRIDDEN
+                    and confirmed_against_image(preferred, group, one, literals)):
                 found[region] = Label(texts, preference=CONFLICT)
             else:
                 found[region] = Label(texts, label.settled, by_source=True, basis=label.basis,
@@ -1642,6 +1678,13 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
     if len(settled) == 1:
         [one] = settled
         if want != one:
+            spelled = next((label for label in found.values() if label.matched and label.settled == {one}), None)
+            if spelled is not None:
+                return Refusal(DIFFER, (
+                    f"Your source confirms reader {', '.join(spelled.matched_by)}'s {spelled.matched!r}, one "
+                    f"letter from {one!r}, which the first pass confirmed against the image: the label writes "
+                    f"{one!r}. Give {one!r} as the literal, naming the reading that writes it, and the source's "
+                    "candidate as the value with its authority_id (a near spelling)."), differ=True)
             return Refusal(DIFFER, (
                 f"The labels settle on the reader's text {one!r}: copy the literal from a reading "
                 "that writes it, or answer several_possibilities."), differ=True)
