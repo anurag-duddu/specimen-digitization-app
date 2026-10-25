@@ -318,6 +318,12 @@ class _Expert:
                 }
         if advice:
             document["first_pass"] = advice
+        # The labels whose transcript a person decided, with the reading that
+        # holds it: that reading's text is the label's (agreement.labels).
+        persons = {r.name[:-1]: r.name for r in self.readings
+            if r.first_pass is not None and r.first_pass.person_decided and r.input_source == "decided_transcript"}
+        if persons:
+            document["person_decided"] = persons
         return INPUT_PREFIX + json.dumps(document, ensure_ascii=False, separators=(",", ":"))
 
     # Tools -------------------------------------------------------------------

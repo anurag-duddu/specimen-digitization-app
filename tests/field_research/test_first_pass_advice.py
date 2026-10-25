@@ -498,4 +498,82 @@ def test_a_person_decided_transcript_binds_its_label_against_an_exact_source_mat
         assert "near_spelling:province_state" in [f.reason_code for f in run.findings]
         return
     assert (place.state, place.literal) == (ValueState.AMBIGUOUS, None)
-    assert place.reason.startswith(agreement.DIFFER)
+    assert place.reason == agreement.PERSON_DECIDED + " Settled."
+
+
+def test_an_expert_naming_another_reader_of_a_person_decided_label_is_told_to_answer_with_the_persons(tmp_path):
+    """Round 2 of #414's review: the real resolver's expert first answers
+    with 1B's "Chimaltenango", which TGN confirms exactly, on a label a
+    reviewer transcribed as 1A's "Chimaltenago". Its check sends it back
+    naming the person's reading 1A (PERSON_DECIDED); it answers again with
+    1A's text, the department as the value, and the field settles on the
+    person's literal with the value normalised through the near spelling.
+    The request names the label and its reading under person_decided."""
+    from pydantic_ai.messages import ModelRequest, ModelResponse, RetryPromptPart, ToolCallPart, ToolReturnPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from specimen_digitization.field_research.budget import CostMeter
+
+    first, second = (label_with(**GUATEMALAN, province_state=name) for name in ("Chimaltenago", "Chimaltenango"))
+    rig = build_rig(tmp_path, first, second, candidates=[*COLLECTORS,
+        *(("country", name, "Guatemala", "country: Guatemala") for name in ("1A", "1B")),
+        ("province_state", "1A", "Chimaltenago", "province_state: Chimaltenago"),
+        ("province_state", "1B", "Chimaltenango", "province_state: Chimaltenango")])
+    run = rig.specimen.run
+    reader_a = run.observations[0]
+    run.transcripts[0] = run.transcripts[0].model_copy(update={"text": reader_a.literal_text, "resolved": True,
+        "selected_observation_id": reader_a.id, "actor": "reviewer@example.org"})
+    retries, prompts = [], []
+
+    def model(messages, info):
+        requests = [m for m in messages if isinstance(m, ModelRequest)]
+        prompts.extend(part.content for part in requests[0].parts if part.part_kind == "user-prompt")
+        returns = [part.content for m in requests for part in m.parts if isinstance(part, ToolReturnPart)]
+        retries.extend(part.model_response() for m in requests[-1:] for part in m.parts
+            if isinstance(part, RetryPromptPart))
+        if not returns:
+            return ModelResponse(parts=[ToolCallPart("lookup", {"source": "tgn", "query": query})
+                for query in ("Chimaltenango", "Chimaltenago")])
+        found = next(r for r in returns if r.get("query") == "Chimaltenango")
+        cited = {"authority_id": "tgn:1000565", "source_evidence_ids": [found["evidence_id"]]}
+        answer = ({"outcome": "resolved", "literal": "Chimaltenago", "reading_names": ["1A"],
+                   "value": "Chimaltenango", **cited} if retries else
+                  {"outcome": "resolved", "literal": "Chimaltenango", "reading_names": ["1B"], **cited})
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name,
+            {**answer, "explanation": "TGN holds the department."})])
+
+    resolver = experts.make_resolver(model_factory=lambda: FunctionModel(model),
+        meter=CostMeter(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+
+    async def province(task, readings, tools):
+        return await resolver(task, readings, {}, tools=tools)
+    settle(rig, guatemalan(province_state=province), tools=Gazetteer(rig.blobs))
+    assert retries and "A person transcribed this label: reading 1A holds their transcription" in retries[0]
+    assert "'Chimaltenago'" in retries[0]
+    assert json.loads(prompts[0].removeprefix(INPUT_PREFIX))["person_decided"] == {"1": "1A"}
+    place = run.fields["province_state"]
+    assert (place.state, place.literal, place.normalized, place.authority_id) == (
+        ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango", "tgn:1000565")
+
+
+def test_a_verdict_on_a_word_that_only_contains_the_other_readers_text_is_no_conflict():
+    """Round 2 of #414's review: 1B writes "la" inside "Guatemala" and as the
+    code. The first pass confirmed its preferred 1A at "Guatemalo" against
+    "Guatemala" and was uncertain at the code. Only the code word is where
+    1B writes its text, so label 2's agreement settles label 1 on "la"
+    (round 2's head read "la" inside "Guatemala" and made a conflict)."""
+    from specimen_digitization.field_research.contracts import FirstPassAdvice
+
+    assert agreement._places("Guatemala, code la", "la") == [(16, 18)]
+    advice = FirstPassAdvice(preferred="1A", rationale="", reader_notes={}, differences=(
+        {"texts": {"1A": "Guatemalo", "1B": "Guatemala"}, "verdict": "1A", "spans": {"1A": (0, 9), "1B": (0, 9)}},
+        {"texts": {"1A": "1a", "1B": "la"}, "verdict": "uncertain", "spans": {"1A": (16, 18), "1B": (16, 18)}}))
+    readings = (Reading("1A", "r1", "o1a", "decided_transcript", "Guatemalo, code 1a", first_pass=advice),
+        Reading("1B", "r1", "o1b", "raw_reading", "Guatemala, code la", first_pass=advice),
+        Reading("2A", "r2", "o2a", "raw_reading", "code la"), Reading("2B", "r2", "o2b", "raw_reading", "code la"))
+    literals = {"1A": "1a", "1B": "la", "2A": "la", "2B": "la"}
+    task = FieldTask("collection_code", True, FieldValue(state=ValueState.AMBIGUOUS),
+        tuple(Candidate(r.name, r.text, literals[r.name], "ev-" + r.name) for r in readings),
+        FIELD_TOOLS["collection_code"])
+    found = agreement.labels(task, readings, [])["r1"]
+    assert (found.settled, found.preference) == (frozenset({"la"}), "overridden")

@@ -5,6 +5,7 @@ Examples in these instructions are patterns, never text to look up or copy: a wo
 - readings: several machine readers' transcriptions of the same labels, named by label and reader (1A, 1B, 1C and so on are the readers of label 1; 2A is label 2). They may disagree, and any of them may contain errors.
 - organiser_value and organiser_candidates: what another model read for this field. They are proposals to check against the readings, never evidence.
 - other_fields: what that model read for the specimen's other fields. Use them as context only.
+- person_decided, when present: the labels (by number) whose transcript a person transcribed, each with the reading that holds it. That reading's text is the label's text: no other reader's text replaces it, whatever your sources say, and your lookups may still settle its value.
 - first_pass, when present: for each label whose readers differ (by label number), the opinion of a model that compared its readings against the label image: the reader it preferred (preferred: a reading's name, or null when it preferred none; that reading's input_source is decided_transcript, every other's raw_reading), its rationale, a note on each reader (reader_notes), and each material difference with the reader whose text it judged the image supports there (verdict: a reading's name, neither or uncertain). It is advice, not evidence: every reading stays a raw transcription, and another reader's text is a possibility the first pass may have missed, which you may look up and settle on.
 
 How to work:

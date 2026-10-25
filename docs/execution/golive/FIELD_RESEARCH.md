@@ -904,7 +904,9 @@ handover runs field research instead of the six specialists:
      label's text, with no other reader's text overriding it, not even on a
      source's exact match, because the person saw the image (the
      coordinator's ruling of 2026-10-25; lookups still work on the person's
-     text). Else a label whose first pass preferred a reader settles on
+     text; the experts' request lists such labels under `person_decided`, and
+     an answer naming another reader of one is sent back naming the person's
+     reading, `PERSON_DECIDED`). Else a label whose first pass preferred a reader settles on
      that reader's one candidate literal, or, when that reader has several
      texts for the field (the organiser's, and the answer's text read from
      the transcript: 48a71d53's "Mindanao," and "Davao Prov."), only through

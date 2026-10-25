@@ -288,6 +288,7 @@ DIFFER = "The readings differ, and no approved source confirms one of them."
 LABELS_DIFFER = "The labels differ, and no approved source confirms them as one value."
 FIRST_PASS_CONFLICT = ("The first pass read this label's image as one reader's text, and only another label "
     "or a near spelling backs another reader's: a person decides.")
+PERSON_DECIDED = "A person transcribed this label, and that transcription is its text."
 NOT_CANDIDATE = "This value is not the text found for this field in the readings."
 PART_OF_NAME = "The label writes a longer scientific name than this value."
 DOUBTFUL_GENUS = "The label marks this name's genus as doubtful."
@@ -1260,16 +1261,29 @@ class Label:
     # backing opposes an image-confirmed pick; None for readers that agree or
     # a label that did not settle otherwise.
     preference: str | None = None
+    # The reading that holds the label's transcript a person decided
+    # (FirstPassAdvice.person_decided), which binds its text; None otherwise.
+    person: str | None = None
 
 
 def _places(text: str, literal: str) -> list[tuple[int, int]]:
-    """Where the text writes the (collapsed) literal, any run of whitespace
-    standing for each of its spaces, as (start, end) offsets."""
+    """Where the text writes the (collapsed) literal as whole words, any run
+    of whitespace standing for each of its spaces, as (start, end) offsets:
+    it starts and ends at word edges of its lines as verbatim_runs reads
+    them (_edges), so "la" is no place of "Guatemala" (round 2 of #414's
+    review)."""
     words = literal.split()
     if not words:
         return []
     pattern = re.compile(r"\s+".join(re.escape(word) for word in words))
-    return [(found.start(), found.end()) for found in pattern.finditer(text)]
+    found = []
+    for match in pattern.finditer(text):
+        start, end = match.span()
+        first_at, first = _line_of(text, start, start)
+        last_at, last = _line_of(text, end, end)
+        if start - first_at in _edges(first)[0] and end - last_at in _edges(last)[1]:
+            found.append((start, end))
+    return found
 
 
 def _confirms(difference: Mapping, preferred: str) -> bool:
@@ -1503,9 +1517,10 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
             settled = label.settled if label is not None else (mine if len(mine) == 1 and mine <= own
                 else frozenset())
             found[region] = Label(texts, settled, by_source=label is not None,
-                basis=BY_FIRST_PASS if settled else None, preference=FOLLOWED if settled else None)
+                basis=BY_FIRST_PASS if settled else None, preference=FOLLOWED if settled else None,
+                person=preferred.name if bound else None)
         else:
-            found[region] = Label(texts)
+            found[region] = Label(texts, person=preferred.name if bound else None)
     return found
 
 
@@ -1565,6 +1580,17 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
             "and found the reader it preferred, while only another label or a near spelling backs another "
             "reader's text, and no source confirms it by its own name. That is for a person to choose: "
             "answer several_possibilities with both texts."), differ=True)
+    persons = [label for label in found.values() if label.person and collapse(literal) not in label.settled]
+    if persons:
+        [label, *_] = persons
+        theirs = (f"its text for this field, {', '.join(repr(text) for text in sorted(label.settled))}, "
+            if label.settled else "no single text for this field that settles, ")
+        return Refusal(PERSON_DECIDED, (
+            f"A person transcribed this label: reading {label.person} holds their transcription, and it writes "
+            f"{theirs}which is the label's text whatever your sources found for another reader. Answer with "
+            f"the literal from reading {label.person}, naming that reading; your sources may still settle its "
+            "value (a candidate whose name is one letter from it, or its expansion), cited with its "
+            "authority_id. Or answer several_possibilities or sources_cannot_resolve."), differ=True)
     if any(label.around for label in found.values()):
         return Refusal(DIFFER, (
             f"You read {literal!r} from the transcript, and the readers of its label write different "
