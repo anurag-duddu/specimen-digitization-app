@@ -44,9 +44,21 @@ Missing and review may overlap: a policy-approved absent value can be missing
 without needing review. Not applicable is excluded from missing.
 
 The bounded search query projects state and value presence from only the
-current scoped immutable snapshot. Python derives counts with the same rules
-as section presentation; no N+1 workspace loads or raw field content are
-added to search responses. Pending edits affect local section counts only.
+current scoped immutable snapshot. New graph-backed snapshots retain a
+versioned compact projection alongside their graph identity. Existing packed
+snapshots need a compatible, verified graph read because their inline fields
+were intentionally omitted. This recovery is limited to queue-count requests,
+with bounded page work and a small positive-result cache; unrelated metadata
+lookups remain metadata-only. Fresh scope and sensitivity authorization precede
+every result, including cache hits. Failed or budget-exhausted recovery remains
+unknown, never zero.
+
+Python derives counts with the same rules as section presentation. The list
+response contains neither graph references nor field content, and recovery
+does not add per-record database queries or rewrite existing snapshots.
+Pending edits affect local section counts only. Acceptance must compare a
+real graph-backed record's queue counts with the sum of its field sections,
+as well as cover inline records and the real SQL engine transport.
 
 ## Reference evidence
 

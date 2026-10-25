@@ -1,7 +1,7 @@
 """Bounded current-metadata search; cursors carry no authorization authority."""
 
 from .lane import SQLITE_STATUS
-from .review_summary import review_summary
+from .graph_review_summary import compact_summary
 
 import base64
 import hashlib
@@ -214,8 +214,8 @@ def sql_item(row, scope):
     result.update(scope.model_dump())
     result["record_version_id"] = f"{result['active_run_id']}:{result['revision']}"
     result["risk_calibrated"] = False
-    result["review_summary"] = review_summary(
-        row.get("fieldReviewStates"), result["reason_codes"]
+    result["review_summary"] = compact_summary(
+        result, row.get("fieldReviewStates"), row.get("activeGraph")
     )
     return result
 
@@ -229,6 +229,8 @@ def sqlite_search(
     after_id,
     limit,
     include_sensitive,
+    *,
+    hydrate_review=False,
 ):
     # JSON projection/filtering occurs in SQLite; no snapshots enter Python.
     projections = {
@@ -249,7 +251,10 @@ def sqlite_search(
         "synthetic": "json_extract(payload,'$.run.profile.synthetic')",
         "sensitive": "json_extract(payload,'$.asset.sensitive')",
         "reason_codes": "json_extract(payload,'$.run.reasons')",
-        "field_review_states": """(SELECT json_group_object(field.key, CASE WHEN field.type = 'object' THEN json_object(
+        "active_graph": "json_quote(json_extract(payload,'$.active_graph'))",
+        "field_review_states": """json_quote(CASE WHEN json_type(payload,'$.active_graph.field_review')='object'
+          THEN json_extract(payload,'$.active_graph.field_review.fields') ELSE
+          (SELECT json_group_object(field.key, CASE WHEN field.type = 'object' THEN json_object(
             'state', json_extract(field.value, '$.state'),
             'has_value', json(CASE WHEN
               length(trim(CASE WHEN json_type(field.value,'$.normalized')='text' THEN json_extract(field.value,'$.normalized') ELSE '' END,char(9,10,11,12,13,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279))) > 0 OR
@@ -257,7 +262,7 @@ def sqlite_search(
               length(trim(CASE WHEN json_type(field.value,'$.literal')='text' THEN json_extract(field.value,'$.literal') ELSE '' END,char(9,10,11,12,13,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279))) > 0
             THEN 'true' ELSE 'false' END)) ELSE NULL END)
           FROM json_each(CASE WHEN json_type(payload,'$.run.fields')='object'
-            THEN json_extract(payload,'$.run.fields') ELSE '{}' END) AS field)""",
+            THEN json_extract(payload,'$.run.fields') ELSE '{}' END) AS field) END)""",
         "risk": "CASE WHEN json_type(payload,'$.run.review_risk.composite') IN ('integer','real') AND json_extract(payload,'$.run.review_risk.composite') BETWEEN 0 AND 100 THEN json_extract(payload,'$.run.review_risk.composite') END",
         # Mirrors lane.run_status; the SQLite state column holds the raw stage.
         "status": SQLITE_STATUS,
@@ -303,6 +308,7 @@ def sqlite_search(
         db.create_function("display_reference", 2, display_reference, deterministic=True)
         rows = db.execute(query, (*values, limit)).fetchall()
     result = []
+    graphs = []
     for values in rows:
         row = dict(zip(projections, values))
         row.update(scope.model_dump())
@@ -311,8 +317,12 @@ def sqlite_search(
         row["synthetic"] = bool(row["synthetic"])
         row["record_version_id"] = f"{row['active_run_id']}:{row['revision']}"
         row["risk_calibrated"] = False
-        row["review_summary"] = review_summary(
-            json.loads(row.pop("field_review_states") or "null"), row["reason_codes"]
+        graph = json.loads(row.pop("active_graph") or "null")
+        row["review_summary"] = compact_summary(
+            row, json.loads(row.pop("field_review_states") or "null"), graph
         )
         result.append(row)
+        graphs.append(graph)
+    if hydrate_review:
+        repository.review_graph_cache.hydrate(result, graphs, repository.graph_blobs)
     return result

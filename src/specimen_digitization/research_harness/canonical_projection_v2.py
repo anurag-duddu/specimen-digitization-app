@@ -17,7 +17,7 @@ from uuid import UUID
 from pydantic import Field
 
 from specimen_digitization.application.domain import FieldValue, Principal, Specimen, ValueState
-from specimen_digitization.application.active_graph import GRAPH_LIMIT, run_summary
+from specimen_digitization.application.active_graph import GRAPH_LIMIT, field_review_projection, run_summary
 from specimen_digitization.application.projection import Write, _record, _first_pass, _reading, _region_row, derived_id
 from specimen_digitization.application.storage import digest as canonical_digest
 from .compatibility import PublicationUnavailable
@@ -175,7 +175,7 @@ def _prior_snapshot(prior, context):
     else:
         raw = proof.active_graph_bytes
         keys = {"contract_version", "scope", "specimen_id", "revision", "run_id", "blob_ref", "sha256", "run_sha256", "size_bytes"}
-        if (type(metadata) is not dict or set(metadata) != keys or metadata["contract_version"] != "active-run-v1"
+        if (type(metadata) is not dict or set(metadata) not in (keys, keys | {"field_review"}) or metadata["contract_version"] != "active-run-v1"
                 or type(raw) is not bytes or not 0 < len(raw) <= GRAPH_LIMIT
                 or type(metadata["size_bytes"]) is not int or metadata["size_bytes"] != len(raw)
                 or type(metadata["revision"]) is not int or metadata["revision"] != prior.version
@@ -203,6 +203,9 @@ def _prior_snapshot(prior, context):
                 or canonical_digest(retained["run"]) != metadata["run_sha256"]
                 or payload.get("run") != run_summary(retained["run"])
                 or {**payload, "run": retained["run"]} != graph):
+            unavailable("canonical_lineage_native_graph_unproved")
+        if ("field_review" in metadata and canonical_digest(metadata["field_review"])
+                != canonical_digest(field_review_projection(retained["run"]))):
             unavailable("canonical_lineage_native_graph_unproved")
         raw_digest = metadata["sha256"]
     return {"native": native.snapshot_sha256, "graph": context.prior_snapshot_sha256, "active_graph": raw_digest}

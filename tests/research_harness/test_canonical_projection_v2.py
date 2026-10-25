@@ -490,6 +490,51 @@ def test_packed_native_and_rehydrated_graph_have_distinct_retained_digests(mater
     assert output.result_snapshot_sha256 == canonical_digest(b.result.model_dump(mode="json"))
 
 
+def rebind_native_graph_metadata(b, metadata):
+    """Retain exact altered metadata hashes, so semantic proof checks are reached."""
+    proof = b.context.native_prior_snapshot
+    payload = copy.deepcopy(proof.snapshot)
+    payload["active_graph"] = copy.deepcopy(metadata)
+    b.prior.active_graph = copy.deepcopy(metadata)
+    b.result.active_graph = copy.deepcopy(metadata)
+    native = proof.canonical.model_copy(update={"snapshot_sha256": canonical_digest(payload)})
+    b.context = replace(b.context, native_prior_snapshot=replace(proof, canonical=native, snapshot=payload),
+        prior_snapshot_sha256=canonical_digest(b.prior.model_dump(mode="json")))
+
+
+def test_legacy_native_graph_without_optional_projection_preserves_proof(materialization, tmp_path):
+    b = packed_graph_case(materialization, tmp_path)
+    metadata = copy.deepcopy(b.prior.active_graph)
+    metadata.pop("field_review")
+    rebind_native_graph_metadata(b, metadata)
+    output = project(b)
+    lineage = next(row.variables for row in output.target_writes if row.operation == "AppendCanonicalValueLineageV2")
+    assert lineage["priorNativeSnapshotDigest"] == b.context.native_prior_snapshot.canonical.snapshot_sha256
+    assert lineage["priorGraphSnapshotDigest"] == b.context.prior_snapshot_sha256
+    assert lineage["priorActiveGraphDigest"] == hashlib.sha256(b.context.native_prior_snapshot.active_graph_bytes).hexdigest()
+
+
+@pytest.mark.parametrize("mutation", ["version", "field_state", "value_presence", "boolean_alias", "reason_hash", "projection_extra", "metadata_extra", "metadata_missing"])
+def test_native_graph_optional_projection_requires_exact_retained_run(materialization, tmp_path, mutation):
+    b = packed_graph_case(materialization, tmp_path)
+    metadata = copy.deepcopy(b.prior.active_graph)
+    projection = metadata["field_review"]
+    field = next(iter(projection["fields"].values()))
+    if mutation == "version": projection["version"] = "field-review-v2"
+    elif mutation == "field_state": field["state"] = "not_applicable" if field["state"] != "not_applicable" else "supported"
+    elif mutation == "value_presence": field["has_value"] = not field["has_value"]
+    elif mutation == "boolean_alias": field["has_value"] = int(field["has_value"])
+    elif mutation == "reason_hash": projection["reasons_sha256"] = "0" * 64
+    elif mutation == "projection_extra": projection["unexpected"] = "fixture"
+    elif mutation == "metadata_extra": metadata["unexpected"] = "fixture"
+    else: metadata.pop("run_sha256")
+    rebind_native_graph_metadata(b, metadata)
+    before = b.prior.model_dump(mode="json")
+    with pytest.raises(PublicationUnavailable, match="^canonical_lineage_native_graph_unproved$"):
+        project(b)
+    assert b.prior.model_dump(mode="json") == before
+
+
 @pytest.mark.parametrize("mutation", ["packed_as_graph", "graph_as_native", "altered_original_bytes", "missing_original_bytes", "wrong_native_record"])
 def test_native_packed_graph_proof_cannot_be_relabelled_or_guessed(materialization, tmp_path, mutation):
     b = packed_graph_case(materialization, tmp_path)
