@@ -36,6 +36,22 @@ returned to the harness)". G7 runs it on a Hugging Face model; G19 and G20
 decide what follows. This section is the call; section 4 schedules it and
 records its decision.
 
+**Its pick is advice** (owner, 2026-10-25): "There an LLM opinion that's put
+in front along with actual Raw transcription per model to the harness if
+needed as then harness does its thing per field and settles as written or
+derived and so on", and "Harness can decide as it goes out and learns more
+than what the raw transcriptions are capable of". Each field expert receives,
+per label it compared, the reader it preferred (or none), its rationale, its
+note on each reader and each material difference with its verdict, and the
+harness settles a field on any reader's text that evidence supports: a
+source's match, readers that agree, another label of the specimen that
+writes it; on the preferred reader's text when nothing supports another
+(FIELD_RESEARCH.md step 5). Where its verdict at a difference names the
+reader it preferred, only a source's exact match overrides it; another
+label's agreement or a near spelling there leaves the field for a person
+(`first_pass_conflict`; the coordinator's decision of 2026-10-25 on #414's
+first review).
+
 **Input.** The crop the readers saw, each reading's raw transcript verbatim, and
 the numbered differences between the readings from a deterministic token
 alignment; a difference in whitespace alone is not listed. Readers appear as
@@ -49,12 +65,23 @@ reading is aligned with the first as two readings are, and each listed
 difference gives one span per reader, an empty one at the right offset where
 a reader has nothing there (`first_pass.reading_differences_among`; the
 NVIDIA option's reader C, `docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md`).
-For two readings the request is unchanged.
+For two readings the request is unchanged by that; only its task sentence
+changed since, on 2026-10-25 (below).
 Instructions are the pinned managed prompt
-`transcription-disagreement-adjudication`, unchanged: its "route material
+`transcription-disagreement-adjudication`. Its code default
+(`prompts._DISAGREEMENT_ADJUDICATION_DEFAULT`, served when Logfire serves no
+managed version) has given it biodiversity context since 2026-10-25 (the
+owner: "The LLM system Prompt is to be working with biodiversity data and
+context should be around it"): one natural-history specimen label's
+collecting data, judged against the image, and its pick as advice to a field
+harness that settles each field with lookups against biodiversity sources and
+may overrule it, so its notes say what it saw. It keeps "Never choose a
+candidate merely because it is more fluent", and its "route material
 ambiguity to human review" is expressed by returning no reading and recording
-the unresolved differences, and G19 then decides the route. The request states
-that rule in the model's terms (**G19 in code**, below).
+the unresolved differences, and G19 then decides the route. The request asks
+for the reader whose raw transcript the image supports, as advice to the
+field harness (until 2026-10-25, the one "the lookups should run against").
+The request states that rule in the model's terms (**G19 in code**, below).
 
 **Input binding** (the steward's review of #97, 2026-09-25). The readings must
 be the region's own: each names the region and, when it records an input asset,
@@ -491,8 +518,11 @@ another asset is refused as `external_outcome_unknown`, as a reading's is.
 or none), `first_pass_call` (the call's provenance), `reason` (the rationale),
 `differences` (every verdict with each reading's span), and `handoffs`, one per
 reading: the selected reading as `decided_transcript`, the others as
-`raw_reading` (the harness's fallback); with no selection every reading is a
-`raw_reading` (G19). `resolved` is true exactly when a reading was selected; a
+`raw_reading` (the harness's fallback until 2026-10-25; since then these are
+wire values only: every reading is raw transcription the harness may settle
+on, and the selected one is the first pass's advice); with no selection every
+reading is a `raw_reading` (G19). `resolved` is true exactly when a reading
+was selected; a
 difference left `neither` or `uncertain` stays on the record for the harness and
 the queue decision (G19, G20). The disagreement score and the alignment fields
 of stage 5 are unchanged for two readings. With more, every pair is aligned in

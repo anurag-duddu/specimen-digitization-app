@@ -302,6 +302,28 @@ class _Expert:
             ],
             "other_fields": others,
         }
+        # The first pass's opinion of each label it compared, by label number
+        # (owner, 2026-10-25): advice beside the raw transcriptions, never a
+        # field's evidence. Left out when no label has one.
+        advice = {}
+        for reading in self.readings:
+            given = reading.first_pass
+            if given is not None and not given.person_decided and reading.name[:-1] not in advice:
+                advice[reading.name[:-1]] = {
+                    "preferred": given.preferred,
+                    "rationale": given.rationale,
+                    "reader_notes": dict(given.reader_notes),
+                    "differences": [{"texts": dict(difference["texts"]), "verdict": difference["verdict"]}
+                        for difference in given.differences],
+                }
+        if advice:
+            document["first_pass"] = advice
+        # The labels whose transcript a person decided, with the reading that
+        # holds it: that reading's text is the label's (agreement.labels).
+        persons = {r.name[:-1]: r.name for r in self.readings
+            if r.first_pass is not None and r.first_pass.person_decided and r.input_source == "decided_transcript"}
+        if persons:
+            document["person_decided"] = persons
         return INPUT_PREFIX + json.dumps(document, ensure_ascii=False, separators=(",", ":"))
 
     # Tools -------------------------------------------------------------------

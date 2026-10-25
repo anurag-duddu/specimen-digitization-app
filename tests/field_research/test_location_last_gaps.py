@@ -301,14 +301,18 @@ def d10333ff_readings(second=LABEL_3B):
         Reading("3B", "label3", "obs3b", "raw_reading", second))
 
 
-def test_a_decided_labels_other_reader_writes_its_own_text_only_as_evidence():
-    """G19: d10333ff's label 1 decided on 1A; 1B's "BONITELL" is evidence only."""
+def test_a_non_preferred_readers_text_nothing_backs_is_only_a_possibility():
+    """d10333ff's label 1: its first pass preferred 1A; 1B's "BONITELL" is a
+    possibility nothing on the labels backs. Another label's reading that
+    writes it would back it (the owner, 2026-10-25)."""
     readings = d10333ff_readings()
-    assert agreement.evidence_only("BONITELL", readings[1], readings)
-    assert not agreement.evidence_only("ILLINOIS", readings[0], readings)
-    # Text both readers of the decided label write is the label's.
-    assert not agreement.evidence_only("Edgar", readings[1], readings)
-    assert not agreement.evidence_only("Panama", readings[2], readings)
+    assert agreement.only_a_possibility("BONITELL", readings[1], readings)
+    assert not agreement.only_a_possibility("ILLINOIS", readings[0], readings)
+    # Text both readers of the label write is the label's.
+    assert not agreement.only_a_possibility("Edgar", readings[1], readings)
+    assert not agreement.only_a_possibility("Panama", readings[2], readings)
+    backed = d10333ff_readings(second="BONITELL\nsp. ?")
+    assert not agreement.only_a_possibility("BONITELL", backed[1], backed)
 
 
 def test_text_the_other_reader_reads_as_another_fields_is_disputed():
