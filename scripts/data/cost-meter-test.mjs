@@ -157,6 +157,25 @@ assert.equal(ok(await upsert('worker', child, nested, rows(child, nested, runOne
 console.log('PASS upsert refuses viewers, other collections, inactive scopes, clients and sensitive records without access');
 console.log('PASS upsert refuses a call with any malformed row (kind, basis, amount, scope, specimen, id, month, time, usage) and writes nothing');
 
+// A row the ledger trued up (cost_ledger.true_up): its method, details and reservation travel with it. In a month
+// no total below reads.
+const [truedRow] = rows(insects, specimen, randomUUID(), [paid('first_pass:r1', 'model', 'first-pass-glm', 620, 'trued_up', 12,
+  {reserved_micros:318670})]).map(row => ({...row, occurred_at:'2025-02-12T12:00:00+00:00', month:'2025-02'}));
+const method = {allocation_method_id:'provider-day-mean',
+  allocation_method_details:{original_basis:'reserved', original_cost_micros:318670, day:'2025-02-12', billed_requests:64}};
+const trued = {...truedRow, ...method};
+assert.equal(ok(await upsert('worker', insects, specimen, [trued])).upserted, 1);
+const [truedStored] = ok(await raw(`query { costEntries(where:{organizationId:{eq:"${organizationId}"},collectionId:{eq:"${insects}"},id:{eq:"${trued.id}"}}) { costBasis costMicros reservedMicros allocationMethodId allocationMethodDetails } }`)).costEntries;
+assert.deepEqual(truedStored, {costBasis:'trued_up', costMicros:'620', reservedMicros:'318670', allocationMethodId:'provider-day-mean',
+  allocationMethodDetails:method.allocation_method_details});
+const truedBad = [
+  truedRow, {...trued, allocation_method_id:'sam-residual'}, {...trued, allocation_method_details:null},
+  {...trued, allocation_method_details:'text'}, {...trued, reserved_micros:null},
+  {...changed[0], ...method}, {...changed[0], allocation_method_details:{original_basis:'reserved'}},
+];
+for (const row of truedBad) denied(await upsert('worker', insects, specimen, [changed[1], row]));
+console.log('PASS a trued-up row is written with its method, details and reservation; one without them, or method fields on another basis, are refused');
+
 // ---- ListRunPaidCallsV1 -----------------------------------------------------
 const page = async (actorUid, variables={}) => JSON.parse(ok(await op('ListRunPaidCallsV1', {organizationId, collectionId:insects, actorUid, afterId:'', since:'1970-01-01T00:00:00Z', limit:25, ...variables})).page.page_json);
 const swept = await page('worker');

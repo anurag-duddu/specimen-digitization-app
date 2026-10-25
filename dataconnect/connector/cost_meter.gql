@@ -5,9 +5,10 @@
 #
 # One specimen's paid-call rows, upserted by their deterministic ids. All or
 # nothing: any malformed row (an unknown kind or basis, a negative or fractional
-# cost, another scope or specimen, an id that is not the row's own derived id)
-# writes no row, and the @check then refuses the call. A row whose values are
-# unchanged keeps its updatedAt.
+# cost, another scope or specimen, an id that is not the row's own derived id, a
+# trued_up row without its method, details or reservation, method fields on any
+# other row) writes no row, and the @check then refuses the call. A row whose
+# values are unchanged keeps its updatedAt.
 mutation UpsertCostEntriesV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $rowsJson: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
@@ -47,7 +48,13 @@ mutation UpsertCostEntriesV1($organizationId: UUID!, $collectionId: UUID!, $spec
         AND (COALESCE(jsonb_typeof(r->'reserved_micros'),'null')='null' OR (r->>'reserved_micros') ~ '^(0|[1-9][0-9]{0,14})$')
         AND jsonb_typeof(r->'cost_micros')='number' AND (r->>'cost_micros') ~ '^(0|[1-9][0-9]{0,14})$'
         AND jsonb_typeof(r->'list_cost_micros')='number' AND (r->>'list_cost_micros') ~ '^(0|[1-9][0-9]{0,14})$'
-        AND r->>'cost_basis' IN ('computed','billed','reserved','refused')
+        AND r->>'cost_basis' IN ('computed','billed','reserved','refused','trued_up')
+        AND CASE WHEN r->>'cost_basis'='trued_up'
+          THEN r->>'allocation_method_id' IN ('provider-day-mean','sam-request-seconds')
+            AND jsonb_typeof(r->'allocation_method_details')='object'
+            AND jsonb_typeof(r->'reserved_micros')='number'
+          ELSE COALESCE(jsonb_typeof(r->'allocation_method_id'),'null')='null'
+            AND COALESCE(jsonb_typeof(r->'allocation_method_details'),'null')='null' END
         AND COALESCE(jsonb_typeof(r->'outcome'),'null') IN ('string','null') AND COALESCE(length(r->>'outcome'),0)<=64
         AND COALESCE(jsonb_typeof(r->'failure_code'),'null') IN ('string','null') AND COALESCE(length(r->>'failure_code'),0)<=200
         AND COALESCE(jsonb_typeof(r->'price_list_version'),'null') IN ('string','null') AND COALESCE(length(r->>'price_list_version'),0)<=64
@@ -73,13 +80,16 @@ mutation UpsertCostEntriesV1($organizationId: UUID!, $collectionId: UUID!, $spec
     INSERT INTO public.cost_entry AS existing (
       organization_id,collection_id,id,source,specimen_id,run_id,step,stage,attempt,kind,ordinal,
       provider,resource,usage,reserved_micros,cost_micros,list_cost_micros,cost_basis,outcome,failure_code,
-      price_list_version,price_list_as_of,occurred_at,month,created_at,updated_at
+      price_list_version,price_list_as_of,occurred_at,month,allocation_method_id,allocation_method_details,
+      created_at,updated_at
     ) SELECT $1,$2,(r->>'id')::uuid,'paid_call',$3,(r->>'run_id')::uuid,r->>'step',r->>'stage',
       (r->>'attempt')::integer,r->>'kind',(r->>'ordinal')::integer,r->>'provider',r->>'resource',
       CASE WHEN jsonb_typeof(r->'usage')='object' THEN r->'usage' END,
       (r->>'reserved_micros')::bigint,(r->>'cost_micros')::bigint,(r->>'list_cost_micros')::bigint,
       r->>'cost_basis',r->>'outcome',r->>'failure_code',r->>'price_list_version',r->>'price_list_as_of',
-      (r->>'occurred_at')::timestamptz,r->>'month',statement_timestamp(),statement_timestamp()
+      (r->>'occurred_at')::timestamptz,r->>'month',r->>'allocation_method_id',
+      CASE WHEN jsonb_typeof(r->'allocation_method_details')='object' THEN r->'allocation_method_details' END,
+      statement_timestamp(),statement_timestamp()
     FROM verified WHERE (SELECT ok FROM verdict)
     ON CONFLICT (organization_id,collection_id,id) DO UPDATE SET
       source=EXCLUDED.source,specimen_id=EXCLUDED.specimen_id,run_id=EXCLUDED.run_id,step=EXCLUDED.step,
@@ -89,16 +99,18 @@ mutation UpsertCostEntriesV1($organizationId: UUID!, $collectionId: UUID!, $spec
       list_cost_micros=EXCLUDED.list_cost_micros,cost_basis=EXCLUDED.cost_basis,outcome=EXCLUDED.outcome,
       failure_code=EXCLUDED.failure_code,price_list_version=EXCLUDED.price_list_version,
       price_list_as_of=EXCLUDED.price_list_as_of,occurred_at=EXCLUDED.occurred_at,month=EXCLUDED.month,
+      allocation_method_id=EXCLUDED.allocation_method_id,
+      allocation_method_details=EXCLUDED.allocation_method_details,
       updated_at=CASE WHEN (existing.source,existing.specimen_id,existing.run_id,existing.step,existing.stage,
           existing.attempt,existing.kind,existing.ordinal,existing.provider,existing.resource,existing.usage,
           existing.reserved_micros,existing.cost_micros,existing.list_cost_micros,existing.cost_basis,
           existing.outcome,existing.failure_code,existing.price_list_version,existing.price_list_as_of,
-          existing.occurred_at,existing.month)
+          existing.occurred_at,existing.month,existing.allocation_method_id,existing.allocation_method_details)
         IS DISTINCT FROM (EXCLUDED.source,EXCLUDED.specimen_id,EXCLUDED.run_id,EXCLUDED.step,EXCLUDED.stage,
           EXCLUDED.attempt,EXCLUDED.kind,EXCLUDED.ordinal,EXCLUDED.provider,EXCLUDED.resource,EXCLUDED.usage,
           EXCLUDED.reserved_micros,EXCLUDED.cost_micros,EXCLUDED.list_cost_micros,EXCLUDED.cost_basis,
           EXCLUDED.outcome,EXCLUDED.failure_code,EXCLUDED.price_list_version,EXCLUDED.price_list_as_of,
-          EXCLUDED.occurred_at,EXCLUDED.month)
+          EXCLUDED.occurred_at,EXCLUDED.month,EXCLUDED.allocation_method_id,EXCLUDED.allocation_method_details)
         THEN EXCLUDED.updated_at ELSE existing.updated_at END
     """, params: [$organizationId, $collectionId, $specimenId, $actorUid, $rowsJson]) @check(expr: "this > 0", message: "cost entries refused")
 }

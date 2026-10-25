@@ -180,7 +180,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Costs not loaded'), findsNothing);
-      expect(find.text('Cost in October 2026'), findsOneWidget);
+      expect(find.text('Known cost in October 2026'), findsOneWidget);
       expect(repository.reads, hasLength(2));
     });
 
@@ -284,8 +284,8 @@ void main() {
     ) async {
       await pumpCosts(tester, FakeCostRepository());
 
-      expect(find.text('Cost in October 2026'), findsOneWidget);
-      expect(find.text(r'$12.35'), findsWidgets);
+      expect(find.text('Known cost in October 2026'), findsOneWidget);
+      expect(find.text(r'$11.85'), findsOneWidget);
       expect(find.text('Held, cost unknown'), findsOneWidget);
       expect(find.text(r'$0.50'), findsWidgets);
       expect(find.text('Before free allowance'), findsOneWidget);
@@ -316,8 +316,9 @@ void main() {
           )
           .label;
       expect(
-        said('Cost in October 2026'),
-        r"Cost in October 2026, $12.35. After Google's free allowance.",
+        said('Known cost in October 2026'),
+        r"Known cost in October 2026, $11.85. After Google's free allowance. "
+        r'$2.00 of it estimated.',
       );
       expect(
         said('Held, cost unknown'),
@@ -331,7 +332,8 @@ void main() {
       );
       expect(
         said('Left in October 2026'),
-        r'Left in October 2026, $37.65. $12.35 spent of $50.00 in October 2026.',
+        r'Left in October 2026, $37.65. $12.35 counted against $50.00 in '
+        'October 2026, including what is held.',
       );
       handle.dispose();
     });
@@ -381,7 +383,7 @@ void main() {
       expect(find.text('api'), findsNothing);
       expect(
         spoken(tester, stageRow('reading')),
-        r'Reading labels, $6.00, 400 entries · $0.50 held',
+        r'Reading labels, $5.50, 400 entries · $0.50 held',
       );
     });
 
@@ -416,7 +418,7 @@ void main() {
 
       expect(find.text('handwriting-qwen'), findsOneWidget);
       expect(
-        find.text('Reading labels · Hugging Face · 250 entries'),
+        find.text('Reading labels · Hugging Face · 250 entries · \$0.50 held'),
         findsOneWidget,
       );
       expect(find.text('printed-glm'), findsOneWidget);
@@ -433,7 +435,8 @@ void main() {
             ),
           ),
         ),
-        r'handwriting-qwen, $4.00, Reading labels · Hugging Face · 250 entries',
+        r'handwriting-qwen, $3.50, Reading labels · Hugging Face · 250 entries '
+        r'· $0.50 held',
       );
     });
 
@@ -456,6 +459,210 @@ void main() {
 
       expect(find.text('Update time not recorded.'), findsOneWidget);
       expect(find.textContaining('Updated '), findsNothing);
+    });
+  });
+
+  group('what is known and what is held', () {
+    UiDataTile hero(WidgetTester tester) => tester.widget<UiDataTile>(
+      find.byWidgetPredicate((Widget w) => w is UiDataTile && w.hero),
+    );
+
+    String heroSaid(WidgetTester tester) {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      final String label = tester
+          .getSemantics(
+            find.byWidgetPredicate((Widget w) => w is UiDataTile && w.hero),
+          )
+          .label;
+      handle.dispose();
+      return label;
+    }
+
+    Finder modelRow(String key) =>
+        find.byKey(ValueKey<String>('cost-model-$key'));
+
+    testWidgets('the hero is the known cost, never what is held', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, FakeCostRepository());
+
+      expect(hero(tester).label, 'Known cost in October 2026');
+      expect(hero(tester).value, r'$11.85');
+      // The whole count, held included, is not the headline.
+      expect(hero(tester).value, isNot(r'$12.35'));
+      expect(find.text('Held, cost unknown'), findsOneWidget);
+    });
+
+    testWidgets('a month that is mostly held leads with what is known', (
+      WidgetTester tester,
+    ) async {
+      // October 2026 as the meter counted it: most of the count was held for
+      // calls whose cost was not yet known.
+      final FakeCostRepository repository = FakeCostRepository(
+        wire: edited((Json wire) {
+          wire['totals'] = amounts(
+            26390000,
+            held: 19560000,
+            list: 27000000,
+            entries: 300,
+          );
+          wire['organization_cap'] = null;
+        }),
+      );
+      await pumpCosts(tester, repository);
+
+      expect(hero(tester).value, r'$6.83');
+      expect(find.text(r'$19.56'), findsOneWidget);
+      // The reservations are not drawn as the month's cost anywhere.
+      expect(find.textContaining(r'$26.39'), findsNothing);
+    });
+
+    testWidgets('says how much of the known cost was estimated', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, FakeCostRepository());
+
+      expect(
+        find.text("After Google's free allowance. \$2.00 of it estimated."),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('says nothing of an estimate when none was made', (
+      WidgetTester tester,
+    ) async {
+      final FakeCostRepository repository = FakeCostRepository(
+        wire: edited((Json wire) {
+          (wire['totals'] as Json)['estimated_micros'] = 0;
+        }),
+      );
+      await pumpCosts(tester, repository);
+
+      expect(
+        heroSaid(tester),
+        r"Known cost in October 2026, $11.85. After Google's free allowance.",
+      );
+      expect(find.textContaining('estimated'), findsNothing);
+    });
+
+    testWidgets('a stage row shows its known cost, with what it holds', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, FakeCostRepository());
+
+      expect(
+        find.descendant(of: stageRow('reading'), matching: find.text(r'$5.50')),
+        findsOneWidget,
+      );
+      expect(find.text(r'400 entries · $0.50 held'), findsOneWidget);
+      expect(
+        spoken(tester, stageRow('reading')),
+        r'Reading labels, $5.50, 400 entries · $0.50 held',
+      );
+    });
+
+    testWidgets('a model row shows its known cost, with what it holds', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, FakeCostRepository());
+      final Finder qwen = modelRow('reading-huggingface-handwriting-qwen');
+
+      expect(
+        find.descendant(of: qwen, matching: find.text(r'$3.50')),
+        findsOneWidget,
+      );
+      expect(
+        spoken(tester, qwen),
+        r'handwriting-qwen, $3.50, Reading labels · Hugging Face · 250 entries '
+        r'· $0.50 held',
+      );
+      // A row that holds nothing says nothing about it.
+      expect(
+        spoken(tester, modelRow('reading-novita-printed-glm')),
+        r'printed-glm, $2.00, Reading labels · Novita · 150 entries',
+      );
+    });
+
+    testWidgets('a collection row shows its known cost, with what it holds', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, FakeCostRepository());
+
+      expect(
+        find.text(r'$7.00 · $0.10 held · $2.90 left of $10.00'),
+        findsOneWidget,
+      );
+      expect(
+        spoken(tester, collectionRow('col-insects')),
+        r'Insects, $7.00 including sub-collections, $0.10 held, $2.90 left of '
+        r'$10.00. Change limit',
+      );
+    });
+
+    testWidgets('the limit counts what is held, and does not call it spent', (
+      WidgetTester tester,
+    ) async {
+      await pumpCosts(tester, FakeCostRepository());
+
+      expect(
+        find.text(
+          r'$12.35 counted against $50.00 in October 2026, including what is '
+          'held.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('spent'), findsNothing);
+    });
+
+    group('from a server that does not send the known cost', () {
+      FakeCostRepository older() => FakeCostRepository(
+        wire: (String month) => olderServerWire(costWire(month)),
+      );
+
+      testWidgets('the hero is the whole count, said to include the held', (
+        WidgetTester tester,
+      ) async {
+        await pumpCosts(tester, older());
+
+        expect(hero(tester).label, 'Cost in October 2026');
+        expect(hero(tester).value, r'$12.35');
+        expect(
+          heroSaid(tester),
+          r"Cost in October 2026, $12.35. After Google's free allowance. "
+          'Includes what is held.',
+        );
+        // No known cost is claimed or worked out from the other figures.
+        expect(find.textContaining('Known cost'), findsNothing);
+        expect(find.textContaining(r'$11.85'), findsNothing);
+        expect(find.textContaining('estimated'), findsNothing);
+      });
+
+      testWidgets('rows show the whole count and how much of it is held', (
+        WidgetTester tester,
+      ) async {
+        await pumpCosts(tester, older());
+
+        expect(
+          spoken(tester, stageRow('reading')),
+          r'Reading labels, $6.00, 400 entries · $0.50 of it held',
+        );
+        expect(
+          spoken(tester, modelRow('reading-huggingface-handwriting-qwen')),
+          r'handwriting-qwen, $4.00, Reading labels · Hugging Face · 250 '
+          r'entries · $0.50 of it held',
+        );
+        expect(
+          find.text(r'$7.10 · $0.10 of it held · $2.90 left of $10.00'),
+          findsOneWidget,
+        );
+        expect(
+          spoken(tester, collectionRow('col-insects')),
+          r'Insects, $7.10 including sub-collections, $0.10 of it held, $2.90 '
+          r'left of $10.00. Change limit',
+        );
+        // A row that holds nothing reads as it always has.
+        expect(find.text(r'$5.25 · No monthly limit'), findsOneWidget);
+      });
     });
   });
 
@@ -487,7 +694,10 @@ void main() {
     ) async {
       await pumpCosts(tester, FakeCostRepository());
 
-      expect(find.text(r'$7.10 · $2.90 left of $10.00'), findsOneWidget);
+      expect(
+        find.text(r'$7.00 · $0.10 held · $2.90 left of $10.00'),
+        findsOneWidget,
+      );
       expect(find.text(r'$2.90 · No monthly limit'), findsOneWidget);
       expect(find.text(r'$5.25 · No monthly limit'), findsOneWidget);
       expect(find.text('No costs recorded · No monthly limit'), findsOneWidget);
@@ -500,8 +710,8 @@ void main() {
 
       expect(
         spoken(tester, collectionRow('col-insects')),
-        r'Insects, $7.10 including sub-collections, $2.90 left of $10.00. '
-        'Change limit',
+        r'Insects, $7.00 including sub-collections, $0.10 held, $2.90 left of '
+        r'$10.00. Change limit',
       );
       expect(
         spoken(tester, collectionRow('col-plants')),
@@ -519,7 +729,10 @@ void main() {
       );
       await pumpCosts(tester, repository);
 
-      expect(find.text(r'$7.10 · Limit of $7.00 reached'), findsOneWidget);
+      expect(
+        find.text(r'$7.00 · $0.10 held · Limit of $7.00 reached'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('say when there are none', (WidgetTester tester) async {
@@ -541,7 +754,10 @@ void main() {
       expect(find.text('Left in October 2026'), findsOneWidget);
       expect(find.text(r'$37.65'), findsOneWidget);
       expect(
-        find.text(r'$12.35 spent of $50.00 in October 2026.'),
+        find.text(
+          r'$12.35 counted against $50.00 in October 2026, including what is '
+          'held.',
+        ),
         findsOneWidget,
       );
       expect(uiButton('Change limit'), findsOneWidget);
@@ -557,7 +773,7 @@ void main() {
 
       // The server's limit is for its current month whichever month is read,
       // so the screen names that month instead of the one on the selector.
-      expect(find.text('Cost in September 2026'), findsOneWidget);
+      expect(find.text('Known cost in September 2026'), findsOneWidget);
       expect(find.text('Left in October 2026'), findsOneWidget);
     });
 
@@ -573,7 +789,10 @@ void main() {
 
       expect(find.text('None left'), findsOneWidget);
       expect(
-        find.text(r'$12.35 spent of $10.00 in October 2026.'),
+        find.text(
+          r'$12.35 counted against $10.00 in October 2026, including what is '
+          'held.',
+        ),
         findsOneWidget,
       );
     });
@@ -630,7 +849,7 @@ void main() {
         '2026-08',
       ]);
       expect(repository.reads.last.to, '2026-08');
-      expect(find.text('Cost in August 2026'), findsOneWidget);
+      expect(find.text('Known cost in August 2026'), findsOneWidget);
       expect(announced, <String>[
         'Loading costs for October 2026',
         'Loading costs for August 2026',
@@ -646,13 +865,13 @@ void main() {
       await pumpCosts(tester, repository, reduceMotion: true);
 
       await pickUiSelect(tester, 'Month', 'September 2026');
-      expect(find.text('Cost in September 2026'), findsOneWidget);
+      expect(find.text('Known cost in September 2026'), findsOneWidget);
 
       late.complete();
       await tester.pumpAndSettle();
 
-      expect(find.text('Cost in September 2026'), findsOneWidget);
-      expect(find.text('Cost in October 2026'), findsNothing);
+      expect(find.text('Known cost in September 2026'), findsOneWidget);
+      expect(find.text('Known cost in October 2026'), findsNothing);
     });
 
     testWidgets('a month with nothing recorded replaces the figures', (
@@ -669,7 +888,7 @@ void main() {
         find.text('No costs were counted for the organization in July 2026.'),
         findsOneWidget,
       );
-      expect(find.text('Cost in October 2026'), findsNothing);
+      expect(find.text('Known cost in October 2026'), findsNothing);
     });
   });
 
@@ -870,18 +1089,13 @@ void main() {
     ) async {
       final FakeCostRepository repository = FakeCostRepository(
         wire: edited((Json wire) {
-          wire['totals'] = <String, dynamic>{
-            'cost_micros': -300000,
-            'held_micros': 0,
-            'list_cost_micros': 0,
-            'entries': 0,
-          };
+          wire['totals'] = amounts(-300000, list: 0, entries: 0);
         }),
       );
       await pumpCosts(tester, repository);
 
       // Recorded, though nothing was spent: not "No costs recorded".
-      expect(find.text('Cost in October 2026'), findsOneWidget);
+      expect(find.text('Known cost in October 2026'), findsOneWidget);
       expect(find.text(r'$0.30 credit'), findsWidgets);
       expect(
         find.text(
@@ -978,7 +1192,10 @@ void main() {
     ) async {
       await pumpCosts(tester, unreadable());
 
-      expect(find.text(r'$7.10 · Limit could not be read'), findsOneWidget);
+      expect(
+        find.text(r'$7.00 · $0.10 held · Limit could not be read'),
+        findsOneWidget,
+      );
       expect(find.text(r'$2.90 · Limit could not be read'), findsOneWidget);
       expect(
         find.text('No costs recorded · Limit could not be read'),
@@ -986,7 +1203,8 @@ void main() {
       );
       expect(
         spoken(tester, collectionRow('col-insects')),
-        r'Insects, $7.10 including sub-collections, Limit could not be read',
+        r'Insects, $7.00 including sub-collections, $0.10 held, Limit could '
+        'not be read',
       );
     });
 
@@ -1014,7 +1232,10 @@ void main() {
 
       expect(repository.reads, hasLength(2));
       expect(find.text('The monthly limits could not be read.'), findsNothing);
-      expect(find.text(r'$7.10 · $2.90 left of $10.00'), findsOneWidget);
+      expect(
+        find.text(r'$7.00 · $0.10 held · $2.90 left of $10.00'),
+        findsOneWidget,
+      );
       expect(find.text('Left in October 2026'), findsOneWidget);
     });
 
@@ -1030,7 +1251,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(UiSkeleton), findsNothing);
-      expect(find.text('Cost in October 2026'), findsOneWidget);
+      expect(find.text('Known cost in October 2026'), findsOneWidget);
       release.complete();
       await tester.pumpAndSettle();
     });
@@ -1038,8 +1259,8 @@ void main() {
     testWidgets('still show the costs whole', (WidgetTester tester) async {
       await pumpCosts(tester, unreadable());
 
-      expect(find.text('Cost in October 2026'), findsOneWidget);
-      expect(find.text(r'$12.35'), findsWidgets);
+      expect(find.text('Known cost in October 2026'), findsOneWidget);
+      expect(find.text(r'$11.85'), findsOneWidget);
       expect(find.text('Reading labels'), findsOneWidget);
       expect(find.text('handwriting-qwen'), findsOneWidget);
     });
@@ -1428,7 +1649,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(UiSkeleton), findsNothing);
-      expect(find.text('Cost in October 2026'), findsOneWidget);
+      expect(find.text('Known cost in October 2026'), findsOneWidget);
 
       release.complete();
       await tester.pumpAndSettle();
@@ -1464,7 +1685,10 @@ void main() {
 
       expect(repository.limits.single.collection, 'col-insects');
       expect(repository.limits.single.micros, 12500000);
-      expect(find.text(r'$7.10 · $5.40 left of $12.50'), findsOneWidget);
+      expect(
+        find.text(r'$7.00 · $0.10 held · $5.40 left of $12.50'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('removes it by sending none, and says so', (
@@ -1480,7 +1704,10 @@ void main() {
 
       expect(repository.limits.single.collection, 'col-insects');
       expect(repository.limits.single.micros, isNull);
-      expect(find.text(r'$7.10 · No monthly limit'), findsOneWidget);
+      expect(
+        find.text(r'$7.00 · $0.10 held · No monthly limit'),
+        findsOneWidget,
+      );
       expect(announced, contains('Monthly limit removed for Insects.'));
     });
 
@@ -1511,7 +1738,10 @@ void main() {
 
       expect(repository.limits, isEmpty);
       expect(repository.reads, hasLength(1));
-      expect(find.text(r'$7.10 · $2.90 left of $10.00'), findsOneWidget);
+      expect(
+        find.text(r'$7.00 · $0.10 held · $2.90 left of $10.00'),
+        findsOneWidget,
+      );
     });
   });
 
@@ -1652,7 +1882,10 @@ void main() {
       expect(find.text('1'), findsOneWidget);
       // Nothing was read again: nothing changed.
       expect(repository.reads, hasLength(1));
-      expect(find.text(r'$7.10 · $2.90 left of $10.00'), findsOneWidget);
+      expect(
+        find.text(r'$7.00 · $0.10 held · $2.90 left of $10.00'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('names a failed removal as a removal', (
@@ -1692,7 +1925,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(repository.limits, hasLength(2));
-      expect(find.text(r'$7.10 · $3.90 left of $11.00'), findsOneWidget);
+      expect(
+        find.text(r'$7.00 · $0.10 held · $3.90 left of $11.00'),
+        findsOneWidget,
+      );
     });
   });
 
@@ -1822,7 +2058,7 @@ void main() {
         theme: productThemes['dark'],
       );
 
-      expect(find.text('Cost in October 2026'), findsOneWidget);
+      expect(find.text('Known cost in October 2026'), findsOneWidget);
       await expectAccessible(tester);
     });
   });

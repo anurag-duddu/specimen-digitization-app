@@ -993,7 +993,11 @@ class FakeDataConnect:
         return (isinstance(row, dict) and row.get("organization_id") == ORG and row.get("collection_id") == COLLECTION
             and row.get("specimen_id") == variables["specimenId"] and row.get("source") == "paid_call"
             and row.get("kind") in ("model", "service", "tool")
-            and row.get("cost_basis") in ("computed", "billed", "reserved", "refused")
+            and row.get("cost_basis") in ("computed", "billed", "reserved", "refused", "trued_up")
+            and ((row.get("allocation_method_id") in ("provider-day-mean", "sam-request-seconds")
+                  and isinstance(row.get("allocation_method_details"), dict) and whole(row.get("reserved_micros")))
+                 if row["cost_basis"] == "trued_up" else
+                 (row.get("allocation_method_id") is None and row.get("allocation_method_details") is None))
             and whole(row.get("cost_micros")) and whole(row.get("list_cost_micros"))
             and (row.get("reserved_micros") is None or whole(row["reserved_micros"]))
             and type(row.get("attempt")) is int and row["attempt"] >= 1

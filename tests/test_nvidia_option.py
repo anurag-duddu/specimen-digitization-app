@@ -262,7 +262,7 @@ def test_a_run_classified_under_the_variant_pins_the_nvidia_routes_on_baseten(
     assert pinned_risk_resolution(run).status == "resolved"
     # Field research mounts on the variant's harness route ("fields" mode).
     assert committed_harness_route(run.profile_snapshot) == "harness-nemotron"
-    assert run.profile.execution.price_list["version"] == "pilot-prices-2026-10-18"
+    assert run.profile.execution.price_list["version"] == "pilot-prices-2026-10-25"
     execution = run.profile.execution
     assert {"max_tokens": execution.max_tokens, "max_external_calls": execution.max_external_calls} == (
         THREE_READER_LIMITS
@@ -365,7 +365,7 @@ def test_variant_parse_settles_at_the_qwen_price(tmp_path, monkeypatch):
         "computed",
     )
     assert call["reserved_micros"] == 58_164
-    assert call["price_list"]["version"] == "pilot-prices-2026-10-18"
+    assert call["price_list"]["version"] == "pilot-prices-2026-10-25"
 
 
 def test_variant_reader_and_first_pass_calls_settle_at_the_nemotron_price(tmp_path, monkeypatch):

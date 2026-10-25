@@ -19,7 +19,9 @@ Every paid call a run makes is recorded on the run itself, in `run.paid_calls`
 (`lane_costs._record`, and `field_research.step.record_cost` for field
 research). The meter copies each of those entries into one `CostEntry` row
 (`dataconnect/schema/cost_entry.gql`), in the run's own organization and
-collection. `application/cost_ledger.py` builds the rows; it has no I/O.
+collection. `application/cost_ledger.py` builds the rows; it reads nothing but
+two committed files beside the profiles (the provider bills and the
+infrastructure prices, below).
 
 | Row field | From the paid call |
 |---|---|
@@ -35,10 +37,11 @@ collection. `application/cost_ledger.py` builds the rows; it has no I/O.
 | `reservedMicros` | the call's reservation |
 | `costMicros` | the cost the meter counts (below) |
 | `listCostMicros` | equal to `costMicros` for a paid call; shared Google costs will differ by the free allowance |
-| `costBasis` | the call's basis: `computed`, `billed`, `reserved` or `refused` |
+| `costBasis` | the call's basis: `computed`, `billed`, `reserved` or `refused`; `trued_up` when the ledger re-valued it (below) |
 | `outcome`, `failureCode` | the call's outcome and failure code |
 | `priceListVersion`, `priceListAsOf` | the price list the call was priced at |
 | `occurredAt`, `month` | the call's `at`, in UTC, and its UTC month (`YYYY-MM`) |
+| `allocationMethodId`, `allocationMethodDetails` | only on a `trued_up` row: how it was re-valued and from what (below); null on every other paid-call row |
 
 Stages: `segment` is `label_finding`, `transcribe:*` is `reading`,
 `first_pass:*` is `first_pass`, `parse` is `structuring`, `classify` is
@@ -56,6 +59,69 @@ named by its prefix before the first `:`.
   The API reports these sums as `held_micros` beside the totals they are part of.
 - A call with no cost recorded counts at its reservation, with basis
   `reserved`; with no reservation either, at zero.
+- `trued_up`: the ledger re-valued the call after the fact from evidence the
+  call did not carry (below). It is settled, not held.
+
+### Trued up (2026-10-25)
+
+October's bill check (COST_RECONCILIATION.md) found $19.56 of the month held at
+reservation, and DeepSeek settled at list ($4.15 on the meter for 3,535
+requests) while Hugging Face billed $1.21 for 5,810, outside calls included; on
+2026-10-18, when the bill's requests and the meter's were the same 1,258, the
+bill was 14.8% of the meter's list figure. `cost_ledger.true_up` re-values such
+a call when the evidence exists, and leaves it as it was when it does not:
+
+| Method (`allocationMethodId`) | Which calls | Cost |
+|---|---|---|
+| `sam-request-seconds` | a held SAM 3 call that completed and reported its request seconds (`usage.seconds`) but no instance time: a server older than the instance meter | those seconds at Cloud Run's instance-based rates (`infrastructure_prices.json`: 4 x 18 + 16 x 2 = 104 micro-USD a second). The instance's start and idle time are not the request's: the `specimen-sam` allocation's residual carries them |
+| `provider-day-mean` | a held model call; or a settled call on a route whose provider bills cached input below list (`cached_input_routes` in the bills file: `harness-deepseek`) that recorded no cached input tokens | its requests at the provider's billed mean per request for that model and UTC day: billed nano-USD x requests / billed requests, rounded up. Its requests are `usage.model_calls`; a held call without them counts one, except a field research call (dozens of requests in one call), which stays held. A settled call needs `usage.model_calls` and its reservation, or it is left as it was |
+
+- The provider bills are committed: `application/profiles/provider_bills.json`
+  holds, per UTC day and Hugging Face model, the requests billed and the
+  nano-USD billed, read from the usage page (COST_RECONCILIATION.md, input 2).
+  No tenant id is in it. A day or model it does not hold leaves the call as it
+  was: held stays held at its reservation. Each month, after the check, the
+  operator adds that month's days in a pull request; the release ships them and
+  the sweep (below) re-values the month's calls.
+- A re-valued call never counts above what it counted at before: its
+  reservation for a held call, its settled cost for a settled one.
+- Nothing about the call is lost: `reservedMicros` stays on the row, and
+  `allocationMethodDetails` records `original_basis` and
+  `original_cost_micros`, the inputs (the bill's day, model, requests and
+  nano-USD, or the seconds and rates) and a note. The run's own record is
+  unchanged: `run.paid_calls`, the run's budget, the program ledger and the
+  monthly cap ledgers keep the reservation. The meter reports; it never decides
+  whether a call may be made.
+- The mean per request is an estimate, and the API says so: it reports these
+  rows apart (`estimated_micros`, below). It splits the day's bill across the
+  day's requests, so calls made outside the app on the same account (lab runs)
+  are not charged to a tenant.
+- `cost_ledger.RULES` and the bills' `version` make the rules version. When it
+  changes, the next sweep reads every record again (below), so earlier rows
+  follow the rules.
+
+A parse call that was held or refused named its step (`parse`) as its route
+before this change, and no bill names a model for `parse`. It now names the
+route parse calls (the profile's first model route), and the ledger maps the
+earlier rows' `parse` to `handwriting-qwen` (`cost_ledger.LEGACY_ROUTES`): every
+published profile has named it first since the first one, and the settled parse
+calls carry it.
+
+Future field research calls settle at the provider's cached-input rate. The
+price list (`pilot-prices-2026-10-25`) gives `harness-deepseek` DeepInfra's list
+rate for a cached input token (6,000 micro-USD per million, beside 200,000 for
+an uncached one; a 30% promotion was on when it was read and is not used, so
+the meter does not fall below the bill when it ends).
+`model_gateway.ArgumentPreservingHuggingFaceModel` keeps the cached tokens the
+provider reports (`usage.prompt_tokens_details.cached_tokens`), which Pydantic
+AI's Hugging Face usage drops, and `field_research.budget.CostMeter` prices
+them at that rate. A reservation still prices every input token uncached. The
+paid call records the tokens of the requests that reported their usage
+(`reported_requests`, `input_tokens`, `cached_input_tokens`,
+`output_tokens`). Not confirmed: that Hugging Face's router passes the detail
+through from DeepInfra (its schema names only the three token counts). If it
+does not, the call settles at list as before and `provider-day-mean` trues it
+up once that day's bill is committed.
 
 ### Ids
 
@@ -97,9 +163,12 @@ covered too.
 
 - The watermark is a `worker_cursor` document with id
   `uuid5(NAMESPACE_URL, "cost-meter-sweep:{organization}/{collection}")` and
-  payload `{"sensitive": false, "swept_since", "after_id", "pass_started_at"}`,
-  written by compare-and-set. The first sweep, with no document, reads every
-  specimen.
+  payload `{"sensitive": false, "swept_since", "after_id", "pass_started_at",
+  "rules"}`, written by compare-and-set. The first sweep, with no document,
+  reads every specimen. So does a sweep whose watermark names other `rules`
+  (`cost_ledger.rules_version()`: the true-up rules and the committed bills'
+  version; a watermark written before 2026-10-25 names none), so a change of
+  either rewrites every earlier row.
 - A sweep stops after 60 seconds, after 40 pages, at the drain window's close
   or at a stop signal, whichever comes first; a call already sent finishes
   first. The watermark is saved after the last page done in full, so the next
@@ -127,7 +196,7 @@ before anything else, and repeats those conditions inside its SQL.
 
 | Operation | Variables | Who | What |
 |---|---|---|---|
-| `UpsertCostEntriesV1` | `organizationId`, `collectionId`, `specimenId`, `actorUid`, `rowsJson` | an active operator, reviewer, manager or admin of the collection, for a record they may see (`NOT sensitive OR canViewSensitive`) | Upserts one specimen's rows (1 to 500), keyed by (organization, collection, id), in one transaction. Any malformed row (an unknown kind or basis, a negative, fractional or 16-digit amount, another scope or specimen, an id that is not the row's derived id, a month that is not the time's UTC month) writes no row and the call is refused. A row whose values are unchanged keeps its `updatedAt` |
+| `UpsertCostEntriesV1` | `organizationId`, `collectionId`, `specimenId`, `actorUid`, `rowsJson` | an active operator, reviewer, manager or admin of the collection, for a record they may see (`NOT sensitive OR canViewSensitive`) | Upserts one specimen's rows (1 to 500), keyed by (organization, collection, id), in one transaction. Any malformed row (an unknown kind or basis, a negative, fractional or 16-digit amount, another scope or specimen, an id that is not the row's derived id, a month that is not the time's UTC month, a `trued_up` row without a known method, its details object or its reservation, method fields on a row of another basis) writes no row and the call is refused. A row whose values are unchanged keeps its `updatedAt` |
 | `ListRunPaidCallsV1` | `organizationId`, `collectionId`, `actorUid`, `afterId`, `since`, `limit` (1 to 25) | any active member of the collection, for the records they may see | One page of specimens (id after `afterId`, saved at or after `since`, in id order): for each of their runs, its paid calls from the latest revision holding it, and the page's last id. Returned as JSON text |
 | `CostTotalsV1` | `organizationId`, `actorUid`, `fromMonth`, `toMonth` | an active admin of any collection of the organization | The organization's collections (id, name, parent) and the sums of its rows in the month range, by collection, month, stage, source, kind, provider, resource and basis: cost, list cost, count and latest `updatedAt`. Sums are text, so no amount loses precision |
 
@@ -165,21 +234,24 @@ emulator (engine contract stage `sql.cost-allocation`).
   "currency": "USD",
   "from_month": "2026-10", "to_month": "2026-10",
   "updated_at": "2026-10-20T15:04:05Z",
-  "totals": {"cost_micros": 0, "held_micros": 0, "list_cost_micros": 0, "entries": 0},
+  "totals": {"cost_micros": 0, "held_micros": 0, "settled_micros": 0, "estimated_micros": 0,
+             "list_cost_micros": 0, "entries": 0},
   "organization_cap": null,
   "collections": [
     {"collection_id": "uuid", "name": "Insects", "parent_id": null,
-     "own": {"cost_micros": 0, "held_micros": 0, "list_cost_micros": 0, "entries": 0},
-     "total": {"cost_micros": 0, "held_micros": 0, "list_cost_micros": 0, "entries": 0},
+     "own": {"cost_micros": 0, "held_micros": 0, "settled_micros": 0, "estimated_micros": 0, "list_cost_micros": 0, "entries": 0},
+     "total": {"cost_micros": 0, "held_micros": 0, "settled_micros": 0, "estimated_micros": 0, "list_cost_micros": 0, "entries": 0},
      "cap": null}
   ],
   "months": [
-    {"month": "2026-10", "totals": {"cost_micros": 0, "held_micros": 0, "list_cost_micros": 0, "entries": 0},
-     "stages": [{"stage": "reading", "cost_micros": 0, "held_micros": 0, "list_cost_micros": 0, "entries": 0}]}
+    {"month": "2026-10", "totals": {"cost_micros": 0, "held_micros": 0, "settled_micros": 0, "estimated_micros": 0,
+                                    "list_cost_micros": 0, "entries": 0},
+     "stages": [{"stage": "reading", "cost_micros": 0, "held_micros": 0, "settled_micros": 0, "estimated_micros": 0,
+                 "list_cost_micros": 0, "entries": 0}]}
   ],
   "models": [
     {"month": "2026-10", "stage": "reading", "provider": "huggingface", "resource": "handwriting-qwen",
-     "cost_micros": 0, "held_micros": 0, "list_cost_micros": 0, "entries": 0}
+     "cost_micros": 0, "held_micros": 0, "settled_micros": 0, "estimated_micros": 0, "list_cost_micros": 0, "entries": 0}
   ],
   "meter": {"allocated_through": "2026-10-19", "allocation_status": "ok"},
   "caps_status": "ok"
@@ -190,6 +262,11 @@ emulator (engine contract stage `sql.cost-allocation`).
   per-request charges, is negative (see [Shared Google costs](#shared-google-costs)).
   `cost_micros` sums are after Google's free allowance and `list_cost_micros`
   sums before it; `entries` is never negative.
+- `cost_micros` is `settled_micros` plus `held_micros`. `held_micros` is what
+  is counted at reservation (basis `reserved`: spend unknown), `settled_micros`
+  everything else, and `estimated_micros` the part of `settled_micros` the
+  ledger trued up (basis `trued_up`). A screen leads with `settled_micros`, so
+  a reservation is never shown as spend; the Costs screen does.
 - `collections` lists every collection of the organization, ordered by name.
   `own` is the collection's own rows; `total` adds every descendant over the
   `parentId` tree. A parent that is not a collection of the organization makes
@@ -207,6 +284,10 @@ emulator (engine contract stage `sql.cost-allocation`).
   `CostAllocationStatusV1` (the API cannot read the worker's cursors). An
   organization none of whose collections had a share on any allocated day, or
   whose collections no worker job serves, has no row, so it shows `never_run`.
+  After a change of `SAM_DIRECT_RULES` (the first release of 2026-10-25
+  included) the allocator writes the days again from the first, seven a pass,
+  while `allocated_through` still reads the latest row: until the passes catch
+  up, a later day's rows can be the old ones.
   A repository without that read (the
   synthetic and SQLite ones) answers `null`; a failed read is 503
   `cost_meter_unavailable`.
@@ -258,7 +339,8 @@ pass.
   billing days that are already allocated (`REALLOCATE_DAYS`), writing the same
   ids, so a paid call or a save recorded after its day was first allocated
   counts while the day is among those two; an unchanged row keeps its
-  `updatedAt`, and the cursor never moves back. Rows of older days stay as
+  `updatedAt`, and the cursor never moves back, except once after a change of
+  `SAM_DIRECT_RULES` (method 2 below). Rows of older days stay as
   they were written. A pass stops after 45 seconds or at the drain window's
   close, checked before each Cloud Monitoring page and each day, and at a stop
   signal, checked before the readings and each day; a read already sent
@@ -271,8 +353,10 @@ pass.
   moves the cursor past the day.
 - The cursor is a `worker_cursor` document with id
   `uuid5(NAMESPACE_URL, "cost-meter-allocation:{organization}/{collection}")`
-  and payload `{"sensitive": false, "allocated_through": "YYYY-MM-DD"}`,
-  written by compare-and-set.
+  and payload `{"sensitive": false, "allocated_through": "YYYY-MM-DD",
+  "direct_rules"}`, written by compare-and-set. A cursor whose `direct_rules`
+  differ from `cost_ledger.SAM_DIRECT_RULES` is allocated again from the first
+  day (method 2 below).
 - It fails open. Until the owner's setup below has run, the worker may not read
   Cloud Monitoring: the first read is refused (HTTP 401 or 403), the worker
   logs `cost allocation stopped: cost_allocation_monitoring_unavailable` once
@@ -347,6 +431,22 @@ organization and collection id). A collection whose part is zero gets no row.
    more than the measured time the residual is negative and is written as it
    is. `billable_instance_time` counts time, so the startup CPU boost's extra
    vCPU is not in the measure (the per-request charges include it).
+   Direct SAM 3 rows and these rows cannot count the same time twice: the
+   residual is the day's measured time less the direct rows as they stand, so
+   together they are the measured time. Three things keep it so. A pass runs
+   only after a complete sweep, so the direct rows are written (a true-up
+   included). The last 2 complete days are computed again at every pass. When
+   the way a direct row is valued changes (`cost_ledger.SAM_DIRECT_RULES`, in
+   the cursor's `direct_rules`; a cursor written before 2026-10-25 names
+   none), the allocator computes every day it allocated before again, from
+   the first day. And a day with SAM 3 calls but no billable reading at all (a
+   day past Monitoring's six-week retention) gets no residual and no credit,
+   rather than a residual that cancels its direct charges. If such a day was
+   allocated before, its earlier residual and credit rows stay as they were
+   written, against the direct rows of then: a change of `SAM_DIRECT_RULES`
+   more than six weeks after a day leaves that day as it was, and the free
+   tier's draw for later days of its month is computed from what readings
+   remain. Moot for 2026-10-25's change: 2026-10-01 is within retention.
 3. `api-requests` (resource `specimen-api`, stage `api`). The API's billable
    seconds x (24 + 2.5) + its requests (`run.googleapis.com/request_count`,
    every response code) x 0.4, split across organizations by the log-based

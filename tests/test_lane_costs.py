@@ -409,8 +409,9 @@ def test_a_step_without_recorded_calls_stays_reserved(tmp_path):
 def test_the_pilot_pins_the_prices_read_on_2026_09_24():
     prices = published_registry().resolve("insects").profile.processing.price_list
     # 2026-10-17: the same prices, with SAM 3's instance-based rates added;
-    # 2026-10-18: with the NVIDIA option's rows added (test_the_nvidia_rows_...).
-    assert (prices.version, prices.as_of) == ("pilot-prices-2026-10-18", "2026-09-24")
+    # 2026-10-18: with the NVIDIA option's rows added (test_the_nvidia_rows_...);
+    # 2026-10-25: with DeepInfra's cached-input rate for the harness route.
+    assert (prices.version, prices.as_of) == ("pilot-prices-2026-10-25", "2026-09-24")
     qwen, muse = prices.models["handwriting-qwen"], prices.models["handwriting-muse"]
     assert (qwen.input_micros_per_million, qwen.output_micros_per_million) == (
         200_000,

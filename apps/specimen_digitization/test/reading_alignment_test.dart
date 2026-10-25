@@ -43,6 +43,86 @@ void main() {
     },
   );
   testWidgets(
+    'a comparison names the two readers it compares, whoever the other readers are',
+    (tester) async {
+      const start = {'utf16_codeunit': 11, 'line': 1};
+      const end = {'utf16_codeunit': 12, 'line': 1};
+      const alignment = {
+        'status': 'disagreement',
+        'alternatives': [
+          {
+            'operation': 'replace',
+            'left': {'start': start, 'end': end, 'text': '2'},
+            'right': {'start': start, 'end': end, 'text': '7'},
+          },
+        ],
+      };
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: ReadingAlignmentView(
+              alignment: alignment,
+              leftText: 'Chicago 1912',
+              rightText: 'Chicago 1917',
+              leftName: 'Reader B',
+              rightName: 'Reader C',
+            ),
+          ),
+        ),
+      );
+      expect(find.text('Compared: Reader B and Reader C'), findsOneWidget);
+      expect(find.text('Reader B · Line 1 · UTF-16 [11, 12)'), findsOneWidget);
+      expect(find.text('Reader C · Line 1 · UTF-16 [11, 12)'), findsOneWidget);
+      expect(find.textContaining('Left'), findsNothing);
+      expect(find.textContaining('Right'), findsNothing);
+    },
+  );
+  testWidgets(
+    'an agreement still says which two readers agree, and a nameless one keeps left and right',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: ReadingAlignmentView(
+              alignment: {'status': 'agreement'},
+              leftName: 'Reader A',
+              rightName: 'Reader C',
+            ),
+          ),
+        ),
+      );
+      expect(find.text('Exact retained readings agree'), findsOneWidget);
+      expect(find.text('Compared: Reader A and Reader C'), findsOneWidget);
+
+      const start = {'utf16_codeunit': 0, 'line': 1};
+      const end = {'utf16_codeunit': 1, 'line': 1};
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light(),
+          home: const Scaffold(
+            body: ReadingAlignmentView(
+              alignment: {
+                'status': 'disagreement',
+                'alternatives': [
+                  {
+                    'operation': 'replace',
+                    'left': {'start': start, 'end': end, 'text': 'a'},
+                    'right': {'start': start, 'end': end, 'text': 'b'},
+                  },
+                ],
+              },
+            ),
+          ),
+        ),
+      );
+      expect(find.textContaining('Compared:'), findsNothing);
+      expect(find.text('Left · Line 1 · UTF-16 [0, 1)'), findsOneWidget);
+      expect(find.text('Right · Line 1 · UTF-16 [0, 1)'), findsOneWidget);
+    },
+  );
+  testWidgets(
     'serialized multilingual span distinguishes UTF16 bytes and codepoints in unchanged source',
     (tester) async {
       // Display projection from align_readings at immutable backend 026d0b9.

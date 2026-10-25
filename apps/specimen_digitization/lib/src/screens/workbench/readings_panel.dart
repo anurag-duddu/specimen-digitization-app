@@ -183,6 +183,10 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
 
   Map<String, String> get _readerNames => readerNames(specimen.observations);
 
+  /// The name a reading carries in every column, sheet and comparison.
+  String _nameOf(Json o) =>
+      _readerNames[readerIdentity(o)] ?? readerModelName(o);
+
   String? _editBlocked(String regionId) =>
       transcriptionBlockedReason ??
       (_accepted(regionId).isEmpty
@@ -578,7 +582,7 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
     _LabelTextDraft? draft,
   ) {
     final UiThemeData ui = context.ui;
-    final String name = _readerNames[readerIdentity(o)] ?? readerModelName(o);
+    final String name = _nameOf(o);
     final List<Json> sameReader =
         specimen.observations
             .where(
@@ -967,13 +971,24 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
     );
   }
 
+  /// The reading an alignment side names, or null when the record holds none.
+  Json? _readingBehind(Object? side) {
+    final Object? id = objectOf(side)['observation_id'];
+    if (id is! String || id.isEmpty) return null;
+    return specimen.observations.where((Json o) => o['id'] == id).firstOrNull;
+  }
+
   Widget _differences(BuildContext context, Json run) {
+    // One row per label, however many models read it. A label read by three
+    // models has three pairs to compare, and the API still describes the
+    // label once: the first transcription it holds for it, the same one the
+    // correction editor starts from (`_accepted`).
     final List<Json> transcriptions = objects(
       specimen.data['transcriptions'],
-    ).where((Json t) => t['region_id'] == selectedRegionId).toList();
-    // One row per region. A region with a transcription is described by it;
-    // the list of differences speaks only for a region no transcription
-    // covers, which is the shape older records and fixtures carry.
+    ).where((Json t) => t['region_id'] == selectedRegionId).take(1).toList();
+    // A region with a transcription is described by it; the list of
+    // differences speaks only for a region no transcription covers, which is
+    // the shape older records and fixtures carry.
     final Set<Object?> described = <Object?>{
       for (final Json t in transcriptions) t['region_id'],
     };
@@ -983,44 +998,49 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
               d['region_id'] == selectedRegionId &&
               !described.contains(d['region_id']),
         )
+        .take(1)
         .toList();
+    // The API serves one comparison per label (`disagreements/<label id>`,
+    // the first row it holds for that label). The backend writes one
+    // `run.disagreements` entry per label, with two readers or more: for three
+    // or more readings the artifact keeps the reported (least-agreeing) pair's
+    // fields at its top level and adds a `comparisons` list with every pair.
+    // So the first row for the label is the label's row, and a request per row
+    // would repeat the same answer under the same key.
+    final Json? comparison = objects(
+      run['disagreements'],
+    ).where((Json d) => d['region_id'] == selectedRegionId).firstOrNull;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        if (loadArtifact != null)
-          for (final Json d in objects(
-            run['disagreements'],
-          ).where((Json d) => d['region_id'] == selectedRegionId))
-            LazyEvidence(
-              key: ValueKey<String>(
-                'alignment:${specimen.id}:${specimen.revision}:${d['region_id']}',
-              ),
-              label: 'Read the comparison for ${_regionName(d['region_id'])}',
-              load: () => loadArtifact!(
-                ArtifactRequest(
-                  ArtifactKind.disagreement,
-                  textOf(d['region_id']),
-                ),
-              ),
-              render: (Json alignment) {
-                String? retained(String side) =>
-                    specimen.observations
-                            .where(
-                              (Json o) =>
-                                  o['id'] ==
-                                  objectOf(alignment[side])['observation_id'],
-                            )
-                            .firstOrNull?['literal_text']
-                        as String?;
-                return ReadingAlignmentView(
-                  alignment: alignment,
-                  leftText: retained('left'),
-                  rightText: retained('right'),
-                );
-              },
+        if (loadArtifact != null && comparison != null)
+          LazyEvidence(
+            key: ValueKey<String>(
+              'alignment:${specimen.id}:${specimen.revision}:${comparison['region_id']}',
             ),
+            label:
+                'Read the comparison for ${_regionName(comparison['region_id'])}',
+            load: () => loadArtifact!(
+              ArtifactRequest(
+                ArtifactKind.disagreement,
+                textOf(comparison['region_id']),
+              ),
+            ),
+            render: (Json alignment) {
+              final Json? left = _readingBehind(alignment['left']);
+              final Json? right = _readingBehind(alignment['right']);
+              String? nameOf(Json? o) => o == null ? null : _nameOf(o);
+              return ReadingAlignmentView(
+                alignment: alignment,
+                leftText: left?['literal_text'] as String?,
+                rightText: right?['literal_text'] as String?,
+                leftName: nameOf(left),
+                rightName: nameOf(right),
+              );
+            },
+          ),
         if (disagreements.isEmpty && transcriptions.isEmpty)
           const CaveatText(
             label: 'No differences recorded between the readings.',

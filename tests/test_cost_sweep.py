@@ -10,7 +10,7 @@ from uuid import NAMESPACE_URL, uuid5
 import pytest
 
 from specimen_digitization.application import cost_sweep
-from specimen_digitization.application.cost_ledger import call_rows
+from specimen_digitization.application.cost_ledger import call_rows, rules_version
 from specimen_digitization.application.cost_sweep import CURSOR_KIND, EPOCH, OVERLAP, cursor_id, sweep
 from specimen_digitization.application.domain import Scope
 from specimen_digitization.application.lane_costs import record_model_usage, record_segmentation
@@ -123,7 +123,7 @@ def test_the_first_sweep_records_every_run_and_sets_the_watermark():
     assert rows == (call_rows(ORG, COLLECTION, first, ident(1005), repo.specimens[first]["runs"][ident(1005)])
                     + call_rows(ORG, COLLECTION, first, ident(2000), repo.specimens[first]["runs"][ident(2000)]))
     assert repo.cursor() == {"sensitive": False, "swept_since": (START - OVERLAP).isoformat(),
-                             "after_id": "", "pass_started_at": None, "revision": 1}
+                             "after_id": "", "pass_started_at": None, "rules": rules_version(), "revision": 1}
 
 
 def test_a_later_sweep_reads_only_records_saved_since_the_watermark_less_the_overlap():
@@ -141,13 +141,32 @@ def test_a_later_sweep_reads_only_records_saved_since_the_watermark_less_the_ove
     assert repo.cursor()["revision"] == 2
 
 
+@pytest.mark.parametrize("rules", [None, "cost-rules-before/provider-bills-before"])
+def test_a_watermark_written_under_other_rules_starts_a_pass_over_everything(rules, caplog):
+    # Every cursor written before 2026-10-25 has no rules: its pass was done
+    # without the true-up, so every record is read again and its rows rewritten.
+    repo = Repo(collection(5))
+    sweep(repo, SCOPE, clock=Ticking())
+    stored = {key: value for key, value in repo.cursor().items() if key not in ("rules", "revision")}
+    repo.documents[(CURSOR_KIND, cursor_id(SCOPE))] = {**stored, "revision": 1,
+                                                        **({"rules": rules} if rules else {})}
+    repo.sent, repo.pages = [], []
+    with caplog.at_level(logging.INFO):
+        result = sweep(repo, SCOPE, clock=Ticking(now=START + timedelta(hours=6)))
+    assert repo.pages == [("", EPOCH)]
+    assert repo.sent_ids() == [ident(n) for n in range(1, 6)]
+    assert result["status"] == "complete"
+    assert repo.cursor()["rules"] == rules_version() and repo.cursor()["revision"] == 2
+    assert "cost sweep rules changed; sweeping everything again" in caplog.messages
+
+
 def test_the_time_budget_stops_the_sweep_and_the_next_one_resumes_the_same_pass():
     repo = Repo(collection(30))
     # Each read of the clock is 4 s later: a 60 s budget ends inside the second page.
     result = sweep(repo, SCOPE, clock=Ticking(step=4), page_size=10, seconds=60)
     assert result["status"] == "partial" and result["pages"] == 1
     assert repo.cursor() == {"sensitive": False, "swept_since": EPOCH, "after_id": ident(10),
-                             "pass_started_at": START.isoformat(), "revision": 1}
+                             "pass_started_at": START.isoformat(), "rules": rules_version(), "revision": 1}
     sent_first = repo.sent_ids()
     assert sent_first[:10] == [ident(n) for n in range(1, 11)]
     # Resumed by a later execution: the same pass, from the last page done in full.

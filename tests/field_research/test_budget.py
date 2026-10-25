@@ -337,3 +337,27 @@ def test_text_part_is_counted_in_the_input_bound():
     )
 
     assert large >= small + 999 + len("rules") + 20
+
+
+def test_cached_input_tokens_are_priced_at_the_cached_rate_and_never_reserved_so():
+    m = CostMeter(1_000_000, input_micros_per_million=INPUT_PRICE, output_micros_per_million=OUTPUT_PRICE,
+                  cached_input_micros_per_million=6_000)
+    # 200 uncached x 0.2 + 800 cached x 0.006 + 100 x 0.6 = 40 + 4.8 + 60, rounded up.
+    assert m.cost(1000, 100, 800) == 105
+    assert m.cost(1000, 100) == 260  # what a reservation prices: every input token uncached
+    assert m.cost(1000, 100, 5_000) == m.cost(1000, 100, 1000)  # never more cached than sent
+    # Without a published cached rate a cached token costs an input token.
+    assert meter().cost(1000, 100, 800) == 260
+
+    async def scenario():
+        ticket = await m.reserve(1000, 100)
+        assert m.outstanding_micros == 260
+        assert m.settle(ticket, 1000, 100, 800, reported=True) == 105
+        assert m.reported == {"requests": 1, "input_tokens": 1000, "cached_input_tokens": 800, "output_tokens": 100}
+        unreported = await m.reserve(1000, 100)
+        m.settle(unreported, 1000, 100)  # a worst case kept as spent is not the provider's count
+        assert m.reported["requests"] == 1
+
+    asyncio.run(scenario())
+    with pytest.raises(ValueError):
+        CostMeter(1, input_micros_per_million=10, output_micros_per_million=10, cached_input_micros_per_million=11)

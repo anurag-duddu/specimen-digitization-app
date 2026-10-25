@@ -279,6 +279,21 @@ def test_a_failed_call_with_reported_usage_is_recorded_at_its_cost(kind):
     assert run.usage.actual_cost_micros == call["cost_micros"]
 
 
+@pytest.mark.parametrize("kwargs,basis", [
+    ({"failure": "model_timeout"}, "reserved"),
+    ({}, "reserved"),
+    ({"refusal": "model_rate_limited"}, "refused"),
+])
+def test_a_held_or_refused_parse_names_the_route_it_calls(kwargs, basis):
+    # Before 2026-10-25 these named the step ("parse"), which no bill names.
+    run, _ = first_pass_run()
+    run.attempts["parse"] = 1
+    record_step(None, None, specimen_of(run), "parse", [], 4.0, 0, **kwargs)
+    [call] = run.paid_calls
+    assert (call["route_id"], call["cost_basis"]) == (run.profile.routes[0], basis)
+    assert call["route_id"] != "parse"
+
+
 def test_a_completed_parse_is_priced_at_the_route_it_calls():
     # The extraction (harness.extract_with_agent) calls the profile's first
     # route; before, parse kept its whole reservation (58,164 on the pilot).

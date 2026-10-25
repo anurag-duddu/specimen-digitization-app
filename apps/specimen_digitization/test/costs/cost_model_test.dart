@@ -223,6 +223,214 @@ void main() {
     });
   });
 
+  group('the known cost', () {
+    test('is read from every amounts object that carries it', () {
+      final CostReport report = CostReport.fromWire(costWire(thisMonth));
+      final CostCollection insects = report.collections.first;
+      final CostStage reading = report
+          .monthOf(thisMonth)!
+          .stages
+          .firstWhere((CostStage s) => s.stage == 'reading');
+      final CostModelRow qwen = report.models.first;
+
+      expect(report.totals.settledMicros, 11845678);
+      expect(report.totals.estimatedMicros, 2000000);
+      expect(report.monthOf(thisMonth)!.totals.settledMicros, 11845678);
+      expect(insects.own.settledMicros, 4200000);
+      expect(insects.total.settledMicros, 7000000);
+      expect(insects.total.estimatedMicros, 0);
+      expect(reading.amounts.settledMicros, 5500000);
+      expect(qwen.amounts.settledMicros, 3500000);
+      // The figures it is not part of are read as before.
+      expect(report.totals.costMicros, 12345678);
+      expect(report.totals.heldMicros, 500000);
+    });
+
+    test('is the server\'s figure, never worked out from the others', () {
+      final CostAmounts read = CostAmounts.fromWire(<String, dynamic>{
+        'cost_micros': 10000000,
+        'held_micros': 2000000,
+        'settled_micros': 5000000,
+        'estimated_micros': 1000000,
+        'list_cost_micros': 10000000,
+        'entries': 3,
+      });
+
+      expect(read.settledMicros, 5000000);
+      expect(read.estimatedMicros, 1000000);
+    });
+
+    test('is absent, not zero, from a server that does not send it', () {
+      final CostReport report = CostReport.fromWire(
+        olderServerWire(costWire(thisMonth)),
+      );
+      final List<CostAmounts> every = <CostAmounts>[
+        report.totals,
+        for (final CostCollection c in report.collections) ...<CostAmounts>[
+          c.own,
+          c.total,
+        ],
+        for (final CostMonth m in report.months) ...<CostAmounts>[
+          m.totals,
+          for (final CostStage s in m.stages) s.amounts,
+        ],
+        for (final CostModelRow row in report.models) row.amounts,
+      ];
+
+      expect(every, hasLength(1 + 8 + 1 + 6 + 3));
+      for (final CostAmounts amounts in every) {
+        expect(amounts.settledMicros, isNull);
+        expect(amounts.estimatedMicros, isNull);
+      }
+      // The rest of the report is whole.
+      expect(report.totals.costMicros, 12345678);
+      expect(report.totals.heldMicros, 500000);
+      expect(CostAmounts.none.settledMicros, isNull);
+    });
+
+    test('is absent when the server sends something that is not a number', () {
+      final CostAmounts read = CostAmounts.fromWire(<String, dynamic>{
+        ...amounts(5000000),
+        'settled_micros': '5000000',
+        'estimated_micros': null,
+      });
+
+      expect(read.settledMicros, isNull);
+      expect(read.estimatedMicros, isNull);
+    });
+
+    test('is read below zero as the credit it is', () {
+      final CostAmounts credit = CostAmounts.fromWire(
+        amounts(-300000, list: 0, entries: 3, estimated: -100000),
+      );
+      final CostReport report = CostReport.fromWire(
+        creditWire(costWire(thisMonth)),
+      );
+
+      expect(credit.settledMicros, -300000);
+      expect(credit.estimatedMicros, -100000);
+      expect(report.models.last.amounts.settledMicros, -300000);
+      expect(
+        report
+            .monthOf(thisMonth)!
+            .stages
+            .firstWhere((CostStage s) => s.stage == 'worker')
+            .amounts
+            .settledMicros,
+        -300000,
+      );
+    });
+
+    test('counts as recorded on its own', () {
+      expect(
+        const CostAmounts(
+          costMicros: 0,
+          heldMicros: 0,
+          listCostMicros: 0,
+          entries: 0,
+          settledMicros: 5,
+        ).hasCosts,
+        isTrue,
+      );
+      expect(
+        const CostAmounts(
+          costMicros: 0,
+          heldMicros: 0,
+          listCostMicros: 0,
+          entries: 0,
+          settledMicros: 0,
+          estimatedMicros: 0,
+        ).hasCosts,
+        isFalse,
+      );
+    });
+
+    test('is the amount a row shows, and the whole count without it', () {
+      expect(
+        CostAmounts.fromWire(amounts(6000000, held: 500000)).shownMicros,
+        5500000,
+      );
+      expect(
+        CostAmounts.fromWire(
+          olderServerWire(amounts(6000000, held: 500000)),
+        ).shownMicros,
+        6000000,
+      );
+    });
+
+    // A stage whose cost is mostly held is not the largest by what it is known
+    // to have cost, so it does not lead the list of known costs.
+    Json heldHeavy(String month) {
+      final Json wire = costWire(month);
+      ((wire['months'] as List<Object?>).first! as Json)['stages'] = <Json>[
+        <String, dynamic>{
+          'stage': 'reading',
+          ...amounts(5000000, held: 4000000),
+        },
+        <String, dynamic>{'stage': 'storage', ...amounts(3000000)},
+      ];
+      wire['models'] = <Json>[
+        <String, dynamic>{
+          'month': month,
+          'stage': 'reading',
+          'provider': 'huggingface',
+          'resource': 'mostly-held',
+          ...amounts(5000000, held: 4000000),
+        },
+        <String, dynamic>{
+          'month': month,
+          'stage': 'storage',
+          'provider': 'google_cloud',
+          'resource': 'known',
+          ...amounts(3000000),
+        },
+      ];
+      return wire;
+    }
+
+    test('orders the stages and the models by the amount each row shows', () {
+      final CostReport report = CostReport.fromWire(heldHeavy(thisMonth));
+
+      expect(
+        report
+            .monthOf(thisMonth)!
+            .stagesByCost
+            .map((CostStage s) => s.stage)
+            .toList(),
+        <String>['storage', 'reading'],
+      );
+      expect(
+        report
+            .modelsOf(thisMonth)
+            .map((CostModelRow row) => row.resource)
+            .toList(),
+        <String>['known', 'mostly-held'],
+      );
+    });
+
+    test('orders by the whole count from a server that does not send it', () {
+      final CostReport report = CostReport.fromWire(
+        olderServerWire(heldHeavy(thisMonth)),
+      );
+
+      expect(
+        report
+            .monthOf(thisMonth)!
+            .stagesByCost
+            .map((CostStage s) => s.stage)
+            .toList(),
+        <String>['reading', 'storage'],
+      );
+      expect(
+        report
+            .modelsOf(thisMonth)
+            .map((CostModelRow row) => row.resource)
+            .toList(),
+        <String>['mostly-held', 'known'],
+      );
+    });
+  });
+
   group('the meter states', () {
     test('are read from the server\'s snake_case words', () {
       expect(CostAllocation.fromWire('ok'), CostAllocation.ok);

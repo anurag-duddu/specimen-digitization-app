@@ -67,7 +67,7 @@ def test_a_run_s_paid_calls_become_one_row_each_in_the_connector_shape():
         "organization_id", "collection_id", "id", "source", "specimen_id", "run_id", "step", "stage",
         "attempt", "kind", "ordinal", "provider", "resource", "usage", "reserved_micros", "cost_micros",
         "list_cost_micros", "cost_basis", "outcome", "failure_code", "price_list_version",
-        "price_list_as_of", "occurred_at", "month",
+        "price_list_as_of", "occurred_at", "month", "allocation_method_id", "allocation_method_details",
     }
     call = run.paid_calls[0]
     assert reading == {
@@ -80,6 +80,7 @@ def test_a_run_s_paid_calls_become_one_row_each_in_the_connector_shape():
         "cost_basis": "computed", "outcome": "completed", "failure_code": None,
         "price_list_version": "lane-test-prices-1", "price_list_as_of": "2026-09-23",
         "occurred_at": call["at"], "month": call["at"][:7],
+        "allocation_method_id": None, "allocation_method_details": None,
     }
     assert (segment["kind"], segment["provider"], segment["resource"], segment["stage"]) == (
         "service", "google_cloud", "sam3", "label_finding")
@@ -129,6 +130,18 @@ def test_field_research_s_paid_call_is_a_model_row_of_its_stage():
     assert known["id"] != unknown["id"]
     assert unknown["id"] == derived_id("cost", SPECIMEN, run.id, "field_research", 1, "model", 1)
     assert (unknown["cost_micros"], unknown["cost_basis"], unknown["usage"]) == (900_000, "reserved", None)
+
+
+def test_field_research_s_paid_call_keeps_the_tokens_its_provider_reported():
+    run = priced_run()
+    run.attempts["field_research"] = 1
+    tokens = {"requests": 24, "input_tokens": 480_000, "cached_input_tokens": 430_000, "output_tokens": 9_000}
+    record_cost(run, "harness-deepseek", reserved=900_000, spent=1_250, outcome="completed", model_calls=25,
+                tokens=tokens)
+    [row] = rows(run)
+    assert row["usage"] == {"model_calls": 25, "reported_requests": 24, "input_tokens": 480_000,
+                            "cached_input_tokens": 430_000, "output_tokens": 9_000}
+    assert (row["cost_basis"], row["cost_micros"]) == ("computed", 1_250)
 
 
 def test_ordinals_count_only_calls_of_the_same_step_attempt_and_kind():
@@ -270,7 +283,8 @@ def test_totals_roll_up_the_collection_tree_and_split_held_from_spent():
     body = cost_report(ROOT, "2026-09", "2026-10", COLLECTIONS, groups)
     by_name = {item["name"]: item for item in body["collections"]}
     amount = lambda cost, held=0, entries=1: {
-        "cost_micros": cost, "held_micros": held, "list_cost_micros": cost, "entries": entries}
+        "cost_micros": cost, "held_micros": held, "settled_micros": cost - held, "estimated_micros": 0,
+        "list_cost_micros": cost, "entries": entries}
     assert by_name["Beetles"]["own"] == by_name["Beetles"]["total"] == amount(40_000)
     assert by_name["Insects"]["own"] == amount(3_200, 3_000, 3)
     assert by_name["Insects"]["total"] == amount(43_200, 3_000, 4)

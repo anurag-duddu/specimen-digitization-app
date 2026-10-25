@@ -51,7 +51,8 @@ def client(rows, repository=None, dispatcher=None):
 
 
 def amount(cost, held=0, entries=1):
-    return {"cost_micros": cost, "held_micros": held, "list_cost_micros": cost, "entries": entries}
+    return {"cost_micros": cost, "held_micros": held, "settled_micros": cost - held, "estimated_micros": 0,
+            "list_cost_micros": cost, "entries": entries}
 
 
 def test_an_administrator_reads_the_organization_s_costs_in_the_contract_shape():
@@ -246,6 +247,7 @@ def test_credits_and_a_negative_residual_reduce_the_totals_and_never_the_list_co
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["totals"] == {"cost_micros": 9_550 - 9_500 - 120, "held_micros": 9_000,
+                              "settled_micros": 9_550 - 9_500 - 120 - 9_000, "estimated_micros": 0,
                               "list_cost_micros": 9_550 - 120, "entries": 5}
     assert [item["resource"] for item in body["models"]] == ["sam3", "handwriting-qwen"]  # no allocation row
 
