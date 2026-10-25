@@ -20,14 +20,45 @@ const String thisMonth = '2026-10';
 /// The organization the fixture collection belongs to.
 const String costOrganization = 'org';
 
-/// One `{cost_micros, held_micros, list_cost_micros, entries}` object.
-Json amounts(int cost, {int held = 0, int? list, int entries = 1}) =>
-    <String, dynamic>{
-      'cost_micros': cost,
-      'held_micros': held,
-      'list_cost_micros': list ?? cost,
-      'entries': entries,
-    };
+/// One amounts object, as a server that sends the known cost sends it: the
+/// known part (`settled_micros`) is the cost without what is held, and
+/// [estimated] is the part of it estimated after the call.
+Json amounts(
+  int cost, {
+  int held = 0,
+  int? list,
+  int entries = 1,
+  int estimated = 0,
+}) => <String, dynamic>{
+  'cost_micros': cost,
+  'held_micros': held,
+  'settled_micros': cost - held,
+  'estimated_micros': estimated,
+  'list_cost_micros': list ?? cost,
+  'entries': entries,
+};
+
+/// The two figures a server that predates them does not send.
+const List<String> knownCostFields = <String>[
+  'settled_micros',
+  'estimated_micros',
+];
+
+/// [wire] as a server that predates the known cost answers: every amounts
+/// object in it without `settled_micros` and `estimated_micros`.
+Json olderServerWire(Json wire) {
+  void strip(Object? node) {
+    if (node is Map) {
+      knownCostFields.forEach(node.remove);
+      node.values.forEach(strip);
+    } else if (node is List) {
+      node.forEach(strip);
+    }
+  }
+
+  strip(wire);
+  return wire;
+}
 
 /// A limit as the server sends one.
 Json limitWire(int monthly, {required int spent}) => <String, dynamic>{
@@ -68,18 +99,8 @@ List<Json> collectionsWire() => <Json>[
     'collection_id': 'col-slides',
     'name': 'Microscopic slides',
     'parent_id': 'col-removed',
-    'own': <String, dynamic>{
-      'cost_micros': 0,
-      'held_micros': 0,
-      'list_cost_micros': 0,
-      'entries': 0,
-    },
-    'total': <String, dynamic>{
-      'cost_micros': 0,
-      'held_micros': 0,
-      'list_cost_micros': 0,
-      'entries': 0,
-    },
+    'own': amounts(0, entries: 0),
+    'total': amounts(0, entries: 0),
     'cap': null,
   },
 ];
@@ -87,7 +108,13 @@ List<Json> collectionsWire() => <Json>[
 /// One month of the report, with the stages the pipeline has.
 Json monthWire(String month) => <String, dynamic>{
   'month': month,
-  'totals': amounts(12345678, held: 500000, list: 15000000, entries: 1234),
+  'totals': amounts(
+    12345678,
+    held: 500000,
+    list: 15000000,
+    entries: 1234,
+    estimated: 2000000,
+  ),
   'stages': <Json>[
     <String, dynamic>{'stage': 'first_pass', ...amounts(1800000, entries: 12)},
     <String, dynamic>{
@@ -187,20 +214,14 @@ Json creditWire(Json wire) {
   final Json month = (wire['months'] as List<Object?>).first! as Json;
   (month['stages'] as List<Object?>).add(<String, dynamic>{
     'stage': 'worker',
-    'cost_micros': -300000,
-    'held_micros': 0,
-    'list_cost_micros': 0,
-    'entries': 3,
+    ...amounts(-300000, list: 0, entries: 3),
   });
   (wire['models'] as List<Object?>).add(<String, dynamic>{
     'month': month['month'],
     'stage': 'worker',
     'provider': 'google_cloud',
     'resource': 'specimen-sam',
-    'cost_micros': -300000,
-    'held_micros': 0,
-    'list_cost_micros': 0,
-    'entries': 3,
+    ...amounts(-300000, list: 0, entries: 3),
   });
   return wire;
 }

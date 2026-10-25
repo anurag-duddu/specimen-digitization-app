@@ -77,7 +77,9 @@ def family(report, name):
 
 def test_route_models_come_from_the_registry_and_cover_every_published_route():
     mapping = default_route_models()
-    assert mapping == {route_id: route.model_id for route_id, route in HUGGINGFACE_ROUTES.items()}
+    # The registry's routes, and the step name a held parse call carried before 2026-10-25 (its route's model).
+    assert mapping == {**{route_id: route.model_id for route_id, route in HUGGINGFACE_ROUTES.items()},
+                       "parse": HUGGINGFACE_ROUTES["handwriting-qwen"].model_id}
     published = json.loads((Path(cr.__file__).parent / "profiles" / "published.json").read_text())
     named = set()
 
@@ -795,7 +797,7 @@ def test_the_json_report_round_trips_and_the_markdown_is_plain_ascii_prose():
     text = render_markdown(report)
     text.encode("ascii")
     for expected in ("# Cost meter check, 2026-10", "## What needs a look", "## Hugging Face, by model",
-                     "## Google Cloud, by cost family", "### Google lines the meter does not cover",
+                     "## Google Cloud, by cost family", "### Google lines the meter does not split",
                      "## Billing-day time zone", "## Inputs and limits", "87.0%",
                      "Settled calls alone are within the limit", "intake jobs", "## Metered rows with no bill to compare",
                      "| tool | tool | geography_lookup | 1 | $0.0050 |",
@@ -811,3 +813,93 @@ def test_a_bad_month_or_billing_zone_is_refused():
         reconcile(meter_rows=[], month="2026-13")
     with pytest.raises(ReconciliationInputError, match="billing zone"):
         reconcile(meter_rows=[], month=MONTH, billing_zone="Nowhere/Land")
+
+
+# ---- 2026-10-25: true-ups, requests, legacy routes, lines not split -----------
+
+def test_a_trued_up_paid_call_is_a_settled_paid_call_and_never_an_allocation_row():
+    # A true-up carries its method on the row; before 2026-10-25 the check took any row with a
+    # method for an allocation, so a trued-up SAM 3 call counted as allocated and "no allocation rows"
+    # was never said.
+    rows = [meter("google_cloud", "sam3", 13_780, basis="trued_up", stage="label_finding", source="paid_call",
+                  kind="service", method="sam-request-seconds"),
+            meter("huggingface", "first-pass-glm", 620, basis="trued_up", stage="first_pass", source="paid_call",
+                  method="provider-day-mean")]
+    report = reconcile(meter_rows=rows, huggingface=hf({"2026-10-10": {GLM: (64, 39_668_880)}}),
+                       google={"lines": []}, month=MONTH)
+    assert report["inputs"]["meter_has_allocation_rows"] is False
+    sam = family(report, "specimen-sam")
+    assert (sam["meter_direct_micros"], sam["meter_allocated_micros"], sam["meter_held_micros"]) == (13_780, 0, 0)
+    glm = model(report, GLM)
+    assert (glm["metered_settled_micros"], glm["metered_estimated_micros"], glm["metered_held_micros"]) == (620, 620, 0)
+
+
+def test_a_field_research_row_counts_the_requests_it_made():
+    # One field research row made 741 requests (usage.model_calls), as many as the bill counted on 2026-10-12:
+    # no request is outside the meter. Before 2026-10-25 the row counted as one call against 741.
+    rows = [meter("huggingface", "harness-deepseek", 872_735, stage="field_research", usage={"model_calls": 741.0},
+                  when="2026-10-12T15:00:00Z")]
+    report = reconcile(meter_rows=rows, huggingface=hf({"2026-10-12": {DEEPSEEK: (741, 133_300_000)}}), month=MONTH)
+    entry = model(report, DEEPSEEK)
+    assert (entry["meter_calls"], entry["meter_requests"]) == (1, 741)
+    assert "requests_outside_meter" not in codes(entry)
+    assert "provider_discount" in codes(entry)  # 133,300 billed of 872,735 settled at list
+    assert entry["days"][0]["meter_requests"] == 741
+
+
+def test_a_legacy_parse_row_is_matched_to_the_model_parse_calls():
+    rows = [meter("huggingface", "parse", 53_568, basis="reserved", stage="structuring")]
+    report = reconcile(meter_rows=rows, huggingface=hf({"2026-10-10": {QWEN: (1, 300_000)}}), month=MONTH)
+    entry = model(report, QWEN)
+    assert entry["metered_held_micros"] == 53_568 and entry["routes"][0]["route_id"] == "parse"
+    assert not any(e["label"] == "parse" for e in report["huggingface"]["models"])
+    assert "route_not_in_registry" not in codes(entry)
+
+
+def test_a_true_up_is_named_when_a_model_is_flagged():
+    rows = [meter("huggingface", "first-pass-glm", 90_000, stage="first_pass"),  # $0.09 against a $0.0012 bill
+            meter("huggingface", "first-pass-glm", 620, basis="trued_up", stage="first_pass", source="paid_call",
+                  method="provider-day-mean")]
+    report = reconcile(meter_rows=rows, huggingface=hf({"2026-10-10": {GLM: (2, 1_240_000)}}), month=MONTH)
+    entry = model(report, GLM)
+    assert entry["flagged"] and "trued_up" in codes(entry)
+    text = next(item["text"] for item in entry["explanations"] if item["code"] == "trued_up")
+    assert text.startswith("$0.0006 of the meter's figure (1 calls) was estimated after the call")
+
+
+@pytest.mark.parametrize("service,sku,treatment", [
+    ("Cloud Run", "Cloud Run Network Internet Data Transfer Out North America to North America", "shared_not_yet_split"),
+    ("Firebase Data Connect", "Firebase SQL Connect number of operation requests", "shared_not_yet_split"),
+    ("Artifact Registry", "Artifact Registry Storage", "fixed_platform"),
+    ("Cloud Build", "E2 cpu utilization per minute in us-east4", "fixed_platform"),
+    ("Secret Manager", "Secret version replica storage", "fixed_platform"),
+    ("Cloud Logging", "Log Storage cost", "not_metered"),
+])
+def test_each_google_line_no_family_holds_is_given_its_treatment(service, sku, treatment):
+    assert google_family(service, sku) is None
+    report = reconcile(meter_rows=[], google={"lines": [{"service": service, "sku": sku, "day": "2026-10-16",
+                                                         "cost_usd": 1.83, "credits_usd": 0}]}, month=MONTH)
+    [line] = report["google"]["unmetered"]["lines"]
+    assert line["treatment"] == treatment and line["treatment_reason"]
+    assert report["google"]["unmetered"]["by_treatment"][treatment] == 1_830_000
+    text = render_markdown(report)
+    assert "### Google lines the meter does not split" in text
+    assert f"{cr.usd(1_830_000)} {cr.TREATMENT_LABELS[treatment]}" in text
+
+
+def test_requests_outside_the_meter_are_priced_at_each_day_s_billed_mean():
+    # 10-10: 100 requests billed $0.10, the meter's one row made 40 of them: 60 outside, $0.06.
+    # 10-11: 20 billed $0.04 and the meter made all 20: none outside. A day with no call: all outside, $0.02.
+    rows = [meter("huggingface", "harness-deepseek", 40_000, stage="field_research", usage={"model_calls": 40},
+                  when="2026-10-10T12:00:00Z"),
+            meter("huggingface", "harness-deepseek", 40_000, stage="field_research", usage={"model_calls": 20},
+                  when="2026-10-11T12:00:00Z")]
+    report = reconcile(meter_rows=rows, huggingface=hf({"2026-10-10": {DEEPSEEK: (100, 100_000_000)},
+                                                         "2026-10-11": {DEEPSEEK: (20, 40_000_000)},
+                                                         "2026-10-12": {DEEPSEEK: (5, 20_000_000)}}), month=MONTH)
+    entry = model(report, DEEPSEEK)
+    assert entry["billed_outside_meter_micros"] == 60_000 + 20_000
+    assert report["huggingface"]["totals"]["billed_outside_meter_micros"] == 80_000
+    text = next(item["text"] for item in entry["explanations"] if item["code"] == "requests_outside_meter")
+    assert "about $0.0800 of the bill at each day's billed mean per request" in text
+    assert "about $0.0800 of the bill is requests the meter's calls did not make" in render_markdown(report)

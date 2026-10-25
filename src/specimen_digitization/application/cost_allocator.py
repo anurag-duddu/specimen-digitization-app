@@ -23,6 +23,7 @@ import logging
 from datetime import date, datetime, timedelta, timezone
 from uuid import NAMESPACE_URL, uuid5
 
+from .cost_ledger import SAM_DIRECT_RULES
 from .storage import Conflict, Missing
 
 LOGGER = logging.getLogger(__name__)
@@ -87,17 +88,18 @@ class CostAllocator:
             LOGGER.warning("cost allocation not configured: %s", type(error).__name__)
             return None
 
-    def _cursor(self, repository, scope) -> tuple[int, date | None]:
+    def _cursor(self, repository, scope) -> tuple[int, date | None, str | None]:
+        """The revision, the last day allocated and the direct SAM 3 rules it was allocated under."""
         from .lane_worker import stored_integer
 
         try:
             stored = repository.document(scope, CURSOR_KIND, cursor_id(scope))
         except Missing:
-            return 0, None
+            return 0, None, None
         revision = stored_integer(stored["revision"])
         through = stored.get("allocated_through")
         try:
-            return revision, date.fromisoformat(through)
+            return revision, date.fromisoformat(through), stored.get("direct_rules")
         except (TypeError, ValueError):
             raise Conflict("cost_allocation_cursor_unreadable") from None
 
@@ -153,11 +155,16 @@ class CostAllocator:
             self._stopped = "failed"
             return {**result, "status": "failed"}
         try:
-            revision, through = self._cursor(repository, scope)
+            revision, through, rules = self._cursor(repository, scope)
         except Exception as error:  # noqa: BLE001 - the meter never stops the drain
             LOGGER.warning("cost allocation stopped: %s", _code(error))
             return {**result, "status": "failed"}
         result.update(status="current", through=through and through.isoformat())
+        if through is not None and rules != SAM_DIRECT_RULES:
+            # Its days were allocated against direct SAM 3 rows valued another way:
+            # allocated again from the first day, by the same ids, the cursor with them.
+            LOGGER.info("cost allocation: direct SAM 3 rules changed; allocating again from the first day")
+            through = None
         now = self.clock()
         days = due_days(through, now, self.days)
         # Already allocated, so before every due day: written again, the cursor left as it is.
@@ -187,7 +194,8 @@ class CostAllocator:
                 # The cursor moves only once every row of the day is written.
                 stored = repository.put_document(
                     scope, CURSOR_KIND, cursor_id(scope),
-                    {"sensitive": False, "allocated_through": day.isoformat()}, revision)
+                    {"sensitive": False, "allocated_through": day.isoformat(),
+                     "direct_rules": SAM_DIRECT_RULES}, revision)
                 revision = stored["revision"]
                 result["days"] += 1
                 result["through"] = day.isoformat()

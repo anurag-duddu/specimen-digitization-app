@@ -1,0 +1,262 @@
+{
+  "version": "provider-bills-2026-10-24",
+  "as_of": "2026-10-24",
+  "currency": "USD",
+  "units": "Per UTC day and model: the requests the provider billed and what it billed for them, in nano-USD.",
+  "sources": [
+    "https://huggingface.co/settings/inference-providers/overview (the usage page's inferenceUsageMetrics, per UTC day and model, read 2026-10-24 for 2026-10-01 through 2026-10-23)"
+  ],
+  "huggingface": {
+    "cached_input_routes": [
+      "harness-deepseek"
+    ],
+    "days": {
+      "2026-10-03": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 42,
+          "nano_usd": 15195700
+        },
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 6,
+          "nano_usd": 18393260
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 28,
+          "nano_usd": 27507240
+        },
+        "zai-org/GLM-5.3-Flash": {
+          "requests": 20,
+          "nano_usd": 2965475
+        }
+      },
+      "2026-10-04": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 36,
+          "nano_usd": 34811700
+        }
+      },
+      "2026-10-05": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 6,
+          "nano_usd": 2201500
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 3,
+          "nano_usd": 2486300
+        },
+        "zai-org/GLM-5.3-Flash": {
+          "requests": 2,
+          "nano_usd": 277525
+        }
+      },
+      "2026-10-06": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 3,
+          "nano_usd": 1452800
+        },
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 21,
+          "nano_usd": 77994010
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 2,
+          "nano_usd": 2038300
+        },
+        "zai-org/GLM-5.3-Flash": {
+          "requests": 3,
+          "nano_usd": 383250
+        }
+      },
+      "2026-10-07": {
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 20,
+          "nano_usd": 49102967
+        }
+      },
+      "2026-10-08": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 3,
+          "nano_usd": 1525700
+        },
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 31,
+          "nano_usd": 61453464
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 2,
+          "nano_usd": 2052700
+        },
+        "zai-org/GLM-5.3-Flash": {
+          "requests": 1,
+          "nano_usd": 171850
+        }
+      },
+      "2026-10-09": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 2,
+          "nano_usd": 478000
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 2,
+          "nano_usd": 2906500
+        }
+      },
+      "2026-10-10": {
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 1637,
+          "nano_usd": 262892951
+        }
+      },
+      "2026-10-11": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 31,
+          "nano_usd": 9025300
+        },
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 146,
+          "nano_usd": 37225678
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 10,
+          "nano_usd": 9051400
+        },
+        "zai-org/GLM-5.3-Flash": {
+          "requests": 1,
+          "nano_usd": 198950
+        }
+      },
+      "2026-10-12": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 107,
+          "nano_usd": 32629000
+        },
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 741,
+          "nano_usd": 133322690
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 75,
+          "nano_usd": 90376060
+        },
+        "zai-org/GLM-5.3-Flash": {
+          "requests": 64,
+          "nano_usd": 39668880
+        }
+      },
+      "2026-10-13": {
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 201,
+          "nano_usd": 34953967
+        }
+      },
+      "2026-10-16": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 9,
+          "nano_usd": 3251200
+        },
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 243,
+          "nano_usd": 61465190
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 7,
+          "nano_usd": 7862100
+        },
+        "zai-org/GLM-5.3-Flash": {
+          "requests": 6,
+          "nano_usd": 5596450
+        }
+      },
+      "2026-10-17": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 65,
+          "nano_usd": 22735800
+        },
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 472,
+          "nano_usd": 80890569
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 49,
+          "nano_usd": 51483760
+        },
+        "zai-org/GLM-5.3-Flash": {
+          "requests": 27,
+          "nano_usd": 27526290
+        }
+      },
+      "2026-10-18": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 159,
+          "nano_usd": 58100700
+        },
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 1258,
+          "nano_usd": 218188457
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 118,
+          "nano_usd": 142135440
+        },
+        "zai-org/GLM-5.3-Flash": {
+          "requests": 484,
+          "nano_usd": 320264420
+        }
+      },
+      "2026-10-19": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 87,
+          "nano_usd": 42774600
+        },
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 569,
+          "nano_usd": 74059853
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 45,
+          "nano_usd": 56965660
+        },
+        "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4": {
+          "requests": 1550,
+          "nano_usd": 990411700
+        }
+      },
+      "2026-10-21": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 39,
+          "nano_usd": 11991300
+        },
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 378,
+          "nano_usd": 80804790
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 24,
+          "nano_usd": 25896200
+        },
+        "zai-org/GLM-5.3-Flash": {
+          "requests": 13,
+          "nano_usd": 5075540
+        }
+      },
+      "2026-10-23": {
+        "Qwen/Qwen3-VL-30B-A3B-Instruct": {
+          "requests": 8,
+          "nano_usd": 3068600
+        },
+        "deepseek-ai/DeepSeek-V4.1-Flash": {
+          "requests": 87,
+          "nano_usd": 19203858
+        },
+        "meta-models/Muse-Glimmer-30B": {
+          "requests": 6,
+          "nano_usd": 5046400
+        },
+        "zai-org/GLM-5.3-Flash": {
+          "requests": 3,
+          "nano_usd": 844350
+        }
+      }
+    }
+  }
+}

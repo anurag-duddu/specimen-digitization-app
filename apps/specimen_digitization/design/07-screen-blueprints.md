@@ -584,14 +584,21 @@ to `/costs` followed by a reviewer reaches a sentence and no request.
   button under it, busy while the request is out, with the outcome written
   under it. A meter that is `ok` says how far it has counted, in the Figures
   section, and is otherwise silent.
-- **Organization.** Three numeral tiles, at most one hero: the cost the meter
-  counts, which is after Google's free allowance; the part held for calls whose
-  cost is unknown; and the cost before Google's free allowance.
+- **Organization.** Three numeral tiles, at most one hero: the known cost
+  (`settled_micros`), which is after Google's free allowance and leaves out
+  what is held, with how much of it was estimated after the call
+  (`estimated_micros`) when any was; the part held for calls whose cost is
+  unknown; and the cost before Google's free allowance. A reservation is never
+  the headline. A server that sends no known cost gets its whole count as the
+  hero, labelled "Cost in" the month and said to include what is held; the
+  screen never works a known cost out for itself.
   Side by side where the width earns it and stacked where it does not. A month
   with nothing recorded says "No costs recorded" in their place.
-- **Organization limit.** What is left of the limit, of what, and for which
-  month (the server's current month, whichever month is read), or that none is
-  set; one button to set or change it. When the report says it could not read
+- **Organization limit.** What is left of the limit, what counts against it,
+  of what, and for which month (the server's current month, whichever month is
+  read), or that none is set; one button to set or change it. What is held
+  counts against a limit, so the figure is "counted against" the limit and
+  never called spent. When the report says it could not read
   the limits (`caps_status` is `unavailable`) every limit in it is null, and
   null is not "no limit": the section says "The monthly limits could not be
   read." with a retry, each collection row says "Limit could not be read", and
@@ -603,8 +610,11 @@ to `/costs` followed by a reviewer reaches a sentence and no request.
   row reads "Collection no longer listed" with its costs, never the id, and has
   no limit control, because the service refuses a limit for an id that is not
   one of the organization's collections.
-- **Cost by stage** and **cost by model.** Rows, largest first, a stage or a
-  provider this client has not met still named in plain words.
+- **Cost by stage** and **cost by model.** Rows, largest first by the amount
+  shown, a stage or a provider this client has not met still named in plain
+  words. Each row, and each collection row, shows its known cost with what it
+  holds beside it ("$0.50 held"); from a server that sends no known cost it
+  shows the whole count and how much of it is held ("$0.50 of it held").
 - **Figures.** When they were updated, on the reader's clock, how far the
   shared Google costs are counted (a billing day, in Pacific time), and
   "Update figures", which asks the server and says the figures update within

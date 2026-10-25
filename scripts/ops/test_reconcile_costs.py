@@ -173,9 +173,8 @@ def test_the_graphql_reads_only_and_names_every_column_the_check_uses():
     assert query.startswith("query {") and "mutation" not in query
     for column in ("organizationId", "collectionId", "id", "provider", "resource", "costMicros", "listCostMicros",
                    "costBasis", "occurredAt", "month", "allocationMethodId", "stage", "kind", "source",
-                   "priceListVersion"):
+                   "priceListVersion", "usage"):
         assert re.search(rf"\b{column}\b", query), column
-    assert "usage " not in query  # the bulky usage column is not needed
 
 
 def test_the_console_snippet_only_reads_the_pages_data_props():
@@ -352,3 +351,37 @@ def test_a_page_file_holding_a_multiple_of_the_page_size_is_warned_about(tmp_pat
     code, _, err = run("--month", "2026-10", "--meter-rows", partial, "--meter-rows", write(tmp_path, "none.json", []),
                        "--huggingface", hf, "--out-json", out_json)
     assert code == 0 and err == "" and json.loads(Path(out_json).read_text())["warnings"] == []
+
+
+# ---- --update-bills -----------------------------------------------------------
+
+def test_update_bills_puts_the_months_registered_models_into_the_committed_file(tmp_path):
+    qwen, glm = HUGGINGFACE_ROUTES["handwriting-qwen"].model_id, HUGGINGFACE_ROUTES["first-pass-glm"].model_id
+    bills = tmp_path / "provider_bills.json"
+    bills.write_text(json.dumps({"version": "provider-bills-2026-09-30", "as_of": "2026-09-30", "currency": "USD",
+                                 "huggingface": {"cached_input_routes": ["harness-deepseek"], "days": {
+                                     "2026-09-29": {qwen: {"requests": 3, "nano_usd": 900_000}},
+                                     "2026-10-01": {qwen: {"requests": 1, "nano_usd": 1}}}}}))
+    hf = tmp_path / "hf.json"
+    hf.write_text(json.dumps({"days": {
+        "2026-10-02": {qwen: {"requests": 2, "nano_usd": 600_000}, "someone/unregistered-model": {"requests": 9, "nano_usd": 9},
+                       glm: {"requests": 0, "nano_usd": 0}},
+        "2026-11-01": {qwen: {"requests": 5, "nano_usd": 5}}}}))
+    code, out, err = run("--month", "2026-10", "--huggingface", str(hf), "--update-bills", str(bills),
+                         "--bills-as-of", "2026-11-02")
+    assert (code, err) == (0, "") and "1 days" in out
+    written = json.loads(bills.read_text())
+    assert (written["version"], written["as_of"]) == ("provider-bills-2026-11-02", "2026-11-02")
+    # Another month is kept, the month is replaced whole; unregistered models, empty cells and other months' days left out.
+    assert written["huggingface"]["days"] == {"2026-09-29": {qwen: {"requests": 3, "nano_usd": 900_000}},
+                                              "2026-10-02": {qwen: {"requests": 2, "nano_usd": 600_000}}}
+    assert written["huggingface"]["cached_input_routes"] == ["harness-deepseek"]
+    code, _, err = run("--month", "2026-10", "--update-bills", str(bills))
+    assert code == 2 and "--update-bills needs --huggingface and --bills-as-of" in err
+
+
+def test_the_committed_bills_are_what_update_bills_writes_from_the_october_bill():
+    committed = json.loads((Path(cli.cr.__file__).parent / "profiles" / "provider_bills.json").read_text())
+    days = committed["huggingface"]["days"]
+    normalized = {"days": {day: dict(cells) for day, cells in days.items()}}
+    assert cli.cr.bills_with_month(committed, normalized, "2026-10", committed["as_of"]) == committed

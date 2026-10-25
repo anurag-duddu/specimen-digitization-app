@@ -345,7 +345,7 @@ void main() {
             location: goldenCostsLocation,
             repository: GoldenCostRepository(),
           );
-          expect(find.text('Cost in October 2026'), findsOneWidget);
+          expect(find.text('Known cost in October 2026'), findsOneWidget);
           expectKnownOverflow(tester, 'costs__${window}__$theme');
           expectGlassBudget(tester, window: window);
           await expectGolden(
