@@ -1084,17 +1084,22 @@ def test_the_briefs_answer_label_lacks_value_for_a_value_the_label_does_not_writ
 
 
 @pytest.mark.parametrize("key", ["collectors", "collection_code", "habitat", "collection_method", "verbatim_dts"])
-def test_the_briefs_of_fields_no_source_checks_let_a_decided_transcript_decide(key):
-    """Every field now gets its expert. In this branch's real run of
-    105526321, its verbatim D/T/S expert answered several_possibilities between
-    the decided reading 2A ("3 sept. '46") and 2B ("3 Sept. '46"), as its
-    brief then told it to; a decided transcript decides its label's text (G19)."""
+def test_the_briefs_of_fields_no_source_checks_follow_the_first_pass_unless_another_label_writes_the_text(key):
+    """In this branch's real run of 105526321, its verbatim D/T/S expert
+    answered several_possibilities between 2A ("3 sept. '46"), the reading the
+    first pass preferred, and 2B ("3 Sept. '46"). Its brief now has it follow
+    the first pass's preferred reader unless another label of the specimen
+    writes the other reader's text, and answer several_possibilities only
+    when neither applies (the owner, 2026-10-25). No brief calls another
+    reader's text "evidence only"."""
     from specimen_digitization.field_research.prompts import FIELD_LABELS, instructions
 
     brief = instructions(key).split(f"Field: {FIELD_LABELS[key]} ({key})", 1)[1]
-    [line] = [line for line in brief.splitlines() if "decided transcript (input_source decided_transcript)" in line]
-    assert "another reader's different text is evidence only" in line
-    assert "never a reason for several_possibilities" in line
+    [line] = [line for line in brief.splitlines() if "first pass preferred (input_source decided_transcript)" in line]
+    assert "unless another label of this specimen whose readers agree writes another reader's" in line
+    [neither] = [line for line in brief.splitlines() if "several_possibilities with each reader's text" in line]
+    assert "neither applies" in neither
+    assert "evidence only" not in instructions(key)
 
 
 # Real names and words the briefs once gave as examples. In this branch's
@@ -2180,11 +2185,16 @@ def test_readers_that_differ_in_lower_case_settle_on_the_lookup_of_their_name():
     assert made.validate(given).value == "Chimaltenango"
 
 
-def test_a_near_spelling_on_a_decided_label_settles_on_the_one_letter_bound():
-    """105526330's province: the decided reading 2A writes "Chimaltenago", its
-    other reader "Chimaltenango", and TGN knows only the second. The other
-    reader's spelling as the literal is refused (G19); 2A's spelling, with
-    TGN's department, one letter from it, as the value, settles (G27, G34)."""
+def test_a_source_that_confirms_the_other_reader_exactly_overrides_the_preferred_near_spelling():
+    """105526330's province: 2A, the reading the first pass preferred, writes
+    "Chimaltenago", its other reader "Chimaltenango", and TGN knows only the
+    second and has nothing for the first. A source confirms exactly one
+    reader's text and rules out the other's, so the label settles on 2B's
+    text against the first pass's preference (the owner, 2026-10-25); 2A's
+    spelling is sent back for it. When TGN was not asked 2A's text, the label
+    follows the first pass and 2A's spelling settles on the one-letter bound,
+    as G19 settled it whichever lookups were made until then (G19 refused
+    2B's spelling)."""
     readings = (Reading("2A", "region-2", "obs-2a", "decided_transcript", "Chimaltenago, Guatemala"),
                 Reading("2B", "region-2", "obs-2b", "raw_reading", "Chimaltenango, Guatemala"))
     field = task("province_state", current=FieldValue(state=ValueState.SUPPORTED, literal="Chimaltenago"),
@@ -2194,10 +2204,21 @@ def test_a_near_spelling_on_a_decided_label_settles_on_the_one_letter_bound():
         made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
     sourced = dict(authority_id="tgn:1000565", source_evidence_ids=["ev-chim"])
 
-    with pytest.raises(ModelRetry, match="decided for this label"):
-        made.validate(answer(outcome="resolved", literal="Chimaltenango", reading_names=["2B"], **sourced))
-    kept = made.validate(answer(outcome="resolved", literal="Chimaltenago", reading_names=["2A"],
-                                value="Chimaltenango", **sourced))
+    kept = made.validate(answer(outcome="resolved", literal="Chimaltenango", reading_names=["2B"], **sourced))
+    assert (kept.literal, kept.reading_names) == ("Chimaltenango", ["2B"])
+    with pytest.raises(ModelRetry, match="The labels settle on the reader's text 'Chimaltenango'"):
+        made.validate(answer(outcome="resolved", literal="Chimaltenago", reading_names=["2A"],
+                             value="Chimaltenango", **sourced))
+    [label] = agreement.labels(field, readings, [CHIMALTENANGO, nothing("Chimaltenago", "ev-none")]).values()
+    assert (label.settled, label.basis, label.preference) == (
+        frozenset({"Chimaltenango"}), agreement.BY_SOURCE, agreement.OVERRIDDEN)
+    # Not asked about 2A's text, TGN rules nothing out: the label follows the
+    # first pass, and 2A's spelling settles on the one-letter bound (G27, G34).
+    followed = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
+    followed.calls.append(experts._Call(CHIMALTENANGO.source_id, CHIMALTENANGO.query, CHIMALTENANGO.status,
+                                        CHIMALTENANGO))
+    kept = followed.validate(answer(outcome="resolved", literal="Chimaltenago", reading_names=["2A"],
+                                    value="Chimaltenango", **sourced))
     assert (kept.literal, kept.value) == ("Chimaltenago", "Chimaltenango")
     assert agreement.place_basis(field, "Chimaltenago", "Chimaltenango", "tgn:1000565",
                                  [CHIMALTENANGO]) == agreement.NEAR_SPELLING
@@ -2213,11 +2234,13 @@ def test_a_place_resolves_only_on_a_place_sources_candidate():
     assert accepted.authority_id == "geolocate:Davao"
 
 
-def test_a_label_with_a_decided_transcript_takes_its_text_from_it():
-    """1A is label 1's decided transcript ("F. G. Werner"); reader 1B writes "F.G. Werner"."""
+def test_readers_that_agree_take_the_spelling_of_the_reader_the_first_pass_preferred():
+    """1A, the reader the first pass preferred for label 1, writes "F. G.
+    Werner"; reader 1B writes "F.G. Werner". Spacing aside they agree, on
+    1A's spelling (until 2026-10-25, G19's decided transcript refused 1B)."""
     made = expert("collectors")
 
-    with pytest.raises(ModelRetry, match="decided for this label"):
+    with pytest.raises(ModelRetry, match="agree on 'F. G. Werner'"):
         made.validate(answer(outcome="resolved", literal="F.G. Werner", reading_names=["1B"]))
     assert made.validate(answer(outcome="resolved", literal="F. G. Werner",
                                 reading_names=["1A"])).literal == "F. G. Werner"
