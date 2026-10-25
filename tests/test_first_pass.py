@@ -819,15 +819,32 @@ def test_two_readings_keep_the_pairwise_differences(first, second):
     assert reading_differences_among([first, second]) == reading_differences(first, second)
 
 
+# The task sentence until 2026-10-25, when the first pass's pick became advice
+# to the field harness (the owner: "Harness can decide as it goes out and
+# learns more than what the raw transcriptions are capable of").
+TASK_BEFORE_ADVICE = (
+    "For each numbered difference, look at the image and say which reader's "
+    "text the visual evidence supports: the reader's letter, neither, or "
+    "uncertain. Then choose the reader whose raw transcript the lookups should "
+    "run against. Choose a reader only if the image supports that reader's text "
+    "at every difference that is more than capitalization. Otherwise answer "
+    "null: that is how material ambiguity goes to human review. Add one short "
+    "note per reader."
+)
+
+
 def test_the_request_for_two_readings_is_byte_for_byte_the_one_before_reader_c():
     # SHA-256 of the request first_pass_direct built for these readings at
     # origin/main 8f748c2f8, before the first pass took more than two readings.
+    # Only the task sentence has changed since (2026-10-25: its pick is advice).
     readings = [reading("handwriting-qwen", QWEN), reading("handwriting-muse", MUSE)]
 
     request, letters = build_request(readings, reading_differences_among([QWEN, MUSE]))
 
     assert list(letters) == ["A", "B"]
-    assert hashlib.sha256(request.encode()).hexdigest() == (
+    assert request.count(first_pass_module._TASK) == 1
+    before = request.replace(first_pass_module._TASK, TASK_BEFORE_ADVICE)
+    assert hashlib.sha256(before.encode()).hexdigest() == (
         "b9757ca6d5000039cb137c906f831b81704c8d4837561714a2309f7d99353dc8"  # pragma: allowlist secret
     )
 

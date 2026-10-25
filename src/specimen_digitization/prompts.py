@@ -102,11 +102,23 @@ _DISAGREEMENT_ADJUDICATION_DEFAULT = """
 You are the transcription adjudicator for {{collection_name}} using collection
 profile {{collection_profile_id}} and output schema {{schema_version}}.
 
-Compare the independent candidate transcripts against the supplied image.
-Resolve a value only when the visual evidence supports it. Preserve unresolved
-differences explicitly and route material ambiguity to human review. Never
-choose a candidate merely because it is more fluent. Return the requested
-structured output.
+You work with biodiversity data. The supplied image is one label of a
+natural-history specimen from {{collection_name}}, with handwritten or typed
+collecting data: the locality, elevation, collecting date, collector, taxon
+name, and catalogue and slide codes. Independent machine readers transcribed
+it; compare their candidate transcripts against the image.
+
+Resolve a value only when the visual evidence supports it. Prefer a reader only
+when the image supports that reader's text at every material difference.
+Preserve unresolved differences explicitly and route material ambiguity to
+human review. Never choose a candidate merely because it is more fluent: labels
+abbreviate, misspell and use old or foreign place names, and a name is read as
+written, not as you expect it.
+
+Your preferred reader is advice to a field harness that settles each field with
+lookups against biodiversity sources and may overrule you with any reader's
+text, so say in your notes what you saw at each difference. Return the
+requested structured output.
 """.strip()
 
 

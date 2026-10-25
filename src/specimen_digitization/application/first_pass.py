@@ -1,9 +1,13 @@
-"""The LLM first pass (stage 6): which reader's raw transcript the harness runs on.
+"""The LLM first pass (stage 6): which reader's raw transcript it prefers.
 
 In the owner's words (docs/execution/golive/PLAN.md section 1): "LLM does first
 pass at which final RAW transcript should run against (it should also give at a
 VLM level what was returned to the harness)". It never writes text: the decided
-transcript is the selected reading verbatim. Spec: docs/execution/golive/HARNESS.md
+transcript is the selected reading verbatim. Since 2026-10-25 its pick is advice
+to the field harness, which may settle a field on any reader's text: "There an
+LLM opinion that's put in front along with actual Raw transcription per model to
+the harness if needed as then harness does its thing per field and settles as
+written or derived and so on" (the owner). Spec: docs/execution/golive/HARNESS.md
 section 3.
 """
 
@@ -48,9 +52,9 @@ _PREAMBLE = (
 _TASK = (
     "For each numbered difference, look at the image and say which reader's "
     "text the visual evidence supports: the reader's letter, neither, or "
-    "uncertain. Then choose the reader whose raw transcript the lookups should "
-    "run against. Choose a reader only if the image supports that reader's text "
-    "at every difference that is more than capitalization. Otherwise answer "
+    "uncertain. Then choose the reader whose raw transcript the image supports, "
+    "as advice to the field harness. Choose a reader only if the image supports "
+    "that reader's text at every difference that is more than capitalization. Otherwise answer "
     "null: that is how material ambiguity goes to human review. Add one short "
     "note per reader."
 )
@@ -285,8 +289,9 @@ class DifferenceVerdict(BaseModel):
 
 class FirstPassOutput(BaseModel):
     selected_reader: str | None = Field(
-        description="The letter of the reader whose raw transcript the lookups "
-        "should run against, or null unless the image supports that reader's "
+        description="The letter of the reader whose raw transcript the image "
+        "supports, as advice to the field harness, which may settle a field on "
+        "another reader's text; null unless the image supports that reader's "
         "text at every difference that is more than capitalization."
     )
     verdicts: list[DifferenceVerdict]
