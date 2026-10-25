@@ -19,7 +19,9 @@ Every paid call a run makes is recorded on the run itself, in `run.paid_calls`
 (`lane_costs._record`, and `field_research.step.record_cost` for field
 research). The meter copies each of those entries into one `CostEntry` row
 (`dataconnect/schema/cost_entry.gql`), in the run's own organization and
-collection. `application/cost_ledger.py` builds the rows; it has no I/O.
+collection. `application/cost_ledger.py` builds the rows; it reads nothing but
+two committed files beside the profiles (the provider bills and the
+infrastructure prices, below).
 
 | Row field | From the paid call |
 |---|---|
@@ -63,14 +65,16 @@ named by its prefix before the first `:`.
 ### Trued up (2026-10-25)
 
 October's bill check (COST_RECONCILIATION.md) found $19.56 of the month held at
-reservation against a few cents of real spend, and DeepSeek settled at list
-while Hugging Face billed about 15% of it. `cost_ledger.true_up` re-values such
+reservation, and DeepSeek settled at list ($4.15 on the meter for 3,535
+requests) while Hugging Face billed $1.21 for 5,810, outside calls included; on
+2026-10-18, when the bill's requests and the meter's were the same 1,258, the
+bill was 14.8% of the meter's list figure. `cost_ledger.true_up` re-values such
 a call when the evidence exists, and leaves it as it was when it does not:
 
 | Method (`allocationMethodId`) | Which calls | Cost |
 |---|---|---|
 | `sam-request-seconds` | a held SAM 3 call that completed and reported its request seconds (`usage.seconds`) but no instance time: a server older than the instance meter | those seconds at Cloud Run's instance-based rates (`infrastructure_prices.json`: 4 x 18 + 16 x 2 = 104 micro-USD a second). The instance's start and idle time are not the request's: the `specimen-sam` allocation's residual carries them |
-| `provider-day-mean` | a held model call; or a settled call on a route whose provider bills cached input below list (`cached_input_routes` in the bills file: `harness-deepseek`) that recorded no cached input tokens | its requests (`usage.model_calls`, else one) at the provider's billed mean per request for that model and UTC day: billed nano-USD x requests / billed requests, rounded up |
+| `provider-day-mean` | a held model call; or a settled call on a route whose provider bills cached input below list (`cached_input_routes` in the bills file: `harness-deepseek`) that recorded no cached input tokens | its requests at the provider's billed mean per request for that model and UTC day: billed nano-USD x requests / billed requests, rounded up. Its requests are `usage.model_calls`; a held call without them counts one, except a field research call (dozens of requests in one call), which stays held. A settled call needs `usage.model_calls` and its reservation, or it is left as it was |
 
 - The provider bills are committed: `application/profiles/provider_bills.json`
   holds, per UTC day and Hugging Face model, the requests billed and the
@@ -280,6 +284,10 @@ emulator (engine contract stage `sql.cost-allocation`).
   `CostAllocationStatusV1` (the API cannot read the worker's cursors). An
   organization none of whose collections had a share on any allocated day, or
   whose collections no worker job serves, has no row, so it shows `never_run`.
+  After a change of `SAM_DIRECT_RULES` (the first release of 2026-10-25
+  included) the allocator writes the days again from the first, seven a pass,
+  while `allocated_through` still reads the latest row: until the passes catch
+  up, a later day's rows can be the old ones.
   A repository without that read (the
   synthetic and SQLite ones) answers `null`; a failed read is 503
   `cost_meter_unavailable`.
@@ -331,7 +339,8 @@ pass.
   billing days that are already allocated (`REALLOCATE_DAYS`), writing the same
   ids, so a paid call or a save recorded after its day was first allocated
   counts while the day is among those two; an unchanged row keeps its
-  `updatedAt`, and the cursor never moves back. Rows of older days stay as
+  `updatedAt`, and the cursor never moves back, except once after a change of
+  `SAM_DIRECT_RULES` (method 2 below). Rows of older days stay as
   they were written. A pass stops after 45 seconds or at the drain window's
   close, checked before each Cloud Monitoring page and each day, and at a stop
   signal, checked before the readings and each day; a read already sent
@@ -432,7 +441,12 @@ organization and collection id). A collection whose part is zero gets no row.
    none), the allocator computes every day it allocated before again, from
    the first day. And a day with SAM 3 calls but no billable reading at all (a
    day past Monitoring's six-week retention) gets no residual and no credit,
-   rather than a residual that cancels its direct charges.
+   rather than a residual that cancels its direct charges. If such a day was
+   allocated before, its earlier residual and credit rows stay as they were
+   written, against the direct rows of then: a change of `SAM_DIRECT_RULES`
+   more than six weeks after a day leaves that day as it was, and the free
+   tier's draw for later days of its month is computed from what readings
+   remain. Moot for 2026-10-25's change: 2026-10-01 is within retention.
 3. `api-requests` (resource `specimen-api`, stage `api`). The API's billable
    seconds x (24 + 2.5) + its requests (`run.googleapis.com/request_count`,
    every response code) x 0.4, split across organizations by the log-based

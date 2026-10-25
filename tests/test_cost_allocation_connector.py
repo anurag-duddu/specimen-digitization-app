@@ -151,8 +151,11 @@ def test_the_status_names_the_latest_allocated_day_for_an_administrator_and_tota
     admin = repository(tmp_path, session, ADMIN)
     read = admin.cost_totals(support.ORG, "2026-10", "2026-10")
     body = cost_report(support.ORG, "2026-10", "2026-10", read["collections"], read["groups"])
-    assert body["totals"] == {"cost_micros": 657_206, "held_micros": 0, "list_cost_micros": 678_006, "entries": 6}
+    assert body["totals"] == {"cost_micros": 657_206, "held_micros": 0, "settled_micros": 657_206,
+                              "estimated_micros": 0, "list_cost_micros": 678_006, "entries": 6}
     assert body["months"][0]["stages"] == [
-        {"stage": "database", "cost_micros": 657_206, "held_micros": 0, "list_cost_micros": 657_206, "entries": 2},
-        {"stage": "label_finding", "cost_micros": 0, "held_micros": 0, "list_cost_micros": 20_800, "entries": 4}]
+        {"stage": "database", "cost_micros": 657_206, "held_micros": 0, "settled_micros": 657_206,
+         "estimated_micros": 0, "list_cost_micros": 657_206, "entries": 2},
+        {"stage": "label_finding", "cost_micros": 0, "held_micros": 0, "settled_micros": 0, "estimated_micros": 0,
+         "list_cost_micros": 20_800, "entries": 4}]
     assert body["models"] == []  # allocation rows are not a model's

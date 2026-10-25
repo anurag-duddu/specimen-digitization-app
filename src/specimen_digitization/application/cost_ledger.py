@@ -1,6 +1,7 @@
 """The cost meter's rows and totals (docs/execution/golive/COST_METER.md).
 
-Pure: no I/O. ``paid_call_rows`` maps a run's paid calls, in the shape
+No I/O but reading two committed files beside the profiles (the provider bills
+and the infrastructure prices, for ``true_up``). ``paid_call_rows`` maps a run's paid calls, in the shape
 ``lane_costs._record`` and ``field_research.step.record_cost`` write them, to
 CostEntry rows; ``cost_report`` builds the ``GET .../costs`` body from the
 grouped sums ``CostTotalsV1`` returns.
@@ -33,7 +34,12 @@ SAM_REQUEST_SECONDS = "sam-request-seconds"
 # step as its route. Parse calls the profile's first model route, which every
 # published profile has named "handwriting-qwen" since the first one
 # (profiles/published.json, 2026-10-01); the settled parse calls say so too.
+# (The NVIDIA option's parse calls handwriting-nemotron, but that switch was off
+# in production throughout: no legacy row is one of its runs.)
 LEGACY_ROUTES = {("parse", "parse"): "handwriting-qwen"}
+# A step whose one paid call makes many requests: held with no count of them, it
+# stays held, since one request's mean would be far below what it made.
+MANY_REQUEST_STEPS = frozenset({"field_research"})
 # What the rows derive from besides the calls themselves. The sweep reads every
 # record again when it changes (cost_sweep), so earlier rows follow the rules.
 RULES = "cost-rules-2026-10-25"
@@ -195,7 +201,7 @@ def _day_mean(resource, occurred_at, requests):
                       "billed_requests": cell["requests"], "billed_nano_usd": cell["nano_usd"]}
 
 
-def true_up(kind, resource, basis, cost, reserved, usage, outcome, occurred_at):
+def true_up(kind, resource, basis, cost, reserved, usage, outcome, occurred_at, step=None):
     """A better-evidenced cost for a call, or None to keep the call's own.
 
     - A held SAM 3 call that completed and reported its request seconds but no
@@ -203,9 +209,10 @@ def true_up(kind, resource, basis, cost, reserved, usage, outcome, occurred_at):
       Cloud Run's instance-based rates (``sam-request-seconds``). The instance's
       start and idle time are not the request's; the specimen-sam allocation's
       residual carries them, against these rows as they stand.
-    - A held model call: its requests (``usage.model_calls``, else one) at the
-      provider's billed mean per request for that model and UTC day
-      (``provider-day-mean``), from the committed bills.
+    - A held model call: its requests (``usage.model_calls``, else one, but
+      never one for a step of MANY_REQUEST_STEPS) at the provider's billed
+      mean per request for that model and UTC day (``provider-day-mean``),
+      from the committed bills.
     - A settled call on a route whose provider bills cached input below list
       (the bills' ``cached_input_routes``) that recorded no cached input
       tokens: its ``model_calls`` at that day's billed mean, the same way.
@@ -233,11 +240,13 @@ def true_up(kind, resource, basis, cost, reserved, usage, outcome, occurred_at):
     if kind != "model":
         return None
     calls = usage.get("model_calls")
-    if basis == HELD and reserved is not None:
-        requests, counted = (calls, "usage.model_calls") if _whole(calls) and calls > 0 else (1, "one request")
+    counted_calls = _whole(calls) and calls > 0
+    if basis == HELD and reserved is not None and (counted_calls or step not in MANY_REQUEST_STEPS):
+        requests, counted = (calls, "usage.model_calls") if counted_calls else (1, "one request")
         ceiling = reserved
-    elif basis == "computed" and resource in provider_bills()["huggingface"].get("cached_input_routes", ()) \
-            and not usage.get("cached_input_tokens") and _whole(calls) and calls > 0:
+    elif basis == "computed" and reserved is not None \
+            and resource in provider_bills()["huggingface"].get("cached_input_routes", ()) \
+            and not usage.get("cached_input_tokens") and counted_calls:
         requests, counted, ceiling = calls, "usage.model_calls", cost
     else:
         return None
@@ -296,7 +305,7 @@ def call_rows(organization_id, collection_id, specimen_id, run_id, paid_calls) -
         usage = None if usage is None else _numbers(usage)
         outcome = _text(call, "outcome")
         method = details = None
-        adjusted = true_up(kind, resource, basis, cost, reserved, usage, outcome, occurred_at)
+        adjusted = true_up(kind, resource, basis, cost, reserved, usage, outcome, occurred_at, step)
         if adjusted is not None:
             cost, method, details = adjusted
             basis = TRUED_UP

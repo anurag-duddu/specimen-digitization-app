@@ -79,6 +79,21 @@ def test_a_held_call_never_counts_above_its_reservation_and_counts_its_recorded_
     assert one(call(**deepseek, basis="reserved", cost=5_000, reserved=5_000))["cost_micros"] == 5_000
 
 
+def test_a_held_field_research_call_that_counted_no_requests_stays_held():
+    # Its one paid call makes dozens of requests; one request's mean (173 micro-USD on 2026-10-18) would
+    # be far below what it made, so without a count it is left held.
+    row = one(call("field_research", "model", "harness-deepseek", basis="reserved", cost=1_000_000,
+                   reserved=1_000_000, at="2026-10-18T12:00:00+00:00", usage=None, outcome="unknown"))
+    assert (row["cost_basis"], row["cost_micros"], row["allocation_method_id"]) == ("reserved", 1_000_000, None)
+
+
+def test_a_settled_call_with_no_reservation_is_never_trued_up():
+    # The connector refuses a trued_up row without its reservation, which would refuse the record's every write.
+    row = one(call("field_research", "model", "harness-deepseek", basis="computed", cost=46_996, reserved=None,
+                   at="2026-10-18T12:00:00+00:00", usage={"model_calls": 40}, outcome="completed"))
+    assert (row["cost_basis"], row["cost_micros"], row["reserved_micros"]) == ("computed", 46_996, None)
+
+
 def test_a_call_on_a_day_or_route_the_bills_do_not_cover_stays_held():
     for at, route in (("2026-10-24T12:00:00+00:00", "first-pass-glm"),   # after the bills' last day
                       ("2026-10-04T12:00:00+00:00", "first-pass-glm"),   # GLM billed nothing that day
