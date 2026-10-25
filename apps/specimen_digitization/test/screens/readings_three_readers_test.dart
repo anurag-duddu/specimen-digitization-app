@@ -1,11 +1,12 @@
 // A label read by three models (two verified families and one with no mark).
 //
 // The backend keeps the rule that a label needs at least two independent
-// readings and writes one comparison per pair of readings, so three readers
-// mean three comparison rows for one label. These tests hold the Readings
-// segment to that: every reading shown, one comparison and one status per
-// label, and the pair a comparison describes named rather than "Left" and
-// "Right".
+// readings. It writes one disagreement entry per label: with three or more
+// readings, the least-agreeing pair's fields sit at the top level and every
+// pair is listed in `comparisons`. Some fixtures here still give one label
+// several rows, as a guard. These tests hold the Readings segment to every
+// reading shown, one comparison and one status per label, and the pair a
+// comparison describes named rather than "Left" and "Right".
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
