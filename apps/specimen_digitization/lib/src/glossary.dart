@@ -67,7 +67,7 @@ const Map<String, String> glossary = <String, String>{
   'not present': 'The label does not carry this field at all.',
   'not applicable': 'This field does not apply to this specimen.',
   'ambiguous': 'More than one reading of this field is defensible.',
-  'unresolved': 'Two readings conflict and no rule settles which is right.',
+  'unresolved': 'The readings conflict and no rule settles which is right.',
   'not recorded': 'Nothing was recorded here, which is a value, not a blank.',
   'not measured':
       'The measurement was not taken or not completed, so no number is '
