@@ -1088,18 +1088,24 @@ def test_the_briefs_of_fields_no_source_checks_follow_the_first_pass_unless_anot
     """In this branch's real run of 105526321, its verbatim D/T/S expert
     answered several_possibilities between 2A ("3 sept. '46"), the reading the
     first pass preferred, and 2B ("3 Sept. '46"). Its brief now has it follow
-    the first pass's preferred reader unless another label of the specimen
-    writes the other reader's text, and answer several_possibilities only
-    when neither applies (the owner, 2026-10-25). No brief calls another
-    reader's text "evidence only"."""
+    the first pass's preferred reader unless another label of the specimen,
+    two or more of whose readers agree, writes the other reader's text where
+    the first pass did not confirm its pick, and answer several_possibilities
+    when the first pass preferred no reader and nothing backs one (the owner,
+    2026-10-25). No brief calls another reader's text "evidence only"."""
     from specimen_digitization.field_research.prompts import FIELD_LABELS, instructions
 
     brief = instructions(key).split(f"Field: {FIELD_LABELS[key]} ({key})", 1)[1]
     [line] = [line for line in brief.splitlines() if "first pass preferred (input_source decided_transcript)" in line]
-    assert "unless another label of this specimen whose readers agree writes another reader's" in line
+    # Another label backs a reader's text only when two or more of its
+    # readers agree, and never against a pick the first pass confirmed at
+    # that difference (the coordinator's decision of 2026-10-25 on #414).
+    assert "another label of this specimen, read by two or more readers who agree, writes one reader's" in line
+    assert ("unless the first pass's verdict at that difference (first_pass) names the reader it preferred: "
+            "then answer several_possibilities with both") in line
     [neither] = [line for line in brief.splitlines() if "several_possibilities with each reader's text" in line]
-    assert "neither applies" in neither
-    assert "evidence only" not in instructions(key)
+    assert "the first pass preferred no reader" in neither
+    assert "evidence only" not in instructions(key) and "that names" not in brief
 
 
 # Real names and words the briefs once gave as examples. In this branch's

@@ -114,9 +114,12 @@ handover runs field research instead of the six specialists:
    0.0021 per specimen. The
    briefs of those fields (collectors, collection code, habitat, collection
    method, verbatim D/T/S) say that when a label's readers differ the
-   expert follows the reader the first pass preferred, unless another
-   label of the specimen whose readers agree writes another reader's text,
-   and answers several_possibilities only when neither applies (since
+   expert resolves with the text of another label of the specimen, two or
+   more of whose readers agree on it, unless the first pass's verdict at
+   that difference names the reader it preferred (then several_possibilities
+   with both); otherwise with the text of the reader the first pass
+   preferred; and answers several_possibilities when the first pass
+   preferred no reader and no other label writes one reader's text (since
    2026-10-25, the first pass's pick is advice: step 5; until then they said
    a decided transcript decided its label), as the agreement rules of step 5
    let it: in this change's first real runs the verbatim D/T/S
@@ -877,10 +880,28 @@ handover runs field research instead of the six specialists:
      reader's text as its literal with that authority_id and cites the
      answer that confirms it, and each reader's text stays in the value's
      lineage. Else a label whose readers differ settles on the one text of
-     its readers, letter case and spacing aside, that a label settled on its
-     own evidence (readers that agree, or a source) writes: another label of
-     the specimen corroborates it, even against the first pass's
-     preference. Else a label whose first pass preferred a reader settles on
+     its readers, letter case and spacing aside, that another label of the
+     specimen settled on with two or more readers that agree on it
+     (`agreement.MIN_BACKING_READERS`: a label one reader read backs
+     nothing). **Against an image-confirmed pick** (the coordinator's
+     decision of 2026-10-25 on #414's first review): a source's exact
+     confirmation (the rule above) overrides the reader the first pass
+     preferred anywhere, also where that reader writes nothing for the
+     field; another label's agreement, or a place's near spelling (below),
+     overrides it only where the first pass's verdict at that difference does
+     not name the preferred reader (`agreement.confirmed_against_image`:
+     the material difference whose span covers the other reader's text;
+     none covering it reads as uncertain). Where the verdict names it, the
+     label does not settle either way: the expert is told to answer
+     several_possibilities with both texts (`FIRST_PASS_CONFLICT`), the
+     field is ambiguous, and the step records a warning
+     `first_pass_conflict:<field>:<region>` (design point 6 above: what
+     leaves several possibilities goes to Needs human review). G19 lets a pick stand only where every material
+     difference's verdict supports it, so with a pick a recorded verdict
+     always names it where the readers' texts differ: in practice another
+     label and a near spelling settle only labels the first pass preferred no
+     reader of. A label whose transcript a person decided counts as
+     confirmed everywhere (`FirstPassAdvice.person_decided`). Else a label whose first pass preferred a reader settles on
      that reader's one candidate literal, or, when that reader has several
      texts for the field (the organiser's, and the answer's text read from
      the transcript: 48a71d53's "Mindanao," and "Davao Prov."), only through
@@ -892,7 +913,8 @@ handover runs field research instead of the six specialists:
      none: one info finding per label, rule `first_pass_preference`, reason
      code `first_pass_<followed|overridden|absent>:<field>:<region>`, citing
      the value's label rows of that label (`step._first_pass_preference`;
-     a finding never routes the record). An answer confirms a text as
+     a finding never routes the record; a field left unsettled by a
+     conflict goes to review on its own state, `mandatory_unresolved`). An answer confirms a text as
      GBIF's decided candidate for the whole name it writes (a success
      answer), as the one candidate at a place field's level when it has that
      name (a success or ambiguous answer; see Places), or, for precise
@@ -926,7 +948,8 @@ handover runs field research instead of the six specialists:
      text one letter from the one candidate at the field's level of an answer
      asked that candidate's name is confirmed (`agreement._by_source`,
      identities' `near`; the one-letter bound of G34 is unchanged), every
-     other text still ruled out. The field settles
+     other text still ruled out, and not against an image-confirmed pick
+     (above). The field settles
      when every label settles on the same literal, which is then the answer's literal
      (citing the confirming answer when a source settled a label), or, for
      labels (or a place's readers, above) that settle on different literals,
@@ -936,9 +959,11 @@ handover runs field research instead of the six specialists:
      to review, with each reader's candidate row still cited. So a field with no approved source (collectors,
      habitat, collection method, collection code, verbatim D/T/S), or only
      deterministic checks, goes to review when the readers of a label differ
-     by more than letter case or spacing, no other label of the specimen
-     whose readers agree writes one reader's text, and the first pass
-     preferred no reader. This
+     by more than letter case or spacing, the first pass preferred no reader
+     and no other label of the specimen, two or more of whose readers agree,
+     writes one reader's text; or when such a label writes another reader's
+     text than the one the first pass preferred and confirmed at that
+     difference. This
      follows the native harness's G20 and G32 rules
      (`research_harness/evidence.py`); it is stricter than
      `application/field_resolution.py`, which clears readers that differ when

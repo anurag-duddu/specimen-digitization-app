@@ -46,7 +46,11 @@ note on each reader and each material difference with its verdict, and the
 harness settles a field on any reader's text that evidence supports: a
 source's match, readers that agree, another label of the specimen that
 writes it; on the preferred reader's text when nothing supports another
-(FIELD_RESEARCH.md step 5).
+(FIELD_RESEARCH.md step 5). Where its verdict at a difference names the
+reader it preferred, only a source's exact match overrides it; another
+label's agreement or a near spelling there leaves the field for a person
+(`first_pass_conflict`; the coordinator's decision of 2026-10-25 on #414's
+first review).
 
 **Input.** The crop the readers saw, each reading's raw transcript verbatim, and
 the numbered differences between the readings from a deterministic token

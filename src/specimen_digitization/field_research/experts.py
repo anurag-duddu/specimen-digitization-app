@@ -308,12 +308,13 @@ class _Expert:
         advice = {}
         for reading in self.readings:
             given = reading.first_pass
-            if given is not None and reading.name[:-1] not in advice:
+            if given is not None and not given.person_decided and reading.name[:-1] not in advice:
                 advice[reading.name[:-1]] = {
                     "preferred": given.preferred,
                     "rationale": given.rationale,
                     "reader_notes": dict(given.reader_notes),
-                    "differences": [dict(difference) for difference in given.differences],
+                    "differences": [{"texts": dict(difference["texts"]), "verdict": difference["verdict"]}
+                        for difference in given.differences],
                 }
         if advice:
             document["first_pass"] = advice

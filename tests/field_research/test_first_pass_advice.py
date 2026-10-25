@@ -9,16 +9,30 @@ different one: "This is exactly what should have been happening".
 
 Each case runs the ordinary workflow's run (test_step's rig) through the
 step, with label 1's first pass recorded as adjudicate records it. Until
-2026-10-25 a label's decided transcript decided its text (G19's NOT_DECIDED):
-cases 1 and 2 went to review, and no case recorded how a label settled.
+2026-10-25 a label's decided transcript decided its text (G19's NOT_DECIDED),
+and no case recorded how a label settled.
+
+Where the first pass's verdict at the difference names its preferred reader
+(the pick was confirmed against the image there), only a source's exact
+confirmation overrides it; another label's agreement or a near spelling
+leaves the field unresolved, for a person to choose, with a
+first_pass_conflict finding (the coordinator's decision of 2026-10-25 on
+#414's review). G19 lets a pick stand only where every material difference's
+verdict supports it (integrity.verify_evidence checks it), so through the
+step a recorded pick is always confirmed at the difference; the uncertain
+verdict beside a pick is a unit case of agreement.labels.
 """
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 from types import SimpleNamespace
 
 import pytest
+import test_step as rig_module
+from PIL import Image
 from test_step import (
     COLLECTORS,
     GUATEMALAN,
@@ -29,6 +43,7 @@ from test_step import (
     answering,
     build_rig,
     every_field,
+    from_tgn,
     guatemalan,
     label_with,
     reasons_for,
@@ -36,11 +51,19 @@ from test_step import (
     settle,
 )
 
-from specimen_digitization.application.domain import FieldValue, ValueState
+from specimen_digitization.application.domain import FieldValue, Observation, Region, ValueState
 from specimen_digitization.application.first_pass import adjudication_record, synthetic_decision
+from specimen_digitization.application.region_pixels import region_png
 from specimen_digitization.field_research import agreement, experts
 from specimen_digitization.field_research import step as field_step
-from specimen_digitization.field_research.contracts import FieldAnswer, FieldOutcome
+from specimen_digitization.field_research.contracts import (
+    FIELD_TOOLS,
+    Candidate,
+    FieldAnswer,
+    FieldOutcome,
+    FieldTask,
+    Reading,
+)
 from specimen_digitization.field_research.experts import INPUT_PREFIX
 
 LA, ONE_A = (TEXT.replace("collection_code: SYNTHETIC", f"collection_code: {code}") for code in ("la", "1a"))
@@ -48,6 +71,11 @@ CODES = every_field(("collection_code", "1A", "la", "collection_code: la"),
     ("collection_code", "1B", "1a", "collection_code: 1a"))
 RATIONALE = "The first character is a lower-case l: its top is a loop, with no serif."
 NOTES = ("Reads the l the image shows.", "Reads the l as a one.")
+# The review's probe (#414, round 1): 1A, which the first pass preferred,
+# writes "1a"; 1B and both readers of label 2 write "la", a shared misread.
+PROBE_CODES = every_field(("collection_code", "1A", "1a", "collection_code: 1a"),
+    ("collection_code", "1B", "la", "collection_code: la"))
+LABEL_2_LA = [("collection_code", name, "la", "collection_code: la") for name in ("2A", "2B")]
 
 
 def prefer(rig, reader, *, rationale=RATIONALE, notes=NOTES):
@@ -58,6 +86,8 @@ def prefer(rig, reader, *, rationale=RATIONALE, notes=NOTES):
     region = run.regions[0]
     readings = [o for o in run.observations if o.region_id == region.id]
     synthetic = synthetic_decision(rig.blobs, region, readings)
+    # A pick stands only where every material difference's verdict supports
+    # it (G19), so its verdicts name it; with no pick they are uncertain.
     chosen = readings[reader].id if reader is not None else None
     decision = synthetic.model_copy(update={"selected_observation_id": chosen, "rationale": rationale,
         "notes": {o.id: note for o, note in zip(readings, notes)},
@@ -70,6 +100,37 @@ def prefer(rig, reader, *, rationale=RATIONALE, notes=NOTES):
         **record})
 
 
+def second_label_read(monkeypatch, *texts):
+    """build_rig's specimen with a second label its readers read as `texts`,
+    in route order; "" for a reader that read nothing, which
+    extraction_readings leaves out."""
+    original = rig_module.make_specimen
+
+    def make(blobs, first=TEXT, other=None):
+        specimen = original(blobs, first, other)
+        run = specimen.run
+        output = io.BytesIO()
+        Image.new("RGB", (100, 100), "white").save(output, format="JPEG", quality=95)
+        region = Region(asset_id=specimen.asset.id, x=0, y=50, width=100, height=50, order=1,
+            method="synthetic_fixture_region", version="1")
+        crop_png = region_png(Image.open(io.BytesIO(output.getvalue())), region)
+        region.crop_ref = blobs.put(crop_png)
+        run.regions.append(region)
+        crop = hashlib.sha256(crop_png).hexdigest()
+        for route, text in zip(run.profile.routes, texts, strict=True):
+            raw = ("SYNTHETIC FIXTURE " + route + "\n" + text).encode()
+            run.observations.append(Observation(region_id=region.id, route_id=route, model_id="synthetic-" + route,
+                provider="synthetic", prompt_version="prompt:" + route, input_sha256=crop,
+                input_asset_id=specimen.asset.id, input_crop_ref=region.crop_ref, literal_text=text,
+                raw_ref=blobs.put(raw), raw_sha256=hashlib.sha256(raw).hexdigest()))
+            run.completed_steps.append(f"transcribe:{region.id}:{route}")
+        if len(set(texts)) > 1:
+            # Its first pass picked no reading, as make_specimen's.
+            run.completed_steps.append(f"first_pass:{region.id}")
+        return specimen
+    monkeypatch.setattr(rig_module, "make_specimen", make)
+
+
 def first_pass_findings(run):
     return sorted((f.reason_code, f.severity) for f in run.findings if f.rule_id == "first_pass_preference")
 
@@ -80,32 +141,110 @@ def code_answer(literal, *names):
 
 # ---- 1: another label of the specimen backs a reader the first pass did not prefer
 
-@pytest.mark.parametrize(("reader", "status"), [(0, "overridden"), (None, "absent")])
-def test_another_label_whose_readers_agree_settles_a_field_against_the_first_pass(tmp_path, monkeypatch,
-        reader, status):
-    """Label 1: 1A writes the code "la", 1B "1a"; its first pass preferred 1A
-    (or no reader). Label 2: both readers write "1a". No source checks the
-    collection code. Label 2 corroborates 1B's text, so the field settles on
-    "1a", and the step records that label 1 overrode its first pass's
-    preference (or had none). Before 2026-10-25: unresolved as NOT_DECIDED,
-    or ambiguous as readers that differ."""
-    a_second_label(monkeypatch, "collection_code: 1a")
-    rig = build_rig(tmp_path, LA, ONE_A, candidates=[*CODES, *(("collection_code", name, "1a",
-        "collection_code: 1a") for name in ("2A", "2B"))])
+@pytest.mark.parametrize("answer", [code_answer("la", "1B", "2A", "2B"), code_answer("1a", "1A")],
+    ids=["the-shared-misread", "the-preferred-reading"])
+def test_a_shared_misread_on_another_label_never_overrides_an_image_confirmed_pick(tmp_path, monkeypatch, answer):
+    """The review's probe: label 1's 1A, which the first pass preferred with
+    its verdict at that very difference, writes "1a"; 1B writes "la", and so
+    do both readers of label 2. No source checks the collection code. The
+    other label's agreement does not outweigh the first pass's look at label
+    1's image, nor does the pick outweigh it: the field is ambiguous for
+    review, with a first_pass_conflict warning, whichever text the answer
+    gives. Round 1 settled "la" and refused "1a"; before 2026-10-25 "la" was
+    refused as NOT_DECIDED (unresolved) and "1a" as LABELS_DIFFER."""
+    a_second_label(monkeypatch, "collection_code: la")
+    rig = build_rig(tmp_path, ONE_A, LA, candidates=[*PROBE_CODES, *LABEL_2_LA])
     run = rig.specimen.run
-    prefer(rig, reader)
-    first, second = (region.id for region in run.regions)
-    settle(rig, Scripted({"collection_code": answering(code_answer("1a", "1B", "2A", "2B"))}))
+    prefer(rig, 0)
+    first = run.regions[0].id
+    settle(rig, Scripted({"collection_code": answering(answer)}))
     code = run.fields["collection_code"]
-    assert (code.state, code.literal) == (ValueState.SUPPORTED, "1a")
+    assert (code.state, code.literal) == (ValueState.AMBIGUOUS, None)
+    assert code.reason == agreement.FIRST_PASS_CONFLICT + " Settled."
+    assert "mandatory_unresolved:collection_code" in run.reasons
+    assert first_pass_findings(run) == [(f"first_pass_conflict:collection_code:{first}", "warning")]
+
+
+def test_with_no_pick_another_label_whose_readers_agree_settles_the_field(tmp_path, monkeypatch):
+    """The probe's readings with a first pass that preferred no reader: label
+    2's two readers back 1B's "la", the field settles on it, and the step
+    records that label 1 had no preference to follow. Before 2026-10-25:
+    ambiguous, as readers that differ."""
+    a_second_label(monkeypatch, "collection_code: la")
+    rig = build_rig(tmp_path, ONE_A, LA, candidates=[*PROBE_CODES, *LABEL_2_LA])
+    run = rig.specimen.run
+    prefer(rig, None)
+    first, second = (region.id for region in run.regions)
+    settle(rig, Scripted({"collection_code": answering(code_answer("la", "1B", "2A", "2B"))}))
+    code = run.fields["collection_code"]
+    assert (code.state, code.literal) == (ValueState.SUPPORTED, "la")
     assert not reasons_for(run, "collection_code")
-    assert first_pass_findings(run) == [(f"first_pass_{status}:collection_code:{first}", "info")]
+    assert first_pass_findings(run) == [(f"first_pass_absent:collection_code:{first}", "info")]
     [finding] = [f for f in run.findings if f.rule_id == "first_pass_preference"]
     rows = {item.id: item for item in run.evidence}
     reader_b = run.observations[1].id
     assert finding.evidence_ids and all(rows[i].region_id == first and rows[i].observation_ids == [reader_b]
         for i in finding.evidence_ids)
     assert second not in finding.reason_code  # label 2's readers agree: nothing to follow or override
+
+
+def probe_readings(verdict, *, label_2=("la", "la")):
+    """The probe as agreement.labels reads it, label 1's first pass
+    preferring 1A with `verdict` at the one difference ("1A", "uncertain")."""
+    from specimen_digitization.field_research.contracts import FirstPassAdvice
+
+    advice = FirstPassAdvice(preferred="1A", rationale="", reader_notes={}, differences=(
+        {"texts": {"1A": "1a", "1B": "la"}, "verdict": verdict, "spans": {"1A": (17, 19), "1B": (17, 19)}},))
+    label_1 = (Reading("1A", "r1", "o1a", "decided_transcript", "collection_code: 1a", first_pass=advice),
+        Reading("1B", "r1", "o1b", "raw_reading", "collection_code: la", first_pass=advice))
+    second = tuple(Reading(f"2{letter}", "r2", f"o2{letter}", "raw_reading", f"collection_code: {text}")
+        for letter, text in zip("AB", label_2))
+    readings = label_1 + second
+    task = FieldTask("collection_code", True, FieldValue(state=ValueState.AMBIGUOUS),
+        tuple(Candidate(r.name, r.text, r.text.split(": ")[1], "ev-" + r.name) for r in readings),
+        FIELD_TOOLS["collection_code"])
+    return task, readings
+
+
+@pytest.mark.parametrize(("verdict", "settled", "preference"), [
+    ("1A", frozenset(), "conflict"),
+    ("uncertain", frozenset({"la"}), "overridden"),
+    ("neither", frozenset({"la"}), "overridden"),
+])
+def test_another_label_overrides_a_pick_only_where_the_first_pass_did_not_confirm_it(verdict, settled, preference):
+    """agreement.labels on the probe: where the verdict at the difference
+    names the preferred reader, label 2's agreement makes a conflict; where
+    it is uncertain or neither (a record G19 would not let a pick stand in,
+    so a unit case), it settles label 1 on "la" against the pick."""
+    task, readings = probe_readings(verdict)
+    found = agreement.labels(task, readings, [])
+    assert (found["r1"].settled, found["r1"].preference) == (settled, preference)
+    assert found["r2"].basis == agreement.BY_AGREEMENT
+    refused = agreement.refusal(task, readings, literal="la", named=[readings[1], *readings[2:]], value=None,
+        authority_id=None, cited=[], received=[])
+    assert (refused.reason if refused else None) == (agreement.FIRST_PASS_CONFLICT if not settled else None)
+
+
+def test_a_label_one_reader_read_backs_nothing(tmp_path, monkeypatch):
+    """Label 2's second reader read nothing, so only 2A writes "la": one
+    model's text backs no reader of label 1, whose first pass preferred no
+    reader, and the field goes to review as readers that differ. Round 1
+    settled it on "la"; before 2026-10-25 it went to review too."""
+    second_label_read(monkeypatch, "collection_code: la", "")
+    rig = build_rig(tmp_path, ONE_A, LA, candidates=[*PROBE_CODES, LABEL_2_LA[0]])
+    run = rig.specimen.run
+    prefer(rig, None)
+    assert [r.name for r in field_step.run_readings(run) if r.region_id == run.regions[1].id] == ["2A"]
+    settle(rig, Scripted({"collection_code": answering(code_answer("la", "1B", "2A"))}))
+    code = run.fields["collection_code"]
+    assert (code.state, code.literal, code.reason) == (ValueState.AMBIGUOUS, None, agreement.DIFFER + " Settled.")
+    assert "mandatory_unresolved:collection_code" in run.reasons
+    # With a pick whose verdict there is uncertain, label 1 follows it: the
+    # one reader of label 2 backs nothing.
+    task, readings = probe_readings("uncertain", label_2=("la",))
+    found = agreement.labels(task, readings, [])["r1"]
+    assert (found.settled, found.basis, found.preference) == (
+        frozenset({"1a"}), agreement.BY_FIRST_PASS, agreement.FOLLOWED)
 
 
 def test_without_another_labels_text_the_label_follows_its_first_pass(tmp_path, monkeypatch):
@@ -125,22 +264,26 @@ def test_without_another_labels_text_the_label_follows_its_first_pass(tmp_path, 
 
 # ---- 2: a place's near spelling of a reader the first pass did not prefer
 
-def test_a_place_settles_on_the_near_spelling_of_a_reader_the_first_pass_did_not_prefer(tmp_path):
-    """105526330's province, its readers apart: 1A, which the first pass
-    preferred, writes "Chimaltenaqo", 1B "Chimaltenago". Getty TGN knows the
-    department Chimaltenango, one letter from 1B's text and two from 1A's,
-    and finds nothing for 1A's text. The province settles on 1B's text as a
-    near spelling, inside the settled country (G34), with its near_spelling
-    warning, and the step records that label 1 overrode its first pass. The
-    one-letter bound is unchanged: 1A's text could not settle so. Before
-    2026-10-25: unresolved as NOT_DECIDED."""
+@pytest.mark.parametrize(("reader", "settles"), [(None, True), (0, False)], ids=["no-pick", "confirmed-pick"])
+def test_a_place_settles_on_a_near_spelling_of_one_readers_text_unless_the_pick_was_confirmed(tmp_path,
+        reader, settles):
+    """105526330's province, its readers apart: 1A writes "Chimaltenaqo", 1B
+    "Chimaltenago". Getty TGN knows the department Chimaltenango, one letter
+    from 1B's text and two from 1A's, and finds nothing for 1A's text. With
+    no pick, the province settles on 1B's text as a near spelling, inside the
+    settled country (G34), with its near_spelling warning; the one-letter
+    bound is unchanged, so 1A's text could not settle so. Where the first
+    pass preferred 1A with its verdict at that difference, a near spelling
+    does not outweigh it: review, with a first_pass_conflict warning. Before
+    2026-10-25: ambiguous with no pick (no near spelling among readers that
+    differ), unresolved as NOT_DECIDED with one."""
     first, second = (label_with(**GUATEMALAN, province_state=name) for name in ("Chimaltenaqo", "Chimaltenago"))
     rig = build_rig(tmp_path, first, second, candidates=[*COLLECTORS,
         *(("country", name, "Guatemala", "country: Guatemala") for name in ("1A", "1B")),
         ("province_state", "1A", "Chimaltenaqo", "province_state: Chimaltenaqo"),
         ("province_state", "1B", "Chimaltenago", "province_state: Chimaltenago")])
     run = rig.specimen.run
-    prefer(rig, 0)
+    prefer(rig, reader)
 
     async def province(task, readings, tools):
         found = await tools.lookup("tgn", "Chimaltenango", field_key=task.key)
@@ -150,11 +293,86 @@ def test_a_place_settles_on_the_near_spelling_of_a_reader_the_first_pass_did_not
             model_calls=1)
     settle(rig, guatemalan(province_state=province), tools=Gazetteer(rig.blobs))
     place = run.fields["province_state"]
+    region = run.regions[0].id
+    if not settles:
+        assert (place.state, place.literal) == (ValueState.AMBIGUOUS, None)
+        assert place.reason == agreement.FIRST_PASS_CONFLICT + " Settled."
+        assert "mandatory_unresolved:province_state" in run.reasons
+        assert first_pass_findings(run) == [(f"first_pass_conflict:province_state:{region}", "warning")]
+        return
     assert (place.state, place.literal, place.normalized, place.authority_id) == (
         ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango", "tgn:1000565")
     assert not reasons_for(run, "province_state")
     codes = [f.reason_code for f in run.findings]
     assert "near_spelling:province_state" in codes
+    assert first_pass_findings(run) == [(f"first_pass_absent:province_state:{region}", "info")]
+
+
+class WithPazum(Gazetteer):
+    """Getty TGN as Gazetteer answers it, and "Pazum", a town one letter from
+    1B's "Patzum" (and two from 1A's "Patzun"), in Chimaltenango, Guatemala;
+    nothing for "Patzun" or "Patzum" (the review's third finding on #414)."""
+
+    PLACES = {**Gazetteer.PLACES, "Pazum": [("Pazum", "tgn:pazum", "inhabited places",
+        (("Chimaltenango", "tgn:1000565"), ("Guatemala", "tgn:7005493")))]}
+
+
+def test_a_near_spelling_of_the_other_readers_town_never_overrides_a_confirmed_pick(tmp_path):
+    """The review's third finding: 1A, which the first pass preferred with
+    its verdict at that difference, writes the town "Patzun", 1B "Patzum".
+    TGN finds nothing for either, and "Pazum", one letter from 1B's text, in
+    the province and country both readers write. The near spelling of the
+    other reader's text does not outweigh the first pass's look at the image:
+    the city is ambiguous for review, with a first_pass_conflict warning.
+    Round 1 settled it as Pazum; before 2026-10-25 it was unresolved as
+    NOT_DECIDED."""
+    first, second = (label_with(country="Guatemala", province_state="Chimaltenango", county=None, city=town)
+        for town in ("Patzun", "Patzum"))
+    rig = build_rig(tmp_path, first, second, candidates=[*COLLECTORS,
+        *((key, name, text, f"{key}: {text}") for key, text in (("country", "Guatemala"),
+            ("province_state", "Chimaltenango")) for name in ("1A", "1B")),
+        ("city", "1A", "Patzun", "city: Patzun"), ("city", "1B", "Patzum", "city: Patzum")])
+    run = rig.specimen.run
+    prefer(rig, 0)
+
+    async def city(task, readings, tools):
+        asked = [await tools.lookup("tgn", query, field_key=task.key) for query in ("Patzun", "Patzum", "Pazum")]
+        return FieldOutcome(task.key, resolved("Patzum", reading="1B", value="Pazum", authority_id="tgn:pazum",
+            cited=[asked[2].evidence.id]), evidence=[item.evidence for item in asked], model_calls=1)
+    settle(rig, guatemalan(province_state=from_tgn("Chimaltenango", "Chimaltenango", None, "tgn:1000565"),
+        city=city), tools=WithPazum(rig.blobs))
+    assert run.fields["province_state"].state == ValueState.SUPPORTED
+    town = run.fields["city"]
+    assert (town.state, town.literal, town.reason) == (ValueState.AMBIGUOUS, None,
+        agreement.FIRST_PASS_CONFLICT + " Settled.")
+    assert "mandatory_unresolved:city" in run.reasons
+    assert first_pass_findings(run) == [(f"first_pass_conflict:city:{run.regions[0].id}", "warning")]
+
+
+def test_a_source_confirming_the_other_readers_place_overrides_a_pick_that_wrote_none(tmp_path):
+    """The review's second finding: 1A, which the first pass preferred, writes
+    no province; 1B writes "Chimaltenango", which Getty TGN confirms by its
+    own name as a department of Guatemala, the country both write. A
+    source's exact confirmation outweighs the pick, even where the first
+    pass judged the image there: the province settles on 1B's text, and the
+    step records that label 1 overrode its first pass. Before 2026-10-25:
+    unresolved as NOT_DECIDED."""
+    first = label_with(country="Guatemala", province_state=None, county=None, city=None)
+    second = label_with(country="Guatemala", province_state="Chimaltenango", county=None, city=None)
+    rig = build_rig(tmp_path, first, second, candidates=[*COLLECTORS,
+        *(("country", name, "Guatemala", "country: Guatemala") for name in ("1A", "1B")),
+        ("province_state", "1B", "Chimaltenango", "province_state: Chimaltenango")])
+    run = rig.specimen.run
+    prefer(rig, 0)
+    assert any(d.verdict == run.observations[0].id for d in run.transcripts[0].differences)
+    async def province(task, readings, tools):
+        found = await tools.lookup("tgn", "Chimaltenango", field_key=task.key)
+        return FieldOutcome(task.key, resolved("Chimaltenango", reading="1B", authority_id="tgn:1000565",
+            cited=[found.evidence.id]), evidence=[found.evidence], model_calls=1)
+    settle(rig, guatemalan(province_state=province), tools=Gazetteer(rig.blobs))
+    place = run.fields["province_state"]
+    assert (place.state, place.literal, place.authority_id) == (ValueState.SUPPORTED, "Chimaltenango", "tgn:1000565")
+    assert not reasons_for(run, "province_state")
     assert first_pass_findings(run) == [(f"first_pass_overridden:province_state:{run.regions[0].id}", "info")]
 
 

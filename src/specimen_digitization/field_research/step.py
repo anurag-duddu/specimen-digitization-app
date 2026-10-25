@@ -225,13 +225,15 @@ def first_pass_advice(run, named: Mapping[str, object]) -> dict[str, FirstPassAd
     Raw transcription per model to the harness if needed"): the reading it
     preferred (the label's decided_transcript reading, by name; None when it
     preferred none), its rationale, its note on each reader and each
-    material difference with its verdict, readers named as `named` (the
-    labelled extraction readings) names them. A reader with no text is not
-    among the readings, so it is left out."""
+    material difference with its verdict and each reader's span offsets,
+    readers named as `named` (the labelled extraction readings) names them.
+    A reader with no text is not among the readings, so it is left out. A
+    label whose transcript a person decided (Transcript.actor) gets no first
+    pass opinion, only `person_decided` and its decided reading: a person's
+    reading of the image binds as an image-confirmed pick does
+    (agreement.confirmed_against_image)."""
     found: dict[str, FirstPassAdvice] = {}
     for transcript in getattr(run, "transcripts", None) or ():
-        if transcript.decision_kind != "first_pass":
-            continue
         names: dict[str, str] = {}
         preferred = None
         for name, item in named.items():
@@ -240,11 +242,20 @@ def first_pass_advice(run, named: Mapping[str, object]) -> dict[str, FirstPassAd
             names.setdefault(item.observation_id, name)
             if item.role == "decided_transcript" and preferred is None:
                 preferred = name
+        if getattr(transcript, "actor", None):
+            if preferred is not None:
+                found[transcript.region_id] = FirstPassAdvice(preferred=preferred, rationale="", reader_notes={},
+                    differences=(), person_decided=True)
+            continue
+        if transcript.decision_kind != "first_pass":
+            continue
         notes = {names[h.observation_id]: h.note for h in transcript.handoffs if h.note and h.observation_id in names}
         differences = tuple(
             {"texts": {names[observation]: span.text for observation, span in difference.spans.items()
                 if observation in names},
-             "verdict": names.get(difference.verdict, difference.verdict)}
+             "verdict": names.get(difference.verdict, difference.verdict),
+             "spans": {names[observation]: (span.start, span.end) for observation, span in difference.spans.items()
+                if observation in names}}
             for difference in transcript.differences if difference.material)
         found[transcript.region_id] = FirstPassAdvice(preferred=preferred, rationale=transcript.reason or "",
             reader_notes=notes, differences=differences)
@@ -2308,7 +2319,8 @@ FIRST_PASS_RULES = "field-research-first-pass-advice-v1"
 def first_pass_code(status: str, key: str, region_id: str) -> str:
     """The reason code of how a label whose readers differ settled a field,
     against the reader its first pass preferred (agreement.Label.preference:
-    followed, overridden or absent): `first_pass_<status>:<field>:<region>`."""
+    followed, overridden or absent), or why it did not (conflict):
+    `first_pass_<status>:<field>:<region>`."""
     return f"first_pass_{status}:{key}:{region_id}"
 
 
@@ -2321,29 +2333,43 @@ def _first_pass_preference(run, task, outcome: FieldOutcome, *, readings, by_nam
     another reader's text, which a source confirms or another label writes,
     or `first_pass_absent`: the first pass preferred no reader), citing the
     value's label rows of that label that support it, the readers whose text
-    it settled on. A RunFinding never routes the record: the first pass's
-    preference is advice (the owner, 2026-10-25). The field's earlier such
-    findings go first, so a field researched again keeps only its latest; a
-    value settled otherwise (location reconciliation, derivation, a person)
-    gets none."""
-    from .agreement import SOURCE_IDS, TRANSCRIPT, labels, literal_basis
+    it settled on. And, for a field left unsettled, one warning finding per
+    label that did not settle because only another label or a near spelling
+    opposed the first pass's image-confirmed pick (`first_pass_conflict`):
+    the field is unresolved, for a person to choose (the coordinator's
+    decision of 2026-10-25 on #414's review); the field's own state sends a
+    mandatory field to review. A RunFinding never routes the record: the
+    first pass's preference is advice (the owner, 2026-10-25). The field's
+    earlier such findings go first, so a field researched again keeps only
+    its latest; a value settled otherwise (location reconciliation,
+    derivation, a person) gets none."""
+    from .agreement import CONFLICT, SOURCE_IDS, TRANSCRIPT, labels, literal_basis
 
     run.findings[:] = [finding for finding in run.findings
         if not (finding.rule_id == "first_pass_preference" and finding.field_key == task.key)]
     answer, value = outcome.answer, run.fields.get(task.key)
-    if (answer is None or answer.outcome != "resolved" or not answer.literal or value is None
-            or value.state != ValueState.SUPPORTED or value.literal != answer.literal
-            or value.layer not in ("settled", "verbatim") or decision.get("rule") == "location_reconciliation"):
+    if value is None or decision.get("rule") == "location_reconciliation" or value.layer == "derived":
         return
-    literal = answer.literal
-    named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and literal in by_name[n].text]
-    transcript = literal if named and literal_basis(task, readings, literal, named) == TRANSCRIPT else None
     tools = frozenset(task.tools) & SOURCE_IDS
-    found = labels(task, readings, [item for item in sources if item.source_id in tools], transcript=transcript,
-        named=named)
+    answers = [item for item in sources if item.source_id in tools]
+    literal = answer.literal if answer is not None and answer.outcome == "resolved" else None
+    named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and literal in by_name[n].text
+        ] if literal else []
+    transcript = literal if named and literal_basis(task, readings, literal, named) == TRANSCRIPT else None
+    found = labels(task, readings, answers, transcript=transcript, named=named)
     rows = {item.id: item for item in run.evidence}
+    if value.state != ValueState.SUPPORTED:
+        for region, label in found.items():
+            if label.preference == CONFLICT:
+                run.findings.append(RunFinding(rule_id="first_pass_preference", rule_version=FIRST_PASS_RULES,
+                    severity="warning", field_key=task.key, reason_code=first_pass_code(CONFLICT, task.key, region),
+                    evidence_ids=[i for i in value.evidence_ids if (row := rows.get(i)) is not None
+                        and row.kind == "literal" and row.region_id == region]))
+        return
+    if not literal or value.literal != literal or value.layer not in ("settled", "verbatim"):
+        return
     for region, label in found.items():
-        if label.preference is None:
+        if label.preference in (None, CONFLICT):
             continue
         cited = [i for i in value.evidence_ids if value.evidence_relations.get(i) == "supports"
             and (row := rows.get(i)) is not None and row.kind == "literal" and row.region_id == region]
@@ -3382,7 +3408,7 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
 # ---- each field's trace ---------------------------------------------------
 
 # agreement's reasons for refusing a resolved answer, by constant name.
-REFUSALS = ("DIFFER", "LABELS_DIFFER", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
+REFUSALS = ("DIFFER", "LABELS_DIFFER", "FIRST_PASS_CONFLICT", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
     "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
     "NOT_EVERY_READER", "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "A_DISTANCE", "HOLDS_AN_ELEVATION",
     "HOLDS_A_DATE", "HOLDS_A_RANGE", "FIRST_LEVEL_TOO", "NO_PROVINCE", "IS_THE_PROVINCE")

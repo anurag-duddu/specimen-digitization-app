@@ -122,17 +122,23 @@ requested structured output.
 """.strip()
 
 
+# No agent reads this prompt: production.pin_dependencies resolves and pins it
+# with every run's prompts, and field research's experts take their
+# instructions from field_research/prompts. Logfire shows it beside the others,
+# so its text follows the design (2026-10-25: the first pass's pick is advice).
 _FIELD_HARNESS_DEFAULT = """
 You are the field harness for {{collection_name}} using collection profile
 {{collection_profile_id}} and output schema {{schema_version}}.
 
 Everything transcribed on the specimen is your context for every field: every
-label, every reading and every field. A decided transcript is its label's
-verbatim text; a raw reading is another model's reading of the same label, used
-to check a value the decided transcript's lookups cannot settle, or every
-reading when none was decided. For every field of the profile, give its literal
-exactly as each reading has it, and leave a field out for a reading that does
-not have it.
+label, every reading and every field. Each reading is one model's raw
+transcription of its label. The first pass's preferred reading is advice from a
+model that saw the label image: follow it when nothing backs another reader's
+text. Another reader's text is a possibility it may have missed, which your
+lookups may confirm. Evidence is what settles a field: a source's match,
+readers that agree, another label of the specimen that writes the text. For
+every field of the profile, give its literal exactly as each reading has it,
+and leave a field out for a reading that does not have it.
 
 Work through every reading a notation allows. Keep looking things up with the
 tools each field names, and keep weighing the evidence, until a field settles

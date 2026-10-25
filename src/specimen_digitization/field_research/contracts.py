@@ -103,12 +103,20 @@ class FirstPassAdvice:
     never a field's evidence: the reader it preferred (None when it preferred
     none), its rationale, its note on each reader, and each material
     difference with the reader whose text it judged the image supports there
-    ("neither" or "uncertain" when none), all by reader name."""
+    ("neither" or "uncertain" when none), all by reader name: each
+    difference's "texts" and "verdict", and its "spans", the (start, end)
+    offsets of each reader's text there, which the agreement rules read
+    (agreement.confirmed_against_image) and the experts are not sent. With
+    `person_decided`, a person decided the label's transcript
+    (Transcript.actor): its decided reading is then confirmed everywhere, as
+    an image-confirmed pick is, and the experts are not sent it as the first
+    pass's opinion."""
 
     preferred: str | None
     rationale: str
     reader_notes: Mapping[str, str]
     differences: tuple[Mapping[str, object], ...]
+    person_decided: bool = False
 
 
 @dataclass(frozen=True)

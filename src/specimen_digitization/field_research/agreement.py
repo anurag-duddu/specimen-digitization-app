@@ -93,17 +93,23 @@ fields' outcomes:
      punctuation, unit words: "Chimaltenango Dept." and "Chimaltenango"
      too); the label settles on each of its literals; readers confirmed as
      different places, or not all confirmed, still go to review;
-   - else, a label whose readers differ, on the one text of its readers that
-     a label settled on its own evidence above (readers that agree, or a
-     source) writes, letter case and spacing aside (agreement_key): another
-     label of the specimen corroborates it, even against the first pass's
-     preference;
+   - else, a label whose readers differ, on the one text of its readers
+     that another label of the specimen, two or more of whose readers agree
+     on it (MIN_BACKING_READERS), settled on, letter case and spacing aside
+     (agreement_key);
    - else, a label whose first pass preferred a reader, on that reader's one
      candidate literal, or, when that reader has several texts for the
      field, only through the field's approved sources as above, on one of
      them; a label whose preferred reader writes nothing for the field takes
      no part, unless the answer names one of its readers;
    - any other label does not settle: a person decides.
+   A source's exact confirmation of a reader's text settles against the
+   first pass's preference anywhere; a place's near spelling (below) or
+   another label settles against it only where the first pass's verdict at
+   that difference does not name the preferred reader
+   (confirmed_against_image). Where it does, the label does not settle
+   either way (Label.preference CONFLICT; FIRST_PASS_CONFLICT: a person
+   chooses; the coordinator's decision of 2026-10-25 on #414's review).
    How each label settled, and whether it followed the first pass's
    preference, overrode it or had none, is Label.basis and
    Label.preference (the step records it: step._first_pass_preference).
@@ -280,6 +286,8 @@ PLACE_ANSWERED = frozenset({LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS})
 # The field's reason when a resolved answer cannot settle it (plain app text).
 DIFFER = "The readings differ, and no approved source confirms one of them."
 LABELS_DIFFER = "The labels differ, and no approved source confirms them as one value."
+FIRST_PASS_CONFLICT = ("The first pass read this label's image as one reader's text, and only another label "
+    "or a near spelling backs another reader's: a person decides.")
 NOT_CANDIDATE = "This value is not the text found for this field in the readings."
 PART_OF_NAME = "The label writes a longer scientific name than this value."
 DOUBTFUL_GENUS = "The label marks this name's genus as doubtful."
@@ -1207,20 +1215,23 @@ def _spelling(task: FieldTask, name: str, texts: Iterable[str]) -> str:
 
 
 # How a label settled (Label.basis): its readers agree; a source confirms
-# one reader's text, or every reader's text as one place (N4); another label
-# settled on its own evidence writes one reader's text; or the first pass's
-# preferred reading, when nothing supports another reader's text.
-BY_AGREEMENT, BY_SOURCE, BY_SAME_PLACE, BY_OTHER_LABEL, BY_FIRST_PASS = (
-    "readers_agree", "source", "same_place", "other_label", "first_pass")
-# The bases on which a label settles on its own evidence (the owner,
-# 2026-10-25: "Evidence is settlement which can be actual match from the
-# lookups raw transcription itself being very clear and so on"); only such a
-# label corroborates another label's reader (labels).
-OWN_EVIDENCE = frozenset({BY_AGREEMENT, BY_SOURCE, BY_SAME_PLACE})
+# one reader's text by its own name (or its expansion), or, for a place, by
+# a near spelling, or every reader's text as one place (N4); another label
+# whose readers agree writes one reader's text; or the first pass's
+# preferred reading, when nothing backs another reader's text.
+BY_AGREEMENT, BY_SOURCE, BY_NEAR_SPELLING, BY_SAME_PLACE, BY_OTHER_LABEL, BY_FIRST_PASS = (
+    "readers_agree", "source", "near_spelling", "same_place", "other_label", "first_pass")
+# The least number of readers (distinct readings with text) of a label whose
+# agreement backs another label's reader: a label one reader read backs
+# nothing (the coordinator's decision of 2026-10-25 on #414's review).
+MIN_BACKING_READERS = 2
 # Whether a label whose readers differ settled on the text of the reader its
 # first pass preferred (Label.preference): followed, overridden, or no
-# preference to follow (no first pass, or one that preferred no reader).
-FOLLOWED, OVERRIDDEN, ABSENT = "followed", "overridden", "absent"
+# preference to follow (no first pass, or one that preferred no reader); or
+# CONFLICT: the first pass's verdict at that difference names its preferred
+# reader, and only another label or a near spelling backs another reader's
+# text, so the label does not settle and a person decides.
+FOLLOWED, OVERRIDDEN, ABSENT, CONFLICT = "followed", "overridden", "absent", "conflict"
 
 
 @dataclass(frozen=True)
@@ -1245,8 +1256,63 @@ class Label:
     basis: str | None = None
     # For a settled label whose readers differ: whether it settled on the
     # text of the reader its first pass preferred (FOLLOWED, OVERRIDDEN,
-    # ABSENT); None for readers that agree or a label that did not settle.
+    # ABSENT); CONFLICT for a label that does not settle because only weaker
+    # backing opposes an image-confirmed pick; None for readers that agree or
+    # a label that did not settle otherwise.
     preference: str | None = None
+
+
+def _places(text: str, literal: str) -> list[tuple[int, int]]:
+    """Where the text writes the (collapsed) literal, any run of whitespace
+    standing for each of its spaces, as (start, end) offsets."""
+    words = literal.split()
+    if not words:
+        return []
+    pattern = re.compile(r"\s+".join(re.escape(word) for word in words))
+    return [(found.start(), found.end()) for found in pattern.finditer(text)]
+
+
+def _confirms(difference: Mapping, preferred: str) -> bool:
+    """Whether a first pass difference's verdict confirms the preferred
+    reader there: it names that reader, or a reader whose text there is the
+    preferred reader's, letter case aside (application.first_pass.supports)."""
+    verdict, texts = difference.get("verdict"), difference.get("texts", {})
+    return verdict == preferred or (verdict in texts and preferred in texts
+        and texts[verdict].lower() == texts[preferred].lower())
+
+
+def confirmed_against_image(preferred: Reading, readers: Sequence[Reading], text: str,
+        literals: Mapping[str, Iterable[str]]) -> bool:
+    """Whether the first pass judged the label's image where another reader
+    writes `text` and found its preferred reader's text there: a material
+    difference of the label's first pass (Reading.first_pass) whose span in
+    one of `readers` (the other readers whose texts for the field, in
+    `literals`, are `text`, letter case and spacing aside) overlaps a place
+    where that reader writes it (an empty span: one at or inside it), and
+    whose verdict confirms the preferred reader (_confirms). A label whose
+    transcript a person decided (FirstPassAdvice.person_decided) is confirmed
+    everywhere. No first pass, no difference there, or a verdict of neither
+    or uncertain: not confirmed (the coordinator's decision of 2026-10-25 on
+    #414's review)."""
+    advice = preferred.first_pass
+    if advice is None:
+        return False
+    if getattr(advice, "person_decided", False):
+        return True
+    want = agreement_key(text)
+    for reader in readers:
+        if reader is preferred:
+            continue
+        written = [own for own in literals.get(reader.name, ()) if agreement_key(own) == want]
+        places = [place for own in written for place in _places(reader.text, own)]
+        for difference in advice.differences:
+            span = difference.get("spans", {}).get(reader.name)
+            if span is None or not _confirms(difference, preferred.name):
+                continue
+            start, end = span
+            if any((start < stop and at < end) if start < end else at <= start <= stop for at, stop in places):
+                return True
+    return False
 
 
 def _preference(settled: frozenset[str], preferred: Reading | None, mine: frozenset[str]) -> str:
@@ -1273,12 +1339,14 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
       "Sp.30"), on the spelling (_spelling) of the reader its first pass
       preferred, else of its first reader (BY_AGREEMENT);
     - a label whose readers differ (or where one writes nothing), through
-      the field's approved sources (`answers`), whichever reader the first
-      pass preferred: exactly one of its literals is confirmed (identities;
-      by a place's near spelling only when none is by its own name:
-      _by_source), and every other is ruled out
-      (ruled_out, or, for a place value field, found_only_elsewhere)
-      (BY_SOURCE); or, for a place value field, every one of its literals is
+      the field's approved sources (`answers`): exactly one of its literals
+      is confirmed by its own name or expansion (identities), and every other
+      is ruled out (ruled_out, or, for a place value field,
+      found_only_elsewhere), whichever reader the first pass preferred
+      (BY_SOURCE); or, for a place none of whose texts is confirmed so, one is
+      a near spelling of the one candidate at the field's level of an answer
+      asked that candidate's name, every other ruled out (_by_source,
+      BY_NEAR_SPELLING); or, for a place value field, every one of its literals is
       confirmed and one authority_id confirms them all, so its readers name
       the same place ("Yepocapa," and "Yepocapa"; N4 of #284's third
       review). That settles on the source's evidence, each literal matching
@@ -1286,9 +1354,9 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
       punctuation, unit words), and on each of the literals: the answer
       gives one of them, with that authority_id (BY_SAME_PLACE);
     - else, a label whose readers differ, on the one text of its readers
-      (letter case and spacing aside) that a label settled above on its own
-      evidence (OWN_EVIDENCE) settled on: another label of the specimen
-      writes it (BY_OTHER_LABEL), even against the first pass's preference;
+      (letter case and spacing aside) that another label of the specimen,
+      whose MIN_BACKING_READERS or more readers agree on it (BY_AGREEMENT),
+      settled on (BY_OTHER_LABEL);
     - else, a label whose first pass preferred a reader (the reading whose
       input_source is decided_transcript), on the one candidate literal
       that reader has, or, when it has several texts for the field, through
@@ -1296,8 +1364,16 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
       literals (48a71d53's "Davao Prov." beside "Mindanao,") (BY_FIRST_PASS).
       A label whose preferred reader writes nothing for the field takes no
       part, unless the answer names one of its readers (`named`): then it
-      does not settle;
+      settles only on a source, a near spelling or another label, as above;
     - any other label does not settle.
+    A source's exact confirmation (BY_SOURCE) settles against the first
+    pass's preference anywhere. A near spelling or another label settles
+    against it too, except where the first pass judged the image at that
+    difference and found its preferred reader's text there
+    (confirmed_against_image): then the label does not settle either way,
+    and its preference is CONFLICT (the coordinator's decision of 2026-10-25
+    on #414's review, citing the owner's design of 2026-10-03: a field where
+    several possibilities remain for the user to choose from is unresolved).
     A settled label whose readers differ says whether it followed the first
     pass's preference (Label.preference).
 
@@ -1386,23 +1462,32 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
             continue
         confirmed = {text: identities(answers, text, task.key) for text in texts} if sourced else {}
         if sourced and (label := _by_source(task, texts, texts, answers)) is not None:
-            found[region] = Label(texts, label.settled, by_source=True, basis=BY_SOURCE,
-                preference=_preference(label.settled, preferred, mine))
+            preference = _preference(label.settled, preferred, mine)
+            if (label.basis == BY_NEAR_SPELLING and preference == OVERRIDDEN
+                    and confirmed_against_image(preferred, group, next(iter(label.settled)), literals)):
+                found[region] = Label(texts, preference=CONFLICT)
+            else:
+                found[region] = Label(texts, label.settled, by_source=True, basis=label.basis,
+                    preference=preference)
         elif (task.key in PLACE_VALUE_FIELDS and confirmed and all(confirmed.values())
                 and frozenset.intersection(*(frozenset(ids) for ids in confirmed.values()))):
             found[region] = Label(texts, texts, by_source=True, basis=BY_SAME_PLACE,
                 preference=_preference(texts, preferred, mine))
         else:
             waiting[region] = (texts, preferred, mine)
-    # Another label corroborates a reader's text: one settled on its own
-    # evidence (OWN_EVIDENCE) settled on it, letter case and spacing aside.
-    written = {agreement_key(text) for label in found.values() if label.basis in OWN_EVIDENCE
-        for text in label.settled}
+    # Another label backs a reader's text: its MIN_BACKING_READERS or more
+    # readers agree on it, letter case and spacing aside.
+    written = {agreement_key(text) for region, label in found.items() if label.basis == BY_AGREEMENT
+        and len({r.observation_id for r in regions[region]}) >= MIN_BACKING_READERS for text in label.settled}
     for region, (texts, preferred, mine) in waiting.items():
         backed = frozenset(text for text in texts if agreement_key(text) in written)
         if backed and len({agreement_key(text) for text in backed}) == 1:
-            found[region] = Label(texts, backed, basis=BY_OTHER_LABEL, preference=_preference(backed, preferred,
-                mine))
+            preference = _preference(backed, preferred, mine)
+            if preference == OVERRIDDEN and confirmed_against_image(preferred, regions[region], next(iter(backed)),
+                    literals):
+                found[region] = Label(texts, preference=CONFLICT)
+            else:
+                found[region] = Label(texts, backed, basis=BY_OTHER_LABEL, preference=preference)
         elif mine:
             own = set(allowed.get(preferred.name, {}))
             label = _by_source(task, mine & own, mine, answers) if len(mine) > 1 and sourced else None
@@ -1425,13 +1510,16 @@ def _by_source(task: FieldTask, choices: frozenset[str], texts: frozenset[str],
     `near`): a text one letter from the one candidate at the field's level
     of an answer asked that candidate's name, every other text still ruled
     out, so a reader's exact name and another's near spelling of it never
-    both count, and a text no source was asked about is never ruled out."""
+    both count, and a text no source was asked about is never ruled out
+    (its basis is then BY_NEAR_SPELLING, else BY_SOURCE)."""
+    basis = BY_SOURCE
     ones = frozenset(text for text in texts if identities(answers, text, task.key))
     if not ones:
+        basis = BY_NEAR_SPELLING
         ones = frozenset(text for text in texts if identities(answers, text, task.key, near=True))
     if len(ones) == 1 and ones <= choices and all(ruled_out(answers, text)
             or found_only_elsewhere(answers, text, task.key) for text in texts - ones):
-        return Label(texts, ones, by_source=True, basis=BY_SOURCE)
+        return Label(texts, ones, by_source=True, basis=basis)
     return None
 
 
@@ -1460,6 +1548,14 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
             "other text for this field there. On a label whose first pass preferred no reader, text "
             "read from the transcript settles only when every reader of the label writes it. Answer "
             "several_possibilities with each reader's text, or sources_cannot_resolve."), differ=True)
+    conflicts = [label for label in found.values() if label.preference == CONFLICT]
+    if conflicts:
+        shown_here = "; ".join(repr(text) for text in sorted(frozenset().union(*(c.literals for c in conflicts))))
+        return Refusal(FIRST_PASS_CONFLICT, (
+            f"The readers of a label write {shown_here}. The first pass judged the image at that difference "
+            "and found the reader it preferred, while only another label or a near spelling backs another "
+            "reader's text, and no source confirms it by its own name. That is for a person to choose: "
+            "answer several_possibilities with both texts."), differ=True)
     if any(label.around for label in found.values()):
         return Refusal(DIFFER, (
             f"You read {literal!r} from the transcript, and the readers of its label write different "
