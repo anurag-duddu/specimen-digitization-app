@@ -55,6 +55,7 @@ Specimen previewSpecimen(Uint8List pixels) => Specimen({
   'record_version_id': 'preview-version-3',
   'operational_state': 'completed',
   'disposition': 'needs_human_review',
+  'review_summary': {'review': 3, 'missing': 3},
   'profile_version': 'synthetic-v1',
   'available_actions': [
     'field',
@@ -152,12 +153,14 @@ Specimen previewSpecimen(Uint8List pixels) => Specimen({
       'literal_value': 'U.S.A.',
       'parsed_value': 'United States',
       'normalized': 'United States of America',
+      'layer': 'settled',
     },
     {
       'field_key': 'city',
       'display_name': 'City',
       'state': 'supported',
       'literal_value': 'Chicago',
+      'layer': 'verbatim',
       'evidence_ids': ['preview-evidence-a', 'preview-evidence-b'],
     },
     {

@@ -4,12 +4,22 @@ import 'package:widgetbook/widgetbook.dart';
 import '../story.dart';
 
 const _destinations = [
-  UiNavDestination(label: 'Queue', icon: UiIcons.record),
+  UiNavDestination(label: 'Specimens', icon: UiIcons.record),
   UiNavDestination(label: 'Intake', icon: UiIcons.uploadFile),
   UiNavDestination(label: 'Search', icon: UiIcons.search),
 ];
 
 List<WidgetbookComponent> get navigationComponents => [
+  WidgetbookComponent(
+    name: 'UiViewTabs',
+    useCases: [
+      story(
+        'Specimen views',
+        'The current view is named beside its icon. Other views keep accessible names and tooltips. Arrow keys, Home and End move between views; enlarged text wraps without shrinking touch targets.',
+        (_) => const _ViewTabsExample(),
+      ),
+    ],
+  ),
   WidgetbookComponent(
     name: 'UiBreadcrumbs',
     useCases: [
@@ -181,6 +191,13 @@ class _NavigationExampleState extends State<_NavigationExample> {
           alignment: AlignmentDirectional.topStart,
           child: switch (widget.kind) {
             'UiSidebar' => UiSidebar(
+              labels:
+                  context.knobs.boolean(
+                    label: 'Only label selected destination',
+                    initialValue: true,
+                  )
+                  ? UiNavigationLabels.selectedOnly
+                  : UiNavigationLabels.all,
               destinations: _destinations,
               currentIndex: _index,
               onSelect: _select,
@@ -201,6 +218,13 @@ class _NavigationExampleState extends State<_NavigationExample> {
               onSelect: _select,
             ),
             _ => UiTabBar(
+              labels:
+                  context.knobs.boolean(
+                    label: 'Only label selected destination',
+                    initialValue: true,
+                  )
+                  ? UiNavigationLabels.selectedOnly
+                  : UiNavigationLabels.all,
               destinations: _destinations,
               currentIndex: _index,
               onSelect: _select,
@@ -212,6 +236,27 @@ class _NavigationExampleState extends State<_NavigationExample> {
         liveRegion: true,
         child: Text('Current destination: ${_destinations[_index].label}'),
       ),
+    ],
+  );
+}
+
+class _ViewTabsExample extends StatefulWidget {
+  const _ViewTabsExample();
+  @override
+  State<_ViewTabsExample> createState() => _ViewTabsExampleState();
+}
+
+class _ViewTabsExampleState extends State<_ViewTabsExample> {
+  int _selected = 0;
+  @override
+  Widget build(BuildContext context) => UiViewTabs<int>(
+    value: _selected,
+    semanticsLabel: 'Specimen views',
+    onChanged: (value) => setState(() => _selected = value),
+    views: [
+      UiViewTab(value: 0, label: 'Needs review', icon: UiIcons.needsReview),
+      UiViewTab(value: 1, label: 'Cleared', icon: UiIcons.check),
+      UiViewTab(value: 2, label: 'All specimens', icon: UiIcons.record),
     ],
   );
 }

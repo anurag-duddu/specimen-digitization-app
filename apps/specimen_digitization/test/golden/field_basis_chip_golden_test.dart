@@ -1,5 +1,5 @@
 // Field values stay concise until opened. This component image explicitly
-// opens one field so its requirement, basis and source details can be reviewed
+// opens one field so its requirement, compact provenance and source details can be reviewed
 // alongside the neighboring collapsed values at normal and enlarged text.
 
 import 'package:flutter/widgets.dart';
@@ -86,10 +86,9 @@ void main() {
             .first;
         await tester.tap(trigger);
         await tester.pumpAndSettle();
+        expect(tester.widget<UiDisclosure>(field).metadata, 'Derived');
         expect(
-          find.byWidgetPredicate(
-            (widget) => widget is UiChip && widget.label == 'Derived',
-          ),
+          find.descendant(of: field, matching: find.text('· Derived')),
           findsOneWidget,
         );
         expect(find.text('Required field · Supported'), findsOneWidget);

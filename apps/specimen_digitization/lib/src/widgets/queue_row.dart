@@ -88,6 +88,8 @@ class QueueRow extends StatelessWidget {
     this.focusNode,
     this.concise = false,
     this.showStatus = true,
+    this.reviewCount,
+    this.missingCount,
   });
 
   /// The record's identifier. Also the row's identity for focus and scroll.
@@ -134,11 +136,15 @@ class QueueRow extends StatelessWidget {
   /// the reviewer is.
   final FocusNode? focusNode;
 
-  /// Shows identity, a contextual state and a specific issue without telemetry.
+  /// Shows identity, field counts and any operational hold without telemetry.
   final bool concise;
 
   /// False when the surrounding view already names this record's state.
   final bool showStatus;
+
+  /// Snapshot-derived field counts. Null means unknown, not zero.
+  final int? reviewCount;
+  final int? missingCount;
 
   /// The row width at which the status, the risk and the age fit beside the
   /// identifier rather than under it.
@@ -194,7 +200,12 @@ class QueueRow extends StatelessWidget {
       final updated = updatedAt;
       final supporting = <String>[
         if (showStatus) status.label,
-        if (reason.isNotEmpty) reason,
+        if (reviewCount != null)
+          '$reviewCount ${reviewCount == 1 ? 'field' : 'fields'} to review',
+        if (missingCount != null) '$missingCount missing',
+        // Operational holds still need their cause. Within a review view,
+        // one arbitrary blocker is not a useful summary of the whole record.
+        if (!status.isQueue && reason.isNotEmpty) reason,
       ];
       return DecoratedBox(
         decoration: BoxDecoration(
@@ -203,10 +214,15 @@ class QueueRow extends StatelessWidget {
         child: UiListRow(
           title: title,
           subtitle: supporting.isEmpty ? null : supporting.join(' · '),
+          subtitleMaxLines: null,
           semanticsLabel: <String>[
             title,
             if (showStatus) status.semanticsLabel,
-            if (reason.isNotEmpty) reason,
+            if (reviewCount != null)
+              '$reviewCount ${reviewCount == 1 ? 'field needs' : 'fields need'} review',
+            if (missingCount != null)
+              '$missingCount ${missingCount == 1 ? 'field' : 'fields'} missing',
+            if (!status.isQueue && reason.isNotEmpty) reason,
             if (updated != null) 'updated ${absoluteTime(updated)}',
             if (showScore)
               'Risk $riskComposite of 100, ${riskComponents.join(', ')}',

@@ -135,13 +135,18 @@ void _expectGeometry(
   for (var i = 0; i < 2; i++) {
     final name = ['Specimens', 'Intake'][i];
     final label = _label(name);
-    final paragraph = tester.renderObject<RenderParagraph>(label);
+    final paragraph = i == 0
+        ? tester.renderObject<RenderParagraph>(label)
+        : null;
     final icon = find.byKey(ValueKey('mobile-nav-${name.toLowerCase()}'));
-    final labelBounds = tester.getRect(label);
+    final labelBounds = i == 0 ? tester.getRect(label) : null;
     final iconBounds = tester.getRect(icon);
     final targetBounds = tester.getRect(_target(i));
-    final semantics = tester.getSemantics(label);
-    expect(semantics.flagsCollection.isSelected.toBoolOrNull(), i == 0);
+    final semantics = tester.getSemantics(find.bySemanticsLabel(name));
+    expect(
+      semantics.getSemanticsData().flagsCollection.isSelected.toBoolOrNull(),
+      i == 0,
+    );
     expect(semantics.getSemanticsData().hasAction(SemanticsAction.tap), isTrue);
     expect(targetBounds.width, greaterThanOrEqualTo(48));
     expect(targetBounds.height, greaterThanOrEqualTo(48));
@@ -150,13 +155,15 @@ void _expectGeometry(
       closeTo(contentHeight, .001),
       reason: 'the whole content height of the bar is the hit target',
     );
-    for (final rect in [labelBounds, iconBounds, targetBounds]) {
+    for (final rect in [?labelBounds, iconBounds, targetBounds]) {
       expect(rect.left, greaterThanOrEqualTo(content.left));
       expect(rect.right, lessThanOrEqualTo(content.right));
       expect(rect.top, greaterThanOrEqualTo(content.top));
       expect(rect.bottom, lessThanOrEqualTo(window.height - bottom));
     }
-    expect(iconBounds.bottom, lessThanOrEqualTo(labelBounds.top));
+    if (labelBounds != null) {
+      expect(iconBounds.bottom, lessThanOrEqualTo(labelBounds.top));
+    }
     // The glyph keeps its air at every text scale: 4 dp under the bar's top
     // edge and 4 dp above the label. At 200 percent text the first version of
     // the height left the glyph about 3 dp from the top line.
@@ -165,24 +172,42 @@ void _expectGeometry(
       greaterThanOrEqualTo(4),
       reason: '$name glyph is too close to the top line at this text scale',
     );
-    expect(
-      labelBounds.top - iconBounds.bottom,
-      greaterThanOrEqualTo(4),
-      reason: '$name label is too close to its glyph at this text scale',
-    );
-    expect(paragraph.didExceedMaxLines, isFalse);
-    final boxes = paragraph.getBoxesForSelection(
-      TextSelection(baseOffset: 0, extentOffset: name.length),
-    );
-    expect(boxes, isNotEmpty);
-    expect(boxes.map((box) => box.top).toSet(), hasLength(1));
+    if (labelBounds != null && paragraph != null) {
+      expect(
+        labelBounds.top - iconBounds.bottom,
+        greaterThanOrEqualTo(4),
+        reason: '$name label is too close to its glyph at this text scale',
+      );
+      expect(paragraph.didExceedMaxLines, isFalse);
+      final boxes = paragraph.getBoxesForSelection(
+        TextSelection(baseOffset: 0, extentOffset: name.length),
+      );
+      expect(boxes, isNotEmpty);
+      expect(boxes.map((box) => box.top).toSet(), hasLength(1));
+    } else {
+      expect(
+        label,
+        findsNothing,
+        reason: 'Only the active destination is named visibly',
+      );
+      expect(
+        find.descendant(
+          of: _bar,
+          matching: find.byWidgetPredicate(
+            (widget) => widget is UiTooltip && widget.message == name,
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(iconBounds.center.dy, closeTo(content.center.dy - 2, .001));
+    }
     labels.add({
       'label': name,
-      'labelRect': _rect(labelBounds),
+      if (labelBounds != null) 'labelRect': _rect(labelBounds),
       'iconRect': _rect(iconBounds),
       'targetRect': _rect(targetBounds),
       'semanticsRect': _rect(semantics.rect),
-      'fontScale': paragraph.textScaler.scale(1),
+      if (paragraph != null) 'fontScale': paragraph.textScaler.scale(1),
     });
   }
   debugPrint(

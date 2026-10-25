@@ -24,7 +24,6 @@ import 'field_presentation.dart';
 import 'pending_changes.dart';
 import 'reader_identity.dart';
 import 'value_basis.dart';
-import 'value_basis_chip.dart';
 
 /// The record's fields, their evidence and their corrections.
 class WorkbenchFields extends StatefulWidget {
@@ -217,19 +216,27 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
 
   List<ClearanceBlocker> _issuesFor(String key) {
     final supplied = widget.issues.where((issue) => issue.fieldKey == key);
-    if (supplied.isNotEmpty) return supplied.toList();
     // Standalone panel consumers still get the same presentation adapter as
     // the workbench; raw findings never become primary field copy here.
-    return blockersFor(
-      widget.specimen,
-    ).where((issue) => issue.fieldKey == key).toList();
+    return [
+      ...supplied.isNotEmpty
+          ? supplied
+          : blockersFor(
+              widget.specimen,
+            ).where((issue) => issue.fieldKey == key),
+      ...fieldNotesFor(widget.specimen).where((note) => note.fieldKey == key),
+    ];
   }
 
-  bool _needsReview(Json field) => fieldNeedsReview(
-    _pendingFor(field['field_key'].toString())?.state ??
-        field['state'] as String?,
-    hasIssues: _issuesFor(field['field_key'].toString()).isNotEmpty,
+  FieldReviewStatus _reviewStatus(Json field) => fieldReviewStatus(
+    field,
+    pending: _pendingFor(field['field_key'].toString()),
+    hasIssues: _issuesFor(
+      field['field_key'].toString(),
+    ).any((issue) => issue.isBlocking),
   );
+
+  bool _needsReview(Json field) => _reviewStatus(field).needsReview;
 
   @override
   Widget build(BuildContext context) {
@@ -252,27 +259,40 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
               }),
     };
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        if (fields.isEmpty)
-          const CaveatText(
-            label: 'No fields recorded yet.',
-            why: 'Required field checks have not run for this record.',
-          )
-        else ...<Widget>[
-          for (final entry in groups.entries)
-            if (entry.value.isNotEmpty) ...<Widget>[
-              _group(context, entry.key, entry.value),
-              SizedBox(height: context.ui.space.s3),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layout = UiLayoutMetrics.fromConstraints(
+          constraints,
+          textScaler: MediaQuery.textScalerOf(context),
+        );
+        final visibleGroups = groups.entries
+            .where((entry) => entry.value.isNotEmpty)
+            .toList();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            if (fields.isEmpty)
+              const CaveatText(
+                label: 'No fields recorded yet.',
+                why: 'Required field checks have not run for this record.',
+              )
+            else ...<Widget>[
+              for (final (index, entry) in visibleGroups.indexed) ...<Widget>[
+                if (index > 0) SizedBox(height: layout.groupGap),
+                _group(context, entry.key, entry.value),
+              ],
             ],
-        ],
-      ],
+          ],
+        );
+      },
     );
   }
 
   Widget _group(BuildContext context, String title, List<Json> fields) {
+    final statuses = fields.map(_reviewStatus).toList();
+    final review = statuses.where((status) => status.needsReview).length;
+    final missing = statuses.where((status) => status.isMissing).length;
     return Column(
       key: ValueKey<String>('field-group:$title'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -283,9 +303,21 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             context.ui.space.s3,
             0,
             context.ui.space.s3,
-            context.ui.space.s1,
+            context.ui.space.s4,
           ),
-          child: UiSectionHeader(title: title, role: UiSectionHeaderRole.card),
+          child: UiSectionHeader(
+            title: title,
+            role: UiSectionHeaderRole.section,
+            meta: Text(
+              '$review review · $missing missing',
+              key: ValueKey<String>('field-group-count:$title'),
+              style: context.ui.type.bodySmall.copyWith(
+                color: review > 0
+                    ? context.ui.color.ink
+                    : context.ui.color.inkSecondary,
+              ),
+            ),
+          ),
         ),
         for (final (index, field) in fields.indexed) ...<Widget>[
           _field(context, field),
@@ -358,19 +390,30 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
         .where((layer) => layers[layer] != null)
         .firstOrNull;
     final value = currentLayer == null ? null : layers[currentLayer];
-    // A supported value is the content, not a badge. Other states qualify
-    // the value explicitly, and a concrete issue stays visible before opening.
+    final reviewStatus = _reviewStatus(field);
+    // The value leads. Other states qualify it explicitly; detailed findings
+    // are disclosed with the evidence instead of repeating them in every row.
     final summary = <String>[
       if (state != SpecimenStatus.supported) state.label,
       ?value,
-      if (issues.isNotEmpty) issues.first.message,
       if (state == SpecimenStatus.supported && value == null)
-        'Supported, no value recorded',
+        'No value recorded',
     ].join(' · ');
     final authority = _authorityLine(field, pending);
     // A correction not yet saved is a person's decision, not the stored
     // value, so the stored value's basis is not drawn over it.
     final ValueBasis? basis = pending == null ? fieldValueBasis(field) : null;
+    // A stored settled layer is useful provenance even where the legacy
+    // record cannot establish a basis (notably parsed dates). It never means
+    // that the field passed review. Unknown explicit bases remain unknown.
+    final String? provenance =
+        basis?.label ??
+        (pending == null &&
+                value != null &&
+                field['basis'] == null &&
+                field['layer'] == 'settled'
+            ? 'Settled'
+            : null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -395,12 +438,22 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
           key: ValueKey<String>('field-row:${widget.specimen.id}:$key'),
           title: name,
           summary: summary,
+          metadata: provenance,
+          collapsedIcon: reviewStatus.isSettledValue ? UiIcons.check : null,
           hideSummaryWhenExpanded: true,
-          style: UiDisclosureStyle.value(ui),
+          style: UiDisclosureStyle.value(
+            ui,
+            subdued: !reviewStatus.needsReview,
+          ),
           semanticsLabel:
               '$name${field['required'] == true ? ', required' : ', optional'}. '
               '${state == SpecimenStatus.supported ? 'Supported. ' : ''}$summary'
-              '${basis == null ? '' : '. ${basis.semanticsLabel}'}',
+              '${reviewStatus.needsReview ? '. Review needed' : ''}'
+              '${basis != null
+                  ? '. ${basis.semanticsLabel}'
+                  : provenance == null
+                  ? ''
+                  : '. Layer: settled'}',
           onExpansionChanged: (expanded) {
             if (expanded) {
               widget.onFocusRegion?.call(_regionFor(field, pending));
@@ -414,13 +467,6 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
                 '${field['required'] == true ? 'Required field' : 'Optional field'} · ${state.label}',
                 style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
               ),
-              if (basis != null) ...<Widget>[
-                SizedBox(height: ui.space.s2),
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: valueBasisChip(basis),
-                ),
-              ],
               SizedBox(height: ui.space.s3),
               if (value != null) ...<Widget>[
                 Text(
@@ -468,7 +514,9 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
                   child: Text(
                     issue.message,
                     style: ui.type.bodySmall.copyWith(
-                      color: ui.color.status.needsReview.content,
+                      color: issue.isBlocking
+                          ? ui.color.status.needsReview.content
+                          : ui.color.inkSecondary,
                     ),
                   ),
                 ),

@@ -1,6 +1,7 @@
 // The queue row: keyed, hittable, and readable as one phrase.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/widgets/queue_row.dart';
@@ -219,7 +220,7 @@ void main() {
     }
   });
 
-  testWidgets('concise rows keep the issue and an absolute accessible time', (
+  testWidgets('concise rows show field counts and an absolute accessible time', (
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
@@ -234,17 +235,20 @@ void main() {
           status: SpecimenStatus.needsReview,
           concise: true,
           showStatus: false,
+          reviewCount: 3,
+          missingCount: 2,
           updatedAt: _updated,
           now: _now,
           onOpen: () {},
         ),
       ),
     );
-    expect(find.text('Two readings disagree on the locality'), findsOneWidget);
+    expect(find.text('3 fields to review · 2 missing'), findsOneWidget);
+    expect(find.text('Two readings disagree on the locality'), findsNothing);
     expect(
       find.bySemanticsLabel(
         RegExp(
-          r'FMNH-0001, Two readings disagree on the locality, updated 13 Sep 2026, 14:32 CDT',
+          r'FMNH-0001, 3 fields need review, 2 fields missing, updated 13 Sep 2026, 14:32 CDT',
         ),
       ),
       findsOneWidget,
@@ -276,6 +280,40 @@ void main() {
     expect(find.text('62'), findsNothing);
     expect(find.byType(RiskMeter), findsNothing);
     expect(find.text('Not measured'), findsNothing);
+    expect(find.textContaining('0 fields'), findsNothing);
+    expect(find.textContaining('0 missing'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('field metrics wrap completely beside selection at large text', (
+    tester,
+  ) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await pumpComponent(
+      tester,
+      SizedBox(
+        width: 180,
+        child: QueueRow(
+          id: 'fixture-counts',
+          title: 'FMNH-0001',
+          reason: 'A label needs another reading',
+          status: SpecimenStatus.needsReview,
+          concise: true,
+          showStatus: false,
+          reviewCount: 0,
+          missingCount: 12,
+          onOpen: () {},
+        ),
+      ),
+    );
+    final metrics = find.text('0 fields to review · 12 missing');
+    expect(metrics, findsOneWidget);
+    final paragraph = tester.renderObject<RenderParagraph>(metrics);
+    expect(paragraph.didExceedMaxLines, isFalse);
+    expect(paragraph.maxLines, isNull);
+    expect(find.textContaining('Cleared'), findsNothing);
+    expect(find.textContaining('Ready'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

@@ -10,12 +10,22 @@ import 'package:flutter/widgets.dart';
 
 import '../../foundation/icons.dart';
 
+/// Whether navigation shows every destination name or only the active one.
+/// Hidden labels remain available to assistive technology and in tooltips.
+enum UiNavigationLabels {
+  /// Every destination has a visible label.
+  all,
+
+  /// The active destination is named; the others show their icons.
+  selectedOnly,
+}
+
 /// A place the reviewer can navigate to.
 ///
 /// [label] is required rather than optional because not every navigation
 /// control draws it at every size: the pill never draws it and a collapsed
 /// rail does not either, so the label is the only thing a screen reader has
-/// (10 section 11, last rule). The tab bar always draws it.
+/// (10 section 11, last rule). Label visibility never changes its accessible name.
 @immutable
 class UiNavDestination {
   /// Binds a destination's words to its glyph.

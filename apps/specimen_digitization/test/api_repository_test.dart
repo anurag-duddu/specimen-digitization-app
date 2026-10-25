@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:specimen_digitization/src/api_repository.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/screens/workbench/blockers.dart';
 
 void main() {
   final fixture =
@@ -97,6 +98,42 @@ void main() {
       );
       expect(country['literal_value'], 'ILLINOIS');
       expect(country['resolved_value'], isNull);
+    },
+  );
+
+  test(
+    'real run provenance notes reach the field disclosure without gates',
+    () async {
+      final response =
+          jsonDecode(jsonEncode(fixture['workspace_response'])) as Json;
+      response['run'] = {
+        ...?response['run'] as Json?,
+        'findings': [
+          for (final code in ['transcript_literal', 'near_spelling'])
+            {'field_key': 'country', 'severity': 'info', 'reason_code': code},
+        ],
+      };
+      final repo = repository((request) async {
+        if (request.url.path.endsWith('/content')) {
+          return http.Response.bytes([1, 2, 3], 200);
+        }
+        return http.Response(jsonEncode(response), 200);
+      });
+      final specimen = await repo.specimen(scope, 'sample');
+      expect(
+        fieldNotesFor(specimen).map((note) => note.message),
+        containsAll([
+          'Read from the label transcript',
+          'Matched using a close spelling',
+        ]),
+      );
+      expect(
+        blockersFor(specimen).any(
+          (issue) =>
+              ['transcript_literal', 'near_spelling'].contains(issue.rawCode),
+        ),
+        isFalse,
+      );
     },
   );
 

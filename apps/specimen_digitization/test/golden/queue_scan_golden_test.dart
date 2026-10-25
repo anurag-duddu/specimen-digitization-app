@@ -1,5 +1,5 @@
 // Synthetic records with the production list payload shape. These captures
-// exercise scan rhythm and human-readable issues in the real app shell.
+// exercise scan rhythm and field attention counts in the real app shell.
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -84,8 +84,9 @@ void main() {
           expect(find.byType(StatusChip), findsNothing);
           expect(find.textContaining('Updated '), findsNothing);
           expect(find.textContaining('mandatory_unresolved'), findsNothing);
+          expect(find.text('2 fields to review · 3 missing'), findsWidgets);
           if (selected) {
-            await tester.tap(uiIconButton('Select specimens'));
+            await tester.tap(uiButton('Select'));
             await tester.pumpAndSettle();
             final checkbox = find
                 .descendant(
