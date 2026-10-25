@@ -278,6 +278,7 @@ class UiListRow extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
+    this.subtitleMaxLines = contentMaxLines,
     this.leading,
     this.trailing,
     this.size = UiSize.md,
@@ -295,8 +296,12 @@ class UiListRow extends StatelessWidget {
   /// The row's primary line, set in the body role with medium weight.
   final String title;
 
-  /// One supporting line under the title, up to two lines long.
+  /// Supporting content under the title, up to [subtitleMaxLines] lines.
   final String? subtitle;
+
+  /// Defaults to two lines. Null keeps essential supporting content complete
+  /// when a narrow column or large text needs additional lines.
+  final int? subtitleMaxLines;
 
   /// A 24 glyph, a 40 thumbnail or a checkbox the caller passes in.
   final Widget? leading;
@@ -566,8 +571,10 @@ class UiListRow extends StatelessWidget {
             style: style.subtitle.copyWith(
               color: style.subtitleColor.resolve(states),
             ),
-            maxLines: contentMaxLines,
-            overflow: TextOverflow.ellipsis,
+            maxLines: subtitleMaxLines,
+            overflow: subtitleMaxLines == null
+                ? TextOverflow.visible
+                : TextOverflow.ellipsis,
           ),
         ],
         if (under != null) ...<Widget>[

@@ -84,7 +84,10 @@ void main() {
     expect(find.text('#105526321'), findsWidgets);
     expect(find.text('United States'), findsOneWidget);
     expect(
-      find.text('Unknown · A supported collector is required'),
+      find.descendant(
+        of: uiDisclosure('Collectors'),
+        matching: find.text('Unknown'),
+      ),
       findsOneWidget,
     );
     expect(
@@ -93,7 +96,7 @@ void main() {
     );
     expect(
       tester.widget<UiDisclosure>(uiDisclosure('Collectors')).semanticsLabel,
-      'Collectors, required. Unknown · A supported collector is required',
+      'Collectors, required. Unknown. Review needed',
     );
     expect(find.text('As written'), findsNothing);
     expect(find.byType(ReaderHeading), findsNothing);

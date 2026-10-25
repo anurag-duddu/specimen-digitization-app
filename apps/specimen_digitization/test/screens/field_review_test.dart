@@ -148,12 +148,7 @@ void main() {
       expect(find.text('Elevation to (ft)'), findsOneWidget);
       expect(find.text('United States of America'), findsOneWidget);
       expect(find.text('304.8'), findsOneWidget);
-      expect(
-        find.text(
-          'Ambiguous · Chicago, Illinois · Two locality candidates remain',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('Ambiguous · Chicago, Illinois'), findsOneWidget);
       expect(find.text('Unknown'), findsOneWidget);
       expect(find.text('As written'), findsNothing);
       expect(find.text('U.S.A. · 304.8 m'), findsNothing);
@@ -165,7 +160,7 @@ void main() {
         tester
             .widget<UiDisclosure>(uiDisclosure('Elevation to (ft)'))
             .semanticsLabel,
-        'Elevation to (ft), optional. Unknown',
+        'Elevation to (ft), optional. Unknown. Review needed',
       );
       expect(find.text('Required field · Supported'), findsNothing);
       expect(uiIconButton(RegExp('^Edit ')), findsNothing);

@@ -3,6 +3,7 @@ library;
 
 import '../../models.dart';
 import '../../widgets/field_row.dart';
+import 'pending_changes.dart';
 
 /// Elevation endpoints retain the unit named by their schema field.
 String fieldReviewName(Json field) => switch (field['field_key']) {
@@ -103,13 +104,77 @@ int fieldReviewOrder(Json field) {
 
 /// A value's unresolved state is separate from whether it happens to contain
 /// text. Supported values with attached findings also need review.
-bool fieldNeedsReview(String? state, {bool hasIssues = false}) =>
+bool fieldNeedsReview(
+  String? state, {
+  bool hasIssues = false,
+  bool hasValue = true,
+  bool isPending = false,
+}) =>
+    isPending ||
     hasIssues ||
+    (state == 'supported' && !hasValue) ||
     !const <String>{
       'supported',
       'not_present',
       'not_applicable',
     }.contains(state);
+
+/// Presentation counts never change the record's clearance or lifecycle.
+///
+/// Missing is absence of a current value, including an explicit `not_present`
+/// decision. A policy-approved absence need not require review; consequently
+/// missing and review are independent counts and may overlap.
+class FieldReviewStatus {
+  const FieldReviewStatus({
+    required this.needsReview,
+    required this.isMissing,
+    required this.isSettledValue,
+  });
+
+  /// An unresolved state, empty supported value, finding or unsaved change.
+  final bool needsReview;
+
+  /// A missing current value, excluding fields explicitly not applicable.
+  final bool isMissing;
+
+  /// A supported, present value without findings or unsaved changes.
+  /// This is a review affordance, independent of the stored value's layer.
+  final bool isSettledValue;
+}
+
+/// Uses exactly the same value layers as the field row, highest layer first.
+/// Observation transcripts are evidence, not a substitute for a field value.
+FieldReviewStatus fieldReviewStatus(
+  Json field, {
+  bool hasIssues = false,
+  PendingFieldChange? pending,
+}) {
+  final state = pending?.state ?? field['state'] as String?;
+  final values = pending == null
+      ? <Object?>[
+          field['normalized'],
+          field['parsed_value'],
+          field['literal_value'],
+        ]
+      : pending.state == 'supported'
+      ? <Object?>[pending.normalized, pending.parsed, pending.literal]
+      : const <Object?>[];
+  final hasValue = values.any(
+    (value) => value is String && value.trim().isNotEmpty,
+  );
+  final needsReview = fieldNeedsReview(
+    state,
+    hasIssues: hasIssues,
+    hasValue: hasValue,
+    isPending: pending != null,
+  );
+  return FieldReviewStatus(
+    needsReview: needsReview,
+    isMissing:
+        state != 'not_applicable' && (state == 'not_present' || !hasValue),
+    isSettledValue: state == 'supported' && hasValue && !needsReview,
+  );
+}
 
 /// Keeps source wording, interpretation and normalization separate while a
 /// reviewer corrects geography. This guidance never supplies a missing value.

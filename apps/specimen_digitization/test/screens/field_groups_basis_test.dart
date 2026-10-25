@@ -130,7 +130,7 @@ const Map<String, String?> chipOf = {
   'Collectors': 'As written',
   'Habitat': 'Inferred',
   'Collection method': null,
-  'Date visited from': null,
+  'Date visited from': 'Settled',
   'Date visited to': 'Derived',
   'Date identified': null,
   'Verbatim D/T/S': null,
@@ -169,6 +169,7 @@ Future<void> show(
   Specimen? specimen,
   List<PendingFieldChange> pending = const [],
   Size size = const Size(900, 2600),
+  bool dark = false,
 }) => pumpComponent(
   tester,
   SingleChildScrollView(
@@ -181,6 +182,7 @@ Future<void> show(
     ),
   ),
   size: size,
+  theme: productThemes[dark ? 'dark' : 'light'],
 );
 
 Future<void> toggleField(WidgetTester tester, String name) async {
@@ -233,36 +235,36 @@ void main() {
     );
   });
 
-  testWidgets('each field discloses the basis its layer and values give', (
-    tester,
-  ) async {
-    await show(tester);
+  testWidgets(
+    'each field keeps compact provenance visible before and after expansion',
+    (tester) async {
+      await show(tester);
 
-    expect(find.byType(UiChip), findsNothing);
-    for (final entry in chipOf.entries) {
-      await toggleField(tester, entry.key);
-      final chips = find.descendant(
-        of: uiDisclosure(entry.key),
-        matching: find.byType(UiChip),
-      );
-      if (entry.value == null) {
-        expect(chips, findsNothing, reason: '${entry.key} has no chip');
-      } else {
-        expect(chips, findsOneWidget, reason: entry.key);
+      for (final entry in chipOf.entries) {
         expect(
-          find.descendant(
-            of: uiDisclosure(entry.key),
-            matching: uiChip(entry.value!),
-          ),
-          findsOneWidget,
-          reason: '${entry.key} reads ${entry.value}',
+          tester.widget<UiDisclosure>(uiDisclosure(entry.key)).metadata,
+          entry.value,
+          reason: entry.key,
         );
+        for (final expanded in [false, true]) {
+          if (expanded) await toggleField(tester, entry.key);
+          if (entry.value != null) {
+            expect(
+              find.descendant(
+                of: uiDisclosure(entry.key),
+                matching: find.text('· ${entry.value!}'),
+              ),
+              findsOneWidget,
+              reason: '${entry.key} provenance visible exactly once',
+            );
+          }
+        }
+        await toggleField(tester, entry.key);
       }
-      await toggleField(tester, entry.key);
-    }
-    expect(find.byType(UiChip), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.byType(UiChip), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('values lead while exceptional field states stay explicit', (
     tester,
@@ -276,6 +278,152 @@ void main() {
     expect(find.textContaining('to review'), findsNothing);
     expect(find.textContaining('Needs review'), findsNothing);
   });
+
+  testWidgets('section counts prioritize review and missing independently', (
+    tester,
+  ) async {
+    await show(tester);
+    for (final (group, summary) in [
+      ('IDs', '0 review · 0 missing'),
+      ('Collection', '5 review · 4 missing'),
+      ('Date', '2 review · 2 missing'),
+      ('Taxa', '1 review · 1 missing'),
+    ]) {
+      expect(
+        tester
+            .widget<Text>(find.byKey(ValueKey('field-group-count:$group')))
+            .data,
+        summary,
+      );
+    }
+    final country = tester.widget<UiDisclosure>(uiDisclosure('Country'));
+    final collectors = tester.widget<UiDisclosure>(uiDisclosure('Collectors'));
+    expect(country.collapsedIcon, UiIcons.check);
+    expect(collectors.collapsedIcon, isNull);
+    final ui = tester.element(uiDisclosure('Country')).ui;
+    expect(country.style!.summaryColor, ui.color.inkSecondary);
+    expect(collectors.style!.summaryColor, ui.color.ink);
+  });
+
+  testWidgets(
+    'findings, absent values and pending corrections never gain a completion check',
+    (tester) async {
+      await show(
+        tester,
+        specimen: Specimen({
+          'specimen_id': 'attention',
+          'regions': const [],
+          'validation_findings': [
+            {'field_key': 'country', 'reason_code': 'evidence_missing'},
+            {
+              'field_key': 'country',
+              'reason_code': 'mandatory_evidence_unresolved',
+            },
+          ],
+          'fields': [
+            _field('country', {
+              'state': 'supported',
+              'literal_value': 'Philippines',
+            }),
+            _field('city', {'state': 'not_present'}),
+            _field('county', {'state': 'not_applicable'}),
+            _field('province_state', {'state': 'supported'}),
+          ],
+        }),
+      );
+      expect(find.text('2 review · 2 missing'), findsOneWidget);
+      for (final name in ['Country', 'City', 'County', 'Province or state']) {
+        expect(
+          tester.widget<UiDisclosure>(uiDisclosure(name)).collapsedIcon,
+          isNull,
+        );
+      }
+      expect(find.textContaining('needs supporting evidence'), findsNothing);
+      await toggleField(tester, 'Country');
+      expect(find.textContaining('needs supporting evidence'), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'informational provenance stays visible in details without changing review counts',
+    (tester) async {
+      await show(
+        tester,
+        specimen: Specimen({
+          'specimen_id': 'contextual-notes',
+          'regions': const [],
+          'fields': [
+            _field('country', {
+              'state': 'supported',
+              'literal_value': 'Philippines',
+            }),
+          ],
+          'validation_findings': [
+            {
+              'field_key': 'country',
+              'severity': 'info',
+              'rule_id': 'transcript_literal',
+              'message': 'The label states P.I.',
+            },
+            {
+              'field_key': 'country',
+              'severity': 'warning',
+              'rule_id': 'normalization_note',
+              'message': 'Original punctuation is retained.',
+            },
+          ],
+        }),
+      );
+      expect(find.text('0 review · 0 missing'), findsOneWidget);
+      expect(
+        tester.widget<UiDisclosure>(uiDisclosure('Country')).collapsedIcon,
+        UiIcons.check,
+      );
+      await toggleField(tester, 'Country');
+      expect(find.text('The label states P.I.'), findsOneWidget);
+      expect(find.text('Original punctuation is retained.'), findsOneWidget);
+    },
+  );
+
+  for (final dark in [false, true]) {
+    testWidgets(
+      'all four groups remain readable at320px and200percent dark=$dark',
+      (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await show(tester, size: const Size(320, 9000), dark: dark);
+        for (final entry in chipOf.entries) {
+          final row = uiDisclosure(entry.key);
+          if (entry.value != null) {
+            final metadata = find.descendant(
+              of: row,
+              matching: find.text('· ${entry.value}'),
+            );
+            expect(
+              tester.renderObject<RenderParagraph>(metadata).didExceedMaxLines,
+              isFalse,
+            );
+          }
+        }
+        expect(tester.takeException(), isNull);
+        await expectAccessible(tester);
+      },
+    );
+  }
+
+  for (final (width, gap) in [(390.0, 32.0), (900.0, 48.0)]) {
+    testWidgets('field groups keep a clear section break at $width', (
+      tester,
+    ) async {
+      await show(tester, size: Size(width, 9000));
+      final ids = find.byKey(const ValueKey('field-group:IDs'));
+      final collection = find.byKey(const ValueKey('field-group:Collection'));
+      expect(
+        tester.getTopLeft(collection).dy - tester.getBottomLeft(ids).dy,
+        gap,
+      );
+    });
+  }
 
   testWidgets('a screen reader hears the basis with the row', (tester) async {
     final handle = tester.ensureSemantics();
@@ -339,7 +487,13 @@ void main() {
     expect(find.byType(UiChip), findsNothing);
     expect(find.textContaining('Not saved yet:'), findsOneWidget);
     await toggleField(tester, 'Habitat');
-    expect(uiChip('Inferred'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: uiDisclosure('Habitat'),
+        matching: find.text('· Inferred'),
+      ),
+      findsOneWidget,
+    );
   });
 
   /// How much of [name]'s title the row draws, against what it needs.
@@ -401,28 +555,32 @@ void main() {
     });
   }
 
-  testWidgets('basis stays in the details at normal and enlarged text', (
-    tester,
-  ) async {
-    for (final scale in [1.0, 2.0]) {
-      tester.platformDispatcher.textScaleFactorTestValue = scale;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      await tester.pumpWidget(const SizedBox.shrink());
-      await show(tester, size: const Size(390, 9000));
-      expect(uiChip('Derived'), findsNothing);
-      await toggleField(tester, 'Country');
-      final chip = find.descendant(
-        of: uiDisclosure('Country'),
-        matching: uiChip('Derived'),
-      );
-      expect(chip, findsOneWidget);
-      expect(
-        tester.getTopLeft(chip).dy,
-        greaterThan(tester.getBottomLeft(find.text('Country')).dy),
-      );
-      expect(tester.takeException(), isNull);
-    }
-  });
+  testWidgets(
+    'basis stays visible without crowding the value at enlarged text',
+    (tester) async {
+      for (final scale in [1.0, 2.0]) {
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.pumpWidget(const SizedBox.shrink());
+        await show(tester, size: const Size(390, 9000));
+        expect(
+          tester.widget<UiDisclosure>(uiDisclosure('Country')).metadata,
+          'Derived',
+        );
+        await toggleField(tester, 'Country');
+        final chip = find.descendant(
+          of: uiDisclosure('Country'),
+          matching: find.text('· Derived'),
+        );
+        expect(chip, findsOneWidget);
+        expect(
+          tester.getTopLeft(chip).dy,
+          greaterThanOrEqualTo(tester.getTopLeft(find.text('Country')).dy),
+        );
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
 
   testWidgets('a narrow window at double text size leaves no overflow', (
     tester,
@@ -433,7 +591,13 @@ void main() {
 
     expect(find.byType(UiChip), findsNothing);
     await toggleField(tester, 'Province or state');
-    expect(uiChip('As written'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: uiDisclosure('Province or state'),
+        matching: find.text('· As written'),
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
 

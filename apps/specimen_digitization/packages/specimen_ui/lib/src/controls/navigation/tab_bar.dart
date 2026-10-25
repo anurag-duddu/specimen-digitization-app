@@ -170,7 +170,8 @@ class UiTabBarStyle {
 ///
 /// Each of two to five destinations is an equal cell and the whole cell is
 /// the hit target. A cell stacks the destination's glyph over its label,
-/// which is always drawn: the glyph is `regular` and `ink.secondary`, and the
+/// which can be reserved for the selected destination through [labels]. The
+/// glyph is `regular` and `ink.secondary`, and the
 /// current destination is `fill` and `ink`, cross-fading over the navigation
 /// motion token (09 section 8). Labels are `label.small`, sentence case, one
 /// line, and the bar grows with the reviewer's text size.
@@ -200,6 +201,7 @@ class UiTabBar extends StatelessWidget {
     required this.currentIndex,
     required this.onSelect,
     this.iconKeyOf,
+    this.labels = UiNavigationLabels.all,
   });
 
   /// The destinations, in order. Two to five.
@@ -219,6 +221,9 @@ class UiTabBar extends StatelessWidget {
   /// The shell uses it so a test and an integration selector can find the
   /// glyph, and measure it, without the bar knowing anything about either.
   final Key? Function(int index)? iconKeyOf;
+
+  /// The current name remains visible when other destinations show only icons.
+  final UiNavigationLabels labels;
 
   /// The fewest destinations a bar may hold.
   ///
@@ -275,6 +280,7 @@ class UiTabBar extends StatelessWidget {
             style: style,
             ui: ui,
             current: i == current,
+            showLabel: labels == UiNavigationLabels.all || i == current,
             focusNode: nodes[i],
             iconKey: iconKeyOf?.call(i),
             onPressed: () => onSelect(i),
@@ -415,6 +421,7 @@ class _TabCell extends StatelessWidget {
     required this.style,
     required this.ui,
     required this.current,
+    required this.showLabel,
     required this.focusNode,
     required this.onPressed,
     this.iconKey,
@@ -424,6 +431,7 @@ class _TabCell extends StatelessWidget {
   final UiTabBarStyle style;
   final UiThemeData ui;
   final bool current;
+  final bool showLabel;
   final FocusNode focusNode;
   final VoidCallback onPressed;
   final Key? iconKey;
@@ -485,17 +493,18 @@ class _TabCell extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   Expanded(child: Center(child: glyph)),
-                  AnimatedDefaultTextStyle(
-                    style: style.label.copyWith(
-                      color: current ? style.current : style.rest,
+                  if (showLabel)
+                    AnimatedDefaultTextStyle(
+                      style: style.label.copyWith(
+                        color: current ? style.current : style.rest,
+                      ),
+                      duration: style.crossFade,
+                      curve: style.curve,
+                      child: UiLabel(
+                        destination.label,
+                        textAlign: TextAlign.center,
+                      ),
                     ),
-                    duration: style.crossFade,
-                    curve: style.curve,
-                    child: UiLabel(
-                      destination.label,
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -524,7 +533,7 @@ class _TabCell extends StatelessWidget {
         final bool cut =
             measureLabel(context, destination.label, style.label).width >
             constraints.maxWidth;
-        if (!cut) return cell;
+        if (!cut && showLabel) return cell;
         return MergeSemantics(
           child: UiTooltip(
             message: destination.label,

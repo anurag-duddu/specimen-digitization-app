@@ -1310,7 +1310,14 @@ class ApiSpecimenRepository
           'resolved_value': resolvedValue,
         };
       }).toList(),
-      'validation_findings': objects(result['validations']),
+      'validation_findings': [
+        ...objects(result['validations']),
+        // Run findings are retained context, not clearance gates. Keep their
+        // severity so field disclosures can explain how a value was settled.
+        ...objects(run['findings']).where(
+          (finding) => const {'warning', 'info'}.contains(finding['severity']),
+        ),
+      ],
       'audit_events': objects(
         result['events'],
       ).map((e) => <String, dynamic>{...e, 'actor_id': e['actor']}).toList(),

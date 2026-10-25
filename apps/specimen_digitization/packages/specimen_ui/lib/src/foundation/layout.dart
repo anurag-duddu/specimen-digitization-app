@@ -72,6 +72,13 @@ class UiLayoutMetrics {
   /// Space between independent content sections.
   double get sectionGap => 24;
 
+  /// Separation between long, independently scanned groups of values.
+  ///
+  /// Two or three related-group gaps make a new section clear without adding
+  /// a surface or border. Narrow panes use the compact rhythm independently
+  /// of the width of the application window.
+  double get groupGap => width < 2 * minColumnWidth ? 32 : 48;
+
   /// Available content after the two outer gutters.
   double get contentWidth => math.max(0, width - 2 * gutter);
 
