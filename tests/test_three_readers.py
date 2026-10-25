@@ -1,7 +1,7 @@
 """Three readers of each label (the NVIDIA option's reader C, Nemotron).
 
-The reading pipeline works for two or more readers: every pair of a label's
-readings is compared, a label resolves only when every reading agrees, and
+The reading pipeline works for two to eight readers (a profile names at most
+eight, the label risk budget): every pair of a label's readings is compared, a label resolves only when every reading agrees, and
 readings that differ go to the first pass, which sees every reading
 (docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md sections 1 and 2).
 """

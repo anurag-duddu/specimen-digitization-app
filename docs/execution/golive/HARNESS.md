@@ -40,8 +40,11 @@ records its decision.
 the numbered differences between the readings from a deterministic token
 alignment; a difference in whitespace alone is not listed. Readers appear as
 Reader A, B, … in the profile's route order, never by model or route name.
-Two or more readings are taken, at most 26 (one letter each; more block as
-`first_pass_reading_count_unsupported`). With more than two, each later
+Two or more readings are taken. The first pass itself letters up to 26
+readers (one letter each; more block as `first_pass_reading_count_unsupported`),
+but a profile may name at most 8 readers, the label risk budget
+(`review_risk.MAX_LABEL_READINGS`, enforced when the profile is validated), so
+a label never has more than 8 readings. With more than two, each later
 reading is aligned with the first as two readings are, and each listed
 difference gives one span per reader, an empty one at the right offset where
 a reader has nothing there (`first_pass.reading_differences_among`; the

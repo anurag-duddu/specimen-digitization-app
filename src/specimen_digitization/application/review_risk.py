@@ -400,6 +400,13 @@ def assess_risk(
     )
 
 
+# The most readings of one label the risk measure takes. Every pair of them is
+# compared, so the pair budget follows from the reading budget. A profile
+# names at most this many readers (collection_profiles.CollectionProfile).
+MAX_LABEL_READINGS = 8
+MAX_LABEL_PAIRS = MAX_LABEL_READINGS * (MAX_LABEL_READINGS - 1) // 2
+
+
 def label_review_risk(
     region_id: str,
     observation_ids: tuple[str, ...],
@@ -414,9 +421,9 @@ def label_review_risk(
     from .reading_evidence import reading_risk_evidence
 
     if (
-        len(observation_ids) > 8
-        or len(alignments) > 28
-        or len(metadata) > 8
+        len(observation_ids) > MAX_LABEL_READINGS
+        or len(alignments) > MAX_LABEL_PAIRS
+        or len(metadata) > MAX_LABEL_READINGS
         or len(additional_signals) > 100
     ):
         raise ValueError("Label risk input budget exceeded")

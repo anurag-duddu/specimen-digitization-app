@@ -253,7 +253,9 @@ def build_request(
     readings: list[Observation], differences: list[tuple[ReadingSpan, ...]]
 ) -> tuple[str, dict[str, Observation]]:
     """The user message: readers by letter only (A, B, C ...), their raw texts,
-    the differences with one span per reader."""
+    the differences with one span per reader. The letters run to Z, so the
+    message can name 26 readers; a profile names at most 8
+    (review_risk.MAX_LABEL_READINGS), the budget of the label risk measure."""
     letters = dict(zip(string.ascii_uppercase, readings))
     lines = [_PREAMBLE, ""]
     for letter, reading in letters.items():
@@ -395,7 +397,9 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
     if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
         raise OperationalBlock("provider_data_policy_and_spending_approval_required")
     if not 2 <= len(readings) <= len(string.ascii_uppercase):
-        # Two or more readings, one reader letter each (build_request).
+        # Two or more readings, one reader letter each (build_request): this
+        # call could letter 26. A profile names at most 8 readers, so a label
+        # never has more (review_risk.MAX_LABEL_READINGS).
         raise OperationalBlock("first_pass_reading_count_unsupported")
     run = specimen.run
     routes = [reading.route_id for reading in readings]

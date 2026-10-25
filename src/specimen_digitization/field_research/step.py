@@ -2060,9 +2060,9 @@ def _country_alternatives_are_lower_places(run, task, outcome, *, readings, rece
 
     Two kinds of alternative hold nothing back (the third rerun of 2026-10-18):
     - text that stands on no reading a field may settle on
-      (agreement.set_aside): a decided label's other reader's text its
-      decided reading does not write (G19), or text the two readers of a
-      label with no decided transcript dispute, the other reader writing
+      (agreement.set_aside): the text of a decided label's other readers that
+      its decided reading does not write (G19), or text the readers of a
+      label with no decided transcript dispute, each other reader writing
       another field's text at that very point (`claimed`, _claimed_texts).
       d10333ff's label 3, a determination label whose first pass reached its
       token cap in one run and chose no reading in the next two, has 3A

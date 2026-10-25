@@ -12,8 +12,8 @@ change, it is just one more in the readers. the LLM that consolidates before
 it gives to harness given the same but this time works with 3, and raw of 3
 are available. Ideally this can be n so its a small logic update." The
 readers stage now adds Nemotron as a third reader, C, instead of replacing
-Qwen, and the reading pipeline takes any number of readers from two up
-(section 1, "Three readers, and any number").
+Qwen, and the reading pipeline takes from two readers up to eight, the most a
+profile may name (section 1, "Three readers, and up to eight").
 
 This document covers what the option is, how it is switched, what it
 changes in the backend and the app, and what was measured. The plain-language
@@ -67,9 +67,9 @@ Checked 2026-10-18 (full research: section 9).
   than Muse plus Qwen); since 2026-10-25 it is reader C, beside both
   (section 7, "Three readers").
 
-### Three readers, and any number
+### Three readers, and up to eight
 
-The reading pipeline takes two or more readers; nothing in it is specific to
+The reading pipeline takes two to eight readers; nothing in it is specific to
 three. Tests: `tests/test_three_readers.py`, `tests/test_first_pass.py`,
 `tests/test_reading_evidence.py`, `tests/test_projection.py`.
 
@@ -101,7 +101,12 @@ three. Tests: `tests/test_three_readers.py`, `tests/test_first_pass.py`,
   comparison artifact (`/disagreements/{region}`), which keeps the reported
   pair's fields and adds `comparisons` with every pair. Two-reading records
   keep their shape.
-- The first pass names readers A to Z, so it takes at most 26 readings.
+- A profile may name at most 8 readers, the label risk budget
+  (`review_risk.MAX_LABEL_READINGS`): every pair of a label's readings is
+  scored, and that measure takes 8 readings and 28 pairs. The profile is
+  refused at validation when it names more. The first pass itself letters
+  readers A to Z and could take 26 readings, but the profile limit is the one
+  that holds.
 
 ## 2. The switch
 
@@ -259,7 +264,7 @@ different infrastructure. With a stage on:
 Baseten is the only provider of this model on Hugging Face. That is the
 main operational risk of the option. As reader C, a Nemotron reading that
 fails leaves its label with Qwen's and Muse's readings, compared as a pair
-(section 1, "Three readers, and any number").
+(section 1, "Three readers, and up to eight").
 
 ## 6. Provenance, audit and the app
 
@@ -359,7 +364,9 @@ reader, outside this option.
 
 Re-scored offline on 2026-10-25 from the same 45 readings per reader, with
 the measurement folder's own scoring (`label_facts.score`); no new calls. The
-re-score reproduces the pair figures above exactly. A fact slot is one of
+script is `triple_analysis.py` in the same measurement folder (run
+`python3 -I -B triple_analysis.py` from it; it prints these figures and
+reproduces the pair figures above exactly). A fact slot is one of
 the 98 facts in one of the 3 repeats: 294 slots, 225 of them key facts. A
 failed call misses every fact of its crop.
 
@@ -489,9 +496,9 @@ need no code change.
   (`nemotron-research.md` in the measurement folder of section 7).
 - Route surface map (2026-10-18): every file the option touches
   (`route-surface-map.md`, same folder).
-- Three-reader re-score (2026-10-25): an offline script over that folder's
-  `readers_full.json` and `label_facts.py` (section 7, "Three readers"); the
-  script is not in the repository.
+- Three-reader re-score (2026-10-25): `triple_analysis.py` in that folder, an
+  offline script over its `readers_full.json` and `label_facts.py` (section 7,
+  "Three readers"); the script and its data stay outside the repository.
 - Model card: https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4
 - Provider mapping: https://huggingface.co/api/models/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4?expand[]=inferenceProviderMapping
 - Router catalog and prices: https://router.huggingface.co/v1/models
