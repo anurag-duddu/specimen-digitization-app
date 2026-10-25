@@ -230,8 +230,7 @@ def first_pass_advice(run, named: Mapping[str, object]) -> dict[str, FirstPassAd
     A reader with no text is not among the readings, so it is left out. A
     label whose transcript a person decided (Transcript.actor) gets no first
     pass opinion, only `person_decided` and its decided reading: a person's
-    reading of the image binds as an image-confirmed pick does
-    (agreement.confirmed_against_image)."""
+    reading of the image binds the label's text (agreement.labels)."""
     found: dict[str, FirstPassAdvice] = {}
     for transcript in getattr(run, "transcripts", None) or ():
         names: dict[str, str] = {}

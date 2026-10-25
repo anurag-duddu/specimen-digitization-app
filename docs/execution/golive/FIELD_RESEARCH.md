@@ -900,8 +900,11 @@ handover runs field research instead of the six specialists:
      difference's verdict supports it, so with a pick a recorded verdict
      always names it where the readers' texts differ: in practice another
      label and a near spelling settle only labels the first pass preferred no
-     reader of. A label whose transcript a person decided counts as
-     confirmed everywhere (`FirstPassAdvice.person_decided`). Else a label whose first pass preferred a reader settles on
+     reader of. A transcript a person decided (`Transcript.actor`) binds its
+     label's text, with no other reader's text overriding it, not even on a
+     source's exact match, because the person saw the image (the
+     coordinator's ruling of 2026-10-25; lookups still work on the person's
+     text). Else a label whose first pass preferred a reader settles on
      that reader's one candidate literal, or, when that reader has several
      texts for the field (the organiser's, and the answer's text read from
      the transcript: 48a71d53's "Mindanao," and "Davao Prov."), only through

@@ -452,3 +452,50 @@ def test_with_no_first_pass_readers_that_differ_still_go_to_review(tmp_path):
     code = run.fields["collection_code"]
     assert (code.state, code.literal, code.reason) == (ValueState.AMBIGUOUS, None, agreement.DIFFER + " Settled.")
     assert first_pass_findings(run) == []
+
+
+@pytest.mark.parametrize(("literal", "reading", "value", "settles"), [
+    ("Chimaltenago", "1A", "Chimaltenango", True), ("Chimaltenango", "1B", None, False)])
+def test_a_person_decided_transcript_binds_its_label_against_an_exact_source_match(tmp_path, literal, reading,
+        value, settles):
+    """A reviewer transcribed label 1 as 1A's "Chimaltenago"; reader 1B wrote
+    "Chimaltenango", which Getty TGN confirms by its own name, finding
+    nothing for "Chimaltenago". The person saw the image, so the label's
+    text stays theirs, whatever the sources say (the coordinator's ruling of
+    2026-10-25): the value still normalises to TGN's department through the
+    one-letter near spelling of the person's own text, inside the settled
+    country, while 1B's text, an exact match, is refused. No first pass
+    opinion reaches the experts for such a label."""
+    first, second = (label_with(**GUATEMALAN, province_state=name) for name in ("Chimaltenago", "Chimaltenango"))
+    rig = build_rig(tmp_path, first, second, candidates=[*COLLECTORS,
+        *(("country", name, "Guatemala", "country: Guatemala") for name in ("1A", "1B")),
+        ("province_state", "1A", "Chimaltenago", "province_state: Chimaltenago"),
+        ("province_state", "1B", "Chimaltenango", "province_state: Chimaltenango")])
+    run = rig.specimen.run
+    [transcript] = run.transcripts
+    reader_a = run.observations[0]
+    run.transcripts[0] = transcript.model_copy(update={"text": reader_a.literal_text, "resolved": True,
+        "selected_observation_id": reader_a.id, "actor": "reviewer@example.org",
+        "reason": "The label reads Chimaltenago."})
+    readings = field_step.run_readings(run)
+    assert [(r.name, r.input_source, r.first_pass.person_decided) for r in readings] == [
+        ("1A", "decided_transcript", True), ("1B", "raw_reading", True)]
+    [task] = [task for task in field_step.build_tasks(run)[1] if task.key == "collection_code"]
+    document = json.loads(experts._Expert(task, readings, SimpleNamespace(sources=()), None).prompt({})
+        .removeprefix(INPUT_PREFIX))
+    assert "first_pass" not in document
+
+    async def province(task, readings, tools):
+        found = await tools.lookup("tgn", "Chimaltenango", field_key=task.key)
+        missing = await tools.lookup("tgn", "Chimaltenago", field_key=task.key)
+        return FieldOutcome(task.key, resolved(literal, reading=reading, value=value, authority_id="tgn:1000565",
+            cited=[found.evidence.id]), evidence=[found.evidence, missing.evidence], model_calls=1)
+    settle(rig, guatemalan(province_state=province), tools=Gazetteer(rig.blobs))
+    place = run.fields["province_state"]
+    if settles:
+        assert (place.state, place.literal, place.normalized, place.authority_id) == (
+            ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango", "tgn:1000565")
+        assert "near_spelling:province_state" in [f.reason_code for f in run.findings]
+        return
+    assert (place.state, place.literal) == (ValueState.AMBIGUOUS, None)
+    assert place.reason.startswith(agreement.DIFFER)

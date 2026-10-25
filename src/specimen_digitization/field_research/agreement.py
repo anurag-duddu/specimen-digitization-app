@@ -1289,16 +1289,14 @@ def confirmed_against_image(preferred: Reading, readers: Sequence[Reading], text
     one of `readers` (the other readers whose texts for the field, in
     `literals`, are `text`, letter case and spacing aside) overlaps a place
     where that reader writes it (an empty span: one at or inside it), and
-    whose verdict confirms the preferred reader (_confirms). A label whose
-    transcript a person decided (FirstPassAdvice.person_decided) is confirmed
-    everywhere. No first pass, no difference there, or a verdict of neither
-    or uncertain: not confirmed (the coordinator's decision of 2026-10-25 on
-    #414's review)."""
+    whose verdict confirms the preferred reader (_confirms). No first pass,
+    no difference there, or a verdict of neither or uncertain: not confirmed
+    (the coordinator's decision of 2026-10-25 on #414's review). A label
+    whose transcript a person decided never gets here: labels holds it to
+    the person's text."""
     advice = preferred.first_pass
     if advice is None:
         return False
-    if getattr(advice, "person_decided", False):
-        return True
     want = agreement_key(text)
     for reader in readers:
         if reader is preferred:
@@ -1366,6 +1364,11 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
       part, unless the answer names one of its readers (`named`): then it
       settles only on a source, a near spelling or another label, as above;
     - any other label does not settle.
+    A label whose transcript a person decided (FirstPassAdvice.person_decided)
+    is bound to that reading: it settles only on readers that agree or on the
+    person's text (BY_FIRST_PASS), never on another reader's, whatever the
+    sources say, as the person saw the image (the coordinator's ruling of
+    2026-10-25); lookups still work on the person's text.
     A source's exact confirmation (BY_SOURCE) settles against the first
     pass's preference anywhere. A near spelling or another label settles
     against it too, except where the first pass judged the image at that
@@ -1428,6 +1431,7 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
     for region, group in regions.items():
         preferred = next((r for r in group if r.input_source == DECIDED), None)
         mine = frozenset(literals.get(preferred.name, ())) if preferred is not None else frozenset()
+        bound = preferred is not None and preferred.first_pass is not None and preferred.first_pass.person_decided
         each = [frozenset(literals.get(r.name, ())) for r in group]
         texts = frozenset().union(*each)
         if not texts or (preferred is not None and not mine and region not in answered):
@@ -1460,6 +1464,10 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
             speller, own = (preferred, mine) if preferred is not None and mine else (group[0], each[0])
             found[region] = Label(texts, frozenset({_spelling(task, speller.name, own)}), basis=BY_AGREEMENT)
             continue
+        if bound:
+            # A person's transcript: no other reader's text overrides it.
+            waiting[region] = (texts, preferred, mine)
+            continue
         confirmed = {text: identities(answers, text, task.key) for text in texts} if sourced else {}
         if sourced and (label := _by_source(task, texts, texts, answers)) is not None:
             preference = _preference(label.settled, preferred, mine)
@@ -1480,7 +1488,8 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
     written = {agreement_key(text) for region, label in found.items() if label.basis == BY_AGREEMENT
         and len({r.observation_id for r in regions[region]}) >= MIN_BACKING_READERS for text in label.settled}
     for region, (texts, preferred, mine) in waiting.items():
-        backed = frozenset(text for text in texts if agreement_key(text) in written)
+        bound = preferred is not None and preferred.first_pass is not None and preferred.first_pass.person_decided
+        backed = frozenset() if bound else frozenset(text for text in texts if agreement_key(text) in written)
         if backed and len({agreement_key(text) for text in backed}) == 1:
             preference = _preference(backed, preferred, mine)
             if preference == OVERRIDDEN and confirmed_against_image(preferred, regions[region], next(iter(backed)),

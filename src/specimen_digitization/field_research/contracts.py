@@ -108,9 +108,9 @@ class FirstPassAdvice:
     offsets of each reader's text there, which the agreement rules read
     (agreement.confirmed_against_image) and the experts are not sent. With
     `person_decided`, a person decided the label's transcript
-    (Transcript.actor): its decided reading is then confirmed everywhere, as
-    an image-confirmed pick is, and the experts are not sent it as the first
-    pass's opinion."""
+    (Transcript.actor): its decided reading then binds the label's text, as
+    the person saw the image (agreement.labels), and the experts are not
+    sent it as the first pass's opinion."""
 
     preferred: str | None
     rationale: str
