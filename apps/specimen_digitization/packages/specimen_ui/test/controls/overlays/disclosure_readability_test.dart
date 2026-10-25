@@ -7,6 +7,62 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../../harness/control_contract.dart';
 
 void main() {
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'value metadata and completion stay readable in $brightness at ${scale}x',
+        (tester) async {
+          tester.view.physicalSize = const Size(320, 900);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final handle = tester.ensureSemantics();
+          await tester.pumpWidget(
+            uiHarness(
+              brightness: brightness,
+              size: const Size(320, 900),
+              textScaler: TextScaler.linear(scale),
+              child: Builder(
+                builder: (context) => UiDisclosure(
+                  title: 'Province or state',
+                  summary: 'Davao',
+                  metadata: 'As written',
+                  collapsedIcon: UiIcons.check,
+                  style: UiDisclosureStyle.value(context.ui, subdued: true),
+                  child: const Text('Retained evidence'),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.bySemanticsLabel('Province or state. Davao. As written'),
+            findsOneWidget,
+          );
+          expect(
+            tester.widget<UiIcon>(find.byType(UiIcon)).spec,
+            UiIcons.check,
+          );
+          for (final text in ['Province or state', 'Davao', '· As written']) {
+            final paragraph = tester.renderObject<RenderParagraph>(
+              find.text(text),
+            );
+            expect(paragraph.didExceedMaxLines, isFalse);
+          }
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+          await tester.pumpAndSettle();
+          expect(find.text('Retained evidence'), findsOneWidget);
+          expect(find.text('· As written'), findsOneWidget);
+          expect(
+            tester.widget<UiIcon>(find.byType(UiIcon)).spec,
+            UiIcons.expand,
+          );
+          expect(tester.takeException(), isNull);
+          handle.dispose();
+        },
+      );
+    }
+  }
   for (final scale in [1.0, 2.0]) {
     for (final direction in TextDirection.values) {
       for (final withChip in [false, true]) {

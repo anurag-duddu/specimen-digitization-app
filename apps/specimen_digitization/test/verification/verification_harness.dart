@@ -224,7 +224,7 @@ Future<void> chooseDeferredQueue(WidgetTester tester) async {
   await pickSpecimenQueue(tester, 'Deferred');
   final control = find.byKey(const ValueKey<String>('queue-view'));
   expect(control.hitTestable(), findsOneWidget);
-  expect(tester.widget<UiSegmented<String>>(control).value, 'deferred');
+  expect(tester.widget<UiViewTabs<String>>(control).value, 'deferred');
 }
 
 /// The pixels currently under [verificationBoundary].

@@ -231,10 +231,10 @@ class SelectableRow extends StatelessWidget {
 
 /// The bar that states how many records are selected and what can be done.
 ///
-/// A `glass.floating` capsule anchored the way the toast layer is: the count
-/// has to stay visible while the reviewer scrolls the thing they are counting,
-/// and a band welded across the window would take a row's worth of the list
-/// with it at every width.
+/// The count stays visible while the list scrolls. Fixed footers use the compact
+/// count-and-action layout: Done ends selection, the primary remains visible,
+/// and the shared decision bar moves secondary commands into its named menu.
+/// Hosts can still request a separate pane for an inline selection surface.
 class SelectionBar extends StatelessWidget {
   const SelectionBar({
     super.key,
@@ -251,6 +251,10 @@ class SelectionBar extends StatelessWidget {
     this.pane = true,
     this.selectionLimit,
     this.actionReasons = const <String, String>{},
+    this.compact = false,
+    this.status,
+    this.primaryAction,
+    this.onDetails,
   });
 
   /// How many records are selected.
@@ -296,6 +300,20 @@ class SelectionBar extends StatelessWidget {
   final int? selectionLimit;
   final Map<String, String> actionReasons;
 
+  /// A fixed footer uses a count row and the shared adaptive decision bar.
+  /// Secondary controls move into its named overflow instead of hiding below
+  /// a scrolling footer at larger text sizes.
+  final bool compact;
+
+  /// Concise exceptional state, such as no permitted actions on this selection.
+  final String? status;
+
+  /// A contextual primary, such as checking or retrying current permissions.
+  final UiButton? primaryAction;
+
+  /// Opens supporting eligibility and scope details without crowding actions.
+  final VoidCallback? onDetails;
+
   /// The two words the select all control uses, fixed so the label and the
   /// sentence under it cannot drift apart.
   static const String selectAllLabel = 'Select all loaded';
@@ -328,7 +346,7 @@ class SelectionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final Widget content = _content(ui);
+    final Widget content = compact ? _compact(ui) : _content(ui);
     if (!pane) return content;
     return SafeArea(
       top: false,
@@ -358,6 +376,84 @@ class SelectionBar extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _compact(UiThemeData ui) {
+    final firstEnabled = actions
+        .where((action) => action.onPressed != null)
+        .firstOrNull;
+    final main = primaryAction == null && actions.isNotEmpty
+        ? firstEnabled ?? actions.first
+        : null;
+    UiButton button(SelectionAction action) => UiButton(
+      label: action.label,
+      onPressed: busy ? null : action.onPressed,
+      disabledReason: busy ? _busyReason : actionReasons[action.label],
+    );
+    final remaining = [
+      for (final action in actions)
+        if (action != main) button(action),
+    ];
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _summary(ui),
+                  if (status != null || (allLoadedSelected && moreToLoad)) ...[
+                    SizedBox(height: ui.space.s1),
+                    Text(
+                      status ?? 'Loaded records only',
+                      style: ui.type.bodySmall.copyWith(
+                        color: ui.color.inkSecondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            SizedBox(width: ui.space.s2),
+            UiButton(
+              label: 'Done',
+              semanticsLabel: 'Done selecting',
+              variant: UiButtonVariant.ghost,
+              onPressed: busy ? null : onClear,
+              disabledReason: busy ? _busyReason : null,
+            ),
+          ],
+        ),
+        if (primaryAction != null || main != null) ...[
+          SizedBox(height: ui.space.s1),
+          UiDecisionBar(
+            primary: primaryAction ?? button(main!),
+            secondary: remaining.firstOrNull,
+            overflowLabel: 'More selection actions',
+            tertiary: [
+              UiButton(
+                label: selectionLimit != null && loadedCount > selectionLimit!
+                    ? 'Select first $selectionLimit loaded'
+                    : selectAllLabel,
+                onPressed: busy || allLoadedSelected ? null : onSelectAllLoaded,
+                disabledReason: busy
+                    ? _busyReason
+                    : allLoadedSelected
+                    ? 'All loaded records are already selected.'
+                    : null,
+              ),
+              if (onDetails != null)
+                UiButton(label: 'Selection details', onPressed: onDetails),
+              ...remaining.skip(1),
+            ],
+          ),
+        ],
+      ],
     );
   }
 

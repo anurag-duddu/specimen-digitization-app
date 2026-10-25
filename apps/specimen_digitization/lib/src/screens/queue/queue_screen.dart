@@ -580,23 +580,15 @@ class _QueuePaneState extends State<QueuePane> {
                     children: [
                       Expanded(child: _body(context, controller)),
                       if (_selection.isNotEmpty)
-                        ConstrainedBox(
+                        _QueueSelectionBar(
                           key: const ValueKey('queue-selection-footer'),
-                          constraints: BoxConstraints(
-                            maxHeight: constraints.maxHeight * .4,
-                          ),
-                          child: SingleChildScrollView(
-                            child: _QueueSelectionBar(
-                              selection: _selection,
-                              eligibility: _eligibility,
-                              checking: _checkingDecision,
-                              onRetry: () => setState(
-                                () => _refreshEligibility(force: true),
-                              ),
-                              onDecide: (kind) =>
-                                  unawaited(_decideOnSelection(kind)),
-                            ),
-                          ),
+                          selection: _selection,
+                          eligibility: _eligibility,
+                          checking: _checkingDecision,
+                          onRetry: () =>
+                              setState(() => _refreshEligibility(force: true)),
+                          onDecide: (kind) =>
+                              unawaited(_decideOnSelection(kind)),
                         ),
                     ],
                   ),
@@ -662,39 +654,35 @@ class _QueuePaneState extends State<QueuePane> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                UiSectionHeader(
-                  title: 'Review queue',
-                  role: companion
-                      ? UiSectionHeaderRole.card
-                      : UiSectionHeaderRole.page,
-                  trailingAction: items.isEmpty
-                      ? null
-                      : UiIconButton(
-                          key: const ValueKey<String>('queue-select-records'),
-                          icon: _selection.active
-                              ? UiIcons.check
-                              : UiIcons.selectAll,
-                          semanticsLabel: _selection.active
-                              ? 'Done selecting'
-                              : 'Select specimens',
-                          tooltip: _selection.active
-                              ? 'Done selecting'
-                              : 'Select specimens',
-                          onPressed: _selection.active
-                              ? _selection.clear
-                              : _selection.begin,
-                        ),
-                ),
-                SizedBox(height: ui.space.s3),
                 Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: ConstrainedBox(
                     constraints: BoxConstraints(maxWidth: ui.space.readingMax),
-                    child: _SearchRow(
-                      controller: _search,
-                      focusNode: _searchFocus,
-                      onChanged: controller.search,
-                      onEscape: widget.onDismiss,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _SearchRow(
+                            controller: _search,
+                            focusNode: _searchFocus,
+                            onChanged: controller.search,
+                            onEscape: widget.onDismiss,
+                          ),
+                        ),
+                        if (items.isNotEmpty && _selection.isEmpty) ...[
+                          SizedBox(width: ui.space.s2),
+                          UiButton(
+                            key: const ValueKey<String>('queue-select-records'),
+                            label: _selection.active ? 'Done' : 'Select',
+                            semanticsLabel: _selection.active
+                                ? 'Done selecting'
+                                : 'Select specimens',
+                            variant: UiButtonVariant.ghost,
+                            onPressed: _selection.active
+                                ? _selection.clear
+                                : _selection.begin,
+                          ),
+                        ],
+                      ],
                     ),
                   ),
                 ),
@@ -968,6 +956,8 @@ class _QueueListRow extends StatelessWidget {
       title: specimen.displayReference,
       concise: true,
       showStatus: showStatus,
+      reviewCount: specimen.reviewSummary?.review,
+      missingCount: specimen.reviewSummary?.missing,
       reason: queueReason(specimen),
       status: SpecimenStatus.ofRecord(
         disposition: specimen.disposition,
@@ -992,6 +982,7 @@ class _QueueListRow extends StatelessWidget {
 /// Bulk actions belong to the visible queue, including in list-detail layouts.
 class _QueueSelectionBar extends StatelessWidget {
   const _QueueSelectionBar({
+    super.key,
     required this.selection,
     required this.eligibility,
     required this.checking,
@@ -1004,6 +995,15 @@ class _QueueSelectionBar extends StatelessWidget {
   final void Function(BulkDecisionKind kind) onDecide;
   final VoidCallback onRetry;
 
+  Map<String, List<String>> _actionReasons(Specimen specimen) {
+    final reasons = <String, List<String>>{};
+    for (final kind in BulkDecisionKind.values) {
+      final reason = eligibility?.reasonFor(specimen.id, kind);
+      if (reason != null) (reasons[reason] ??= []).add(kind.label);
+    }
+    return reasons;
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = WorkspaceScope.of(context);
@@ -1013,6 +1013,76 @@ class _QueueSelectionBar extends StatelessWidget {
       for (final kind in BulkDecisionKind.values)
         kind: eligibility?.eligibleFor(kind).length ?? 0,
     };
+    final noneEligible = !pending && counts.values.every((count) => count == 0);
+    final unverified =
+        !pending &&
+        selection.items.any(
+          (specimen) =>
+              eligibility!.unavailable.containsKey(specimen.id) ||
+              eligibility!.records[specimen.id] == null ||
+              eligibility!.records[specimen.id]!.recordVersionId.isEmpty,
+        );
+    final knownNone = noneEligible && !unverified;
+    void showDetails() => unawaited(
+      showProductModal<void>(
+        context: context,
+        title: 'Selection details',
+        body: (_) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${selection.count} selected from ${selection.loadedCount} loaded ${selection.loadedCount == 1 ? 'record' : 'records'}.',
+              style: ui.type.body,
+            ),
+            if (selection.moreToLoad) ...[
+              SizedBox(height: ui.space.s2),
+              Text(SelectionBar.recordsMoreMatch, style: ui.type.body),
+            ],
+            SizedBox(height: ui.space.s4),
+            Text(
+              pending
+                  ? 'Checking current permissions…'
+                  : noneEligible && unverified
+                  ? 'Current permissions could not be verified for this selection.'
+                  : '${counts[BulkDecisionKind.approve]} eligible for approval. ${counts[BulkDecisionKind.confirmCoverage]} eligible for label coverage.',
+              style: ui.type.body,
+            ),
+            if (selection.atLimit) ...[
+              SizedBox(height: ui.space.s4),
+              Text(
+                'Limit of $bulkDecisionLimit records reached. Clear some selections to choose others.',
+                style: ui.type.body,
+              ),
+            ],
+            for (final specimen in selection.items)
+              if (!pending && _actionReasons(specimen).isNotEmpty) ...[
+                SizedBox(height: ui.space.s3),
+                Text(specimen.displayReference, style: ui.type.label),
+                for (final entry in _actionReasons(specimen).entries) ...[
+                  SizedBox(height: ui.space.s1),
+                  Text(entry.value.join(' · '), style: ui.type.labelSmall),
+                  Text(entry.key, style: ui.type.body),
+                ],
+              ],
+          ],
+        ),
+        primaryAction: (dialogContext) => UiButton(
+          label: 'Back to selection',
+          onPressed: () => Navigator.of(dialogContext).pop(),
+        ),
+        secondaryAction: !pending && !controller.mutating
+            ? (dialogContext) => UiButton(
+                label: 'Check permissions again',
+                variant: UiButtonVariant.ghost,
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  onRetry();
+                },
+              )
+            : null,
+      ),
+    );
     return DecoratedBox(
       decoration: BoxDecoration(
         color: ui.color.paper,
@@ -1020,55 +1090,60 @@ class _QueueSelectionBar extends StatelessWidget {
       ),
       child: Padding(
         padding: EdgeInsets.all(ui.space.s4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              pending
-                  ? 'Checking current permissions...'
-                  : '${counts[BulkDecisionKind.approve]} eligible for approval, ${counts[BulkDecisionKind.confirmCoverage]} for coverage.',
-              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-            ),
-            SizedBox(height: ui.space.s2),
-            SelectionBar(
-              pane: false,
-              count: selection.count,
-              loadedCount: selection.loadedCount,
-              moreToLoad: selection.moreToLoad,
-              allLoadedSelected: selection.allLoadedSelected,
-              selectionLimit: bulkDecisionLimit,
-              onSelectAllLoaded: selection.selectAllLoaded,
-              onClear: selection.clear,
-              busy: controller.mutating || checking,
-              actionReasons: {
-                for (final kind in BulkDecisionKind.values)
-                  kind.label: pending
-                      ? 'Wait for current permissions to be checked.'
-                      : 'None of the selected records currently permit this action. Check permissions again or review each record.',
-              },
-              actions: [
-                for (final kind in BulkDecisionKind.values)
-                  (
-                    label: kind.label,
-                    icon: kind.icon,
-                    onPressed: pending || counts[kind] == 0
-                        ? null
-                        : () => onDecide(kind),
-                  ),
-              ],
-            ),
-            if (selection.atLimit)
-              Text(
-                'Limit of $bulkDecisionLimit records reached. Clear some selections to choose others.',
-                style: ui.type.bodySmall,
-              ),
-            if (!pending &&
-                counts.values.any((count) => count < selection.count))
-              UiButton(
-                label: 'Check permissions again',
-                variant: UiButtonVariant.ghost,
-                onPressed: controller.mutating ? null : onRetry,
+        child: SelectionBar(
+          pane: false,
+          compact: true,
+          count: selection.count,
+          loadedCount: selection.loadedCount,
+          moreToLoad: selection.moreToLoad,
+          allLoadedSelected: selection.allLoadedSelected,
+          selectionLimit: bulkDecisionLimit,
+          onSelectAllLoaded: selection.selectAllLoaded,
+          onClear: selection.clear,
+          busy: controller.mutating || checking,
+          status: noneEligible
+              ? unverified
+                    ? 'Permissions could not be verified'
+                    : 'No eligible bulk actions'
+              : null,
+          primaryAction: pending
+              ? const UiButton(
+                  label: 'Checking',
+                  loading: true,
+                  busyLabel: 'Checking',
+                  semanticsLabel: 'Checking current permissions',
+                )
+              : noneEligible
+              ? UiButton(
+                  label: knownNone ? 'Selection details' : 'Check permissions',
+                  variant: UiButtonVariant.secondary,
+                  onPressed: controller.mutating
+                      ? null
+                      : knownNone
+                      ? showDetails
+                      : onRetry,
+                  disabledReason: controller.mutating
+                      ? 'A decision on this selection is in flight.'
+                      : null,
+                )
+              : null,
+          onDetails: knownNone ? null : showDetails,
+          actionReasons: {
+            for (final kind in BulkDecisionKind.values)
+              kind.label: pending
+                  ? 'Wait for current permissions to be checked.'
+                  : unverified
+                  ? 'Current permission could not be verified. Check permissions or view selection details.'
+                  : 'None of the selected records currently permit this action. View selection details or review each record.',
+          },
+          actions: [
+            for (final kind in BulkDecisionKind.values)
+              (
+                label: kind.label,
+                icon: kind.icon,
+                onPressed: pending || counts[kind] == 0
+                    ? null
+                    : () => onDecide(kind),
               ),
           ],
         ),
@@ -1093,31 +1168,35 @@ class _ToastLayer extends StatelessWidget {
       UiToastHost.maybeOf(context) == null ? UiToastHost(child: child) : child;
 }
 
-/// Named queue views. The shared control becomes a named picker when its
-/// labels cannot fit; selection never stretches one target over its neighbors.
+/// The current queue view carries its name; other views keep named icons.
 class _StatusControls extends StatelessWidget {
   const _StatusControls({required this.controller});
   final WorkspaceController controller;
 
   @override
   Widget build(BuildContext context) {
-    const views = <UiSegment<String>>[
-      UiSegment(value: 'needs_human_review', label: 'Needs review'),
-      UiSegment(value: 'deferred', label: 'Deferred'),
-      UiSegment(value: 'cleared', label: 'Cleared'),
+    const views = <UiViewTab<String>>[
+      UiViewTab(
+        value: 'needs_human_review',
+        label: 'Needs review',
+        icon: UiIcons.needsReview,
+      ),
+      UiViewTab(value: 'deferred', label: 'Deferred', icon: UiIcons.deferred),
+      UiViewTab(value: 'cleared', label: 'Cleared', icon: UiIcons.cleared),
     ];
     final value = controller.disposition;
-    return UiSegmented<String>(
+    return UiViewTabs<String>(
       key: const ValueKey<String>('queue-view'),
-      label: 'Queue view',
+      semanticsLabel: 'Queue view',
       value: value,
-      segments: <UiSegment<String>>[
+      views: <UiViewTab<String>>[
         if (!views.any((view) => view.value == value))
-          UiSegment(
+          UiViewTab(
             value: value,
             label: value.isEmpty
                 ? 'All specimens'
                 : queueDispositions[value] ?? 'Other specimens',
+            icon: UiIcons.queue,
           ),
         ...views,
       ],

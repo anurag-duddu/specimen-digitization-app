@@ -137,6 +137,26 @@ class CollectionScope {
   String get key => '$organizationId/$collectionId';
 }
 
+/// Server-computed unique field counts for the current record snapshot.
+/// A missing field can also need review, so these counts must not be added.
+class SpecimenReviewSummary {
+  const SpecimenReviewSummary({required this.review, required this.missing});
+
+  final int review;
+  final int missing;
+
+  /// Absent, incomplete or malformed summaries are unknown, never zero.
+  static SpecimenReviewSummary? fromJson(Object? value) {
+    if (value is! Map) return null;
+    final review = value['review'];
+    final missing = value['missing'];
+    if (review is! int || missing is! int || review < 0 || missing < 0) {
+      return null;
+    }
+    return SpecimenReviewSummary(review: review, missing: missing);
+  }
+}
+
 class Specimen {
   const Specimen(this.data);
   final Json data;
@@ -192,6 +212,10 @@ class Specimen {
   List<Json> get findings => objects(data['validation_findings']);
   List<Json> get evidence => objects(data['evidence']);
   List<Json> get audit => objects(data['audit_events']);
+
+  /// Unknown when this response has not supplied the current field summary.
+  SpecimenReviewSummary? get reviewSummary =>
+      SpecimenReviewSummary.fromJson(data['review_summary']);
 }
 
 class IntakeFile {

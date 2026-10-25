@@ -28,7 +28,7 @@ void main() {
       final controller = WorkspaceScope.read(tester.element(pane));
       expect(find.byType(UiSidebar), findsOneWidget);
       expect(find.byType(UiRail), findsNothing);
-      for (final label in ['Specimens', 'Intake', 'Account']) {
+      for (final label in ['Specimens', 'Account']) {
         expect(
           find.descendant(
             of: find.byType(UiSidebar),
@@ -37,6 +37,14 @@ void main() {
           findsOneWidget,
         );
       }
+      expect(
+        find.descendant(
+          of: find.byType(UiSidebar),
+          matching: find.text('Intake'),
+        ),
+        findsNothing,
+      );
+      expect(uiDestination('Intake'), findsOneWidget);
       expect(
         tester.getSize(pane).width,
         greaterThan(tester.getSize(find.byType(UiSidebar)).width * 2),

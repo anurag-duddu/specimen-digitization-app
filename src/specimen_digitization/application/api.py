@@ -337,6 +337,7 @@ def classify_error(exc) -> tuple[int, str, str, str]:
 
 def summary(specimen: Specimen, role: str = "viewer") -> dict:
     from .intake_progress import intake_progress
+    from .review_summary import project_fields, review_summary
 
     run = specimen.run
     status = run_status(run)
@@ -357,6 +358,13 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         "intake_progress": intake_progress(run),
         "disposition": run.disposition,
         "reason_codes": run.reasons,
+        "review_summary": review_summary(
+            project_fields({
+                key: value.model_dump(mode="json")
+                for key, value in run.fields.items()
+            }),
+            run.reasons,
+        ),
         "blocker": run.blocker,
         "profile_id": run.profile.id,
         "profile_version": run.profile.version,
