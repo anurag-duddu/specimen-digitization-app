@@ -68,8 +68,8 @@ class CanonicalProjectionServicesV1:
         from sys import modules
         expected = {
             "specimen_digitization.application.domain":"4738b34afe414e4e40da8d9d1a2d23f4455f58d07f4ce087466560fd1319f038",  # pragma: allowlist secret (domain source digest)
-            "specimen_digitization.application.storage":"6d4d1368c93eddf0509f359e84dae3ce0391945f8e4088224da5a925455a9ca4",  # pragma: allowlist secret (storage source digest)
-            "specimen_digitization.application.active_graph":"9f22032c3443a564f034d92fc41eda616bbee6f36de6002653bd14aacc892d47",
+            "specimen_digitization.application.storage":"64d919f9d10ac4912b8902e19abab2d5e90978da32d6356c28f0e4c1130e6315",  # pragma: allowlist secret (storage source digest)
+            "specimen_digitization.application.active_graph":"8aaf9f762d3c6c5fb9df7470a3f6f3ef2693a44ff8b0df8e9959f2a1bc836270",  # pragma: allowlist secret (active graph source digest)
         }
         for name,source_sha in expected.items():
             loaded=modules.get(name)
