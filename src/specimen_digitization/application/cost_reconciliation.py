@@ -804,6 +804,7 @@ def _hf_section(rows: list[MeterRow], bill: HfBill | None, month: str, route_mod
               "metered_settled_micros": sum(e["metered_settled_micros"] for e in entries),
               "metered_held_micros": sum(e["metered_held_micros"] for e in entries),
               "metered_estimated_micros": sum(e["metered_estimated_micros"] for e in entries),
+              "billed_outside_meter_micros": sum(e["billed_outside_meter_micros"] for e in entries),
               "meter_calls": sum(e["meter_calls"] for e in entries),
               "meter_requests": sum(e["meter_requests"] for e in entries)}
     totals["gap_micros"] = totals["metered_micros"] - totals["billed_micros"]
@@ -850,6 +851,9 @@ def _hf_entry(key, label, calls: list[MeterRow], month_days: dict, in_registry: 
     days = [{"day": day.isoformat(), "billed_micros": _micros(c["billed"]), "billed_requests": c["requests"],
              "metered_micros": c["metered"], "meter_calls": c["calls"], "meter_requests": c.get("meter_requests", 0),
              "gap_micros": c["metered"] - _micros(c["billed"])} for day, c in sorted(by_day.items())]
+    # The bill's requests the meter's calls did not make, day by day, at that day's billed mean per request.
+    outside_nano = sum(c["billed"] * (c["requests"] - c.get("meter_requests", 0)) // c["requests"]
+                       for c in by_day.values() if c["requests"] > c.get("meter_requests", 0))
     flagged = supplied and limits.exceeded(gap, billed)
     entry = {
         "model_id": label if key else None,
@@ -863,6 +867,7 @@ def _hf_entry(key, label, calls: list[MeterRow], month_days: dict, in_registry: 
         "meter_held_calls": held_calls, "meter_refused_calls": refused_calls,
         "meter_requests": meter_requests, "meter_settled_requests": settled_requests,
         "meter_held_requests": sum(r.requests for r in calls if r.basis == HELD),
+        "billed_outside_meter_micros": _micros(outside_nano),
         "gap_micros": gap, "gap_percent": _percent(gap, billed), "gap_settled_micros": settled - billed,
         "threshold_micros": limits.limit(billed), "flagged": flagged,
         "billed_over_settled": round(billed / settled, 4) if settled > 0 and billed > 0 else None,
@@ -905,8 +910,9 @@ def _hf_explanations(e: dict, days: list[dict], month: str, unmapped_route: str 
         if requests > e["meter_requests"]:
             out.append(_explain("requests_outside_meter", f"Hugging Face counted {requests - e['meter_requests']} more "
                                 f"requests ({requests}) than the meter's calls made ({e['meter_requests']}, refused ones "
-                                "included): calls made outside the app on the same account (lab runs, experiments), or "
-                                "meter rows the sweep has not written yet."))
+                                f"included), about {usd(e['billed_outside_meter_micros'])} of the bill at each day's "
+                                "billed mean per request: calls made outside the app on the same account (lab runs, "
+                                "experiments), or meter rows the sweep has not written yet."))
         elif requests < settled_requests:
             out.append(_explain("calls_not_billed", f"The meter's settled calls made {settled_requests} requests but the "
                                 f"bill counted {requests}: some settled calls were not billed."))
@@ -1442,7 +1448,11 @@ def render_markdown(report: dict) -> str:
                    "The overall comparison is partial; the like-for-like line below is the one to read.")
     out.append("")
     if hf["supplied"]:
-        out.append(f"- Hugging Face: billed {usd(t['billed_huggingface_micros'])}, metered {usd(t['metered_huggingface_micros'])}.")
+        outside = hf["totals"]["billed_outside_meter_micros"]
+        tail = (f"; about {usd(outside)} of the bill is requests the meter's calls did not make (calls outside the app "
+                "on the same account)" if outside else "")
+        out.append(f"- Hugging Face: billed {usd(t['billed_huggingface_micros'])}, metered "
+                   f"{usd(t['metered_huggingface_micros'])}{tail}.")
     else:
         out.append("- Hugging Face: no bill supplied.")
     if gg["supplied"]:

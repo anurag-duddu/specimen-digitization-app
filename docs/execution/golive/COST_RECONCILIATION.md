@@ -201,7 +201,7 @@ estimate, not a figure from a Google page).
 | `held_calls` | Hugging Face, Google SAM | The meter is above the bill and holds calls with unknown spend (a timeout, a server error, no usage reported), counted at their reservation. For Hugging Face it says whether the settled calls alone are within the limit |
 | `provider_discount` | Hugging Face | The request counts agree (within the held calls) and the bill is under 97% of the settled figure, as with cached input |
 | `billed_above_list` | Hugging Face | The request counts agree and the bill is over 103% of the settled figure; names the price list versions on the rows |
-| `requests_outside_meter` | Hugging Face | The bill counts more requests than the meter's calls made (refused ones included; a row's requests are its `usage.model_calls`, else one): calls made outside the app on the same account, or rows the sweep has not written |
+| `requests_outside_meter` | Hugging Face | The bill counts more requests than the meter's calls made (refused ones included; a row's requests are its `usage.model_calls`, else one), and about how much of the bill that is (each day's requests beyond the meter's at that day's billed mean, `billed_outside_meter_micros`; the headline says it too): calls made outside the app on the same account, or rows the sweep has not written |
 | `calls_not_billed` | Hugging Face | The meter's settled calls made more requests than the bill has |
 | `trued_up` | Hugging Face | Part of the meter's figure was estimated after the call (cost basis `trued_up`, COST_METER.md "Trued up"): says how much and for how many calls |
 | `no_meter_rows` | Hugging Face | The bill has a model the meter has no call for; says whether the registry names the model |
@@ -256,6 +256,26 @@ meter fix removes:
 - Tool calls have no provider in the meter and are never compared.
 - Google reports late usage on the next invoice month, so the latest days of a
   bill can change after the report.
+
+## Truing up the month
+
+After the check, put the month's Hugging Face days into the committed bills so
+the meter trues up that month's held and list-priced calls (COST_METER.md,
+"Trued up"):
+
+```
+uv run --frozen python scripts/ops/reconcile_costs.py --month 2026-10 \
+    --huggingface hf_usage_2026-10.json \
+    --update-bills src/specimen_digitization/application/profiles/provider_bills.json \
+    --bills-as-of 2026-10-24
+```
+
+It keeps the models the route registry names and the days with requests,
+replaces that month's days and leaves other months as they were, and sets the
+version to `provider-bills-<as of>`. The file holds days, model ids, request
+counts and nano-USD only. Commit it by pull request; after the release the next
+sweep reads every record again and rewrites their rows. Read the usage page
+only once a day has ended in UTC, so no day is partial.
 
 ## Running it
 

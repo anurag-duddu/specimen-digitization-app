@@ -885,3 +885,21 @@ def test_each_google_line_no_family_holds_is_given_its_treatment(service, sku, t
     text = render_markdown(report)
     assert "### Google lines the meter does not split" in text
     assert f"{cr.usd(1_830_000)} {cr.TREATMENT_LABELS[treatment]}" in text
+
+
+def test_requests_outside_the_meter_are_priced_at_each_day_s_billed_mean():
+    # 10-10: 100 requests billed $0.10, the meter's one row made 40 of them: 60 outside, $0.06.
+    # 10-11: 20 billed $0.04 and the meter made all 20: none outside. A day with no call: all outside, $0.02.
+    rows = [meter("huggingface", "harness-deepseek", 40_000, stage="field_research", usage={"model_calls": 40},
+                  when="2026-10-10T12:00:00Z"),
+            meter("huggingface", "harness-deepseek", 40_000, stage="field_research", usage={"model_calls": 20},
+                  when="2026-10-11T12:00:00Z")]
+    report = reconcile(meter_rows=rows, huggingface=hf({"2026-10-10": {DEEPSEEK: (100, 100_000_000)},
+                                                         "2026-10-11": {DEEPSEEK: (20, 40_000_000)},
+                                                         "2026-10-12": {DEEPSEEK: (5, 20_000_000)}}), month=MONTH)
+    entry = model(report, DEEPSEEK)
+    assert entry["billed_outside_meter_micros"] == 60_000 + 20_000
+    assert report["huggingface"]["totals"]["billed_outside_meter_micros"] == 80_000
+    text = next(item["text"] for item in entry["explanations"] if item["code"] == "requests_outside_meter")
+    assert "about $0.0800 of the bill at each day's billed mean per request" in text
+    assert "about $0.0800 of the bill is requests the meter's calls did not make" in render_markdown(report)
