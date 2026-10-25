@@ -21,6 +21,7 @@ from .domain import (
     Observation,
     OPERATIONAL,
     Principal,
+    ReadingPairComparison,
     Region,
     Run,
     Specimen,
@@ -1021,24 +1022,32 @@ class Workflow:
                     readings = [o for o in run.observations if o.region_id == region.id]
                     texts = list(dict.fromkeys(o.literal_text for o in readings))
                     from .first_pass import adjudication_record
-                    from .reading_evidence import ReadingEvidenceInput, align_readings
+                    from .reading_evidence import (
+                        ReadingEvidenceInput,
+                        disagreement_ratio,
+                        label_comparison,
+                        pairwise_alignments,
+                    )
 
-                    alignment = None
-                    if len(readings) == 2:
-                        alignment = align_readings(
-                            *(
-                                ReadingEvidenceInput(
-                                    observation_id=o.id,
-                                    region_id=region.id,
-                                    source_ref=o.raw_ref,
-                                    source_sha256=o.raw_sha256,
-                                    text=o.literal_text,
-                                )
-                                for o in readings
+                    # Every pair of the label's readings, in route order; two
+                    # readings are one pair, as before. A label is measured
+                    # when every pair is, and reports its least-agreeing pair
+                    # (reading_evidence.label_comparison).
+                    alignments = pairwise_alignments(
+                        [
+                            ReadingEvidenceInput(
+                                observation_id=o.id,
+                                region_id=region.id,
+                                source_ref=o.raw_ref,
+                                source_sha256=o.raw_sha256,
+                                text=o.literal_text,
                             )
-                        )
+                            for o in readings
+                        ]
+                    )
+                    comparison = label_comparison(alignments)
                     measured = (
-                        alignment is not None and alignment.status != "policy_blocked"
+                        comparison is not None and comparison.status != "policy_blocked"
                     )
                     resolved = (
                         measured
@@ -1056,19 +1065,28 @@ class Workflow:
                             observation_ids=[o.id for o in readings],
                             alternatives=texts,
                             resolved=resolved,
-                            disagreement_ratio=(
-                                alignment.edit_distance
-                                / max(1, *(len(o.literal_text) for o in readings))
-                            )
+                            disagreement_ratio=disagreement_ratio(comparison.alignment)
                             if measured
                             else None,
-                            alignment_status=alignment.status
-                            if alignment
+                            alignment_status=comparison.status
+                            if comparison
                             else "policy_blocked",
                             alignment_algorithm="bounded-levenshtein-fraction-v1",
-                            alignment_reasons=list(alignment.reasons)
-                            if alignment
+                            alignment_reasons=list(comparison.reasons)
+                            if comparison
                             else ["independent_pair_incomplete"],
+                            comparisons=[
+                                ReadingPairComparison(
+                                    left_observation_id=a.left.observation_id,
+                                    right_observation_id=a.right.observation_id,
+                                    status=a.status,
+                                    reasons=list(a.reasons),
+                                    disagreement_ratio=disagreement_ratio(a),
+                                )
+                                for a in alignments
+                            ]
+                            if len(alignments) > 1
+                            else [],
                             **record,
                         )
                     )
@@ -2214,7 +2232,15 @@ def reconcilable_step(run: Run) -> str | None:
 class SyntheticAdapters:
     """Explicit fixture generator. Never represents SAM 3 or live inference."""
 
-    def __init__(self, blobs: BlobStore, text: str, alternate_text: str | None = None):
+    def __init__(
+        self,
+        blobs: BlobStore,
+        text: str,
+        alternate_text: str | tuple[str, ...] | list[str] | None = None,
+    ):
+        """Reader A reads ``text``. ``alternate_text`` is what the readers after
+        it read instead: one text, for reader B, or one text each for readers B,
+        C and so on. A reader with no alternate reads ``text``."""
         self.blobs, self.text, self.alternate = blobs, text, alternate_text
 
     def segment(self, specimen):
@@ -2234,11 +2260,16 @@ class SyntheticAdapters:
         ]
 
     def transcribe(self, specimen, region, route):
-        text = (
-            self.alternate
-            if route == specimen.run.profile.routes[1] and self.alternate is not None
-            else self.text
+        routes = specimen.run.profile.routes
+        reader = routes.index(route) if route in routes else 0
+        alternates = (
+            ()
+            if self.alternate is None
+            else (self.alternate,)
+            if isinstance(self.alternate, str)
+            else tuple(self.alternate)
         )
+        text = alternates[reader - 1] if 0 < reader <= len(alternates) else self.text
         raw = ("SYNTHETIC FIXTURE\n" + text).encode()
         ref = self.blobs.put(raw)
         return Observation(

@@ -40,6 +40,13 @@ records its decision.
 the numbered differences between the readings from a deterministic token
 alignment; a difference in whitespace alone is not listed. Readers appear as
 Reader A, B, … in the profile's route order, never by model or route name.
+Two or more readings are taken, at most 26 (one letter each; more block as
+`first_pass_reading_count_unsupported`). With more than two, each later
+reading is aligned with the first as two readings are, and each listed
+difference gives one span per reader, an empty one at the right offset where
+a reader has nothing there (`first_pass.reading_differences_among`; the
+NVIDIA option's reader C, `docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md`).
+For two readings the request is unchanged.
 Instructions are the pinned managed prompt
 `transcription-disagreement-adjudication`, unchanged: its "route material
 ambiguity to human review" is expressed by returning no reading and recording
@@ -89,9 +96,14 @@ material, so a spelling variant such as "Straße" against "Strasse" stays
 material (the coordinator's ruling at 14:05Z, which reads 12:31Z's "case-folded"
 as lower-cased). The model is not asked. A pick stands only when every material
 difference's verdict supports the picked reader, which is the prompt's "Resolve
-a value only when the visual evidence supports it" with no merging. A material
-difference left `neither` or `uncertain`, or supported by another reader, means
-no reading, and every reading becomes a `raw_reading` handoff (G19). That is
+a value only when the visual evidence supports it" with no merging. A verdict
+supports the picked reader when it names that reader, or, with more than two
+readers, a reader whose span at that difference is the picked reader's text
+once lower-cased (`first_pass.supports`); with two readers a material
+difference's two spans always differ, so only the picked reader's own verdict
+supports it. A material difference left `neither` or `uncertain`, or supported
+by a reader whose text there differs, means no reading, and every reading
+becomes a `raw_reading` handoff (G19). That is
 neither a retry nor a block (the coordinator's confirmation at 12:32Z): the
 model's pick stays in the call's raw response and its rationale.
 
@@ -191,7 +203,7 @@ pass was answered HTTP 429 on all three attempts and dead-lettered the run as
 HTTP 402 included), the ordinary first pass is given up on as a reader
 is: its step completes with no decision and the run goes on through
 `adjudicate`, `parse` and field research. The label's transcript has no text and
-no `decision_kind`, and keeps both readings as its alternatives. A warning
+no `decision_kind`, and keeps its readings as its alternatives. A warning
 finding `first_pass_given_up:{region}:{code}` beside the record names the label
 and the failure. The queue decision sends the record to review with
 `unresolved_transcription:{region}`, which field research gives such a label
@@ -480,7 +492,10 @@ reading: the selected reading as `decided_transcript`, the others as
 `raw_reading` (G19). `resolved` is true exactly when a reading was selected; a
 difference left `neither` or `uncertain` stays on the record for the harness and
 the queue decision (G19, G20). The disagreement score and the alignment fields
-of stage 5 are unchanged. The run keeps each region's decision in
+of stage 5 are unchanged for two readings. With more, every pair is aligned in
+route order: the alignment fields report the least-agreeing pair, a pair that
+cannot be measured leaves the region unmeasured, and `comparisons` keeps every
+pair (`reading_evidence.label_comparison`). The run keeps each region's decision in
 `first_pass_decisions`. Synthetic runs use a fixture that selects no reading;
 its call names the input the readers saw.
 

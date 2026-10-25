@@ -1088,12 +1088,13 @@ def evidence_only(text: str, reading: Reading, readings: Sequence[Reading]) -> b
 def disputed(text: str, reading: Reading, readings: Sequence[Reading],
         claimed: Mapping[str, Iterable[str]]) -> bool:
     """Whether the readers of the reading's label dispute the text where the
-    reading writes it: the other reader reads that very ink as the text of a
-    field of another kind. The label has no decided transcript and exactly one other
-    reader, which writes the text nowhere; each run of the text in the
-    reading (verbatim_runs) lies wholly inside the token differences between
-    the two readings (application.first_pass.reading_differences: the
-    differences the label's first pass is asked to judge), each with text on
+    reading writes it: every other reader reads that very ink as the text of a
+    field of another kind. The label has no decided transcript and at least
+    one other reader, and no other reader writes the text; for each other
+    reader (_disputed_by, the test two readers have always had): each run of
+    the text in the reading (verbatim_runs) lies wholly inside the token
+    differences between the two readings (application.first_pass.reading_differences:
+    the differences the label's first pass is asked to judge), each with text on
     the other reader's side; that side, joined, is neither the text's place
     name (place_name) nor a spelling one letter from it (one_letter_apart);
     and it is written, as whole words, in one of the other reader's texts for
@@ -1106,16 +1107,23 @@ def disputed(text: str, reading: Reading, readings: Sequence[Reading],
     with other accents or one letter off ("Panamá"), nor one whose other
     words no such field holds: two spellings of one country, or another
     place field's text ("Texas" where the other writes "Mexico"), a rival
-    reading of the same place."""
+    reading of the same place. With three or more readers, one reader that
+    does not dispute the text (one that writes it, say) leaves it undisputed."""
+    group = [r for r in readings if r.region_id == reading.region_id]
+    others = [r for r in group if r is not reading]
+    if len(group) < 2 or not others or any(r.input_source == DECIDED for r in group):
+        return False
+    runs = verbatim_runs(reading.text, text)
+    if not runs or any(verbatim_runs(other.text, text) for other in others):
+        return False
+    return all(_disputed_by(text, reading, other, runs, claimed) for other in others)
+
+
+def _disputed_by(text: str, reading: Reading, other: Reading, runs,
+        claimed: Mapping[str, Iterable[str]]) -> bool:
+    """Whether one other reader disputes the text's runs in the reading (disputed)."""
     from specimen_digitization.application.first_pass import reading_differences
 
-    group = [r for r in readings if r.region_id == reading.region_id]
-    if len(group) != 2 or any(r.input_source == DECIDED for r in group):
-        return False
-    other = group[1] if group[0] is reading else group[0]
-    runs = verbatim_runs(reading.text, text)
-    if not runs or verbatim_runs(other.text, text):
-        return False
     theirs_elsewhere = [held for held in claimed.get(other.name, ()) if held and held.strip()]
     pairs = [(mine, theirs) for mine, theirs in reading_differences(reading.text, other.text) if mine.end > mine.start]
     for start, end in runs:

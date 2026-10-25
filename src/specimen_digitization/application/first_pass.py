@@ -139,15 +139,121 @@ def reading_differences(
     return differences
 
 
+def _segments(first: str, other: str, left: list[re.Match], right: list[re.Match]):
+    """Two readings' token alignment as reading_differences makes it, as
+    consecutive segments (i1, i2, j1, j2, equal) that cover both readings'
+    tokens: each equal block whole, and every other block split as
+    reading_differences splits it (a replaced block of at most twelve tokens a
+    side, unless it differs in whitespace alone, token by token)."""
+    matcher = difflib.SequenceMatcher(
+        a=[m.group() for m in left], b=[m.group() for m in right], autojunk=False
+    )
+    segments = []
+    for op, i1, i2, j1, j2 in matcher.get_opcodes():
+        if op == "equal":
+            segments.append((i1, i2, j1, j2, True))
+            continue
+        block = _span(first, left, i1, i2).text, _span(other, right, j1, j2).text
+        pairs = [((i1, i2), (j1, j2))]
+        if (
+            op == "replace"
+            and i2 - i1 <= 12
+            and j2 - j1 <= 12
+            and "".join(block[0].split()) != "".join(block[1].split())
+        ):
+            pairs = [
+                ((i1 + a1, i1 + a2), (j1 + b1, j1 + b2))
+                for (a1, a2), (b1, b2) in _pair_tokens(
+                    [m.group() for m in left[i1:i2]], [m.group() for m in right[j1:j2]]
+                )
+            ]
+        segments += [(a1, a2, b1, b2, False) for (a1, a2), (b1, b2) in pairs]
+    return segments
+
+
+def _clusters(intervals) -> list[tuple[int, int]]:
+    """The pairwise differences' token intervals on the first reading, merged
+    where a difference crosses another: intervals that overlap by at least one
+    token are one difference, as is an insertion point inside one; intervals
+    that only touch stay apart, and insertions at one point are one. In reading
+    order, an insertion before the tokens that start at its point."""
+    merged: list[list[int]] = []
+    for start, end in sorted({(s, e) for s, e in intervals if s < e}):
+        if merged and start < merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    points = {
+        s for s, e in intervals if s == e and not any(a < s < b for a, b in merged)
+    }
+    return sorted([*((a, b) for a, b in merged), *((p, p) for p in points)])
+
+
+def reading_differences_among(texts) -> list[tuple[ReadingSpan, ...]]:
+    """Token differences among two or more readings, one exact span per reading.
+
+    Two readings: reading_differences, unchanged. With more, each later reading
+    is aligned with the first as reading_differences aligns two (_segments),
+    and the pairwise differences are merged on the first reading's tokens
+    (_clusters): a difference grows until each of its ends is a point where
+    every reading is aligned with the first, so it is as small as the pairwise
+    alignments allow. Each reading's span is its text between those points:
+    empty, at the offset where its text would be, when it has nothing there
+    (an insertion in another reading, or an empty reading). A difference whose
+    spans are all equal ignoring whitespace is dropped.
+    """
+    texts = list(texts)
+    if len(texts) < 2:
+        raise ValueError("Differences need two or more readings")
+    if len(texts) == 2:
+        return reading_differences(*texts)
+    tokens = [list(_TOKEN.finditer(text)) for text in texts]
+    first = tokens[0]
+    intervals: list[tuple[int, int]] = []
+    # For each later reading: the first reading's token boundaries mapped to its
+    # own, lowest and highest (they differ where it inserted tokens).
+    bounds = []
+    for text, other in zip(texts[1:], tokens[1:]):
+        low: dict[int, int] = {}
+        high: dict[int, int] = {}
+
+        def align(i: int, j: int) -> None:
+            low[i], high[i] = min(low.get(i, j), j), max(high.get(i, j), j)
+
+        align(0, 0)
+        align(len(first), len(other))
+        for i1, i2, j1, j2, equal in _segments(texts[0], text, first, other):
+            if equal:
+                for step in range(i2 - i1 + 1):
+                    align(i1 + step, j1 + step)
+            else:
+                align(i1, j1)
+                align(i2, j2)
+                intervals.append((i1, i2))
+        bounds.append((low, high))
+    differences = []
+    for start, end in _clusters(intervals):
+        spans = [_span(texts[0], first, start, end)]
+        for text, other, (low, high) in zip(texts[1:], tokens[1:], bounds):
+            if start == end:
+                spans.append(_span(text, other, low[start], high[start]))
+            else:
+                spans.append(_span(text, other, high[start], low[end]))
+        if len({"".join(span.text.split()) for span in spans}) > 1:
+            differences.append(tuple(spans))
+    return differences
+
+
 def _line(text: str, offset: int) -> str:
     end = text.find("\n", offset)
     return text[text.rfind("\n", 0, offset) + 1 : len(text) if end < 0 else end]
 
 
 def build_request(
-    readings: list[Observation], differences: list[tuple[ReadingSpan, ReadingSpan]]
+    readings: list[Observation], differences: list[tuple[ReadingSpan, ...]]
 ) -> tuple[str, dict[str, Observation]]:
-    """The user message: readers by letter only, their raw texts, the differences."""
+    """The user message: readers by letter only (A, B, C ...), their raw texts,
+    the differences with one span per reader."""
     letters = dict(zip(string.ascii_uppercase, readings))
     lines = [_PREAMBLE, ""]
     for letter, reading in letters.items():
@@ -228,12 +334,29 @@ def is_material(spans) -> bool:
     return len({span.text.lower() for span in spans}) > 1
 
 
+def supports(difference, selected: str | None) -> bool:
+    """Whether a difference's verdict supports the selected reading: it names
+    that reading, or a reading whose text there is the selected reading's,
+    compared as is_material compares them (lower-cased). With two readings a
+    material difference's two texts differ, so only a verdict naming the
+    selected reading supports it; with more, readers that agree at a
+    difference share its verdict."""
+    if difference.verdict == selected:
+        return True
+    spans = difference.spans
+    return (
+        selected in spans
+        and difference.verdict in spans
+        and spans[difference.verdict].text.lower() == spans[selected].text.lower()
+    )
+
+
 def g19_pick(selected: str | None, differences) -> str | None:
     """The picked reading, or None when a material difference does not support
     it: material ambiguity returns no reading (G19; the coordinator's 12:31Z
     reading; HARNESS.md section 3)."""
     if any(
-        d.verdict != selected and is_material(d.spans.values()) for d in differences
+        is_material(d.spans.values()) and not supports(d, selected) for d in differences
     ):
         return None
     return selected
@@ -271,7 +394,8 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
 
     if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
         raise OperationalBlock("provider_data_policy_and_spending_approval_required")
-    if len(readings) != 2:
+    if not 2 <= len(readings) <= len(string.ascii_uppercase):
+        # Two or more readings, one reader letter each (build_request).
         raise OperationalBlock("first_pass_reading_count_unsupported")
     run = specimen.run
     routes = [reading.route_id for reading in readings]
@@ -306,9 +430,7 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
         )
     except (KeyError, ValueError) as exc:
         raise OperationalBlock("pinned_prompt_unavailable") from exc
-    differences = reading_differences(
-        readings[0].literal_text, readings[1].literal_text
-    )
+    differences = reading_differences_among([r.literal_text for r in readings])
     request, letters = build_request(readings, differences)
     image = crop_bytes(adapter.blobs, specimen, region)
     # The bounds the step's reservation assumed: each request's input, checked
@@ -352,7 +474,7 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
     raw = ModelMessagesTypeAdapter.dump_json(responses)
     last = responses[-1] if responses else None
     ids = {letter: reading.id for letter, reading in letters.items()}
-    spans = [dict(zip(ids.values(), pair)) for pair in differences]
+    spans = [dict(zip(ids.values(), group)) for group in differences]
     if result is None:
         # No answer: every difference stays open, and G19 decides (HARNESS.md 3).
         picked, rationale, notes = None, CAP_RATIONALE, {}
@@ -415,8 +537,7 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
 
 def synthetic_decision(blobs, region, readings) -> FirstPassDecision:
     """Deterministic fixture: without visual evidence no reading is selected."""
-    first, second = readings
-    differences = reading_differences(first.literal_text, second.literal_text)
+    differences = reading_differences_among([r.literal_text for r in readings])
     summary = {"region_id": region.id, "selected_observation_id": None}
     detail = dict(summary, differences=len(differences), rationale=SYNTHETIC_RATIONALE)
     raw = b"SYNTHETIC FIXTURE\n" + json.dumps(detail).encode()
@@ -427,11 +548,11 @@ def synthetic_decision(blobs, region, readings) -> FirstPassDecision:
         differences=[
             FirstPassDifference(
                 number=number,
-                spans={first.id: a, second.id: b},
+                spans={reading.id: span for reading, span in zip(readings, group)},
                 verdict="uncertain",
-                material=is_material((a, b)),
+                material=is_material(group),
             )
-            for number, (a, b) in enumerate(differences, 1)
+            for number, group in enumerate(differences, 1)
         ],
         call=Observation(
             region_id=region.id,
@@ -440,7 +561,7 @@ def synthetic_decision(blobs, region, readings) -> FirstPassDecision:
             provider="synthetic",
             prompt_version="fixture-v1",
             # The input the readers saw, as for their observations.
-            input_sha256=first.input_sha256,
+            input_sha256=readings[0].input_sha256,
             literal_text="",
             raw_ref=blobs.put(raw),
             raw_sha256=hashlib.sha256(raw).hexdigest(),
