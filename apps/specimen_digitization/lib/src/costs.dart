@@ -120,6 +120,9 @@ String costDayLabel(String day) {
 
 int _micros(Object? value) => value is num ? value.toInt() : 0;
 
+/// A figure the server may not send: null when it did not, never zero.
+int? _optionalMicros(Object? value) => value is num ? value.toInt() : null;
+
 String? _text(Object? value) =>
     value is String && value.isNotEmpty ? value : null;
 
@@ -130,7 +133,7 @@ Json? _object(Object? value) =>
 // The report.
 // ---------------------------------------------------------------------------
 
-/// The four figures the meter reports for any slice of the work.
+/// The figures the meter reports for any slice of the work.
 @immutable
 class CostAmounts {
   const CostAmounts({
@@ -138,6 +141,8 @@ class CostAmounts {
     required this.heldMicros,
     required this.listCostMicros,
     required this.entries,
+    this.settledMicros,
+    this.estimatedMicros,
   });
 
   /// A slice with nothing recorded in it.
@@ -148,8 +153,9 @@ class CostAmounts {
     entries: 0,
   );
 
-  /// Reads one `{cost_micros, held_micros, list_cost_micros, entries}` object.
-  /// A missing object is a slice with nothing recorded.
+  /// Reads one `{cost_micros, held_micros, settled_micros, estimated_micros,
+  /// list_cost_micros, entries}` object. A missing object is a slice with
+  /// nothing recorded.
   factory CostAmounts.fromWire(Object? wire) {
     final Json? json = _object(wire);
     if (json == null) return none;
@@ -158,19 +164,37 @@ class CostAmounts {
       heldMicros: _micros(json['held_micros']),
       listCostMicros: _micros(json['list_cost_micros']),
       entries: _micros(json['entries']),
+      settledMicros: _optionalMicros(json['settled_micros']),
+      estimatedMicros: _optionalMicros(json['estimated_micros']),
     );
   }
 
   /// What the meter counts, after Google's free allowance. Includes
-  /// [heldMicros].
+  /// [heldMicros], so it is not what the work is known to have cost: that is
+  /// [settledMicros].
   ///
   /// Every sum is signed. Google's free allowance is recorded as a negative
   /// row, and a residual can come out below the charges it is measured
   /// against, so a sum can be below zero: a credit.
   final int costMicros;
 
-  /// The part held for calls whose cost is unknown.
+  /// The part of [costMicros] held for calls whose cost is unknown, counted at
+  /// the most each call could have cost.
   final int heldMicros;
+
+  /// What the meter counts as known: [costMicros] without [heldMicros], each
+  /// call measured, billed, or estimated from evidence after it was made.
+  ///
+  /// The server's own figure, read as sent and never worked out here. Null
+  /// when the server did not send it (one that predates the figure), and then
+  /// nothing on screen may claim to know it.
+  final int? settledMicros;
+
+  /// The part of [settledMicros] estimated after the call: a held call valued
+  /// again from its recorded usage, or from the provider's bill for that day
+  /// and model. Never more than [settledMicros]. Null when the server did not
+  /// send it.
+  final int? estimatedMicros;
 
   /// The cost before Google's free allowance.
   final int listCostMicros;
@@ -178,11 +202,21 @@ class CostAmounts {
   /// How many metered rows the figures add up. Never below zero.
   final int entries;
 
+  /// The amount a row shows: [settledMicros] where the server sent it, and
+  /// [costMicros], held included, where it did not. Rows are ordered by it,
+  /// so "largest first" holds for the figure on screen.
+  int get shownMicros => settledMicros ?? costMicros;
+
   /// True when the meter recorded anything here at all, a credit included.
   /// Nothing recorded is not the same as a recorded nothing, and the screen
   /// says which.
   bool get hasCosts =>
-      entries > 0 || costMicros != 0 || heldMicros != 0 || listCostMicros != 0;
+      entries > 0 ||
+      costMicros != 0 ||
+      heldMicros != 0 ||
+      listCostMicros != 0 ||
+      (settledMicros ?? 0) != 0 ||
+      (estimatedMicros ?? 0) != 0;
 }
 
 /// A monthly limit and how much of it the current month has used.
@@ -221,7 +255,8 @@ class CostLimit {
   /// current UTC month, whichever month the report asked about.
   final String month;
 
-  /// What that month has used.
+  /// What that month has counted against the limit: the known costs and what
+  /// is held for calls whose cost is unknown, so not all of it is spent.
   final int spentMicros;
 
   /// What that month has left. Zero or less once the limit is reached.
@@ -387,15 +422,16 @@ class CostMonth {
   final CostAmounts totals;
   final List<CostStage> stages;
 
-  /// The stages that recorded anything, largest cost first. A credit is the
-  /// smallest cost there is, so it comes last. Ties read in stage order so the
-  /// list is the same every time it is drawn.
+  /// The stages that recorded anything, largest first by the amount each row
+  /// shows ([CostAmounts.shownMicros]). A credit is the smallest cost there
+  /// is, so it comes last. Ties read in stage order so the list is the same
+  /// every time it is drawn.
   List<CostStage> get stagesByCost {
     final List<CostStage> shown = stages
         .where((CostStage stage) => stage.amounts.hasCosts)
         .toList();
     shown.sort((CostStage a, CostStage b) {
-      final int byCost = b.amounts.costMicros.compareTo(a.amounts.costMicros);
+      final int byCost = b.amounts.shownMicros.compareTo(a.amounts.shownMicros);
       return byCost != 0 ? byCost : a.stage.compareTo(b.stage);
     });
     return shown;
@@ -611,13 +647,14 @@ class CostReport {
     return null;
   }
 
-  /// The model rows for [month], largest cost first (a credit last).
+  /// The model rows for [month], largest first by the amount each row shows
+  /// ([CostAmounts.shownMicros]), a credit last.
   List<CostModelRow> modelsOf(String month) {
     final List<CostModelRow> shown = models
         .where((CostModelRow row) => row.month == month && row.amounts.hasCosts)
         .toList();
     shown.sort((CostModelRow a, CostModelRow b) {
-      final int byCost = b.amounts.costMicros.compareTo(a.amounts.costMicros);
+      final int byCost = b.amounts.shownMicros.compareTo(a.amounts.shownMicros);
       if (byCost != 0) return byCost;
       final int byStage = a.stage.compareTo(b.stage);
       return byStage != 0 ? byStage : a.resource.compareTo(b.resource);
