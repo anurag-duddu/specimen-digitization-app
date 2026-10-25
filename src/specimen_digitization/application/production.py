@@ -165,8 +165,11 @@ class SqlConnectRepository:
         emulator_host=None,
         graph_blobs=None,
     ):
+        from .graph_review_summary import GraphReviewCache
+
         self.project = project
         self.graph_blobs = graph_blobs
+        self.review_graph_cache = GraphReviewCache()
         self._projected: OrderedDict[str, set[str]] = OrderedDict()
         # Specimen id -> {cost row id: digest of the row as last sent}.
         self._costed: OrderedDict[str, dict[str, str]] = OrderedDict()
@@ -363,6 +366,8 @@ class SqlConnectRepository:
         after_id="",
         limit=50,
         include_sensitive=False,
+        *,
+        hydrate_review=False,
     ):
         from .search import sql_item
 
@@ -397,7 +402,10 @@ class SqlConnectRepository:
             {mapping[key]: value for key, value in filters.model_dump().items()}
         )
         rows = self.execute("SearchSpecimens", variables).get("items", [])
-        return [sql_item(row, scope) for row in rows]
+        items = [sql_item(row, scope) for row in rows]
+        if hydrate_review:
+            self.review_graph_cache.hydrate(items, [row.get("activeGraph") for row in rows], self.graph_blobs)
+        return items
 
     def _snapshot(self, row):
         payload = row["snapshot"]
@@ -1214,6 +1222,61 @@ class GcsBlobs:
         from .blob_limits import ORIGINAL_BYTES
 
         return self.get_bounded(ref, ORIGINAL_BYTES)
+
+    def get_bounded_until(self, ref, max_bytes, deadline):
+        """Deadline-aware queue read, separate from supervised worker I/O.
+
+        read1 performs one underlying read, rather than waiting to fill a large
+        buffer across an arbitrarily slow stream. The socket inactivity timeout
+        is at most one second; the absolute deadline is checked between reads.
+        All responses are closed before this call returns or raises.
+        """
+        from urllib.parse import quote
+        from .blob_limits import read_limited, verify_digest, BlobTooLarge
+
+        if not isinstance(ref, str) or not re.fullmatch(r"[0-9a-f]{64}:[1-9][0-9]*", ref):
+            raise Missing("Invalid object reference")
+        checksum, generation = ref.split(":")
+
+        def remaining():
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise TimeoutError("Graph count read expired")
+            return left
+
+        left = remaining()
+        timeout = min(1.0, left)
+        url = ("https://storage.googleapis.com/storage/v1/b/"
+            + quote(self.bucket.name, safe="") + "/o/"
+            + quote("application/sha256/" + checksum, safe=""))
+        response = self.bucket.client._http.get(
+            url, params={"alt": "media", "generation": generation}, stream=True,
+            headers={"Accept-Encoding": "identity"}, allow_redirects=False,
+            timeout=(timeout, timeout), max_allowed_time=left,
+        )
+        with response:
+            remaining()
+            if response.status_code == 404:
+                raise Missing("Object generation not found")
+            if response.status_code != 200:
+                raise OperationalBlock("object_storage_unavailable")
+            declared = response.headers.get("Content-Length")
+            if declared is not None:
+                declared = int(declared)
+                if declared < 0:
+                    raise ValueError("Invalid object length")
+                if declared > max_bytes:
+                    raise BlobTooLarge("Evidence exceeds the configured byte limit")
+
+            def read(count):
+                remaining()
+                chunk = response.raw.read1(count, decode_content=False)
+                remaining()
+                return chunk
+
+            data = read_limited(read, max_bytes)
+        remaining()
+        return verify_digest(data, checksum)
 
     @guarded
     def get_bounded(self, ref, max_bytes):

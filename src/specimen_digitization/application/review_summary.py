@@ -1,7 +1,7 @@
 """Field attention counts, independent of clearance and record disposition.
 
-Search projects only state and value presence from the current snapshot. No
-field content, historical snapshots or per-record reads are needed to count.
+Search projects only state and value presence from the current snapshot.
+Legacy externalized graphs use a bounded verified compatibility read.
 The frontend's field presentation uses these same rules for section counts.
 """
 
@@ -62,6 +62,8 @@ KNOWN_FIELDS = frozenset(
 
 def project_fields(fields):
     """Project display value presence without treating raw readings as settled."""
+    if not isinstance(fields, dict):
+        return None
     return {
         key: (
             {
