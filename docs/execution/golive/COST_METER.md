@@ -389,14 +389,17 @@ From `application/profiles/infrastructure_prices.json` (version
 `infrastructure-prices-2026-10-20`, as of 2026-10-20, us-east4, Cloud Run
 Tier 1, read from the official pages on 2026-10-20), in micro-USD; every row
 carries the version as `priceListVersion` and `priceListAsOf`. The profile's
-price list (`profiles/published.json`) is not used.
+price list (`profiles/published.json`) is not used. The Cloud Storage us-east1
+rate was added on 2026-10-26, read from the pricing page that day; the version
+and date above were left as they were, since the ledger's SAM 3 true-up rows
+quote the version.
 
 | Item | Rate | Source |
 |---|---|---|
 | Cloud Run instance-based (SAM 3 and every job) | 18 per vCPU-second, 2 per GiB-second | cloud.google.com/run/pricing |
 | Cloud Run request-based (the API) | 24 per vCPU-second, 2.5 per GiB-second, 0.4 per request | cloud.google.com/run/pricing |
 | Cloud Run free tier, per month | instance-based 240,000 vCPU-s and 450,000 GiB-s; request-based 180,000 vCPU-s, 360,000 GiB-s and 2,000,000 requests | cloud.google.com/run/pricing |
-| Cloud Storage, Standard | 23,000 per GiB-month in us-east4, 26,000 in the US multi-region; a month is 730 hours | cloud.google.com/storage/pricing |
+| Cloud Storage, Standard | 20,000 per GiB-month in us-east1 (the app bucket's location), 23,000 in us-east4, 26,000 in the US multi-region; a month is 730 hours. Every byte is priced as Standard; the app bucket's default class is the legacy REGIONAL, which Google bills as Standard | cloud.google.com/storage/pricing; cloud.google.com/storage/docs/storage-classes |
 | Cloud SQL, db-f1-micro in us-east4 | 11,200 per hour, plus 10 GiB of SSD at 181,900 per GiB-month | cloud.google.com/sql/pricing; firebase.google.com/docs/sql-connect/pricing |
 
 The shapes are the deployed ones (`scripts/ci/runtime_settings.py`, and a test
@@ -463,6 +466,11 @@ organization and collection id). A collection whose part is zero gets no row.
    collection's source assets created before the day's end; else evenly. A
    location the price file does not name stops the day with
    `cost_allocation_storage_location_unpriced` until the price file names it.
+   The stop holds the whole day (no family's row is written and the cursor stays
+   put), so once the file names the location every held day is allocated in
+   full. The app bucket is in `US-EAST1` (the code lowercases the location);
+   the file did not name it until 2026-10-26, after the worker logged this stop
+   in production.
 5. `database-specimens` (resource `cloud-sql`, stage `database`). The day's
    hours x (11,200 + 10 x 181,900 / 730), split by the specimens each
    collection created before the day's end; else evenly over every collection. A
@@ -554,9 +562,10 @@ An administrator reads only their organization's rows (`CostTotalsV1`,
   whether `billable_instance_time` includes the 1-minute minimum of jobs; that
   the free tier is drawn chronologically; this project is assumed to be the
   only one on its billing account.
-- The bucket's storage class and location (read from the series' label at run
-  time); that the database is the db-f1-micro equivalent, and how a Data
-  Connect trial appears on the bill.
+- The spelling of the bucket's location in the monitoring series' label (read
+  at run time; the bucket's own metadata, read 2026-10-26, says `US-EAST1`,
+  default class `REGIONAL`, location type `region`); that the database is the
+  db-f1-micro equivalent, and how a Data Connect trial appears on the bill.
 - The Pacific day boundary (above). A paid call or save that reaches the
   ledger only after its day has left the last two complete billing days, or
   with no worker pass while the day was among them, leaves that day's rows as
