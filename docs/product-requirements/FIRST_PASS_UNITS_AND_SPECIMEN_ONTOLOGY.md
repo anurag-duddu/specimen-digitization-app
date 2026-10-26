@@ -106,10 +106,17 @@ What changes is what they receive and what may settle a field.
 
 ## 4. The conceptual model, as an ontology
 
-The model names the things a specimen label is about, how they relate, and what cannot be true
-together. It is written down once and given to every expert; the rules that can be checked by code
-are checked by code. It follows Darwin Core, the standard for specimen data, so every field here
-maps to a term others already use.
+The owner, 2026-10-26: "It's not about location at all. At specimen level there is a conceptual
+model that all models need to be aware of. This is the ontological model that needs to be baked in,
+so the harness can connect the dots."
+
+The model is one model of the specimen, not of a label or a field. It names the things a specimen's
+labels are about, how they relate, and what cannot be true together. It is written down once and
+baked into every model in the pipeline: the readers' instructions, the first pass, the organiser and
+every field expert carry it, so each one knows what a unit can be and what it can connect to; the
+rules that code can check are checked by code. Location is only the first example of a rule. It
+follows Darwin Core, the standard for specimen data, so every field here maps to a term others
+already use.
 
 ### Things
 
