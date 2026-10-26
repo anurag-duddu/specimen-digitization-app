@@ -67,6 +67,49 @@ Future<void> openDisclosure(WidgetTester tester, String title) async {
 }
 
 void main() {
+  testWidgets('unfinished correction and caret survive workbench resize', (
+    tester,
+  ) async {
+    useWindow(tester, largeWindow);
+    await tester.pumpWidget(
+      workbenchHost(
+        ReviewWorkbench(
+          specimen: record,
+          onChange: (_) async => fail('Resizing must not submit a correction'),
+          onRetry: (_) async {},
+          onRefresh: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await openDisclosure(tester, 'Collection code');
+    await scrollAndTap(tester, uiControl('Correct value for Collection code'));
+    final field = find.byWidgetPredicate(
+      (widget) => widget is UiField && widget.label == 'As written',
+    );
+    final editable = find.descendant(
+      of: field,
+      matching: find.byType(EditableText),
+    );
+    await tester.enterText(editable, 'Unfinished museum correction');
+    final controller = tester.widget<EditableText>(editable).controller;
+    controller.selection = const TextSelection(baseOffset: 3, extentOffset: 9);
+    await tester.pump();
+    for (final size in [mediumWindow, largeWindow, compactWindow]) {
+      tester.view.physicalSize = size;
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<EditableText>(editable).controller,
+        same(controller),
+      );
+      expect(controller.text, 'Unfinished museum correction');
+      expect(
+        controller.selection,
+        const TextSelection(baseOffset: 3, extentOffset: 9),
+      );
+      expect(tester.takeException(), isNull);
+    }
+  });
   for (final size in [compactWindow, largeWindow]) {
     testWidgets('native-shaped review stays field-centered at $size', (
       tester,

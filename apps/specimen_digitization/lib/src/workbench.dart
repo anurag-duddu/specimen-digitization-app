@@ -320,6 +320,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// detached and can no longer reach an inherited widget.
   UiScaffoldSlots? _slots;
 
+  final GlobalKey _fieldsKey = GlobalKey(debugLabel: 'specimen-fields');
   final GlobalKey _readingsKey = GlobalKey(debugLabel: 'label-comparison');
   final GlobalKey _historyKey = GlobalKey(
     debugLabel: 'retained-review-history',
@@ -1257,29 +1258,23 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         leading: !widget.showSidebarToggle
             ? null
             : widget.onShowQueue != null
-            ? widget.specimensExpanded
-                  ? null
-                  : UiIconButton(
-                      icon: UiIcons.sidebar,
-                      semanticsLabel: widget.specimensExpanded
-                          ? 'Close sidebar'
-                          : 'Open sidebar',
-                      tooltip: widget.specimensExpanded
-                          ? 'Close sidebar'
-                          : 'Open sidebar',
-                      focusNode: _showQueueFocus,
-                      onPressed: () {
-                        _showQueueFocus.requestFocus();
-                        FocusManager.instance.applyFocusChangesIfNeeded();
-                        widget.onShowQueue?.call();
-                      },
-                    )
+            ? UiIconButton(
+                icon: UiIcons.sidebar,
+                semanticsLabel: widget.specimensExpanded
+                    ? 'Hide queue'
+                    : 'Show queue',
+                focusNode: _showQueueFocus,
+                onPressed: () {
+                  _showQueueFocus.requestFocus();
+                  FocusManager.instance.applyFocusChangesIfNeeded();
+                  widget.onShowQueue?.call();
+                },
+              )
             : widget.onBack == null
             ? null
             : UiIconButton(
                 icon: UiIcons.back,
                 semanticsLabel: backToQueueLabel,
-                tooltip: backToQueueLabel,
                 onPressed: () async {
                   if (await _confirmUnsaved() && mounted) widget.onBack?.call();
                 },
@@ -1519,6 +1514,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
             ),
           ),
         WorkbenchFields(
+          key: _fieldsKey,
           specimen: widget.specimen,
           issues: issues,
           researchForField: (fieldKey, onSelectCandidate) => Column(

@@ -86,12 +86,12 @@ int _selectedTab(WidgetTester tester, TargetPlatform platform) =>
 void _expectNoSidebar() {
   expect(find.byKey(const ValueKey('global-rail')), findsNothing);
   expect(find.byKey(const ValueKey('global-sidebar')), findsNothing);
-  expect(uiIconButton('Open sidebar'), findsNothing);
-  expect(uiIconButton('Close sidebar'), findsNothing);
+  expect(uiIconButton('Show queue'), findsNothing);
+  expect(uiIconButton('Hide queue'), findsNothing);
   expect(
     find.byWidgetPredicate(
       (widget) =>
-          widget is ModalBarrier && widget.semanticsLabel == 'Close sidebar',
+          widget is ModalBarrier && widget.semanticsLabel == 'Hide queue',
     ),
     findsNothing,
   );

@@ -375,7 +375,7 @@ void main() {
     // The retained queue pane has no account or environment of its own:
     // those belong to global navigation or the compact workspace bar.
     final int sidebarStart = code.indexOf('Widget _sidebar(');
-    final int navigationStart = code.indexOf('Widget _dockedNavigation(');
+    final int navigationStart = code.indexOf('Widget _navigation(');
     expect(sidebarStart, greaterThanOrEqualTo(0));
     expect(navigationStart, greaterThan(sidebarStart));
     final String sidebar = code.substring(sidebarStart, navigationStart);
