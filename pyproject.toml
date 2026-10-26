@@ -45,7 +45,7 @@ build-backend = "hatchling.build"
 packages = ["src/specimen_digitization"]
 
 # Default `pytest` is product tests only. scripts/ci/python_shards.py passes
-# `tests` and `scripts/ci` explicitly for the sharded verify gate.
+# `tests` and the whole `scripts` tree explicitly for the sharded verify gate.
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = [

@@ -713,7 +713,14 @@ class WorkspaceController extends ChangeNotifier {
       _deferredPage = null;
       if (_ownsQueueRead(deferred.read) && deferred.pagesEpoch == _pagesEpoch) {
         _applyPage(deferred.page, deferred.cursors);
-        _notify(list: true, chrome: false, selection: false, inherited: false);
+        // The workbench computes next, previous and "N of M" from this list,
+        // so an open record needs the selection channel as well.
+        _notify(
+          list: true,
+          chrome: false,
+          selection: _selected != null,
+          inherited: false,
+        );
       }
     }
   }
@@ -843,6 +850,11 @@ class WorkspaceController extends ChangeNotifier {
       _nextCursor = null;
       _seenCursors.clear();
     }
+    // A quiet read can end a load that was already in flight (an Intake
+    // hand-off during a reviewer's refresh). The shell draws its progress strip
+    // from these two flags on the chrome channel, so it must hear that they
+    // cleared.
+    final bool busyChanged = _loading || _loadingMore;
     _loadingMore = false;
     if (!quiet) {
       _loading = true;
@@ -939,7 +951,9 @@ class WorkspaceController extends ChangeNotifier {
         final Specimen? heldSelected = ownsRecord ? selected : null;
         if (heldSelected != null) _acceptSelected(heldSelected);
         _loading = false;
-        if (heldSelected != null) {
+        if (busyChanged) {
+          _notify();
+        } else if (heldSelected != null) {
           _notify(list: false, chrome: false, selection: true, inherited: true);
         } else {
           _drainPollAgain();
@@ -958,12 +972,13 @@ class WorkspaceController extends ChangeNotifier {
       if (quiet) {
         // List-only ticks skip notifyListeners so the shell (chromeChanges /
         // WorkspaceScope.read) does not rebuild. An open-record update still
-        // notifies the ChangeNotifier for AnimatedBuilder listeners.
+        // notifies the ChangeNotifier for AnimatedBuilder listeners, and a
+        // tick that ended a load in flight wakes the chrome too.
         _notify(
           list: true,
-          chrome: false,
+          chrome: busyChanged,
           selection: acceptedSelected != null,
-          inherited: acceptedSelected != null,
+          inherited: acceptedSelected != null || busyChanged,
         );
       } else {
         _notify();
@@ -977,7 +992,11 @@ class WorkspaceController extends ChangeNotifier {
         // sentence names the age of the list, so each replacement would be
         // announced again (06 section 4, background refresh).
         if (_quietFailureReported) {
-          _drainPollAgain();
+          if (busyChanged) {
+            _notify();
+          } else {
+            _drainPollAgain();
+          }
           return;
         }
         _quietFailureReported = true;

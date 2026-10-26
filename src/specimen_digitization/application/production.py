@@ -1061,10 +1061,17 @@ class SqlConnectRepository:
         return self._document_payload(row)
 
     def _document_payloads(self, scope, kind, include_sensitive=None):
-        """Page ListDocumentsV2 payloads (limit/offset). Memberships resolved once."""
+        """Page ListDocumentsV2 payloads (limit/offset). Memberships resolved once.
+
+        The query is newest first and the offset is not insert-stable: a document
+        created between two pages shifts every row down one place, so the next
+        page opens with the last row of the previous one. Rows are de-duplicated
+        by id and returned by id ascending, the order the SQLite helper and
+        ``ListDocumentPageV2`` give, so both backends list a kind the same way.
+        """
         if include_sensitive is None:
             include_sensitive = self._can_view_sensitive(scope)
-        results, offset = [], 0
+        rows_by_id, offset = {}, 0
         while True:
             rows = self.execute(
                 "ListDocumentsV2",
@@ -1076,9 +1083,13 @@ class SqlConnectRepository:
                     includeSensitive=include_sensitive,
                 ),
             ).get("auxiliaryDocuments", [])
-            results.extend(self._document_payload(row) for row in rows)
+            for row in rows:
+                rows_by_id.setdefault(str(UUID(row["id"])), row)
             if len(rows) < 100:
-                return results
+                return [
+                    self._document_payload(rows_by_id[ident])
+                    for ident in sorted(rows_by_id)
+                ]
             offset += len(rows)
 
     def documents(self, scope, kind):

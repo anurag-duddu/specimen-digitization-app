@@ -131,3 +131,64 @@ def test_sqlconnect_upload_by_idempotency_stops_after_match():
     assert len(list_calls) == 2
     assert list_calls[0]["offset"] == 0
     assert list_calls[1]["offset"] == 100
+
+
+def _page_rows(indices, batch_id="batch-a"):
+    return [
+        {
+            "id": f"00000000-0000-4000-8000-{index:012x}",
+            "sensitive": False,
+            "payload": _upload(batch_id, f"key-{index}"),
+        }
+        for index in indices
+    ]
+
+
+def _connector_with_pages(pages):
+    """A connector whose ListDocumentsV2 answers come from ``pages`` by offset."""
+    sql = object.__new__(SqlConnectRepository)
+    offsets = []
+
+    def execute(op, variables, mutation=False):
+        assert op == "ListDocumentsV2"
+        offsets.append(variables["offset"])
+        return {"auxiliaryDocuments": pages.get(variables["offset"], [])}
+
+    sql.execute = execute
+    sql.memberships = lambda _actor: [
+        {
+            "organization_id": SYNTHETIC_ORG,
+            "collection_id": SYNTHETIC_COLLECTION,
+            "can_view_sensitive": False,
+        }
+    ]
+    actor_uid.set("operator")
+    return sql, offsets
+
+
+def test_sqlconnect_documents_repeat_nothing_when_an_upload_lands_between_pages():
+    # ListDocumentsV2 is newest first with limit/offset. An upload created
+    # between the two reads pushes every row down one place, so page two opens
+    # with the last row of page one.
+    page_one = _page_rows(range(200, 100, -1))
+    page_two = [page_one[-1]] + _page_rows(range(99, 50, -1))
+    sql, offsets = _connector_with_pages({0: page_one, 100: page_two})
+
+    keys = [row["idempotency_key"] for row in sql.documents(SCOPE, "upload")]
+
+    assert offsets == [0, 100]
+    assert len(keys) == len(set(keys)) == 100 + 49
+
+
+def test_sqlconnect_documents_come_back_in_id_order_like_the_sqlite_helper():
+    newest_first = _page_rows([3, 1, 2])
+    sql, _ = _connector_with_pages({0: newest_first})
+
+    assert [row["idempotency_key"] for row in sql.documents(SCOPE, "upload")] == [
+        "key-1",
+        "key-2",
+        "key-3",
+    ]
+    assert [
+        row["idempotency_key"] for row in sql.uploads_for_batch(SCOPE, "batch-a")
+    ] == ["key-1", "key-2", "key-3"]

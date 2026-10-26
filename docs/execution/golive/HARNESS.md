@@ -660,9 +660,9 @@ capabilities it needs.
 from the initial reader set only, as on main, so a profile that names the
 first-pass or the harness route as a reader fails the pin step. A reader call
 blocks as `pinned_model_route_unavailable` unless its route is a
-`handwriting_transcriber` with image input; `transcribe_label_image`, which has
-no caller, raises `ModelGatewayConfigurationError` on any other route. The
-first-pass route is pinned only when it is registered as
+`handwriting_transcriber` with image input. (`transcribe_label_image`, a helper
+with no caller that applied the same refusal to its own route, has been
+removed.) The first-pass route is pinned only when it is registered as
 `transcription_first_pass` with image input, and the first-pass call checks the
 same before its request: any other route, the harness's text-only one or a
 reader's included, blocks the step as `pinned_model_route_unavailable`.
