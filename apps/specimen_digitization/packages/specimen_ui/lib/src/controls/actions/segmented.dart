@@ -254,7 +254,7 @@ class _UiSegmentedState<T> extends State<UiSegmented<T>> {
   @override
   void didUpdateWidget(UiSegmented<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.segments.length != widget.segments.length) _syncNodes();
+    _syncNodes(oldWidget);
   }
 
   @override
@@ -265,19 +265,56 @@ class _UiSegmentedState<T> extends State<UiSegmented<T>> {
     super.dispose();
   }
 
-  void _syncNodes() {
-    for (final FocusNode node in _nodes) {
+  void _syncNodes([UiSegmented<T>? previous]) {
+    final oldNodes = _nodes;
+    final previousTabStop = _tabStop;
+    // A choice owns its focus. Inserting, removing or reordering options
+    // must not transfer focus to whichever value happens to take its index.
+    _nodes = <FocusNode>[
+      for (final segment in widget.segments)
+        if (previous != null &&
+            previous.segments.any((old) => old.value == segment.value))
+          oldNodes[previous.segments.indexWhere(
+            (old) => old.value == segment.value,
+          )]
+        else
+          _newNode(segment.label),
+    ];
+    if (previous != null) {
+      final retained = widget.segments.indexWhere(
+        (segment) => segment.value == previous.segments[previousTabStop].value,
+      );
+      _tabStop = retained < 0 ? _chosen : retained;
+    }
+    final removed = oldNodes.where((node) => !_nodes.contains(node)).toList();
+    final restoreFocus = removed.any((node) => node.hasFocus);
+    for (final node in removed) {
       node.dispose();
     }
-    _nodes = List<FocusNode>.generate(widget.segments.length, (int index) {
-      final node = FocusNode(debugLabel: widget.segments[index].label);
-      node.addListener(() {
-        if (node.hasFocus && _tabStop != index && mounted) {
-          setState(() => _tabStop = index);
+    for (var i = 0; i < _nodes.length; i++) {
+      _nodes[i].debugLabel = widget.segments[i].label;
+    }
+    if (restoreFocus && _nodes.isNotEmpty) {
+      final replacement = _nodes[_tabStop];
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            widget.onChanged != null &&
+            _nodes.contains(replacement)) {
+          replacement.requestFocus();
         }
       });
-      return node;
-    }, growable: false);
+    }
+  }
+
+  FocusNode _newNode(String label) {
+    final node = FocusNode(debugLabel: label);
+    node.addListener(() {
+      final index = _nodes.indexOf(node);
+      if (node.hasFocus && index >= 0 && _tabStop != index && mounted) {
+        setState(() => _tabStop = index);
+      }
+    });
+    return node;
   }
 
   int get _chosen {
@@ -457,6 +494,7 @@ class _UiSegmentedState<T> extends State<UiSegmented<T>> {
                   children: <Widget>[
                     for (int i = 0; i < count; i++)
                       Expanded(
+                        key: ValueKey<T>(widget.segments[i].value),
                         child: _Segment<T>(
                           segment: widget.segments[i],
                           style: style,

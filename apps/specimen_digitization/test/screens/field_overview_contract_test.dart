@@ -164,9 +164,9 @@ void main() {
         tester.getTopLeft(find.text('Collection')).dy,
         lessThan(tester.getTopLeft(find.text('Taxa')).dy),
       );
-      expect(find.text('Needs review · Unknown · Required'), findsOneWidget);
-      expect(find.text('Needs review · Ambiguous · Smith'), findsOneWidget);
-      expect(find.text('Supported · Lepidoptera'), findsOneWidget);
+      expect(find.text('Unknown'), findsOneWidget);
+      expect(find.text('Ambiguous · Smith'), findsOneWidget);
+      expect(find.text('Lepidoptera'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -222,7 +222,7 @@ void main() {
         find.text('No value has been recorded for this field.'),
         findsOneWidget,
       );
-      expect(find.text('Needs review · Unknown · Required'), findsOneWidget);
+      expect(find.text('Required field · Unknown'), findsOneWidget);
       expect(find.text('Unknown'), findsNothing);
       expect(find.text('As written'), findsNothing);
       expect(uiDisclosure('Value details'), findsNothing);
@@ -274,39 +274,83 @@ void main() {
     expect(find.textContaining('internal-country-rule'), findsNothing);
   });
 
-  testWidgets(
-    'source payloads are summarized with raw evidence available only on demand',
-    (tester) async {
-      const raw =
-          '{"name":"Philippines","id":"internal-source-match","confidence":0.9}';
-      final specimen = Specimen({
-        ...record.data,
-        'evidence': [
-          {
-            'evidence_id': 'source-one',
-            'region_id': 'label-one',
-            'excerpt': raw,
-          },
-        ],
-        'fields': [
-          {
-            ...record.fields.firstWhere(
-              (field) => field['field_key'] == 'country',
-            ),
-            'evidence_ids': ['source-one'],
-          },
-        ],
-      });
-      await showOverview(tester, specimen: specimen);
-      await open(tester, 'Country');
-      expect(find.text('Philippines'), findsOneWidget);
-      expect(find.text(raw), findsNothing);
-      expect(find.textContaining('confidence'), findsNothing);
-      expect(find.text('Needs review · Unknown · Required'), findsOneWidget);
-      await open(tester, 'Evidence details');
-      expect(find.text(raw), findsOneWidget);
-    },
-  );
+  for (final hasObservation in [false, true]) {
+    for (final source in <(String?, String)>[
+      ('label-one', 'Label 1'),
+      (null, 'Record'),
+      ('unknown-region', 'Record'),
+    ]) {
+      testWidgets(
+        'source payloads are disclosed with observation present $hasObservation and region ${source.$1}',
+        (tester) async {
+          const raw =
+              '{"name":"Philippines","id":"internal-source-match","confidence":0.9}';
+          final specimen = Specimen({
+            ...record.data,
+            'evidence': [
+              {
+                'evidence_id': 'source-one',
+                'region_id': source.$1,
+                'excerpt': raw,
+              },
+            ],
+            'fields': [
+              {
+                ...record.fields.firstWhere(
+                  (field) => field['field_key'] == 'country',
+                ),
+                'evidence_ids': ['source-one'],
+                'verbatim_by_observation': <String, String>{
+                  if (hasObservation) 'reader-a': 'P.I.',
+                },
+              },
+            ],
+          });
+          await showOverview(tester, specimen: specimen);
+          await open(tester, 'Country');
+          expect(
+            find.text('P.I.'),
+            hasObservation ? findsOneWidget : findsNothing,
+          );
+          expect(
+            find.text('Philippines'),
+            hasObservation ? findsNothing : findsOneWidget,
+          );
+          expect(find.text('${source.$2} · Source summary'), findsNothing);
+          expect(find.text(raw), findsNothing);
+          expect(find.textContaining('confidence'), findsNothing);
+          expect(find.text('Required field · Unknown'), findsOneWidget);
+          await open(tester, 'Evidence details');
+          expect(find.text('Philippines'), findsOneWidget);
+          expect(
+            find.text('${source.$2} · Source summary'),
+            hasObservation ? findsOneWidget : findsNothing,
+          );
+          expect(find.text('${source.$2} · Source response'), findsOneWidget);
+          final responseBlock = find
+              .ancestor(
+                of: find.text('${source.$2} · Source response'),
+                matching: find.byType(Column),
+              )
+              .first;
+          expect(
+            find.descendant(of: responseBlock, matching: find.text(raw)),
+            findsOneWidget,
+          );
+          if (hasObservation) {
+            expect(
+              find.descendant(
+                of: responseBlock,
+                matching: find.text('Philippines'),
+              ),
+              findsOneWidget,
+            );
+          }
+          expect(find.textContaining('unknown-region'), findsNothing);
+        },
+      );
+    }
+  }
 
   testWidgets(
     'supported derived values name their source fields without erasing label wording',
@@ -333,7 +377,13 @@ void main() {
       await open(tester, 'Date visited to');
       expect(find.text('Derived from Date visited from'), findsOneWidget);
       await open(tester, 'Value details');
-      expect(find.text("3 Sept. '46"), findsOneWidget);
+      expect(
+        find.descendant(
+          of: uiDisclosure('Value details'),
+          matching: find.text("3 Sept. '46"),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('As written'), findsOneWidget);
       expect(find.text('Read as'), findsNothing);
       expect(find.text('Standardized'), findsOneWidget);

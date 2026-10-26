@@ -1,5 +1,10 @@
 # 12. Verification report v2
 
+> Historical verification of an earlier build. The 2026-10-22 owner direction
+> in [15-design-system-standard.md](15-design-system-standard.md) and
+> [09-brand-direction.md](09-brand-direction.md) replaces its palette and field
+> treatments. Do not restore colours from this report or its screenshots.
+
 Step 7 of the sequencing in [00-north-star.md](00-north-star.md), taken again
 against the rebuilt client: the eight dimensions of the bar, re-measured with
 the instruments the first report used, plus the three the refactor added and

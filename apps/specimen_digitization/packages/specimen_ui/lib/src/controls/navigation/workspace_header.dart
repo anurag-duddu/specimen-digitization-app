@@ -87,8 +87,17 @@ class UiWorkspaceHeader extends StatelessWidget {
                       children: <Widget>[
                         SizedBox(width: identityWidth, child: identity),
                         SizedBox(width: ui.space.s6),
-                        SizedBox(width: navigationWidth, child: navigation),
-                        const Spacer(),
+                        Expanded(
+                          child: Align(
+                            alignment: AlignmentDirectional.centerStart,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                maxWidth: navigationWidth,
+                              ),
+                              child: navigation,
+                            ),
+                          ),
+                        ),
                         ...actions,
                       ],
                     );

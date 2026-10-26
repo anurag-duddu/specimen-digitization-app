@@ -140,6 +140,7 @@ void main() {
       await tester.tap(uiButton(EvidenceDrawer.defaultTitle));
       await tester.pumpAndSettle();
       await expectAccessible(tester);
+      await tester.pumpWidget(const SizedBox());
     }
   });
 }

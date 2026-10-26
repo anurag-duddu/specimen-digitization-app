@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/density.dart';
+import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
 import '../../foundation/type.dart';
@@ -15,18 +16,71 @@ import '../../primitives/edge_fade.dart';
 import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
+import 'tooltip.dart';
+
+/// Label sizing; both retain the accessible minimum interaction target.
+enum UiTabsSize {
+  /// Smaller labels for compact strips.
+  compact,
+
+  /// Standard labels for page navigation.
+  regular,
+}
+
+/// Visual treatments for the same tab selection and keyboard contract.
+enum UiTabsVariant {
+  /// A line marks the selected tab.
+  underline,
+
+  /// The selected tab has both a subtle fill and an underline.
+  underlineFilled,
+
+  /// A quiet rectangular fill marks the selected tab.
+  filled,
+
+  /// A rounded capsule marks the selected tab.
+  pills,
+
+  /// An outline marks the selected tab.
+  outlined,
+
+  /// A neutral fill marks the selected tab without a saturated surface.
+  soft,
+
+  /// A neutral fill and border mark the selected tab.
+  softOutlined,
+}
 
 /// One tab.
 @immutable
 class UiTab {
   /// A tab labelled [label].
-  const UiTab({required this.label, this.semanticsLabel});
+  const UiTab({
+    required this.label,
+    this.semanticsLabel,
+    this.icon,
+    this.badge,
+    this.enabled = true,
+    this.disabledReason,
+  });
 
   /// The visible label. Keep it brief enough to scan beside the other tabs.
   final String label;
 
   /// Overrides the label a screen reader reads. Defaults to [label].
   final String? semanticsLabel;
+
+  /// Optional Phosphor icon preceding the label.
+  final IconSpec? icon;
+
+  /// Optional count or compact supporting text. Included in the accessible name.
+  final String? badge;
+
+  /// Unavailable tabs remain visible but cannot receive selection.
+  final bool enabled;
+
+  /// Explains an unavailable tab to assistive technology.
+  final String? disabledReason;
 }
 
 /// The text, underline and measured geometry of a tab strip.
@@ -71,8 +125,9 @@ class UiTabStyle {
   static UiTabStyle resolve(
     UiThemeData ui, {
     TextScaler textScaler = TextScaler.noScaling,
+    UiTabsSize size = UiTabsSize.regular,
   }) => UiTabStyle(
-    labelStyle: ui.type.label,
+    labelStyle: size == UiTabsSize.compact ? ui.type.bodySmall : ui.type.label,
     label: ui.color.inkSecondary,
     selectedLabel: ui.color.ink,
     underline: ui.color.ink,
@@ -80,7 +135,7 @@ class UiTabStyle {
     slotPadding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s3),
     outerHeight: UiType.heightAroundAt(
       UiDensity.hitBox,
-      ui.type.label,
+      size == UiTabsSize.compact ? ui.type.bodySmall : ui.type.label,
       textScaler,
     ),
   );
@@ -89,8 +144,17 @@ class UiTabStyle {
   double slotWidth(BuildContext context, Iterable<UiTab> tabs) {
     final double widest = tabs.fold<double>(
       0,
-      (double width, UiTab tab) =>
-          math.max(width, measureLabel(context, tab.label, labelStyle).width),
+      (double width, UiTab tab) => math.max(
+        width,
+        measureLabel(context, tab.label, labelStyle).width +
+            (tab.icon == null
+                ? 0
+                : context.ui.space.iconInline + context.ui.space.s2) +
+            (tab.badge == null
+                ? 0
+                : measureLabel(context, tab.badge!, labelStyle).width +
+                      context.ui.space.s4),
+      ),
     );
     return math.max(
       UiDensity.hitBox,
@@ -117,6 +181,10 @@ class UiTabs extends StatefulWidget {
     required this.semanticsLabel,
     this.strip,
     this.onSelected,
+    this.axis = Axis.horizontal,
+    this.variant = UiTabsVariant.underline,
+    this.size = UiTabsSize.regular,
+    this.expanded = false,
   });
 
   /// The tabs, in reading order.
@@ -134,6 +202,18 @@ class UiTabs extends StatefulWidget {
   /// Reports every user activation, including the already selected tab.
   /// Programmatic notifier changes do not invoke this navigation callback.
   final ValueChanged<int>? onSelected;
+
+  /// Horizontal strips scroll when needed; vertical lists use up/down arrows.
+  final Axis axis;
+
+  /// Styling does not change selection, names, focus or keyboard behavior.
+  final UiTabsVariant variant;
+
+  /// Label density, independent of accessible target sizing.
+  final UiTabsSize size;
+
+  /// Shares the available horizontal width when the labels fit. Overflow still scrolls.
+  final bool expanded;
 
   @override
   State<UiTabs> createState() => _UiTabsState();
@@ -167,6 +247,10 @@ class _UiTabsState extends State<UiTabs> {
       _revealed = _chosen;
     }
     if (oldWidget.tabs.length != widget.tabs.length) _syncNodes();
+    if (widget.tabs.isNotEmpty && !widget.tabs[_tabStop].enabled) {
+      final first = widget.tabs.indexWhere((tab) => tab.enabled);
+      if (first >= 0) _tabStop = first;
+    }
     for (int i = 0; i < _nodes.length; i++) {
       _nodes[i].debugLabel = widget.tabs[i].label;
     }
@@ -199,6 +283,11 @@ class _UiTabsState extends State<UiTabs> {
       });
       return node;
     });
+    _tabStop = _chosen;
+    if (widget.tabs.isNotEmpty && !widget.tabs[_tabStop].enabled) {
+      final first = widget.tabs.indexWhere((tab) => tab.enabled);
+      if (first >= 0) _tabStop = first;
+    }
   }
 
   void _selectionChanged() {
@@ -216,7 +305,7 @@ class _UiTabsState extends State<UiTabs> {
       // the page that happens to contain this strip.
       final ScrollableState? scroller = Scrollable.maybeOf(
         target,
-        axis: Axis.horizontal,
+        axis: widget.axis,
       );
       final RenderObject? box = target.findRenderObject();
       if (scroller != null && box != null) {
@@ -231,11 +320,24 @@ class _UiTabsState extends State<UiTabs> {
   void _move(int step) {
     if (_nodes.isEmpty) return;
     final int focused = _nodes.indexWhere((FocusNode node) => node.hasFocus);
-    _nodes[((focused < 0 ? _chosen : focused) + step).clamp(
-          0,
-          _nodes.length - 1,
-        )]
-        .requestFocus();
+    var next = (focused < 0 ? _chosen : focused) + step;
+    while (next >= 0 && next < _nodes.length) {
+      if (widget.tabs[next].enabled) {
+        _nodes[next].requestFocus();
+        return;
+      }
+      next += step;
+    }
+  }
+
+  void _edge(bool end) {
+    final indices = List<int>.generate(_nodes.length, (i) => i);
+    for (final index in end ? indices.reversed : indices) {
+      if (widget.tabs[index].enabled) {
+        _nodes[index].requestFocus();
+        return;
+      }
+    }
   }
 
   @override
@@ -243,19 +345,32 @@ class _UiTabsState extends State<UiTabs> {
     if (widget.strip case final Widget strip) return strip;
     if (widget.tabs.isEmpty) return const SizedBox.shrink();
     for (int i = 0; i < _nodes.length; i++) {
-      _nodes[i].skipTraversal = i != _tabStop;
+      _nodes[i].skipTraversal = i != _tabStop || !widget.tabs[i].enabled;
     }
     final UiThemeData ui = context.ui;
     final UiTabStyle style = UiTabStyle.resolve(
       ui,
       textScaler: MediaQuery.textScalerOf(context),
+      size: widget.size,
     );
     final double width = style.intrinsicWidth(context, widget.tabs);
+    if (widget.axis == Axis.vertical) {
+      return SingleChildScrollView(child: _track(style, width));
+    }
     return FitBuilder(
       variants: <FitVariant>[
         FitVariant(
           intrinsicWidth: width,
-          builder: (BuildContext context, bool _) => _track(style, width),
+          builder: (BuildContext context, bool _) => widget.expanded
+              ? LayoutBuilder(
+                  builder: (context, constraints) => _track(
+                    style,
+                    constraints.hasBoundedWidth
+                        ? math.max(width, constraints.maxWidth)
+                        : width,
+                  ),
+                )
+              : _track(style, width),
         ),
         FitVariant(
           intrinsicWidth: 0,
@@ -281,75 +396,231 @@ class _UiTabsState extends State<UiTabs> {
         policy: WidgetOrderTraversalPolicy(),
         child: Shortcuts(
           includeSemantics: false,
-          shortcuts: const <ShortcutActivator, Intent>{
-            SingleActivator(LogicalKeyboardKey.arrowRight): _MoveTabIntent(1),
-            SingleActivator(LogicalKeyboardKey.arrowLeft): _MoveTabIntent(-1),
+          shortcuts: <ShortcutActivator, Intent>{
+            SingleActivator(
+              widget.axis == Axis.horizontal
+                  ? LogicalKeyboardKey.arrowRight
+                  : LogicalKeyboardKey.arrowDown,
+            ): const _MoveTabIntent(
+              1,
+            ),
+            SingleActivator(
+              widget.axis == Axis.horizontal
+                  ? LogicalKeyboardKey.arrowLeft
+                  : LogicalKeyboardKey.arrowUp,
+            ): const _MoveTabIntent(
+              -1,
+            ),
+            const SingleActivator(LogicalKeyboardKey.home):
+                const _TabEdgeIntent(false),
+            const SingleActivator(LogicalKeyboardKey.end): const _TabEdgeIntent(
+              true,
+            ),
           },
           child: Actions(
             actions: <Type, Action<Intent>>{
               _MoveTabIntent: CallbackAction<_MoveTabIntent>(
                 onInvoke: (_MoveTabIntent intent) {
-                  _move(rtl ? -intent.step : intent.step);
+                  _move(
+                    rtl && widget.axis == Axis.horizontal
+                        ? -intent.step
+                        : intent.step,
+                  );
+                  return null;
+                },
+              ),
+              _TabEdgeIntent: CallbackAction<_TabEdgeIntent>(
+                onInvoke: (intent) {
+                  _edge(intent.end);
                   return null;
                 },
               ),
             },
             child: SizedBox(
-              width: width,
-              height: style.outerHeight,
-              child: Row(
+              width: widget.axis == Axis.horizontal ? width : null,
+              height: widget.axis == Axis.horizontal ? style.outerHeight : null,
+              child: Flex(
+                direction: widget.axis,
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   for (int i = 0; i < widget.tabs.length; i++)
-                    Expanded(
-                      child: Pressable(
-                        semanticsLabel:
-                            widget.tabs[i].semanticsLabel ??
-                            widget.tabs[i].label,
-                        role: PressableRole.tab,
-                        selected: i == _chosen,
-                        focusNode: _nodes[i],
-                        shape: const RoundedRectangleBorder(),
-                        radius: context.ui.shape.none,
-                        insetFocusRing: true,
-                        onPressed: () {
-                          widget.selected.value = i;
-                          widget.onSelected?.call(i);
-                        },
-                        builder:
-                            (BuildContext context, Set<WidgetState> states) =>
-                                DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: i == _chosen
-                                            ? style.underline
-                                            : style.underline.withValues(
-                                                alpha: 0,
-                                              ),
-                                        width: style.underlineWidth,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Padding(
-                                    padding: style.slotPadding,
-                                    child: Center(
-                                      child: UiLabel(
-                                        widget.tabs[i].label,
-                                        style: style.labelStyle.copyWith(
-                                          color: i == _chosen
-                                              ? style.selectedLabel
-                                              : style.label,
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                      ),
-                    ),
+                    if (widget.axis == Axis.horizontal)
+                      Expanded(child: _tab(style, i))
+                    else
+                      _tab(style, i),
                 ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tab(UiTabStyle style, int i) {
+    final ui = context.ui;
+    final tab = widget.tabs[i];
+    final chosen = i == _chosen;
+    final line =
+        widget.variant == UiTabsVariant.underline ||
+        widget.variant == UiTabsVariant.underlineFilled;
+    final radius = widget.variant == UiTabsVariant.pills
+        ? ui.shape.sheet
+        : ui.shape.tile;
+    final filled =
+        chosen &&
+        (widget.variant == UiTabsVariant.filled ||
+            widget.variant == UiTabsVariant.pills);
+    final ink = !tab.enabled
+        ? ui.color.disabledContent
+        : filled
+        ? ui.color.onAccent
+        : chosen
+        ? style.selectedLabel
+        : style.label;
+    return Pressable(
+      semanticsLabel: tab.semanticsLabel ?? [tab.label, ?tab.badge].join(', '),
+      role: PressableRole.tab,
+      selected: chosen,
+      disabledReason: tab.disabledReason,
+      focusNode: _nodes[i],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(line ? ui.shape.none : radius),
+      ),
+      radius: line ? ui.shape.none : radius,
+      insetFocusRing: true,
+      onPressed: !tab.enabled
+          ? null
+          : () {
+              widget.selected.value = i;
+              widget.onSelected?.call(i);
+            },
+      builder: (BuildContext context, Set<WidgetState> states) => SizedBox(
+        height: widget.axis == Axis.horizontal ? style.outerHeight : null,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: filled
+                ? (tab.enabled ? ui.color.accent : ui.color.disabledFill)
+                : chosen &&
+                      (widget.variant == UiTabsVariant.soft ||
+                          widget.variant == UiTabsVariant.softOutlined ||
+                          widget.variant == UiTabsVariant.underlineFilled)
+                ? ui.color.stateLayer(.06)
+                : null,
+            borderRadius: line ? null : BorderRadius.circular(radius),
+            border:
+                widget.variant == UiTabsVariant.outlined ||
+                    widget.variant == UiTabsVariant.softOutlined
+                ? Border.all(
+                    color: chosen ? ui.color.boundary : ui.color.hairline,
+                    width: ui.shape.stroke.hairline,
+                  )
+                : line
+                ? widget.axis == Axis.horizontal
+                      ? Border(
+                          bottom: BorderSide(
+                            color: chosen
+                                ? style.underline
+                                : style.underline.withValues(alpha: 0),
+                            width: style.underlineWidth,
+                          ),
+                        )
+                      : BorderDirectional(
+                          start: BorderSide(
+                            color: chosen
+                                ? style.underline
+                                : style.underline.withValues(alpha: 0),
+                            width: style.underlineWidth,
+                          ),
+                        )
+                : null,
+          ),
+          child: Padding(
+            padding: widget.axis == Axis.vertical
+                ? EdgeInsets.all(ui.space.s3)
+                : style.slotPadding,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final Widget label = UiLabel(
+                  tab.label,
+                  style: style.labelStyle.copyWith(color: ink),
+                  textAlign: widget.axis == Axis.horizontal
+                      ? TextAlign.center
+                      : TextAlign.start,
+                  tooltip: (context, message, child) => UiTooltip(
+                    message: message,
+                    excludeSemantics: true,
+                    child: child,
+                  ),
+                );
+                final Widget? badge = tab.badge == null
+                    ? null
+                    : Text(
+                        tab.badge!,
+                        style: ui.type.labelSmall.copyWith(color: ink),
+                      );
+                final List<Widget> leading = [
+                  if (tab.icon != null) ...[
+                    ExcludeSemantics(
+                      child: UiIcon(
+                        tab.icon!,
+                        size: UiIconSize.inline,
+                        color: ink,
+                      ),
+                    ),
+                    SizedBox(width: ui.space.s2),
+                  ],
+                ];
+                if (widget.axis == Axis.vertical && badge != null) {
+                  final double needed =
+                      (tab.icon == null
+                          ? 0
+                          : ui.space.iconInline + ui.space.s2) +
+                      math.min(
+                        ui.space.labelMin,
+                        measureLabel(
+                          context,
+                          tab.label,
+                          style.labelStyle,
+                        ).width,
+                      ) +
+                      ui.space.s2 +
+                      measureLabel(
+                        context,
+                        tab.badge!,
+                        ui.type.labelSmall,
+                      ).width;
+                  if (needed > constraints.maxWidth) {
+                    return Row(
+                      children: [
+                        ...leading,
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              label,
+                              SizedBox(height: ui.space.s1),
+                              badge,
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+                }
+                return Row(
+                  mainAxisAlignment: widget.axis == Axis.horizontal
+                      ? MainAxisAlignment.center
+                      : MainAxisAlignment.start,
+                  children: [
+                    ...leading,
+                    Flexible(child: label),
+                    if (badge != null) ...[SizedBox(width: ui.space.s2), badge],
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -361,6 +632,11 @@ class _UiTabsState extends State<UiTabs> {
 class _MoveTabIntent extends Intent {
   const _MoveTabIntent(this.step);
   final int step;
+}
+
+class _TabEdgeIntent extends Intent {
+  const _TabEdgeIntent(this.end);
+  final bool end;
 }
 
 /// The pane under a [UiTabs].

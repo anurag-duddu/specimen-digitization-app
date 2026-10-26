@@ -1,14 +1,15 @@
 /// The navigation sidebar (10 section 4.4, `UiSidebar`).
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/semantics.dart' show SemanticsRole;
 import 'package:flutter/widgets.dart';
 
-import '../../foundation/glass.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
-import '../../primitives/glass_surface.dart';
-import '../data/list_row.dart';
+import '../../primitives/pressable.dart';
+import '../overlays/tooltip.dart';
 import 'nav_destination.dart';
 import 'nav_group.dart';
 
@@ -27,26 +28,20 @@ class UiSidebarStyle {
     this.barColor,
   });
 
-  /// The pane's width. 280 dp (10 section 4.4).
+  /// The pane's width, measured from labels and the reader's text scale.
   final double width;
 
   /// The least a destination row may be. Grows with the words in it.
   ///
-  /// Carried for one version and no longer read: a destination is a
-  /// `UiListRow`, which takes its height from `UiListRowStyle`.
-  @Deprecated(
-    'Replaced by UiListRowStyle.heightOf. Drop the argument; this member '
-    'goes in the next minor version.',
-  )
+  /// Carried for compatibility and no longer read. Destination rows size
+  /// from their content and retain the shared 48 dp minimum hit target.
+  @Deprecated('Destination rows size from their content. Drop this argument.')
   final double? rowMinHeight;
 
   /// The padding inside one destination row, past the leading bar.
   ///
   /// Carried for one version and no longer read: see [rowMinHeight].
-  @Deprecated(
-    'Replaced by UiListRowStyle.padding. Drop the argument; this member goes '
-    'in the next minor version.',
-  )
+  @Deprecated('Navigation owns its content padding. Drop this argument.')
   final EdgeInsetsGeometry? rowPadding;
 
   /// The padding around the header and the footer slots.
@@ -55,19 +50,13 @@ class UiSidebarStyle {
   /// The leading bar on the current row. 3 dp (09 section 5).
   ///
   /// Carried for one version and no longer read: see [rowMinHeight].
-  @Deprecated(
-    'Replaced by UiListRowStyle.barWidth. Drop the argument; this member goes '
-    'in the next minor version.',
-  )
+  @Deprecated('Navigation selection has no leading stripe. Drop this argument.')
   final double? barWidth;
 
   /// The bar's colour.
   ///
   /// Carried for one version and no longer read: see [rowMinHeight].
-  @Deprecated(
-    'Replaced by UiListRowStyle.bar. Drop the argument; this member goes in '
-    'the next minor version.',
-  )
+  @Deprecated('Navigation selection has no leading stripe. Drop this argument.')
   final Color? barColor;
 
   /// The glyph of the current destination.
@@ -76,35 +65,54 @@ class UiSidebarStyle {
   /// The glyph of every other destination.
   final Color restContent;
 
-  /// The 280 dp pane of 10 section 4.4.
-  static const double defaultWidth = 280;
-
-  /// The style for [ui].
-  static UiSidebarStyle resolve(UiThemeData ui) => UiSidebarStyle(
-    width: defaultWidth,
-    slotPadding: EdgeInsetsDirectional.all(ui.space.s4),
-    currentContent: ui.color.ink,
-    restContent: ui.color.inkSecondary,
-  );
+  /// The style for [ui], sized around a short navigation label and its icon.
+  ///
+  /// Fourteen label ems provide room for the workspace/account slots. Longer
+  /// destination labels widen the pane. Icons follow adjacent text; gutters remain fixed.
+  static UiSidebarStyle resolve(
+    UiThemeData ui, {
+    TextScaler textScaler = TextScaler.noScaling,
+    TextDirection textDirection = TextDirection.ltr,
+    List<UiNavDestination> destinations = const [],
+  }) {
+    final inset = ui.space.s4;
+    final iconAndGap =
+        ui.space.iconInline *
+            textScaler.scale(ui.type.body.fontSize!) /
+            ui.type.body.fontSize! +
+        ui.space.s2;
+    var labelWidth = 0.0;
+    for (final destination in destinations) {
+      final painter = TextPainter(
+        text: TextSpan(text: destination.label, style: ui.type.body),
+        textScaler: textScaler,
+        textDirection: textDirection,
+        maxLines: 1,
+      )..layout();
+      labelWidth = math.max(labelWidth, painter.width);
+      painter.dispose();
+    }
+    return UiSidebarStyle(
+      width: math.max(
+        textScaler.scale(ui.type.label.fontSize!) * 14 + iconAndGap,
+        labelWidth + iconAndGap + inset * 4,
+      ),
+      slotPadding: EdgeInsetsDirectional.all(inset),
+      currentContent: ui.brand.secondary.content,
+      restContent: ui.color.inkSecondary,
+    );
+  }
 }
 
-/// A 280 dp `glass.flat` pane of destinations for a large window.
+/// A quiet, labelled application sidebar on a flat Paper surface.
 ///
-/// The header slot carries the mark and the product name; the footer slot
-/// carries whatever belongs at the bottom of the pane. Destinations are
-/// `UiListRow`s rather than discs, and the current one is marked four ways:
-/// the 6 percent `ink` fill and the 3 dp leading bar the selectable row of
-/// 10 section 4.5 draws, plus the `fill` weight of its glyph and `ink` rather
-/// than `ink.secondary` for it.
+/// Selection is a subtle rounded fill and accent text, with no leading stripe
+/// or heavy filled glyph. Header and footer are slots; the footer settles at
+/// the bottom when there is room. The entire pane scrolls in short windows,
+/// including large text, so account and workspace controls remain reachable.
 ///
-/// The pane needs a bounded height, which is what a scaffold gives it. The
-/// header and the footer hold their places and the destinations scroll
-/// between them when there are more of them than the pane can show.
-///
-/// Semantics: a tab list of tabs, one selected. `Up` and `Down` move between
-/// them; `Enter` and `Space` select.
-///
-/// Retires `Drawer` and the permanent drawer.
+/// Destinations retain the tab semantics and arrow-key behavior shared with
+/// compact navigation. Enter and Space activate the focused destination.
 class UiSidebar extends StatelessWidget {
   /// A sidebar over [destinations], with [currentIndex] current.
   const UiSidebar({
@@ -114,6 +122,8 @@ class UiSidebar extends StatelessWidget {
     required this.onSelect,
     this.header,
     this.footer,
+    this.semanticsLabel,
+    this.labels = UiNavigationLabels.all,
   });
 
   /// The destinations, in order.
@@ -134,92 +144,157 @@ class UiSidebar extends StatelessWidget {
   /// What sits at the bottom of the pane: the account and the help entry.
   final Widget? footer;
 
-  /// The pane's width.
-  static double widthOf(BuildContext context) =>
-      UiSidebarStyle.resolve(context.ui).width;
+  /// Accessible name when the page contains other navigation groups.
+  final String? semanticsLabel;
+
+  /// Inactive names may be shown on hover while the current name stays visible.
+  final UiNavigationLabels labels;
+
+  /// The pane's intrinsic width for these destinations and this reader.
+  static double widthOf(
+    BuildContext context, {
+    List<UiNavDestination> destinations = const [],
+  }) => UiSidebarStyle.resolve(
+    context.ui,
+    textScaler: MediaQuery.textScalerOf(context),
+    textDirection: Directionality.of(context),
+    destinations: destinations,
+  ).width;
 
   @override
   Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final UiSidebarStyle style = UiSidebarStyle.resolve(ui);
-    final int current = currentIndex.clamp(0, destinations.length - 1);
-
-    return GlassSurface(
-      level: GlassLevel.flat,
-      // An edge pane, flush with the window. A superellipse corner here would
-      // show the ground through the outer corners of a pane that has none.
-      radius: ui.shape.none,
+    final ui = context.ui;
+    final style = UiSidebarStyle.resolve(
+      ui,
+      textScaler: MediaQuery.textScalerOf(context),
+      textDirection: Directionality.of(context),
+      destinations: destinations,
+    );
+    final current = currentIndex.clamp(0, destinations.length - 1);
+    return ColoredBox(
+      color: ui.color.paper,
       child: SizedBox(
         width: style.width,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            if (header != null)
-              Padding(padding: style.slotPadding, child: header),
-            // The destinations take the space the header and the footer
-            // leave and scroll inside it. A pane 280 dp wide with five
-            // destinations at 200 percent text is taller than a window the
-            // sidebar is meant for, and a reviewer who cannot reach the last
-            // destination has lost the navigation (10 section 2 clause 7).
-            Expanded(
-              child: SingleChildScrollView(
-                child: NavGroup(
-                  length: destinations.length,
-                  axis: NavAxis.vertical,
-                  builder: (BuildContext context, List<FocusNode> nodes) =>
-                      Semantics(
-                        container: true,
-                        explicitChildNodes: true,
-                        role: SemanticsRole.tabBar,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            for (int i = 0; i < destinations.length; i++)
-                              _row(
-                                style,
-                                i,
-                                current: i == current,
-                                focusNode: nodes[i],
-                              ),
-                          ],
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Padding(
+                padding: style.slotPadding,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (header != null) ...[
+                          header!,
+                          SizedBox(height: ui.space.s6),
+                        ],
+                        NavGroup(
+                          length: destinations.length,
+                          axis: NavAxis.vertical,
+                          builder: (context, nodes) => Semantics(
+                            container: true,
+                            explicitChildNodes: true,
+                            role: SemanticsRole.tabBar,
+                            label: semanticsLabel,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                for (var i = 0; i < destinations.length; i++)
+                                  _row(
+                                    context,
+                                    style,
+                                    i,
+                                    current: i == current,
+                                    focusNode: nodes[i],
+                                  ),
+                              ],
+                            ),
+                          ),
                         ),
+                      ],
+                    ),
+                    if (footer != null)
+                      Padding(
+                        padding: EdgeInsets.only(top: ui.space.s6),
+                        child: footer,
                       ),
+                  ],
                 ),
               ),
             ),
-            if (footer != null)
-              Padding(padding: style.slotPadding, child: footer),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  /// One destination.
-  ///
-  /// The selectable `UiListRow` of 10 section 4.5, in its `tab` mode: the
-  /// pane publishes a tab list, so every row in it has to be a tab. The row
-  /// draws the fill and the bar; the glyph carries the other two channels.
   Widget _row(
+    BuildContext context,
     UiSidebarStyle style,
     int index, {
     required bool current,
     required FocusNode focusNode,
   }) {
-    final UiNavDestination destination = destinations[index];
-    return UiListRow(
-      title: destination.label,
-      mode: UiListRowMode.tab,
+    final ui = context.ui;
+    final destination = destinations[index];
+    final ink = current ? style.currentContent : style.restContent;
+    final showLabel = current || labels == UiNavigationLabels.all;
+    final row = Pressable(
+      semanticsLabel: destination.label,
+      role: PressableRole.tab,
       selected: current,
       focusNode: focusNode,
+      radius: ui.shape.inner,
       onPressed: () => onSelect(index),
-      leading: UiIcon(
-        destination.icon,
-        size: UiIconSize.action,
-        current: current,
-        color: current ? style.currentContent : style.restContent,
+      builder: (context, states) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: current ? ui.color.accent.withValues(alpha: .08) : null,
+          borderRadius: BorderRadius.circular(ui.shape.inner),
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(ui.space.s2),
+          child: Row(
+            children: [
+              UiIcon(
+                destination.icon,
+                size: UiIconSize.inline,
+                textStyle: ui.type.body,
+                color: ink,
+              ),
+              if (showLabel) ...[
+                SizedBox(width: ui.space.s2),
+                Expanded(
+                  child: Text(
+                    destination.label,
+                    style: ui.type.body.copyWith(
+                      color: ink,
+                      fontWeight: current ? FontWeight.w600 : FontWeight.w400,
+                      fontVariations: [
+                        FontVariation('wght', current ? 600 : 400),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
+    return showLabel
+        ? row
+        : MergeSemantics(
+            child: UiTooltip(
+              message: destination.label,
+              excludeSemantics: true,
+              child: row,
+            ),
+          );
   }
 }

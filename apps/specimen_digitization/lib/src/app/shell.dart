@@ -1,5 +1,5 @@
-/// Adaptive collection navigation: the brand phone tab bar, and on a docked
-/// window the design system's rail beside a list pane.
+/// Adaptive collection navigation with a named active destination and
+/// compact bottom tabs. The queue is content, not global navigation.
 library;
 
 import 'dart:async';
@@ -12,9 +12,12 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 import '../administrator_contact.dart';
 import '../models.dart';
+import '../screens/costs/costs_access.dart';
+import '../screens/costs/costs_screen.dart' show CostsScreenCopy;
 import '../widgets/widgets.dart';
 import '../workspace.dart';
 import 'routes.dart';
+import 'collection_choices.dart';
 
 /// The navigation frame every collection screen is drawn inside.
 class AppShell extends StatefulWidget {
@@ -54,6 +57,9 @@ class AppShell extends StatefulWidget {
 
   /// What the help control is called, wherever it is drawn.
   static const String helpLabel = 'Help and shortcuts';
+
+  /// What the control that opens the organization's costs is called.
+  static const String costsLabel = CostsScreenCopy.title;
 
   /// What the reload control is called.
   static const String reloadLabel = 'Refresh collection';
@@ -130,10 +136,11 @@ class AppSidebarScope extends InheritedWidget {
   final bool overlay;
   final bool docked;
 
-  /// The same list panel the desktop sidebar carries. On a stacked window it
-  /// belongs to the Queue route below a record, so native Back reveals real
-  /// content. Whether the window is stacked is
-  /// `WindowArrangement.of(context)`, which every screen reads for itself.
+  /// The retained queue content when it belongs to the Queue route.
+  ///
+  /// Present on desktop as well as compact windows. It is absent only while
+  /// the shell owns the optional list beside an actual docked record. The
+  /// retained Queue route keeps it mounted while Intake is active.
   final Widget? mobileSpecimens;
   final VoidCallback toggle;
   final VoidCallback close;
@@ -152,9 +159,6 @@ class _AppShellState extends State<AppShell> {
   bool _stacked = false;
   bool _expanded = false;
   Size? _visibleSpecimensSize;
-  final FocusNode _toggleFocus = FocusNode(
-    debugLabel: 'Open workspace sidebar',
-  );
   final FocusScopeNode _sidebarFocus = FocusScopeNode(
     debugLabel: 'Workspace sidebar',
     traversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
@@ -164,7 +168,6 @@ class _AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
-    _toggleFocus.dispose();
     _sidebarFocus.dispose();
     super.dispose();
   }
@@ -197,7 +200,7 @@ class _AppShellState extends State<AppShell> {
       if (previous?.context != null && previous!.canRequestFocus) {
         previous.requestFocus();
       } else {
-        _toggleFocus.requestFocus();
+        FocusScope.of(context).nextFocus();
       }
     });
   }
@@ -259,40 +262,60 @@ class _AppShellState extends State<AppShell> {
         _stacked = arrangement.isStacked;
         final navVisible =
             _stacked && !record && MediaQuery.viewInsetsOf(context).bottom == 0;
-        _expanded =
-            listRoute ||
-            (!_stacked &&
-                (_desktopExpanded ??
-                    arrangement == WindowArrangement.listDetail));
+
         return LayoutBuilder(
           builder: (context, constraints) {
             final textScaler = MediaQuery.textScalerOf(context);
+            final navigationWidth = UiSidebar.widthOf(
+              context,
+              destinations: AppShell.destinations,
+            );
+            final layout = UiLayoutMetrics.fromConstraints(
+              constraints,
+              textScaler: textScaler,
+            );
+            final canShowList =
+                constraints.maxWidth - navigationWidth >=
+                WindowArrangement.listPaneWidthOf(textScaler) +
+                    layout.minColumnWidth +
+                    layout.gap;
+            final listFitsComfortably =
+                constraints.maxWidth - navigationWidth >=
+                WindowArrangement.listPaneWidthOf(textScaler) +
+                    layout.readableMax +
+                    layout.gutter * 2;
+            final listBesideRecord = record && !_stacked;
+            _expanded =
+                listRoute ||
+                (listBesideRecord &&
+                    canShowList &&
+                    (_desktopExpanded ?? listFitsComfortably));
             final sidebarWidth = math.min(
               WindowArrangement.listPaneWidthOf(textScaler),
               math.max(
                 0.0,
                 constraints.maxWidth -
                     MediaQuery.paddingOf(context).horizontal -
-                    UiRailStyle.minWidthOf(ui) -
+                    navigationWidth -
                     ui.space.s4,
               ),
             );
             final sidebar = _sidebar(
               context,
               controller,
-              canClose: !listRoute && !_stacked,
+              canClose: listBesideRecord,
               busy: busy,
             );
             return AppSidebarScope(
               expanded: _expanded,
               overlay: false,
               docked: !_stacked,
-              mobileSpecimens: _stacked ? sidebar : null,
+              mobileSpecimens: listBesideRecord ? null : sidebar,
               toggle: _toggle,
               close: _close,
               child: QueueWorkspaceScope(
                 expanded: _expanded,
-                showQueue: record && !_stacked ? _toggle : null,
+                showQueue: listBesideRecord && canShowList ? _toggle : null,
                 hideQueue: () {},
                 child: CallbackShortcuts(
                   bindings: <ShortcutActivator, VoidCallback>{
@@ -336,7 +359,9 @@ class _AppShellState extends State<AppShell> {
                                     : _dockedNavigation(
                                         context,
                                         controller,
-                                        sidebar: sidebar,
+                                        sidebar: listBesideRecord
+                                            ? sidebar
+                                            : null,
                                         sidebarWidth: sidebarWidth,
                                       ),
                                 navPlacement: UiNavPlacement.edge,
@@ -378,10 +403,19 @@ class _AppShellState extends State<AppShell> {
   }) => UiTopBar(
     key: const ValueKey<String>('shell-top-bar'),
     form: UiTopBarForm.workspace,
-    leading: _CollectionSwitcher(controller: controller, sheet: true),
+    leading: Row(
+      children: [
+        Padding(
+          padding: EdgeInsetsDirectional.only(start: context.ui.space.s2),
+          child: UiMark(label: AppShell.markLabel, size: context.ui.space.s8),
+        ),
+        SizedBox(width: context.ui.space.s2),
+        Expanded(
+          child: _CollectionSwitcher(controller: controller, sheet: true),
+        ),
+      ],
+    ),
     actions: <Widget>[
-      // Only the Specimens list has a selection to finish.
-      if (listRoute) ?widget.specimensActions,
       if (EnvironmentBanner.showsBand(controller.environment))
         _EnvironmentContext(controller: controller, compact: true),
       ShellAccountMenu(controller: controller),
@@ -397,22 +431,12 @@ class _AppShellState extends State<AppShell> {
   Widget _mobileNav(BuildContext context) => UiTabBar(
     key: const ValueKey<String>('mobile-navigation'),
     destinations: AppShell.destinations,
+    labels: UiNavigationLabels.selectedOnly,
     currentIndex: widget.destination.index,
     iconKeyOf: (index) => ValueKey<String>(
       'mobile-nav-${AppShell.destinations[index].label.toLowerCase()}',
     ),
     onSelect: (index) => _select(WorkspaceDestination.values[index]),
-  );
-
-  Widget _toggleButton() => UiIconButton(
-    icon: UiIcons.sidebar,
-    semanticsLabel: 'Open sidebar',
-    focusNode: _toggleFocus,
-    onPressed: () {
-      _toggleFocus.requestFocus();
-      FocusManager.instance.applyFocusChangesIfNeeded();
-      _open();
-    },
   );
 
   Widget _sidebar(
@@ -422,14 +446,9 @@ class _AppShellState extends State<AppShell> {
     required bool busy,
   }) {
     final ui = context.ui;
-    return DecoratedBox(
+    return ColoredBox(
       key: ValueKey<String>(_stacked ? 'mobile-specimens' : 'global-sidebar'),
-      decoration: BoxDecoration(
-        color: ui.color.paper,
-        border: _stacked
-            ? null
-            : BorderDirectional(end: BorderSide(color: ui.color.boundary)),
-      ),
+      color: ui.color.paper,
       child: SafeArea(
         left: _stacked,
         right: _stacked,
@@ -440,34 +459,17 @@ class _AppShellState extends State<AppShell> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              // The docked sidebar's own header. On a phone the list has no
-              // header of its own: the shell's compact top bar sits above it
-              // (`_compactTopBar`), so the switcher and the account are not
-              // declared a second time here.
-              if (!_stacked)
+              if (canClose)
                 Padding(
                   padding: EdgeInsets.all(ui.space.s2),
                   child: Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: Align(
-                          key: const ValueKey<String>(
-                            'global-sidebar-collection',
-                          ),
-                          alignment: AlignmentDirectional.centerStart,
-                          child: _CollectionSwitcher(
-                            controller: controller,
-                            sheet: false,
-                          ),
-                        ),
+                    children: [
+                      const Spacer(),
+                      UiIconButton(
+                        icon: UiIcons.sidebar,
+                        semanticsLabel: 'Close sidebar',
+                        onPressed: _close,
                       ),
-                      ?widget.specimensActions,
-                      if (canClose)
-                        UiIconButton(
-                          icon: UiIcons.sidebar,
-                          semanticsLabel: 'Close sidebar',
-                          onPressed: _close,
-                        ),
                     ],
                   ),
                 ),
@@ -506,84 +508,73 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  /// What a docked window draws at the frame's start edge, in `UiScaffold.nav`
-  /// with `UiNavPlacement.edge`: the rail, and the list pane beside it while
-  /// it is open. Edge rather than beside, so the band (an error, a blocker,
-  /// the 4 dp progress strip of every load) spans the page only and never
-  /// moves the navigation, as it did not before the rail was `UiRail`.
-  ///
-  /// The pane is offstage rather than removed while it is closed, so the list
-  /// keeps its search, selection and scroll, and it takes no width.
+  /// Global navigation is independent of the optional record queue. Intake
+  /// never carries that queue, and the Queue route owns its full content area.
   Widget _dockedNavigation(
     BuildContext context,
     WorkspaceController controller, {
-    required Widget sidebar,
+    required Widget? sidebar,
     required double sidebarWidth,
   }) => Row(
     mainAxisSize: MainAxisSize.min,
     crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: <Widget>[
-      _rail(context, controller),
-      Offstage(
-        offstage: !_expanded,
-        child: ExcludeFocus(
-          excluding: !_expanded,
-          child: ExcludeSemantics(
+    children: [
+      _navigation(context, controller),
+      if (sidebar != null)
+        Offstage(
+          offstage: !_expanded,
+          child: ExcludeFocus(
             excluding: !_expanded,
-            child: SizedBox(
-              width: sidebarWidth,
-              child: FocusScope(node: _sidebarFocus, child: sidebar),
+            child: ExcludeSemantics(
+              excluding: !_expanded,
+              child: SizedBox(
+                width: sidebarWidth,
+                child: FocusScope(node: _sidebarFocus, child: sidebar),
+              ),
             ),
           ),
         ),
-      ),
     ],
   );
 
-  /// The docked rail: the design system's `UiRail` for the two destinations
-  /// (10 section 4.4), then the list pane's toggle, and the environment and
-  /// the account at its foot.
-  ///
-  /// It is `UiRail`'s own column width, 72 dp, so the controls under the
-  /// destinations sit on the same centre line as the discs. The frame hands
-  /// an edge column the top, start and bottom insets, and the `SafeArea`
-  /// spends them around the column, so a side notch widens the rail rather
-  /// than squeezing it.
-  Widget _rail(BuildContext context, WorkspaceController controller) {
+  Widget _navigation(BuildContext context, WorkspaceController controller) {
     final ui = context.ui;
-    return SafeArea(
-      child: SizedBox(
-        key: const ValueKey<String>('global-rail'),
-        width: UiRailStyle.minWidthOf(ui),
-        child: LayoutBuilder(
-          builder: (context, constraints) => SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(vertical: ui.space.s2),
-                  child: Column(
-                    children: <Widget>[
-                      UiRail(
-                        destinations: AppShell.destinations,
-                        currentIndex: widget.destination.index,
-                        semanticsLabel: AppShell.navigationLabel,
-                        onSelect: (index) =>
-                            _select(WorkspaceDestination.values[index]),
-                      ),
-                      if (!_expanded) _toggleButton(),
-                      const Spacer(),
-                      if (EnvironmentBanner.showsBand(controller.environment))
-                        _EnvironmentContext(
-                          controller: controller,
-                          compact: true,
-                        ),
-                      ShellAccountMenu(controller: controller),
-                    ],
-                  ),
+    return ColoredBox(
+      color: ui.color.paper,
+      child: SafeArea(
+        child: UiSidebar(
+          key: const ValueKey<String>('global-rail'),
+          destinations: AppShell.destinations,
+          labels: UiNavigationLabels.selectedOnly,
+          currentIndex: widget.destination.index,
+          semanticsLabel: AppShell.navigationLabel,
+          onSelect: (index) => _select(WorkspaceDestination.values[index]),
+          header: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(vertical: ui.space.s2),
+                child: UiMark(label: AppShell.markLabel, size: ui.space.s8),
+              ),
+              SizedBox(height: ui.space.s4),
+              Align(
+                key: const ValueKey<String>('global-sidebar-collection'),
+                alignment: AlignmentDirectional.centerStart,
+                child: _CollectionSwitcher(
+                  controller: controller,
+                  sheet: false,
                 ),
               ),
-            ),
+            ],
+          ),
+          footer: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (EnvironmentBanner.showsBand(controller.environment))
+                _EnvironmentContext(controller: controller),
+              ShellAccountMenu(controller: controller, showLabel: true),
+            ],
           ),
         ),
       ),
@@ -636,7 +627,7 @@ class _EnvironmentContext extends StatelessWidget {
     }
     return UiButton(
       label: pilot ? 'Pilot' : 'Test',
-      semanticsLabel: headline,
+      semanticsLabel: pilot ? 'Pilot environment' : 'Test environment',
       variant: UiButtonVariant.ghost,
       onPressed: showEnvironment,
     );
@@ -669,7 +660,8 @@ class _Chrome extends StatelessWidget {
 /// The collection switcher.
 ///
 /// A dropdown where there is room, and a touch sheet in narrow windows.
-/// Both are sourced exclusively from the session's authorized scopes.
+/// Catalog context comes from the server; only session-authorized scopes
+/// can be selected.
 class _CollectionSwitcher extends StatelessWidget {
   const _CollectionSwitcher({required this.controller, required this.sheet});
 
@@ -700,29 +692,50 @@ class _CollectionSwitcher extends StatelessWidget {
     return UiMenuTrigger(
       label: name,
       icon: UiIcons.expand,
+      trailingIcon: true,
       semanticsLabel: '${AppShell.switcherLabel}, $name. Switch collection',
       menuLabel: 'Choose a collection',
+      menuMaxHeight: 520,
+      menuSurface: PopoverSurface.paper,
+      menuDescription:
+          controller.scopes.any((scope) => scope.catalogNodes.isNotEmpty)
+          ? 'Only enabled collections can be opened.'
+          : null,
       items: <UiMenuItem>[
-        for (final CollectionScope scope in controller.scopes)
+        for (final choice in collectionChoices(
+          controller.scopes,
+          selectedKey: controller.scope?.key,
+        ))
           UiMenuItem(
-            label: scope.name,
-            icon: UiIcons.collection,
-            disabledReason: blocked,
-            onSelected: blocked != null
+            label: choice.name,
+            groupLabel: choice.groupLabel,
+            indent: choice.depth,
+            isHeading: choice.headingOnly,
+            selected: choice.key == controller.scope?.key,
+            disabledReason: choice.scope == null
+                ? 'This collection is not enabled for this account.'
+                : blocked,
+            onSelected: blocked != null || choice.scope == null
                 ? null
-                : () async {
-                    if (await controller.mayLeaveReview() && context.mounted) {
-                      context.go(
-                        AppRoutes.queueOf(encodeCollectionKey(scope.key)),
-                      );
-                    }
-                  },
+                : () => unawaited(_select(context, choice.key)),
           ),
       ],
     );
   }
 
   Future<void> _choose(BuildContext context) async {
+    final currentRow = GlobalKey();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final target = currentRow.currentContext;
+      if (target != null) {
+        unawaited(
+          Scrollable.ensureVisible(
+            target,
+            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+          ),
+        );
+      }
+    });
     final String? selected = await UiSheet.show<String>(
       context: context,
       title: 'Choose a collection',
@@ -735,31 +748,88 @@ class _CollectionSwitcher extends StatelessWidget {
         animation: controller,
         builder: (BuildContext context, Widget? child) => Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            for (final CollectionScope scope in controller.scopes)
-              UiListRow(
-                title: scope.name,
-                subtitle: scope.key == controller.scope?.key
-                    ? 'Current collection'
-                    : null,
-                leading: const UiIcon(UiIcons.collection),
-                onPressed: controller.mutating
-                    ? null
-                    : () => Navigator.of(sheetContext).pop(scope.key),
+            if (controller.scopes.any((scope) => scope.catalogNodes.isNotEmpty))
+              Padding(
+                padding: EdgeInsets.all(context.ui.space.s3),
+                child: Text(
+                  'Only enabled collections can be opened.',
+                  style: context.ui.type.labelSmall.copyWith(
+                    color: context.ui.color.inkSecondary,
+                  ),
+                ),
               ),
+            for (final choice in collectionChoices(
+              controller.scopes,
+              selectedKey: controller.scope?.key,
+            )) ...[
+              if ((choice.headingOnly ? choice.name : choice.groupLabel)
+                  case final String group)
+                Padding(
+                  padding: EdgeInsetsDirectional.fromSTEB(
+                    context.ui.space.s3,
+                    context.ui.space.s4,
+                    context.ui.space.s3,
+                    context.ui.space.s2,
+                  ),
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      group,
+                      style: context.ui.type.labelSmall.copyWith(
+                        color: context.ui.color.inkSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+              if (!choice.headingOnly)
+                Padding(
+                  padding: EdgeInsetsDirectional.only(
+                    start: (choice.depth * context.ui.space.s4)
+                        .clamp(0, context.ui.space.s12)
+                        .toDouble(),
+                  ),
+                  child: UiListRow(
+                    key: choice.key == controller.scope?.key
+                        ? currentRow
+                        : null,
+                    title: choice.name,
+                    selected: choice.key == controller.scope?.key,
+                    trailing: choice.key == controller.scope?.key
+                        ? const UiIcon(UiIcons.check, size: UiIconSize.inline)
+                        : null,
+                    disabledReason: choice.scope == null
+                        ? 'This collection is not enabled for this account.'
+                        : _blockedReason,
+                    onPressed: controller.mutating || choice.scope == null
+                        ? null
+                        : () => Navigator.of(sheetContext).pop(choice.key),
+                  ),
+                ),
+            ],
           ],
         ),
       ),
     );
-    if (!context.mounted ||
-        selected == null ||
-        controller.mutating ||
+    if (!context.mounted || selected == null) return;
+    await _select(context, selected);
+  }
+
+  Future<void> _select(BuildContext context, String selected) async {
+    if (controller.mutating ||
         !controller.scopes.any(
           (CollectionScope scope) => scope.key == selected,
         )) {
       return;
     }
-    if (!await controller.mayLeaveReview() || !context.mounted) return;
+    if (selected == controller.scope?.key) return;
+    if (!await controller.mayLeaveReview() ||
+        !context.mounted ||
+        controller.mutating ||
+        !controller.scopes.any((scope) => scope.key == selected)) {
+      return;
+    }
     context.go(AppRoutes.queueOf(encodeCollectionKey(selected)));
   }
 }
@@ -770,7 +840,14 @@ class _CollectionSwitcher extends StatelessWidget {
 /// after removing the sidebar. Compact records reach it via Back to queue.
 class ShellAccountMenu extends StatelessWidget {
   /// The menu for the account [controller] holds.
-  const ShellAccountMenu({super.key, required this.controller});
+  const ShellAccountMenu({
+    super.key,
+    required this.controller,
+    this.showLabel = false,
+  });
+
+  /// A visible name in the labelled desktop navigation.
+  final bool showLabel;
 
   /// The workspace whose session the menu names and signs out of.
   final WorkspaceController controller;
@@ -779,6 +856,7 @@ class ShellAccountMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     final String name = controller.session.displayName;
     return UiMenuTrigger(
+      label: showLabel ? 'Account' : null,
       icon: UiIcons.account,
       semanticsLabel: '${AppShell.accountLabel}, signed in as $name',
       menuLabel: AppShell.accountLabel,
@@ -803,6 +881,16 @@ class ShellAccountMenu extends StatelessWidget {
                   }
                 },
         ),
+        // Offered to an administrator of the open collection's organization
+        // and to nobody else, and hidden rather than disabled where the build
+        // has no costs to show (13 section 4.7). Nobody else is ever asked to
+        // open it, so nobody else's session is ever the one a refusal ends.
+        if (costAccessFor(controller) != null)
+          UiMenuItem(
+            label: AppShell.costsLabel,
+            icon: UiIcons.record,
+            onSelected: () => context.push(AppRoutes.costs),
+          ),
         UiMenuItem(
           label: AppShell.helpLabel,
           icon: UiIcons.help,

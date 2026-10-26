@@ -21,6 +21,7 @@ from .blob_limits import ORIGINAL_BYTES, read_limited
 from .storage import Missing
 
 GENERATION_PATTERN = r"^[1-9][0-9]*$"
+MIN_LISTING_SCAN_LIMIT = 10000
 
 
 class SourceObjectChanged(ValueError):
@@ -31,8 +32,18 @@ class SourceUnavailable(RuntimeError):
     """The source could not be read. This is operational, not a refusal."""
 
 
+class SourceListingIncomplete(ValueError):
+    """A bounded listing could not establish the complete set of files."""
+
+
 class SourceReader(Protocol):
-    def list_objects(self, bucket: str, prefix: str, limit: int) -> list[dict]: ...
+    def list_objects(self, bucket: str, prefix: str, limit: int) -> list[dict]:
+        """Return all files, or limit + 1 files to signal overflow; never truncate.
+
+        Raise SourceListingIncomplete if a bounded scan cannot prove either.
+        """
+        ...
+
     def current_generation(self, bucket: str, object_name: str) -> str: ...
     def read(self, bucket: str, object_name: str, generation: str) -> bytes: ...
 
@@ -140,13 +151,25 @@ class GcsSourceReader:
     def list_objects(self, bucket: str, prefix: str, limit: int) -> list[dict]:
         from .worker_deadline import deadline_call
 
-        rows, seen = [], 0
+        rows = []
+        # max_results counts raw objects, including folder markers. Keep a
+        # separate scan bound and one extra entry to distinguish EOF at the
+        # bound from a partial listing. The public limit counts actual files.
+        scan_limit = max(MIN_LISTING_SCAN_LIMIT, limit + 1)
         iterator = deadline_call(
-            self.client.list_blobs, bucket, prefix=prefix, max_results=limit + 1
+            self.client.list_blobs,
+            bucket,
+            prefix=prefix,
+            max_results=scan_limit + 1,
+            page_size=1000,
         )
-        for blob in iterator:
-            if blob.name.endswith("/") or blob.size is None:
+        for scanned, blob in enumerate(iterator, start=1):
+            if scanned > scan_limit:
+                raise SourceListingIncomplete("Source listing exceeds the scan limit")
+            if blob.name.endswith("/"):
                 continue
+            if blob.size is None:
+                raise SourceListingIncomplete("Source listing is missing file metadata")
             rows.append(
                 {
                     "object_name": blob.name,
@@ -156,8 +179,7 @@ class GcsSourceReader:
                     "md5_hash": blob.md5_hash,
                 }
             )
-            seen += 1
-            if seen > limit:
+            if len(rows) > limit:
                 break
         rows.sort(key=lambda row: row["object_name"])
         return rows

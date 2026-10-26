@@ -54,6 +54,6 @@ query SearchSpecimens(
   ]}, orderBy: [{createdAt: ASC}, {id: ASC}], limit: $limit) {
     id revision status stage disposition sensitive createdAt updatedAt domainCreatedAt
     assetId batchId filename uploader activeRunId blocker profileId profileVersion
-    reasonCodes risk synthetic
+    reasonCodes risk synthetic fieldReviewStates activeGraph
   }
 }

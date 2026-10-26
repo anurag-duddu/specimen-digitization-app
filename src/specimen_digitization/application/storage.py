@@ -404,13 +404,35 @@ class LocalBlobs:
             data = read_limited(source.read, max_bytes)
         return verify_digest(data, ref)
 
+    def get_bounded_until(self, ref: str, max_bytes: int, deadline: float) -> bytes:
+        """Queue compatibility read with an ordinary, monotonic I/O deadline."""
+        import time
+        from .blob_limits import read_limited, verify_digest
+
+        if len(ref) != 64 or any(c not in "0123456789abcdef" for c in ref):
+            raise Missing("Invalid blob reference")
+
+        def read(source, count):
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Graph count read expired")
+            return source.read(count)
+
+        with (self.root / ref).open("rb") as source:
+            data = read_limited(lambda count: read(source, count), max_bytes)
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Graph count read expired")
+        return verify_digest(data, ref)
+
 
 class SQLiteRepository:
     """One transaction commits current state, immutable snapshot and retry receipt."""
 
     def __init__(self, path: Path):
+        from .graph_review_summary import GraphReviewCache
+
         self.path = path
         self.graph_blobs = LocalBlobs(path.parent / (path.stem + "-graphs"))
+        self.review_graph_cache = GraphReviewCache()
         path.parent.mkdir(parents=True, exist_ok=True)
         with self.connect() as db:
             db.executescript("""
@@ -510,6 +532,8 @@ class SQLiteRepository:
         after_id="",
         limit=50,
         include_sensitive=False,
+        *,
+        hydrate_review=False,
     ):
         from .search import sqlite_search
 
@@ -524,6 +548,7 @@ class SQLiteRepository:
             after_id,
             limit,
             include_sensitive,
+            hydrate_review=hydrate_review,
         )
 
     def history_page(
@@ -805,6 +830,33 @@ class SQLiteRepository:
             ).fetchall()
         return [json.loads(r[0]) for r in rows]
 
+    def private_document_page(self, scope, kind, owner, after, limit, include_sensitive=False):
+        from .intake_models import PRIVATE_KINDS
+        if kind not in PRIVATE_KINDS or not 1 <= limit <= 101:
+            raise ValueError('Invalid private document page')
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT payload FROM documents WHERE scope=? AND kind=? AND id>? "
+                "AND json_extract(payload, '$.owner_id')=? "
+                "AND (json_extract(payload, '$.sensitive')=0 OR ?=1) ORDER BY id LIMIT ?",
+                (scope.model_dump_json(), kind, after, owner, include_sensitive, limit),
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
+    def private_documents(self, scope, kind, owner, ids):
+        from .intake_models import PRIVATE_KINDS
+        if kind not in PRIVATE_KINDS or len(ids) > 100:
+            raise ValueError('Invalid private document selection')
+        if not ids:
+            return []
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT payload FROM documents WHERE scope=? AND kind=? "
+                "AND json_extract(payload, '$.owner_id')=? AND id IN (" + ','.join('?' for _ in ids) + ')',
+                (scope.model_dump_json(), kind, owner, *ids),
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
+
     def put_document(
         self, scope: Scope, kind: str, ident: str, payload: dict, expected: int
     ) -> dict:
@@ -835,6 +887,21 @@ class SQLiteRepository:
                     json.dumps(payload),
                 ),
             )
+        return payload
+
+    def commit_intake_submission(self, scope, draft, job):
+        expected = draft['revision']
+        payload = dict(draft, revision=expected + 1)
+        with self.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            row = db.execute('SELECT revision,payload FROM documents WHERE scope=? AND kind=? AND id=?',
+                (scope.model_dump_json(), 'intake_draft', draft['id'])).fetchone()
+            if not row or row[0] != expected or json.loads(row[1])['state'] != 'draft':
+                raise Conflict('The draft changed before submission')
+            db.execute('UPDATE documents SET revision=?,payload=? WHERE scope=? AND kind=? AND id=?',
+                (expected + 1, json.dumps(payload), scope.model_dump_json(), 'intake_draft', draft['id']))
+            db.execute('INSERT INTO documents VALUES (?,?,?,?,?)',
+                (scope.model_dump_json(), 'intake_job', job['id'], 1, json.dumps(job)))
         return payload
 
     def write_projection(self, scope: Scope, specimen: Specimen) -> ProjectionResult:

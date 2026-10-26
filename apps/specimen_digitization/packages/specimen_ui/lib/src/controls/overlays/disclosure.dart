@@ -6,8 +6,8 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../foundation/type.dart';
 import '../../primitives/fit.dart';
-import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
 import '../actions/chip.dart';
 
@@ -24,6 +24,7 @@ class UiDisclosureStyle {
     required this.padding,
     required this.bodyPadding,
     required this.gap,
+    required this.summaryGap,
     required this.minHeight,
     required this.radius,
   });
@@ -51,6 +52,9 @@ class UiDisclosureStyle {
 
   /// The gap between the text column and the caret.
   final double gap;
+
+  /// Space between a field name and its value or supporting summary.
+  final double summaryGap;
 
   /// The header row's visual height, from density.
   ///
@@ -80,9 +84,35 @@ class UiDisclosureStyle {
       ui.space.s3,
     ),
     gap: ui.space.s3,
+    summaryGap: ui.space.s1,
     minHeight: ui.density.rowHeight,
     radius: ui.shape.inner,
   );
+
+  /// A named value with details behind it. The small field name provides
+  /// context; the value or problem is the primary scanning line.
+  static UiDisclosureStyle value(UiThemeData ui, {bool subdued = false}) =>
+      UiDisclosureStyle(
+        title: ui.type.bodySmall,
+        summary: ui.type.body,
+        titleColor: ui.color.inkSecondary,
+        summaryColor: subdued ? ui.color.inkSecondary : ui.color.ink,
+        caretColor: ui.color.inkSecondary,
+        padding: EdgeInsetsDirectional.symmetric(
+          horizontal: ui.space.s3,
+          vertical: ui.space.s3,
+        ),
+        bodyPadding: EdgeInsetsDirectional.fromSTEB(
+          ui.space.s3,
+          0,
+          ui.space.s3,
+          ui.space.s3,
+        ),
+        gap: ui.space.s3,
+        summaryGap: ui.space.s1,
+        minHeight: ui.density.rowHeight,
+        radius: ui.shape.inner,
+      );
 
   /// Half a turn. The caret points down when closed and up when open, and the
   /// glyph is the same one either way so the two states are one object moving
@@ -108,6 +138,8 @@ class UiDisclosure extends StatefulWidget {
     required this.title,
     required this.child,
     this.summary,
+    this.metadata,
+    this.collapsedIcon,
     this.trailing,
     this.hideSummaryWhenExpanded = false,
     this.initiallyExpanded = false,
@@ -116,7 +148,7 @@ class UiDisclosure extends StatefulWidget {
     this.style,
   });
 
-  /// The row's title. A noun phrase, no period (02 section 4.2).
+  /// The row's title or question. Wraps to remain readable before expansion.
   final String title;
 
   /// What the row reveals.
@@ -124,6 +156,17 @@ class UiDisclosure extends StatefulWidget {
 
   /// A second line under the title, saying what is behind the row.
   final String? summary;
+
+  /// Compact, non-interactive context beside the title, wrapping as needed.
+  ///
+  /// Included in default semantics. When overriding [semanticsLabel], include
+  /// this information there as well. It remains visible while expanded.
+  final String? metadata;
+
+  /// Optional state glyph while closed, such as a check for a completed value.
+  /// The open state keeps the disclosure caret. State meaning must also be
+  /// present in [semanticsLabel]; the glyph never supplies semantics alone.
+  final IconSpec? collapsedIcon;
 
   /// A chip that qualifies the row: at the end of the header, before the
   /// caret, while the title fits beside it, and on a line of its own under the
@@ -174,7 +217,7 @@ class _UiDisclosureState extends State<UiDisclosure> {
     final String? given = widget.semanticsLabel;
     if (given != null) return given;
     final String? summary = _visibleSummary;
-    return summary == null ? widget.title : '${widget.title}. $summary';
+    return <String>[widget.title, ?summary, ?widget.metadata].join('. ');
   }
 
   /// The title over its summary, which takes whatever the line has left, and
@@ -184,17 +227,37 @@ class _UiDisclosureState extends State<UiDisclosure> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          UiLabel(widget.title, style: title),
+          Wrap(
+            spacing: style.gap,
+            runSpacing: style.summaryGap,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
+              Text(
+                widget.title,
+                style: title,
+                strutStyle: UiType.strutOf(title),
+              ),
+              if (widget.metadata case final metadata?)
+                Text(
+                  '· $metadata',
+                  style: context.ui.type.bodySmall.copyWith(
+                    color: context.ui.color.inkSecondary,
+                  ),
+                ),
+            ],
+          ),
           // The summary is content, not a label: it is the row's second line,
           // the same object a list row's subtitle is, so it wraps to two
           // lines before it is cut (11 section 3.3).
-          if (_visibleSummary != null)
+          if (_visibleSummary != null) ...<Widget>[
+            SizedBox(height: style.summaryGap),
             Text(
               _visibleSummary!,
               style: style.summary.copyWith(color: style.summaryColor),
               maxLines: UiDisclosureStyle.summaryMaxLines,
               overflow: TextOverflow.ellipsis,
             ),
+          ],
           ?under,
         ],
       );
@@ -229,19 +292,19 @@ class _UiDisclosureState extends State<UiDisclosure> {
   /// The header's line: text, the optional trailing, and the caret.
   ///
   /// The trailing keeps the line while the whole of the title and the whole
-  /// of the summary still fit beside it. A title is a label, which never
-  /// wraps and never loses a word to a neighbour (11 section 3.3, rules 1 and
-  /// 2), and a summary is content that wraps to two lines before it is cut,
-  /// so when either would not fit beside the chip the chip moves under the
-  /// text, at the start of its own line, rather than squeezing the words into
-  /// an ellipsis.
+  /// of the summary still fit beside it. When either would not fit, the chip
+  /// moves under the text at the start of its own line. The title then wraps
+  /// into the available width so the full question remains visible, while
+  /// the optional summary keeps its two-line preview.
   Widget _headerRow(UiThemeData ui, UiDisclosureStyle style) {
     final Widget caret = AnimatedRotation(
       turns: _open ? UiDisclosureStyle.caretTurns : 0,
       duration: ui.motion.short,
       curve: MotionTokens.standardCurve,
       child: UiIcon(
-        UiIcons.expand,
+        !_open && widget.collapsedIcon != null
+            ? widget.collapsedIcon!
+            : UiIcons.expand,
         size: UiIconSize.inline,
         color: style.caretColor,
       ),

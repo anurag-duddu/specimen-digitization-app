@@ -99,6 +99,7 @@ from .contracts import (
     FieldOutcome,
     FieldResolver,
     FieldTask,
+    FirstPassAdvice,
     Reading,
     SourceAnswer,
     SourceTools,
@@ -206,12 +207,58 @@ def field_keys(profile: CollectionProfile) -> tuple[str, ...]:
 
 
 def run_readings(run) -> tuple[Reading, ...]:
-    """Every reading of every label, named as the organiser names them."""
+    """Every reading of every label, named as the organiser names them, each
+    with its label's first pass opinion (first_pass_advice)."""
+    named = labelled(extraction_readings(run))
+    advice = first_pass_advice(run, named)
     return tuple(
         Reading(name=name, region_id=item.region_id, observation_id=item.observation_id,
-            input_source=item.role, text=item.text)
-        for name, item in labelled(extraction_readings(run)).items()
+            input_source=item.role, text=item.text, first_pass=advice.get(item.region_id))
+        for name, item in named.items()
     )
+
+
+def first_pass_advice(run, named: Mapping[str, object]) -> dict[str, FirstPassAdvice]:
+    """The first pass's opinion of each label it compared (a transcript whose
+    decision_kind is first_pass), by region, for the field experts (owner,
+    2026-10-25: "There an LLM opinion that's put in front along with actual
+    Raw transcription per model to the harness if needed"): the reading it
+    preferred (the label's decided_transcript reading, by name; None when it
+    preferred none), its rationale, its note on each reader and each
+    material difference with its verdict and each reader's span offsets,
+    readers named as `named` (the labelled extraction readings) names them.
+    A reader with no text is not among the readings, so it is left out. A
+    label whose transcript a person decided (Transcript.actor) gets no first
+    pass opinion, only `person_decided` and its decided reading: a person's
+    reading of the image binds the label's text (agreement.labels)."""
+    found: dict[str, FirstPassAdvice] = {}
+    for transcript in getattr(run, "transcripts", None) or ():
+        names: dict[str, str] = {}
+        preferred = None
+        for name, item in named.items():
+            if item.region_id != transcript.region_id:
+                continue
+            names.setdefault(item.observation_id, name)
+            if item.role == "decided_transcript" and preferred is None:
+                preferred = name
+        if getattr(transcript, "actor", None):
+            if preferred is not None:
+                found[transcript.region_id] = FirstPassAdvice(preferred=preferred, rationale="", reader_notes={},
+                    differences=(), person_decided=True)
+            continue
+        if transcript.decision_kind != "first_pass":
+            continue
+        notes = {names[h.observation_id]: h.note for h in transcript.handoffs if h.note and h.observation_id in names}
+        differences = tuple(
+            {"texts": {names[observation]: span.text for observation, span in difference.spans.items()
+                if observation in names},
+             "verdict": names.get(difference.verdict, difference.verdict),
+             "spans": {names[observation]: (span.start, span.end) for observation, span in difference.spans.items()
+                if observation in names}}
+            for difference in transcript.differences if difference.material)
+        found[transcript.region_id] = FirstPassAdvice(preferred=preferred, rationale=transcript.reason or "",
+            reader_notes=notes, differences=differences)
+    return found
 
 
 def human_keys(run) -> frozenset[str]:
@@ -539,8 +586,8 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     """Why a place value the agreement rules accept does not fit the label's
     other place fields (agreement.parents_refusal), or None. It is checked
     here, once every outcome is in: field research runs its fields at once,
-    and the country must be known. For each reading the answer names (the
-    label's decided reading, on a label with one), the other place fields are
+    and the country must be known. For each reading the answer names,
+    whichever reader the first pass preferred, the other place fields are
     those that reading writes (`places`), and one of them is settled for the
     reading when its value is supported, this attempt has done with it (it is
     not `pending`) and the reading writes its literal, compared as place
@@ -554,11 +601,14 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     (agreement.verbatim_runs). A country no answer settled does not hold a
     place back when the gazetteers' answers, of any field, confirm every
     country text of every reading as one nation that the place lies in
-    (_confirmed_country)."""
+    (_confirmed_country). A county is never the settled province's text in
+    any reader's spelling (_province_spelling)."""
     from .agreement import (
+        IS_THE_PROVINCE,
         PLACE_ORDER,
         PLACE_VALUE_FIELDS,
         PlaceField,
+        Refusal,
         parents_refusal,
         place_name,
         verbatim_runs,
@@ -569,13 +619,14 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     found = _settling(task, answer, sources)
     if found is None:
         return None  # _refusal has refused it already.
+    if task.key == "county" and "province_state" not in pending and _province_spelling(run, answer.literal, places):
+        return Refusal(IS_THE_PROVINCE, IS_THE_PROVINCE)
     basis, candidate = found.basis, found.candidate
     confirmed = _confirmed_country(run, readings, places, received) if task.key != "country" else {}
     named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and answer.literal in by_name[n].text]
-    decided = {r.region_id: r for r in readings if r.input_source == "decided_transcript"}
     rows = {item.id: item for item in run.evidence}
     codes = {finding.reason_code for finding in run.findings}
-    for reading in dict.fromkeys(decided.get(r.region_id, r) for r in named):
+    for reading in dict.fromkeys(named):
         written, settled, unsettled = {}, {}, set()
         for key in PLACE_ORDER:
             texts = places[key].get(reading.name, frozenset())
@@ -612,6 +663,28 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
         if refused is not None:
             return refused
     return None
+
+
+def _province_spelling(run, literal: str | None, places: Mapping[str, Mapping[str, frozenset[str]]]) -> bool:
+    """Whether a county's literal is the settled province's text in some
+    reader's spelling: the province's value is supported with a literal, and
+    the county's literal is, letter case, accents and punctuation aside
+    (georef_locality.fold, unit words kept), or one letter apart
+    (one_letter_apart), its literal, its value or any reader's province text
+    one letter from it or the same. t1-329 (the real-run measurement of
+    2026-10-25): the province settled on reader 1B's "Chimaltenango", and
+    the county on 1A's "Chimaltenago,", the same word of the label, which
+    agreement.parents_refusal's IS_THE_PROVINCE compared only with the
+    spellings of the county's own reading."""
+    from specimen_digitization.application.georef_locality import fold, one_letter_apart
+
+    province = run.fields.get("province_state")
+    if not literal or province is None or province.state != ValueState.SUPPORTED or not province.literal:
+        return False
+    names = [text for text in (province.literal, province.normalized, province.parsed) if text]
+    texts = {text for spellings in places.get("province_state", {}).values() for text in spellings
+        if any(fold(text) == fold(name) or one_letter_apart(text, name) for name in names)}
+    return any(fold(literal) == fold(text) or one_letter_apart(literal, text) for text in {*names, *texts})
 
 
 def _confirmed_country(run, readings: Sequence[Reading], places: Mapping[str, Mapping[str, frozenset[str]]],
@@ -871,15 +944,46 @@ def _claims_text(key: str, value: FieldValue, human: frozenset[str]) -> bool:
         and (value.layer in SETTLED_LAYERS or (key in human and value.layer != "derived")))
 
 
-def _value_spans(value: FieldValue, readings: Sequence[Reading], evidence: Mapping[str, Evidence]):
-    """Where a stored value's literal stands as whole tokens (_occurrences) in
-    the readings of its labels: its source region, the regions of its label
-    rows, and those of the readings it keeps a verbatim of or was settled by."""
+def _value_regions(value: FieldValue, readings: Sequence[Reading], evidence: Mapping[str, Evidence]) -> set:
+    """The labels of a stored value: its source region, the regions of its
+    label rows, and those of the readings it keeps a verbatim of or was
+    settled by."""
     observed = {*value.verbatim_by_observation, *value.settled_observation_ids}
-    regions = ({value.source_region_id} - {None}) | {evidence[i].region_id for i in value.evidence_ids
+    return ({value.source_region_id} - {None}) | {evidence[i].region_id for i in value.evidence_ids
         if i in evidence and evidence[i].kind == "literal"} | {r.region_id for r in readings
         if r.observation_id in observed}
+
+
+def _value_spans(value: FieldValue, readings: Sequence[Reading], evidence: Mapping[str, Evidence]):
+    """Where a stored value's literal stands as whole tokens (_occurrences) in
+    the readings of its labels (_value_regions)."""
+    regions = _value_regions(value, readings, evidence)
     return _occurrences(value.literal, [r for r in readings if r.region_id in regions])
+
+
+# The shortest text, edge punctuation aside, that _spelled_alike compares by
+# one letter: shorter texts ("1a", "IV") are one letter from too many others.
+MIN_NEAR_TEXT = 4
+
+
+def _spelled_alike(first: str, second: str) -> bool:
+    """Whether two literals are one reader's and another's spelling of the
+    same text (_taken): after checks.collapse, letter case and the
+    characters other than letters and digits at their edges aside ("J.
+    Smyth," and "j. smyth"), they are the same, or, both MIN_NEAR_TEXT long
+    or longer, one insertion, deletion or substitution apart
+    (georef_locality.letters_apart)."""
+    from specimen_digitization.application.georef_locality import letters_apart
+
+    from .checks import collapse
+
+    def bare(text: str) -> str:
+        return re.sub(r"^[^\w]+|[^\w]+$", "", collapse(text)).casefold()
+
+    one, other = bare(first), bare(second)
+    if not one or not other:
+        return False
+    return one == other or (min(len(one), len(other)) >= MIN_NEAR_TEXT and letters_apart(one, other) == 1)
 
 
 def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldOutcome],
@@ -925,6 +1029,11 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     human = human_keys(run)
     claims: list[tuple[str, frozenset]] = []
     mine: dict[str, frozenset] = {}
+    # Each claim's literal and labels, and each answer's literal and labels:
+    # another reader's spelling of a claimed text on the same label is taken
+    # too (_spelled_alike; t1-329, the real-run measurement of 2026-10-25).
+    claim_texts: list[tuple[str, str, set]] = []
+    mine_texts: dict[str, tuple[str, set]] = {}
     for outcome in outcomes:
         answer = outcome.answer
         if outcome.failure is not None or answer is None:
@@ -935,6 +1044,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
                 if n in by_name and value.literal in by_name[n].text]
             regions = {r.region_id for r in named} or {r.region_id for r in readings if value.literal in r.text}
             claims.append((outcome.key, _occurrences(value.literal, [r for r in readings if r.region_id in regions])))
+            claim_texts.append((outcome.key, value.literal, regions))
         literal = answer.literal
         if answer.outcome != "resolved" or not literal or not literal.strip():
             continue
@@ -944,9 +1054,11 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             regions = {r.region_id for r in named}
             mine[outcome.key] = frozenset((r.name, start, end) for r in readings if r.region_id in regions
                 for start, end in written_runs(outcome.key, r.text, literal))
+            mine_texts[outcome.key] = (literal, regions)
     for key, value in run.fields.items():
         if key not in researched and _claims_text(key, value, human):
             claims.append((key, _value_spans(value, readings, evidence)))
+            claim_texts.append((key, value.literal, _value_regions(value, readings, evidence)))
     taken: dict[str, Taken] = {}
     yielded: dict[str, str] = {}
     for key, spans in mine.items():
@@ -960,6 +1072,10 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
                 continue
             other = claimant
             break
+        if other is None:
+            literal, regions = mine_texts[key]
+            other = next((claimant for claimant, text, theirs in claim_texts if claimant != key
+                and not may_share_text(key, claimant) and regions & theirs and _spelled_alike(literal, text)), None)
         if other is not None:
             taken[key] = Taken(other)
         else:
@@ -1399,13 +1515,14 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
       does not;
     - the readers settle on the literal by B1's rule (agreement.labels):
       each label that writes the taxon settles on its own on that one text.
-      With no successful lookup that is a label's decided transcript (its
-      other readers are evidence only), or readers of a label with none that
-      each write exactly that text.
+      With no successful lookup that is readers that each write exactly
+      that text, another label's text, or the reading the first pass
+      preferred for the label, when nothing supports another reader's text.
     The value meets the agreement rules any resolved answer meets
-    (agreement.refusal through _refusal: G19's decided transcript, a whole
-    candidate whose quote writes no longer name around it, readers that
-    agree). It is built as a settled answer is (_settled: the label rows and
+    (agreement.refusal through _refusal: a whole candidate whose quote
+    writes no longer name around it, readers that agree). It names the
+    reader the first pass preferred where that reader writes the code, and
+    every reader that writes it on any other label. It is built as a settled answer is (_settled: the label rows and
     the lineage), with the literal as written, no authority and the layer
     settled, and cites one check row naming GBIF's no-name lookup, which the
     run keeps (lookup.no_name_lookup: no request is made; the step adds it
@@ -1438,9 +1555,9 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
     if not found or any(label.settled != frozenset({want}) or label.by_source for label in found.values()):
         return _declined(why, "readers_do_not_settle")
     written = reader_literals(task, readings)
-    decided = {r.region_id for r in readings if r.input_source == DECIDED}
+    preferred = {r.region_id for r in readings if r.input_source == DECIDED and want in written.get(r.name, ())}
     named = [r for r in readings if r.region_id in found and want in written.get(r.name, ())
-        and (r.input_source == DECIDED or r.region_id not in decided)]
+        and (r.input_source == DECIDED or r.region_id not in preferred)]
     whole = candidate_literal(task, readings, literal, named) if named else None
     if whole is None:
         return _declined(why, "no_whole_candidate")
@@ -2060,9 +2177,10 @@ def _country_alternatives_are_lower_places(run, task, outcome, *, readings, rece
 
     Two kinds of alternative hold nothing back (the third rerun of 2026-10-18):
     - text that stands on no reading a field may settle on
-      (agreement.set_aside): a decided label's other reader's text its
-      decided reading does not write (G19), or text the two readers of a
-      label with no decided transcript dispute, the other reader writing
+      (agreement.set_aside): the text of a label's other readers that the
+      reader its first pass preferred does not write and no other label
+      writes, or text the readers of a label whose first pass preferred no
+      reader dispute, each other reader writing
       another field's text at that very point (`claimed`, _claimed_texts).
       d10333ff's label 3, a determination label whose first pass reached its
       token cap in one run and chose no reading in the next two, has 3A
@@ -2143,9 +2261,9 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     check's parse gets a "derived" row when the check, run again on the
     literal, gives that value. A resolved answer the agreement rules refuse
     (agreement.refusal: a literal that is neither a whole candidate of the
-    readings it names nor whole words of one line of each, or that the
-    label's decided transcript does not write, a pick between readers no
-    source settles, a place no place source confirms), whose place does not
+    readings it names nor whole words of one line of each, a pick between
+    readers that neither a source, another label nor the first pass's
+    preferred reading settles, a place no place source confirms), whose place does not
     lie in the country and province settled for its reading (_misfit, after
     the places above it), or whose literal, read from the transcript, is
     text another kind of field's settled value claims (_taken, judged on
@@ -2176,6 +2294,9 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     rerun of 2026-10-18 blamed Getty TGN for answers that had failed their
     checks). ``decisions`` collects, per
     field, the codes of the checks and rules that decided it (trace_fields).
+    Then, for each field researched in this attempt, how each label whose
+    readers differ settled it, against its first pass's preferred reader
+    (_first_pass_preference).
     """
     from .agreement import PLACE_ORDER
     from .location_reassessment import active_keys
@@ -2254,7 +2375,85 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
                 and outcome.key not in human and value is not None and value.layer != "derived"):
             value.reason = " ".join(part for part in (value.reason, _unreachable_note(outcome, value, rows))
                 if part)
+    for outcome in outcomes:
+        if outcome.key in tasks_by_key and outcome.key not in human:
+            _first_pass_preference(run, tasks_by_key[outcome.key], outcome, readings=readings, by_name=by_name,
+                sources=received.get(outcome.key, ()), decision=decisions.get(outcome.key, {}))
     return derived
+
+
+FIRST_PASS_RULES = "field-research-first-pass-advice-v1"
+
+
+def first_pass_code(status: str, key: str, region_id: str) -> str:
+    """The reason code of how a label whose readers differ settled a field,
+    against the reader its first pass preferred (agreement.Label.preference:
+    followed, overridden or absent), or why it did not (conflict):
+    `first_pass_<status>:<field>:<region>`."""
+    return f"first_pass_{status}:{key}:{region_id}"
+
+
+def _first_pass_preference(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
+        decision: Mapping[str, str]) -> None:
+    """Record how each label whose readers differ settled a value its
+    expert's resolved answer supports (agreement.labels: Label.preference):
+    one info finding per label (rule first_pass_preference), with the reason
+    code first_pass_code gives (`first_pass_followed`, `first_pass_overridden`:
+    another reader's text, which a source confirms or another label writes,
+    or `first_pass_absent`: the first pass preferred no reader), citing the
+    value's label rows of that label that support it, the readers whose text
+    it settled on. And, for a field left unsettled, one warning finding per
+    label that did not settle because only another label or a near spelling
+    opposed the first pass's image-confirmed pick (`first_pass_conflict`):
+    the field is unresolved, for a person to choose (the coordinator's
+    decision of 2026-10-25 on #414's review); the field's own state sends a
+    mandatory field to review. A RunFinding never routes the record: the
+    first pass's preference is advice (the owner, 2026-10-25). The field's
+    earlier such findings go first, so a field researched again keeps only
+    its latest; a value settled otherwise (location reconciliation,
+    derivation, a person) gets none."""
+    from .agreement import CONFLICT, SOURCE_IDS, TRANSCRIPT, labels, literal_basis
+
+    run.findings[:] = [finding for finding in run.findings
+        if not (finding.rule_id == "first_pass_preference" and finding.field_key == task.key)]
+    answer, value = outcome.answer, run.fields.get(task.key)
+    if value is None or decision.get("rule") == "location_reconciliation" or value.layer == "derived":
+        return
+    tools = frozenset(task.tools) & SOURCE_IDS
+    answers = [item for item in sources if item.source_id in tools]
+    literal = answer.literal if answer is not None and answer.outcome == "resolved" else None
+    named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and literal in by_name[n].text
+        ] if literal else []
+    transcript = literal if named and literal_basis(task, readings, literal, named) == TRANSCRIPT else None
+    found = labels(task, readings, answers, transcript=transcript, named=named)
+    rows = {item.id: item for item in run.evidence}
+    if value.state != ValueState.SUPPORTED:
+        for region, label in found.items():
+            if label.preference == CONFLICT:
+                run.findings.append(RunFinding(rule_id="first_pass_preference", rule_version=FIRST_PASS_RULES,
+                    severity="warning", field_key=task.key, reason_code=first_pass_code(CONFLICT, task.key, region),
+                    evidence_ids=[i for i in value.evidence_ids if (row := rows.get(i)) is not None
+                        and row.kind == "literal" and row.region_id == region]))
+        return
+    if not literal or value.literal != literal or value.layer not in ("settled", "verbatim"):
+        return
+    for region, label in found.items():
+        if label.preference in (None, CONFLICT):
+            continue
+        cited = [i for i in value.evidence_ids if value.evidence_relations.get(i) == "supports"
+            and (row := rows.get(i)) is not None and row.kind == "literal" and row.region_id == region]
+        if label.matched:
+            # The other reader's text the source confirmed: its row stays
+            # cited, and the reason says which reader's it was.
+            matched = {by_name[name].observation_id for name in label.matched_by if name in by_name}
+            cited += [i for i in value.evidence_ids if i not in cited and (row := rows.get(i)) is not None
+                and row.kind == "literal" and row.region_id == region and set(row.observation_ids) & matched]
+            note = (f"The source confirmed reader {', '.join(label.matched_by)}'s {label.matched!r}, one letter "
+                f"from the text the first pass confirmed, {value.literal!r}, which the label writes.")
+            value.reason = " ".join(part for part in (value.reason, note) if part)
+        run.findings.append(RunFinding(rule_id="first_pass_preference", rule_version=FIRST_PASS_RULES,
+            severity="info", field_key=task.key, reason_code=first_pass_code(label.preference, task.key, region),
+            evidence_ids=cited))
 
 
 def _across_lines(outcomes: Sequence[FieldOutcome], by_name: Mapping[str, Reading]) -> tuple[FieldOutcome, ...]:
@@ -3287,7 +3486,7 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
 # ---- each field's trace ---------------------------------------------------
 
 # agreement's reasons for refusing a resolved answer, by constant name.
-REFUSALS = ("DIFFER", "LABELS_DIFFER", "NOT_DECIDED", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
+REFUSALS = ("DIFFER", "LABELS_DIFFER", "FIRST_PASS_CONFLICT", "PERSON_DECIDED", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
     "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
     "NOT_EVERY_READER", "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "A_DISTANCE", "HOLDS_AN_ELEVATION",
     "HOLDS_A_DATE", "HOLDS_A_RANGE", "FIRST_LEVEL_TOO", "NO_PROVINCE", "IS_THE_PROVINCE")
@@ -3757,23 +3956,31 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
 
 # ---- the workflow step ----------------------------------------------------
 
-def record_cost(run, route_id: str, *, reserved: int, spent: int | None, outcome: str, model_calls: int = 0) -> None:
+def record_cost(run, route_id: str, *, reserved: int, spent: int | None, outcome: str, model_calls: int = 0,
+                tokens: dict | None = None) -> None:
     """The step's one paid-call entry, in lane_costs' shape (LANE.md T2c).
 
     ``spent`` is the meter's settled spend; None when the spend is unknown,
     and then the whole reservation stays held (cost_basis "reserved").
+    ``tokens`` are the tokens of the requests that reported their usage
+    (CostMeter.reported: ``reported_requests`` of the ``model_calls``), cached
+    input included, so the cost meter can see what the provider was asked to bill.
     """
     prices = run.profile.execution.price_list
     if prices is None:
         return
     known = spent is not None
+    usage = {"model_calls": model_calls}
+    if tokens is not None:
+        usage.update(reported_requests=tokens["requests"], input_tokens=tokens["input_tokens"],
+                     cached_input_tokens=tokens["cached_input_tokens"], output_tokens=tokens["output_tokens"])
     run.paid_calls.append({
         "step": STEP,
         "attempt": run.attempts.get(STEP, 1),
         "kind": "model",
         "route_id": route_id,
         "reserved_micros": reserved,
-        "usage": {"model_calls": model_calls} if known else None,
+        "usage": usage if known else None,
         "outcome": outcome,
         "cost_micros": spent if known else reserved,
         "cost_basis": "computed" if known else "reserved",
@@ -3797,7 +4004,8 @@ def cost_meter(cap_micros: int, price):
     from .budget import CostMeter
 
     return CostMeter(cap_micros, input_micros_per_million=price.input_micros_per_million,
-        output_micros_per_million=price.output_micros_per_million)
+        output_micros_per_million=price.output_micros_per_million,
+        cached_input_micros_per_million=getattr(price, "cached_input_micros_per_million", None))
 
 
 def one_request_micros(price) -> int:
@@ -3852,26 +4060,53 @@ class FieldResearchStep:
         here, never written; lane_allowance.reserve_step reserves). A program
         allowance with less left than one expert request keeps the headroom, so
         reserve_step blocks the record as it always has; otherwise the meter's
-        cap is what is left, and a field that does not fit goes to review."""
+        cap is what is left, and a field that does not fit goes to review.
+        A monthly cap of the organization or the collection that applies
+        (TENANT_BUDGETS.md) limits it the same way, by the least any of their
+        ledgers has left this month (tenant_budget.room, read only). An
+        attempt that already holds on one of those ledgers, never sent because
+        a refusal later in the chain blocked it, reserves that same amount
+        again: recomputed, the room would be smaller by its own hold, and the
+        hold could never replay."""
         from specimen_digitization.application.domain import Scope
         from specimen_digitization.application.lane_allowance import (
             LegacyLedgerUnavailable,
             ProgramLedger,
         )
+        from specimen_digitization.application.tenant_budget import (
+            TenantBudgetUnavailable,
+            recorded_micros,
+            room,
+        )
 
         policy = specimen.run.profile.execution
-        if headroom <= 0 or policy.program_allowance_micros is None:
+        if headroom <= 0:
+            return headroom
+        held = recorded_micros(specimen.run, FIELD_RESEARCH)
+        if held is not None:
+            return held
+        try:
+            tenant_left, held = room(workflow.repository, principal, specimen, FIELD_RESEARCH, workflow.clock)
+        except (OperationalBlock, TenantBudgetUnavailable):
+            # tenant_budget.reserve_step reports it with its own code.
+            return headroom
+        if held is not None:
+            return held
+        if policy.program_allowance_micros is None and tenant_left is None:
             return headroom
         try:
             profile = profile_of(specimen.run)
             price = _route_price(profile, profile.harness_route)
-            ledger = ProgramLedger(workflow.repository, Scope(organization_id=principal.scope.organization_id,
-                collection_id=policy.program_ledger_collection), clock=workflow.clock)
-            reserved = ledger.read()["reserved_total_micros"]
+            left = [] if tenant_left is None else [tenant_left]
+            if policy.program_allowance_micros is not None:
+                ledger = ProgramLedger(workflow.repository, Scope(organization_id=principal.scope.organization_id,
+                    collection_id=policy.program_ledger_collection), clock=workflow.clock)
+                reserved = ledger.read()["reserved_total_micros"]
+                left.append(max(0, policy.program_allowance_micros - reserved))
         except (OperationalBlock, LegacyLedgerUnavailable, ValueError, TypeError, KeyError):
             # The step and reserve_step report these with their own codes.
             return headroom
-        left = max(0, policy.program_allowance_micros - reserved)
+        left = min(left)
         return headroom if left < one_request_micros(price) else min(headroom, left)
 
     def recheck(self, workflow, principal, specimen) -> None:
@@ -3968,7 +4203,8 @@ class FieldResearchStep:
                 record_cost(run, route, reserved=cap_micros,
                     spent=meter.spent_micros if known else None,
                     outcome="completed" if outcomes is not None else "failed" if known else "unknown",
-                    model_calls=sum(o.model_calls for o in outcomes or ()))
+                    model_calls=sum(o.model_calls for o in outcomes or ()),
+                    tokens=getattr(meter, "reported", None))
             try:
                 apply_outcomes(research_run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=calls,
                     asset_id=specimen.asset.id, decisions=decisions)

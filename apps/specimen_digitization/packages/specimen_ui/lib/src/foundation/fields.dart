@@ -4,25 +4,25 @@
 /// fully transparent at its radius. Fields are painted once, behind
 /// everything, by `FieldLayer`. The product theme disables their placements
 /// by default; a gallery or a deliberately approved surface can opt in.
-/// Nothing else in the product paints a gradient.
+/// Brand heroes use a separate explicit amber-to-iris gradient.
 library;
 
 import 'package:flutter/widgets.dart';
 
 import 'palette.dart';
 
-/// The five named fields.
+/// Historical field slots, retained without their former decorative palette.
 enum UiFieldName {
-  /// Acid yellow.
+  /// Compatibility slot for warm brand Amber.
   sun,
 
-  /// Lavender.
+  /// Compatibility slot for brand Iris.
   violet,
 
-  /// Rose.
+  /// Compatibility slot, now an alias of brand Iris.
   rose,
 
-  /// Mint.
+  /// Compatibility slot, now neutral Mist.
   mint,
 
   /// Warm amber.
@@ -118,27 +118,45 @@ class UiFields {
     this.decorativeFields = true,
   });
 
-  /// Acid yellow.
+  /// Compatibility slot for warm brand Amber.
   final UiFieldStyle sun;
 
-  /// Lavender.
+  /// Compatibility slot for brand Iris.
   final UiFieldStyle violet;
 
-  /// Rose.
+  /// Compatibility slot, now an alias of brand Iris.
   final UiFieldStyle rose;
 
-  /// Mint.
+  /// Compatibility slot, now neutral Mist.
   final UiFieldStyle mint;
 
   /// Warm amber.
   final UiFieldStyle ember;
 
+  /// The canonical warm brand field. [sun] is a historical alias.
+  UiFieldStyle get amber => ember;
+
+  /// The canonical secondary brand field. [rose] is a historical alias.
+  UiFieldStyle get iris => violet;
+
+  /// The canonical neutral field. [mint] is its historical slot name.
+  UiFieldStyle get mist => mint;
+
+  /// Current decorative families for documentation and new callers.
+  ///
+  /// [all] retains every compatibility slot so contrast checks also inspect
+  /// older callers. The catalog should present this smaller canonical set.
+  Map<String, UiFieldStyle> get brandFields => <String, UiFieldStyle>{
+    'amber': amber,
+    'iris': iris,
+    'mist': mist,
+  };
+
   /// Whether [sky] returns the optional decorative placements.
   ///
   /// Runtime themes leave this false. Keeping the colour table and painter
-  /// available lets the component gallery document the former treatment and
-  /// gives a future approved hierarchy an explicit opt-in rather than a new
-  /// ad hoc gradient.
+  /// available preserves source compatibility. All slots now resolve only to
+  /// the approved brand seeds; they cannot restore the former palette.
   final bool decorativeFields;
 
   /// A copy that either exposes or suppresses decorative placements.
@@ -225,9 +243,9 @@ class UiFields {
         };
 
   static const List<UiFieldPlacement> _home = <UiFieldPlacement>[
-    UiFieldPlacement(field: UiFieldName.sun, x: 0.18, y: 0.06, radius: 0.55),
+    UiFieldPlacement(field: UiFieldName.ember, x: 0.18, y: 0.06, radius: 0.55),
     UiFieldPlacement(field: UiFieldName.violet, x: 0.92, y: 0.28, radius: 0.60),
-    UiFieldPlacement(field: UiFieldName.rose, x: 0.70, y: 0.96, radius: 0.50),
+    UiFieldPlacement(field: UiFieldName.violet, x: 0.70, y: 0.96, radius: 0.50),
   ];
 
   static const List<UiFieldPlacement> _work = <UiFieldPlacement>[

@@ -27,7 +27,9 @@ from .integrity import verify_evidence, EvidenceIntegrityError
 from .review_risk import RiskSignal, assess_risk, label_review_risk
 from .reading_evidence import (
     ReadingEvidenceInput,
-    align_readings,
+    comparison_artifact,
+    label_comparison,
+    pairwise_alignments,
     summarize_reading,
     reading_risk_evidence,
 )
@@ -372,7 +374,7 @@ def refresh_review_evidence(specimen, blobs, *, metadata_only=False):
                 source_sha256=o.raw_sha256,
                 declarations=observed_declarations[o.id],
             )
-            for o in readings[:2]
+            for o in readings
         )
         metadata = tuple(summarize_reading(item) for item in inputs)
         for item in metadata:
@@ -398,33 +400,43 @@ def refresh_review_evidence(specimen, blobs, *, metadata_only=False):
                 ).model_dump(mode="json")
             )
             continue
-        alignment = align_readings(*inputs)
-        raw = alignment.model_dump_json().encode()
+        # Every pair of the label's readings; two readings are one pair, and
+        # their artifact and summary are that pair's, as before. With more, the
+        # summary is the label's (reading_evidence.label_comparison) and the
+        # artifact holds every pair (comparison_artifact).
+        alignments = pairwise_alignments(inputs)
+        comparison = label_comparison(alignments)
+        raw = comparison_artifact(alignments).model_dump_json().encode()
         differences.append(
             {
                 "region_id": region.id,
                 "blob_ref": blobs.put(raw),
                 "sha256": hashlib.sha256(raw).hexdigest(),
-                "status": alignment.status,
-                "difference_count": len(alignment.alternatives)
-                if alignment.status != "policy_blocked"
+                "status": comparison.status,
+                "difference_count": len(comparison.alignment.alternatives)
+                if comparison.status != "policy_blocked"
                 else None,
-                "reasons": list(alignment.reasons),
+                "reasons": list(comparison.reasons),
             }
         )
         label_scores.append(
             label_review_risk(
                 region.id,
                 tuple(o.id for o in readings),
-                (alignment,),
+                alignments,
                 metadata,
                 resolution,
                 unmeasured=("image_quality", "segmentation_quality"),
             ).model_dump(mode="json")
         )
-        risk = reading_risk_evidence(alignment, metadata)
-        signals.extend(risk.signals)
-        unmeasured.update(risk.unmeasured)
+        for alignment in alignments:
+            pair = {alignment.left.observation_id, alignment.right.observation_id}
+            risk = reading_risk_evidence(
+                alignment,
+                tuple(m for m in metadata if m.reference.observation_id in pair),
+            )
+            signals.extend(risk.signals)
+            unmeasured.update(risk.unmeasured)
     specimen.run.disagreements = differences
     specimen.run.reading_metadata = reading_metadata
     specimen.run.label_language_handling = label_handling(specimen, declaration_sources)

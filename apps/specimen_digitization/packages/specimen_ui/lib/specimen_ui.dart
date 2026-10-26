@@ -10,6 +10,7 @@
 library;
 
 // Foundation (L1).
+export 'src/foundation/brand.dart';
 export 'src/foundation/color.dart';
 export 'src/foundation/density.dart';
 export 'src/foundation/fields.dart';
@@ -28,6 +29,7 @@ export 'src/foundation/window.dart';
 export 'src/foundation/mark.dart';
 
 // Primitives (L2).
+export 'src/primitives/brand_hero.dart';
 export 'src/primitives/announcer.dart';
 export 'src/primitives/composition_markers.dart';
 export 'src/primitives/edge_fade.dart';
@@ -51,3 +53,4 @@ export 'src/controls/data/data.dart';
 export 'src/controls/inputs/inputs.dart';
 export 'src/controls/navigation/navigation.dart';
 export 'src/controls/overlays/overlays.dart';
+export 'src/controls/marketing/marketing.dart';

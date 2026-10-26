@@ -27,10 +27,10 @@ def test_a_stage_route_named_as_a_reader_is_not_pinned(tmp_path, route):
 
 
 def test_the_nvidia_reader_is_pinned_at_its_provider(tmp_path):
-    # NVIDIA_NEMOTRON_OPTION.md: Nemotron takes reader A's place, Muse stays reader B.
+    # NVIDIA_NEMOTRON_OPTION.md: Nemotron is reader C, after Qwen (A) and Muse (B).
     run = Run(
         profile=Profile(
-            routes=("handwriting-nemotron", "handwriting-muse"),
+            routes=("handwriting-qwen", "handwriting-muse", "handwriting-nemotron"),
             first_pass_route="first-pass-nemotron",
         )
     )
@@ -39,11 +39,15 @@ def test_the_nvidia_reader_is_pinned_at_its_provider(tmp_path):
 
     nemotron = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
     assert pins["routes"] == {
-        "handwriting-nemotron": {"model_id": nemotron, "provider": "baseten"},
+        "handwriting-qwen": {
+            "model_id": "Qwen/Qwen3-VL-30B-A3B-Instruct",
+            "provider": "novita",
+        },
         "handwriting-muse": {
             "model_id": "meta-models/Muse-Glimmer-30B",
             "provider": "deepinfra",
         },
+        "handwriting-nemotron": {"model_id": nemotron, "provider": "baseten"},
         "first-pass-nemotron": {"model_id": nemotron, "provider": "baseten"},
     }
 

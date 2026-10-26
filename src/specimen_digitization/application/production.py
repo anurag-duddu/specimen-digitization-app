@@ -1,7 +1,7 @@
 """Explicit production adapters: ADC SQL Connect/GCS and approved HF routes."""
 
 from __future__ import annotations
-from ..observability import model_trace_context
+from ..observability import model_trace_context, tenant_ids
 import contextvars
 from contextlib import contextmanager
 import hashlib
@@ -75,6 +75,10 @@ LOGGER = logging.getLogger(__name__)
 PROJECTED_SPECIMENS = 256
 # Roles whose saves also write review decisions; additive V2 admits no other.
 REVIEW_ROLES = {"reviewer", "manager", "admin"}
+# Specimens whose cost rows this process remembers sending, and the rows one
+# UpsertCostEntriesV1 call carries (the connector takes at most 500).
+COSTED_SPECIMENS = 256
+COST_ROWS_PER_CALL = 200
 
 
 class ProjectionRejected(RuntimeError):
@@ -164,9 +168,14 @@ class SqlConnectRepository:
         emulator_host=None,
         graph_blobs=None,
     ):
+        from .graph_review_summary import GraphReviewCache
+
         self.project = project
         self.graph_blobs = graph_blobs
+        self.review_graph_cache = GraphReviewCache()
         self._projected: OrderedDict[str, set[str]] = OrderedDict()
+        # Specimen id -> {cost row id: digest of the row as last sent}.
+        self._costed: OrderedDict[str, dict[str, str]] = OrderedDict()
         self._sizes: dict[str, int] = {}
         if emulator_host:
             if (
@@ -278,12 +287,45 @@ class SqlConnectRepository:
             {
                 "organization_id": str(UUID(m["organizationId"])),
                 "collection_id": str(UUID(m["collectionId"])),
+                "collection_name": (m.get("collection") or {}).get("name"),
                 "role": m["role"],
                 "can_view_sensitive": m["canViewSensitive"],
             }
             for m in result.get("collectionMembers", [])
             if m["active"] and str(UUID(m["organizationId"])) in orgs
         ]
+
+    def collection_hierarchy(self, organization_id, uid):
+        """Organization navigation names; membership checks still authorize every action."""
+        result = self.execute("ListCollectionHierarchy", {"organizationId": organization_id, "actorUid": uid})
+        rows = result.get("collections")
+        try:
+            if not isinstance(rows, list) or len(rows) > 1000:
+                raise ValueError
+            nodes = {}
+            for row in rows:
+                ident = str(UUID(row['id']))
+                if (ident in nodes or not isinstance(row['name'], str) or not row['name'].strip()
+                        or row.get('kind') not in {None, 'museum', 'testing'}):
+                    raise ValueError
+                nodes[ident] = {'collection_id': ident, 'display_name': row['name'],
+                                'parent_collection_id': str(UUID(row['parentId'])) if row.get('parentId') else None,
+                                'kind': row.get('kind') or 'museum'}
+
+            def path(node):
+                names, seen = [], set()
+                while node:
+                    if node['collection_id'] in seen:
+                        raise ValueError
+                    seen.add(node['collection_id'])
+                    names.append((node['display_name'].casefold(), node['collection_id']))
+                    parent = node['parent_collection_id']
+                    node = nodes[parent] if parent else None
+                return tuple(reversed(names))
+
+            return sorted(nodes.values(), key=path)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            raise OperationalBlock('collection_hierarchy_invalid') from None
 
     def get(self, scope, specimen_id):
         # GetSpecimen takes `$id: UUID!`. Any other id names no specimen: it is
@@ -327,6 +369,8 @@ class SqlConnectRepository:
         after_id="",
         limit=50,
         include_sensitive=False,
+        *,
+        hydrate_review=False,
     ):
         from .search import sql_item
 
@@ -361,7 +405,10 @@ class SqlConnectRepository:
             {mapping[key]: value for key, value in filters.model_dump().items()}
         )
         rows = self.execute("SearchSpecimens", variables).get("items", [])
-        return [sql_item(row, scope) for row in rows]
+        items = [sql_item(row, scope) for row in rows]
+        if hydrate_review:
+            self.review_graph_cache.hydrate(items, [row.get("activeGraph") for row in rows], self.graph_blobs)
+        return items
 
     def _snapshot(self, row):
         payload = row["snapshot"]
@@ -676,6 +723,7 @@ class SqlConnectRepository:
         committed = self._snapshot(row)
         # A replayed save still catches up rows a lost pass did not write.
         self.write_projection(principal.scope, committed, principal.role in REVIEW_ROLES)
+        self.write_costs(principal.scope, committed)
         return committed
 
     def _commit(self, principal, specimen, expected, key, request_digest):
@@ -732,7 +780,149 @@ class SqlConnectRepository:
                 raise
             return committed
         self.write_projection(principal.scope, specimen, principal.role in REVIEW_ROLES)
+        self.write_costs(principal.scope, specimen)
         return specimen
+
+    def write_costs(self, scope, specimen) -> bool:
+        """Record the active run's paid calls in the cost meter (COST_METER.md).
+
+        Only rows this process has not sent as they now stand are sent. Never
+        raises: the snapshot is the record, and the worker's sweep repairs any
+        row this pass could not write. The warning names a code, never a value.
+        """
+        from .cost_ledger import CostRowInvalid, paid_call_rows
+
+        try:
+            rows = paid_call_rows(scope.organization_id, scope.collection_id, specimen.id, specimen.run)
+            if rows:
+                self.send_cost_rows(scope, rows[0]["specimen_id"], rows)
+            return True
+        except Exception as error:
+            code = str(error) if isinstance(error, CostRowInvalid) else type(error).__name__
+            LOGGER.warning("Cost rows not written: %s", log_code(code))
+            return False
+
+    def send_cost_rows(self, scope, specimen_id, rows) -> int:
+        """Upsert one specimen's cost rows that differ from what this process sent.
+
+        Raises when the connector refuses or cannot be reached; a row counts as
+        sent only once its call is answered with every row upserted.
+        """
+        sent = self._costed.setdefault(specimen_id, {})
+        self._costed.move_to_end(specimen_id)
+        while len(self._costed) > COSTED_SPECIMENS:
+            self._costed.popitem(last=False)
+        pending = [(row, digest(row)) for row in rows]
+        pending = [(row, key) for row, key in pending if sent.get(row["id"]) != key]
+        for start in range(0, len(pending), COST_ROWS_PER_CALL):
+            chunk = pending[start:start + COST_ROWS_PER_CALL]
+            response = self.execute(
+                "UpsertCostEntriesV1",
+                dict(
+                    self.variables(scope),
+                    specimenId=specimen_id,
+                    rowsJson=json.dumps([row for row, _ in chunk], separators=(",", ":"), allow_nan=False),
+                ),
+                mutation=True,
+            )
+            if response.get("upserted") != len(chunk):
+                raise Conflict("cost_entries_refused")
+            sent.update({row["id"]: key for row, key in chunk})
+        return len(pending)
+
+    def run_paid_calls_page(self, scope, after_id, since, limit):
+        """One page of the cost sweep: each run's paid calls, from ListRunPaidCallsV1."""
+        if not 1 <= limit <= 25:
+            raise ValueError("Invalid page size")
+        row = self.execute(
+            "ListRunPaidCallsV1",
+            dict(self.variables(scope), afterId=after_id, since=since, limit=limit),
+        ).get("page")
+        if not isinstance(row, dict) or not isinstance(row.get("page_json"), str):
+            raise OperationalBlock("cost_sweep_page_unavailable")
+        page = json.loads(row["page_json"])
+        if not isinstance(page.get("items"), list) or type(page.get("specimens")) is not int:
+            raise OperationalBlock("cost_sweep_page_unavailable")
+        return page
+
+    def cost_totals(self, organization_id, from_month, to_month):
+        """The organization's collections and grouped cost sums (CostTotalsV1)."""
+        uid = actor_uid.get()
+        if not uid:
+            raise PermissionError("Verified actor context required")
+        data = self.execute(
+            "CostTotalsV1",
+            {"organizationId": organization_id, "actorUid": uid,
+             "fromMonth": from_month, "toMonth": to_month},
+        )
+        row = data.get("totals")
+        if not isinstance(row, dict) or not isinstance(row.get("totals_json"), str):
+            raise OperationalBlock("cost_meter_unavailable")
+        totals = json.loads(row["totals_json"])
+        if totals.get("admitted") is not True:
+            raise PermissionError("Cost totals need an administrator")
+        if not isinstance(totals.get("groups"), list) or not isinstance(data.get("collections"), list):
+            raise OperationalBlock("cost_meter_unavailable")
+        return {"collections": data["collections"], "groups": totals["groups"]}
+
+    def cost_allocation_inputs(self, scope, day_start, day_end, month_start, gap_seconds) -> list:
+        """Every collection's measures for one billing day (CostAllocationInputsV1).
+
+        Ids and numbers only, for the whole deployment: the caller must be an
+        active operator, reviewer, manager or admin of ``scope``.
+        """
+        from datetime import timezone
+
+        def stamp(moment):
+            return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        row = self.execute(
+            "CostAllocationInputsV1",
+            dict(self.variables(scope), dayStart=stamp(day_start), dayEnd=stamp(day_end),
+                 monthStart=stamp(month_start), gapSeconds=gap_seconds),
+        ).get("inputs")
+        if not isinstance(row, dict) or not isinstance(row.get("inputs_json"), str):
+            raise OperationalBlock("cost_allocation_inputs_unavailable")
+        inputs = json.loads(row["inputs_json"])
+        if inputs.get("admitted") is not True:
+            raise PermissionError("Cost allocation inputs need an active operator")
+        if not isinstance(inputs.get("collections"), list):
+            raise OperationalBlock("cost_allocation_inputs_unavailable")
+        return inputs["collections"]
+
+    def send_cost_allocations(self, scope, rows) -> int:
+        """Upsert one collection's allocation rows; raises unless every row is written."""
+        written = 0
+        for start in range(0, len(rows), COST_ROWS_PER_CALL):
+            chunk = rows[start:start + COST_ROWS_PER_CALL]
+            response = self.execute(
+                "UpsertCostAllocationsV1",
+                dict(self.variables(scope),
+                     rowsJson=json.dumps(chunk, separators=(",", ":"), allow_nan=False)),
+                mutation=True,
+            )
+            if response.get("upserted") != len(chunk):
+                raise Conflict("cost_allocations_refused")
+            written += len(chunk)
+        return written
+
+    def cost_allocation_status(self, organization_id) -> dict:
+        """The latest allocation row's time for the organization (CostAllocationStatusV1)."""
+        uid = actor_uid.get()
+        if not uid:
+            raise PermissionError("Verified actor context required")
+        row = self.execute(
+            "CostAllocationStatusV1", {"organizationId": organization_id, "actorUid": uid}
+        ).get("status")
+        if not isinstance(row, dict) or not isinstance(row.get("status_json"), str):
+            raise OperationalBlock("cost_meter_unavailable")
+        status = json.loads(row["status_json"])
+        if status.get("admitted") is not True:
+            raise PermissionError("Cost allocation status needs an administrator")
+        latest = status.get("latest_occurred_at")
+        if latest is not None and not isinstance(latest, str):
+            raise OperationalBlock("cost_meter_unavailable")
+        return {"latest_occurred_at": latest}
 
     def write_projection(self, scope, specimen, reviewer=False) -> ProjectionResult:
         """Write the normalized rows this revision supports (DATA_CONTRACT.md 11).
@@ -975,6 +1165,86 @@ class SqlConnectRepository:
                 raise
         return payload
 
+    def active_intake_jobs(self, scope):
+        after = ''
+        while True:
+            rows = self.execute('ListActiveIntakeJobs', dict(self.variables(scope), afterId=after, limit=100)).get('items', [])
+            for row in rows:
+                value = row['payload']
+                if value.get('state') != 'waiting' or value.get('sensitive') is not False or value['id'] != str(UUID(row['id'])):
+                    raise Conflict('Intake job inventory mismatch')
+                yield value
+            if len(rows) < 100:
+                return
+            after = str(UUID(rows[-1]['id']))
+
+    def private_document_page(self, scope, kind, owner, after, limit, include_sensitive=False):
+        from .intake_models import PRIVATE_KINDS
+        if kind not in PRIVATE_KINDS or owner != actor_uid.get() or not 1 <= limit <= 101:
+            raise PermissionError('Private intake inventory unavailable')
+        rows = self.execute('ListPrivateIntakePage', dict(self.variables(scope),
+            kind=kind, afterId=after, limit=limit, includeSensitive=include_sensitive)).get('items', [])
+        ids = [str(UUID(row['id'])) for row in rows]
+        documents = {}
+        for start in range(0, len(ids), 100):
+            documents.update({row['id']: row for row in self.private_documents(scope, kind, owner, ids[start:start + 100])})
+        return [documents[id] for id in ids if id in documents]
+
+    def commit_intake_submission(self, scope, draft, job):
+        if draft['owner_id'] != actor_uid.get() or job['owner_id'] != actor_uid.get():
+            raise PermissionError('Private submission unavailable')
+        expected = draft['revision']
+        payload = dict(draft, revision=expected + 1)
+        self.execute('CommitIntakeSubmission', dict(self.variables(scope), id=draft['id'],
+            expectedRevision=expected, sensitive=draft['sensitive'], payload=payload,
+            jobId=job['id'], jobPayload=job), mutation=True)
+        return payload
+
+    def private_documents(self, scope, kind, owner, ids):
+        from .intake_models import PRIVATE_KINDS
+        if kind not in PRIVATE_KINDS or owner != actor_uid.get() or len(ids) > 100:
+            raise PermissionError('Private intake selection unavailable')
+        if not ids:
+            return []
+        sensitive = any(m['organization_id'] == scope.organization_id
+            and m['collection_id'] == scope.collection_id and m['can_view_sensitive']
+            for m in self.memberships(owner))
+        rows = self.execute('GetPrivateIntakeItems', dict(self.variables(scope),
+            kind=kind, ids=ids, includeSensitive=sensitive)).get('items', [])
+        for row in rows:
+            if type(row.get('sensitive')) is not bool or row['payload'].get('sensitive', True) != row['sensitive']:
+                raise Conflict('Document sensitivity metadata mismatch')
+        return [row['payload'] for row in rows]
+
+    # Optional monthly budget caps per organization and collection (cost meter,
+    # docs/execution/golive/TENANT_BUDGETS.md; dataconnect/connector/tenant_budget.gql).
+    def tenant_caps(self, scope):
+        """The organization's caps and its collection tree, read as the actor in
+        ``scope`` (any active member of that collection). Ids are normalized."""
+        from .tenant_budget import MAX_ROWS, cap_key, cap_micros
+
+        data = self.execute("TenantBudgetCapsV1", self.variables(scope))
+        rows, collections = data.get("tenantBudgetCaps"), data.get("collections")
+        if (not isinstance(rows, list) or not isinstance(collections, list)
+                or len(rows) > MAX_ROWS or len(collections) > MAX_ROWS):
+            raise Conflict("Tenant budget caps unreadable")
+        return {
+            "caps": [{"collection_key": cap_key(row["collectionKey"]),
+                "monthly_cap_micros": cap_micros(row.get("monthlyCapMicros")),
+                "updated_by": row.get("updatedBy"), "updated_at": row.get("updatedAt")}
+                for row in rows],
+            "collections": [{"id": str(UUID(row["id"])),
+                "parent_id": None if row.get("parentId") is None else str(UUID(row["parentId"]))}
+                for row in collections],
+        }
+
+    def set_tenant_cap(self, scope, collection_key, micros):
+        """Set or clear (None) one cap, as an active admin of ``scope``'s collection."""
+        from .tenant_budget import cap_key, cap_micros
+
+        self.execute("SetTenantBudgetCapV1", dict(self.variables(scope),
+            collectionKey=cap_key(collection_key), monthlyCapMicros=cap_micros(micros)), mutation=True)
+
 
 class GcsBlobs:
     def __init__(self, bucket="specimen-digitization.firebasestorage.app"):
@@ -1000,6 +1270,61 @@ class GcsBlobs:
         from .blob_limits import ORIGINAL_BYTES
 
         return self.get_bounded(ref, ORIGINAL_BYTES)
+
+    def get_bounded_until(self, ref, max_bytes, deadline):
+        """Deadline-aware queue read, separate from supervised worker I/O.
+
+        read1 performs one underlying read, rather than waiting to fill a large
+        buffer across an arbitrarily slow stream. The socket inactivity timeout
+        is at most one second; the absolute deadline is checked between reads.
+        All responses are closed before this call returns or raises.
+        """
+        from urllib.parse import quote
+        from .blob_limits import read_limited, verify_digest, BlobTooLarge
+
+        if not isinstance(ref, str) or not re.fullmatch(r"[0-9a-f]{64}:[1-9][0-9]*", ref):
+            raise Missing("Invalid object reference")
+        checksum, generation = ref.split(":")
+
+        def remaining():
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise TimeoutError("Graph count read expired")
+            return left
+
+        left = remaining()
+        timeout = min(1.0, left)
+        url = ("https://storage.googleapis.com/storage/v1/b/"
+            + quote(self.bucket.name, safe="") + "/o/"
+            + quote("application/sha256/" + checksum, safe=""))
+        response = self.bucket.client._http.get(
+            url, params={"alt": "media", "generation": generation}, stream=True,
+            headers={"Accept-Encoding": "identity"}, allow_redirects=False,
+            timeout=(timeout, timeout), max_allowed_time=left,
+        )
+        with response:
+            remaining()
+            if response.status_code == 404:
+                raise Missing("Object generation not found")
+            if response.status_code != 200:
+                raise OperationalBlock("object_storage_unavailable")
+            declared = response.headers.get("Content-Length")
+            if declared is not None:
+                declared = int(declared)
+                if declared < 0:
+                    raise ValueError("Invalid object length")
+                if declared > max_bytes:
+                    raise BlobTooLarge("Evidence exceeds the configured byte limit")
+
+            def read(count):
+                remaining()
+                chunk = response.raw.read1(count, decode_content=False)
+                remaining()
+                return chunk
+
+            data = read_limited(read, max_bytes)
+        remaining()
+        return verify_digest(data, checksum)
 
     @guarded
     def get_bounded(self, ref, max_bytes):
@@ -1395,7 +1720,7 @@ class Sam3Service:
             self.effect,
             {
                 "endpoint": self.endpoint,
-                "telemetry": model_trace_context(specimen.id, specimen.run.id),
+                "telemetry": model_trace_context(specimen.id, specimen.run.id, **tenant_ids(specimen)),
                 "request": request,
                 "pins": {
                     "checkpoint_sha256": checkpoint,
@@ -1504,7 +1829,7 @@ class Sam3Service:
             self.effect,
             {
                 "endpoint": self.endpoint,
-                "telemetry": model_trace_context(specimen.id, specimen.run.id),
+                "telemetry": model_trace_context(specimen.id, specimen.run.id, **tenant_ids(specimen)),
                 "request": request,
                 "expected": self.expected,
                 "timeout_seconds": specimen.run.profile.execution.external_timeout_seconds,

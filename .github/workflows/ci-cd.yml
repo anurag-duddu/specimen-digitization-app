@@ -312,6 +312,7 @@ jobs:
           uv run pytest -q
           scripts/ci/test_public_settings.py
           scripts/ci/test_smoke_web_routes.py
+          tests/test_native_google_configuration.py
           tests/test_deployment_policy.py
           tests/test_hosting_attempt_binding.py
           tests/test_local_review_runner.py
@@ -366,13 +367,18 @@ jobs:
         working-directory: apps/specimen_digitization/packages/specimen_ui
         run: flutter pub get
 
+      - name: Install locked Widgetbook dependencies
+        working-directory: apps/specimen_widgetbook
+        run: flutter pub get --enforce-lockfile
+
       # The cheapest gate, so it runs before the analyzers. It covers the
-      # client and the design system and nothing else: the frozen Dart under
+      # client, design system and Widgetbook: the frozen Dart under
       # docs/execution/qa-evidence is evidence, not source.
       - name: Check Dart formatting
         run: >-
           dart format --output=none --set-exit-if-changed
           lib test packages/specimen_ui/lib packages/specimen_ui/test
+          ../specimen_widgetbook/lib ../specimen_widgetbook/test
 
       - name: Check UI writing
         run: >-
@@ -387,6 +393,18 @@ jobs:
         working-directory: apps/specimen_digitization/packages/specimen_ui
         run: flutter test
 
+      - name: Analyze Widgetbook
+        working-directory: apps/specimen_widgetbook
+        run: flutter analyze --fatal-infos
+
+      - name: Run Widgetbook tests
+        working-directory: apps/specimen_widgetbook
+        run: flutter test
+
+      - name: Build Widgetbook web release
+        working-directory: apps/specimen_widgetbook
+        run: flutter build web --release
+
       - name: Analyze Flutter code
         run: flutter analyze --fatal-infos
 
@@ -397,6 +415,14 @@ jobs:
           GATE_BASE: HEAD^1
         run: flutter test
 
+      - name: Install Node.js for browser contracts
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Check cross-origin intake authorization in Chrome
+        run: node ../../scripts/ci/check_intake_auth_session_browser.cjs
+
       - name: Build Flutter web release
         env:
           SPECIMEN_API_BASE_URL: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_API_BASE_URL || '' }}
@@ -404,6 +430,7 @@ jobs:
           SPECIMEN_ADMIN_CONTACT: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_ADMIN_CONTACT || '' }}
           SPECIMEN_PILOT_SCOPE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_PILOT_SCOPE || '' }}
           SPECIMEN_GOOGLE_SIGN_IN_ENABLED: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SPECIMEN_GOOGLE_SIGN_IN_ENABLED || '' }}
+          BULK_INTAKE_ENABLED: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.BULK_INTAKE_ENABLED || '' }}
         run: ../../scripts/ci/build_web.sh
 
       - name: Stamp release with its source revision

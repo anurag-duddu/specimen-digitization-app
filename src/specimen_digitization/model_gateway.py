@@ -219,6 +219,28 @@ class ArgumentPreservingHuggingFaceModel(HuggingFaceModel):
         call["function"]["arguments"] = t.args_as_json_str()
         return call
 
+    def _process_response(self, response):  # type: ignore[override]
+        """Keep the input tokens the provider served from its prompt cache.
+
+        Pydantic AI's Hugging Face usage keeps only the prompt and completion
+        token counts. A provider that caches prompts (DeepInfra) reports the
+        cached part as ``usage.prompt_tokens_details.cached_tokens`` and bills
+        it at its cached rate, so the cost meter needs it
+        (field_research.budget.CostMeter). A streamed answer is not read here.
+        """
+        processed = super()._process_response(response)
+        cached = cached_input_tokens(response.usage)
+        if cached:
+            processed.usage.cache_read_tokens = min(cached, processed.usage.input_tokens)
+        return processed
+
+
+def cached_input_tokens(usage) -> int:
+    """The prompt tokens a provider says it served from its cache, else 0."""
+    details = usage.get("prompt_tokens_details") if isinstance(usage, Mapping) else None
+    cached = details.get("cached_tokens") if isinstance(details, Mapping) else None
+    return cached if type(cached) is int and cached > 0 else 0
+
 
 class UnforcedOutputToolHuggingFaceModel(ArgumentPreservingHuggingFaceModel):
     """Let the model choose the tool where a forced tool call skips its reasoning.

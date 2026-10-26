@@ -167,7 +167,11 @@ void main() {
     ('light', AppTheme.light()),
     ('dark', AppTheme.dark()),
   ]) {
-    for (final Size size in [const Size(390, 844), const Size(844, 390)]) {
+    for (final Size size in [
+      const Size(320, 568),
+      const Size(390, 844),
+      const Size(844, 390),
+    ]) {
       testWidgets(
         '$theme $size camera controls remain reachable at 200% text',
         (WidgetTester tester) async {

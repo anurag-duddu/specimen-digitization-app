@@ -122,10 +122,18 @@ void main() {
       );
     });
 
-    testWidgets('the two sizes are 32 and 40', (WidgetTester tester) async {
+    testWidgets('identity sizes cover compact rows through profile headers', (
+      WidgetTester tester,
+    ) async {
       expect(UiAvatarSize.values.map((UiAvatarSize s) => s.diameter), <double>[
+        24,
         32,
         40,
+        48,
+        56,
+        64,
+        96,
+        160,
       ]);
       for (final UiAvatarSize size in UiAvatarSize.values) {
         await tester.pumpWidget(

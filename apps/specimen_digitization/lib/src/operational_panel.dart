@@ -15,6 +15,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'administrator_contact.dart';
 import 'blocker_words.dart';
 import 'models.dart';
+import 'processing_wait.dart';
 import 'review_context.dart';
 import 'screens/workbench/moments.dart';
 import 'vocabulary.dart';
@@ -80,9 +81,11 @@ class ProcessingDisclosure extends StatelessWidget {
     final String step = stage.isEmpty || stage == 'Not recorded'
         ? 'Step not recorded'
         : 'Step $stage';
-    final String summary = blocker.isEmpty || blocker == 'Not recorded'
-        ? step
-        : 'Processing needs attention.$retry';
+    final String summary =
+        processingWaitFor(specimen)?.summary ??
+        (blocker.isEmpty || blocker == 'Not recorded'
+            ? step
+            : 'Processing needs attention.$retry');
 
     return UiDisclosure(
       title: title,
@@ -209,14 +212,16 @@ class ProcessingDetail extends StatelessWidget {
       run['blocker'],
       textOf(specimen.data['blocker'], ''),
     );
+    final ProcessingWait? waiting = processingWaitFor(specimen);
     // A blocker is read by its exact code, from a table (`blocker_words.dart`).
     // A run whose automatic retries ran out is read by the cause after the
     // colon, never by the word "budget" in the prefix, and a limit is named for
     // what it limits: a step count and a time limit are no cost limit. No code
     // reaches the screen, and a blocker this client has no words for says so
     // generally.
-    final bool hasBlocker = blocker.isNotEmpty && blocker != 'Not recorded';
-    final BlockerWords? words = blockerWords(blocker);
+    final bool hasBlocker =
+        waiting == null && blocker.isNotEmpty && blocker != 'Not recorded';
+    final BlockerWords? words = waiting == null ? blockerWords(blocker) : null;
     final bool unnamed = hasBlocker && !blockerIsNamed(blocker);
     final List<String> actions =
         (specimen.data['available_actions'] as List? ?? <Object?>[])
@@ -230,6 +235,10 @@ class ProcessingDetail extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
+        if (waiting != null) ...<Widget>[
+          Text(waiting.summary, style: ui.type.label),
+          Text(waiting.detail, style: ui.type.body),
+        ],
         if (hasBlocker)
           Text('Blocked: ${blockerLabel(blocker)}', style: ui.type.label),
         if (blocker == 'pilot_evidence_review_required') ...<Widget>[
@@ -243,7 +252,8 @@ class ProcessingDetail extends StatelessWidget {
             why: 'Only the corrections the server allows are available.',
           ),
         ],
-        if (blocker.contains('external_outcome_unknown')) ...<Widget>[
+        if (waiting == null &&
+            blocker.contains('external_outcome_unknown')) ...<Widget>[
           Text(
             'The last external request may have run. Its result is unknown.',
             style: ui.type.body,

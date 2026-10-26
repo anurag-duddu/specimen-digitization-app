@@ -9,6 +9,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/workbench/decision_bar.dart';
@@ -20,6 +21,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../app/routing_test.dart' show pumpApp;
 import '../composition/composition_harness.dart'
     show nativeNavigation, contentAboveNativeNavigation;
+import '../golden/golden_harness.dart' show goldenSpecimen;
 import '../workbench_harness.dart';
 import '../ui_finders.dart';
 import '../reading_region_comparison_test.dart' show selectLabel;
@@ -266,6 +268,112 @@ void main() {
     },
   );
 
+  for (final segment in [WorkbenchSegment.fields, WorkbenchSegment.history]) {
+    testWidgets(
+      '${segment.label} endpoint scrolls fully into view at 200 percent text '
+      'while the decision action stays reachable',
+      (tester) async {
+        useWindow(tester, compactWindow);
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.pumpWidget(
+          workbenchHost(
+            ReviewWorkbench(
+              specimen: goldenSpecimen(),
+              onChange: (_) async => false,
+              onRetry: (_) async {},
+              onRefresh: () {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        // Use the same unverified-orientation fixture as the compact goldens:
+        // the complete explanation title takes its required wrapped height.
+        expect(find.text('Label overlays unavailable'), findsOneWidget);
+        await tester.sendKeyEvent(
+          segment == WorkbenchSegment.fields
+              ? LogicalKeyboardKey.keyF
+              : LogicalKeyboardKey.keyH,
+        );
+        await tester.pumpAndSettle();
+        if (segment == WorkbenchSegment.fields) {
+          // Collapsed summaries now fit comfortably. Open real field detail
+          // so this test still exercises the long-content scrolling path.
+          await tester.ensureVisible(uiDisclosure('Country'));
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find
+                .descendant(
+                  of: uiDisclosure('Country'),
+                  matching: find.byType(Pressable),
+                )
+                .first,
+          );
+          await tester.pumpAndSettle();
+        }
+        final position = tester
+            .state<ScrollableState>(evidenceScrollable())
+            .position;
+        // Start at the same initial viewport as the golden. Reaching the
+        // endpoint below must use pointer drags, never ensureVisible/jumpTo.
+        position.jumpTo(0);
+        await tester.pumpAndSettle();
+        final endpoint = segment == WorkbenchSegment.fields
+            ? find.text('Elevation from (m)')
+            : find.textContaining('operator-1 ·');
+        final decision = find.byType(WorkbenchDecisionBar);
+        final decisionRect = tester.getRect(decision);
+        final decisionAction = find.descendant(
+          of: decision,
+          matching: uiButton('Approve record'),
+        );
+
+        bool endpointFullyVisible() {
+          if (endpoint.hitTestable().evaluate().length != 1) return false;
+          final viewport = tester.getRect(find.byKey(evidenceScrollKey));
+          final content = tester.getRect(endpoint);
+          return content.top >= viewport.top &&
+              content.bottom <= viewport.bottom;
+        }
+
+        expect(position.maxScrollExtent, greaterThan(0));
+        expect(
+          endpointFullyVisible(),
+          isFalse,
+          reason: 'the endpoint must begin below the initial viewport',
+        );
+        for (var drag = 0; drag < 20 && !endpointFullyVisible(); drag++) {
+          final viewport = tester.getRect(find.byKey(evidenceScrollKey));
+          await tester.dragFrom(
+            Offset(viewport.center.dx, viewport.bottom - 24),
+            const Offset(0, -120),
+          );
+          await tester.pumpAndSettle();
+        }
+        expect(position.pixels, greaterThan(0));
+        expect(
+          endpointFullyVisible(),
+          isTrue,
+          reason: 'the complete endpoint must be visible after actual swipes',
+        );
+        expect(endpoint.hitTestable(), findsOneWidget);
+        expect(tester.getRect(decision), decisionRect);
+        expect(
+          tester.getRect(endpoint).bottom,
+          lessThanOrEqualTo(decisionRect.top),
+        );
+        expect(decisionAction.hitTestable(), findsOneWidget);
+        expect(tester.widget<UiButton>(decisionAction).onPressed, isNotNull);
+        await tester.tap(decisionAction);
+        await tester.pumpAndSettle();
+        expect(find.text('Approve this record?'), findsOneWidget);
+        await closeUiModal(tester);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
   testWidgets(
     'the photograph and inspection action return when the page scrolls back',
     (WidgetTester tester) async {
@@ -357,6 +465,20 @@ void routedScrolling() {
       await tester.tap(find.text('fixture-001'));
       await tester.pumpAndSettle();
 
+      // The summary is deliberately short. Scrolling is needed after the
+      // reviewer opens a field's retained value and evidence.
+      await tester.ensureVisible(uiDisclosure('Country'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find
+            .descendant(
+              of: uiDisclosure('Country'),
+              matching: find.byType(Pressable),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Required field · Unknown'), findsOneWidget);
       expect(nativeNavigation(), findsNothing);
       final Rect content = contentAboveNativeNavigation(tester);
       expect(content.top, 44);

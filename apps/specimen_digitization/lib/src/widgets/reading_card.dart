@@ -1,10 +1,10 @@
 /// One model reading of one region (design system, 7.3 `ReadingCard`;
 /// 10 section 5).
 ///
-/// Two readings are two readings. The card names which model produced this
-/// one and which provider ran it, then shows the literal against the
-/// reference reading. Agreement between two models is not evidence of
-/// correctness, so nothing here reads as an endorsement.
+/// Each reading is its own reading, however many models read the label. The
+/// card names which model produced this one and which provider ran it, then
+/// shows the literal against the reference reading. Agreement between models
+/// is not evidence of correctness, so nothing here reads as an endorsement.
 library;
 
 import 'package:flutter/widgets.dart';

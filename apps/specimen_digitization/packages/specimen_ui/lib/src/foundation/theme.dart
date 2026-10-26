@@ -9,6 +9,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'brand.dart';
 import 'color.dart';
 import 'density.dart';
 import 'fields.dart';
@@ -41,7 +42,10 @@ class UiThemeData {
   /// Colour roles and the status triples.
   final UiColor color;
 
-  /// The five light fields and the three sky presets.
+  /// Brand identity and accessible secondary emphasis.
+  UiBrandColors get brand => isDark ? UiBrandColors.dark : UiBrandColors.light;
+
+  /// Compatibility fields, constrained to the current brand palette.
   final UiFields field;
 
   /// The three glass levels.
@@ -198,14 +202,14 @@ class UiThemeData {
       onPrimary: color.paper,
       primaryContainer: color.paper,
       onPrimaryContainer: color.ink,
-      secondary: s.processing.content,
+      secondary: brand.secondary.content,
       onSecondary: isDark ? color.ground : color.paper,
-      secondaryContainer: s.processing.fill,
-      onSecondaryContainer: s.processing.onFill,
-      tertiary: s.authority.content,
+      secondaryContainer: brand.secondary.fill,
+      onSecondaryContainer: brand.secondary.onFill,
+      tertiary: color.inkSecondary,
       onTertiary: isDark ? color.ground : color.paper,
-      tertiaryContainer: s.authority.fill,
-      onTertiaryContainer: s.authority.onFill,
+      tertiaryContainer: color.paper,
+      onTertiaryContainer: color.ink,
       error: s.blocked.content,
       onError: isDark ? color.ground : color.paper,
       errorContainer: s.blocked.fill,

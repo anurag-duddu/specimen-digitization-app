@@ -18,6 +18,34 @@ import 'frame_safe_notifier.dart';
 import 'glass_surface.dart';
 import 'scrim.dart';
 
+/// An explicit modal destination for an embedded application or preview.
+///
+/// Product screens normally use their root navigator. A host embedding a whole
+/// product in a bounded viewport can publish its own navigator here so dialogs
+/// remain inside that viewport and inherit its appearance and accessibility
+/// settings. The host owns the key and the navigator's lifetime.
+class UiModalNavigator extends InheritedWidget {
+  /// Routes owned modals through [navigatorKey] within [child].
+  const UiModalNavigator({
+    super.key,
+    required this.navigatorKey,
+    required super.child,
+  });
+
+  /// The mounted navigator that owns the embedded application's modal routes.
+  final GlobalKey<NavigatorState> navigatorKey;
+
+  /// The explicit host navigator, if this context belongs to an embedded app.
+  static NavigatorState? maybeOf(BuildContext context) => context
+      .getInheritedWidgetOfExactType<UiModalNavigator>()
+      ?.navigatorKey
+      .currentState;
+
+  @override
+  bool updateShouldNotify(UiModalNavigator oldWidget) =>
+      oldWidget.navigatorKey != navigatorKey;
+}
+
 /// Where the modals of this package say that one of them is open, and what a
 /// frame reads to draw solid beneath it (13 section 2.2; 09 section 3.3).
 ///
@@ -193,6 +221,44 @@ Future<T?> showUiModal<T>({
   sheet: presentsAsSheet(context),
 );
 
+/// Opens a bounded file workspace using the standard modal focus and scrim.
+/// Compact windows use the full available width, with safe-area/IME avoidance.
+Future<T?> showUiImportWorkspace<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  String semanticsLabel = 'Add photos',
+}) => _show<T>(
+  context: context,
+  builder: builder,
+  semanticsLabel: semanticsLabel,
+  dismissLabel: 'Close photo sources',
+  dismissible: true,
+  sheet: presentsAsSheet(context),
+  workspace: true,
+);
+
+/// Shows a side panel at the reading-order end (or start) of the viewport.
+///
+/// The pane fills the available height, uses the same focus restoration and
+/// dismissal contract as a dialog, and becomes full width on compact windows.
+Future<T?> showUiDrawer<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  required String semanticsLabel,
+  String? dismissLabel,
+  bool dismissible = true,
+  bool fromStart = false,
+}) => _show<T>(
+  context: context,
+  builder: builder,
+  semanticsLabel: semanticsLabel,
+  dismissLabel: dismissLabel,
+  dismissible: dismissible,
+  sheet: false,
+  drawer: true,
+  fromStart: fromStart,
+);
+
 Future<T?> _show<T>({
   required BuildContext context,
   required WidgetBuilder builder,
@@ -200,9 +266,15 @@ Future<T?> _show<T>({
   required String? dismissLabel,
   required bool dismissible,
   required bool sheet,
+  bool workspace = false,
+  bool drawer = false,
+  bool fromStart = false,
 }) {
   final UiThemeData ui = context.ui;
-  final NavigatorState navigator = Navigator.of(context, rootNavigator: true);
+  final TextDirection direction = Directionality.of(context);
+  final NavigatorState navigator =
+      UiModalNavigator.maybeOf(context) ??
+      Navigator.of(context, rootNavigator: true);
   // The frame this modal is shown from inside, if any. Read from the caller's
   // context, because the route itself is built in the navigator's overlay,
   // above every frame.
@@ -223,12 +295,18 @@ Future<T?> _show<T>({
           BuildContext context,
           Animation<double> animation,
           Animation<double> secondary,
-        ) => _ModalFrame(
-          sheet: sheet,
-          semanticsLabel: semanticsLabel,
-          dismissLabel: dismissLabel,
-          dismissible: dismissible,
-          builder: builder,
+        ) => Directionality(
+          textDirection: direction,
+          child: _ModalFrame(
+            sheet: sheet,
+            workspace: workspace,
+            drawer: drawer,
+            fromStart: fromStart,
+            semanticsLabel: semanticsLabel,
+            dismissLabel: dismissLabel,
+            dismissible: dismissible,
+            builder: builder,
+          ),
         ),
     transitionBuilder:
         (
@@ -251,6 +329,13 @@ Future<T?> _show<T>({
             position: Tween<Offset>(
               begin: sheet
                   ? const Offset(0, MotionTokens.sheetEntranceRise)
+                  : drawer
+                  ? Offset(
+                      (direction == TextDirection.rtl) != fromStart
+                          ? -MotionTokens.sheetEntranceRise
+                          : MotionTokens.sheetEntranceRise,
+                      0,
+                    )
                   : const Offset(0, MotionTokens.dialogEntranceRise),
               end: Offset.zero,
             ).animate(curved),
@@ -275,6 +360,9 @@ Future<T?> _show<T>({
 class _ModalFrame extends StatelessWidget {
   const _ModalFrame({
     required this.sheet,
+    this.workspace = false,
+    this.drawer = false,
+    this.fromStart = false,
     required this.semanticsLabel,
     required this.dismissLabel,
     required this.dismissible,
@@ -282,6 +370,9 @@ class _ModalFrame extends StatelessWidget {
   });
 
   final bool sheet;
+  final bool workspace;
+  final bool drawer;
+  final bool fromStart;
   final String semanticsLabel;
   final String? dismissLabel;
   final bool dismissible;
@@ -366,17 +457,30 @@ class _ModalFrame extends StatelessWidget {
                   viewInsets: EdgeInsets.zero,
                 ),
                 child: Align(
-                  alignment: sheet ? Alignment.bottomCenter : Alignment.center,
+                  alignment: sheet
+                      ? Alignment.bottomCenter
+                      : drawer
+                      ? (fromStart
+                            ? AlignmentDirectional.centerStart
+                            : AlignmentDirectional.centerEnd)
+                      : Alignment.center,
                   child: Padding(
-                    padding: EdgeInsets.all(sheet ? 0 : ui.space.s4),
+                    padding: EdgeInsets.all(sheet || drawer ? 0 : ui.space.s4),
                     child: ConstrainedBox(
                       // A sheet fills the window's width; a dialog shrink wraps
                       // up to 560. `minWidth: infinity` is the idiom for "as
                       // wide as the parent allows", because `ConstrainedBox`
                       // enforces against the incoming constraints.
                       constraints: BoxConstraints(
-                        minWidth: sheet ? double.infinity : 0,
-                        maxWidth: sheet ? double.infinity : ui.space.dialogMax,
+                        minWidth: sheet || drawer && isCompactWindow(context)
+                            ? double.infinity
+                            : 0,
+                        minHeight: drawer ? double.infinity : 0,
+                        maxWidth: sheet || drawer && isCompactWindow(context)
+                            ? double.infinity
+                            : workspace
+                            ? ui.space.importWorkspaceMax
+                            : ui.space.dialogMax,
                       ),
                       child: FocusScope(
                         autofocus: true,

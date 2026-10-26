@@ -248,8 +248,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
                   key: ValueKey<String>('${scope.key}:${specimen.id}'),
                   specimen: specimen,
                   onShowQueue: QueueWorkspaceScope.maybeOf(context)?.showQueue,
-                  showSidebarToggle:
-                      !(AppSidebarScope.maybeOf(context)?.docked ?? false),
+                  showSidebarToggle: true,
                   specimensExpanded:
                       QueueWorkspaceScope.maybeOf(context)?.expanded ?? false,
                   active: _active,

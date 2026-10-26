@@ -14,6 +14,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_digitization/src/costs.dart';
 import 'package:specimen_digitization/src/intake_compute.dart';
 import 'package:specimen_digitization/src/wall_time.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -63,6 +64,10 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // every suite that loads this config (see intake_compute.dart).
   debugIntakeComputeOverride = intakeComputeInProcess;
 
+  // The costs screen lists the current UTC month and the eleven before it, so
+  // the day a golden is drawn on would move its pixels. The suite's day is the
+  // day the owner approved the meter (`test/costs/cost_fixtures.dart`).
+  debugCostClock = () => DateTime.utc(2026, 10, 20, 15, 4, 5);
   await testMain();
 }
 

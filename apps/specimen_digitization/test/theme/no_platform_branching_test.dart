@@ -248,6 +248,25 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
       'lib/src/magic_link_screen.dart _MagicLinkSignInScreenState.build': 1,
     },
   ),
+  // owner-approved: 2026-10-17 "Any two way door decision, you don't need me."
+  // Owner delegated reversible technical choices after the coordinator named
+  // these two capability directives and network timing. This allows file
+  // persistence APIs only; it does not permit platform-dependent layout.
+  PlatformCapability(
+    'lib/src/screens/intake/draft_file_store.dart',
+    '<directives>',
+    <String, int>{conditionalImport: 1},
+    'native drafts retain durable files; browser drafts track reselection',
+  ),
+  // owner-approved: 2026-10-17 "Any two way door decision, you don't need me."
+  // Same bounded delegation: browser and native OAuth callbacks use different
+  // transport APIs, without branching the visual design.
+  PlatformCapability(
+    'lib/src/screens/intake/intake_auth_session.dart',
+    '<directives>',
+    <String, int>{conditionalImport: 1},
+    'OAuth returns through browser messaging or native application links',
+  ),
   // owner-approved: 2026-10-17 "Yes approved" (the owner, in the guard-gates
   // Claude Code session, answering whether to approve the four platform
   // exemptions on PR #358)

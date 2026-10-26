@@ -369,6 +369,12 @@ extension on UiStatusStrip {
     );
     return DefaultTextStyle.merge(
       style: style,
+      // WidgetSpan children lay out independently of their containing
+      // paragraph. Give each fact the same single-line contract so a narrow
+      // allocation cannot wrap a slot into a column of overlapping glyphs.
+      maxLines: 1,
+      softWrap: false,
+      overflow: TextOverflow.ellipsis,
       child: Text.rich(
         TextSpan(
           children: <InlineSpan>[

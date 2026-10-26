@@ -28,11 +28,25 @@ type SpecimenSearch @view(sql: """
       WHEN file_reference.stem <> '' THEN file_reference.stem
       WHEN s.id::text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN substring(s.id::text FROM 1 FOR 8)
       ELSE s.id::text
-    END AS display_reference
+    END AS display_reference,
+    CASE WHEN jsonb_typeof(v.snapshot #> '{active_graph,field_review}') = 'object'
+      THEN v.snapshot #> '{active_graph,field_review,fields}' ELSE
+    (SELECT jsonb_object_agg(field.key, CASE WHEN jsonb_typeof(field.value) = 'object' THEN jsonb_build_object(
+      'state', field.value -> 'state',
+      'has_value', length(btrim(CASE WHEN jsonb_typeof(field.value -> 'normalized') = 'string' THEN field.value ->> 'normalized' ELSE '' END, whitespace.chars)) > 0
+        OR length(btrim(CASE WHEN jsonb_typeof(field.value -> 'parsed') = 'string' THEN field.value ->> 'parsed' ELSE '' END, whitespace.chars)) > 0
+        OR length(btrim(CASE WHEN jsonb_typeof(field.value -> 'literal') = 'string' THEN field.value ->> 'literal' ELSE '' END, whitespace.chars)) > 0) ELSE NULL END)
+      FROM jsonb_each(CASE WHEN jsonb_typeof(v.snapshot #> '{run,fields}') = 'object'
+        THEN v.snapshot #> '{run,fields}' ELSE '{}'::jsonb END) AS field
+    ) END AS field_review_states,
+    v.snapshot -> 'active_graph' AS active_graph
   FROM public.specimen s JOIN public.specimen_snapshot v
     ON v.organization_id = s.organization_id AND v.collection_id = s.collection_id
     AND v.specimen_id = s.id AND v.revision = s.revision
   CROSS JOIN LATERAL (SELECT regexp_replace(regexp_replace(replace(btrim(v.snapshot #>> '{asset,filename}'), chr(92), '/'), '^.*/', ''), '[.](jpe?g|png|webp|tiff?|heic|gif)$', '', 'i') AS stem) AS file_reference
+  CROSS JOIN (SELECT string_agg(chr(code), '') AS chars
+    FROM unnest(ARRAY[9,10,11,12,13,32,133,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279]) AS code
+    WHERE code < 128 OR getdatabaseencoding() = 'UTF8') AS whitespace
 """) {
   allRows: Boolean
   organizationId: UUID
@@ -58,4 +72,6 @@ type SpecimenSearch @view(sql: """
   risk: Float
   synthetic: Boolean
   displayReference: String
+  fieldReviewStates: Any
+  activeGraph: Any
 }

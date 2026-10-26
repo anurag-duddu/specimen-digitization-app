@@ -3,9 +3,11 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
+import 'costs.dart';
 import 'models.dart';
 import 'sources.dart';
 import 'vocabulary.dart';
+import 'screens/intake/bulk_intake_repository.dart';
 
 part 'api_repository_scopes.dart';
 part 'api_repository_intake.dart';
@@ -566,6 +568,8 @@ class ApiSpecimenRepository extends _ApiRepositoryBase
         CandidateReviewBatchRepository,
         SpecimenHistoryRepository,
         SourceRepository,
+        CostRepository,
+        BulkIntakeRepository,
         AccessFailureSource {
   ApiSpecimenRepository({
     required super.baseUrl,

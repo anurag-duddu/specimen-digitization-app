@@ -132,7 +132,7 @@ void main() {
     await _pumpQueue(tester, repository, window: const Size(800, 1200));
     expect(repository.requests.single, {'disposition': 'needs_human_review'});
     for (final entry in {
-      'Needs a human': 'needs_human_review',
+      'Needs review': 'needs_human_review',
       'Deferred': 'deferred',
       'Cleared': 'cleared',
     }.entries) {
@@ -171,13 +171,11 @@ void main() {
         expect(uiMenuTrigger('Specimen list actions'), findsNothing);
         expect(uiIconButton('Done selecting'), findsNothing);
         for (final entry in {
-          'Needs a human': 'needs_human_review',
+          'Needs review': 'needs_human_review',
           'Deferred': 'deferred',
           'Cleared': 'cleared',
         }.entries) {
-          final filter = find.byKey(
-            ValueKey<String>('queue-filter-${entry.value}'),
-          );
+          final filter = find.byKey(const ValueKey<String>('queue-view'));
           expect(filter, findsOneWidget);
           expect(
             tester.getTopLeft(filter).dy,

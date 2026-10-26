@@ -161,7 +161,9 @@ class PlatformCaptureCamera implements CaptureCamera {
 
   static CaptureUnavailable _classify(CameraException error) {
     final String code = error.code.toLowerCase();
-    if (code.contains('permission') || code.contains('denied')) {
+    if (code.contains('permission') ||
+        code.contains('denied') ||
+        code.contains('restricted')) {
       return CaptureUnavailable.permission;
     }
     if (code.contains('notfound') || code.contains('no_available')) {

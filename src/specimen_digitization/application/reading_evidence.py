@@ -7,8 +7,10 @@ storage and Flutter. No NFC, case folding, whitespace repair or grapheme slicing
 from __future__ import annotations
 
 from array import array
+from collections.abc import Sequence
 from hashlib import sha256
-from typing import Literal
+from itertools import combinations
+from typing import Literal, NamedTuple
 import unicodedata
 
 from pydantic import Field, model_validator
@@ -415,6 +417,70 @@ def align_readings(
         edit_distance=distance,
         reasons=("raw_readings_disagree",),
     )
+
+
+def pairwise_alignments(
+    readings: Sequence[ReadingEvidenceInput], limits: ReadingLimits = ReadingLimits()
+) -> tuple[ReadingAlignment, ...]:
+    """Every pair of a label's readings, each aligned by align_readings, in
+    reading order: (A, B), (A, C), (B, C) and so on. Two readings give their
+    one pair; fewer give none."""
+    return tuple(align_readings(left, right, limits) for left, right in combinations(readings, 2))
+
+
+def disagreement_ratio(alignment: ReadingAlignment) -> float | None:
+    """A pair's edit distance over its longer reading's codepoints (at least
+    one); None when the pair was not measured (policy_blocked)."""
+    if alignment.status == "policy_blocked" or alignment.edit_distance is None:
+        return None
+    return alignment.edit_distance / max(
+        1, alignment.left.codepoints, alignment.right.codepoints
+    )
+
+
+class LabelComparison(NamedTuple):
+    status: str
+    reasons: tuple[str, ...]
+    # The pair the label's status and ratio come from.
+    alignment: ReadingAlignment
+
+
+def label_comparison(alignments: Sequence[ReadingAlignment]) -> LabelComparison | None:
+    """A label's comparison from its pairs (pairwise_alignments), conservatively.
+
+    A pair that could not be measured makes the label unmeasured: its status is
+    policy_blocked with every blocked pair's reasons, reported on the first
+    blocked pair. Otherwise the least-agreeing pair speaks for the label: the
+    pair with the largest disagreement ratio, the first such pair on a tie, so a
+    label agrees only when every pair agrees. One pair is the label's own
+    comparison, unchanged; no pair gives None.
+    """
+    if not alignments:
+        return None
+    blocked = [a for a in alignments if a.status == "policy_blocked"]
+    if blocked:
+        reasons = tuple(dict.fromkeys(r for a in blocked for r in a.reasons))
+        return LabelComparison("policy_blocked", reasons, blocked[0])
+    least = max(alignments, key=disagreement_ratio)
+    return LabelComparison(least.status, least.reasons, least)
+
+
+class LabelAlignments(ReadingAlignment):
+    """The comparison artifact of a label with more than two readings: the pair
+    label_comparison reports, with every pair, in reading order, beside it. A
+    reader of a two-reading label's artifact (one ReadingAlignment) reads the
+    same fields here."""
+
+    comparisons: tuple[ReadingAlignment, ...]
+
+
+def comparison_artifact(alignments: Sequence[ReadingAlignment]) -> ReadingAlignment:
+    """What a label's comparison artifact holds: its one pair, as before, or
+    for more pairs a LabelAlignments."""
+    if len(alignments) == 1:
+        return alignments[0]
+    reported = label_comparison(alignments).alignment
+    return LabelAlignments(**dict(reported), comparisons=tuple(alignments))
 
 
 class ReadingRiskEvidence(Frozen):

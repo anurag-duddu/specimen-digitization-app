@@ -29,6 +29,12 @@ void main() {
     expect(metrics(1400).columns(minWidth: 400), 3);
   });
 
+  test('independent value groups have two to three related-group gaps', () {
+    expect(metrics(390).groupGap, metrics(390).gap * 2);
+    expect(metrics(900).groupGap, metrics(900).gap * 3);
+    expect(metrics(900, scale: 2).groupGap, 32);
+  });
+
   test('enlarged text stacks before a column becomes too narrow', () {
     expect(metrics(1024).columns(), 2);
     expect(metrics(1024, scale: 2).columns(), 1);

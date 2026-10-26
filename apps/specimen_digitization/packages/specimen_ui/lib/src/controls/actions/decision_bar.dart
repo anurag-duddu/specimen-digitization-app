@@ -375,75 +375,86 @@ class UiDecisionBar extends StatelessWidget {
       shown ?? '',
       style: paint.count.copyWith(color: paint.countColor),
     );
-    return Row(
-      // With no count to hold the line's start, a squeezed row has nothing
-      // to align its decisions against and lets the primary take the line.
-      mainAxisAlignment: shown == null && squeeze
-          ? MainAxisAlignment.end
-          : MainAxisAlignment.start,
-      children: <Widget>[
-        if (drawPrevious) ...<Widget>[
-          UiIconButton(
-            icon: UiIcons.previous,
-            semanticsLabel: previousLabel,
-            onPressed: onPrevious,
-            disabledReason: previousDisabledReason,
-          ),
-          SizedBox(width: paint.gap),
-        ],
-        // The count takes the line the decisions leave and ellipsises first.
-        // It says where the reviewer is; the decision is what they came to
-        // make, and a bar that shortened "Clear record" to keep "1 of 4"
-        // whole would have its priorities backwards. At the last resort the
-        // two share the line three to one, the decision's way.
-        if (shown == null && !squeeze)
-          const Spacer()
-        else if (shown != null && squeeze)
-          Flexible(child: countLabel)
-        else if (shown != null)
-          Expanded(child: countLabel),
-        if (inMenu.isNotEmpty || navigationInMenu || countInMenu) ...<Widget>[
-          UiMenuTrigger(
-            semanticsLabel: overflowLabel,
-            items: <UiMenuItem>[
-              if (countInMenu && count != null)
-                UiMenuItem(label: count!, onSelected: null),
-              for (final UiButton action in inMenu) _menuItem(action),
-              if (navigationInMenu &&
-                  (onPrevious != null || previousDisabledReason != null))
-                UiMenuItem(
-                  label: previousLabel,
-                  icon: UiIcons.previous,
-                  onSelected: onPrevious,
-                  disabledReason: previousDisabledReason,
-                ),
-              if (navigationInMenu &&
-                  (onNext != null || nextDisabledReason != null))
-                UiMenuItem(
-                  label: nextLabel,
-                  icon: UiIcons.next,
-                  onSelected: onNext,
-                  disabledReason: nextDisabledReason,
-                ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bounded = constraints.hasBoundedWidth;
+        return Row(
+          mainAxisSize: bounded ? MainAxisSize.max : MainAxisSize.min,
+          // With no count to hold the line's start, a squeezed row has nothing
+          // to align its decisions against and lets the primary take the line.
+          mainAxisAlignment: shown == null && squeeze
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
+          children: <Widget>[
+            if (drawPrevious) ...<Widget>[
+              UiIconButton(
+                icon: UiIcons.previous,
+                semanticsLabel: previousLabel,
+                onPressed: onPrevious,
+                disabledReason: previousDisabledReason,
+              ),
+              SizedBox(width: paint.gap),
             ],
-          ),
-          SizedBox(width: paint.gap),
-        ],
-        for (final UiButton action in beside) ...<Widget>[
-          _ghost(action),
-          SizedBox(width: paint.gap),
-        ],
-        if (squeeze) Flexible(flex: 3, child: primary) else primary,
-        if (drawNext) ...<Widget>[
-          SizedBox(width: paint.gap),
-          UiIconButton(
-            icon: UiIcons.next,
-            semanticsLabel: nextLabel,
-            onPressed: onNext,
-            disabledReason: nextDisabledReason,
-          ),
-        ],
-      ],
+            // The count takes the line the decisions leave and ellipsises first.
+            // It says where the reviewer is; the decision is what they came to
+            // make, and a bar that shortened "Clear record" to keep "1 of 4"
+            // whole would have its priorities backwards. At the last resort the
+            // two share the line three to one, the decision's way.
+            if (shown != null && !bounded) ...[
+              countLabel,
+              SizedBox(width: paint.gap),
+            ] else if (shown == null && !squeeze && bounded)
+              const Spacer()
+            else if (shown != null && squeeze)
+              Flexible(child: countLabel)
+            else if (shown != null)
+              Expanded(child: countLabel),
+            if (inMenu.isNotEmpty ||
+                navigationInMenu ||
+                countInMenu) ...<Widget>[
+              UiMenuTrigger(
+                semanticsLabel: overflowLabel,
+                items: <UiMenuItem>[
+                  if (countInMenu && count != null)
+                    UiMenuItem(label: count!, onSelected: null),
+                  for (final UiButton action in inMenu) _menuItem(action),
+                  if (navigationInMenu &&
+                      (onPrevious != null || previousDisabledReason != null))
+                    UiMenuItem(
+                      label: previousLabel,
+                      icon: UiIcons.previous,
+                      onSelected: onPrevious,
+                      disabledReason: previousDisabledReason,
+                    ),
+                  if (navigationInMenu &&
+                      (onNext != null || nextDisabledReason != null))
+                    UiMenuItem(
+                      label: nextLabel,
+                      icon: UiIcons.next,
+                      onSelected: onNext,
+                      disabledReason: nextDisabledReason,
+                    ),
+                ],
+              ),
+              SizedBox(width: paint.gap),
+            ],
+            for (final UiButton action in beside) ...<Widget>[
+              _ghost(action),
+              SizedBox(width: paint.gap),
+            ],
+            if (squeeze) Flexible(flex: 3, child: primary) else primary,
+            if (drawNext) ...<Widget>[
+              SizedBox(width: paint.gap),
+              UiIconButton(
+                icon: UiIcons.next,
+                semanticsLabel: nextLabel,
+                onPressed: onNext,
+                disabledReason: nextDisabledReason,
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }

@@ -1,0 +1,37 @@
+# The cost meter's ledger of record (docs/execution/golive/COST_METER.md): one row per
+# paid call of a run, keyed by a deterministic id, so a resend or a sweep rewrites it.
+# No cascade foreign key: financial history must be retained. Scope comes from the
+# connector's membership checks, which every operation repeats inside its SQL.
+type CostEntry @table(key: ["organizationId", "collectionId", "id"])
+  @index(name: "cost_entry_org_month", fields: ["organizationId", "month"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  id: UUID!
+  # paid_call (PR 1); allocation rows for shared Google costs come later.
+  source: String!
+  specimenId: UUID
+  runId: UUID
+  step: String!
+  stage: String!
+  attempt: Int!
+  kind: String!
+  ordinal: Int!
+  provider: String!
+  resource: String!
+  # The call's usage as the run recorded it: numbers only, no content.
+  usage: Any
+  reservedMicros: Int64
+  costMicros: Int64!
+  listCostMicros: Int64!
+  costBasis: String!
+  outcome: String
+  failureCode: String
+  priceListVersion: String
+  priceListAsOf: String
+  occurredAt: Timestamp!
+  month: String!
+  allocationMethodId: String
+  allocationMethodDetails: Any
+  createdAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}

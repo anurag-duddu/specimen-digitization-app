@@ -65,28 +65,20 @@ Widget buildShapePage(BuildContext context) {
                 in ui.shape.strokes.entries)
               Padding(
                 padding: EdgeInsetsDirectional.only(bottom: ui.space.s3),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                child: Wrap(
+                  spacing: ui.space.s3,
+                  runSpacing: ui.space.s2,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: <Widget>[
-                    // The swatch gives way before the label does: 160 dp when
-                    // the row has it, narrower in a phone wide window.
-                    Flexible(
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: 160,
-                          minHeight: stroke.value,
-                          maxHeight: stroke.value,
-                        ),
-                        child: SizedBox.expand(
-                          child: ColoredBox(
-                            color: stroke.key == 'hairline'
-                                ? ui.color.hairline
-                                : ui.color.ink,
-                          ),
-                        ),
+                    SizedBox(
+                      width: 160,
+                      height: stroke.value,
+                      child: ColoredBox(
+                        color: stroke.key == 'hairline'
+                            ? ui.color.hairline
+                            : ui.color.ink,
                       ),
                     ),
-                    SizedBox(width: ui.space.s3),
                     Text(
                       '${stroke.key}  ${stroke.value.toStringAsFixed(0)} dp',
                       style: ui.type.mono.identifier.copyWith(

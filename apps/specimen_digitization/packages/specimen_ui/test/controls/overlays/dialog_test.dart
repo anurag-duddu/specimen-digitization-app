@@ -312,7 +312,7 @@ void main() {
       ),
       semanticsLabel: 'Correct classification',
       labelsNeverWrap: true,
-      wrappingContent: <String>{_body},
+      wrappingContent: <String>{_title, _body},
       geometryFromType: true,
       fit: FitExpectation(
         check: (WidgetTester tester, double width) async {

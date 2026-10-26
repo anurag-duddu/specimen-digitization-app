@@ -255,7 +255,8 @@ class ObservationExecutionDetails extends StatelessWidget {
   }
 }
 
-/// How far two retained readings agree, and what the measurement is worth.
+/// How far a label's retained readings agree, and what the measurement is
+/// worth. It describes the one comparison the API sends for the label.
 class TranscriptionComparisonSummary extends StatelessWidget {
   const TranscriptionComparisonSummary({
     super.key,
@@ -289,7 +290,10 @@ class TranscriptionComparisonSummary extends StatelessWidget {
               'Comparison limits prevented measurement. This is not agreement.',
               style: line,
             ),
-          Text('Two readings agreeing does not make them right.', style: line),
+          Text(
+            'Agreement between readings does not make them right.',
+            style: line,
+          ),
           for (final reason
               in transcription['alignment_reasons'] as List? ?? [])
             Text(vocabularyLabel(reason.toString()), style: line),

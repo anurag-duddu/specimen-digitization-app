@@ -621,11 +621,11 @@ def shell_fixture(tmp_path, fixture_processes):
     return root, env
 
 
-def run_shell(fixture, fault='', storage=False):
+def run_shell(fixture, fault='', storage=False, *, timeout=35):
     root, env = fixture
     command = ['bash', str(root / 'scripts/data' / ('test-storage.sh' if storage else 'test-postgres.sh')),
                '--contract-output' if storage else '--python-contract-output', str(root / ('storage-out' if storage else 'sql-out'))]
-    return env.processes.run(command, env=dict(env, FIXTURE_FAULT=fault), capture_output=True, text=True, timeout=35)
+    return env.processes.run(command, env=dict(env, FIXTURE_FAULT=fault), capture_output=True, text=True, timeout=timeout)
 
 
 @pytest.mark.parametrize('storage', [False, True], ids=['sql', 'storage'])
@@ -751,6 +751,89 @@ def test_fixture_ports_are_private(shell_fixture):
     ports = [int(env[key]) for key in ('SPECIMEN_TEST_PG_PORT', 'SPECIMEN_TEST_DC_PORT', 'SPECIMEN_TEST_STORAGE_PORT')]
     assert len(set(ports)) == 3, f'fixture ports alias each other: {ports}'
     assert not set(ports) & {5559, 9509, 9299}, f'fixture reused a shared default port: {ports}'
+
+
+@pytest.mark.parametrize('order', ['primary-first', 'auxiliary-first', 'listen-failure'])
+def test_storage_auxiliary_ports_remain_reserved_until_selection_finishes(shell_fixture, order):
+    root, env = shell_fixture
+    primary = [int(env[key]) for key in ('SPECIMEN_TEST_PG_PORT', 'SPECIMEN_TEST_DC_PORT', 'SPECIMEN_TEST_STORAGE_PORT')]
+    # All five private ports are distinct. The Node preloader then models an
+    # allocator that always reuses the lowest free candidate, using real TCP
+    # listeners: closing a candidate early must reproduce the reported race.
+    with ExitStack() as reservations:
+        for port in primary:
+            listener = reservations.enter_context(socket.socket())
+            listener.bind(('127.0.0.1', port))
+        auxiliary = []
+        for _ in range(2):
+            listener = reservations.enter_context(socket.socket())
+            listener.bind(('127.0.0.1', 0))
+            auxiliary.append(listener.getsockname()[1])
+    candidates = primary + auxiliary if order == 'primary-first' else auxiliary + primary
+    trace = root / 'auxiliary-reservations.json'
+    loader = root / 'reserve-ports.mjs'
+    loader.write_text(r'''
+import assert from 'node:assert/strict';
+import {writeFileSync} from 'node:fs';
+import net from 'node:net';
+const candidates=JSON.parse(process.env.FIXTURE_AUXILIARY_CANDIDATES);
+const active=new Set(), events=[];
+let attempts=0;
+function record(kind,port) {
+ events.push({kind,port,active:[...active]});
+ writeFileSync(process.env.FIXTURE_AUXILIARY_TRACE,JSON.stringify({events,active:[...active]}));
+}
+const create=net.createServer;
+net.createServer=function(...options) {
+ const server=Reflect.apply(create,net,options), listen=server.listen;
+ server.listen=function(...args) {
+  if(args[0]===0) {
+   const port=candidates.find(candidate=>!active.has(candidate));
+   assert.ok(port,'private candidate inventory exhausted');
+   attempts++;
+   if(process.env.FIXTURE_AUXILIARY_ORDER==='listen-failure' && attempts===2) {
+    record('failure',port);
+    queueMicrotask(()=>server.emit('error',new Error('injected auxiliary listen failure')));
+    return server;
+   }
+   server.once('listening',()=>{active.add(port);record('listening',port);});
+   server.once('close',()=>{active.delete(port);record('closed',port);});
+   args[0]=port;
+  }
+  return Reflect.apply(listen,server,args);
+ };
+ return server;
+};
+''')
+    env.update(NODE_OPTIONS='--import=' + loader.as_uri(),
+               FIXTURE_AUXILIARY_CANDIDATES=json.dumps(candidates),
+               FIXTURE_AUXILIARY_TRACE=str(trace), FIXTURE_AUXILIARY_ORDER=order)
+    sql = run_shell(shell_fixture)
+    assert sql.returncode == 0, sql.stdout + sql.stderr
+    result = run_shell(shell_fixture, storage=True)
+    observed = json.loads(trace.read_text())
+    assert observed['active'] == [], f'auxiliary reservations leaked: {observed}'
+    lifecycle = json.loads((root / 'lifecycle.json').read_text())
+    assert lifecycle['cleanup']['ports_free_after'] is True, lifecycle['cleanup']
+    if order == 'listen-failure':
+        assert result.returncode != 0, result.stdout + result.stderr
+        assert 'injected auxiliary listen failure' in result.stderr, result.stderr
+        assert 'storage-test.mjs' not in (root / 'calls.jsonl').read_text()
+        assert [row['kind'] for row in observed['events']] == ['listening', 'failure', 'closed']
+    else:
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert lifecycle['preflight']['auxiliary_ports'] == auxiliary
+        expected = candidates if order == 'primary-first' else auxiliary
+        listening = [row for row in observed['events'] if row['kind'] == 'listening']
+        assert [row['port'] for row in listening] == expected
+        assert listening[-1]['active'] == expected, observed
+        assert 'storage-test.mjs' in (root / 'calls.jsonl').read_text()
+        selection = json.loads((DATA / 'engine-contract-selection.json').read_text())
+        assert [row['id'] for row in lifecycle['node_events'] if row['id'].startswith('storage.')] == selection['storage_assertions']
+    for port in [*primary, *auxiliary]:
+        with socket.socket() as listener:
+            listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listener.bind(('127.0.0.1', port))
 
 
 def test_fixture_wait_local_waits_for_listener(shell_fixture):
@@ -946,7 +1029,11 @@ def test_storage_standalone_startup_failure_cleans_partial_tree(shell_fixture,fa
     root,env=shell_fixture
     env['FIXTURE_STANDALONE']='true'
     assert run_shell(shell_fixture).returncode==0
-    result=run_shell(shell_fixture,fault,storage=True)
+    # The missing-Java control waits all 100 startup polls. Darwin's native
+    # process-birth inspections also consume wall time; let fenced cleanup
+    # finish before the fixture's independent emergency watchdog fires.
+    timeout=60 if fault=='storage_no_java' else 35
+    result=run_shell(shell_fixture,fault,storage=True,timeout=timeout)
     assert result.returncode!=0 and reason in result.stderr,result.stdout+result.stderr
     lifecycle=json.loads((root/'lifecycle.json').read_text())
     assert_storage_tree_stopped(shell_fixture,lifecycle,cleanup='failed' if fault=='storage_download' else 'passed')

@@ -1,0 +1,19 @@
+{
+  "timeSeries": [
+    {
+      "metric": {"type": "storage.googleapis.com/storage/total_bytes", "labels": {"storage_class": "STANDARD"}},
+      "resource": {"type": "gcs_bucket",
+                   "labels": {"project_id": "specimen-digitization",
+                              "bucket_name": "specimen-digitization.firebasestorage.app", "location": "us-east4"}},
+      "metricKind": "GAUGE",
+      "valueType": "DOUBLE",
+      "points": [
+        {"interval": {"startTime": "2026-10-19T09:00:00Z", "endTime": "2026-10-19T10:00:00Z"},
+         "value": {"doubleValue": 5368709120}},
+        {"interval": {"startTime": "2026-10-18T08:00:00Z", "endTime": "2026-10-18T09:00:00Z"},
+         "value": {"doubleValue": 4294967296}}
+      ]
+    }
+  ],
+  "unit": "By"
+}

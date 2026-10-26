@@ -112,6 +112,30 @@ class UiSpace {
   /// Maximum width of a centred dialog (10 section 3).
   double get dialogMax => 560;
 
+  /// A multi-step file workspace, with room for source navigation and files.
+  double get importWorkspaceMax => 1040;
+
+  /// Bounded height of an import workspace on a large window.
+  double get importWorkspaceHeight => 800;
+
+  /// Default dimension-line extent in review documentation.
+  double get annotationExtent => 120;
+
+  /// Minimum file-format identity width.
+  double get fileMarkMin => 48;
+
+  /// File thumbnail and payment-mark height.
+  double get identityPreview => 32;
+
+  /// Maximum inline provider/logo width and notification-leading extent.
+  double get identityLeadingMax => 64;
+
+  /// Maximum featured media width beside a modal heading.
+  double get modalLeadingMax => 80;
+
+  /// Smallest width that supports media beside a modal heading.
+  double get modalHorizontalMin => 360;
+
   /// Every step of the grid, by name. The gallery page walks this.
   Map<String, double> get steps => <String, double>{
     's0': s0,

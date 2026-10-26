@@ -186,7 +186,7 @@ region.
 | `PipelineRun` | `traceId` (32 lowercase hex, recorded once) |
 | `LabelRegion` | `domainRegionId` (the domain's region id: SAM's, a corrected one, or `new-{microseconds}` for a region a person added; the row's own id is per run, section 5) |
 | `ModelObservation` | `routeId`, `unreadableSpans: [String!]` |
-| `TranscriptionVersion` | `regionId` (CONTRACTS.md 185), `decisionKind` (`identical_readings`, `first_pass` or `human`), `selectedObservationId` (the reading whose raw transcript the harness runs against; null only when no reading was selected), `firstPassObservationId` (the first pass's model call), `rationale`. `unresolved` follows the one rule in section 4.2 |
+| `TranscriptionVersion` | `regionId` (CONTRACTS.md 185), `decisionKind` (`identical_readings`, `first_pass` or `human`), `selectedObservationId` (the reading the first pass preferred: advice to the harness, which may settle a field on another reader's text when evidence backs it; null only when no reading was selected), `firstPassObservationId` (the first pass's model call), `rationale`. `unresolved` follows the one rule in section 4.2 |
 | `FieldCandidate` | `inputSource` (`decided_transcript` or `raw_reading`), `sourceTranscriptionId`, `sourceObservationId` |
 | `ResolvedField` | `fieldGroup` (`mandatory` or `optional`) |
 | `ValidationFinding` | `evidenceIds: [UUID!]` (the evidence behind the finding, all of the record version's run) |
@@ -237,6 +237,7 @@ above do not change.
 | `differences` | `list[FirstPassDifference]` | one per aligned difference: `number`, `spans` (per observation, exact `start` and `end` offsets into that reading's `literal_text` and the `text`), `verdict` (an observation id, `neither` or `uncertain`) and `material` |
 | `reason` (exists) | `str \| None` | the first pass's rationale, or the reviewer's reason |
 | `handoffs` | `list[ReaderHandoff]` | one per reading handed to the harness |
+| `comparisons` | `list[ReadingPairComparison]` | only for a region with more than two readings: every pair in route order, each with `left_observation_id`, `right_observation_id`, `status`, `reasons` and `disagreement_ratio`; the transcript's own alignment fields then report the least-agreeing pair. Absent for two readings |
 
 `ReaderHandoff`: `observation_id: str`, `role: Literal["decided_transcript",
 "raw_reading"]`, `handed_text: str`, `note: str | None`. With a selected
@@ -255,8 +256,9 @@ The writer maps `TranscriptionVersion.spans` from `differences`, and
 region's decision is unresolved when no reading was selected (G19: material
 ambiguity means no pick; the harness then runs on each raw reading, and every
 reading is a `raw_reading` handoff). The first pass selects a reading only when
-every material difference's verdict supports it: a material difference whose
-verdict is `neither` or `uncertain` means no pick, and "material" means more
+every material difference's verdict supports it (names it or, with more than
+two readings, a reading with the same text there, lower-cased): a material
+difference whose verdict is `neither` or `uncertain` means no pick, and "material" means more
 than capitalization: spans are compared lower-cased in code, so "Straße" and
 "Strasse" differ (coordinator readings, 2026-09-25 12:31Z and 14:05Z; S4, #98).
 So only a reviewer's decision can select a reading while a material difference
@@ -844,4 +846,4 @@ T2a mapping:
 | `LabelRegion` | id `region/{run}/{Region.id}` (section 5); `domainRegionId` `Region.id`; `sourceAssetId` the original; `geometry` `{x, y, width, height, rotation_quarter_turns, pixel_basis}`; `ordinal` `Region.order`; `regionType` `label`; `segmentationVersion` `{method}:{version}` |
 | `SourceAsset` raw response | id `asset/{specimen}/{bucket}/{object}/{generation}`, so byte-identical responses of two specimens are two rows of one stored object; kind `raw_response`, `application/json`, no dimensions, `acquisitionMethod` `model_response`, `uploaderUid` the writing actor |
 | `ModelObservation` reading | id `Observation.id`; `regionId` the region row's id, while `stepKey` keeps the domain region id; `modelVersion` `model_id`; `parameters` `{model_settings, provider_model_id, input_tokens, output_tokens, latency_seconds, latency_basis}`; `outcome` `completion_state`, else `finish_state`; `independent` true; `routeId`; `unreadableSpans` |
-| `ReadingComparison` | for a region's transcript with exactly two readings and an alignment algorithm; `regionId` the region row's id; readings in the fixed id order (section 3.1); `lengthBasis` the longer literal's length, at least 1; `editDistance` `ratio × lengthBasis`, rounded |
+| `ReadingComparison` | one per pair of a region's readings, for a transcript with an alignment algorithm: with exactly two readings its own pair (its ratio, status and reasons), with more each pair in its `comparisons`; `regionId` the region row's id; readings in the fixed id order (section 3.1); `lengthBasis` the longer literal's length, at least 1; `editDistance` `ratio × lengthBasis`, rounded |

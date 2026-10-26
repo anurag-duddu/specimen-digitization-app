@@ -129,7 +129,7 @@ def test_build_forwards_public_values_only_on_main_push(tmp_path, event, ref, li
                SPECIMEN_RECAPTCHA_SITE_KEY="synthetic-site-key",
                SPECIMEN_ADMIN_CONTACT="Alex Mwangi <alex.mwangi@fieldmuseum.org>",
                SPECIMEN_PILOT_SCOPE="Ten original specimens",
-               SPECIMEN_GOOGLE_SIGN_IN_ENABLED="true")
+               SPECIMEN_GOOGLE_SIGN_IN_ENABLED="true", BULK_INTAKE_ENABLED="true")
     env.pop("SPECIMEN_AUTH_EMULATOR_HOST", None)
     env.pop("SPECIMEN_LOCAL_SYNTHETIC", None)
     result = subprocess.run([str(root / "scripts/ci/build_web.sh")], cwd=root / "apps/specimen_digitization",
@@ -139,6 +139,7 @@ def test_build_forwards_public_values_only_on_main_push(tmp_path, event, ref, li
     assert ("--dart-define=SPECIMEN_ADMIN_CONTACT=" in result.stdout) is live
     assert ("--dart-define=SPECIMEN_PILOT_SCOPE=" in result.stdout) is live
     assert ("--dart-define=SPECIMEN_GOOGLE_SIGN_IN_ENABLED=true" in result.stdout) is live
+    assert ("--dart-define=BULK_INTAKE_ENABLED=true" in result.stdout) is live
 
 
 @pytest.mark.parametrize("sha", ["4f9f518", None])
@@ -160,3 +161,14 @@ def test_build_stamps_the_commit_when_ci_provides_one(tmp_path, sha):
     stamped = f"--dart-define=APP_BUILD={sha}" in result.stdout
     assert stamped is (sha is not None)
     assert "APP_BUILD" not in result.stdout if sha is None else True
+
+
+@pytest.mark.parametrize('value', ['yes', '1', 'TRUE', ' true'])
+def test_bulk_intake_public_flag_requires_boolean(value):
+    with pytest.raises(ValueError, match='bulk intake'):
+        MODULE.validate({'BULK_INTAKE_ENABLED': value})
+
+
+def test_bulk_intake_cannot_enable_on_setup_only_build():
+    with pytest.raises(ValueError, match='Bulk intake requires'):
+        MODULE.validate({'BULK_INTAKE_ENABLED': 'true'})

@@ -10,6 +10,10 @@
 /// needs, and nothing outside this family has a use for either.
 library;
 
+export 'navigation_menu.dart';
+
+export 'breadcrumbs.dart';
+export 'steps.dart';
 export 'collapsing_header.dart';
 export 'nav_destination.dart';
 export 'pill_nav.dart';
@@ -20,3 +24,4 @@ export 'sticky_bar.dart';
 export 'tab_bar.dart';
 export 'top_bar.dart';
 export 'workspace_header.dart';
+export 'view_tabs.dart';

@@ -88,6 +88,8 @@ class QueueRow extends StatelessWidget {
     this.focusNode,
     this.concise = false,
     this.showStatus = true,
+    this.reviewCount,
+    this.missingCount,
   });
 
   /// The record's identifier. Also the row's identity for focus and scroll.
@@ -134,11 +136,15 @@ class QueueRow extends StatelessWidget {
   /// the reviewer is.
   final FocusNode? focusNode;
 
-  /// Shows identity, a contextual state and a specific issue without telemetry.
+  /// Shows identity, field counts and any operational hold without telemetry.
   final bool concise;
 
   /// False when the surrounding view already names this record's state.
   final bool showStatus;
+
+  /// Snapshot-derived field counts. Null means unknown, not zero.
+  final int? reviewCount;
+  final int? missingCount;
 
   /// The row width at which the status, the risk and the age fit beside the
   /// identifier rather than under it.
@@ -182,27 +188,60 @@ class QueueRow extends StatelessWidget {
   Widget _row(BuildContext context, double available) {
     final UiThemeData ui = context.ui;
     if (concise) {
+      // A list response may have a composite but no contributing signals.
+      // A number without its explanation is not useful evidence to rank by.
       final showScore =
           riskComposite != null &&
+          riskComponents.isNotEmpty &&
           riskCalibrated &&
           riskComposite!.isFinite &&
           riskComposite! >= 0 &&
           riskComposite! <= 100;
-      return UiListRow(
-        size: UiSize.sm,
-        title: title,
-        semanticsLabel: <String>[
-          title,
-          if (showStatus) status.semanticsLabel,
-          if (showScore) 'Risk $riskComposite of 100',
-        ].join(', '),
-        selected: selected,
-        focusNode: focusNode,
-        onPressed: onOpen,
-        leading: thumbnail == null ? null : SpecimenThumbnail(bytes: thumbnail),
-        trailing: showScore
-            ? Text('$riskComposite', style: ui.type.mono.identifier)
-            : null,
+      final updated = updatedAt;
+      final supporting = <String>[
+        if (showStatus) status.label,
+        if (reviewCount != null)
+          '$reviewCount ${reviewCount == 1 ? 'field' : 'fields'} to review',
+        if (missingCount != null) '$missingCount missing',
+        // Operational holds still need their cause. Within a review view,
+        // one arbitrary blocker is not a useful summary of the whole record.
+        if (!status.isQueue && reason.isNotEmpty) reason,
+      ];
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: ui.color.hairline)),
+        ),
+        child: UiListRow(
+          title: title,
+          subtitle: supporting.isEmpty ? null : supporting.join(' · '),
+          subtitleMaxLines: null,
+          semanticsLabel: <String>[
+            title,
+            if (showStatus) status.semanticsLabel,
+            if (reviewCount != null)
+              '$reviewCount ${reviewCount == 1 ? 'field needs' : 'fields need'} review',
+            if (missingCount != null)
+              '$missingCount ${missingCount == 1 ? 'field' : 'fields'} missing',
+            if (!status.isQueue && reason.isNotEmpty) reason,
+            if (updated != null) 'updated ${absoluteTime(updated)}',
+            if (showScore)
+              'Risk $riskComposite of 100, ${riskComponents.join(', ')}',
+          ].join(', '),
+          selected: selected,
+          focusNode: focusNode,
+          onPressed: onOpen,
+          leading: thumbnail == null
+              ? null
+              : SpecimenThumbnail(bytes: thumbnail),
+          trailing: showScore
+              ? RiskMeter(
+                  composite: riskComposite,
+                  components: riskComponents,
+                  calibrated: riskCalibrated,
+                  compact: true,
+                )
+              : null,
+        ),
       );
     }
     final bool beside = !available.isFinite || available >= _metaBesideTextMin;
@@ -248,11 +287,7 @@ class QueueRow extends StatelessWidget {
           ExcludeSemantics(
             child: Padding(
               padding: EdgeInsetsDirectional.only(
-                start:
-                    ui.shape.stroke.bar +
-                    ui.space.s3 +
-                    UiListRowStyle.leadingExtent +
-                    ui.space.s3,
+                start: ui.space.s3 + UiListRowStyle.leadingExtent + ui.space.s3,
                 end: ui.space.s3,
                 bottom: ui.space.s2,
               ),

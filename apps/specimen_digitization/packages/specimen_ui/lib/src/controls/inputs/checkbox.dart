@@ -9,6 +9,24 @@ import '../../primitives/pressable.dart';
 import '../../primitives/state_layer.dart';
 import '../../primitives/squircle.dart';
 
+/// Visual size of a selection control; the hit target stays at least 48 dp.
+enum UiSelectionControlSize {
+  /// A 16 dp checkbox/radio or 36 by 20 dp switch.
+  small,
+
+  /// A 20 dp checkbox/radio or 44 by 26 dp switch.
+  medium,
+}
+
+/// Outline shape for a checkbox; semantics stay an independent checkbox.
+enum UiCheckboxShape {
+  /// Rounded square.
+  square,
+
+  /// Circular check indicator.
+  circle,
+}
+
 /// The resolved paint of one checkbox.
 ///
 /// The box is 20 dp, which 10 section 4.2 states and the grid does not, so it
@@ -52,7 +70,10 @@ class UiCheckboxStyle {
   final double barHeight;
 
   /// The style in [ui].
-  static UiCheckboxStyle resolve(UiThemeData ui) {
+  static UiCheckboxStyle resolve(
+    UiThemeData ui, {
+    UiSelectionControlSize size = UiSelectionControlSize.medium,
+  }) {
     Color fill(Set<WidgetState> states) {
       if (states.contains(WidgetState.disabled)) return ui.color.disabledFill;
       return states.contains(WidgetState.selected)
@@ -84,7 +105,7 @@ class UiCheckboxStyle {
       side: WidgetStateProperty.resolveWith(side),
       mark: WidgetStateProperty.resolveWith(mark),
       label: WidgetStateProperty.resolveWith(label),
-      boxSize: 20,
+      boxSize: size == UiSelectionControlSize.small ? 16 : 20,
       radius: ui.shape.inner,
       barWidth: ui.space.s3,
       barHeight: ui.shape.stroke.bar,
@@ -111,6 +132,9 @@ class UiCheckbox extends StatelessWidget {
     this.semanticsLabel,
     this.showLabel = true,
     this.autofocus = false,
+    this.supporting,
+    this.size = UiSelectionControlSize.medium,
+    this.shape = UiCheckboxShape.square,
   });
 
   /// What the box selects. Sentence case, no terminal period.
@@ -137,13 +161,22 @@ class UiCheckbox extends StatelessWidget {
   /// True to take focus when first built.
   final bool autofocus;
 
+  /// Additional explanatory text included in the accessible name.
+  final String? supporting;
+
+  /// Visual dimensions independent of the minimum hit target.
+  final UiSelectionControlSize size;
+
+  /// The indicator outline.
+  final UiCheckboxShape shape;
+
   /// The state the box moves to when it is pressed.
   bool get _next => value != true;
 
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final UiCheckboxStyle style = UiCheckboxStyle.resolve(ui);
+    final UiCheckboxStyle style = UiCheckboxStyle.resolve(ui, size: size);
     final bool enabled = onChanged != null;
     return Semantics(
       container: true,
@@ -151,7 +184,7 @@ class UiCheckbox extends StatelessWidget {
       // says "some of this group", which is a different fact from unchecked.
       checked: value ?? false,
       mixed: value == null,
-      label: semanticsLabel ?? label,
+      label: semanticsLabel ?? [label, ?supporting].join('. '),
       hint: enabled ? null : disabledReason,
       enabled: enabled,
       onTap: enabled ? () => onChanged!(_next) : null,
@@ -159,7 +192,7 @@ class UiCheckbox extends StatelessWidget {
         // The row publishes the node above, because `mixed` is a state
         // `Pressable` has no word for and an indeterminate box needs it.
         excludeFromSemantics: true,
-        semanticsLabel: semanticsLabel ?? label,
+        semanticsLabel: semanticsLabel ?? [label, ?supporting].join('. '),
         selected: value != false,
         onPressed: enabled ? () => onChanged!(_next) : null,
         disabledReason: disabledReason,
@@ -172,11 +205,31 @@ class UiCheckbox extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  _Box(style: style, states: states, value: value),
+                  _Box(
+                    style: style,
+                    states: states,
+                    value: value,
+                    circle: shape == UiCheckboxShape.circle,
+                  ),
                   if (showLabel) ...<Widget>[
                     SizedBox(width: ui.space.s3),
                     Flexible(
-                      child: Text(label, style: style.label.resolve(states)),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(label, style: style.label.resolve(states)),
+                          if (supporting != null)
+                            Text(
+                              supporting!,
+                              style: ui.type.bodySmall.copyWith(
+                                color: enabled
+                                    ? ui.color.inkSecondary
+                                    : ui.color.disabledContent,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ],
                 ],
@@ -189,11 +242,17 @@ class UiCheckbox extends StatelessWidget {
 
 /// The box, and the mark inside it.
 class _Box extends StatelessWidget {
-  const _Box({required this.style, required this.states, required this.value});
+  const _Box({
+    required this.style,
+    required this.states,
+    required this.value,
+    this.circle = false,
+  });
 
   final UiCheckboxStyle style;
   final Set<WidgetState> states;
   final bool? value;
+  final bool circle;
 
   @override
   Widget build(BuildContext context) {
@@ -204,10 +263,9 @@ class _Box extends StatelessWidget {
       dimension: style.boxSize,
       child: DecoratedBox(
         decoration: ShapeDecoration(
-          shape: Squircle.border(
-            style.radius,
-            side: style.side.resolve(states),
-          ),
+          shape: circle
+              ? CircleBorder(side: style.side.resolve(states))
+              : Squircle.border(style.radius, side: style.side.resolve(states)),
           color: style.fill.resolve(states),
         ),
         child: Stack(
@@ -242,7 +300,9 @@ class _Box extends StatelessWidget {
                 child: IgnorePointer(
                   child: StateLayer(
                     states: states,
-                    shape: Squircle.border(style.radius),
+                    shape: circle
+                        ? const CircleBorder()
+                        : Squircle.border(style.radius),
                     colour: ui.color.paper,
                   ),
                 ),

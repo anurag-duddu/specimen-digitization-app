@@ -7,7 +7,8 @@ import 'package:flutter/widgets.dart';
 
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
-import '../../primitives/label.dart';
+import '../../foundation/type.dart';
+import '../../primitives/fit.dart';
 
 /// How much of the circle the arc covers.
 enum UiArcSweep {
@@ -157,7 +158,11 @@ class UiArcIndicator extends StatelessWidget {
   String _spokenValue() {
     final double? fraction = value;
     if (fraction == null) return unmeasuredValue;
-    return valueLabel ?? '${(fraction.clamp(0, 1) * 100).round()} percent';
+    return [
+      valueLabel ?? '${(fraction.clamp(0, 1) * 100).round()} percent',
+      if (minLabel != null) 'minimum $minLabel',
+      if (maxLabel != null) 'maximum $maxLabel',
+    ].join(', ');
   }
 
   @override
@@ -199,20 +204,54 @@ class UiArcIndicator extends StatelessWidget {
           if (fraction == null)
             Padding(
               padding: EdgeInsetsDirectional.only(top: ui.space.s1),
-              child: UiLabel(unmeasuredLabel, style: style.absence),
+              child: Text(
+                unmeasuredLabel,
+                style: style.absence,
+                strutStyle: UiType.strutOf(style.absence),
+              ),
             )
           else if (min != null || max != null)
             Padding(
               padding: EdgeInsetsDirectional.only(top: ui.space.s1),
-              child: SizedBox(
-                width: width,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: <Widget>[
-                    Flexible(child: UiLabel(min ?? '', style: style.label)),
-                    Flexible(child: UiLabel(max ?? '', style: style.label)),
-                  ],
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final gap = min != null && max != null ? ui.space.s2 : 0.0;
+                  final requiredWidth =
+                      (min == null
+                          ? 0.0
+                          : measureLabel(context, min, style.label).width) +
+                      (max == null
+                          ? 0.0
+                          : measureLabel(context, max, style.label).width) +
+                      gap;
+                  final labelWidth = math.min(
+                    constraints.maxWidth,
+                    math.max(width, requiredWidth),
+                  );
+                  Widget label(String text) => Text(
+                    text,
+                    style: style.label,
+                    strutStyle: UiType.strutOf(style.label),
+                  );
+                  return SizedBox(
+                    width: labelWidth,
+                    child: requiredWidth <= labelWidth
+                        ? Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [label(min ?? ''), label(max ?? '')],
+                          )
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (min != null) label(min),
+                              if (min != null && max != null)
+                                SizedBox(height: ui.space.s1),
+                              if (max != null) label(max),
+                            ],
+                          ),
+                  );
+                },
               ),
             ),
         ],

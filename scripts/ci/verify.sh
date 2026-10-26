@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 flutter_root="$repo_root/apps/specimen_digitization"
 design_system_root="$flutter_root/packages/specimen_ui"
+widgetbook_root="$repo_root/apps/specimen_widgetbook"
 firebase_options="$flutter_root/lib/firebase_options.dart"
 ci_firebase_options="$flutter_root/lib/firebase_options.ci.dart"
 created_ci_options=0
@@ -61,15 +62,30 @@ uv run python scripts/ci/check_ui_strings.py \
 # gates are the ones that fail first: a token that loses contrast or a
 # primitive that breaks the control contract should not need a screen test to
 # surface it.
+cd "$flutter_root"
+flutter pub get --enforce-lockfile
+
 cd "$design_system_root"
 flutter pub get
 flutter analyze --fatal-infos
 flutter test
 
-cd "$flutter_root"
+# The standalone catalog documents the same package, but has its own locked
+# dependencies, interactions and web entry point to validate.
+cd "$widgetbook_root"
 flutter pub get --enforce-lockfile
+dart format --output=none --set-exit-if-changed lib test
 flutter analyze --fatal-infos
 flutter test
+flutter build web --release
+
+cd "$flutter_root"
+flutter analyze --fatal-infos
+flutter test
+
+# Compile the real OAuth listener and exercise cross-origin popup messages in
+# an isolated Chrome profile. VM widget tests cannot cover WindowProxy interop.
+node "$repo_root/scripts/ci/check_intake_auth_session_browser.cjs"
 
 # Formatting is a gate rather than a habit. The wave G integration formatted
 # the whole tree once; from there on a file that drifts fails here instead of

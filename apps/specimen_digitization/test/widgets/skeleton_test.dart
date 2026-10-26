@@ -24,11 +24,28 @@ void main() {
   ) async {
     await pumpComponent(
       tester,
-      still(const SizedBox(width: 200, child: UiSkeleton.row())),
+      still(
+        const SizedBox(
+          width: 200,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              UiSkeleton.row(),
+              UiListRow(
+                leading: SizedBox.square(
+                  dimension: UiListRowStyle.leadingExtent,
+                ),
+                title: 'Specimen',
+                subtitle: 'Review the label',
+              ),
+            ],
+          ),
+        ),
+      ),
     );
     expect(
       tester.getSize(find.byType(UiSkeleton)).height,
-      UiListRowStyle.heightOf(tester.element(find.byType(UiSkeleton)).ui),
+      tester.getSize(find.byType(UiListRow)).height,
       reason: 'the list does not move when the rows arrive',
     );
   });

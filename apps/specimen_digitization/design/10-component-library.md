@@ -127,7 +127,7 @@ five family barrels and is written once in the foundation step.
 |---|---|---|
 | `MaterialApp.router` | `main.dart` | Localizations, `Overlay`, `Router`, `ScrollBehavior`, text selection defaults, `Theme` inheritance. It has no look of its own once every component widget is gone. |
 | `ThemeData` | built by `UiThemeData.toThemeData()` | The carrier `MaterialApp` expects. Its `colorScheme` and `textTheme` are derived from `UiThemeData`, never edited directly. |
-| `TextField` with `InputDecoration.collapsed` | `primitives/field_core.dart` only | Selection toolbar, magnifier, autofill, spell check, IME and the semantics of a text field are thousands of lines that `EditableText` alone does not give. The decoration is stripped; all chrome is ours. |
+| `TextField(decoration: null)`, `SelectableText`, `SelectionArea` | `primitives/field_core.dart` only | Native selection toolbar, handles, magnifier, autofill, spell check and IME. `FieldCore`, `UiSelectableText` and `UiSelectionArea` expose owned adapters. Form decoration is absent; visible component chrome stays ours. |
 | `PageTransitionsTheme` | `main.dart` | Per-platform route transitions (05 section 5). |
 | `Tooltip`'s semantics strings via `MaterialLocalizations` | `controls/overlays/tooltip.dart` | Localised "dismiss" and similar strings, not the widget. |
 
@@ -386,6 +386,41 @@ outside its `Pressable`, where a tap still reaches the button. And it
 publishes `intrinsicWidth(context)`, the width it needs to draw its label
 whole, because `UiButtonRow` chooses between a row and a column by measuring
 its actions.
+
+Content sizing correction, 2026-10-23: the default capsule hugs its visible
+label, actual icon slots and size-token padding, subject to the parent's width
+and the 48 dp hit target. `expand` explicitly fills available bounded width.
+An optional `busyLabel` reserves the larger complete idle or loading row so
+neighboring actions do not move. It does not add an empty spinner slot beside
+the idle label: each state's visible content is centered independently. This
+supersedes the wave 1 slot-growth description above. Without a leading icon or
+separate loading label, a slim progress bar preserves the label and width.
+The constrained-width tooltip names the current visible label, including while
+loading. Widgetbook exposes icon placement, full-width layout and a separate
+loading label as explicit knobs; ordinary examples have no hidden reservation.
+At widths too tight for the full row, decorative icons yield before the action
+label; padding reduces only as needed to preserve label space. The full action
+remains available through semantics and the overflow tooltip, including busy
+state feedback.
+
+The same content-sizing rule applies to related components:
+
+| Component | Layout contract |
+| --- | --- |
+| Choice groups | Reserve selected-state width without painting an empty check slot beside unselected text. |
+| Joined buttons | Measure actual padding, separators and minimum touch targets before choosing a row or stack. |
+| Decision bars | Fill bounded hosts; use intrinsic sizing in an unbounded row. |
+| Tags | Short counts hug their text; long counts reflow without taking unused proportional space from the label. |
+| Fields and input groups | Affixes and side controls use their actual width within a safe cap; the editor gets the remaining space. Field affixes share a budget, returning a short side's unused allocation to its counterpart while preserving editing room. |
+| Navigation, vertical tabs and menus | Oversized badges and shortcuts move below the label rather than squeezing it out. |
+| Breadcrumbs and workspace headers | Budget only visible separators at the current text scale; constrain navigation to the actual remaining width. |
+| Dialogs and sheets | Titles wrap as content. Headings/body and oversized actions remain reachable in bounded scroll regions, including caller-owned scrollable bodies. |
+| Metric tiles and gauges | Descriptive titles and range endpoints wrap; gauge labels are independent of the decorative diameter and retain endpoint semantics. |
+
+These rules preserve intentional full-width rows, equal-width segments,
+minimum hit targets and keyboard focus outlines. Regression coverage measures
+rendered content and interaction, including RTL, large text, long/short and
+absent adornments, loading transitions, constrained and unbounded hosts.
 
 **`UiIconButton`.** 48 dp disc (40 in pointer), glyph 24, `ghost` or
 `secondary` variant; requires `semanticsLabel`; tooltip on hover and long

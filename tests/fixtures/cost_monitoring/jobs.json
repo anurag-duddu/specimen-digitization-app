@@ -1,0 +1,29 @@
+{
+  "timeSeries": [
+    {
+      "metric": {"type": "run.googleapis.com/container/billable_instance_time"},
+      "resource": {"type": "cloud_run_job",
+                   "labels": {"project_id": "specimen-digitization", "job_name": "specimen-worker",
+                              "location": "us-east4"}},
+      "metricKind": "DELTA",
+      "valueType": "DOUBLE",
+      "points": [
+        {"interval": {"startTime": "2026-10-19T09:00:00Z", "endTime": "2026-10-19T10:00:00Z"},
+         "value": {"doubleValue": 2950}}
+      ]
+    },
+    {
+      "metric": {"type": "run.googleapis.com/container/billable_instance_time"},
+      "resource": {"type": "cloud_run_job",
+                   "labels": {"project_id": "specimen-digitization", "job_name": "specimen-intake",
+                              "location": "us-east4"}},
+      "metricKind": "DELTA",
+      "valueType": "DOUBLE",
+      "points": [
+        {"interval": {"startTime": "2026-10-19T09:00:00Z", "endTime": "2026-10-19T10:00:00Z"},
+         "value": {"doubleValue": 60}}
+      ]
+    }
+  ],
+  "unit": "s"
+}

@@ -63,6 +63,7 @@ mixin _ApiRepositoryScopes on _ApiRepositoryBase {
         );
       }
       final collections = <String, Json>{};
+      final catalogs = <String, List<CollectionCatalogNode>>{};
       for (final org
           in memberships.map((m) => m['organization_id'].toString()).toSet()) {
         final data = await request(
@@ -83,6 +84,7 @@ mixin _ApiRepositoryScopes on _ApiRepositoryBase {
         for (final c in objects(data['items'])) {
           collections['$org/${c['collection_id']}'] = c;
         }
+        catalogs[org] = _collectionCatalog(data, org);
       }
       if (memberships.any(
         (m) => !collections.containsKey(
@@ -111,6 +113,11 @@ mixin _ApiRepositoryScopes on _ApiRepositoryBase {
                 m['role'].toString(),
                 ...(m['permissions'] as List? ?? []).map((p) => p.toString()),
               ],
+              catalogNodes:
+                  catalogs[m['organization_id'].toString()] ?? const [],
+              defaultSelection:
+                  collections['${m['organization_id']}/${m['collection_id']}']?['is_default'] ==
+                  true,
             ),
           )
           .toList();
@@ -135,6 +142,53 @@ mixin _ApiRepositoryScopes on _ApiRepositoryBase {
       }
       rethrow;
     }
+  }
+
+  /// Catalog relationships describe the chooser; they never create scopes.
+  List<CollectionCatalogNode> _collectionCatalog(
+    Json data,
+    String organizationId,
+  ) {
+    final raw = data['hierarchy'];
+    if (raw == null) return const [];
+    bool named(Object? value) => value is String && value.trim().isNotEmpty;
+    Never invalid() => throw const ApiFailure(
+      'The collection hierarchy could not be verified. Check access again.',
+      code: 'invalid_collections',
+      status: 403,
+    );
+    if (raw is! List) invalid();
+    final nodes = <String, CollectionCatalogNode>{};
+    for (final row in raw) {
+      if (row is! Map ||
+          !named(row['collection_id']) ||
+          !named(row['display_name']) ||
+          (row['parent_collection_id'] != null &&
+              !named(row['parent_collection_id'])) ||
+          (row['organization_id'] != null &&
+              row['organization_id'] != organizationId) ||
+          (row['kind'] != null &&
+              !['museum', 'testing'].contains(row['kind']))) {
+        invalid();
+      }
+      final id = row['collection_id'] as String;
+      if (nodes.containsKey(id)) invalid();
+      nodes[id] = CollectionCatalogNode(
+        collectionId: id,
+        name: row['display_name'] as String,
+        parentCollectionId: row['parent_collection_id'] as String?,
+        testing: row['kind'] == 'testing',
+      );
+    }
+    for (final node in nodes.values) {
+      final seen = <String>{node.collectionId};
+      var parent = node.parentCollectionId;
+      while (parent != null) {
+        if (!seen.add(parent) || !nodes.containsKey(parent)) invalid();
+        parent = nodes[parent]!.parentCollectionId;
+      }
+    }
+    return List.unmodifiable(nodes.values);
   }
 
   Future<List<Json>> profiles(CollectionScope scope) async =>
@@ -395,7 +449,14 @@ mixin _ApiRepositoryScopes on _ApiRepositoryBase {
           'resolved_value': resolvedValue,
         };
       }).toList(),
-      'validation_findings': objects(result['validations']),
+      'validation_findings': [
+        ...objects(result['validations']),
+        // Run findings are retained context, not clearance gates. Keep their
+        // severity so field disclosures can explain how a value was settled.
+        ...objects(run['findings']).where(
+          (finding) => const {'warning', 'info'}.contains(finding['severity']),
+        ),
+      ],
       'audit_events': objects(
         result['events'],
       ).map((e) => <String, dynamic>{...e, 'actor_id': e['actor']}).toList(),
@@ -421,5 +482,46 @@ mixin _ApiRepositoryScopes on _ApiRepositoryBase {
         ),
       ],
     });
+  }
+
+  String _costRoot(String organizationId) =>
+      '/v1/organizations/${Uri.encodeComponent(organizationId)}/costs';
+
+  Future<CostReport> costs(
+    String organizationId, {
+    required String from,
+    required String to,
+  }) async {
+    final Json body = await request(
+      'GET',
+      _costRoot(organizationId),
+      query: <String, String>{'from': from, 'to': to},
+    );
+    // Reads every field defensively and refuses what is not a report with an
+    // `ApiFailure`, so a body of the wrong shape ends as a message on screen.
+    return CostReport.fromWire(body);
+  }
+
+  Future<bool> refreshCosts(String organizationId) async {
+    final Json result = await request(
+      'POST',
+      '${_costRoot(organizationId)}/refresh',
+    );
+    return result['started'] == true;
+  }
+
+  Future<void> setCostLimit(
+    String organizationId, {
+    String? collectionId,
+    int? micros,
+  }) async {
+    await request(
+      'PUT',
+      '${_costRoot(organizationId)}/caps',
+      body: <String, dynamic>{
+        'collection_id': collectionId,
+        'monthly_cap_micros': micros,
+      },
+    );
   }
 }

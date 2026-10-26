@@ -7,6 +7,7 @@ import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/pressable.dart';
 import '../../primitives/state_layer.dart';
+import 'checkbox.dart' show UiSelectionControlSize;
 
 /// The resolved paint of one switch.
 ///
@@ -56,7 +57,10 @@ class UiSwitchStyle {
   double get thumbInset => (trackHeight - thumbSize) / 2;
 
   /// The style in [ui].
-  static UiSwitchStyle resolve(UiThemeData ui) {
+  static UiSwitchStyle resolve(
+    UiThemeData ui, {
+    UiSelectionControlSize size = UiSelectionControlSize.medium,
+  }) {
     Color track(Set<WidgetState> states) {
       if (states.contains(WidgetState.disabled)) return ui.color.disabledFill;
       return states.contains(WidgetState.selected)
@@ -96,9 +100,9 @@ class UiSwitchStyle {
       side: WidgetStateProperty.resolveWith(side),
       thumb: WidgetStateProperty.resolveWith(thumb),
       label: WidgetStateProperty.resolveWith(label),
-      trackWidth: 44,
-      trackHeight: 26,
-      thumbSize: 22,
+      trackWidth: size == UiSelectionControlSize.small ? 36 : 44,
+      trackHeight: size == UiSelectionControlSize.small ? 20 : 26,
+      thumbSize: size == UiSelectionControlSize.small ? 16 : 22,
       glide: ui.motion.short,
     );
   }
@@ -122,6 +126,8 @@ class UiSwitch extends StatelessWidget {
     this.semanticsLabel,
     this.showLabel = true,
     this.autofocus = false,
+    this.supporting,
+    this.size = UiSelectionControlSize.medium,
   });
 
   /// What the switch turns on. Sentence case, no terminal period.
@@ -145,12 +151,18 @@ class UiSwitch extends StatelessWidget {
   /// True to take focus when first built.
   final bool autofocus;
 
+  /// Additional explanatory text included in the accessible name.
+  final String? supporting;
+
+  /// Visual dimensions independent of the minimum hit target.
+  final UiSelectionControlSize size;
+
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final UiSwitchStyle style = UiSwitchStyle.resolve(ui);
+    final UiSwitchStyle style = UiSwitchStyle.resolve(ui, size: size);
     return Pressable(
-      semanticsLabel: semanticsLabel ?? label,
+      semanticsLabel: semanticsLabel ?? [label, ?supporting].join('. '),
       role: PressableRole.toggle,
       checked: value,
       selected: value,
@@ -162,7 +174,24 @@ class UiSwitch extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           if (showLabel) ...<Widget>[
-            Flexible(child: Text(label, style: style.label.resolve(states))),
+            Flexible(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: style.label.resolve(states)),
+                  if (supporting != null)
+                    Text(
+                      supporting!,
+                      style: ui.type.bodySmall.copyWith(
+                        color: onChanged == null
+                            ? ui.color.disabledContent
+                            : ui.color.inkSecondary,
+                      ),
+                    ),
+                ],
+              ),
+            ),
             SizedBox(width: ui.space.s3),
           ],
           _Track(style: style, states: states),
