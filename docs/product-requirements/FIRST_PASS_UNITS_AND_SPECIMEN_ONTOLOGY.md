@@ -1,9 +1,11 @@
 # The first pass's reading units and the specimen ontology
 
-Status: the owner's design, 2026-10-26, written from his words of 2026-10-25 and 2026-10-26. The
-owner set the substance; the structure is the engineer's decision (section 2). Nothing here is
-built. Sections 2 to 5 say what exists today and what changes; sections 6 and 7 are decisions and
-order.
+Status: the owner's design, 2026-10-26, written from his words of 2026-10-25 and 2026-10-26, and
+revised the same day after two reviews of pull request #418. The owner set the substance; the
+structure and the rules below his words are the engineer's decisions (section 6). Nothing here is
+built. Sections 2 to 5 say what exists today, naming the file that shows it, and what changes.
+Section 7 is the build order; it is the same list as the plan's section 3
+(`docs/execution/units/PLAN.md`).
 
 ## 1. The pipeline, in the owner's words
 
@@ -32,30 +34,59 @@ best fits this structure. You decide. I'm not the engineer you are."
 ## 2. The reading units
 
 The first pass reads every label of the specimen with the image. For each label it cuts the text at
-logical breaks (a word, a number, a code, a date, a phrase that belongs together) and gives, for each
-unit, one record.
+logical breaks (a word, a number, a code, a date, a phrase that belongs together) and gives one
+record per unit.
+
+### The shape
 
 Structure, decided by the engineer: a list of unit records, grouped by label and ordered by line, as
-JSON (a Pydantic model `ReadingUnit`). Reasons: the first pass already answers in structured JSON;
-the run record stores JSON, so the units are kept with the run and shown in the app as they are;
-the experts receive JSON, so each expert takes the units whose `fields` name its field.
+JSON (a Pydantic model `ReadingUnit`). Reasons: the first pass already answers in structured JSON
+(`FirstPassOutput`, `application/first_pass.py`), and the experts receive one JSON document
+(`field_research/experts.py`), so the units travel in it.
 
-Who cuts the units: the first pass does, for every label, including labels whose readers agree.
-Today the first pass runs only for labels whose readers differ, so this is one more call per
-agreed label; the cost is measured before the change is accepted. The code's alignment
-(`reading_differences_among`) does not decide the units: it supplies candidate breaks and the check
-that every unit's reader texts are exact substrings of the readings at consistent positions. Today
-that alignment drops differences of spacing only ("Davao Prov." against "DavaoProv.") and has no
-units for agreed text; both are covered by the new check. A label whose transcript a person
-decided has one reader, the person, and `image` is that text. Each unit holds:
+The units are a new record on the run. They do not fit the run's existing records: those refuse
+unknown keys (`Record`, `application/domain.py`); the normalized projection publishes a fixed list
+of transcript fields (`application/projection.py`, `AppendTranscriptionVersionV2`); and the app
+checks the research thread against an embedded copy of the server's schema
+(`apps/.../research/research_models.dart`). So the units get their own record type, their own
+projection field and their own reader in the app, shipped together (plan WP 1.1). The run's existing
+records, the `layer` values and the app's enums do not change.
+
+### Who cuts the units
+
+The first pass does, for every label, including labels whose readers agree. Today the first pass
+runs only for a label whose readers' texts differ (`application/workflow.py`, "Differing readings
+get the LLM first pass"), so this is one more call per agreed label; the plan costs it before the
+change is accepted (WP 1.2). The code's alignment (`reading_differences_among`) does not decide the
+units: it supplies candidate breaks. Today that alignment outputs differences only, drops a
+difference of spacing alone ("Davao Prov." against "DavaoProv."), and has no units for agreed text.
+The check below covers all three.
+
+The check, run by code on every answer:
+
+- The units of a label tile each reading's text: every character of every reading belongs to
+  exactly one unit, in order; only whitespace may lie between units.
+- A unit never ends inside a range: a hyphen, "to", "bis", "au" or a dash between two dates or two
+  numbers keeps both ends in one unit (the experts' standing rule, `prompts/common.txt`, "A date or
+  an elevation is never one end of a range").
+- An empty unit list is refused.
+- An answer that fails is sent back once, and the retry text names the check it failed. An answer
+  that fails twice is given up on, as today (`first_pass_given_up`, `first_pass.py`).
+
+A label whose transcript a person decided has one reader, the person. The first pass runs with that
+one reading; its units are cut from the person's text alone, and `image` is that text. Today the
+first pass refuses fewer than two readings (`first_pass_direct`); under this spec it refuses fewer
+than one. The person's text binds the label (section 3, order 1).
+
+### What each unit holds
 
 | Key | What it holds |
 |---|---|
 | `label`, `line` | Which label and which line of it |
 | `readers` | What each reader wrote for this unit: `{"A": "...", "B": "...", "C": "..."}`; empty when a reader wrote nothing here |
-| `image` | What the first pass sees in the image for this unit: one of the readers' texts, or `uncertain`, or `not visible`. Never a text no reader wrote |
+| `image` | What the first pass sees in the image at this unit: one of the readers' texts, `uncertain`, or `not visible`. It is a judgement of the image, never a vote among readers: when the image is clear it gives the text that matches it, even if only one reader wrote it and every other reader differs; `uncertain` only when the image itself is unclear at this unit. Never a text no reader wrote |
 | `means` | The first pass's own interpretation of the unit, which may be text no reader wrote: an expansion ("P.I." -> "Philippine Islands"), a normal form ("6-Sept-1946" -> 1946-09-06), a role ("leg." -> collected by). May be empty. Never a literal |
-| `fields` | The fields this unit could belong to, most likely first. May be empty |
+| `fields` | The fields this unit could belong to, most likely first. Advice only: every expert receives every unit (section 3). May be empty |
 | `note` | One short sentence when something matters (a mark only one reader saw) |
 
 The first pass never settles anything. It lists. The units go to the harness together with the
@@ -96,40 +127,129 @@ experts put a unit is noted):
 | Mindanao | same | same | the island | context for precise_location; no field of its own |
 | P.I. | same | same | Philippine Islands | country |
 | 6-Sept-1946 | same | same | 1946-09-06 | date_visited_from |
-| Elev.6400 / Elev.6400' | A "Elev.6400", B "Elev.6400'", C "Elev.6400" | uncertain (the foot mark) | elevation 6400, unit not certain from the image | elevation_from_ft |
+| Elev.6400 / Elev.6400' | A "Elev.6400", B "Elev.6400'", C "Elev.6400" | "Elev.6400" or uncertain (the 12 recorded runs judged the mark absent in 7 and uncertain in 4) | elevation 6400, unit not certain from the image | elevation_from_ft |
 | H. Hoogstraal leg. | same | same | collected by H. Hoogstraal | collectors |
 | Shrubs, mostly forest | A "forest", B "Forest", C "forst" | forest | habitat note | habitat |
-| wings 4 head / Wings & head | A, B "4", C "&" | 4 | a preparation note | none certain: the `verbatim_dts` brief calls that field's meaning an open museum question |
+| wings 4 head / Wings & head | A, B "4", C "&" | 4 | a preparation note | none: `verbatim_dts` holds non-standard collecting-event date and time expressions ("Summer 1914", "am"), as `PRD.md` section 22, question 3, records the answer of 2026-10-07; a preparation note is not one. The brief's sentence calling the field's meaning open is stale and is corrected in plan WP 1.7 |
 | Sp.30 ♀ / ♂ | A, B "♀", C "♂" | ♀ | species number 30, female | taxon today (5 of 5 runs); the ontology decides where a species number and a sex go |
 | P-95-81-16 | B only | uncertain | a code | collection_code, doubtful |
 
-The harness then settles the elevation: the ontology says no point in the Philippines reaches
-6,400 m (Mount Apo, the highest, is 2,954 m), so 6,400 can only be feet, and one reader saw the foot
-mark. The value is 6,400 ft, marked inferred by that rule and shown so to the reviewer. This
-reverses, deliberately and only through a named rule, the standing rule that a unit is never
-guessed (`GEOREFERENCING.md`, `FIELD_RESEARCH.md`, the elevation briefs); magnitude alone never
-decides. No gazetteer holds this Mount McKinley (`GEOREFERENCING.md`, the Mount Talomo crosswalk),
-so the locality itself stays what it is today.
+The harness then settles the elevation. The number, 6400, is in every reader's text; only the unit
+is open, and the image does not settle it (7 runs name the text without the mark, 4 are
+uncertain). The ontology's rule decides the unit, and only with positive evidence. A unit the label
+does not write is inferred as feet when all three hold:
+
+- (a) at least one reader wrote the foot mark or "ft" at this unit;
+- (b) the number read as metres is impossible for the settled country: above its highest point
+  (for the Philippines, Mount Apo, 2,954 m, from the table in the ontology file);
+- (c) the number read as feet is possible for it.
+
+Here (a) B wrote `Elev.6400'`; (b) 6,400 m is above 2,954 m; (c) 6,400 ft is 1,951 m. The value is
+6,400 ft, basis `inferred`, the rule named, shown so to the reviewer; the literal stays a reader's
+text as written. Without (a) the field goes to review: magnitude alone never decides, so an
+"Elev.16000" that no reader wrote a mark for goes to review, and so does a number impossible in
+both units (16,000 ft is 4,877 m, also above 2,954 m). The rule needs the country settled first
+(section 3, round 2). This reverses, deliberately and only through this named rule, the standing
+rule that a unit is never guessed (`GEOREFERENCING.md` section 3, Parse row; `FIELD_RESEARCH.md`;
+the elevation briefs; `agreement.py`'s `NO_UNIT` refusal: "A unit is never guessed from the
+magnitude, the place or a map"). Terrain data takes no part: Copernicus GLO-30 (D11) is approved
+for a missing elevation over a georeferenced place (`golive/PLAN.md` section 4.8), and D5 is held,
+so while it is held a terrain check records its measurement and changes no outcome
+(`GEOREFERENCING.md` section 3, Measurements row). No owner ask is made on D5 now. No gazetteer
+holds this Mount McKinley (`GEOREFERENCING.md`, the Mount Talomo crosswalk), so the locality itself
+stays what it is today.
 
 ## 3. The harness
 
-The field experts stay as they are in shape: one per field, with lookups, running in parallel.
-What changes is what they receive and what may settle a field.
+The field experts stay as they are in shape: one per field, with lookups. Two exceptions exist today
+and stay: `identified_by_irn` gets no model call (`field_research/step.py`, `NO_APPROVED_AUTHORITY`),
+and five fields have no lookup at all (collectors, collection code, habitat, collection method,
+verbatim D/T/S: `field_research/contracts.py`, `FIELD_TOOLS`), so they settle on the image, on
+readers that agree or on another label only, never on a source. What changes is what the experts
+receive, in what order they run, and what may settle a field.
 
-- Input: the reading units (those whose `fields` include this expert's field, from every label),
-  the whole raw readings, the ontology (section 4), and the other fields as they settle.
-- A field may settle on a unit whose `image` names a reader's text, or that a lookup confirms, or that
-  the ontology makes the only consistent reading. The basis is recorded on the value, as now
-  (as written, matched by a source, derived with the reason).
-- One field may be assembled from units on different labels when the ontology says they belong
-  together: a genus on one label and a species on another, a day on one and a year on another.
-- The literal is still text a reader wrote; nothing is invented. A value may differ from the
-  literal only through a lookup or an ontology rule, both named. A value a rule decides where the
-  label writes none (an elevation's unit) is inferred, the term PRD v2 uses beside derived; the
-  code has no inferred layer today and gains one.
-- When the units and the lookups leave two readings standing, the field goes to review with both,
-  as now.
-- Unanimity of readers is no longer required for anything.
+### What an expert receives
+
+- Every reading unit of every label, with its `readers`, `image`, `means` and `fields`. `fields` is
+  advice: an expert reads every unit, as today every expert reads every reading (`experts.py`) and
+  may recover a field the organiser missed (`prompts/common.txt`, "The literal").
+- Every raw reading, whole, as today.
+- The ontology (section 4), rendered into its instructions.
+- In the second round, the fields the first round settled that its rules name (below).
+
+### Two rounds
+
+Today every expert runs at once with one copy of the other fields, taken before any expert answers
+(`step.py`, `build_tasks`), and the brief calls those fields "context only" (`common.txt`). Under
+this spec the experts run in two rounds. Round 1: every field, independently, as today. Round 2:
+only the fields whose ontology rules name a field settled in round 1: province after country;
+county and city after province; the elevation unit after country; the end date after the start
+date. The dependency order is written in the ontology file, is acyclic (a test checks it), and two
+rounds are the maximum. A round-2 value records the round-1 value it used as one of its inputs,
+with the rule, so the record shows what it rests on.
+
+### What settles a field: one order
+
+A field on one label settles on the first reason in this list that applies, with the one exception
+stated after it. The order is written here once and the code follows it.
+
+1. A person decided the label's transcript: the person's text binds, whatever the sources say.
+   Reason `BY_PERSON` (today this travels as `BY_FIRST_PASS` with `person_decided`, `agreement.py`;
+   the behaviour is kept under the new name).
+2. A source confirms exactly one reader's text by its own name or expansion, and every other
+   reader's text is ruled out. Reason `BY_SOURCE` (today's).
+3. The image names one reader's text at the unit. Reason `BY_IMAGE` (new).
+4. For a place: one reader's text is a near spelling of a source's one candidate, every other text
+   is ruled out, and the image names that reader or is uncertain. Reason `BY_NEAR_SPELLING`
+   (today's).
+5. Every reader of the label writes the same text, letter case and spacing aside. Reason
+   `BY_AGREEMENT` (today's; it stays as one reason and is no longer the gate for everything).
+6. Another label of the specimen, read by two or more readers who agree, writes the text. Reason
+   `BY_OTHER_LABEL` (today's, with `MIN_BACKING_READERS = 2`).
+7. Otherwise the field goes to review with each standing text as an option
+   (`several_possibilities`, as today).
+
+The exception: a conflict between 2 and 3 does not settle. When a source confirms B's text and the
+image names A's, the field goes to review with both, finding `image_source_conflict`. This keeps
+the guard `confirmed_against_image` gives today (a near spelling or another label never overrides a
+text the first pass found in the image; `agreement.py`), under the new name `image_names`; a source
+is added to what the guard holds against.
+
+Each settled value's finding names its reason (`settled_<reason>:<field>:<label>`), replacing
+today's `first_pass_followed`, `first_pass_overridden`, `first_pass_absent` and
+`first_pass_conflict` (`step.py`). `first_pass_given_up` is not one of these and does not change: a
+label whose first pass was given up on still goes to review however its fields settle
+(`step.py`, `given_up_regions`).
+
+### Adding a reader
+
+`image` is a judgement of the image, never a vote (section 2). So adding a reader changes a
+settlement only where the image judges the unit uncertain. The design's own test, counted per unit
+in every measurement (plan section 1, criterion 2): an added reader never turns a right settlement
+into a wrong one, and settled-right falls only at units the image judges uncertain.
+
+### The basis of a value
+
+Every settled value carries its basis, in the PRD's three words (`PRD.md`, "How every value is
+recorded"): `label` (as written), `derived` (from the label's own values by a rule: feet to metres),
+`inferred` (a rule supplies what the label does not write: an elevation's unit). The basis is a new
+optional field on each value part, as PRD v2 says; the existing `layer` (`verbatim`, `settled`,
+`derived`; `domain.py`) and the app's enum for it do not change, because a new layer value would
+break every reader of the layer (`PRD.md`, the same section). The reason above says how the literal
+was chosen; the basis says how the value relates to the label. The literal is still text a reader
+wrote; nothing is invented. A value may differ from the literal only through a lookup or an
+ontology rule, both named.
+
+### Putting units together
+
+One field may be put together from several units when the ontology says they belong together,
+within these limits. On one label: genus and species on the same label make one taxon; day, month
+and year on the same label make one date. Across labels: only the place chain and the date, and
+only where one label writes the whole value and another writes a part of the same value
+("6-Sept-1946" on one label and "1946" on another agree; "6 Sept" on one and "1946" on another are
+two parts and go to review). A taxon name is never put together across labels: two labels with
+different taxon parts go to review with both. Two labels that write different values for one field
+contradict each other and go to review with both, as today.
 
 ## 4. The conceptual model, as an ontology
 
@@ -143,14 +263,18 @@ baked in."
 Two parts, one adopted and one built. Darwin Core publishes a conceptual model of specimen data
 (dwc.tdwg.org/cm, version 2026-10-13): the things, Event, Location, Material entity, Identification,
 Agent, Taxon, and the relationships and cardinalities among them. We adopt it as the frame, so our
-things and fields carry names others already use. What exists nowhere is the model of THIS
+things and fields carry names others already use. What does not exist yet is the model of THIS
 collection's labels: which things each label type carries, what cannot be true together on these
 labels, what may be derived or inferred and by which rule, the institution's and era's conventions.
-That part we build, as one file in the repository, readable by people and by code, and bake into
-every model in the pipeline: the readers' instructions, the first pass, the organiser if it stays,
-and every field expert carry it, so each one knows what a unit can be and what it can connect to;
-the rules that code can check are checked by code. Location is only the first example of a rule.
-The rules are the collection's, written with its curators.
+A part of it exists in the code: the `Notation` table of `application/harness_knowledge/insects.py`
+maps written forms ("P.I.", "Prov.", "leg.", "ca.", Roman months) to their readings and fields, and
+the experts' brief carries the label notations (`prompts/common.txt`, "Label notations"). They are
+the seed of the ontology file, not the file. That file we build, as one file in the repository,
+readable by people and by code, and bake into every model in the pipeline: the readers'
+instructions, the first pass, the organiser while it stays, and every field expert carry it, so
+each one knows what a unit can be and what it can connect to; the rules that code can check are
+checked by code. Location is only the first example of a rule. The rules are the collection's; when
+the owner and its curators read them is in the plan, section 6.
 
 ### Things
 
@@ -168,77 +292,126 @@ The rules are the collection's, written with its curators.
 ### Relations and what cannot be true together
 
 - A specimen has one collecting event; the event has one locality, one date or date range, one or
-  more collectors. Two labels that write different localities or dates for the same event contradict
-  each other; the harness does not settle either and says why.
+  more collectors. Two labels that write different localities or dates for the same event
+  contradict each other; the harness settles neither and says why.
 - A locality sits inside one chain: country > province > county > city. A unit cannot settle at one
-  level outside the chain settled at a higher one ("Cook County" under "Philippines"). Built today for
-  places (`agreement.parents_refusal`); the spec keeps it and names it as the first instance of the
-  rule.
-- An elevation belongs to the locality and must be possible for it: an elevation above the settled
-  country's highest point in metres can only be feet; a terrain source (Copernicus GLO-30, D11, the
-  approved elevation source) bounds it where the place is georeferenced. The value is inferred, by
-  the named rule.
-- A collecting date lies before the determination date. The institution's name dates the label:
-  "CNHM" means 1943-1966. A collector's active years bound the date once a people source is
-  approved (section 6).
-- A determination names a taxon that occurs in the settled region: only if the owner lifts the hold
-  on GBIF occurrence lookups (D4, held and off today).
+  level outside the chain settled at a higher one ("Cook County" under "Philippines"). Built in part
+  today: `agreement.parents_refusal` checks a candidate against the settled country, and a county or
+  city against the settled province, but checks a city against a settled county only for a near
+  spelling, not for an exact match (settled Coles County, then an exact "Chicago" under Illinois,
+  passes). Plan WP 2.3 completes the check at every level and for exact candidates, with a
+  fail-first test for that case.
+- An elevation belongs to the locality and must be possible for it. The unit rule is in section 2:
+  inferred as feet only with a reader's mark and a metre reading above the settled country's
+  highest point, and only when the foot reading is possible; otherwise review. The highest points
+  are a static table in the ontology file, taken from Wikidata, each row with its item id and the
+  date it was read. Terrain is not used while D5 is held.
+- A collecting date is on or before the determination date; the same day is allowed. Dates of
+  different precision compare on the parts both have ("1946" and "1946-09-06" agree; `domain.py`
+  records precision as day, month or year). A date that is still ambiguous (day against month) is
+  not excluded by this rule: it goes to review with both readings, as today
+  (`day_month_order_ambiguous`). The institution's name dates the label: "CNHM" means 1943-1966. A
+  collector's active years bound the date once a people source is approved (section 6).
+- A taxon's occurrence in the settled region is not a rule. D4 (GBIF occurrence lookups) is held and
+  off, and even once lifted, absence from an authority is not impossibility: a correctly identified
+  specimen can be a new regional record, and the PRD names incomplete authorities as a cause of
+  false no-match (`PRD.md` section 21). If D4 is lifted, an occurrence check may flag a value for the
+  reviewer; it never sends a field to review by itself.
 - Slide or preparation codes are never dates, nor any part of them (the standing rule; t1-329
   writes code "IV-29-68-4" beside the collecting date "IV-23-48"). The ontology says what a code is
   and which field it goes to, never a date.
-- A field that lives on a label type does not live on another: a determination label carries the
-  taxon and the identifier, not the locality; the harness uses the label type to place units.
+- A label type routes units; it never excludes a field. A determination label's units go first to
+  the taxon and identifier experts and a locality label's to the place, date and collector experts;
+  a determination label that also prints the locality still feeds the locality expert, and every
+  expert receives every unit in any case (section 3).
+- Dependencies between fields, for round 2 (section 3): province after country; county and city
+  after province; the elevation unit after country; the end date after the start date. Written in
+  the file; acyclic; two rounds at most.
 
 ### Where each rule gets its knowledge
 
-- Gazetteers, approved for places today (Getty TGN, Wikidata, NGA, GEOLocate): the place chain and
-  coordinates.
-- Copernicus GLO-30 (D11): terrain elevation for a georeferenced place.
-- GBIF, Catalogue of Life, Global Names: taxon names, ranks, accepted names. Occurrences by region
-  only if D4 is lifted.
-- People: no approved source today. A collector-name query is an owner exception (`PLAN.md`
-  section 4.8, `GEOREFERENCING.md`); a people source (Wikidata persons, then Bionomia if needed) is
-  put to the owner before use.
+- Gazetteers, approved for places today (Getty TGN, Wikidata, NGA, GEOLocate; `contracts.py`,
+  `FIELD_TOOLS`): the place chain and coordinates.
+- Copernicus GLO-30 (D11): approved in the sources table for a missing elevation over the
+  uncertainty circle of a georeferenced place (`golive/PLAN.md` section 4.8). No rule here uses it
+  while D5 is held.
+- GBIF, Catalogue of Life, Global Names: taxon names, ranks, accepted names. Occurrences by region:
+  D4 is held; no rule uses them.
+- People: no approved source today. A collector-name query is an owner exception (`golive/PLAN.md`
+  section 4.8 and its D4 row; `GEOREFERENCING.md`, D4); a people source (Wikidata persons, then
+  Bionomia if needed) is put to the owner before use, with phase 1's measurement.
+- The highest point of each country: a static table in the ontology file, from Wikidata, cited per
+  row.
 - Institution and label conventions: a short written table in the ontology file (institution names
-  and dates, unit conventions by era and country, slide-code formats).
-- The owner and the collection's curators: the rules above are theirs to confirm and extend.
+  and dates, unit conventions by era and country, slide-code formats), seeded from `insects.py`'s
+  `Notation` table.
+- The owner and the collection's curators: the rules above are theirs to confirm and extend, in one
+  reading (plan section 6).
 
 ## 5. What exists today and what changes
 
 | Piece | Today | Under this spec |
 |---|---|---|
-| Reader alignment | the code already aligns readers span by span (`reading_differences_among`) but outputs only the differences | the alignment becomes the units |
-| First pass output | one preferred reader or none, a verdict per difference, notes | the reading units; no preferred reader |
-| Organiser | proposes field candidates from whole readings | folded into the units' `fields`; may stay as a check |
-| Field experts | all readings, organiser proposals, first-pass advice, lookups | the units, the readings, the ontology, lookups |
-| What may settle a field | all readers agree; a source confirms; another label agrees; the preferred reader's text | image names a reader's text; a source confirms; the ontology makes one reading the only consistent one; assembled across labels |
-| Derivation | feet/metres, end date = start date, parent place from the gazetteer | the ontology's rules, each recorded as the value's basis |
+| Reader alignment | aligns readers span by span (`reading_differences_among`), outputs the differences only, drops spacing-only differences | supplies candidate breaks; the first pass cuts the units; code checks that they tile every reading |
+| First pass output | one preferred reader or none, a verdict per difference, notes (`FirstPassOutput`) | the units; during phase 1 the code also derives the old preferred reader and verdicts from them, until the experts and the app read units (plan WP 1.2 and 1.8) |
+| Scheduling | a first pass only for a label whose readers differ (`workflow.py`); refused below two readings (`first_pass.py`) | every label, one reading or more |
+| Organiser | proposes field candidates quoted from whole readings and stores each as an evidence row with offsets (`harness.py`, `apply_candidates`) | stays through phase 1; the units' `fields` are measured against its candidates (plan WP 1.5); its future is decided in plan WP 2.5 |
+| Field experts | all readings, organiser proposals, first-pass advice, lookups; one round (`experts.py`, `step.py`) | the units, the readings, the ontology, lookups; two rounds |
+| What settles a field | readers agree; a source confirms; a near spelling; another label whose two or more readers agree; the preferred reader's text; a person's text (`agreement.labels`) | the order in section 3: person, source, image, near spelling, agreement, other label; else review |
+| Image guard | a near spelling or another label never overrides a text the first pass confirmed in the image; the conflict goes to review (`confirmed_against_image`) | the same guard as `image_names`; a source against the image goes to review too (`image_source_conflict`) |
+| Derivation | feet/metres, end date = start date, parent place from the gazetteer (`derive.py`) | the ontology's rules, each value recorded with its rule and its basis (`derived` or `inferred`) |
 | Review | several possibilities, or sources cannot resolve | the same, with the units as the options |
 
 ## 6. Decisions taken by the engineer
 
 1. `image` never names a text no reader wrote: it is one reader's text, `uncertain` or
-   `not visible`. A reader can be added; the judge cannot become a reader. `means` is the judge's
-   interpretation and is never a literal.
-2. Every value an ontology rule decides is recorded with the rule named and shown so to the
-   reviewer: derived when the label's own values give it (feet to metres), inferred when the rule
-   supplies what the label does not write (an elevation's unit). This follows the owner's decision
-   of 2026-10-08 that derived and inferred values are tracked by their basis and reviewed per part.
+   `not visible`. It is a judgement of the image, never a vote among readers. A reader can be added;
+   the judge cannot become a reader. `means` is the judge's interpretation and is never a literal.
+2. Every value carries its basis in the PRD's words, `label`, `derived` or `inferred`, as an
+   optional field on each part; no new `layer` value is added, and the app's enum is untouched. A
+   value a rule decides is recorded with the rule named and shown so to the reviewer. This follows
+   the owner's decision of 2026-10-08 that derived and inferred values are tracked by their basis
+   and reviewed per part.
 3. Darwin Core's conceptual model is the frame; the collection's rules, label types and conventions
-   are ours.
+   are ours, seeded from the code's `Notation` table.
 4. People lookups need a source the owner approves first; none is approved today. The ask goes to
    him with the first phase's measurement, not before.
+5. One settlement order (section 3), written once and followed by the code. A source that confirms
+   one reader's text against an image that names another's does not settle; the field goes to
+   review with both.
+6. An elevation unit the label does not write is inferred only with positive evidence: a reader's
+   mark, a metre reading impossible for the settled country, a foot reading possible for it.
+   Terrain is not used while D5 is held, and no owner ask on D5 is made now.
+7. Experts run in two rounds; the dependency order is written in the ontology file and is acyclic.
+8. Units are put together across labels only for the place chain and the date, and only where one
+   label writes the whole and another a part of the same value; never for a taxon name.
+9. A taxon's regional occurrence is not a rule.
 
 ## 7. Build order
 
-1. The ontology, first version: the things, the profile's fields and their Darwin Core names, the
-   label types, and the conventions the units need (`means` and `fields` depend on it).
-2. The reading units: first-pass schema and prompt, stored with the run; the ontology baked into
-   the readers', the first pass's and the experts' instructions; the experts receive the units; a
-   field settles on a unit the image names, with unanimity dropped. Measured with the first pass run
-   live per repeat.
-3. The ontology, second version: the code-checked rules (place chain, elevation, date order, label
-   types), the inferred layer, cross-label assembly of one field. Measured on multi-label specimens.
-4. People sources, if approved, and the remaining knowledge tables.
+The same list as the plan's section 3, one lane at a time. A gate is met or the phase stops.
 
-How the app shows the units, and cost and schedule, follow with each phase.
+Phase 0: WP 0, the reference set and its baseline.
+
+Phase 1, the ontology's first version and the reading units: 1.0 ontology v1 (things, fields, label
+types, conventions) -> 1.1 unit record, storage, projection field and app reader -> 1.2 first pass
+v2 (units for every label, the tiling check, the old preferred reader and verdicts derived from the
+units for the time being, the ontology v1 in its prompt) -> 1.3 experts take units (the settlement
+order of the spec's section 3, `BY_IMAGE`, `BY_PERSON`, the finding codes, the ontology v1 in their
+instructions) -> 1.4 organiser kept and measured -> 1.5 measurement (gate: criteria 1 and 2 met) ->
+1.6 app shows the units -> 1.7 docs -> 1.8 remove the derived preferred reader and verdicts and the
+unused field-harness prompt.
+
+Phase 2, the ontology's second version: 2.1 relations and rules (the owner's and curators' one
+reading) -> 2.2 the rules baked into every model's instructions, readers included -> 2.3 code-checked
+rules (the complete place chain, the elevation unit, date order, label types), the two rounds, the
+`basis` field with its app reader -> 2.4 units put together within the limits of the spec's section
+3 -> 2.5 organiser decision -> 2.6 measurement (gate: criteria 1 to 3 met) -> 2.7 docs.
+
+Phase 3, people and conventions: 3.1 people lookups, only if the owner approves a source -> 3.2 the
+remaining knowledge tables -> 3.3 steady-state run (all four criteria met) -> 3.4 research_harness
+retirement, a separate pull request.
+
+One lane runs at a time, in this order; a phase starts when the one before it has closed. Inside a
+lane, two work packages that touch different files may run in parallel sessions in their own
+worktrees (1.6 and 1.7; 2.1 and nothing else, since 2.2 to 2.5 read its file).
