@@ -116,7 +116,14 @@ String navigationVariant(WidgetTester tester) {
   if (find.byType(UiSidebar).evaluate().isNotEmpty) return 'sidebar';
   final Iterable<UiRail> rails = tester.widgetList<UiRail>(find.byType(UiRail));
   if (rails.isNotEmpty) {
-    return rails.first.extended ? 'rail extended' : 'rail';
+    final rail = rails.first;
+    return UiRail.showsLabelsOf(
+          tester.element(find.byType(UiRail).first),
+          extended: rail.extended,
+          labelPresentation: rail.labelPresentation,
+        )
+        ? 'rail extended'
+        : 'rail';
   }
   if (find.byType(UiPillNav).evaluate().isNotEmpty) return 'pill';
   return 'none';

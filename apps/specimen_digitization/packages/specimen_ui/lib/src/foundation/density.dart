@@ -7,7 +7,37 @@
 library;
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/widgets.dart';
+
+import 'input_capabilities_platform.dart';
+
+/// Available inputs, rather than the input used for the most recent gesture.
+///
+/// A tablet with a trackpad supports both. Hover must not hide navigation
+/// labels from the touch input that remains available on that device.
+@immutable
+class UiInputCapabilities {
+  /// Declares the capabilities available to a host or deterministic preview.
+  const UiInputCapabilities({required this.touch, required this.hover});
+
+  /// Touch or stylus input is available.
+  final bool touch;
+
+  /// An attached pointer can reveal hover content.
+  final bool hover;
+
+  static UiInputCapabilities _platform() {
+    final mobile =
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    return UiInputCapabilities(
+      touch: platformSupportsTouch() ?? (kIsWeb || mobile),
+      hover: platformSupportsHover() ?? (!kIsWeb && !mobile),
+    );
+  }
+}
 
 /// The two densities.
 enum UiDensityMode {
@@ -89,7 +119,12 @@ class UiDensity {
 /// touch row without a restart.
 class Density extends StatefulWidget {
   /// Wraps [child] in a density probe.
-  const Density({super.key, required this.child, this.initialMode});
+  const Density({
+    super.key,
+    required this.child,
+    this.initialMode,
+    this.inputCapabilities,
+  });
 
   /// The subtree that reads the density.
   final Widget child;
@@ -97,6 +132,16 @@ class Density extends StatefulWidget {
   /// Forces a density instead of resolving one. Tests use this so a golden
   /// does not depend on which pointer the harness synthesised last.
   final UiDensityMode? initialMode;
+
+  /// Optional host capability override. Tests and previews can model a hybrid
+  /// device independently of the density used to draw its controls.
+  final UiInputCapabilities? inputCapabilities;
+
+  /// Available inputs for adaptive labels. This never infers hover from width.
+  /// Observed touch remains available after later mouse gestures.
+  static UiInputCapabilities inputsOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_DensityScope>()?.inputs ??
+      UiInputCapabilities._platform();
 
   /// The density this context sits in.
   ///
@@ -129,11 +174,33 @@ class Density extends StatefulWidget {
 
 class _DensityState extends State<Density> {
   UiDensityMode? _seen;
+  bool _touchSeen = false;
+  late final void Function() _stopListening;
+
+  @override
+  void initState() {
+    super.initState();
+    _stopListening = listenToPlatformInputCapabilities(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _stopListening();
+    super.dispose();
+  }
 
   void _record(PointerEvent event) {
     final UiDensityMode? mode = Density.modeFor(event.kind);
-    if (mode == null || mode == _seen) return;
-    setState(() => _seen = mode);
+    if (mode == null ||
+        (mode == _seen && (mode != UiDensityMode.touch || _touchSeen))) {
+      return;
+    }
+    setState(() {
+      _seen = mode;
+      if (mode == UiDensityMode.touch) _touchSeen = true;
+    });
   }
 
   @override
@@ -144,6 +211,19 @@ class _DensityState extends State<Density> {
         : _seen != null
         ? UiDensity.of(_seen!)
         : Density._fromWidth(MediaQuery.maybeSizeOf(context)?.width);
+    final baseline =
+        widget.inputCapabilities ??
+        (forced == null
+            ? UiInputCapabilities._platform()
+            : UiInputCapabilities(
+                touch: forced == UiDensityMode.touch,
+                hover: forced == UiDensityMode.pointer,
+              ));
+    final inputs = UiInputCapabilities(
+      touch: baseline.touch || (forced == null && _touchSeen),
+      hover:
+          baseline.hover || (forced == null && _seen == UiDensityMode.pointer),
+    );
     return Listener(
       // Down rather than hover, so a trackpad that only ever scrolls does not
       // pull a tablet into the pointer row, and behavior is transparent so
@@ -151,17 +231,28 @@ class _DensityState extends State<Density> {
       onPointerDown: _record,
       onPointerHover: _record,
       behavior: HitTestBehavior.translucent,
-      child: _DensityScope(density: density, child: widget.child),
+      child: _DensityScope(
+        density: density,
+        inputs: inputs,
+        child: widget.child,
+      ),
     );
   }
 }
 
 class _DensityScope extends InheritedWidget {
-  const _DensityScope({required this.density, required super.child});
+  const _DensityScope({
+    required this.density,
+    required this.inputs,
+    required super.child,
+  });
 
   final UiDensity density;
+  final UiInputCapabilities inputs;
 
   @override
   bool updateShouldNotify(_DensityScope oldWidget) =>
-      oldWidget.density.mode != density.mode;
+      oldWidget.density.mode != density.mode ||
+      oldWidget.inputs.touch != inputs.touch ||
+      oldWidget.inputs.hover != inputs.hover;
 }

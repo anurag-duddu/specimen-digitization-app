@@ -12,6 +12,31 @@ import 'package:widgetbook/widgetbook.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+  for (final touch in [false, true]) {
+    testWidgets(
+      'rail preview exposes ${touch ? 'touch labels' : 'pointer icons'}',
+      (tester) async {
+        final root = WidgetbookRoot(children: specimenCatalog);
+        final useCase = root.leaves.whereType<WidgetbookUseCase>().singleWhere(
+          (item) =>
+              item.name ==
+              (touch ? 'Touch destinations' : 'Pointer destinations'),
+        );
+        final state = await _showStory(tester, useCase.path);
+        final rail = find.byType(UiRail);
+        expect(rail, findsOneWidget);
+        for (final label in ['Specimens', 'Intake', 'Search']) {
+          expect(
+            find.descendant(of: rail, matching: find.text(label)),
+            touch ? findsOneWidget : findsNothing,
+          );
+        }
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+        state.dispose();
+      },
+    );
+  }
   testWidgets(
     'button preview defaults to visible content without a hidden pending label',
     (tester) async {

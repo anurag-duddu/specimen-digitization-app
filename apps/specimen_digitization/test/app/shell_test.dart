@@ -1,7 +1,11 @@
 // Compact windows use the brand tab bar. Docked windows use the shared
-// labelled sidebar; the specimen queue is central content, not navigation.
+// adaptive primary rail; the specimen queue is central content, not navigation.
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart' show CupertinoTabBar;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart' show NavigationBar;
+import 'package:flutter/semantics.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/main.dart';
@@ -9,6 +13,7 @@ import 'package:specimen_digitization/src/app/shell.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/intake.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
+import 'package:specimen_digitization/src/workbench.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../golden/golden_harness.dart';
@@ -24,6 +29,21 @@ class EmptyRepository extends TestRepository {
   }) async => const SpecimenPage(<Specimen>[]);
 }
 
+class _LoadingRepository extends GoldenRepository {
+  final response = Completer<Specimen>();
+
+  @override
+  Future<SpecimenPage> specimenPage(
+    CollectionScope scope, {
+    Map<String, String> filters = const {},
+    String? cursor,
+  }) async => const SpecimenPage(<Specimen>[]);
+
+  @override
+  Future<Specimen> specimen(CollectionScope scope, String id) =>
+      response.future;
+}
+
 Future<void> pumpAt(WidgetTester tester, double width) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = Size(width, 1000);
@@ -34,6 +54,28 @@ Future<void> pumpAt(WidgetTester tester, double width) async {
     SpecimenDigitizationApp(session: session, repository: EmptyRepository()),
   );
   await tester.pumpAndSettle();
+}
+
+void _expectSingleCollectionSemantics(WidgetTester tester) {
+  final root = tester
+      .binding
+      .rootElement!
+      .renderObject
+      ?.owner
+      ?.semanticsOwner
+      ?.rootSemanticsNode;
+  expect(root, isNotNull);
+  var collectionNames = 0;
+  void visit(SemanticsNode node) {
+    if (node.label.startsWith('Authorized collection,')) collectionNames++;
+    node.visitChildren((child) {
+      visit(child);
+      return true;
+    });
+  }
+
+  visit(root!);
+  expect(collectionNames, 1, reason: 'Only the active context is announced.');
 }
 
 void main() {
@@ -60,9 +102,9 @@ void main() {
         tester.widget<UiMark>(find.byType(UiMark)).label,
         AppShell.markLabel,
       );
-      // Desktop consumes the same shared sidebar that the catalog displays.
-      expect(find.byType(UiRail), findsNothing);
-      expect(find.byType(UiSidebar), mobile ? findsNothing : findsOneWidget);
+      // Docked layouts consume the same shared rail as the catalog.
+      expect(find.byType(UiRail), mobile ? findsNothing : findsOneWidget);
+      expect(find.byType(UiSidebar), findsNothing);
       if (!mobile) {
         final panel = tester.widget<UiSidePanel>(find.byType(UiSidePanel));
         expect(panel.leading, isNotNull);
@@ -70,7 +112,7 @@ void main() {
         for (final label in ['Specimens', 'Intake']) {
           expect(
             find.descendant(
-              of: find.byType(UiSidebar),
+              of: find.byType(UiRail),
               matching: find.text(label),
             ),
             findsOneWidget,
@@ -101,7 +143,7 @@ void main() {
   }
 
   testWidgets(
-    'large windows put the collection in navigation and the queue in content',
+    'large windows put collection context above queue content, outside the rail',
     (tester) async {
       await pumpAt(tester, 1300);
       final sidebar = find.byKey(const ValueKey('global-sidebar'));
@@ -112,7 +154,14 @@ void main() {
       );
       expect(
         find.descendant(
-          of: find.byType(UiSidebar),
+          of: find.byType(UiRail),
+          matching: find.bySemanticsLabel(RegExp('^Authorized collection,')),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('queue-context-header')),
           matching: find.bySemanticsLabel(RegExp('^Authorized collection,')),
         ),
         findsOneWidget,
@@ -158,6 +207,7 @@ void main() {
   testWidgets(
     'a desktop record retains global actions and can collapse its specimen list',
     (tester) async {
+      final semantics = tester.ensureSemantics();
       await pumpGoldenApp(
         tester,
         window: const Size(1440, 900),
@@ -167,16 +217,177 @@ void main() {
       expect(find.byKey(const ValueKey('global-rail')), findsOneWidget);
       expect(uiMenuTrigger(RegExp('^Account menu')), findsOneWidget);
       expect(find.byKey(const ValueKey('global-sidebar')), findsOneWidget);
+      final collection = find
+          .bySemanticsLabel(RegExp('^Authorized collection,'))
+          .hitTestable();
+      expect(collection, findsOneWidget);
+      _expectSingleCollectionSemantics(tester);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('queue-context-header')),
+          matching: collection,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<UiIconButton>(
+              find.byKey(const ValueKey('queue-panel-close')),
+            )
+            .icon,
+        UiIcons.sidebar,
+      );
+      tester
+          .widget<UiIconButton>(find.byKey(const ValueKey('queue-panel-close')))
+          .focusNode!
+          .requestFocus();
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey('queue-panel-close')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('global-sidebar')), findsNothing);
       expect(uiIconButton('Show queue'), findsOneWidget);
+      expect(
+        tester
+            .widget<UiIconButton>(uiIconButton('Show queue'))
+            .focusNode!
+            .hasFocus,
+        isTrue,
+      );
+      expect(collection, findsOneWidget);
+      _expectSingleCollectionSemantics(tester);
+      expect(collection.hitTestable(), findsOneWidget);
       await tester.tap(uiIconButton('Show queue'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('global-sidebar')), findsOneWidget);
+      expect(collection, findsOneWidget);
+      _expectSingleCollectionSemantics(tester);
+      semantics.dispose();
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  testWidgets(
+    'pointer rail keeps primary names in hover labels',
+    (tester) async {
+      await pumpAt(tester, 1300);
+      final rail = find.byType(UiRail);
+      expect(tester.getSize(rail).width, lessThanOrEqualTo(80));
+      for (final label in ['Specimens', 'Intake', 'Account']) {
+        expect(
+          find.descendant(of: rail, matching: find.text(label)),
+          findsNothing,
+        );
+      }
+      final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await pointer.addPointer(location: Offset.zero);
+      await pointer.moveTo(tester.getCenter(uiDestination('Intake')));
+      await tester.pump(UiTooltipStyle.hoverDelay);
+      await tester.pumpAndSettle();
+      expect(find.text('Intake'), findsOneWidget);
+      await pointer.moveTo(
+        tester.getCenter(uiMenuTrigger(RegExp('^Account menu'))),
+      );
+      await tester.pump(UiTooltipStyle.hoverDelay);
+      await tester.pumpAndSettle();
+      expect(find.text('Account'), findsOneWidget);
+      await pointer.removePointer();
+      await tester.pumpWidget(const SizedBox());
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.linux),
+  );
+
+  testWidgets(
+    'touch rail puts every name beneath its icon, including account',
+    (tester) async {
+      await pumpAt(tester, 900);
+      final rail = find.byType(UiRail);
+      for (final label in ['Specimens', 'Intake', 'Account']) {
+        final target = label == 'Account'
+            ? uiMenuTrigger(RegExp('^Account menu'))
+            : uiDestination(label);
+        final icon = find.descendant(of: target, matching: find.byType(UiIcon));
+        final text = find.descendant(of: target, matching: find.text(label));
+        expect(text, findsOneWidget);
+        expect(
+          tester.getRect(text).top,
+          greaterThan(tester.getRect(icon).bottom),
+        );
+        expect(
+          tester.getRect(text).left,
+          greaterThanOrEqualTo(tester.getRect(rail).left),
+        );
+        expect(
+          tester.getRect(text).right,
+          lessThanOrEqualTo(tester.getRect(rail).right),
+        );
+      }
+      await tester.pumpWidget(const SizedBox());
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.android),
+  );
+
+  for (final width in [1024.0, 1440.0]) {
+    testWidgets('loading record retains one collection context at $width', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = Size(width, 1000);
+      addTearDown(tester.view.reset);
+      final session = TestSession();
+      addTearDown(session.controller.close);
+      final repository = _LoadingRepository();
+      await tester.pumpWidget(
+        SpecimenDigitizationApp(
+          session: session,
+          repository: repository,
+          initialLocation: goldenSpecimenLocation,
+        ),
+      );
+      // The unresolved repository read deliberately keeps the loading bar's
+      // animation alive; bounded pumps let its context finish mounting.
+      for (var frame = 0; frame < 8; frame++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(
+        find.byKey(const ValueKey('loading-record-toolbar')),
+        findsOneWidget,
+      );
+      final collection = find
+          .bySemanticsLabel(RegExp('^Authorized collection,'))
+          .hitTestable();
+      expect(collection, findsOneWidget);
+      _expectSingleCollectionSemantics(tester);
+      if (width == 1440) {
+        expect(uiIconButton('Hide queue'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('queue-panel-close')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        await tester.pump();
+      }
+      expect(collection, findsOneWidget);
+      _expectSingleCollectionSemantics(tester);
+      expect(collection.hitTestable(), findsOneWidget);
+      expect(uiIconButton('Show queue').hitTestable(), findsOneWidget);
+      expect(uiIconButton('Hide queue'), findsNothing);
+      await tester.tap(uiIconButton('Show queue'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      expect(collection, findsOneWidget);
+      _expectSingleCollectionSemantics(tester);
+      expect(uiIconButton('Hide queue'), findsOneWidget);
+      expect(uiIconButton('Show queue').hitTestable(), findsNothing);
+      expect(tester.takeException(), isNull);
+      repository.response.complete(repository.record);
+      await tester.pumpAndSettle();
+      expect(find.byType(ReviewWorkbench), findsOneWidget);
+      expect(collection, findsOneWidget);
+      _expectSingleCollectionSemantics(tester);
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 
   testWidgets(
     'native Intake navigation returns from sources to the intake root',

@@ -14,7 +14,7 @@ import '../ui_finders.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  for (final width in [768.0, 820.0, 1024.0, 1280.0]) {
+  for (final width in [768.0, 820.0, 1024.0]) {
     testWidgets(
       'queue overlays a $width workspace without squeezing the record',
       (tester) async {
@@ -73,26 +73,30 @@ void main() {
       final pane = find.byType(QueuePane);
       final state = tester.state(pane);
       final controller = WorkspaceScope.read(tester.element(pane));
-      expect(find.byType(UiSidebar), findsOneWidget);
-      expect(find.byType(UiRail), findsNothing);
+      expect(find.byType(UiRail), findsOneWidget);
+      expect(find.byType(UiSidebar), findsNothing);
       for (final label in ['Specimens', 'Intake', 'Account']) {
         expect(
-          find.descendant(
-            of: find.byType(UiSidebar),
-            matching: find.text(label),
-          ),
+          find.descendant(of: find.byType(UiRail), matching: find.text(label)),
           findsOneWidget,
         );
       }
       expect(uiDestination('Intake'), findsOneWidget);
       expect(
         tester.getSize(pane).width,
-        greaterThan(tester.getSize(find.byType(UiSidebar)).width * 2),
+        greaterThan(tester.getSize(find.byType(UiRail)).width * 2),
       );
       expect(find.text('From specimens to knowledge.'), findsNothing);
       expect(
         find.bySemanticsLabel(RegExp('^Authorized collection,')),
         findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(UiRail),
+          matching: find.bySemanticsLabel(RegExp('^Authorized collection,')),
+        ),
+        findsNothing,
       );
       final list = find.byKey(const PageStorageKey<String>('queue-list'));
       await tester.drag(list, const Offset(0, -400));
@@ -110,6 +114,17 @@ void main() {
         find.bySemanticsLabel(RegExp('^Authorized collection,')),
         findsOneWidget,
       );
+      expect(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey('workspace-context-header')),
+              matching: find.bySemanticsLabel(
+                RegExp('^Authorized collection,'),
+              ),
+            )
+            .hitTestable(),
+        findsOneWidget,
+      );
       await tester.tap(uiDestination('Specimens'));
       await tester.pumpAndSettle();
       expect(tester.state(pane), same(state));
@@ -117,6 +132,23 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('a narrow rail leaves room to dock the queue at 1280', (
+    tester,
+  ) async {
+    await pumpGoldenApp(
+      tester,
+      window: const Size(1280, 900),
+      brightness: Brightness.light,
+      location: goldenSpecimenLocation,
+    );
+    final panel = tester.widget<UiSidePanel>(find.byType(UiSidePanel));
+    expect(panel.mode, UiSidePanelMode.docked);
+    expect(panel.open, isTrue);
+    expect(find.byType(QueuePane).hitTestable(), findsOneWidget);
+    expect(find.byType(ReviewWorkbench).hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'optional record queue preserves the same list through resizing',
@@ -134,7 +166,7 @@ void main() {
       final record = tester.state(find.byType(ReviewWorkbench));
       expect(tester.state(find.byType(QueuePane)), same(queue));
       for (final size in [
-        const Size(1180, 820),
+        const Size(1024, 820),
         const Size(390, 844),
         const Size(1440, 900),
       ]) {
@@ -145,7 +177,7 @@ void main() {
           tester.state(find.byType(QueuePane, skipOffstage: false)),
           same(queue),
         );
-        if (size.width == 1180) {
+        if (size.width == 1024) {
           expect(find.byType(QueuePane), findsNothing);
           expect(uiIconButton('Show queue'), findsOneWidget);
         }

@@ -505,6 +505,7 @@ class UiMenuTrigger extends StatefulWidget {
     this.placement = PopoverPlacement.auto,
     this.onOpenChanged,
     this.trailingIcon = false,
+    this.labelBelow = false,
     this.menuDescription,
     this.menuMaxHeight,
     this.menuSurface = PopoverSurface.glass,
@@ -535,6 +536,10 @@ class UiMenuTrigger extends StatefulWidget {
 
   /// Places the glyph after a visible label, as in a collection chooser.
   final bool trailingIcon;
+
+  /// Draws a visible label below the icon within the same target, for a touch
+  /// navigation rail. Horizontal menu triggers retain their existing layout.
+  final bool labelBelow;
 
   /// Context for all menu choices, displayed once in the opened menu.
   final String? menuDescription;
@@ -627,35 +632,66 @@ class _UiMenuTriggerState extends State<UiMenuTrigger> {
                 ),
                 child: Padding(
                   padding: EdgeInsetsDirectional.symmetric(
-                    horizontal: widget.label == null ? 0 : ui.space.s4,
+                    horizontal: widget.label == null
+                        ? 0
+                        : widget.labelBelow
+                        ? ui.space.s2
+                        : ui.space.s4,
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: <Widget>[
-                      if (!widget.trailingIcon || widget.label == null)
-                        UiIcon(
-                          widget.icon ?? UiIcons.more,
-                          color: ui.color.ink,
+                  child: widget.labelBelow && widget.label != null
+                      ? Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox.square(
+                              dimension: UiDensity.hitBox,
+                              child: Center(
+                                child: UiIcon(
+                                  widget.icon ?? UiIcons.more,
+                                  color: ui.color.ink,
+                                ),
+                              ),
+                            ),
+                            SizedBox(height: ui.space.s1),
+                            UiLabel(
+                              widget.label!,
+                              style: ui.type.labelSmall.copyWith(
+                                color: ui.color.inkSecondary,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            SizedBox(height: ui.space.s2),
+                          ],
+                        )
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            if (!widget.trailingIcon || widget.label == null)
+                              UiIcon(
+                                widget.icon ?? UiIcons.more,
+                                color: ui.color.ink,
+                              ),
+                            if (widget.label != null) ...<Widget>[
+                              if (!widget.trailingIcon)
+                                SizedBox(width: ui.space.s2),
+                              Flexible(
+                                child: UiLabel(
+                                  widget.label!,
+                                  style: ui.type.label.copyWith(
+                                    color: ui.color.ink,
+                                  ),
+                                ),
+                              ),
+                              if (widget.trailingIcon) ...[
+                                SizedBox(width: ui.space.s2),
+                                UiIcon(
+                                  widget.icon ?? UiIcons.more,
+                                  color: ui.color.ink,
+                                ),
+                              ],
+                            ],
+                          ],
                         ),
-                      if (widget.label != null) ...<Widget>[
-                        if (!widget.trailingIcon) SizedBox(width: ui.space.s2),
-                        Flexible(
-                          child: UiLabel(
-                            widget.label!,
-                            style: ui.type.label.copyWith(color: ui.color.ink),
-                          ),
-                        ),
-                        if (widget.trailingIcon) ...[
-                          SizedBox(width: ui.space.s2),
-                          UiIcon(
-                            widget.icon ?? UiIcons.more,
-                            color: ui.color.ink,
-                          ),
-                        ],
-                      ],
-                    ],
-                  ),
                 ),
               ),
             ),

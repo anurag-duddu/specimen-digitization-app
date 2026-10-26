@@ -210,6 +210,62 @@ void main() {
       expect(pinnedRepetitionsNow(), isEmpty);
     });
 
+    testWidgets(
+      'retaining an invisible label does not create a visible repeat',
+      (tester) async {
+        for (final visible in [false, true]) {
+          await pumpGoldenRoute(
+            tester,
+            window: window,
+            brightness: Brightness.light,
+            child: UiScaffold(
+              sky: SkyPreset.none,
+              topBar: UiTopBar(
+                title: 'Insects',
+                center: Visibility(
+                  visible: visible,
+                  maintainState: true,
+                  maintainAnimation: true,
+                  maintainSize: true,
+                  child: const Text('Insects'),
+                ),
+              ),
+              body: const SizedBox.expand(),
+            ),
+          );
+          expect(find.text('Insects'), findsNWidgets(2));
+          expect(
+            pinnedRepetitionsNow(),
+            visible ? ['"Insects" 2 times'] : isEmpty,
+          );
+        }
+      },
+    );
+
+    testWidgets('muted repeated text still counts; zero opacity does not', (
+      tester,
+    ) async {
+      for (final opacity in [0.0, .4, 1.0]) {
+        await pumpGoldenRoute(
+          tester,
+          window: window,
+          brightness: Brightness.light,
+          child: UiScaffold(
+            sky: SkyPreset.none,
+            topBar: UiTopBar(
+              title: 'Insects',
+              center: Opacity(opacity: opacity, child: const Text('Insects')),
+            ),
+            body: const SizedBox.expand(),
+          ),
+        );
+        expect(
+          pinnedRepetitionsNow(),
+          opacity == 0 ? isEmpty : ['"Insects" 2 times'],
+        );
+      }
+    });
+
     testWidgets('a row holding only a back action is a finding', (
       WidgetTester tester,
     ) async {
