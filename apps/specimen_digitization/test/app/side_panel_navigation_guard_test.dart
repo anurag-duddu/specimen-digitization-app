@@ -56,7 +56,7 @@ void _expectPendingCorrection(WidgetTester tester) {
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  for (final width in [820.0, 1280.0]) {
+  for (final width in [820.0, 1024.0]) {
     testWidgets(
       'Back at $width closes queue overlay before prompting about a correction',
       (tester) async {

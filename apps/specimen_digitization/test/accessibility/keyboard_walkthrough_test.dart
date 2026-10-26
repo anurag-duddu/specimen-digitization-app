@@ -48,15 +48,21 @@ Future<void> press(WidgetTester tester, LogicalKeyboardKey key) async {
   await tester.pumpAndSettle();
 }
 
-/// Uses the same named action whether the inspector has room for an edge
-/// button or puts navigation in its responsive decision menu.
+/// Uses the same named action in an edge button, responsive decision menu,
+/// or the compact record's command menu.
 Future<void> pressDecisionNavigation(WidgetTester tester, String label) async {
   final edge = uiIconButton(label);
   if (edge.evaluate().isNotEmpty) {
     expect(edge.hitTestable(), findsOneWidget);
     await tester.tap(edge);
   } else {
-    await tester.tap(uiMenuTrigger(UiDecisionBar.defaultOverflowLabel));
+    final menu = find.byWidgetPredicate(
+      (widget) =>
+          widget is UiMenuTrigger &&
+          widget.items.any((item) => item.label == label),
+    );
+    expect(menu.hitTestable(), findsOneWidget);
+    await tester.tap(menu);
     await tester.pumpAndSettle();
     final item = find.text(label);
     expect(item.hitTestable(), findsOneWidget);
@@ -265,8 +271,12 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  for (final window in [keyboardWindow, const Size(1440, 900)]) {
-    testWidgets('the decision bar moves between records at $window', (
+  for (final window in [
+    keyboardWindow,
+    const Size(1440, 900),
+    const Size(390, 844),
+  ]) {
+    testWidgets('record navigation moves between records at $window', (
       WidgetTester tester,
     ) async {
       await pumpGoldenApp(
@@ -276,12 +286,11 @@ void main() {
         location: goldenSpecimenLocation,
         repository: GoldenQueueRepository(goldenQueue(3)),
       );
-      // At 1180 the companion queue is closed and the inspector has room for
-      // direct navigation. At 1440 the open queue leaves a narrower inspector,
-      // so navigation shares the named secondary-action menu.
+      // The narrow rail leaves room for direct decision navigation at both
+      // desktop widths. The phone keeps the same commands in its named menu.
       expect(
         uiIconButton('Next specimen'),
-        window == keyboardWindow ? findsOneWidget : findsNothing,
+        window.width >= keyboardWindow.width ? findsOneWidget : findsNothing,
       );
       await pressDecisionNavigation(tester, 'Next specimen');
       expect(locationOf(tester), endsWith('/fixture-002'));

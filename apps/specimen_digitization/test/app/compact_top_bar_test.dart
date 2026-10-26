@@ -364,13 +364,18 @@ void main() {
     expect(code, isNot(contains('_mobileHeader')));
     // The compact row exists in one builder: a `UiTopBar` in its workspace
     // form that holds the sheet form of the switcher.
+    final compactStart = code.indexOf('Widget _compactTopBar(');
+    final compactEnd = code.indexOf('Widget _mobileNav(');
+    expect(compactStart, greaterThanOrEqualTo(0));
+    expect(compactEnd, greaterThan(compactStart));
+    final compact = code.substring(compactStart, compactEnd);
     expect(
-      RegExp(r'_CollectionSwitcher\(\s*controller:').allMatches(code).length,
-      2,
+      RegExp(r'_CollectionSwitcher\(\s*controller:').allMatches(compact).length,
+      1,
     );
     expect(RegExp(r'sheet:\s*true').allMatches(code).length, 1);
     expect(code, isNot(contains('sheet: !_docked')));
-    expect('UiTopBar('.allMatches(code).length, 1);
+    expect('UiTopBar('.allMatches(compact).length, 1);
     expect(code, contains('UiTopBarForm.workspace'));
     // The retained queue pane has no account or environment of its own:
     // those belong to global navigation or the compact workspace bar.

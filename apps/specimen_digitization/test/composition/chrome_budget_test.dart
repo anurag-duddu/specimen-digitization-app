@@ -1,8 +1,8 @@
 // The chrome budget (13 sections 2.3 and 5, `chrome_budget`).
 //
 // The second row of 13 section 0: "chrome takes about three quarters of the
-// height ... nobody adds them up". This adds them up. Every pinned region's
-// render box height over the viewport height, against 28 percent at compact,
+// height ... nobody adds them up". This adds them up within each vertical
+// column, using the worst column over the viewport height: 28 percent at compact,
 // 24 at medium and 20 at expanded and above.
 //
 // What counts as pinned. 13 section 5 says the screens mark their pinned
@@ -22,7 +22,9 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
+import '../golden/golden_harness.dart';
 import 'composition_harness.dart';
 
 // ---------------------------------------------------------------------------
@@ -91,23 +93,44 @@ List<Element> pinnedRegionsIn(List<Element> elements) => <Element>[
   double viewport,
 ) {
   final List<Element> elements = compositionElements();
-  double total = 0;
+  final regions = <({double left, double right, double height})>[];
   final List<String> parts = <String>[];
   final List<String> problems = <String>[];
   for (final Element element in pinnedRegionsIn(elements)) {
     final double? height = pinnedExtent(element);
+    final span = pinnedHorizontalSpan(element);
     final String name = pinnedRegionName(element);
-    if (height == null) {
+    if (height == null || span == null) {
       problems.add(
-        '$name has no box to measure and declares no extent, so the budget '
-        'cannot be taken. Pass extent: to the marker.',
+        '$name has no measurable horizontal span or pinned extent, so the '
+        'budget cannot be taken. Sliver markers must declare extent:.',
       );
       continue;
     }
-    total += height;
-    parts.add('$name ${height.round()}');
+    if (height > 0 && span.right > span.left) {
+      regions.add((left: span.left, right: span.right, height: height));
+    }
+    parts.add(
+      '$name ${height.round()} at x ${span.left.round()} to ${span.right.round()}',
+    );
   }
-  return (share: total / viewport, parts: parts.join(', '), problems: problems);
+  final edges = <double>{
+    for (final region in regions) ...[region.left, region.right],
+  }.toList()..sort();
+  double maximum = 0;
+  for (var i = 1; i < edges.length; i++) {
+    final x = (edges[i - 1] + edges[i]) / 2;
+    double column = 0;
+    for (final region in regions) {
+      if (region.left < x && x < region.right) column += region.height;
+    }
+    if (column > maximum) maximum = column;
+  }
+  return (
+    share: maximum / viewport,
+    parts: parts.join(', '),
+    problems: problems,
+  );
 }
 
 void main() {
@@ -115,6 +138,115 @@ void main() {
 
   test('the backlog names cells the matrix runs', () {
     expectBacklogCellsExist(chromeBudgetBacklog.keys, 'chromeBudgetBacklog');
+  });
+
+  group('the instrument distinguishes stacked and adjacent chrome', () {
+    const window = Size(1440, 900);
+    Widget region(double height) => PinnedChrome(
+      region: UiPinnedRegion.header,
+      child: SizedBox(width: double.infinity, height: height),
+    );
+
+    testWidgets('stacked bars still add up and exceed the unchanged budget', (
+      tester,
+    ) async {
+      await pumpGoldenRoute(
+        tester,
+        window: window,
+        brightness: Brightness.light,
+        child: Column(children: [region(64), region(48), region(80)]),
+      );
+      final measured = chromeNow(window.height);
+      expect(measured.problems, isEmpty);
+      expect(measured.share, 192 / 900);
+      expect(measured.share, greaterThan(chromeBudgetFor('large-1440x900')));
+      expect(chromeBudgetFor('large-1440x900'), .20);
+      expect(chromeBudgetBacklog, isEmpty);
+    });
+
+    for (final treatment in ['transparent', 'retained invisible']) {
+      testWidgets('$treatment bars still consume their allocated height', (
+        tester,
+      ) async {
+        final stack = Column(children: [region(64), region(48), region(80)]);
+        await pumpGoldenRoute(
+          tester,
+          window: window,
+          brightness: Brightness.light,
+          child: treatment == 'transparent'
+              ? Opacity(opacity: 0, child: stack)
+              : Visibility(
+                  visible: false,
+                  maintainState: true,
+                  maintainAnimation: true,
+                  maintainSize: true,
+                  child: stack,
+                ),
+        );
+        final measured = chromeNow(window.height);
+        expect(measured.problems, isEmpty);
+        expect(measured.share, 192 / 900);
+        expect(measured.share, greaterThan(chromeBudgetFor('large-1440x900')));
+      });
+    }
+
+    for (final sharedHeight in [0.0, 40.0]) {
+      testWidgets(
+        'adjacent panes spend separate height with $sharedHeight shared chrome',
+        (tester) async {
+          await pumpGoldenRoute(
+            tester,
+            window: window,
+            brightness: Brightness.light,
+            child: Column(
+              children: [
+                region(sharedHeight),
+                Expanded(
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 312,
+                        child: Column(children: [region(64)]),
+                      ),
+                      Expanded(
+                        child: Column(
+                          children: [region(48), const Spacer(), region(80)],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+          final measured = chromeNow(window.height);
+          expect(measured.problems, isEmpty);
+          expect(measured.share, (128 + sharedHeight) / 900);
+        },
+      );
+    }
+
+    testWidgets('a sliver uses its declared pinned extent and actual column', (
+      tester,
+    ) async {
+      await pumpGoldenRoute(
+        tester,
+        window: window,
+        brightness: Brightness.light,
+        child: const CustomScrollView(
+          slivers: [
+            PinnedChrome(
+              region: UiPinnedRegion.header,
+              extent: 64,
+              child: SliverToBoxAdapter(child: SizedBox(height: 150)),
+            ),
+          ],
+        ),
+      );
+      final measured = chromeNow(window.height);
+      expect(measured.problems, isEmpty);
+      expect(measured.share, 64 / 900);
+    });
   });
 
   group('the pinned regions fit the budget', () {

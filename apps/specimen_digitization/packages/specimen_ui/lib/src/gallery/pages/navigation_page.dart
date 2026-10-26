@@ -97,22 +97,34 @@ Widget buildNavigationPage(BuildContext context) {
           spacing: ui.space.s4,
           runSpacing: ui.space.s4,
           children: <Widget>[
-            const GallerySpecimen(
-              label: 'rail, collapsed',
-              note: 'medium windows',
+            GallerySpecimen(
+              label: 'rail, pointer',
+              note: 'hover and focus labels',
               child: _OverFields(
-                width: 88,
+                width:
+                    UiRail.widthOf(
+                      context,
+                      destinations: _three,
+                      extended: false,
+                    ) +
+                    ui.space.s4 * 2,
                 height: 300,
-                child: _Rail(initial: 0),
+                child: const _Rail(initial: 0),
               ),
             ),
-            const GallerySpecimen(
-              label: 'rail, extended',
-              note: 'expanded windows',
+            GallerySpecimen(
+              label: 'rail, touch',
+              note: 'labels below every icon',
               child: _OverFields(
-                width: 104,
+                width:
+                    UiRail.widthOf(
+                      context,
+                      destinations: _three,
+                      extended: true,
+                    ) +
+                    ui.space.s4 * 2,
                 height: 300,
-                child: _Rail(initial: 1, extended: true),
+                child: const _Rail(initial: 1, extended: true),
               ),
             ),
             const GallerySpecimen(

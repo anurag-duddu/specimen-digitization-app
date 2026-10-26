@@ -1,4 +1,4 @@
-// The collection chooser must stay within its sidebar or mobile header at
+// The collection chooser must stay within its queue or mobile header at
 // every text scale. Its accessible name replaces the former floating label,
 // and its hit target must still open the available collections.
 
@@ -29,9 +29,9 @@ final Finder switcher = find.bySemanticsLabel(
 /// compact top bar (10 section 4.4, `UiTopBar` in its workspace form).
 final Finder collectionHeader = find.byWidgetPredicate(
   (Widget widget) =>
-      widget.key == const ValueKey<String>('global-sidebar-collection') ||
+      widget.key == const ValueKey<String>('queue-context-header') ||
       widget.key == const ValueKey<String>('shell-top-bar'),
-  description: 'the collection header (sidebar or compact top bar)',
+  description: 'the collection header (queue or compact top bar)',
 );
 
 void main() {

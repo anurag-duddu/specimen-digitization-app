@@ -1,4 +1,4 @@
-/// Labelled desktop navigation and compact bottom tabs. The specimen queue
+/// An adaptive primary rail and compact bottom tabs. The specimen queue
 /// is content, with an optional adaptive companion beside a record.
 library;
 
@@ -128,6 +128,7 @@ class AppSidebarScope extends InheritedWidget {
     required this.overlay,
     required this.docked,
     this.mobileSpecimens,
+    this.recordContext,
     required this.toggle,
     required this.close,
     required super.child,
@@ -142,6 +143,10 @@ class AppSidebarScope extends InheritedWidget {
   /// the shell owns the optional list beside an actual docked record. The
   /// retained Queue route keeps it mounted while Intake is active.
   final Widget? mobileSpecimens;
+
+  /// Collection context and queue reopening control in the record's own bar.
+  /// Its footprint is retained while the docked queue owns visible context.
+  final Widget? recordContext;
   final VoidCallback toggle;
   final VoidCallback close;
   static AppSidebarScope? maybeOf(BuildContext context) =>
@@ -151,7 +156,8 @@ class AppSidebarScope extends InheritedWidget {
       expanded != oldWidget.expanded ||
       overlay != oldWidget.overlay ||
       docked != oldWidget.docked ||
-      mobileSpecimens != oldWidget.mobileSpecimens;
+      mobileSpecimens != oldWidget.mobileSpecimens ||
+      recordContext != oldWidget.recordContext;
 }
 
 class _AppShellState extends State<AppShell> {
@@ -163,11 +169,15 @@ class _AppShellState extends State<AppShell> {
   final FocusNode _closeQueueFocus = FocusNode(
     debugLabel: 'Close specimen queue',
   );
+  final FocusNode _openQueueFocus = FocusNode(
+    debugLabel: 'Open specimen queue',
+  );
   bool _selecting = false;
 
   @override
   void dispose() {
     _closeQueueFocus.dispose();
+    _openQueueFocus.dispose();
     super.dispose();
   }
 
@@ -175,7 +185,24 @@ class _AppShellState extends State<AppShell> {
 
   void _open() => setState(() => _desktopExpanded = true);
 
-  void _close() => setState(() => _desktopExpanded = false);
+  void _close() {
+    final restoreDockedOpener = !_overlay;
+    setState(() => _desktopExpanded = false);
+    if (!restoreDockedOpener) return;
+    // A dock opened by default has no saved opener. Once its context control
+    // becomes visible again, return keyboard navigation to that exact control.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      scheduleMicrotask(() {
+        if (mounted &&
+            !_expanded &&
+            !_overlay &&
+            _openQueueFocus.context != null &&
+            _openQueueFocus.canRequestFocus) {
+          _openQueueFocus.requestFocus();
+        }
+      });
+    });
+  }
 
   Future<void> _select(WorkspaceDestination next) async {
     if (_selecting) return;
@@ -238,7 +265,7 @@ class _AppShellState extends State<AppShell> {
         return LayoutBuilder(
           builder: (context, constraints) {
             final textScaler = MediaQuery.textScalerOf(context);
-            final navigationWidth = UiSidebar.widthOf(
+            final navigationWidth = UiRail.widthOf(
               context,
               destinations: AppShell.destinations,
             );
@@ -277,6 +304,35 @@ class _AppShellState extends State<AppShell> {
               overlay: _overlay,
               docked: !_stacked,
               mobileSpecimens: listBesideRecord ? null : sidebar,
+              recordContext: listBesideRecord
+                  ? Visibility(
+                      visible: !_expanded || _overlay,
+                      maintainState: true,
+                      maintainAnimation: true,
+                      maintainSize: true,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _CollectionSwitcher(
+                              controller: controller,
+                              sheet: false,
+                            ),
+                          ),
+                          UiIconButton(
+                            key: const ValueKey<String>('queue-panel-open'),
+                            icon: UiIcons.sidebar,
+                            semanticsLabel: 'Show queue',
+                            focusNode: _openQueueFocus,
+                            onPressed: () {
+                              _openQueueFocus.requestFocus();
+                              FocusManager.instance.applyFocusChangesIfNeeded();
+                              _open();
+                            },
+                          ),
+                        ],
+                      ),
+                    )
+                  : null,
               toggle: _toggle,
               close: _close,
               child: QueueWorkspaceScope(
@@ -319,11 +375,24 @@ class _AppShellState extends State<AppShell> {
                               onDismiss: _close,
                               child: UiScaffold(
                                 sky: AppShell.skyOf(location),
-                                header: _stacked && !record
-                                    ? _compactTopBar(
-                                        controller,
-                                        listRoute: listRoute,
-                                      )
+                                header: !record
+                                    ? _stacked
+                                          ? _compactTopBar(
+                                              controller,
+                                              listRoute: listRoute,
+                                            )
+                                          : !listRoute
+                                          ? UiTopBar(
+                                              key: const ValueKey<String>(
+                                                'workspace-context-header',
+                                              ),
+                                              form: UiTopBarForm.workspace,
+                                              leading: _CollectionSwitcher(
+                                                controller: controller,
+                                                sheet: false,
+                                              ),
+                                            )
+                                          : null
                                     : null,
                                 banner: _stacked && listRoute
                                     ? null
@@ -426,21 +495,24 @@ class _AppShellState extends State<AppShell> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              if (canClose)
-                Padding(
-                  padding: EdgeInsets.all(ui.space.s2),
-                  child: Row(
-                    children: [
-                      const Spacer(),
+              if (!_stacked)
+                UiTopBar(
+                  key: const ValueKey<String>('queue-context-header'),
+                  form: UiTopBarForm.workspace,
+                  leading: _CollectionSwitcher(
+                    controller: controller,
+                    sheet: false,
+                  ),
+                  actions: <Widget>[
+                    if (canClose)
                       UiIconButton(
                         key: const ValueKey<String>('queue-panel-close'),
-                        icon: UiIcons.close,
+                        icon: UiIcons.sidebar,
                         semanticsLabel: 'Hide queue',
                         focusNode: _closeQueueFocus,
                         onPressed: _close,
                       ),
-                    ],
-                  ),
+                  ],
                 ),
               if (_stacked)
                 _Chrome(
@@ -485,37 +557,23 @@ class _AppShellState extends State<AppShell> {
     return ColoredBox(
       color: ui.color.paper,
       child: SafeArea(
-        child: UiSidebar(
+        child: UiRail(
           key: const ValueKey<String>('global-rail'),
           destinations: AppShell.destinations,
           currentIndex: widget.destination.index,
           semanticsLabel: AppShell.navigationLabel,
           onSelect: (index) => _select(WorkspaceDestination.values[index]),
-          header: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: EdgeInsets.symmetric(vertical: ui.space.s2),
-                child: UiMark(label: AppShell.markLabel, size: ui.space.s8),
-              ),
-              SizedBox(height: ui.space.s4),
-              Align(
-                key: const ValueKey<String>('global-sidebar-collection'),
-                alignment: AlignmentDirectional.centerStart,
-                child: _CollectionSwitcher(
-                  controller: controller,
-                  sheet: false,
-                ),
-              ),
-            ],
-          ),
+          leading: UiMark(label: AppShell.markLabel, size: ui.space.s8),
           footer: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               if (EnvironmentBanner.showsBand(controller.environment))
-                _EnvironmentContext(controller: controller),
-              ShellAccountMenu(controller: controller, showLabel: true),
+                _EnvironmentContext(controller: controller, compact: true),
+              ShellAccountMenu(
+                controller: controller,
+                showLabel: UiRail.showsLabelsOf(context),
+                labelBelow: true,
+              ),
             ],
           ),
         ),
@@ -786,10 +844,14 @@ class ShellAccountMenu extends StatelessWidget {
     super.key,
     required this.controller,
     this.showLabel = false,
+    this.labelBelow = false,
   });
 
-  /// A visible name in the labelled desktop navigation.
+  /// A visible name when the rail cannot rely on hover.
   final bool showLabel;
+
+  /// Keeps the account's touch label aligned with the rail destinations.
+  final bool labelBelow;
 
   /// The workspace whose session the menu names and signs out of.
   final WorkspaceController controller;
@@ -797,8 +859,9 @@ class ShellAccountMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String name = controller.session.displayName;
-    return UiMenuTrigger(
+    final trigger = UiMenuTrigger(
       label: showLabel ? 'Account' : null,
+      labelBelow: labelBelow,
       icon: UiIcons.account,
       semanticsLabel: '${AppShell.accountLabel}, signed in as $name',
       menuLabel: AppShell.accountLabel,
@@ -846,6 +909,12 @@ class ShellAccountMenu extends StatelessWidget {
           },
         ),
       ],
+    );
+    return UiTooltip(
+      message: 'Account',
+      enabled: labelBelow && !showLabel,
+      excludeSemantics: true,
+      child: trigger,
     );
   }
 }
