@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
@@ -12,6 +13,52 @@ import '../ui_finders.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final width in [768.0, 820.0, 1024.0, 1280.0]) {
+    testWidgets(
+      'queue overlays a $width workspace without squeezing the record',
+      (tester) async {
+        await pumpGoldenApp(
+          tester,
+          window: Size(width, 1000),
+          brightness: Brightness.light,
+          location: goldenSpecimenLocation,
+        );
+        final panel = find.byType(UiSidePanel);
+        expect(tester.widget<UiSidePanel>(panel).mode, UiSidePanelMode.overlay);
+        final record = find.byType(ReviewWorkbench);
+        final state = tester.state(record);
+        final before = tester.getRect(record);
+        final opener = uiIconButton('Show queue');
+        expect(opener.hitTestable(), findsOneWidget);
+        await tester.tap(opener);
+        await tester.pumpAndSettle();
+        expect(tester.widget<UiSidePanel>(panel).open, isTrue);
+        expect(tester.getRect(record), before);
+        expect(tester.state(record), same(state));
+        expect(find.byType(QueuePane).hitTestable(), findsOneWidget);
+        expect(uiDestination('Intake').hitTestable(), findsNothing);
+        final queueState = tester.state(find.byType(QueuePane));
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(tester.widget<UiSidePanel>(panel).open, isFalse);
+        expect(tester.getRect(record), before);
+        expect(tester.widget<UiIconButton>(opener).focusNode!.hasFocus, isTrue);
+        expect(
+          tester.state(find.byType(QueuePane, skipOffstage: false)),
+          same(queueState),
+        );
+        await tester.tap(opener);
+        await tester.pumpAndSettle();
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(tester.widget<UiSidePanel>(panel).open, isFalse);
+        expect(tester.state(record), same(state));
+        expect(tester.widget<UiIconButton>(opener).focusNode!.hasFocus, isTrue);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets(
     'desktop navigation leaves the queue central and Intake independent',
@@ -28,7 +75,7 @@ void main() {
       final controller = WorkspaceScope.read(tester.element(pane));
       expect(find.byType(UiSidebar), findsOneWidget);
       expect(find.byType(UiRail), findsNothing);
-      for (final label in ['Specimens', 'Account']) {
+      for (final label in ['Specimens', 'Intake', 'Account']) {
         expect(
           find.descendant(
             of: find.byType(UiSidebar),
@@ -37,13 +84,6 @@ void main() {
           findsOneWidget,
         );
       }
-      expect(
-        find.descendant(
-          of: find.byType(UiSidebar),
-          matching: find.text('Intake'),
-        ),
-        findsNothing,
-      );
       expect(uiDestination('Intake'), findsOneWidget);
       expect(
         tester.getSize(pane).width,
@@ -107,7 +147,7 @@ void main() {
         );
         if (size.width == 1180) {
           expect(find.byType(QueuePane), findsNothing);
-          expect(uiIconButton('Open sidebar'), findsOneWidget);
+          expect(uiIconButton('Show queue'), findsOneWidget);
         }
         expect(tester.takeException(), isNull, reason: '$size');
       }

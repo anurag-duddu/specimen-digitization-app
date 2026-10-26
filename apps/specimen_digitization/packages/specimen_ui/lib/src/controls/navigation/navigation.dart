@@ -20,6 +20,7 @@ export 'pill_nav.dart';
 export 'rail.dart';
 export 'scaffold.dart';
 export 'sidebar.dart';
+export 'side_panel.dart';
 export 'sticky_bar.dart';
 export 'tab_bar.dart';
 export 'top_bar.dart';

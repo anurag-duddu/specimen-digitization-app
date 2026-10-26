@@ -127,6 +127,13 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
   /// Android/framework Back can request a blocked pop. iOS checks canPop
   /// before starting its edge gesture; explicit Back remains available.
   Future<void> _onBlockedPop(bool didPop, Object? result) async {
+    if (!didPop && mounted && _active) {
+      final sidebar = AppSidebarScope.maybeOf(context);
+      if (sidebar != null && sidebar.overlay && sidebar.expanded) {
+        sidebar.close();
+        return;
+      }
+    }
     final controller = _held;
     if (didPop ||
         !_active ||
@@ -211,7 +218,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Selection/mutating only — quiet list ticks must not rebuild the shell
+    // Selection/mutating only: quiet list ticks must not rebuild the shell
     // via InheritedNotifier; the open record still refreshes here.
     final WorkspaceController controller = WorkspaceScope.read(context);
     return ListenableBuilder(
@@ -236,7 +243,11 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
         // is gone: it repeated what the bar's leading slot is for, which is the
         // third row of 13 section 0's table.
         return PopScope<Object?>(
-          canPop: !controller.mutating && !_navigationBlocked,
+          canPop:
+              !(AppSidebarScope.maybeOf(context)?.overlay == true &&
+                  AppSidebarScope.maybeOf(context)?.expanded == true) &&
+              !controller.mutating &&
+              !_navigationBlocked,
           onPopInvokedWithResult: _onBlockedPop,
           child:
               specimen == null ||
@@ -420,10 +431,12 @@ class _Loading extends StatelessWidget {
                 }
               },
             )
-          : AppSidebarScope.maybeOf(context)?.docked == false
+          : AppSidebarScope.maybeOf(context)?.docked == true
           ? UiIconButton(
               icon: UiIcons.sidebar,
-              semanticsLabel: 'Open sidebar',
+              semanticsLabel: AppSidebarScope.maybeOf(context)?.expanded == true
+                  ? 'Hide queue'
+                  : 'Show queue',
               onPressed: AppSidebarScope.maybeOf(context)?.toggle,
             )
           : null,

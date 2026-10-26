@@ -61,6 +61,7 @@ const Map<String, String> publicControlComponents = <String, String>{
   'UiRail': 'navigation/uirail',
   'UiScaffold': 'navigation/uiscaffold',
   'UiSidebar': 'navigation/uisidebar',
+  'UiSidePanel': 'navigation/uisidepanel',
   'UiSteps': 'navigation/uisteps',
   'UiStickyBar': 'compositions/uistickybar',
   'UiTabBar': 'navigation/uitabbar',

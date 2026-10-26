@@ -7,7 +7,8 @@ interaction decisions are requirements, not a request to restore old styling.
 
 - Keep the specimen queue as a working list. The selected view names itself
   beside a Phosphor icon; inactive views retain accessible names and tooltips.
-  Use the same selected-label behavior for mobile and desktop destinations.
+  Primary web navigation keeps every destination label visible. The compact
+  mobile navigation retains its selected-label behavior.
   Remove the redundant queue heading.
 - Use a visible Select action and an explicit selected-count/action state.
   Selection must preserve scope, eligibility, pending work and pagination.
@@ -34,6 +35,46 @@ interaction decisions are requirements, not a request to restore old styling.
 Shared primitives live in specimen_ui, their interactive examples in
 Widgetbook, and product previews render the actual application. This avoids a
 parallel catalog implementation drifting away from the shipped UI.
+
+## Adaptive queue companion
+
+Owner clarification, 2026-10-25: the selected-only label behavior applies to
+Queue views, not the expanded primary navigation on web. The primary sidebar
+keeps both Specimens and Intake visible. Compact mobile navigation retains
+its existing treatment.
+
+`UiSidePanel` owns the common retained panel, motion, focus and modal behavior.
+The app supplies the queue and record; Widgetbook renders this same primitive
+and the actual product composition. No screen-specific visual copy is needed.
+
+- Dock only when the remaining workbench still supports the photograph and
+  inspector side by side. Otherwise open over the existing record allocation.
+  Every docked-window record retains a queue toggle, including tablet widths.
+- Reveal a panel at a stable inner width using the standard motion token.
+  Reduced motion changes state immediately. Keep the background scrim fixed
+  to the viewport while the panel moves; never slide a dimming edge across it.
+- Keep queue search, selection and scroll, record state and unfinished field
+  editor text/caret across collapse and responsive arrangement changes.
+- Overlay dismissal precedes record navigation: Close, Escape, framework Back
+  and scrim dismissal close the queue first. Record selection keeps the normal
+  unsaved-change guard. A docked companion remains open after selection.
+- Overlay focus stays inside the panel and returns to the opener. Opening on
+  a touch tablet focuses its close control instead of summoning a search
+  keyboard. Covered content is inert until the exit transition completes.
+
+The reference review inspected Untitled UI's
+[labelled primary sidebar](https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9?node-id=1161-8593),
+[separate slim rail](https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9?node-id=1165-2049),
+[desktop slideout](https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9?node-id=1240-175083)
+and [mobile slideout](https://www.figma.com/design/fIfKyBB3UUanoV9lZoTBx9?node-id=1251-10038).
+Figma design-context extraction failed; actual screenshots and metadata were
+available and are treated as references, not extracted implementation specs.
+Mobbin examples inspected were
+[Asana](https://mobbin.com/screens/95d319c8-e44a-48e0-bb32-83937d98ba96),
+[Plain](https://mobbin.com/screens/150cc4a9-6311-444b-9902-01e491c25a5f) and
+[Lightfield](https://mobbin.com/screens/c1322cfa-763a-4f21-8b49-0062d3c40ed1).
+The tablet query returned phone examples, so tablet adaptation follows measured
+content constraints, not an assertion that a tablet reference was verified.
 
 ## Count contract
 

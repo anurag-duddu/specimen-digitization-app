@@ -1,17 +1,17 @@
-/// Adaptive collection navigation with a named active destination and
-/// compact bottom tabs. The queue is content, not global navigation.
+/// Labelled desktop navigation and compact bottom tabs. The specimen queue
+/// is content, with an optional adaptive companion beside a record.
 library;
 
 import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../administrator_contact.dart';
 import '../models.dart';
+import '../screens/workbench/workbench_layout.dart';
 import '../screens/costs/costs_access.dart';
 import '../screens/costs/costs_screen.dart' show CostsScreenCopy;
 import '../widgets/widgets.dart';
@@ -158,52 +158,24 @@ class _AppShellState extends State<AppShell> {
   bool? _desktopExpanded;
   bool _stacked = false;
   bool _expanded = false;
+  bool _overlay = false;
   Size? _visibleSpecimensSize;
-  final FocusScopeNode _sidebarFocus = FocusScopeNode(
-    debugLabel: 'Workspace sidebar',
-    traversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
+  final FocusNode _closeQueueFocus = FocusNode(
+    debugLabel: 'Close specimen queue',
   );
-  FocusNode? _returnFocus;
   bool _selecting = false;
 
   @override
   void dispose() {
-    _sidebarFocus.dispose();
+    _closeQueueFocus.dispose();
     super.dispose();
   }
 
   void _toggle() => _expanded ? _close() : _open();
 
-  void _open() {
-    _returnFocus = FocusManager.instance.primaryFocus;
-    setState(() {
-      _desktopExpanded = true;
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_expanded) return;
-      if (AppShell.insideRecord(GoRouterState.of(context).uri)) {
-        widget.specimensFocus?.requestFocus();
-      } else {
-        _sidebarFocus.requestFocus();
-      }
-    });
-  }
+  void _open() => setState(() => _desktopExpanded = true);
 
-  void _close() {
-    final previous = _returnFocus;
-    _returnFocus = null;
-    setState(() {
-      _desktopExpanded = false;
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _expanded) return;
-      if (previous?.context != null && previous!.canRequestFocus) {
-        previous.requestFocus();
-      } else {
-        FocusScope.of(context).nextFocus();
-      }
-    });
-  }
+  void _close() => setState(() => _desktopExpanded = false);
 
   Future<void> _select(WorkspaceDestination next) async {
     if (_selecting) return;
@@ -239,7 +211,7 @@ class _AppShellState extends State<AppShell> {
   Widget build(BuildContext context) {
     // Read without depending on InheritedNotifier: quiet queue polls must not
     // rebuild structural nav. Chrome (busy strip, error) listens separately.
-    final controller = WorkspaceScope.read(context);
+    final WorkspaceController controller = WorkspaceScope.read(context);
     return ListenableBuilder(
       listenable: controller.chromeChanges,
       builder: (BuildContext context, Widget? _) {
@@ -274,32 +246,26 @@ class _AppShellState extends State<AppShell> {
               constraints,
               textScaler: textScaler,
             );
-            final canShowList =
-                constraints.maxWidth - navigationWidth >=
-                WindowArrangement.listPaneWidthOf(textScaler) +
-                    layout.minColumnWidth +
-                    layout.gap;
-            final listFitsComfortably =
-                constraints.maxWidth - navigationWidth >=
-                WindowArrangement.listPaneWidthOf(textScaler) +
-                    layout.readableMax +
-                    layout.gutter * 2;
             final listBesideRecord = record && !_stacked;
+            // A companion must leave room for the photograph and inspector. On
+            // tablet widths it overlays the record instead of changing its layout.
+            final scale = math.max(1.0, textScaler.scale(16) / 16);
+            final panelLayout = UiSidePanelLayout.resolve(
+              availableWidth: math.max(
+                0.0,
+                constraints.maxWidth - (_stacked ? 0 : navigationWidth),
+              ),
+              panelWidth: WindowArrangement.listPaneWidthOf(textScaler),
+              minBodyWidth:
+                  2 * reviewColumnMinWidth * scale +
+                  layout.gap +
+                  layout.gutter * 2,
+            );
+            _overlay =
+                listBesideRecord && panelLayout.mode == UiSidePanelMode.overlay;
             _expanded =
                 listRoute ||
-                (listBesideRecord &&
-                    canShowList &&
-                    (_desktopExpanded ?? listFitsComfortably));
-            final sidebarWidth = math.min(
-              WindowArrangement.listPaneWidthOf(textScaler),
-              math.max(
-                0.0,
-                constraints.maxWidth -
-                    MediaQuery.paddingOf(context).horizontal -
-                    navigationWidth -
-                    ui.space.s4,
-              ),
-            );
+                (listBesideRecord && (_desktopExpanded ?? !_overlay));
             final sidebar = _sidebar(
               context,
               controller,
@@ -308,37 +274,49 @@ class _AppShellState extends State<AppShell> {
             );
             return AppSidebarScope(
               expanded: _expanded,
-              overlay: false,
+              overlay: _overlay,
               docked: !_stacked,
               mobileSpecimens: listBesideRecord ? null : sidebar,
               toggle: _toggle,
               close: _close,
               child: QueueWorkspaceScope(
                 expanded: _expanded,
-                showQueue: listBesideRecord && canShowList ? _toggle : null,
-                hideQueue: () {},
-                child: CallbackShortcuts(
-                  bindings: <ShortcutActivator, VoidCallback>{
-                    if (_expanded && !listRoute && !_stacked)
-                      const SingleActivator(LogicalKeyboardKey.escape): _close,
-                  },
-                  child: ColoredBox(
-                    color: ui.color.ground,
-                    child: Column(
-                      children: <Widget>[
-                        Expanded(
-                          child: MediaQuery.removePadding(
-                            context: context,
-                            removeBottom: navVisible,
-                            child: SafeArea(
-                              top: false,
-                              left: false,
-                              right: false,
-                              bottom: _stacked && record,
-                              // The frame stays at this one place in the tree at
-                              // every arrangement, so resizing across one keeps
-                              // the open record, its drafts and its scroll: only
-                              // the `nav` slot comes and goes beside the body.
+                showQueue: listBesideRecord ? _toggle : null,
+                hideQueue: () {
+                  if (_overlay) _close();
+                },
+                child: ColoredBox(
+                  color: ui.color.ground,
+                  child: Column(
+                    children: <Widget>[
+                      Expanded(
+                        child: MediaQuery.removePadding(
+                          context: context,
+                          removeBottom: navVisible,
+                          child: SafeArea(
+                            top: false,
+                            left: false,
+                            right: false,
+                            bottom: _stacked && record,
+                            // The frame stays at this one place in the tree at
+                            // every arrangement, so resizing across one keeps
+                            // the open record, its drafts and its scroll: only
+                            // the `nav` slot comes and goes beside the body.
+                            child: UiSidePanel(
+                              open: listBesideRecord && _expanded,
+                              mode: panelLayout.mode,
+                              width: panelLayout.width,
+                              panel: listBesideRecord ? sidebar : null,
+                              leading: _stacked
+                                  ? null
+                                  : _navigation(context, controller),
+                              leadingWidth: _stacked ? 0 : navigationWidth,
+                              // Opening a queue on a touch tablet must not summon
+                              // the keyboard before the reviewer chooses search.
+                              initialFocusNode: _closeQueueFocus,
+                              semanticsLabel: 'Specimen queue',
+                              dismissLabel: 'Hide queue',
+                              onDismiss: _close,
                               child: UiScaffold(
                                 sky: AppShell.skyOf(location),
                                 header: _stacked && !record
@@ -354,17 +332,6 @@ class _AppShellState extends State<AppShell> {
                                         busy: busy,
                                         window: WindowClass.of(context),
                                       ),
-                                nav: _stacked
-                                    ? null
-                                    : _dockedNavigation(
-                                        context,
-                                        controller,
-                                        sidebar: listBesideRecord
-                                            ? sidebar
-                                            : null,
-                                        sidebarWidth: sidebarWidth,
-                                      ),
-                                navPlacement: UiNavPlacement.edge,
                                 body: Semantics(
                                   container: true,
                                   explicitChildNodes: true,
@@ -374,9 +341,9 @@ class _AppShellState extends State<AppShell> {
                             ),
                           ),
                         ),
-                        if (navVisible) _mobileNav(context),
-                      ],
-                    ),
+                      ),
+                      if (navVisible) _mobileNav(context),
+                    ],
                   ),
                 ),
               ),
@@ -466,8 +433,10 @@ class _AppShellState extends State<AppShell> {
                     children: [
                       const Spacer(),
                       UiIconButton(
-                        icon: UiIcons.sidebar,
-                        semanticsLabel: 'Close sidebar',
+                        key: const ValueKey<String>('queue-panel-close'),
+                        icon: UiIcons.close,
+                        semanticsLabel: 'Hide queue',
+                        focusNode: _closeQueueFocus,
                         onPressed: _close,
                       ),
                     ],
@@ -480,12 +449,16 @@ class _AppShellState extends State<AppShell> {
                   window: WindowClass.of(context),
                 ),
               Expanded(
-                child: widget.specimens != null
-                    ? LayoutBuilder(
+                child: widget.specimens == null
+                    ? const SizedBox.shrink()
+                    : LayoutBuilder(
                         builder: (context, constraints) {
                           if (_expanded) {
                             _visibleSpecimensSize = constraints.biggest;
                           }
+                          // The phone's queue lives in an offstage route while
+                          // a record is open. Retain its last visible viewport
+                          // so hidden layout cannot clamp its scroll offset.
                           final retained = _expanded
                               ? null
                               : _visibleSpecimensSize;
@@ -498,8 +471,7 @@ class _AppShellState extends State<AppShell> {
                             child: widget.specimens,
                           );
                         },
-                      )
-                    : const SizedBox.shrink(),
+                      ),
               ),
             ],
           ),
@@ -507,35 +479,6 @@ class _AppShellState extends State<AppShell> {
       ),
     );
   }
-
-  /// Global navigation is independent of the optional record queue. Intake
-  /// never carries that queue, and the Queue route owns its full content area.
-  Widget _dockedNavigation(
-    BuildContext context,
-    WorkspaceController controller, {
-    required Widget? sidebar,
-    required double sidebarWidth,
-  }) => Row(
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      _navigation(context, controller),
-      if (sidebar != null)
-        Offstage(
-          offstage: !_expanded,
-          child: ExcludeFocus(
-            excluding: !_expanded,
-            child: ExcludeSemantics(
-              excluding: !_expanded,
-              child: SizedBox(
-                width: sidebarWidth,
-                child: FocusScope(node: _sidebarFocus, child: sidebar),
-              ),
-            ),
-          ),
-        ),
-    ],
-  );
 
   Widget _navigation(BuildContext context, WorkspaceController controller) {
     final ui = context.ui;
@@ -545,7 +488,6 @@ class _AppShellState extends State<AppShell> {
         child: UiSidebar(
           key: const ValueKey<String>('global-rail'),
           destinations: AppShell.destinations,
-          labels: UiNavigationLabels.selectedOnly,
           currentIndex: widget.destination.index,
           semanticsLabel: AppShell.navigationLabel,
           onSelect: (index) => _select(WorkspaceDestination.values[index]),

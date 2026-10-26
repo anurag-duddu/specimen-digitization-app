@@ -284,7 +284,7 @@ void main() {
     expect(search.controller!.text, 'fixture-001');
     expect(repository.calls, isEmpty);
 
-    await tester.tap(uiIconButton('Open sidebar'));
+    await tester.tap(uiIconButton('Show queue'));
     await tester.pumpAndSettle();
     expect(tester.state(pane), same(queueState));
     expect(search.controller!.text, 'fixture-001');
