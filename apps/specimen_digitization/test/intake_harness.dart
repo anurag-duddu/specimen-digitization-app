@@ -3,11 +3,26 @@
 // The intake screen decodes real image bytes when a file is chosen, which
 // only happens under `tester.runAsync`. Every test needs the same "press the
 // button, wait for the decode to finish" dance, so it lives here once.
+//
+// Importing this library also pins intake SHA-256 / quality measure to
+// in-process compute so Isolate.run does not stall AutomatedTestWidgetsFlutterBinding.
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
+import 'package:specimen_digitization/src/intake_compute.dart';
 import 'package:specimen_digitization/src/screens/intake/capture_card.dart';
+
+/// Ensures [intakeRunOffUi] runs on the test isolate for every admission path.
+///
+/// Safe to call more than once. [test/flutter_test_config.dart] already pins
+/// this for the whole package; call again from suites that need a local
+/// guarantee after another test cleared the override.
+void pinIntakeComputeForTests() {
+  debugIntakeComputeOverride = intakeComputeInProcess;
+}
+
+bool get _intakeComputeHarnessPinned => debugIntakeComputeOverride != null;
 
 /// The file picker button.
 final Finder chooseFilesButton = find.byKey(
@@ -46,6 +61,7 @@ bool batchConfirmed(WidgetTester tester) =>
 /// Selects the classification for new files using the actual switch.
 /// Existing and retried uploads keep their original classification.
 Future<void> selectSensitivity(WidgetTester tester, String label) async {
+  assert(_intakeComputeHarnessPinned);
   final bool wanted = switch (label) {
     'Sensitive' => true,
     'Not sensitive' => false,
@@ -68,6 +84,8 @@ Future<void> selectSensitivity(WidgetTester tester, String label) async {
 /// Presses the file picker and waits for every chosen file to be read,
 /// hashed and measured.
 Future<void> chooseFiles(WidgetTester tester) async {
+  assert(_intakeComputeHarnessPinned);
+  pinIntakeComputeForTests();
   if (chooseFilesButton.evaluate().isEmpty) {
     final addPhotos = find.byKey(const ValueKey<String>('intake-add-photos'));
     await tester.ensureVisible(addPhotos);

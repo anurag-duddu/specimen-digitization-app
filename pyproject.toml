@@ -43,3 +43,24 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/specimen_digitization"]
+
+# Default `pytest` is product tests only. scripts/ci/python_shards.py passes
+# `tests` and the whole `scripts` tree explicitly for the sharded verify gate.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    "build",
+    "dist",
+    "*.egg-info",
+    "apps",
+    "dataconnect",
+    "docs",
+    "scripts",
+    "containers",
+    "infra",
+    "outputs",
+]

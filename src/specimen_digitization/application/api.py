@@ -1046,12 +1046,9 @@ def create_app(
             and m.get("can_view_sensitive") is True
             for m in member_rows(user)
         )
-        document["items"] = [
-            u
-            for u in repository.documents(p.scope, "upload")
-            if u["batch_id"] == batch_id
-            and (can_view_sensitive or u.get("sensitive", True) is False)
-        ]
+        document["items"] = repository.uploads_for_batch(
+            p.scope, batch_id, include_sensitive=can_view_sensitive
+        )
         return document
 
     def duplicate_source(p, user, checksum):
@@ -1083,14 +1080,11 @@ def create_app(
             raise ValueError("Declare both pixel dimensions or omit both")
         if body.width is not None and body.width * body.height > 40000000:
             raise ValueError("Image exceeds 40 megapixel decoding limit")
-        for prior in repository.documents(p.scope, "upload"):
-            if (
-                prior["batch_id"] == batch_id
-                and prior.get("idempotency_key") == idempotency_key
-            ):
-                if prior["request_digest"] != digest(body.model_dump()):
-                    raise Conflict("Idempotency payload mismatch")
-                return prior
+        prior = repository.upload_by_idempotency(p.scope, batch_id, idempotency_key)
+        if prior is not None:
+            if prior["request_digest"] != digest(body.model_dump()):
+                raise Conflict("Idempotency payload mismatch")
+            return prior
         ident = str(uuid5(NAMESPACE_URL, batch_id + body.client_item_id))
         payload = dict(
             body.model_dump(),

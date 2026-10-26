@@ -209,136 +209,146 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final controller = WorkspaceScope.of(context);
-    final location = GoRouterState.of(context).uri;
-    final record = AppShell.insideRecord(location);
-    final listRoute =
-        widget.destination == WorkspaceDestination.queue && !record;
-    final busy =
-        controller.loading ||
-        controller.recordLoading ||
-        controller.mutating ||
-        controller.loadingMore;
-    final ui = context.ui;
-    // One answer for the whole window, from the design system (05 section 2,
-    // amended 2026-10-17). The intake page, the record's loading bar, the
-    // routes, the sheets and the band ask the same question of the same
-    // function, so a phone on its side that draws the tab bar also gets the
-    // sheet and the strip.
-    final arrangement = WindowArrangement.of(context);
-    _stacked = arrangement.isStacked;
-    final navVisible =
-        _stacked && !record && MediaQuery.viewInsetsOf(context).bottom == 0;
+    // Read without depending on InheritedNotifier: quiet queue polls must not
+    // rebuild structural nav. Chrome (busy strip, error) listens separately.
+    final WorkspaceController controller = WorkspaceScope.read(context);
+    return ListenableBuilder(
+      listenable: controller.chromeChanges,
+      builder: (BuildContext context, Widget? _) {
+        final location = GoRouterState.of(context).uri;
+        final record = AppShell.insideRecord(location);
+        final listRoute =
+            widget.destination == WorkspaceDestination.queue && !record;
+        final busy =
+            controller.loading ||
+            controller.recordLoading ||
+            controller.mutating ||
+            controller.loadingMore;
+        final ui = context.ui;
+        // One answer for the whole window, from the design system (05 section 2,
+        // amended 2026-10-17). The intake page, the record's loading bar, the
+        // routes, the sheets and the band ask the same question of the same
+        // function, so a phone on its side that draws the tab bar also gets the
+        // sheet and the strip.
+        final arrangement = WindowArrangement.of(context);
+        _stacked = arrangement.isStacked;
+        final navVisible =
+            _stacked && !record && MediaQuery.viewInsetsOf(context).bottom == 0;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final textScaler = MediaQuery.textScalerOf(context);
-        final navigationWidth = UiSidebar.widthOf(
-          context,
-          destinations: AppShell.destinations,
-        );
-        final layout = UiLayoutMetrics.fromConstraints(
-          constraints,
-          textScaler: textScaler,
-        );
-        final listBesideRecord = record && !_stacked;
-        // A companion must leave room for the photograph and inspector. On
-        // tablet widths it overlays the record instead of changing its layout.
-        final scale = math.max(1.0, textScaler.scale(16) / 16);
-        final panelLayout = UiSidePanelLayout.resolve(
-          availableWidth: math.max(
-            0.0,
-            constraints.maxWidth - (_stacked ? 0 : navigationWidth),
-          ),
-          panelWidth: WindowArrangement.listPaneWidthOf(textScaler),
-          minBodyWidth:
-              2 * reviewColumnMinWidth * scale + layout.gap + layout.gutter * 2,
-        );
-        _overlay =
-            listBesideRecord && panelLayout.mode == UiSidePanelMode.overlay;
-        _expanded =
-            listRoute || (listBesideRecord && (_desktopExpanded ?? !_overlay));
-        final sidebar = _sidebar(
-          context,
-          controller,
-          canClose: listBesideRecord,
-          busy: busy,
-        );
-        return AppSidebarScope(
-          expanded: _expanded,
-          overlay: _overlay,
-          docked: !_stacked,
-          mobileSpecimens: listBesideRecord ? null : sidebar,
-          toggle: _toggle,
-          close: _close,
-          child: QueueWorkspaceScope(
-            expanded: _expanded,
-            showQueue: listBesideRecord ? _toggle : null,
-            hideQueue: () {
-              if (_overlay) _close();
-            },
-            child: ColoredBox(
-              color: ui.color.ground,
-              child: Column(
-                children: <Widget>[
-                  Expanded(
-                    child: MediaQuery.removePadding(
-                      context: context,
-                      removeBottom: navVisible,
-                      child: SafeArea(
-                        top: false,
-                        left: false,
-                        right: false,
-                        bottom: _stacked && record,
-                        // The frame stays at this one place in the tree at
-                        // every arrangement, so resizing across one keeps
-                        // the open record, its drafts and its scroll: only
-                        // the `nav` slot comes and goes beside the body.
-                        child: UiSidePanel(
-                          open: listBesideRecord && _expanded,
-                          mode: panelLayout.mode,
-                          width: panelLayout.width,
-                          panel: listBesideRecord ? sidebar : null,
-                          leading: _stacked
-                              ? null
-                              : _navigation(context, controller),
-                          leadingWidth: _stacked ? 0 : navigationWidth,
-                          // Opening a queue on a touch tablet must not summon
-                          // the keyboard before the reviewer chooses search.
-                          initialFocusNode: _closeQueueFocus,
-                          semanticsLabel: 'Specimen queue',
-                          dismissLabel: 'Hide queue',
-                          onDismiss: _close,
-                          child: UiScaffold(
-                            sky: AppShell.skyOf(location),
-                            header: _stacked && !record
-                                ? _compactTopBar(
-                                    controller,
-                                    listRoute: listRoute,
-                                  )
-                                : null,
-                            banner: _stacked && listRoute
-                                ? null
-                                : _Chrome(
-                                    controller: controller,
-                                    busy: busy,
-                                    window: WindowClass.of(context),
-                                  ),
-                            body: Semantics(
-                              container: true,
-                              explicitChildNodes: true,
-                              child: widget.child,
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final textScaler = MediaQuery.textScalerOf(context);
+            final navigationWidth = UiSidebar.widthOf(
+              context,
+              destinations: AppShell.destinations,
+            );
+            final layout = UiLayoutMetrics.fromConstraints(
+              constraints,
+              textScaler: textScaler,
+            );
+            final listBesideRecord = record && !_stacked;
+            // A companion must leave room for the photograph and inspector. On
+            // tablet widths it overlays the record instead of changing its layout.
+            final scale = math.max(1.0, textScaler.scale(16) / 16);
+            final panelLayout = UiSidePanelLayout.resolve(
+              availableWidth: math.max(
+                0.0,
+                constraints.maxWidth - (_stacked ? 0 : navigationWidth),
+              ),
+              panelWidth: WindowArrangement.listPaneWidthOf(textScaler),
+              minBodyWidth:
+                  2 * reviewColumnMinWidth * scale +
+                  layout.gap +
+                  layout.gutter * 2,
+            );
+            _overlay =
+                listBesideRecord && panelLayout.mode == UiSidePanelMode.overlay;
+            _expanded =
+                listRoute ||
+                (listBesideRecord && (_desktopExpanded ?? !_overlay));
+            final sidebar = _sidebar(
+              context,
+              controller,
+              canClose: listBesideRecord,
+              busy: busy,
+            );
+            return AppSidebarScope(
+              expanded: _expanded,
+              overlay: _overlay,
+              docked: !_stacked,
+              mobileSpecimens: listBesideRecord ? null : sidebar,
+              toggle: _toggle,
+              close: _close,
+              child: QueueWorkspaceScope(
+                expanded: _expanded,
+                showQueue: listBesideRecord ? _toggle : null,
+                hideQueue: () {
+                  if (_overlay) _close();
+                },
+                child: ColoredBox(
+                  color: ui.color.ground,
+                  child: Column(
+                    children: <Widget>[
+                      Expanded(
+                        child: MediaQuery.removePadding(
+                          context: context,
+                          removeBottom: navVisible,
+                          child: SafeArea(
+                            top: false,
+                            left: false,
+                            right: false,
+                            bottom: _stacked && record,
+                            // The frame stays at this one place in the tree at
+                            // every arrangement, so resizing across one keeps
+                            // the open record, its drafts and its scroll: only
+                            // the `nav` slot comes and goes beside the body.
+                            child: UiSidePanel(
+                              open: listBesideRecord && _expanded,
+                              mode: panelLayout.mode,
+                              width: panelLayout.width,
+                              panel: listBesideRecord ? sidebar : null,
+                              leading: _stacked
+                                  ? null
+                                  : _navigation(context, controller),
+                              leadingWidth: _stacked ? 0 : navigationWidth,
+                              // Opening a queue on a touch tablet must not summon
+                              // the keyboard before the reviewer chooses search.
+                              initialFocusNode: _closeQueueFocus,
+                              semanticsLabel: 'Specimen queue',
+                              dismissLabel: 'Hide queue',
+                              onDismiss: _close,
+                              child: UiScaffold(
+                                sky: AppShell.skyOf(location),
+                                header: _stacked && !record
+                                    ? _compactTopBar(
+                                        controller,
+                                        listRoute: listRoute,
+                                      )
+                                    : null,
+                                banner: _stacked && listRoute
+                                    ? null
+                                    : _Chrome(
+                                        controller: controller,
+                                        busy: busy,
+                                        window: WindowClass.of(context),
+                                      ),
+                                body: Semantics(
+                                  container: true,
+                                  explicitChildNodes: true,
+                                  child: widget.child,
+                                ),
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
+                      if (navVisible) _mobileNav(context),
+                    ],
                   ),
-                  if (navVisible) _mobileNav(context),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
