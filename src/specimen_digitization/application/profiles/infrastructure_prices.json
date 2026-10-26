@@ -8,6 +8,7 @@
     "https://cloud.google.com/run/pricing",
     "https://docs.cloud.google.com/run/docs/configuring/billing-settings",
     "https://cloud.google.com/storage/pricing",
+    "https://cloud.google.com/storage/docs/storage-classes",
     "https://cloud.google.com/sql/pricing",
     "https://firebase.google.com/docs/sql-connect/pricing",
     "https://docs.cloud.google.com/billing/docs/how-to/reports"
@@ -35,7 +36,8 @@
   },
   "cloud_storage": {
     "hours_per_month": 730,
-    "standard_micros_per_gib_month": {"us-east4": 23000, "us": 26000}
+    "standard_micros_per_gib_month": {"us-east1": 20000, "us-east4": 23000, "us": 26000},
+    "note": "us-east1 (South Carolina, USD 0.02 per GiB-month) was read from cloud.google.com/storage/pricing on 2026-10-26, after the rest of this file. The app bucket is in US-EAST1 and its default class is the legacy REGIONAL, which cloud.google.com/storage/docs/storage-classes says is equivalent to Standard in a region."
   },
   "cloud_sql": {
     "machine": "db-f1-micro",
