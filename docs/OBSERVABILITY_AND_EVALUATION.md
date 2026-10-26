@@ -129,26 +129,37 @@ matching prompts in Logfire, then use `development`, `candidate`, and
 the frozen offline dataset and review gate. Record the resolved version with
 every run; a label by itself is not reproducible evidence.
 
-> 2026-10-26: the prompts exist in Logfire. The four above and 26 mirrors of the
+> 2026-10-25: the prompts exist in Logfire. The four above and 26 mirrors of the
 > prompt files the code reads directly (`prompt__field_expert__<field>` for the
 > field experts, `prompt__six_specialist__<role>` for the six-specialist harness)
 > are in the project's Prompts page, created through Logfire's MCP server with a
 > project API key: names starting with `prompt__` can only be created as prompts
 > (`prompt_create`, slug `a-b--c` becomes variable `prompt__a_b__c`), not as
-> plain variables, and the Logfire sign-in used by a desktop agent never carries
-> `project:write_variables`. Version 1 of each is the text at main `1ca922535`;
-> the label `main` points at it; the playground settings name the pipeline's
-> real route and model. For the four variables the code resolves, the label
-> `development` (the code's default `LOGFIRE_PROMPT_LABEL`) points at the code
-> default and the default rollout serves that label, so a client that can read
-> variables still uses the code's text: the SDK falls back from a missing label
-> to the rollout, which would otherwise serve the latest version. Production
-> sets `LOGFIRE_TOKEN` only (`scripts/ci/runtime_settings.py`) and the SDK needs
-> `LOGFIRE_API_KEY` to read variables, so production resolves every prompt from
-> code regardless. To hand a prompt to Logfire: give the runtime an API key with
-> `project:read_variables` and point `development` (or the configured label) at
-> a version. The mirrors go stale when their files change; register a new
-> version after a prompt edit.
+> plain variables, and the Logfire sign-in used by a desktop agent did not carry
+> `project:write_variables` after two re-authorisations that day. Version 1 of
+> each is the text at main `1ca922535`, checked byte for byte through
+> `variable_get` after registration; the label `main` points at it; the
+> playground settings name the pipeline's real route and model. The four
+> variables the code resolves also carry the label `development` (the code's
+> default `LOGFIRE_PROMPT_LABEL`), pointing at the code default, and their
+> default rollout serves that label; the mirrors carry `main` only. So a client
+> that reads variables still uses the code's text: the SDK falls back to the
+> rollout when the label lookup yields no value
+> (`logfire/variables/variable.py`, `_lookup_serialized`), and the rollout would
+> otherwise serve the latest version. Production resolves every prompt from code
+> regardless of credentials: `observability.py` configures an explicit empty
+> local variables provider (`LocalVariablesOptions(config=VariablesConfig(variables={}))`),
+> as does `bounded_telemetry.py` (covered by
+> `test_bounded_prompt_resolution_uses_code_fallback_without_remote_provider`),
+> so the remote provider never starts; `scripts/ci/runtime_settings.py` sets
+> `LOGFIRE_TOKEN` only, and the SDK needs `LOGFIRE_API_KEY` for remote variables
+> in any case. To hand a prompt to Logfire: change those variables options, give
+> the runtime an API key with `project:read_variables`, and point `development`
+> (or the configured label) at a version. The mirrors go stale when their files
+> change; register a new version after a prompt edit. Agent instructions outside
+> these 30 (the collection classifier's `GUARDRAILS` plus its configured
+> `prompt_text` in `application/hf_collection_classifier.py`, the smoke and
+> preflight prompts) are not registered.
 
 Logfire Prompt Management currently requires an eligible plan and an enabled AI
 Gateway for UI prompt tests. The gateway supports Hugging Face BYOK, but do not
@@ -243,9 +254,10 @@ repository default:
 
 1. Confirm Logfire plan access, project membership, US-region retention, and
    production data policy.
-2. Create the managed prompts and their labels in Logfire. Done 2026-10-26 for
-   the prompts and the `main` and `development` labels (see Managed prompts);
-   `candidate` and `production` labels wait for the promotion process.
+2. Create the managed prompts and their labels in Logfire. Done 2026-10-25 for
+   the prompts, the `main` label on all of them and the `development` label on
+   the four the code resolves (see Managed prompts); `candidate` and
+   `production` labels wait for the promotion process.
 3. Enable a development-only Logfire Gateway route if Prompt Playground tests
    against Hugging Face are approved.
 4. Create the expert-reviewed dataset and assign its owner and freeze criteria.
