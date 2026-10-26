@@ -64,9 +64,18 @@ void main() {
       expect(find.byType(UiRail), findsNothing);
       expect(find.byType(UiSidebar), mobile ? findsNothing : findsOneWidget);
       if (!mobile) {
-        final scaffold = tester.widget<UiScaffold>(find.byType(UiScaffold));
-        expect(scaffold.nav, isNotNull);
-        expect(scaffold.navPlacement, UiNavPlacement.edge);
+        final panel = tester.widget<UiSidePanel>(find.byType(UiSidePanel));
+        expect(panel.leading, isNotNull);
+        expect(panel.leadingWidth, greaterThan(0));
+        for (final label in ['Specimens', 'Intake']) {
+          expect(
+            find.descendant(
+              of: find.byType(UiSidebar),
+              matching: find.text(label),
+            ),
+            findsOneWidget,
+          );
+        }
       }
       expect(uiDestination('Specimens'), findsOneWidget);
       expect(uiDestination('Intake'), findsOneWidget);
@@ -158,11 +167,11 @@ void main() {
       expect(find.byKey(const ValueKey('global-rail')), findsOneWidget);
       expect(uiMenuTrigger(RegExp('^Account menu')), findsOneWidget);
       expect(find.byKey(const ValueKey('global-sidebar')), findsOneWidget);
-      await tester.tap(uiIconButton('Close sidebar'));
+      await tester.tap(find.byKey(const ValueKey('queue-panel-close')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('global-sidebar')), findsNothing);
-      expect(uiIconButton('Open sidebar'), findsOneWidget);
-      await tester.tap(uiIconButton('Open sidebar'));
+      expect(uiIconButton('Show queue'), findsOneWidget);
+      await tester.tap(uiIconButton('Show queue'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('global-sidebar')), findsOneWidget);
       await tester.pumpWidget(const SizedBox());

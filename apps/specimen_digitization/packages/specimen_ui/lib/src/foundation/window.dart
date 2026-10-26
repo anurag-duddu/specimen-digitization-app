@@ -79,19 +79,12 @@ enum WindowClass {
 /// and every surface that asks gets it from here rather than from a number of
 /// its own.
 ///
-/// It reads three things the window class does not. The text scale, because
-/// the docked arrangement puts a list pane beside the content that is
-/// [listPaneWidth] wide at normal text and grows with the text, so at 200
-/// percent the same window has half the room beside it. The height, so a
-/// window under [dockedMinHeight] tall, a phone on its side, is arranged the
-/// way it is upright. And a width boundary that is not a Material 3 one,
-/// [dockedMinWidth]: with the 72 dp rail and the list pane open, a docked
-/// 768 dp window leaves 384 dp beside them, about a phone's width.
-///
-/// The boundaries are the shell's own since 2026-10-01, written there as
-/// literals until 2026-10-17 and moved here unchanged, so the captures and
-/// the device check made on them (#347, #350) still describe what ships. The
-/// list pane is 8 dp narrower than the shell's 320, see [listPaneWidth].
+/// Navigation also reads text scale and height, so a short landscape window
+/// or a window with large text retains the compact arrangement. Docked chrome
+/// begins at [dockedMinWidth] after text scaling. The host separately measures
+/// its actual navigation width and content requirements before docking an
+/// optional companion; [listDetail] is a wide-window hint, not permission to
+/// squeeze a record below its readable minimum.
 enum WindowArrangement {
   /// One pane at a time.
   ///
@@ -104,9 +97,7 @@ enum WindowArrangement {
   /// The list pane opens beside a record when the reviewer asks for it.
   docked,
 
-  /// Docked, with room for the list pane beside the record from the start.
-  ///
-  /// Material 3's list-detail canonical layout.
+  /// A wide docked window. Hosts still measure whether a companion fits.
   listDetail;
 
   /// The least scaled width that docks.
@@ -123,12 +114,9 @@ enum WindowArrangement {
 
   /// The list pane's width at normal text.
   ///
-  /// 312, so the rail and the pane together are the 384 dp the shell's
-  /// hand-built 64 dp column and 320 dp list took before 2026-10-17. `UiRail`
-  /// is 72 dp (10 section 4.4), and the 8 dp it grew by come out of the pane
-  /// rather than out of the content: at 1180 by 820 with the list open, a
-  /// record 8 dp narrower moves its decision bar's previous and next into the
-  /// overflow menu, and that window is the review desk.
+  /// Preferred content width. A shared side-panel layout bounds this to the
+  /// local allocation and chooses a modal overlay when docking would crowd
+  /// the body. It does not assume a particular primary navigation width.
   static const double listPaneWidth = 312;
 
   /// The text scale the arrangement reads.

@@ -134,6 +134,16 @@ List<WidgetbookComponent> get navigationComponents => [
     ],
   ),
   WidgetbookComponent(
+    name: 'UiSidePanel',
+    useCases: [
+      story(
+        'Adaptive companion panel',
+        'A roomy workspace docks its companion. Narrower allocations open it over the workspace without squeezing the content. Close, Escape and the scrim restore focus; text and scroll survive toggling. Primary navigation keeps all labels.',
+        (_) => const _SidePanelExample(),
+      ),
+    ],
+  ),
+  WidgetbookComponent(
     name: 'UiScaffold',
     useCases: [
       WidgetbookUseCase(
@@ -143,6 +153,74 @@ List<WidgetbookComponent> get navigationComponents => [
     ],
   ),
 ];
+
+class _SidePanelExample extends StatefulWidget {
+  const _SidePanelExample();
+  @override
+  State<_SidePanelExample> createState() => _SidePanelExampleState();
+}
+
+class _SidePanelExampleState extends State<_SidePanelExample> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 520,
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final metrics = UiLayoutMetrics.fromConstraints(
+          constraints,
+          textScaler: MediaQuery.textScalerOf(context),
+        );
+        final layout = UiSidePanelLayout.resolve(
+          availableWidth: constraints.maxWidth,
+          panelWidth: WindowArrangement.listPaneWidthOf(
+            MediaQuery.textScalerOf(context),
+          ),
+          minBodyWidth: metrics.readableMax,
+        );
+        return UiSidePanel(
+          open: _open,
+          mode: layout.mode,
+          width: layout.width,
+          onDismiss: () => setState(() => _open = false),
+          semanticsLabel: 'Specimen queue',
+          panel: UiDrawer(
+            title: 'Specimens',
+            onClose: () => setState(() => _open = false),
+            child: Column(
+              children: [
+                const UiField(label: 'Search specimen ID'),
+                for (var i = 1; i <= 20; i++)
+                  UiListRow(title: 'Example specimen $i', onPressed: () {}),
+              ],
+            ),
+          ),
+          child: ColoredBox(
+            color: context.ui.color.ground,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.all(context.ui.space.s4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  UiButton(
+                    label: _open ? 'Hide queue' : 'Show queue',
+                    variant: UiButtonVariant.secondary,
+                    onPressed: () => setState(() => _open = !_open),
+                  ),
+                  SizedBox(height: context.ui.space.s6),
+                  Text('Specimen details', style: context.ui.type.title),
+                  SizedBox(height: context.ui.space.s4),
+                  const UiField(label: 'Unfinished correction'),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  );
+}
 
 class _StepsExample extends StatefulWidget {
   const _StepsExample();
@@ -191,13 +269,6 @@ class _NavigationExampleState extends State<_NavigationExample> {
           alignment: AlignmentDirectional.topStart,
           child: switch (widget.kind) {
             'UiSidebar' => UiSidebar(
-              labels:
-                  context.knobs.boolean(
-                    label: 'Only label selected destination',
-                    initialValue: true,
-                  )
-                  ? UiNavigationLabels.selectedOnly
-                  : UiNavigationLabels.all,
               destinations: _destinations,
               currentIndex: _index,
               onSelect: _select,
