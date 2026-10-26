@@ -69,31 +69,47 @@ Readings of pilot label e98a924c-L2 (a 1946 Field Museum slide label from the Ph
 - B: the same with `Elev.6400'`, `Forest`, `Wings`, and an extra line `P-95-81-16`
 - C: the same with `DavaoProv.`, `Mostly forst`, `Wings & head`, `♂`, no extra line
 
-Today the first pass answers: preferred reader none (no reader is right everywhere); verdicts: the
-foot mark `uncertain` (it changes between runs), `4` not `&`, `♀` not `♂`, `forest` not `forst`,
-`P-95-81-16` not visible. The harness then settles country, province, locality, collector and date,
-and sends the elevation to review (unit unknown), because no rule lets it use the verdicts.
+What the first pass answered on this label with three readers, over 12 recorded runs
+(`~/specimen-golive/runs/three-readers-20261025/fp_three_reps*.jsonl`): preferred reader none in 9,
+A in 3. The foot mark: "A, no mark in the image" in 7, `uncertain` in 4, `neither` in 1. The extra
+line `P-95-81-16`: `uncertain` in 7, A in 3, `neither` in 2. `4` not `&`, `♀` not `♂` and `forest`
+not `forst`: 12 of 12. So on the two marks that matter, the one image judgement the harness gets
+changes from run to run.
 
-Under this spec the first pass gives, among others:
+What the harness then did (`~/specimen-golive/runs/free-harness-20261025/`): with two readers,
+collector, date, country, province, locality and the elevation all settled; the elevation settled at
+6,400 ft because the elevation check read B's "Elev.6400'" as feet and A's "Elev.6400" as no unit,
+so one reader's text was confirmed and the other ruled out. With three readers, collector and date
+settled; the elevation went to review in both repeats (A and C write no unit, B writes the mark,
+and the expert put both texts up as options); country, province and locality did not settle in
+either repeat (a gazetteer timeout in the first, unresolved in the second). The difference between
+the arms on the elevation is not the verdicts: it is that with a third reader writing no mark, the
+expert treated the two texts as open possibilities instead of settling on the confirmed one.
+
+Under this spec the first pass gives, among others (fields are the profile's; where today's
+experts put a unit is noted):
 
 | unit | readers | image | means | fields |
 |---|---|---|---|---|
-| CNHM. | A, B, C same | CNHM. | Chicago Natural History Museum (the Field Museum, 1943-1966) | institution |
+| CNHM. | A, B, C same | CNHM. | Chicago Natural History Museum, the Field Museum's name 1943-1966 | collection_code today (4 of 5 runs); the ontology decides whether an institution name is a code |
 | E Slope Mt. McKinley | A, B, C same | same | east slope of Mount McKinley, a locality | precise_location |
-| Davao Prov. / DavaoProv. | A "Davao Prov.", B "Davao Prov.", C "DavaoProv." | Davao Prov. | Davao Province | province_state |
-| Mindanao | same | same | the island | precise_location (context), not a field of its own |
+| Mindanao | same | same | the island | context for precise_location; no field of its own |
 | P.I. | same | same | Philippine Islands | country |
 | 6-Sept-1946 | same | same | 1946-09-06 | date_visited_from |
 | Elev.6400 / Elev.6400' | A "Elev.6400", B "Elev.6400'", C "Elev.6400" | uncertain (the foot mark) | elevation 6400, unit not certain from the image | elevation_from_ft |
 | H. Hoogstraal leg. | same | same | collected by H. Hoogstraal | collectors |
-| Shrubs, mostly forest | A, B "forest", C "forst" | forest | habitat note | habitat |
-| wings 4 head / Wings & head | A, B "4", C "&" | 4 | preparation note | verbatim_dts |
-| Sp.30 ♀ / ♂ | A, B "♀", C "♂" | ♀ | species number 30, female | collection_code, sex |
-| P-95-81-16 | B only | not visible | a code | collection_code (doubtful) |
+| Shrubs, mostly forest | A "forest", B "Forest", C "forst" | forest | habitat note | habitat |
+| wings 4 head / Wings & head | A, B "4", C "&" | 4 | a preparation note | none certain: the `verbatim_dts` brief calls that field's meaning an open museum question |
+| Sp.30 ♀ / ♂ | A, B "♀", C "♂" | ♀ | species number 30, female | taxon today (5 of 5 runs); the ontology decides where a species number and a sex go |
+| P-95-81-16 | B only | uncertain | a code | collection_code, doubtful |
 
-The harness then settles the elevation: the ontology says a 1946 CNHM Philippine label writes
-elevation in feet, Mount McKinley's slopes reach 6,400 ft and not 6,400 m, and one reader saw the
-foot mark; so 6,400 ft, recorded as derived with that reason. Today that field goes to review.
+The harness then settles the elevation: the ontology says no point in the Philippines reaches
+6,400 m (Mount Apo, the highest, is 2,954 m), so 6,400 can only be feet, and one reader saw the foot
+mark. The value is 6,400 ft, marked inferred by that rule and shown so to the reviewer. This
+reverses, deliberately and only through a named rule, the standing rule that a unit is never
+guessed (`GEOREFERENCING.md`, `FIELD_RESEARCH.md`, the elevation briefs); magnitude alone never
+decides. No gazetteer holds this Mount McKinley (`GEOREFERENCING.md`, the Mount Talomo crosswalk),
+so the locality itself stays what it is today.
 
 ## 3. The harness
 
