@@ -522,6 +522,8 @@ class UiMenuTrigger extends StatefulWidget {
   final IconSpec? icon;
 
   /// A visible label beside the glyph, where the trigger has room for one.
+  /// Horizontal labelled triggers use the same small, text-scaled glyph as a
+  /// medium button; icon-only and below-label navigation keep action size.
   final String? label;
 
   /// What the menu itself is called. Normally null: see
@@ -669,6 +671,12 @@ class _UiMenuTriggerState extends State<UiMenuTrigger> {
                             if (!widget.trailingIcon || widget.label == null)
                               UiIcon(
                                 widget.icon ?? UiIcons.more,
+                                size: widget.label == null
+                                    ? UiIconSize.action
+                                    : UiIconSize.small,
+                                textStyle: widget.label == null
+                                    ? null
+                                    : ui.type.label,
                                 color: ui.color.ink,
                               ),
                             if (widget.label != null) ...<Widget>[
@@ -686,6 +694,8 @@ class _UiMenuTriggerState extends State<UiMenuTrigger> {
                                 SizedBox(width: ui.space.s2),
                                 UiIcon(
                                   widget.icon ?? UiIcons.more,
+                                  size: UiIconSize.small,
+                                  textStyle: ui.type.label,
                                   color: ui.color.ink,
                                 ),
                               ],

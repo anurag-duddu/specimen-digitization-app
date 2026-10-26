@@ -67,6 +67,74 @@ class _MenuHostState extends State<_MenuHost> {
 void main() {
   setUp(chosen.clear);
 
+  testWidgets('labelled triggers match button proportions without shrinking '
+      'navigation or touch targets', (WidgetTester tester) async {
+    for (final scale in <double>[1, 2]) {
+      for (final trailing in <bool>[false, true]) {
+        await tester.pumpWidget(
+          uiHarness(
+            textScaler: TextScaler.linear(scale),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                UiButton(
+                  label: 'Button',
+                  leading: UiIcons.expand,
+                  onPressed: () {},
+                ),
+                UiMenuTrigger(
+                  label: 'Insects',
+                  icon: UiIcons.expand,
+                  trailingIcon: trailing,
+                  semanticsLabel: 'Switch collection',
+                  items: items(),
+                ),
+                UiMenuTrigger(
+                  key: const ValueKey('icon-only'),
+                  semanticsLabel: 'Actions',
+                  items: items(),
+                ),
+                UiMenuTrigger(
+                  key: const ValueKey('navigation'),
+                  label: 'Account',
+                  labelBelow: true,
+                  semanticsLabel: 'Account',
+                  items: items(),
+                ),
+              ],
+            ),
+          ),
+        );
+        final buttonIcon = find.descendant(
+          of: find.byType(UiButton),
+          matching: find.byType(Icon),
+        );
+        final trigger = find.bySemanticsLabel('Switch collection');
+        final menuIcon = find.descendant(
+          of: trigger,
+          matching: find.byType(Icon),
+        );
+        expect(tester.getSize(menuIcon), tester.getSize(buttonIcon));
+        expect(tester.getSize(trigger).height, greaterThanOrEqualTo(48));
+        expect(trigger, findsOneWidget);
+        for (final key in <String>['icon-only', 'navigation']) {
+          final glyph = find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(Icon),
+          );
+          expect(tester.getSize(glyph), const Size.square(24));
+        }
+        await tester.tap(trigger);
+        await tester.pumpAndSettle();
+        expect(find.text('Copy record id'), findsOneWidget);
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(find.text('Copy record id'), findsNothing);
+        expect(tester.takeException(), isNull);
+      }
+    }
+  });
+
   for (final PointerDeviceKind kind in <PointerDeviceKind>[
     PointerDeviceKind.mouse,
     PointerDeviceKind.touch,
