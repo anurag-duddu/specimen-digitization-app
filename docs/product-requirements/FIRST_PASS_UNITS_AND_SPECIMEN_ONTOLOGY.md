@@ -110,13 +110,18 @@ The owner, 2026-10-26: "It's not about location at all. At specimen level there 
 model that all models need to be aware of. This is the ontological model that needs to be baked in,
 so the harness can connect the dots."
 
-The model is one model of the specimen, not of a label or a field. It names the things a specimen's
-labels are about, how they relate, and what cannot be true together. It is written down once and
-baked into every model in the pipeline: the readers' instructions, the first pass, the organiser and
-every field expert carry it, so each one knows what a unit can be and what it can connect to; the
-rules that code can check are checked by code. Location is only the first example of a rule. It
-follows Darwin Core, the standard for specimen data, so every field here maps to a term others
-already use.
+The owner, same day: "It may not exist, the ontological conceptual model. Needs to be built and
+baked in."
+
+It does not exist anywhere to copy. We build it. It is one model of the specimen, not of a label or
+a field: the things a specimen's labels are about, how they relate, what cannot be true together,
+and what may be derived from what. It lives in the repository as one file, readable by people and by
+code, and is baked into every model in the pipeline: the readers' instructions, the first pass, the
+organiser and every field expert carry it, so each one knows what a unit can be and what it can
+connect to; the rules that code can check are checked by code. Location is only the first example
+of a rule. Darwin Core, the standard for specimen data, supplies only the names of the things and
+fields, so what we write maps to terms others already use; the connections and rules are ours, with
+the collection's curators.
 
 ### Things
 
