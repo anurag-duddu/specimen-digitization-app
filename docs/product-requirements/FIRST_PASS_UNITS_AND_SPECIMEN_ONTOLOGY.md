@@ -1,7 +1,8 @@
-# The reading array and the specimen ontology
+# The first pass's reading units and the specimen ontology
 
-Status: DRAFT for the owner's sign-off, 2026-10-26. Written from the owner's words of 2026-10-25 and
-2026-10-26. Nothing here is built. Every section says what exists today and what changes.
+Status: the owner's design, 2026-10-26, written from his words of 2026-10-25 and 2026-10-26. The
+owner set the substance; the structure is the engineer's decision (section 2). Nothing here is
+built. Every section says what exists today and what changes.
 
 ## 1. The pipeline, in the owner's words
 
@@ -24,11 +25,20 @@ Status: DRAFT for the owner's sign-off, 2026-10-26. Written from the owner's wor
 > how specimens work and how their data is connected and works." "Think ontologically for conceptual
 > model."
 
-## 2. The reading array
+On the shape of the first pass's output: "It's not an array. I'm using an example. It could be what
+best fits this structure. You decide. I'm not the engineer you are."
+
+## 2. The reading units
 
 The first pass reads every label of the specimen with the image. For each label it cuts the text at
 logical breaks (a word, a number, a code, a date, a phrase that belongs together) and gives, for each
-unit:
+unit, one record.
+
+Structure, decided by the engineer: a list of unit records, grouped by label and ordered by line, as
+JSON (a Pydantic model `ReadingUnit`). Reasons: the first pass already answers in structured JSON,
+so this is one schema change; the run record stores JSON, so the units are kept with the run and
+shown in the app as they are; the experts receive JSON, so each expert takes the units whose
+`fields` name its field. Each unit holds:
 
 | Key | What it holds |
 |---|---|
@@ -39,7 +49,7 @@ unit:
 | `fields` | The fields this unit could belong to, most likely first. May be empty |
 | `note` | One short sentence when something matters (a mark only one reader saw) |
 
-The first pass never settles anything. It lists. The array goes to the harness together with the
+The first pass never settles anything. It lists. The units go to the harness together with the
 raw readings, which stay available whole.
 
 ### The same label today and under this spec
@@ -81,7 +91,7 @@ foot mark; so 6,400 ft, recorded as derived with that reason. Today that field g
 The field experts stay as they are in shape: one per field, with lookups, running in parallel.
 What changes is what they receive and what may settle a field.
 
-- Input: the reading array (the units whose `fields` include this expert's field, from every label),
+- Input: the reading units (those whose `fields` include this expert's field, from every label),
   the whole raw readings, the ontology (section 4), and the other fields as they settle.
 - A field may settle on a unit whose `image` names a reader's text, or that a lookup confirms, or that
   the ontology makes the only consistent reading. The basis is recorded on the value, as now
@@ -90,7 +100,7 @@ What changes is what they receive and what may settle a field.
   together: a genus on one label and a species on another, a day on one and a year on another.
 - The literal is still text a reader wrote; nothing is invented. A value may differ from the
   literal only through a lookup or an ontology rule, both named.
-- When the array and the lookups leave two readings standing, the field goes to review with both,
+- When the units and the lookups leave two readings standing, the field goes to review with both,
   as now.
 - Unanimity of readers is no longer required for anything.
 
@@ -145,25 +155,33 @@ maps to a term others already use.
 
 | Piece | Today | Under this spec |
 |---|---|---|
-| Reader alignment | the code already aligns readers span by span (`reading_differences_among`) but outputs only the differences | the alignment becomes the units of the array |
-| First pass output | one preferred reader or none, a verdict per difference, notes | the reading array; no preferred reader |
-| Organiser | proposes field candidates from whole readings | folded into the array's `fields`; may stay as a check |
-| Field experts | all readings, organiser proposals, first-pass advice, lookups | the array, the readings, the ontology, lookups |
+| Reader alignment | the code already aligns readers span by span (`reading_differences_among`) but outputs only the differences | the alignment becomes the units |
+| First pass output | one preferred reader or none, a verdict per difference, notes | the reading units; no preferred reader |
+| Organiser | proposes field candidates from whole readings | folded into the units' `fields`; may stay as a check |
+| Field experts | all readings, organiser proposals, first-pass advice, lookups | the units, the readings, the ontology, lookups |
 | What may settle a field | all readers agree; a source confirms; another label agrees; the preferred reader's text | image names a reader's text; a source confirms; the ontology makes one reading the only consistent one; assembled across labels |
 | Derivation | feet/metres, end date = start date, parent place from the gazetteer | the ontology's rules, each recorded as the value's basis |
-| Review | several possibilities, or sources cannot resolve | the same, with the array's units as the options |
+| Review | several possibilities, or sources cannot resolve | the same, with the units as the options |
 
-## 6. Questions for the owner
+## 6. Decisions taken by the engineer
 
-1. May the first pass ever propose a text that no reader wrote, when it reads the image itself? This
-   draft says no: it may only choose among readers, say `uncertain`, or say `not visible`.
-2. The ontology's rules decide values (an elevation unit, a date from a code). Should every such
-   value be shown to the reviewer as derived, with the rule named, before it is accepted? This draft
-   says yes.
-3. Is Darwin Core acceptable as the frame for the ontology, with our own additions (label types,
-   institution conventions)?
-4. People sources (Wikidata, Bionomia) are new lookups: approve them as sources?
+1. The first pass never proposes a text no reader wrote. It chooses among the readers' texts, or
+   says `uncertain` or `not visible`. A reader can be added; the judge cannot become a reader.
+2. Every value an ontology rule decides (an elevation unit, a date read from a code) is recorded as
+   derived with the rule named, and the app shows it so to the reviewer. This follows the owner's
+   decision of 2026-10-08 that derived and inferred values are tracked by their basis.
+3. Darwin Core is the frame of the ontology, with our own additions (label types, institution and
+   era conventions).
+4. People lookups: Wikidata, already an approved source, first. Bionomia is a new source and is
+   added only if Wikidata leaves collectors unmatched; it is then put to the owner as a new source.
 
-## 7. Not in this document
+## 7. Build order
 
-How the app shows the array, the measurement plan, cost and schedule. They follow the sign-off.
+1. The reading units: first-pass schema and prompt, stored with the run; the experts receive them;
+   a field settles on a unit the image names, with unanimity dropped. Measured with the first pass
+   run live per repeat.
+2. The ontology: the written model, the code-checked rules (place chain, elevation range, date
+   order, code dates, label types), cross-label assembly of one field.
+3. People sources and the remaining knowledge tables.
+
+How the app shows the units, and cost and schedule, follow with each phase.
