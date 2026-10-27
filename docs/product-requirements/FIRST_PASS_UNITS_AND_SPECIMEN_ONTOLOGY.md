@@ -1,7 +1,7 @@
 # The first pass's reading units and the specimen ontology
 
 Status: the owner's design of 2026-10-26, written from his typed words of that day and revised on
-2026-10-27 after the fourth reviews of pull request #418. The owner set the substance; the design
+2026-10-27 after the fifth reviews of pull request #418. The owner set the substance; the design
 under his words is the engineer's. Nothing here is built. Every sentence about today names the
 file and line that shows it in this branch's tree (paths under `src/specimen_digitization/` unless
 another root is given; its `src/`, `tests/`, `scripts/` and `dataconnect/` are byte-identical to
@@ -160,13 +160,24 @@ writes it:
 
 1. The candidates are the texts the readers wrote at the unit, merged by today's `agreement_key`
    (letter case, spacing and Unicode form aside; `agreement.py:1200-1206`). Texts a source confirms
-   as one authority (the same place, today `BY_SAME_PLACE`, `:1530-1533`) are one candidate.
+   as one authority (the same place, today `BY_SAME_PLACE`, `:1530-1533`) are one candidate. So are
+   two texts of a place field that are one letter apart (`one_letter_apart`,
+   `application/georef_locality.py:364-371`) when a source confirms one of them by its own name and
+   rules the other out: a near spelling of a confirmed name (today `_preferred_spelling`,
+   `:1346-1363`, called at `:1518-1523`). The merged candidate's literal is the text the image
+   names, else the text the source confirmed exactly. Its value is the source's name. It has a
+   SOURCE backing and, where the image names one of its texts, an IMAGE backing, so it is cleared
+   (rule 4). Example, t1-329's province: the image names "Chimaltenago", TGN confirms
+   "Chimaltenango": one candidate, literal "Chimaltenago", value "Chimaltenango", cleared (the test
+   named in rule 5).
 2. A transcript a person decided binds: that text settles, unmarked, and the rule ends (today
    `person_decided`, `:1406-1410`).
 3. A candidate's backings are of three kinds. IMAGE: the first pass names its text at the unit.
    SOURCE: a source confirms it exactly, by its own name or expansion, and rules the others out
-   (today `BY_SOURCE`, `:1223`); or it is a near spelling of a source's one candidate (today
-   `BY_NEAR_SPELLING`, `:1521-1522`); or the same-place merge of rule 1. TEXT: two or more readers of this label
+   (today `BY_SOURCE`, `:1223`); or it is a merged candidate of rule 1; or it is a near spelling of
+   a source's one candidate (today `BY_NEAR_SPELLING`, `:1576-1579`). A near spelling backs a text
+   only when no reader's text is confirmed by its own name (`agreement.py:1563-1574`); with an
+   exact match present, the merge of rule 1 applies instead. TEXT: two or more readers of this label
    wrote it; or another label of the specimen, on which two or more readers agree, writes it (today
    `BY_OTHER_LABEL`, `MIN_BACKING_READERS = 2`, `:1228`). This changes today's agreement:
    `BY_AGREEMENT` needs every reader of the label (`:1503-1508`, "Every reader writes it"), and
@@ -182,10 +193,12 @@ writes it:
    the others listed. When none has (text against text), the field is `ambiguous` with the
    candidates as options, as today's `several_possibilities` (`step.py:1339-1342`). Today an
    exact source confirmation settles against an image-confirmed pick (`agreement.py:1515-1529`,
-   `:1575-1582`; test `tests/field_research/test_first_pass_advice.py:614-645`); only the
-   near-spelling and other-label branches refuse (`CONFLICT`, `agreement.py:1526`, `:1547`;
-   `FIRST_PASS_CONFLICT`, `:1611-1618`). Under this rule a source against the image settles the
-   source's text, marked.
+   `:1575-1582`), except that a pick one letter from the confirmed text stays the literal and the
+   confirmed name is its value (rule 1; test
+   `tests/field_research/test_first_pass_advice.py:614-645`); only the near-spelling and
+   other-label branches refuse (`CONFLICT`, `agreement.py:1526`, `:1547`; `FIRST_PASS_CONFLICT`,
+   `:1611-1618`). Under this rule a source against the image settles the source's text, marked,
+   for texts that are not merged (different places). Merged texts are one candidate (rule 1).
 6. No candidate has a backing: unresolved, with the candidates as options, unless the check stage
    infers a value (below).
 
@@ -199,12 +212,15 @@ Marked means: the field's value is set as today (state `supported`, with its lit
 `application/domain.py:262-266`) and the run carries a review finding `marked:<field>:<label>:<why>` whose detail lists the other
 candidates. Today a finding never routes the record by itself (`RunFinding`,
 `application/domain.py:320-322`); the disposition is review when the run has reasons
-(`step.py:3927`). WP 1.3 decides and tests how a `marked` finding reaches `needs_human_review`, and
-adds that routing if it is missing. The `marked:` code joins the field-reason mapping of the review
+(`step.py:3927`). So WP 1.3 writes each `marked:` code into `run.reasons` too, and tests that the
+disposition is `needs_human_review`. The `marked:` code joins the field-reason mapping of the review
 summary (`application/review_summary.py:8-24`, applied at `:103-115`) and of the app's blockers
 (`apps/specimen_digitization/lib/src/screens/workbench/blockers.dart:205-221`, applied at
 `:387-398`), so a supported field with a marked finding is a field-targeted review item and counts
-in field reviews (plan WP 1.3 and 1.6). In this program a value's basis is written in its `reason`
+in field reviews (plan WP 1.3 and 1.6). Both take the whole text after the first colon as the field
+today (`review_summary.py:106-109`; `blockers.dart:322`, `:388`), which for
+`marked:habitat:L1:text_only` is `habitat:L1:text_only`, not a field. So each reads the field as the
+first part after `marked:`. In this program a value's basis is written in its `reason`
 ("Basis: inferred, rule <id>"); a typed basis field waits for PRD v2's per-part model
 (`PRD.md:614-622`).
 
