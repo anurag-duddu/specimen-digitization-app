@@ -61,6 +61,7 @@ void main() {
                           destinations: threeDestinations,
                           currentIndex: selectedIndex,
                           onSelect: select,
+                          labelPresentation: UiRailLabelPresentation.icons,
                         )
                       : UiPillNav(
                           destinations: threeDestinations,
@@ -113,5 +114,71 @@ void main() {
         },
       );
     }
+  }
+
+  for (final presentation in [
+    UiRailLabelPresentation.adaptive,
+    UiRailLabelPresentation.below,
+  ]) {
+    testWidgets(
+      '$presentation touch rail labels remain visible and read once',
+      (WidgetTester tester) async {
+        final SemanticsHandle semantics = tester.ensureSemantics();
+        try {
+          int selectedIndex = 0;
+          final selections = <int>[];
+          await tester.pumpWidget(
+            uiHarness(
+              density: UiDensityMode.touch,
+              child: StatefulBuilder(
+                builder: (context, setState) => UiRail(
+                  destinations: threeDestinations,
+                  currentIndex: selectedIndex,
+                  labelPresentation: presentation,
+                  onSelect: (index) {
+                    selections.add(index);
+                    setState(() => selectedIndex = index);
+                  },
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+
+          void expectPersistentLabels(int current) {
+            for (final destination in threeDestinations) {
+              expect(find.text(destination.label), findsOneWidget);
+            }
+            expect(find.byType(UiTooltip), findsNothing);
+            _expectDestinationsReadOnce(tester, current);
+          }
+
+          expectPersistentLabels(0);
+          final pointer = await tester.createGesture(
+            kind: PointerDeviceKind.mouse,
+          );
+          await pointer.addPointer(location: Offset.zero);
+          addTearDown(pointer.removePointer);
+          await pointer.moveTo(
+            tester.getCenter(find.bySemanticsLabel('Intake')),
+          );
+          await tester.pump(UiTooltipStyle.hoverDelay);
+          await tester.pumpAndSettle();
+          expectPersistentLabels(0);
+          expect(selections, isEmpty);
+
+          await tester.tap(find.text('Intake'));
+          await tester.pumpAndSettle();
+          expect(selections, <int>[1]);
+          expectPersistentLabels(1);
+
+          await pointer.moveTo(const Offset(5, 5));
+          await tester.pumpAndSettle();
+          expectPersistentLabels(1);
+        } finally {
+          semantics.dispose();
+        }
+      },
+    );
   }
 }

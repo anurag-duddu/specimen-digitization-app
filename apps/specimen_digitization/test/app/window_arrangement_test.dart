@@ -6,7 +6,7 @@
 // at 200 percent text therefore drew the phone's tab bar and a desktop's
 // dialog at once. Both questions now go to `WindowArrangement`, so these
 // windows get the tab bar and the sheet together, and the docked windows get
-// the labelled sidebar and the dialog together.
+// the adaptive primary rail and the dialog together.
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -172,13 +172,13 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('the docked sidebar keeps its arrow keys, Enter and its name', (
+  testWidgets('the docked rail keeps its arrow keys, Enter and its name', (
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
     await _pump(tester, const Size(1440, 900), 1);
     final rail = find.byKey(const ValueKey('global-rail'));
-    expect(tester.widget(rail), isA<UiSidebar>());
+    expect(tester.widget(rail), isA<UiRail>());
     expect(
       find.bySemanticsLabel(AppShell.navigationLabel),
       findsOneWidget,
@@ -213,9 +213,7 @@ void main() {
     expect(nodes.last.focusNode!.hasPrimaryFocus, isTrue);
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    final current = tester
-        .widget<UiSidebar>(find.byType(UiSidebar))
-        .currentIndex;
+    final current = tester.widget<UiRail>(find.byType(UiRail)).currentIndex;
     expect(AppShell.destinations[current].label, 'Intake');
     semantics.dispose();
     await tester.pumpWidget(const SizedBox());

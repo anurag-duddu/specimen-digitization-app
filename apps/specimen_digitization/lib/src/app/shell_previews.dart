@@ -14,13 +14,13 @@ PreviewThemeData shellPreviewThemes() => PreviewThemeData(
   materialDark: AppTheme.dark(),
 );
 
-@Preview(name: 'Sidebar navigation', group: 'Shell', theme: shellPreviewThemes)
+@Preview(name: 'Primary rail', group: 'Shell', theme: shellPreviewThemes)
 Widget shellNavigationPreview() {
   WorkspaceDestination selected = WorkspaceDestination.queue;
-  // The same labelled primary navigation used by the application shell.
+  // The same capability-aware primary rail used by the application shell.
   return StatefulBuilder(
     builder: (BuildContext context, StateSetter setState) => UiScaffold(
-      nav: UiSidebar(
+      nav: UiRail(
         destinations: AppShell.destinations,
         currentIndex: selected.index,
         semanticsLabel: AppShell.navigationLabel,

@@ -91,7 +91,33 @@ List<WidgetbookComponent> get navigationComponents => [
       ),
     ],
   ),
-  for (final kind in ['UiTabBar', 'UiPillNav', 'UiRail', 'UiSidebar'])
+  WidgetbookComponent(
+    name: 'UiRail',
+    useCases: [
+      story(
+        'Interactive destinations',
+        'The rail uses available input capabilities. Pointer-only hosts use hover and focus labels; touch and hybrid hosts keep labels below every icon.',
+        (_) => const _NavigationExample(kind: 'UiRail'),
+      ),
+      story(
+        'Pointer destinations',
+        'A permanent icon rail. A quiet tile and filled icon identify the current destination. Hover or keyboard focus reveals its name without widening the rail.',
+        (_) => const _NavigationExample(
+          kind: 'UiRail',
+          railInput: UiDensityMode.pointer,
+        ),
+      ),
+      story(
+        'Touch destinations',
+        'Every destination keeps its label below the icon on touch and hybrid devices. Labels are present before the first interaction and grow with text size.',
+        (_) => const _NavigationExample(
+          kind: 'UiRail',
+          railInput: UiDensityMode.touch,
+        ),
+      ),
+    ],
+  ),
+  for (final kind in ['UiTabBar', 'UiPillNav', 'UiSidebar'])
     WidgetbookComponent(
       name: kind,
       useCases: [
@@ -138,7 +164,7 @@ List<WidgetbookComponent> get navigationComponents => [
     useCases: [
       story(
         'Adaptive companion panel',
-        'A roomy workspace docks its companion. Narrower allocations open it over the workspace without squeezing the content. Close, Escape and the scrim restore focus; text and scroll survive toggling. Primary navigation keeps all labels.',
+        'A roomy workspace docks its companion. Narrower allocations open it over the workspace without squeezing the content. The panel icon, Escape and the scrim close it; text and scroll survive toggling. The shared rail adapts its labels to input capability.',
         (_) => const _SidePanelExample(),
       ),
     ],
@@ -162,6 +188,41 @@ class _SidePanelExample extends StatefulWidget {
 
 class _SidePanelExampleState extends State<_SidePanelExample> {
   bool _open = false;
+  String _collection = 'Insects';
+  final _closeFocus = FocusNode(debugLabel: 'Close example queue');
+
+  @override
+  void dispose() {
+    _closeFocus.dispose();
+    super.dispose();
+  }
+
+  Widget _header({required bool open}) => UiTopBar(
+    form: UiTopBarForm.workspace,
+    leading: UiMenuTrigger(
+      label: _collection,
+      icon: UiIcons.expand,
+      trailingIcon: true,
+      semanticsLabel: 'Example collection, $_collection',
+      menuSurface: PopoverSurface.paper,
+      items: [
+        for (final name in ['Insects', 'Botany'])
+          UiMenuItem(
+            label: name,
+            selected: name == _collection,
+            onSelected: () => setState(() => _collection = name),
+          ),
+      ],
+    ),
+    actions: [
+      UiIconButton(
+        icon: UiIcons.sidebar,
+        semanticsLabel: open ? 'Hide queue' : 'Show queue',
+        focusNode: open ? _closeFocus : null,
+        onPressed: () => setState(() => _open = !open),
+      ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) => SizedBox(
@@ -184,15 +245,26 @@ class _SidePanelExampleState extends State<_SidePanelExample> {
           mode: layout.mode,
           width: layout.width,
           onDismiss: () => setState(() => _open = false),
+          initialFocusNode: _closeFocus,
           semanticsLabel: 'Specimen queue',
-          panel: UiDrawer(
-            title: 'Specimens',
-            onClose: () => setState(() => _open = false),
+          panel: ColoredBox(
+            color: context.ui.color.paper,
             child: Column(
               children: [
-                const UiField(label: 'Search specimen ID'),
-                for (var i = 1; i <= 20; i++)
-                  UiListRow(title: 'Example specimen $i', onPressed: () {}),
+                _header(open: true),
+                Expanded(
+                  child: ListView(
+                    padding: EdgeInsets.all(context.ui.space.s4),
+                    children: [
+                      const UiField(label: 'Search specimen ID'),
+                      for (var i = 1; i <= 20; i++)
+                        UiListRow(
+                          title: 'Example specimen $i',
+                          onPressed: () {},
+                        ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -203,11 +275,7 @@ class _SidePanelExampleState extends State<_SidePanelExample> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  UiButton(
-                    label: _open ? 'Hide queue' : 'Show queue',
-                    variant: UiButtonVariant.secondary,
-                    onPressed: () => setState(() => _open = !_open),
-                  ),
+                  if (!_open) _header(open: false),
                   SizedBox(height: context.ui.space.s6),
                   Text('Specimen details', style: context.ui.type.title),
                   SizedBox(height: context.ui.space.s4),
@@ -248,8 +316,9 @@ class _StepsExampleState extends State<_StepsExample> {
 }
 
 class _NavigationExample extends StatefulWidget {
-  const _NavigationExample({required this.kind});
+  const _NavigationExample({required this.kind, this.railInput});
   final String kind;
+  final UiDensityMode? railInput;
   @override
   State<_NavigationExample> createState() => _NavigationExampleState();
 }
@@ -274,13 +343,12 @@ class _NavigationExampleState extends State<_NavigationExample> {
               onSelect: _select,
               header: const Text('Specimen Digitization'),
             ),
-            'UiRail' => UiRail(
-              destinations: _destinations,
-              currentIndex: _index,
-              onSelect: _select,
-              extended: context.knobs.boolean(
-                label: 'Expanded labels',
-                initialValue: true,
+            'UiRail' => Density(
+              initialMode: widget.railInput,
+              child: UiRail(
+                destinations: _destinations,
+                currentIndex: _index,
+                onSelect: _select,
               ),
             ),
             'UiPillNav' => UiPillNav(
@@ -347,7 +415,7 @@ class _ScaffoldExampleState extends State<_ScaffoldExample> {
     return UiScaffold(
       topBar: UiTopBar(title: _destinations[_index].label),
       nav: wide
-          ? UiSidebar(
+          ? UiRail(
               destinations: _destinations,
               currentIndex: _index,
               onSelect: select,
@@ -361,7 +429,7 @@ class _ScaffoldExampleState extends State<_ScaffoldExample> {
       body: StoryFrame(
         title: 'Responsive workspace',
         guidance:
-            'Synthetic shell. Phone navigation becomes a sidebar on wide windows. Content scrolls independently of the navigation.',
+            'Synthetic shell. Phone navigation becomes a permanent rail on wide windows. Touch labels sit below every icon; pointer labels appear on hover or focus. Content scrolls independently.',
         child: const UiEmptyState(
           icon: UiIcons.record,
           title: 'No records in this example',

@@ -146,6 +146,7 @@ class ReviewWorkbench extends StatefulWidget {
     this.onShowQueue,
     this.specimensExpanded = false,
     this.showSidebarToggle = true,
+    this.workspaceContext,
     this.onExitGuardChanged,
     this.onNavigationBlockedChanged,
     this.active = true,
@@ -252,6 +253,10 @@ class ReviewWorkbench extends StatefulWidget {
   final VoidCallback? onShowQueue;
   final bool specimensExpanded;
   final bool showSidebarToggle;
+
+  /// Collection context and companion control supplied by the application shell.
+  /// It occupies the existing toolbar rather than adding a second header row.
+  final Widget? workspaceContext;
 
   /// Registers the active editor's leave guard with its workspace owner.
   final void Function(Future<bool> Function() guard, bool active)?
@@ -1255,7 +1260,12 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         style: ui.type.mono.identifier.copyWith(color: ui.color.ink),
       );
       return UiTopBar(
-        leading: !widget.showSidebarToggle
+        leading: widget.workspaceContext != null
+            ? SizedBox(
+                width: (constraints.maxWidth * .4).clamp(0.0, 280.0),
+                child: widget.workspaceContext,
+              )
+            : !widget.showSidebarToggle
             ? null
             : widget.onShowQueue != null
             ? UiIconButton(

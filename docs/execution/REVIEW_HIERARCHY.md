@@ -7,7 +7,9 @@ interaction decisions are requirements, not a request to restore old styling.
 
 - Keep the specimen queue as a working list. The selected view names itself
   beside a Phosphor icon; inactive views retain accessible names and tooltips.
-  Primary web navigation keeps every destination label visible. The compact
+  Primary navigation uses a permanent narrow rail on desktop and tablet.
+  Pointer-only desktops show icon destinations with hover and focus tooltips;
+  touch tablets and hybrid devices show every label below its icon. The compact
   mobile navigation retains its selected-label behavior.
   Remove the redundant queue heading.
 - Use a visible Select action and an explicit selected-count/action state.
@@ -38,10 +40,21 @@ parallel catalog implementation drifting away from the shipped UI.
 
 ## Adaptive queue companion
 
-Owner clarification, 2026-10-25: the selected-only label behavior applies to
-Queue views, not the expanded primary navigation on web. The primary sidebar
-keeps both Specimens and Intake visible. Compact mobile navigation retains
-its existing treatment.
+Owner clarification, 2026-10-26, superseding the expanded primary sidebar:
+the supplied Codex screenshot is the reference for a permanent icon rail,
+quiet rounded selection tile and filled active Phosphor icon. Labels appear
+on hover and keyboard focus for pointer-only desktops. Touch tablets and
+hybrid devices keep all destination labels below their icons; width alone
+cannot establish hover support. Compact mobile navigation retains its existing
+treatment. The Queue view tabs and list remain unchanged.
+
+Collection context belongs in the queue panel header, in the position occupied
+by Codex in the owner's screenshot. Its trailing side-panel icon closes the
+optional queue companion; the same icon reopens it from the leading workspace
+header when closed. Intake keeps its collection context without an unrelated
+queue. Do not add New chat or a placeholder notification control. The existing
+queue search stays with the queue. Collection switching and account access
+must remain reachable in every arrangement.
 
 `UiSidePanel` owns the common retained panel, motion, focus and modal behavior.
 The app supplies the queue and record; Widgetbook renders this same primitive

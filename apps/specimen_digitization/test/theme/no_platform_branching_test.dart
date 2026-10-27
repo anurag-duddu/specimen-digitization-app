@@ -317,6 +317,42 @@ const List<PlatformCapability> platformCapabilities = <PlatformCapability>[
       'lib/src/theme/motion.dart SpecimenHaptics.selectionChanged': 1,
     },
   ),
+  // owner-approved: 2026-10-26 "tablets doest have hover, so we need to add text below the icons(like mobile nav, but in our sidepanel)"
+  // This imports only the capability fallback names used below.
+  PlatformCapability(
+    'packages/specimen_ui/lib/src/foundation/density.dart',
+    '<directives>',
+    <String, int>{webFlag: 1, targetPlatform: 1, targetPlatformType: 1},
+    'imports the names used only for native touch and browser capability '
+        'fallbacks',
+  ),
+  // owner-approved: 2026-10-26 "tablets doest have hover, so we need to add text below the icons(like mobile nav, but in our sidepanel)"
+  // The owner requested persistent touch labels after specifying desktop
+  // hover labels. Native Android/iOS establish touch support; browser queries
+  // and observed input supply capabilities. Window arrangement and brand
+  // identity still use their existing shared policies.
+  PlatformCapability(
+    'packages/specimen_ui/lib/src/foundation/density.dart',
+    'UiInputCapabilities._platform',
+    <String, int>{webFlag: 2, targetPlatform: 2, targetPlatformType: 2},
+    'touch inputs retain rail labels; hover-capable pointer-only inputs '
+        'can reveal them on hover or keyboard focus',
+    readers: <String, int>{
+      'packages/specimen_ui/lib/src/foundation/density.dart Density.inputsOf':
+          1,
+      'packages/specimen_ui/lib/src/foundation/density.dart _DensityState.build':
+          1,
+    },
+  ),
+  // owner-approved: 2026-10-26 "I see this. The nav icons side panel is always closed, see the active state, hover state(only on hover we see the label)."
+  // The browser supplies actual touch/hover capabilities, including hybrids,
+  // rather than deriving hover support from window width.
+  PlatformCapability(
+    'packages/specimen_ui/lib/src/foundation/input_capabilities_platform.dart',
+    '<directives>',
+    <String, int>{conditionalImport: 1},
+    'browser touch and hover queries are available only in browser builds',
+  ),
   PlatformCapability(
     'packages/specimen_ui/lib/src/foundation/reduced_motion_platform.dart',
     '<directives>',

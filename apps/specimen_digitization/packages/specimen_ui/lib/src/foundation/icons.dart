@@ -708,7 +708,7 @@ class UiIcon extends StatelessWidget {
 
 /// The four glyph sizes (09 section 7).
 enum UiIconSize {
-  /// Inline with `label.small`.
+  /// Inline with compact labels, including small/medium buttons and menu triggers.
   small(16),
 
   /// Inline with `body`.

@@ -259,7 +259,11 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
                   key: ValueKey<String>('${scope.key}:${specimen.id}'),
                   specimen: specimen,
                   onShowQueue: QueueWorkspaceScope.maybeOf(context)?.showQueue,
-                  showSidebarToggle: true,
+                  showSidebarToggle:
+                      AppSidebarScope.maybeOf(context)?.docked != true,
+                  workspaceContext: AppSidebarScope.maybeOf(
+                    context,
+                  )?.recordContext,
                   specimensExpanded:
                       QueueWorkspaceScope.maybeOf(context)?.expanded ?? false,
                   active: _active,
@@ -413,34 +417,33 @@ class _Loading extends StatelessWidget {
     },
   );
 
-  Widget _toolbar(BuildContext context) => Semantics(
-    liveRegion: true,
-    label: 'Loading record $id',
-    child: UiTopBar(
-      key: const ValueKey<String>('loading-record-toolbar'),
-      leading: WindowArrangement.of(context).isStacked
-          ? UiIconButton(
-              icon: UiIcons.back,
-              semanticsLabel: AppShell.backLabel,
-              onPressed: () {
-                if (context.canPop()) {
-                  context.pop();
-                } else {
-                  final key = WorkspaceScope.read(context).defaultRouteKey;
-                  if (key != null) context.go(AppRoutes.queueOf(key));
-                }
-              },
-            )
-          : AppSidebarScope.maybeOf(context)?.docked == true
-          ? UiIconButton(
-              icon: UiIcons.sidebar,
-              semanticsLabel: AppSidebarScope.maybeOf(context)?.expanded == true
-                  ? 'Hide queue'
-                  : 'Show queue',
-              onPressed: AppSidebarScope.maybeOf(context)?.toggle,
-            )
-          : null,
-      center: UiLabel('Loading record…', style: context.ui.type.bodySmall),
+  Widget _toolbar(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => Semantics(
+      liveRegion: true,
+      label: 'Loading record $id',
+      child: UiTopBar(
+        key: const ValueKey<String>('loading-record-toolbar'),
+        leading: WindowArrangement.of(context).isStacked
+            ? UiIconButton(
+                icon: UiIcons.back,
+                semanticsLabel: AppShell.backLabel,
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    final key = WorkspaceScope.read(context).defaultRouteKey;
+                    if (key != null) context.go(AppRoutes.queueOf(key));
+                  }
+                },
+              )
+            : AppSidebarScope.maybeOf(context)?.docked == true
+            ? SizedBox(
+                width: (constraints.maxWidth * .4).clamp(0.0, 280.0),
+                child: AppSidebarScope.maybeOf(context)?.recordContext,
+              )
+            : null,
+        center: UiLabel('Loading record…', style: context.ui.type.bodySmall),
+      ),
     ),
   );
 
