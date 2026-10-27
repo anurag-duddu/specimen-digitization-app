@@ -1,7 +1,7 @@
 # The first pass's reading units and the specimen ontology
 
 Status: the owner's design of 2026-10-26, written from his typed words of that day and revised on
-2026-10-27 after the third reviews of pull request #418. The owner set the substance; the design
+2026-10-27 after the fourth reviews of pull request #418. The owner set the substance; the design
 under his words is the engineer's. Nothing here is built. Every sentence about today names the
 file and line that shows it in this branch's tree (paths under `src/specimen_digitization/` unless
 another root is given; its `src/`, `tests/`, `scripts/` and `dataconnect/` are byte-identical to

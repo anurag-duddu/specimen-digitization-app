@@ -17,7 +17,7 @@ The owner's mandate, 2026-10-26, a contiguous part of one message, copied as typ
 Spec: [`docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md`](../../product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md).
 The settlement rule is its section 4; this plan refers to it and adds nothing to it.
 
-Revised 2026-10-27 after the third Claude and Codex reviews of head 9df587d05 (pull request
+Revised 2026-10-27 after the fourth Claude and Codex reviews of head d80a0d5c1 (pull request
 #418). Paths are under `src/specimen_digitization/` unless another root is given; `file:line` is
 this branch's tree, whose `src/`, `tests/`, `scripts/` and `dataconnect/` are byte-identical to
 main b2dcd50d6. An implementation choice is written as "WP x decides and tests: ..." and belongs to
