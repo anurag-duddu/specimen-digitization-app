@@ -1,7 +1,7 @@
 # The first pass's reading units and the specimen ontology
 
 Status: the owner's design of 2026-10-26, written from his typed words of that day and revised on
-2026-10-27 after the sixth reviews of pull request #418. The owner set the substance; the design
+2026-10-27 after the seventh reviews of pull request #418. The owner set the substance; the design
 under his words is the engineer's. Nothing here is built. Every sentence about today names the
 file and line that shows it in this branch's tree (paths under `src/specimen_digitization/` unless
 another root is given; its `src/`, `tests/`, `scripts/` and `dataconnect/` are byte-identical to
@@ -165,10 +165,12 @@ writes it:
    `application/georef_locality.py:364-371`) when a source confirms one of them by its own name and
    rules out every other text of the field on that label, the other one included: a near spelling
    of a confirmed name (today `_preferred_spelling`, `:1346-1363`, reached only through `_by_source`,
-   `:1518-1523`, which needs exactly one text confirmed and every other ruled out, `:1576-1582`).
+   `:1515-1523`, which needs exactly one text confirmed and every other ruled out, `:1576-1582`).
    When a third reader's text is confirmed too (A "Chimaltenago", B "Chimaltenango", C "Escuintla",
-   B and C both confirmed), nothing merges: B and C are two candidates with a SOURCE backing each,
-   a conflict (rule 5). The merged candidate's literal is the text the image
+   B and C both confirmed), nothing merges, and neither B nor C has a SOURCE backing (neither rules
+   the other out, as today's `_by_source` requires): the field settles on what the other backings
+   give, the text the image names if it names one, else unresolved with the three texts as
+   options. The merged candidate's literal is the text the image
    names, else the text the source confirmed exactly. Its value is the source's name. It has a
    SOURCE backing and, where the image names one of its texts, an IMAGE backing, so it is cleared
    (rule 4). Example, t1-329's province: the image names "Chimaltenago", TGN confirms
