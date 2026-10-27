@@ -54,7 +54,8 @@ are".
   the date order and the elevation unit. A failed check marks the field; an inference fills an open
   part, marked. Nothing else changes after the experts answer.
 - The units path ships behind a switch, off by default. Each run records the path it started on
-  and keeps it. The old path is deleted after the phase-1 gate and the production switch-on.
+  and keeps it. The old path is deleted after the phase-1 gate and the production switch-on; a run
+  reopened after that is moved to the units path (plan WP 1.8).
 - A value made of parts on different labels is shown to a person now and stored once the record
   holds per-part values (section 4, "Parts on different labels").
 
@@ -105,9 +106,11 @@ A given-up label, and a label with one reader, still gets units: from the alignm
 (`reading_differences_among`), which today returns the differing spans only, drops a difference of
 spacing alone and refuses one reading (`first_pass.py:196-213`, `:246-247`); plan WP 1.2 extends it
 to return the agreed spans too (tokens at whitespace; each differing span one unit). Every such
-unit's `image` is `uncertain`. The label goes to review however its fields settle: today that
+unit's `image` is `uncertain`. A given-up label goes to review however its fields settle: today that
 check sits inside the branch for an unresolved transcript (`field_research/step.py:3743-3751`), which
-an agreed label never enters (`first_pass.py:671-673`); WP 1.3 moves it.
+an agreed label never enters (`first_pass.py:671-673`); WP 1.3 moves it. A label with one reader is
+not sent to review by this check, and a person's transcript (one reader) settles as the person's
+text, as today (section 4, rule 2).
 
 ### One label, today and under this spec
 
@@ -177,9 +180,12 @@ writes it:
    backing, the field takes the best-backed candidate (SOURCE above IMAGE above TEXT; a tie broken
    by the number of readers that wrote it, then by reader order, A before B before C), MARKED, with
    the others listed. When none has (text against text), the field is `ambiguous` with the
-   candidates as options, as today's `several_possibilities` (`step.py:1339-1342`). Today any
-   conflict settles nothing (`CONFLICT`, `agreement.py:1526`, `:1547`; `FIRST_PASS_CONFLICT`,
-   `:1611-1618`).
+   candidates as options, as today's `several_possibilities` (`step.py:1339-1342`). Today an
+   exact source confirmation settles against an image-confirmed pick (`agreement.py:1515-1529`,
+   `:1575-1582`; test `tests/field_research/test_first_pass_advice.py:614-645`); only the
+   near-spelling and other-label branches refuse (`CONFLICT`, `agreement.py:1526`, `:1547`;
+   `FIRST_PASS_CONFLICT`, `:1611-1618`). Under this rule a source against the image settles the
+   source's text, marked.
 6. No candidate has a backing: unresolved, with the candidates as options, unless the check stage
    infers a value (below).
 
@@ -194,7 +200,11 @@ Marked means: the field's value is set as today (state `supported`, with its lit
 candidates. Today a finding never routes the record by itself (`RunFinding`,
 `application/domain.py:320-322`); the disposition is review when the run has reasons
 (`step.py:3927`). WP 1.3 decides and tests how a `marked` finding reaches `needs_human_review`, and
-adds that routing if it is missing. In this program a value's basis is written in its `reason`
+adds that routing if it is missing. The `marked:` code joins the field-reason mapping of the review
+summary (`application/review_summary.py:8-24`, applied at `:103-115`) and of the app's blockers
+(`apps/specimen_digitization/lib/src/screens/workbench/blockers.dart:205-221`, applied at
+`:387-398`), so a supported field with a marked finding is a field-targeted review item and counts
+in field reviews (plan WP 1.3 and 1.6). In this program a value's basis is written in its `reason`
 ("Basis: inferred, rule <id>"); a typed basis field waits for PRD v2's per-part model
 (`PRD.md:614-622`).
 
@@ -204,9 +214,10 @@ After every expert has answered, one stage runs over the settled values, where t
 order is applied and `derive.fill` runs (`step.py:2321-2357`):
 
 - The place chain, country > province > county > city: a value outside the chain settled above it
-  is marked. Today `parents_refusal` (`agreement.py:2065-2089`) checks a candidate against the
-  settled country and province, but a city against a settled county only for a near spelling: a
-  settled Coles County, then an exact "Chicago" under Illinois, passes. WP 2.3 completes it.
+  is marked. The apply-time refusal stays as today: `parents_refusal` (`agreement.py:2065-2089`)
+  checks a candidate against the settled country and province, but a city against a settled county
+  only for a near spelling: a settled Coles County, then an exact "Chicago" under Illinois, passes.
+  The stage marks that, and the place chains that derivation fills (WP 2.3).
 - The date order: a collecting date on or before the determination date, the same day allowed;
   partial dates compare on the parts both have ("1946" and "1946-09-06" agree; `domain.py:293`
   records precision). A date ambiguous between day and month is a conflict with both readings
@@ -311,7 +322,7 @@ lists none); a people source is put to the owner with phase 1's measurement, nev
 | Organiser | proposes candidates quoted from whole readings, stored as evidence rows with offsets (`application/harness.py:123-166`) | kept; whether the production pipeline calls it is decided in plan WP 2.5 |
 | What settles a field | readers agree (every reader); a source; a near spelling; one place; another label; the preferred reader's text; a person's text (`agreement.labels`, `:1366-1557`) | the rule of section 4: candidates, three kinds of backing, cleared or marked |
 | The image guard | a near spelling or another label never overrides a text the first pass confirmed in the image; the conflict settles nothing (`confirmed_against_image`, `:1303`; `CONFLICT`, `:1526`, `:1547`) | the image is one backing; a conflict gives the best-backed value, marked, or `ambiguous` when none would clear |
-| Checks and derivation | place parents checked at apply time (`parents_refusal`, `:2065-2089`); feet/metres, end date, parent places derived (`derive.py:66-91`) | one check stage after the experts; a failed check marks; an inference fills an open part, marked; derivation as today |
+| Checks and derivation | place parents checked at apply time (`parents_refusal`, `:2065-2089`); feet/metres, end date, parent places derived (`derive.py:66-91`) | the apply-time refusal stays; one check stage after the experts; a failed check marks; an inference fills an open part, marked; derivation as today |
 | Review | several possibilities, or sources cannot resolve (`step.py:1339-1355`) | marked (a value with a review finding), `ambiguous` with options, or unresolved |
 
 ## 7. Build order
@@ -323,7 +334,7 @@ Phase 0: WP 0, the reference set, its truth, the scorer and the baseline.
 
 Phase 1, the ontology's first version and the reading units: 1.0 ontology v1 (things, fields, the
 label notations moved from `harness_knowledge`, `fields` advice; the module deleted) -> 1.1 unit
-record, storage, Data Connect operation, projection field, API record route and app reader (data
+record, storage, Data Connect operation, projection field, API workspace route and app reader (data
 release before runtime) -> 1.2 first pass v2 behind `SPECIMEN_FIRST_PASS_UNITS` (units for every
 label, the tiling and range checks, the alignment's agreed spans, the new prompt variable, the
 transport, the run's path pin, the ontology v1 in its prompt) -> 1.3 experts take units on the units
