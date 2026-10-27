@@ -1,7 +1,7 @@
 # The first pass's reading units and the specimen ontology
 
 Status: the owner's design of 2026-10-26, written from his typed words of that day and revised on
-2026-10-27 after the eighth reviews of pull request #418. The owner set the substance; the design
+2026-10-27 after the ninth reviews of pull request #418. The owner set the substance; the design
 under his words is the engineer's. Nothing here is built. Every sentence about today names the
 file and line that shows it in this branch's tree (paths under `src/specimen_digitization/` unless
 another root is given; its `src/`, `tests/`, `scripts/` and `dataconnect/` are byte-identical to
@@ -169,8 +169,7 @@ writes it:
    When a third reader's text is confirmed too (A "Chimaltenago", B "Chimaltenango", C "Escuintla",
    B and C both confirmed), nothing merges, and neither B nor C has a SOURCE backing (neither rules
    the other out, as today's `_by_source` requires): the field settles on what the other backings
-   give, the text the image names if it names one, else not settled (state `ambiguous`, the three
-   texts as options, as rule 6 stores it). The merged candidate's literal is the text the image
+   give, the text the image names if it names one, else not settled (state `ambiguous`, rule 6). The merged candidate's literal is the text the image
    names, else the text the source confirmed exactly. Its value is the source's name. It has a
    SOURCE backing and, where the image names one of its texts, an IMAGE backing, so it is cleared
    (rule 4). Example, t1-329's province: the image names "Chimaltenago", TGN confirms
@@ -206,9 +205,11 @@ writes it:
    other-label branches refuse (`CONFLICT`, `agreement.py:1526`, `:1547`; `FIRST_PASS_CONFLICT`,
    `:1611-1618`). Under this rule a source against the image settles the source's text, marked,
    for texts that are not merged (different places). Merged texts are one candidate (rule 1).
-6. No candidate has a backing: the field does not settle. It is stored as today's
-   `several_possibilities` stores it, state `ambiguous` with the candidates as options
-   (`field_research/step.py:1339-1342`), unless the check stage infers a value (below).
+6. No candidate has a backing: the field does not settle. Its state is `ambiguous` and its
+   reason is written as today for the path that got it there: an expert's
+   `several_possibilities` lists its options (`field_research/step.py:1339-1342`); a literal the
+   rule refuses keeps the refusal text (`step.py:1313-1317`). Unless the check stage infers a
+   value (below).
 
 The finding codes `first_pass_followed`, `first_pass_overridden`, `first_pass_absent` and
 `first_pass_conflict` (`step.py:2385-2392`) are replaced by `cleared:<field>:<label>` and
