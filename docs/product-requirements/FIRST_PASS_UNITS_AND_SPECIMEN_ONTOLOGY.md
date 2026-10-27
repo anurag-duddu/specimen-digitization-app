@@ -162,8 +162,8 @@ writes it:
    `person_decided`, `:1406-1410`).
 3. A candidate's backings are of three kinds. IMAGE: the first pass names its text at the unit.
    SOURCE: a source confirms it exactly, by its own name or expansion, and rules the others out
-   (today `BY_SOURCE`); or it is a near spelling of a source's one candidate (today
-   `BY_NEAR_SPELLING`); or the same-place merge of rule 1. TEXT: two or more readers of this label
+   (today `BY_SOURCE`, `:1223`); or it is a near spelling of a source's one candidate (today
+   `BY_NEAR_SPELLING`, `:1521-1522`); or the same-place merge of rule 1. TEXT: two or more readers of this label
    wrote it; or another label of the specimen, on which two or more readers agree, writes it (today
    `BY_OTHER_LABEL`, `MIN_BACKING_READERS = 2`, `:1228`). This changes today's agreement:
    `BY_AGREEMENT` needs every reader of the label (`:1503-1508`, "Every reader writes it"), and
@@ -189,8 +189,8 @@ The finding codes `first_pass_followed`, `first_pass_overridden`, `first_pass_ab
 
 ### Marked
 
-Marked means: the field's value is set as today (state `supported`, with its literal and value) and
-the run carries a review finding `marked:<field>:<label>:<why>` whose detail lists the other
+Marked means: the field's value is set as today (state `supported`, with its literal and value,
+`application/domain.py:262-266`) and the run carries a review finding `marked:<field>:<label>:<why>` whose detail lists the other
 candidates. Today a finding never routes the record by itself (`RunFinding`,
 `application/domain.py:320-322`); the disposition is review when the run has reasons
 (`step.py:3927`). WP 1.3 decides and tests how a `marked` finding reaches `needs_human_review`, and
@@ -236,7 +236,7 @@ them not to rise.
   reader's text settles its label when nothing backs another (`agreement.py:1219-1223`).
 - A misread that is itself a real place: the readers write another real town, the image is
   uncertain, a gazetteer confirms the name and rejects the alternative. Cleared, wrong. Today
-  `BY_SOURCE` does the same.
+  `BY_SOURCE` (`agreement.py:1223`) does the same.
 - The image judgement varies from run to run (the foot mark above: A in 7 of 12, `uncertain` in
   4, `neither` in 1). Plan criterion 2 measures its stability.
 
@@ -312,7 +312,7 @@ lists none); a people source is put to the owner with phase 1's measurement, nev
 | What settles a field | readers agree (every reader); a source; a near spelling; one place; another label; the preferred reader's text; a person's text (`agreement.labels`, `:1366-1557`) | the rule of section 4: candidates, three kinds of backing, cleared or marked |
 | The image guard | a near spelling or another label never overrides a text the first pass confirmed in the image; the conflict settles nothing (`confirmed_against_image`, `:1303`; `CONFLICT`, `:1526`, `:1547`) | the image is one backing; a conflict gives the best-backed value, marked, or `ambiguous` when none would clear |
 | Checks and derivation | place parents checked at apply time (`parents_refusal`, `:2065-2089`); feet/metres, end date, parent places derived (`derive.py:66-91`) | one check stage after the experts; a failed check marks; an inference fills an open part, marked; derivation as today |
-| Review | several possibilities, or sources cannot resolve | marked (a value with a review finding), `ambiguous` with options, or unresolved |
+| Review | several possibilities, or sources cannot resolve (`step.py:1339-1356`) | marked (a value with a review finding), `ambiguous` with options, or unresolved |
 
 ## 7. Build order
 
