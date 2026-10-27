@@ -184,7 +184,7 @@ writes it:
    rules every other text out); or it is a near spelling of
    a source's one candidate (today `BY_NEAR_SPELLING`, `:1576-1579`). A near spelling backs a text
    only when no reader's text is confirmed by its own name (`agreement.py:1563-1574`); with an
-   exact match present, the merge of rule 1 applies instead. TEXT: two or more readers of this label
+   exact match present, a near spelling backs nothing; the merge of rule 1 applies where its condition holds (one text confirmed, every other ruled out). TEXT: two or more readers of this label
    wrote it; or another label of the specimen, on which two or more readers agree, writes it (today
    `BY_OTHER_LABEL`, `MIN_BACKING_READERS = 2`, `:1228`). This changes today's agreement:
    `BY_AGREEMENT` needs every reader of the label (`:1503-1508`, "Every reader writes it"), and
