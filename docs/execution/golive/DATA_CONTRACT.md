@@ -271,35 +271,37 @@ exactly as before. The active graph's compact row keeps `reading_units` as an
 empty list, like the other per-label lists (`active_graph.run_summary`).
 
 **The first pass's path** (work package 1.2): `Run.first_pass_path`, `old` or
-`units`, recorded from `SPECIMEN_FIRST_PASS_UNITS` (off unless `on`) when the
-run is created (every place that creates a run: the API's intake, region
-review, classification review and reprocess, bulk intake and source import)
-and kept for the whole run; omitted from the stored record on the old path, so
-an old-path run keeps its bytes (`tests/test_first_pass_units.py`). A run
-follows the path recorded at its creation, so turning the switch off or on
-changes only the runs created afterwards: a units-path run created before the
-switch is turned off still writes units. On the units path the first pass runs
-for every label with two readings or more and some text, agreed readings
-included, and writes the label's units (`application/first_pass.py`); its
-decision names no reading and leaves every difference `uncertain`; a label with
-one reading, or one whose first pass was given up on, gets units from the
-alignment with `image` `uncertain` at each. Every label's units are on the run
-(`Run.reading_units`), so the workspace route returns them; the normalized
-projection writes a label's units only with a `TranscriptionVersion`. A label
-with one reading, or with differing readings and no first-pass decision (given
-up on), gets no machine version (see the end of this section), so until a person
-decides its transcript its units are on the run and the workspace route and not
-in the normalized projection. A person's edit or abstention gives it a `human`
-version, which the reviewer's save writes with `AppendTranscriptionVersionV3`
-carrying the label's units as stored: until work package 1.3 regenerates units
-from a person's text, those are the machine readings' units
-(`tests/test_first_pass_units.py`). Main
-before this package (work package 1.1 included) loads `Run.reading_units` but
-not `Run.first_pass_path` (`Record` refuses an unknown key), so the rollback
-boundary is the path field, in the run and in its previous runs; before 1.1
-units are unknown too. The switch is turned on only once this runtime serves
-the API, the intake job and the worker, and a rollback past it turns the switch
-off first and waits until no record it would load names the units path.
+`units`, set from `SPECIMEN_FIRST_PASS_UNITS` (`reading_units.first_pass_path`:
+`on` gives `units`; `off`, empty or unset give `old`) by the `Run(...)` calls in
+`application/api.py` (intake, region review, classification review, reprocess),
+`application/bulk_intake.py` and `application/source_import.py`
+(`test_every_run_created_in_src_records_the_switch`). The stored record omits it
+when `old` (`test_an_old_path_run_stores_main_s_bytes`). A run created with the
+switch on writes units after the switch is turned off
+(`test_a_run_keeps_the_path_recorded_at_its_creation`). On the units path
+`Workflow.next_step` schedules the first pass for a label with two readings or
+more and some text, agreed readings included; its decision names no reading and
+its differences stay `uncertain` (`first_pass._unpicked`); a label with one
+reading, or given up on, gets units from the alignment at `adjudicate`, `image`
+`uncertain` (`test_a_label_with_one_reading_gets_the_alignments_units_without_a_call`,
+`test_a_label_given_up_on_gets_the_alignments_units_at_adjudicate`). The units
+are in `Run.reading_units`, which the workspace route returns;
+`projection._first_pass` writes a label's units in its
+`AppendTranscriptionVersionV3`. A label with one reading, or with differing
+readings and no first-pass decision, gets no machine version (see the end of
+this section), so its units are on the run and the workspace route and not in
+the normalized projection
+(`test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_workspace_only`).
+A person's supported edit of such a label gives it a `human` version, which the
+reviewer's save writes with `AppendTranscriptionVersionV3` carrying the units as
+stored, the machine readings' units until work package 1.3
+(`test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_with_its_units`).
+Main before this package (work package 1.1 included) loads `Run.reading_units`
+but not `Run.first_pass_path` (`Record` refuses an unknown key), so the rollback
+boundary is the path field, in the run and in its previous runs. The rule: turn
+the switch on once this runtime serves the API, the intake job and the worker;
+to roll back past it, turn the switch off first and wait until the records the
+older runtime would load name no units path.
 
 **The unresolved rule** is the one definition of unresolved used everywhere. A
 region's decision is unresolved when no reading was selected (G19: material
@@ -320,8 +322,9 @@ unresolved.
 The rationale and the notes are null for `identical_readings`. That kind also
 covers identical readings that stay unresolved, such as unreadable spans or an
 unmeasured alignment: no reading is selected there. A region with fewer than two
-readings, or with no recorded decision, has no `TranscriptionVersion`; the run's
-stage and blocker say why.
+readings, or with no recorded decision, has no machine `TranscriptionVersion`; a
+person's decision gives it a `human` one (see "The first pass's path" above);
+until then the run's stage and blocker say why it has none.
 
 ### 4.3 From the harness (S4)
 
@@ -490,16 +493,16 @@ comparison's fixed order (section 3.1):
 and adding one over existing columns would not be additive, so the derived or
 domain id is their only replay guard: every writer uses these keys.
 
-A `ToolCall` row's key names only its call (`call_key`), while its
-`transcriptionVersionId` is the label's current version when the run is
-projected. A reviewer's transcript edit keeps the run and its tool calls and
-gives the label a new version id (its text, and on the units path its units,
-are part of the decision's digest), so a later projection names the new
-version under the same key; the writer skips a key it has written and
-accepts a replay that meets the row's primary key (`SqlConnectRepository` in
-`production.py`), so the stored row keeps the version it was first written
-with. This holds on main for every decision; units add one more input to the
-digest, not a new path to it.
+A `ToolCall` row's key is `tool-call/{run}/{call_key}` (`projection._tool_call`),
+while its `transcriptionVersionId` is the label's version when the run is
+projected. The transcription branch of `api.py`'s decision route changes the
+transcript and leaves `run.tool_calls` as they are, and the transcript's text is
+part of the decision's digest (`projection._first_pass`, `content`; on the units
+path the units are too), so a later projection names a new version under the
+same key; `SqlConnectRepository` in `production.py` skips a key it has written
+and accepts a replay that meets the row's primary key, so the stored row keeps
+the version it was first written with. Main has this for the text; units add one
+more input to the digest.
 
 Data Connect returns UUID key fields as 32 hex characters without dashes; the
 views (`SpecimenListing`) return them with dashes. Readers normalize. Inside a

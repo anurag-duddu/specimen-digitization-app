@@ -108,9 +108,10 @@ API = {
         "SPECIMEN_CORS_ORIGINS": "https://specimen-digitization.web.app,https://specimen-digitization.firebaseapp.com",
         "SPECIMEN_READINESS_OBJECT": READINESS_OBJECT, "SPECIMEN_WORKER_JOB": WORKER_JOB,
         "SPECIMEN_INTAKE_JOB": INTAKE_JOB,
-        # The first pass v2, reading units (docs/execution/units/PLAN.md, WP 1.2): off. A run
-        # records it when it is created (the API and, with this env, the intake job) and keeps it
-        # (application/reading_units.py, first_pass_path); WP 1.8 turns it on.
+        # The first pass v2, reading units (docs/execution/units/PLAN.md, WP 1.2): off. The Run(...)
+        # calls in api.py, bulk_intake.py and source_import.py set a run's path from it
+        # (application/reading_units.py, first_pass_path); the intake job's env is this one. WP 1.8
+        # turns it on.
         "SPECIMEN_FIRST_PASS_UNITS": "off",
     },
     "secret_env": {"LOGFIRE_TOKEN": "specimen-worker-logfire", "SPECIMEN_SOURCE_REGISTRY_JSON": "specimen-source-registry",

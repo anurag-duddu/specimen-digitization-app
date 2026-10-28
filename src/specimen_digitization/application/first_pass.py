@@ -14,7 +14,7 @@ The first pass v2 (docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOL
 sections 2 and 3; docs/execution/units/PLAN.md, WP 1.2) is the units path, behind
 SPECIMEN_FIRST_PASS_UNITS: it cuts each label into reading units, judges the image
 at each and settles nothing (first_pass_units_direct, below). The old path above is
-unchanged; a run follows the path recorded at its creation (reading_units.SETTING).
+unchanged; a run takes the path recorded at its creation (reading_units.SETTING).
 """
 
 from __future__ import annotations
@@ -608,10 +608,9 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
 
 # The first pass v2: reading units (docs/product-requirements/
 # FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md sections 2 and 3; docs/execution/units/PLAN.md, WP
-# 1.2), behind SPECIMEN_FIRST_PASS_UNITS (reading_units.first_pass_path). A run records its path
-# when it is created and keeps it: the first pass follows the run's path, never the process's
-# switch, so turning the switch off or on changes only the runs created afterwards. The
-# rollback rule is at reading_units.SETTING.
+# 1.2), behind SPECIMEN_FIRST_PASS_UNITS (reading_units.first_pass_path), which sets a run's
+# `first_pass_path` when the run is created; the code below reads the run's field. The switch
+# and the rollback rule are at reading_units.SETTING.
 
 
 # The alignment, extended (section 3, "A given-up label, and a label with one reader, still

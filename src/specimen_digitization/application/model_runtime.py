@@ -217,7 +217,7 @@ def invoke_model(
             readings=[o.model_dump(mode="json") for o in readings],
         )
         if run.first_pass_path == "units":
-            # The child follows the run's path, never its own process's switch.
+            # The child takes the run's path from this payload (model_child).
             payload["first_pass_path"] = "units"
         step = "first_pass:" + region.id
     else:

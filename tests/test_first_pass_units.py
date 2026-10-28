@@ -250,7 +250,7 @@ def test_the_fallback_tiles_differing_readings_and_a_reader_that_wrote_nothing()
 @pytest.mark.parametrize("separator", ["\r", "\r\n", "\n", "\u2028", "\u2029", "\x0b", "\x85"])
 def test_a_unit_s_lines_count_every_line_boundary(separator):
     """Codex's review of bf1caab88: lines counted "\n" alone, so "Paris\rFrance" put "France" on
-    line 1. Every boundary str.splitlines knows counts, in the fallback and in the request."""
+    line 1. The boundaries listed here count, in the fallback and in the request."""
     text = f"Paris{separator}France 1946"
     readings = [reading(ROUTES[0], text), reading(ROUTES[1], text)]
     assert len(text.splitlines()) == 2
@@ -280,7 +280,7 @@ def test_a_label_whose_readings_hold_no_text_has_no_units():
 
 def test_the_alignment_tiles_every_recorded_and_varied_reading():
     """Guard: seeded variations of the pilot readings (words dropped, added and changed,
-    spacing removed), every segment cut tiles every reading and splits no range."""
+    spacing removed): for each of the 600, the alignment's units pass reading_units.problems."""
     import random
 
     words = ["Elev.6400", "6400", "-", "7000", "to", "ft.", "Davao", "Prov.", "DavaoProv.", "P.I.",
@@ -594,15 +594,15 @@ def test_a_run_created_on_the_old_path_stays_there(tmp_path, monkeypatch):
 
     run = workflow.drain(principal, ident).run
 
-    # A guard: main's runs take this path, and nothing on it names a path or holds units.
+    # A guard: on main too, the stored run names no path and holds no units.
     assert getattr(run, "first_pass_path", OLD) == OLD and run.reading_units == [] and calls == []
     assert "first_pass_path" not in run.model_dump(mode="json")
 
 
 def test_the_switch_is_read_when_a_run_is_created_and_never_after(tmp_path, monkeypatch):
     """Codex's review of bf1caab88: the path was read at the first pin, guarded by classify.
-    Now nothing after the run's creation reads the switch: with every reader of it made to fail,
-    the run still drains on its recorded path."""
+    With reading_units.first_pass_path and first_pass.first_pass_path made to fail after the
+    run's creation, the run drains on its recorded path."""
     from specimen_digitization.application import reading_units
 
     workflow, principal, ident, calls = drained(tmp_path, monkeypatch, switch="on")
@@ -688,9 +688,10 @@ def test_the_api_records_the_switch_when_it_creates_a_run(tmp_path, monkeypatch,
 
 
 def run_spellings(tree):
-    """Every way a module builds or rebuilds the domain Run: a call of a name bound to Run (also
-    under an alias), of `<a name bound to the domain module>.Run`, and Run's model_validate,
-    model_validate_json and model_construct on either. Returns (line, kind, the call)."""
+    """The calls of the domain Run this guard detects: a call of a name imported as Run (an
+    alias included), of `<a name imported as the domain module>.Run`, and model_validate,
+    model_validate_json and model_construct on those. A name bound by assignment
+    (`RunType = DomainRun`) is not seen. Returns (line, kind, the call)."""
     import ast
 
     run_names, module_names = {"Run"}, set()
@@ -725,9 +726,9 @@ def run_spellings(tree):
 
 
 def unrecorded_runs(source: str) -> list[tuple[int, str]]:
-    """The places in a module's source that build a Run without recording the switch: every
-    construction must pass first_pass_path=first_pass_path(os.environ), and src rebuilds no Run
-    from data (a stored run comes back inside its Specimen, path and all)."""
+    """Of the calls run_spellings detects in a module's source: a construction that does not pass
+    first_pass_path=first_pass_path(os.environ), and a model_validate, model_validate_json or
+    model_construct call (src has none today; a stored run comes back inside its Specimen)."""
     import ast
 
     missing = []
@@ -739,8 +740,9 @@ def unrecorded_runs(source: str) -> list[tuple[int, str]]:
 
 
 def test_every_run_created_in_src_records_the_switch():
-    """A guard on every place in src that builds a Run, however it spells it (run_spellings):
-    each passes first_pass_path read from the switch, so no new run misses its path."""
+    """A guard over src: the files with a call run_spellings detects are api.py, bulk_intake.py
+    and source_import.py, and each of those calls passes first_pass_path=first_pass_path(
+    os.environ). A Run built through a name bound by assignment is not seen."""
     import ast
     from pathlib import Path
 
@@ -1020,7 +1022,7 @@ def test_the_units_cross_the_model_child_to_the_parent_and_the_stored_run(tmp_pa
     assert units.units[-1].image == units.units[-1].readers[readings[1].id].text == "1946"
     (decision,) = run.first_pass_decisions
     assert decision.selected_observation_id is None and decision.call.input_tokens == 3_100
-    # The call is costed as every first pass is: its tokens at the route's prices.
+    # The call is costed as lane_costs records a first pass: its tokens at the route's prices.
     (call,) = [c for c in run.paid_calls if c["step"] == f"first_pass:{region.id}"]
     # 3,100 input and 420 output tokens at 0.15 and 0.50 dollars a million.
     assert (call["route_id"], call["cost_basis"], call["cost_micros"]) == ("first-pass-glm", "computed", 675)
@@ -1452,10 +1454,10 @@ def test_every_transcription_version_the_units_path_projects_passes_the_connecto
 def test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_workspace_only(
     tmp_path, monkeypatch, case
 ):
-    """Codex's review of bf1caab88: until a person decides its transcript, such a label's units
-    reach no normalized row. That is the contract (DATA_CONTRACT.md 4.2): the units are on the
-    run, so the workspace route returns them, and the normalized projection writes units only
-    with a TranscriptionVersion (a person's edit gives it one: the next test)."""
+    """Codex's review of bf1caab88 (DATA_CONTRACT.md 4.2): drained without a person's decision,
+    such a label's units are on the run and in the workspace route's body, and no write of its
+    projection is a TranscriptionVersion or carries readingUnits (a person's edit gives it a
+    version: the next test)."""
     from test_reading_units import locate, workspace
     from test_reading_units import app as workspace_app
 
