@@ -12,12 +12,16 @@ a test sets label 1's images otherwise where it says so."""
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import io
 import tempfile
+import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 import test_step as rig_module
+from PIL import Image
 from test_first_pass_advice import (
     LA,
     LABEL_2_LA,
@@ -50,7 +54,8 @@ from test_step import (
     settle,
 )
 
-from specimen_digitization.application.domain import Disposition, FieldValue, ValueState
+from specimen_digitization.application.domain import Disposition, FieldValue, Observation, Region, ValueState
+from specimen_digitization.application.region_pixels import region_png
 from specimen_digitization.application.first_pass import alignment_units
 from specimen_digitization.application.reading_units import (
     NOT_VISIBLE,
@@ -67,6 +72,7 @@ from specimen_digitization.field_research import step as field_step
 from specimen_digitization.field_research.contracts import (
     FIELD_TOOLS,
     Candidate,
+    FieldAnswer,
     FieldOutcome,
     FieldTask,
     Reading,
@@ -465,9 +471,11 @@ JOINED = units_of("L3", [{"a": "Yepocapa, 4800", "b": "Yepocapa,4800"}, {"a": "f
 
 
 @pytest.mark.parametrize(("units", "key", "literal", "covering", "named"), [
-    # A part of a unit: the number of "Elev.6400" and the name of "H. Hoogstraal leg.".
+    # A part of a unit: the number of "Elev.6400", and the name of "H. Hoogstraal leg.".
     (PILOT, "a", "6400", ["L2:2"], True),
-    (PILOT, "a", "H. Hoogstraal", ["L2:3"], True),
+    # Beside "Elev.6400", which the readers write differently, and the image does not judge
+    # not visible: the image names no text there (image_names).
+    (PILOT, "a", "H. Hoogstraal", ["L2:3"], False),
     # B wrote "Elev.6400'", which the image does not name.
     (PILOT, "b", "6400", ["L2:2"], False),
     # A literal over two units.
@@ -876,262 +884,416 @@ def test_sources_cannot_resolve_quoting_a_transcript_text_on_a_label_nothing_bac
     assert habitat.reason == "Nothing decides. Options: Shrubs; Shurbs."
 
 
-# ---- every reviewer input of PR #425, rounds 1 to 3 (P1-P8) -------------------------------------
+# ---- every reviewer input of PR #425, through the step (rounds 1 to 4, P1-P8) ------------------
 #
-# Each row is a label (hand-built units, two or three readers), the organiser's candidates, the
-# sources' answers and the expert's answer, with what the step stores for it: a resolved answer
-# the rule accepts is supported, cleared or marked as the label settles; one it refuses is
-# ambiguous when readers differ (step._field_value); sources_cannot_resolve is ambiguous with
-# rule 6's options when no candidate is backed (step._unsettled_options), else unresolved.
+# Each row is one or two labels given as units, the organiser's candidates, the sources and the
+# expert's answer. The row runs through the step on test_step's rig: the rig's specimen holds the
+# rows' readings (a third reader, or a second label, added as a_second_label adds one), the
+# organiser's candidates are applied, the row's units are stored as the first pass's, and the
+# field is researched, applied and finalized (settle). The test asserts the stored FieldValue
+# (state, literal, normalized value), the field's settlement findings (cleared:/marked:) and the
+# run's reasons that name the field, label ids written L1, L2.
 
-def _answer(source, *queries, key="province_state"):
-    blobs = LocalBlobs(Path(tempfile.mkdtemp()))
-    return [asyncio.run(source(blobs).lookup(name, query, field_key=key)) for name, query in queries]
-
-
-def stored(readings, candidates, key, answer, answers=()):
-    """What the step stores for `answer` on these readings: (state, literal, how)."""
-    import inspect
-
-    task = FieldTask(key, True, FieldValue(), tuple(Candidate(name, next(r.text for r in readings if r.name == name),
-        literal, f"ev-{name}-{literal}") for name, literal in candidates), FIELD_TOOLS[key])
-    by_name = {reading.name: reading for reading in readings}
-    answers = list(answers)
-    if answer.outcome == "resolved":
-        named = [by_name[name] for name in answer.reading_names if answer.literal in by_name[name].text]
-        cited = [item for item in answers if item.evidence is not None and item.evidence.id in answer.source_evidence_ids]
-        refused = agreement.refusal(task, readings, literal=answer.literal, named=named, value=answer.value,
-            authority_id=answer.authority_id, cited=cited, received=answers)
-        if refused is not None:
-            return (ValueState.AMBIGUOUS if refused.differ else ValueState.UNRESOLVED), None, refused.options or None
-        basis = agreement.literal_basis(task, readings, answer.literal, named)
-        found = agreement.labels(task, readings, answers, transcript=answer.literal if basis == agreement.TRANSCRIPT
-            else None, named=named)
-        label = found[readings[0].region_id]
-        return ValueState.SUPPORTED, answer.literal, "cleared" if label.cleared else label.why
-    accepted = inspect.signature(field_step._unsettled_options).parameters
-    options = field_step._unsettled_options(task, readings, answers, answer=answer,
-        **({"by_name": by_name} if "by_name" in accepted else {}))
-    return (ValueState.AMBIGUOUS, None, tuple(options)) if options else (ValueState.UNRESOLVED, None, None)
+def unit(*texts, image=0, fields=(), sep=" "):
+    """A unit: each reader's text there, in reading order; its image (a reader's index, whose
+    text it names, or UNCERTAIN, NOT_VISIBLE or a text); the fields advice; the separator
+    written after it in each reader's text that writes it."""
+    return SimpleNamespace(texts=texts, image=image, fields=list(fields), sep=sep)
 
 
-def answered(literal, *names, value=None, authority_id=None, cited=()):
-    from specimen_digitization.field_research.contracts import FieldAnswer
+def through_step(tmp_path, monkeypatch, labels, candidates, key, script, *, tools=None, person=False):
+    """Run the row through the step; (state, literal, normalized, authority_id, options, findings,
+    reasons): the options the value's reason lists ("Options: ...")."""
+    built = []
+    for units in labels:
+        readers = len(units[0].texts)
+        texts, offsets = [""] * readers, [[] for _ in range(readers)]
+        seps = [""] * readers
+        for item in units:
+            for index, text in enumerate(item.texts):
+                if text and texts[index]:
+                    texts[index] += seps[index]
+                offsets[index].append((len(texts[index]), len(texts[index]) + len(text)))
+                texts[index] += text
+                if text:
+                    seps[index] = item.sep
+        built.append((units, texts, offsets))
+    original = rig_module.make_specimen
 
-    return FieldAnswer(outcome="resolved", literal=literal, reading_names=list(names), value=value,
-        authority_id=authority_id, source_evidence_ids=list(cited), explanation="Settled.")
+    def make(blobs, first=None, other=None, **kwargs):
+        specimen = original(blobs, built[0][1][0], built[0][1][1], **kwargs)
+        run = specimen.run
+        region = run.regions[0]
+        for index, text in enumerate(built[0][1][2:], 2):
+            route = f"synthetic-reader-{index}"
+            raw = ("SYNTHETIC FIXTURE " + route + "\n" + text).encode()
+            run.observations.append(run.observations[0].model_copy(update={"id": str(uuid.uuid4()),
+                "route_id": route, "model_id": "synthetic-" + route, "literal_text": text,
+                "raw_ref": blobs.put(raw), "raw_sha256": hashlib.sha256(raw).hexdigest()}))
+            run.completed_steps.append(f"transcribe:{region.id}:{route}")
+        for number, (_, texts, _) in enumerate(built[1:], 1):
+            # As test_step.a_second_label adds a label: its own crop, one reading a route.
+            output = io.BytesIO()
+            Image.new("RGB", (100, 100), "white").save(output, format="JPEG", quality=95)
+            extra = Region(asset_id=specimen.asset.id, x=0, y=50, width=100, height=50, order=number,
+                method="synthetic_fixture_region", version="1")
+            crop_png = region_png(Image.open(io.BytesIO(output.getvalue())), extra)
+            extra.crop_ref = blobs.put(crop_png)
+            run.regions.append(extra)
+            crop = hashlib.sha256(crop_png).hexdigest()
+            for route, text in zip(run.profile.routes, texts, strict=True):
+                raw = ("SYNTHETIC FIXTURE " + route + "\n" + text).encode()
+                run.observations.append(Observation(region_id=extra.id, route_id=route, model_id="synthetic-" + route,
+                    provider="synthetic", prompt_version="prompt:" + route, input_sha256=crop,
+                    input_asset_id=specimen.asset.id, input_crop_ref=extra.crop_ref, literal_text=text,
+                    raw_ref=blobs.put(raw), raw_sha256=hashlib.sha256(raw).hexdigest()))
+                run.completed_steps.append(f"transcribe:{extra.id}:{route}")
+        return specimen
+
+    monkeypatch.setattr(rig_module, "make_specimen", make)
+    rig = build_rig(tmp_path, candidates=candidates)
+    run = rig.specimen.run
+    names = {}
+    entries = []
+    for number, (region, (units, texts, offsets)) in enumerate(zip(run.regions, built), 1):
+        names[region.id] = f"L{number}"
+        observations = [o for o in run.observations if o.region_id == region.id]
+        readings = []
+        for index, item in enumerate(units):
+            readers = {o.id: UnitText(text=item.texts[i], start=offsets[i][index][0], end=offsets[i][index][1])
+                for i, o in enumerate(observations)}
+            image = (item.texts[item.image] if isinstance(item.image, int) else item.image)
+            readings.append(ReadingUnit(id=f"{region.id}:{index + 1}", label=region.id, lines=(1, 1), readers=readers,
+                image=image, fields=item.fields))
+        entries.append(ReadingUnits(label=region.id, units=readings))
+    store_reading_units(run, entries)
+    if person:
+        from test_first_pass_advice import person_transcribed
+
+        person_transcribed(run, run.observations[0], actor="reviewer@example.org", reason="The label reads it.")
+    settle(rig, Scripted({key: script}), **({"tools": tools(rig.blobs)} if tools else {}))
+    value = run.fields[key]
+
+    def named(code):
+        for region, name in names.items():
+            code = code.replace(region, name)
+        return code
+    found = [named(f.reason_code).replace(f":{key}:", ":") for f in run.findings
+        if f.rule_id == "field_settlement" and f.field_key == key]
+    reasons = [named(reason).replace(f":{key}", "") for reason in run.reasons if key in reason.split(":")]
+    options = tuple(value.reason.split(" Options: ", 1)[1].rstrip(".").split("; ")) if " Options: " in (
+        value.reason or "") else ()
+    return value.state, value.literal, value.normalized, value.authority_id, options, found, reasons
 
 
-def declined(literal=None, *names, options=()):
-    from specimen_digitization.field_research.contracts import FieldAnswer
-
-    return FieldAnswer(outcome="sources_cannot_resolve", literal=literal, reading_names=list(names),
-        options=list(options), explanation="Nothing decides.")
-
-
-def two_lines(lines, images):
-    """Two readers that each write `lines`, one unit a line, the line break between them."""
-    units, offset = [], 0
-    for number, (text, image) in enumerate(zip(lines, images), 1):
-        span = UnitText(text=text, start=offset, end=offset + len(text))
-        units.append(ReadingUnit(id=f"L:{number}", label="L", lines=(number, number), readers={"a": span, "b": span},
-            image=image))
-        offset += len(text) + 1
-    entry = ReadingUnits(label="L", units=units)
-    return tuple(Reading(f"1{k.upper()}", "L", k, "raw_reading", "\n".join(lines), units=entry) for k in "ab")
+def says(literal, *names, asks=(), cite=None, kind=None):
+    """The expert's resolved answer: `literal`, naming `names`, after asking each of `asks`
+    ((source, query)); with `cite` (an index into `asks`), citing that answer, its candidate
+    whose kind holds `kind` the value and authority."""
+    async def script(task, readings, tools):
+        found = [await tools.lookup(source, query, field_key=task.key) for source, query in asks]
+        value, authority, cited = None, None, []
+        if cite is not None:
+            answer = found[cite]
+            candidate = next(c for c in answer.candidates if kind is None or kind in (c.kind or ""))
+            value, authority, cited = candidate.name, candidate.authority_id, [answer.evidence.id]
+        return FieldOutcome(task.key, FieldAnswer(outcome="resolved", literal=literal, reading_names=list(names),
+            value=value, authority_id=authority, source_evidence_ids=cited, explanation="Settled."),
+            evidence=[item.evidence for item in found if item.evidence is not None], model_calls=1)
+    return script
 
 
-def labelled(texts_by_unit, images, fields=None):
-    units = units_of("L", texts_by_unit, images, fields)
-    return tuple(reading_of(key, units) for key in texts_by_unit[0])
+def declines(literal=None, *names, options=()):
+    """The expert's sources_cannot_resolve, with `literal` from `names` and `options`."""
+    async def script(task, readings, tools):
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", literal=literal,
+            reading_names=list(names), options=list(options), explanation="Nothing decides."), model_calls=1)
+    return script
 
 
-def place_row(texts, image, confirm, literal, reading, *, source="tgn", key="province_state"):
-    """Province rows: "province_state:" and each reader's text, the image `image` there, the
-    organiser's candidate for each reader, `confirm` asked of the source."""
-    readings = labelled([{k: "province_state:" for k in texts}, texts], ["province_state:", image])
-    found = _answer(FakeSources if source == "fake" else Gazetteer, *(("tgn", query) for query in confirm), key=key)
-    match = next(item for item in found if item.candidates)
-    # The candidate at the field's level (a first-level subdivision), as a province expert cites it.
-    place = next(c for c in match.candidates if "first level" in (c.kind or ""))
-    return readings, [(r.name, texts[r.observation_id]) for r in readings], key, answered(
-        literal, reading, value=place.name, authority_id=place.authority_id, cited=[match.evidence.id]), found
+def filed(key, *pairs):
+    """The organiser's candidates: (reading, literal), each quoting its literal."""
+    return [(key, name, literal, literal) for name, literal in pairs]
 
 
-def d4_illinois():
-    """One unit holds A's "province_state: Illinois" and B's "province_state: Indiana", the image
-    names B's; the organiser files A's "Illinois", which Getty TGN confirms; the answer is it."""
-    found = _answer(FakeSources, ("tgn", "Illinois"))
-    readings = labelled([{"a": "province_state: Illinois", "b": "province_state: Indiana"}], ["province_state: Indiana"])
-    return readings, [("1A", "Illinois")], "province_state", answered("Illinois", "1A", value="Illinois",
-        authority_id=found[0].candidates[0].authority_id, cited=[found[0].evidence.id]), found
+LIGHT_UNITS = [unit("light", "", image=0), unit("trap", "trap")]
+DANAUS_UNITS = [unit("Danaus", "Danaus"), unit("plexippus", "plexippus"), unit("megalippe", "")]
+SHRUB_UNITS = [unit("habitat:", "habitat:"), unit("Shrubs", "Shurbs", image=UNCERTAIN)]
+CHI_UNITS = [unit("province_state:", "province_state:"), unit("Chi mal ten ango", "Chimaltenango", image=UNCERTAIN)]
+MCKINLEY = [unit("E Slope", ""), unit("Mt.", "Mt."), unit("McKinley", "McKinley")]
+TOWN = ("geolocate", "Yepocapa, Chimaltenango, Guatemala")
 
 
-def same_town(literal, reading):
-    """Codex round 1, 2: 1A writes "city: Yepocapa,", 1B "city: Yepocapa", the image names 1A's
-    "Yepocapa,", and one GEOLocate answer confirms the town; the answer is `literal` from `reading`."""
-    found = _answer(Gazetteer, ("geolocate", "Yepocapa, Chimaltenango, Guatemala"), key="city")
-    readings = labelled([{"a": "city:", "b": "city:"}, {"a": "Yepocapa,", "b": "Yepocapa"}], ["city:", "Yepocapa,"])
-    town = found[0].candidates[0]
-    return readings, [("1A", "Yepocapa,"), ("1B", "Yepocapa")], "city", answered(literal, reading, value="Yepocapa",
-        authority_id=town.authority_id, cited=[found[0].evidence.id]), found
+def same_town(image, literal, reading):
+    return dict(labels=[[unit("city:", "city:"), unit("Yepocapa,", "Yepocapa", image=image)]],
+        candidates=filed("city", ("1A", "Yepocapa,"), ("1B", "Yepocapa")), key="city",
+        script=says(literal, reading, asks=[TOWN], cite=0), tools=Gazetteer)
 
 
-SHRUBS = [{"a": "habitat:", "b": "habitat:"}, {"a": "Shrubs", "b": "Shurbs"}]
-DANAUS = [{"a": "Danaus", "b": "Danaus"}, {"a": "plexippus", "b": "plexippus"}, {"a": "megalippe", "b": ""}]
-LIGHT = [{"a": "light", "b": ""}, {"a": "trap", "b": "trap"}]
-CHI = [{"a": "province_state:", "b": "province_state:"}, {"a": "Chi mal ten ango", "b": "Chimaltenango"}]
+def chi(image, literal, reading):
+    units = [CHI_UNITS[0], unit("Chi mal ten ango", "Chimaltenango", image=image)]
+    return dict(labels=[units], candidates=filed("province_state", ("1A", "Chi mal ten ango"), ("1B", "Chimaltenango")),
+        key="province_state", script=says(literal, reading, asks=[("tgn", "Chimaltenango")], cite=0, kind="first level"),
+        tools=Gazetteer)
 
 
-def rows():
-    """(id, builder, expected): builder returns stored()'s arguments."""
-    S, A, U = ValueState.SUPPORTED, ValueState.AMBIGUOUS, ValueState.UNRESOLVED
-    table = [
-        # Codex round 1, 1: one confirmed text in two spellings keeps SOURCE.
-        ("codex1-1-image-uncertain", lambda: place_row({"a": "Illinois", "b": "ILLINOIS", "c": "Indiana"}, UNCERTAIN,
-            ["Illinois", "Indiana"], "Illinois", "1A", source="fake"), (S, "Illinois", "cleared")),
-        ("codex1-1-image-names-indiana", lambda: place_row({"a": "Illinois", "b": "ILLINOIS", "c": "Indiana"}, "Indiana",
-            ["Illinois", "Indiana"], "Illinois", "1A", source="fake"), (S, "Illinois", "conflict")),
-        # Codex round 1, 2: one town in two spellings, the image naming 1A's.
-        ("codex1-2-image-spelling", lambda: same_town("Yepocapa,", "1A"), (S, "Yepocapa,", "cleared")),
-        ("codex1-2-other-spelling", lambda: same_town("Yepocapa", "1B"), (S, "Yepocapa", "cleared")),
-        # Codex round 1, 3: a decomposed accent.
-        ("codex1-3-decomposed", lambda: (labelled([{"a": "Cafe\u0301", "b": "Cafe\u0301"}, {"a": "forest", "b": "forest"}],
-            ["Cafe\u0301", "forest"]), [("1A", "Caf\u00e9 forest"), ("1B", "Caf\u00e9 forest")], "habitat",
-            answered("Cafe\u0301 forest", "1A")), (S, "Cafe\u0301 forest", "cleared")),
-        # Codex round 1, 4: a reader's own spelling, whichever reader the organiser filed.
-        ("codex1-4-image-spelling", lambda: (labelled([SHRUBS[0], {"a": "shrubs", "b": "Shrubs"}], ["habitat:", "shrubs"]),
-            [("1B", "Shrubs")], "habitat", answered("shrubs", "1A")), (S, "shrubs", "cleared")),
-        ("codex1-4-other-spelling", lambda: (labelled([SHRUBS[0], {"a": "shrubs", "b": "Shrubs"}], ["habitat:", "shrubs"]),
-            [("1B", "Shrubs")], "habitat", answered("Shrubs", "1B")), (A, None, None)),
-        # Codex round 1, 5: a text read from the transcript alone.
-        ("codex1-5-transcript", lambda: (labelled(SHRUBS, ["habitat:", "Shrubs"]), [], "habitat", answered("Shrubs", "1A")),
-            (S, "Shrubs", "cleared")),
-        # Codex round 1, 6: sources_cannot_resolve, nothing backed.
-        ("codex1-6-nothing-backed", lambda: (labelled(SHRUBS, ["habitat:", UNCERTAIN]), [("1A", "Shrubs"), ("1B", "Shurbs")],
-            "habitat", declined()), (A, None, ("Shrubs", "Shurbs"))),
-        # Claude round 1, C1: the binomial beside the trinomial, the image naming each unit.
-        ("claude1-c1-1B-only", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"]),
-            [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus", "1B")), (S, "Danaus plexippus", "text_only")),
-        ("claude1-c1-trinomial-answered", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"]),
-            [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus megalippe", "1A")),
-            (S, "Danaus plexippus megalippe", "cleared")),
-        ("claude1-c1-both-filed", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"]),
-            [("1A", "Danaus plexippus megalippe"), ("1B", "Danaus plexippus")], "taxon",
-            answered("Danaus plexippus", "1B")), (A, None, None)),
-        ("claude1-c1-megalippe-not-visible", lambda: (labelled(DANAUS, ["Danaus", "plexippus", NOT_VISIBLE]),
-            [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus", "1B")), (S, "Danaus plexippus", "cleared")),
-        # Claude round 1, C2 (a): Mindanao beside Davao Prov., given to agreement.labels with no
-        # source (a free-text field here, so no place check asks for one); and the readers term deciding.
-        ("claude1-c2a-mindanao", lambda: (labelled([{"a": "Mindanao,", "b": "Mindanao,", "c": "Mindanao,"},
-            {"a": "Davao Prov.", "b": "Davao Prov.", "c": ""}], ["Mindanao,", "Davao Prov."]),
-            [("1A", "Mindanao"), ("1A", "Davao Prov."), ("1B", "Mindanao"), ("1B", "Davao Prov."), ("1C", "Mindanao")],
-            "habitat", answered("Davao Prov.", "1A")), (S, "Davao Prov.", "conflict")),
-        ("claude1-c2a-more-readers", lambda: (labelled([{"a": "Mindanao,", "b": "Mindanao,", "c": "Mindanao,"},
-            {"a": "Davao Prov.", "b": "Davao Prov.", "c": "Davao Pr."}], ["Mindanao,", "Davao Prov."]),
-            [("1A", "Mindanao"), ("1A", "Davao Prov."), ("1B", "Mindanao"), ("1B", "Davao Prov."), ("1C", "Mindanao")],
-            "habitat", answered("Mindanao", "1A")), (S, "Mindanao", "conflict")),
-        # Claude round 1, C2 (b): t1-330's joined unit, the organiser filing 1A only (given to
-        # agreement.labels with no source; a free-text field here, as for C2 (a)).
-        ("claude1-c2b-yepocapa", lambda: (labelled([{"a": "Yepocapa, 4800", "b": "Yepocapa,4800"}, {"a": "ft.", "b": "ft."}],
-            [UNCERTAIN, UNCERTAIN]), [("1A", "Yepocapa")], "habitat", answered("Yepocapa", "1A")),
-            (S, "Yepocapa", "text_only")),
-        # Claude round 1, C2 (c): the McKinley slope.
-        ("claude1-c2c-mckinley-both-filed", lambda: (labelled([{"a": "E Slope", "b": ""}, {"a": "Mt.", "b": "Mt."},
-            {"a": "McKinley", "b": "McKinley"}], ["E Slope", "Mt.", "McKinley"]),
-            [("1A", "E Slope Mt. McKinley"), ("1B", "Mt. McKinley")], "precise_location",
-            answered("E Slope Mt. McKinley", "1A")), (S, "E Slope Mt. McKinley", "cleared")),
-        ("claude1-c2c-mckinley-1B-only", lambda: (labelled([{"a": "E Slope", "b": ""}, {"a": "Mt.", "b": "Mt."},
-            {"a": "McKinley", "b": "McKinley"}], ["E Slope", "Mt.", "McKinley"]), [("1B", "Mt. McKinley")],
-            "precise_location", answered("Mt. McKinley", "1B")), (S, "Mt. McKinley", "text_only")),
-        # Claude round 1, C2 (d): the image at every place.
-        ("claude1-c2d-one-place-uncertain", lambda: (labelled([{"a": "la", "b": "la"}, {"a": "x", "b": "x"},
-            {"a": "la", "b": "la"}], ["la", "x", UNCERTAIN]), [("1A", "la"), ("1B", "la")], "collection_code",
-            answered("la", "1A")), (S, "la", "text_only")),
-        ("claude1-c2d-both-named", lambda: (labelled([{"a": "la", "b": "la"}, {"a": "x", "b": "x"},
-            {"a": "la", "b": "la"}], ["la", "x", "la"]), [("1A", "la"), ("1B", "la")], "collection_code",
-            answered("la", "1A")), (S, "la", "cleared")),
-        # Codex round 2, D1, and Claude round 3, 2: a spacing variant of the confirmed text.
-        ("codex2-d1-image-uncertain", lambda: place_row({"a": "Chi mal ten ango", "b": "Chimaltenango"}, UNCERTAIN,
-            ["Chimaltenango"], "Chimaltenango", "1B"), (S, "Chimaltenango", "cleared")),
-        ("claude3-2-image-names-spaced-answer-spaced", lambda: place_row({"a": "Chi mal ten ango", "b": "Chimaltenango"},
-            "Chi mal ten ango", ["Chimaltenango"], "Chi mal ten ango", "1A"), (S, "Chi mal ten ango", "cleared")),
-        ("claude3-2-image-names-spaced-answer-confirmed", lambda: place_row({"a": "Chi mal ten ango", "b": "Chimaltenango"},
-            "Chi mal ten ango", ["Chimaltenango"], "Chimaltenango", "1B"), (S, "Chimaltenango", "cleared")),
-        # Codex round 2, D2: a literal after a composed sequence.
-        ("codex2-d2-composed", lambda: (tuple(Reading(f"1{k.upper()}", "L", k, "raw_reading", "e\u0301x",
-            units=adjacent("L", ["e\u0301", "x"], [UNCERTAIN, "x"])) for k in "ab"), [("1A", "x"), ("1B", "x")], "habitat",
-            answered("x", "1A")), (S, "x", "cleared")),
-        # Codex round 2, D4: another reader's different text inside one unit.
-        ("codex2-d4-illinois-answered", d4_illinois, (A, None, None)),
-        # Codex round 2, D5, and Codex round 3, 4: units advised for other fields (advice takes no part).
-        ("codex2-d5-shrubs-1946", lambda: (labelled([{"a": "Shrubs", "b": "Shrubs"}, {"a": "1946", "b": ""}], ["Shrubs", "1946"],
-            [["habitat"], ["date_visited_from"]]), [("1B", "Shrubs")], "habitat", answered("Shrubs", "1B")),
-            (S, "Shrubs", "text_only")),
-        ("codex3-4-light-advised-habitat", lambda: (labelled(LIGHT, ["light", "trap"], [["habitat"], ["collection_method"]]),
-            [("1B", "trap")], "collection_method", answered("trap", "1B")), (S, "trap", "text_only")),
-        ("codex3-4-megalippe-advised-dts", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"],
-            [["taxon"], ["taxon"], ["verbatim_dts"]]), [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus", "1B")),
-            (S, "Danaus plexippus", "text_only")),
-        ("claude3-3a-danaus-advised-taxon", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"],
-            [["taxon"]] * 3), [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus", "1B")),
-            (S, "Danaus plexippus", "text_only")),
-        # Codex round 2, D6, and Codex round 3, 5 and 6: rule 6's options.
-        ("codex2-d6-transcript-literal", lambda: (labelled(SHRUBS, ["habitat:", UNCERTAIN]), [], "habitat",
-            declined("Shrubs", "1A", options=["Shrubs", "Shurbs"])), (A, None, ("Shrubs", "Shurbs"))),
-        ("codex3-5-options-no-literal", lambda: (labelled(SHRUBS, ["habitat:", UNCERTAIN]), [], "habitat",
-            declined(None, "1A", "1B", options=["Shrubs", "Shurbs"])), (A, None, ("Shrubs", "Shurbs"))),
-        ("codex3-6-options-a-subset", lambda: (labelled(SHRUBS, ["habitat:", UNCERTAIN]), [], "habitat",
-            declined("Shrubs", "1A", options=["Shrubs"])), (A, None, ("Shrubs", "Shurbs"))),
-        # Codex round 3, 1: a whole-word place filtered out, an inside-word one kept.
-        ("codex3-1-inside-word", lambda: (labelled([{"a": "x\u0301", "b": "x\u0301"}, {"a": "ax", "b": "ax"}], [UNCERTAIN, "ax"]),
-            [("1A", "x"), ("1B", "x")], "habitat", answered("x", "1A")), (S, "x", "cleared")),
-        # Codex round 3, 2: punctuation and a prefix differing inside one unit.
-        ("codex3-2-semicolon-comma-1A", lambda: (labelled([{"a": "Shrubs;1946", "b": "Shrubs,1946"}], ["Shrubs,1946"]),
-            [("1A", "Shrubs")], "habitat", answered("Shrubs", "1A")), (S, "Shrubs", "cleared")),
-        ("codex3-2-semicolon-comma-1B", lambda: (labelled([{"a": "Shrubs;1946", "b": "Shrubs,1946"}], ["Shrubs,1946"]),
-            [("1A", "Shrubs")], "habitat", answered("Shrubs", "1B")), (S, "Shrubs", "cleared")),
-        ("codex3-2-shared-end", lambda: (labelled([{"a": "A Shrubs", "b": "B Shrubs"}], ["B Shrubs"]), [("1A", "Shrubs")],
-            "habitat", answered("Shrubs", "1A")), (S, "Shrubs", "cleared")),
-        # Codex round 3, 3: two differences in one unit.
-        ("codex3-3-shrubs-answered", lambda: (labelled([{"a": "habitat: Shrubs; code A", "b": "habitat: Grass; code B"}],
-            ["habitat: Grass; code B"]), [("1A", "Shrubs")], "habitat", answered("Shrubs", "1A")), (A, None, None)),
-        ("codex3-3-grass-answered", lambda: (labelled([{"a": "habitat: Shrubs; code A", "b": "habitat: Grass; code B"}],
-            ["habitat: Grass; code B"]), [("1A", "Shrubs")], "habitat", answered("Grass", "1B")), (S, "Grass", "cleared")),
-        # Claude round 3, 3b: a literal inside the two texts' shared end.
-        ("claude3-3b-image-uncertain", lambda: (labelled([{"a": "Elev. 6400 ft", "b": "El. 6400 ft"}], [UNCERTAIN]),
-            [("1A", "6400")], "habitat", answered("6400", "1A")), (A, None, None)),
-        ("claude3-3b-image-names-1B", lambda: (labelled([{"a": "Elev. 6400 ft", "b": "El. 6400 ft"}], ["El. 6400 ft"]),
-            [("1A", "6400")], "habitat", answered("6400", "1A")), (S, "6400", "cleared")),
-    ]
-    # Codex round 2, D3, and Claude round 3, 1a: "trap" beside "light trap", whichever readings
-    # the answer names.
-    for light, expected in ((NOT_VISIBLE, (S, "trap", "cleared")), ("light", (S, "trap", "text_only"))):
-        for names in (("1A",), ("1B",), ("1A", "1B")):
-            table.append((f"codex2-d3-claude3-1a-{'not-visible' if light == NOT_VISIBLE else 'image-names-light'}-names-"
-                + "-".join(names), lambda light=light, names=names: (labelled(LIGHT, [light, "trap"]), [],
-                "collection_method", answered("trap", *names)), expected))
-    # prompts/units.txt's example: "light trap" given as the literal, the image naming "light".
-    table.append(("units-txt-light-trap-answered", lambda: (labelled(LIGHT, ["light", "trap"]), [], "collection_method",
-        answered("light trap", "1A")), (S, "light trap", "cleared")))
-    # Claude round 3, 1b: an agreed two-line locality, the organiser filing each line.
+# (id, the row, what it is). A reviewer row keeps the reviewer's field; a "mechanics" row is not a
+# reviewer input.
+TABLE = [
+    ("codex1-1-image-uncertain", lambda: dict(labels=[[unit("province_state:", "province_state:", "province_state:"),
+        unit("Illinois", "ILLINOIS", "Indiana", image=UNCERTAIN)]], candidates=filed("province_state", ("1A", "Illinois"),
+        ("1B", "ILLINOIS"), ("1C", "Indiana")), key="province_state", script=says("Illinois", "1A",
+        asks=[("tgn", "Illinois"), ("tgn", "Indiana")], cite=0)), "Codex round 1, 1"),
+    ("codex1-1-image-names-indiana", lambda: dict(labels=[[unit("province_state:", "province_state:", "province_state:"),
+        unit("Illinois", "ILLINOIS", "Indiana", image=2)]], candidates=filed("province_state", ("1A", "Illinois"),
+        ("1B", "ILLINOIS"), ("1C", "Indiana")), key="province_state", script=says("Illinois", "1A",
+        asks=[("tgn", "Illinois"), ("tgn", "Indiana")], cite=0)), "Codex round 1, 1"),
+    ("codex1-2-image-spelling", lambda: same_town(0, "Yepocapa,", "1A"), "Codex round 1, 2"),
+    ("codex1-2-other-spelling", lambda: same_town(0, "Yepocapa", "1B"), "Codex round 1, 2"),
+    ("codex1-3-decomposed", lambda: dict(labels=[[unit("habitat:", "habitat:"), unit("Cafe\u0301", "Cafe\u0301"),
+        unit("forest", "forest")]], candidates=filed("habitat", ("1A", "Cafe\u0301 forest"), ("1B", "Cafe\u0301 forest")),
+        key="habitat", script=says("Cafe\u0301 forest", "1A")), "Codex round 1, 3"),
+    ("codex1-4-image-spelling", lambda: dict(labels=[[unit("habitat:", "habitat:"), unit("shrubs", "Shrubs", image=0)]],
+        candidates=filed("habitat", ("1B", "Shrubs")), key="habitat", script=says("shrubs", "1A")), "Codex round 1, 4"),
+    ("codex1-4-other-spelling", lambda: dict(labels=[[unit("habitat:", "habitat:"), unit("shrubs", "Shrubs", image=0)]],
+        candidates=filed("habitat", ("1B", "Shrubs")), key="habitat", script=says("Shrubs", "1B")), "Codex round 1, 4"),
+    ("codex1-5-transcript", lambda: dict(labels=[[SHRUB_UNITS[0], unit("Shrubs", "Shurbs", image=0)]], candidates=[],
+        key="habitat", script=says("Shrubs", "1A")), "Codex round 1, 5"),
+    ("codex1-6-nothing-backed", lambda: dict(labels=[SHRUB_UNITS], candidates=filed("habitat", ("1A", "Shrubs"),
+        ("1B", "Shurbs")), key="habitat", script=declines()), "Codex round 1, 6"),
+    ("claude1-c1-1B-only", lambda: dict(labels=[DANAUS_UNITS], candidates=filed("taxon", ("1B", "Danaus plexippus")),
+        key="taxon", script=says("Danaus plexippus", "1B")), "Claude round 1, C1"),
+    ("claude1-c1-trinomial-answered", lambda: dict(labels=[DANAUS_UNITS], candidates=filed("taxon",
+        ("1B", "Danaus plexippus")), key="taxon", script=says("Danaus plexippus megalippe", "1A")), "Claude round 1, C1"),
+    ("claude1-c1-both-filed", lambda: dict(labels=[DANAUS_UNITS], candidates=filed("taxon",
+        ("1A", "Danaus plexippus megalippe"), ("1B", "Danaus plexippus")), key="taxon", script=says("Danaus plexippus", "1B")),
+        "Claude round 1, C1"),
+    ("claude1-c1-megalippe-not-visible", lambda: dict(labels=[[*DANAUS_UNITS[:2], unit("megalippe", "", image=NOT_VISIBLE)]],
+        candidates=filed("taxon", ("1B", "Danaus plexippus")), key="taxon", script=says("Danaus plexippus", "1B")),
+        "Claude round 1, C1"),
+    ("claude1-c2a-mindanao", lambda: dict(labels=[[unit("Mindanao,", "Mindanao,", "Mindanao,", sep="\n"),
+        unit("Davao Prov.", "Davao Prov.", "")]], candidates=filed("province_state", ("1A", "Mindanao"), ("1A", "Davao Prov."),
+        ("1B", "Mindanao"), ("1B", "Davao Prov."), ("1C", "Mindanao")), key="province_state",
+        script=says("Davao Prov.", "1A")), "Claude round 1, C2 (a)"),
+    ("mechanics-c2a-mindanao-on-habitat", lambda: dict(labels=[[unit("Mindanao,", "Mindanao,", "Mindanao,", sep="\n"),
+        unit("Davao Prov.", "Davao Prov.", "")]], candidates=filed("habitat", ("1A", "Mindanao"), ("1A", "Davao Prov."),
+        ("1B", "Mindanao"), ("1B", "Davao Prov."), ("1C", "Mindanao")), key="habitat", script=says("Davao Prov.", "1A")),
+        "mechanics: C2 (a)'s units on a field with no place check"),
+    ("mechanics-readers-term", lambda: dict(labels=[[unit("Mindanao,", "Mindanao,", "Mindanao,", sep="\n"),
+        unit("P.I.", "P.I.", "P.I.", sep="\n"), unit("Davao Prov.", "Davao Prov.", "Davao Pr.")]],
+        candidates=filed("habitat", ("1A", "Mindanao"), ("1A", "Davao Prov."), ("1B", "Mindanao"), ("1B", "Davao Prov."),
+        ("1C", "Mindanao")), key="habitat", script=says("Mindanao", "1A")), "mechanics: rule 5's readers term"),
+    ("claude1-c2b-yepocapa", lambda: dict(labels=[[unit("Yepocapa, 4800", "Yepocapa,4800", image=UNCERTAIN),
+        unit("ft.", "ft.", image=UNCERTAIN)]], candidates=filed("city", ("1A", "Yepocapa")), key="city",
+        script=says("Yepocapa", "1A")), "Claude round 1, C2 (b)"),
+    ("mechanics-c2b-yepocapa-on-habitat", lambda: dict(labels=[[unit("Yepocapa, 4800", "Yepocapa,4800", image=UNCERTAIN),
+        unit("ft.", "ft.", image=UNCERTAIN)]], candidates=filed("habitat", ("1A", "Yepocapa")), key="habitat",
+        script=says("Yepocapa", "1A")), "mechanics: C2 (b)'s units on a field with no place check"),
+    ("claude1-c2c-mckinley-both-filed", lambda: dict(labels=[MCKINLEY], candidates=filed("precise_location",
+        ("1A", "E Slope Mt. McKinley"), ("1B", "Mt. McKinley")), key="precise_location",
+        script=says("E Slope Mt. McKinley", "1A")), "Claude round 1, C2 (c)"),
+    ("claude1-c2c-mckinley-1B-only", lambda: dict(labels=[MCKINLEY], candidates=filed("precise_location",
+        ("1B", "Mt. McKinley")), key="precise_location", script=says("Mt. McKinley", "1B")), "Claude round 1, C2 (c)"),
+    ("claude1-c2d-one-place-uncertain", lambda: dict(labels=[[unit("la", "la"), unit("x", "x"),
+        unit("la", "la", image=UNCERTAIN)]], candidates=filed("collection_code", ("1A", "la"), ("1B", "la")),
+        key="collection_code", script=says("la", "1A")), "Claude round 1, C2 (d)"),
+    ("claude1-c2d-both-named", lambda: dict(labels=[[unit("la", "la"), unit("x", "x"), unit("la", "la")]],
+        candidates=filed("collection_code", ("1A", "la"), ("1B", "la")), key="collection_code", script=says("la", "1A")),
+        "Claude round 1, C2 (d)"),
+    ("codex2-d1-image-uncertain", lambda: chi(UNCERTAIN, "Chimaltenango", "1B"), "Codex round 2, D1"),
+    ("claude3-2-image-names-spaced-answer-spaced", lambda: chi(0, "Chi mal ten ango", "1A"), "Claude round 3, 2"),
+    ("claude3-2-image-names-spaced-answer-confirmed", lambda: chi(0, "Chimaltenango", "1B"), "Claude round 3, 2"),
+    ("codex2-d2-composed", lambda: dict(labels=[[unit("e\u0301", "e\u0301", image=UNCERTAIN, sep=""), unit("x", "x")]],
+        candidates=filed("habitat", ("1A", "x"), ("1B", "x")), key="habitat", script=says("x", "1A")), "Codex round 2, D2"),
+    ("codex2-d4-illinois-answered", lambda: dict(labels=[[unit("province_state: Illinois", "province_state: Indiana",
+        image=1)]], candidates=filed("province_state", ("1A", "Illinois")), key="province_state",
+        script=says("Illinois", "1A", asks=[("tgn", "Illinois")], cite=0)), "Codex round 2, D4"),
+    ("codex2-d5-shrubs-1946", lambda: dict(labels=[[unit("Shrubs", "Shrubs", fields=["habitat"]),
+        unit("1946", "", fields=["date_visited_from"])]], candidates=filed("habitat", ("1B", "Shrubs")), key="habitat",
+        script=says("Shrubs", "1B")), "Codex round 2, D5"),
+    ("codex2-d6-transcript-literal", lambda: dict(labels=[SHRUB_UNITS], candidates=[], key="habitat",
+        script=declines("Shrubs", "1A", options=["Shrubs", "Shurbs"])), "Codex round 2, D6"),
+    ("codex3-1-inside-word", lambda: dict(labels=[[unit("x\u0301", "x\u0301", image=UNCERTAIN), unit("ax", "ax")]],
+        candidates=filed("habitat", ("1A", "x"), ("1B", "x")), key="habitat", script=says("x", "1A")), "Codex round 3, 1"),
+    ("codex3-2-semicolon-comma-1A", lambda: dict(labels=[[unit("Shrubs;1946", "Shrubs,1946", image=1)]],
+        candidates=filed("habitat", ("1A", "Shrubs")), key="habitat", script=says("Shrubs", "1A")), "Codex round 3, 2"),
+    ("codex3-2-semicolon-comma-1B", lambda: dict(labels=[[unit("Shrubs;1946", "Shrubs,1946", image=1)]],
+        candidates=filed("habitat", ("1A", "Shrubs")), key="habitat", script=says("Shrubs", "1B")), "Codex round 3, 2"),
+    ("codex3-2-shared-end", lambda: dict(labels=[[unit("A Shrubs", "B Shrubs", image=1)]],
+        candidates=filed("habitat", ("1A", "Shrubs")), key="habitat", script=says("Shrubs", "1A")), "Codex round 3, 2"),
+    ("codex3-3-shrubs-answered", lambda: dict(labels=[[unit("habitat: Shrubs; code A", "habitat: Grass; code B",
+        image=1)]], candidates=filed("habitat", ("1A", "Shrubs")), key="habitat", script=says("Shrubs", "1A")),
+        "Codex round 3, 3"),
+    ("codex3-3-grass-answered", lambda: dict(labels=[[unit("habitat: Shrubs; code A", "habitat: Grass; code B",
+        image=1)]], candidates=filed("habitat", ("1A", "Shrubs")), key="habitat", script=says("Grass", "1B")),
+        "Codex round 3, 3"),
+    ("codex3-4-light-advised-habitat", lambda: dict(labels=[[unit("light", "", fields=["habitat"]),
+        unit("trap", "trap", fields=["collection_method"])]], candidates=filed("collection_method", ("1B", "trap")),
+        key="collection_method", script=says("trap", "1B")), "Codex round 3, 4"),
+    ("codex3-4-megalippe-advised-dts", lambda: dict(labels=[[unit("Danaus", "Danaus", fields=["taxon"]),
+        unit("plexippus", "plexippus", fields=["taxon"]), unit("megalippe", "", fields=["verbatim_dts"])]],
+        candidates=filed("taxon", ("1B", "Danaus plexippus")), key="taxon", script=says("Danaus plexippus", "1B")),
+        "Codex round 3, 4"),
+    ("codex3-5-options-no-literal", lambda: dict(labels=[SHRUB_UNITS], candidates=[], key="habitat",
+        script=declines(None, "1A", "1B", options=["Shrubs", "Shurbs"])), "Codex round 3, 5"),
+    ("codex3-6-options-a-subset", lambda: dict(labels=[SHRUB_UNITS], candidates=[], key="habitat",
+        script=declines("Shrubs", "1A", options=["Shrubs"])), "Codex round 3, 6"),
+    ("claude3-3a-danaus-advised-taxon", lambda: dict(labels=[[unit("Danaus", "Danaus", fields=["taxon"]),
+        unit("plexippus", "plexippus", fields=["taxon"]), unit("megalippe", "", fields=["taxon"])]],
+        candidates=filed("taxon", ("1B", "Danaus plexippus")), key="taxon", script=says("Danaus plexippus", "1B")),
+        "Claude round 3, 3a"),
+    ("claude3-3b-image-uncertain", lambda: dict(labels=[[unit("Elev. 6400 ft", "El. 6400 ft", image=UNCERTAIN)]],
+        candidates=filed("elevation_from_ft", ("1A", "6400")), key="elevation_from_ft", script=says("6400", "1A")),
+        "Claude round 3, 3b"),
+    ("claude3-3b-image-names-1B", lambda: dict(labels=[[unit("Elev. 6400 ft", "El. 6400 ft", image=1)]],
+        candidates=filed("elevation_from_ft", ("1A", "6400")), key="elevation_from_ft", script=says("6400", "1A")),
+        "Claude round 3, 3b"),
+    ("codex4-s1-names-1A", lambda: s1("1A"), "Codex round 4, 1"),
+    ("codex4-s1-names-1B", lambda: s1("1B"), "Codex round 4, 1"),
+    ("codex4-s1-names-both", lambda: s1("1A", "1B"), "Codex round 4, 1"),
+    ("codex4-s2-person-two-lines", lambda: dict(labels=[[unit("Seliban Riv.", "Seliban Riv.", image=UNCERTAIN, sep="\n"),
+        unit("Mt. Apo", "Mt. Apo", image=UNCERTAIN)]], candidates=filed("precise_location", ("1A", "Seliban Riv."),
+        ("1A", "Mt. Apo")), key="precise_location", script=says("Seliban Riv.\nMt. Apo", "1A"), person=True),
+        "Codex round 4, 2"),
+    ("codex4-s3-sharp-s", lambda: dict(labels=[[unit("s s", "\u00df", image=UNCERTAIN)]], candidates=filed("habitat",
+        ("1A", "s")), key="habitat", script=says("s", "1A")), "Codex round 4, 3"),
+    ("codex4-s4-cloud-rain-forest", lambda: dict(labels=[[unit("cloud", "rain"), unit("forest", "forest")]],
+        candidates=filed("habitat", ("1B", "forest")), key="habitat", script=says("forest", "1B")), "Codex round 4, 4"),
+    ("codex4-s4-agreed-neighbour", lambda: dict(labels=[[unit("Shrubs", "Shrubs"), unit("1946", "1946")]],
+        candidates=filed("habitat", ("1B", "Shrubs")), key="habitat", script=says("Shrubs", "1B")), "coordinator, round 4 (S4)"),
+    ("codex4-s5-dry-forest", lambda: dict(labels=[[unit("dry forest", "dry forest", sep="\n"), unit("forest", "forest")]],
+        candidates=filed("habitat", ("1A", "dry forest"), ("1B", "forest")), key="habitat", script=says("dry forest", "1A")),
+        "Codex round 4, 5"),
+    ("claude4-t1-reader-order", lambda: dict(labels=[[unit("Mindanao,", "", sep="\n"), unit("P.I.", "P.I.", sep="\n"),
+        unit("", "Davao Prov.", image=1)]], candidates=filed("habitat", ("1A", "Mindanao"), ("1B", "Davao Prov.")),
+        key="habitat", script=says("Mindanao", "1A")), "Claude round 4, T1"),
+    ("claude4-t1-reader-order-other-answered", lambda: dict(labels=[[unit("Mindanao,", "", sep="\n"),
+        unit("P.I.", "P.I.", sep="\n"), unit("", "Davao Prov.", image=1)]], candidates=filed("habitat", ("1A", "Mindanao"),
+        ("1B", "Davao Prov.")), key="habitat", script=says("Davao Prov.", "1B")), "Claude round 4, T1"),
+    ("claude4-t2-image-names-1B-answer-1A", lambda: same_town(1, "Yepocapa,", "1A"), "Claude round 4, T2"),
+    ("claude4-t2-image-names-1B-answer-1B", lambda: same_town(1, "Yepocapa", "1B"), "Claude round 4, T2"),
+    ("claude4-t3-options-union", lambda: dict(labels=[SHRUB_UNITS], candidates=[], key="habitat",
+        script=declines("Shrubs", "1A", options=["Shrubs", "Shurbs", "Grassland"])), "Claude round 4, T3"),
+    ("mechanics-s1-second-label-agrees-names-1A", lambda: s1("1A", agreed=True),
+        "mechanics: the literal offered to every label, whatever readings the answer names (S1)"),
+    ("mechanics-s1-second-label-agrees-names-1B", lambda: s1("1B", agreed=True),
+        "mechanics: the literal offered to every label, whatever readings the answer names (S1)"),
+    ("mechanics-units-txt-example", lambda: dict(labels=[[unit("light", "", image=0), unit("trap", "trap")]],
+        candidates=[], key="collection_method", script=says("light trap", "1A")), "mechanics: prompts/units.txt's example"),
+]
+for light, tag in ((NOT_VISIBLE, "not-visible"), (0, "image-names-light")):
     for names in (("1A",), ("1B",), ("1A", "1B")):
-        table.append(("claude3-1b-two-line-locality-names-" + "-".join(names), lambda names=names: (two_lines(
-            ["Seliban Riv.", "Mt. Apo"], ["Seliban Riv.", "Mt. Apo"]),
-            [(name, line) for name in ("1A", "1B") for line in ("Seliban Riv.", "Mt. Apo")], "precise_location",
-            answered("Seliban Riv.\nMt. Apo", *names)), (S, "Seliban Riv.\nMt. Apo", "cleared")))
-    return table
+        TABLE.append((f"codex2-d3-claude3-1a-{tag}-names-" + "-".join(names), lambda light=light, names=names: dict(
+            labels=[[unit("light", "", image=light), unit("trap", "trap")]], candidates=[], key="collection_method",
+            script=says("trap", *names)), "Codex round 2, D3; Claude round 3, 1a"))
+for names in (("1A",), ("1B",), ("1A", "1B")):
+    TABLE.append(("claude3-1b-two-line-locality-names-" + "-".join(names), lambda names=names: dict(
+        labels=[[unit("Seliban Riv.", "Seliban Riv.", sep="\n"), unit("Mt. Apo", "Mt. Apo")]],
+        candidates=filed("precise_location", *((name, line) for name in ("1A", "1B") for line in ("Seliban Riv.", "Mt. Apo"))),
+        key="precise_location", script=says("Seliban Riv.\nMt. Apo", *names)), "Claude round 3, 1b"))
 
 
-ROWS = rows()
+def s1(*names, agreed=False):
+    """Codex round 4, 1: L1's readers "habitat: Shrubs; code A" and "habitat: Shrubs; code B", one
+    unit, the image naming 1A's; L2's "Shrubs" and "Shurbs", one unit, the image uncertain (with
+    `agreed`, both "Shrubs", the image naming it); the organiser's "Shrubs" from 1A; the answer
+    "Shrubs" naming `names`."""
+    second = unit("Shrubs", "Shrubs") if agreed else unit("Shrubs", "Shurbs", image=UNCERTAIN)
+    return dict(labels=[[unit("habitat: Shrubs; code A", "habitat: Shrubs; code B", image=0)], [second]],
+        candidates=filed("habitat", ("1A", "Shrubs")), key="habitat", script=says("Shrubs", *names))
 
 
-@pytest.mark.parametrize(("build", "expected"), [row[1:] for row in ROWS], ids=[row[0] for row in ROWS])
-def test_every_reviewer_input_stores_what_the_rule_gives(build, expected):
-    """PR #425's reviewer inputs, rounds 1 to 3, under P1-P8 (the PR body): what the step stores.
-    Rows whose expectation changed against earlier rounds say so in the PR body. A row names a
-    marked value's why as "conflict" or "text_only", read here as agreement's constants (the
-    table is built at collection, before any agreement name is read)."""
-    why = {"conflict": agreement.CONTESTED, "text_only": agreement.TEXT_ONLY}
-    state, literal, how = expected
-    assert stored(*build()) == (state, literal, why.get(how, how) if isinstance(how, str) else how)
+# What the step stores for each row: (state, literal, normalized, authority_id, the options the
+# value's reason lists, the field's settlement findings, the run's reasons that name the field).
+def kept(literal, how, *, normalized=None, authority=None):
+    """Supported on `literal`, the label cleared ("cleared") or marked ("text_only", "conflict")."""
+    found = ["cleared:L1"] if how == "cleared" else [f"marked:L1:{how}"]
+    return ValueState.SUPPORTED, literal, normalized, authority, (), found, [] if how == "cleared" else found
+
+
+def refused(*options):
+    """Ambiguous, a mandatory field unresolved, with the options the reason lists."""
+    return ValueState.AMBIGUOUS, None, None, None, options, [], ["mandatory_unresolved"]
+
+
+UNRESOLVED_PLACE = (ValueState.UNRESOLVED, None, None, None, (), [], ["mandatory_unresolved"])
+TOWN_ID = "geolocate:Yepocapa, Chimaltenango, Guatemala"
+EXPECTED: dict[str, tuple] = {
+    "codex1-1-image-uncertain": kept("Illinois", "cleared", authority="tgn:Illinois"),
+    "codex1-1-image-names-indiana": kept("Illinois", "conflict", authority="tgn:Illinois"),
+    "codex1-2-image-spelling": kept("Yepocapa,", "cleared", normalized="Yepocapa", authority=TOWN_ID),
+    "codex1-2-other-spelling": kept("Yepocapa", "cleared", authority=TOWN_ID),
+    "codex1-3-decomposed": kept("Cafe\u0301 forest", "cleared"),
+    "codex1-4-image-spelling": kept("shrubs", "cleared"),
+    "codex1-4-other-spelling": refused(),
+    "codex1-5-transcript": kept("Shrubs", "cleared"),
+    "codex1-6-nothing-backed": refused("Shrubs", "Shurbs"),
+    "claude1-c1-1B-only": kept("Danaus plexippus", "text_only"),
+    "claude1-c1-trinomial-answered": kept("Danaus plexippus megalippe", "cleared"),
+    "claude1-c1-both-filed": refused(),
+    "claude1-c1-megalippe-not-visible": kept("Danaus plexippus", "cleared"),
+    # The province with no source: the place check refuses it, whatever the rule gives.
+    "claude1-c2a-mindanao": UNRESOLVED_PLACE,
+    "mechanics-c2a-mindanao-on-habitat": kept("Davao Prov.", "conflict"),
+    "mechanics-readers-term": kept("Mindanao", "conflict"),
+    # The city with no source: the place check refuses it.
+    "claude1-c2b-yepocapa": UNRESOLVED_PLACE,
+    "mechanics-c2b-yepocapa-on-habitat": kept("Yepocapa", "text_only"),
+    "claude1-c2c-mckinley-both-filed": kept("E Slope Mt. McKinley", "cleared"),
+    "claude1-c2c-mckinley-1B-only": kept("Mt. McKinley", "text_only"),
+    "claude1-c2d-one-place-uncertain": kept("la", "text_only"),
+    "claude1-c2d-both-named": kept("la", "cleared"),
+    "codex2-d1-image-uncertain": kept("Chimaltenango", "cleared", authority="tgn:1000565"),
+    "claude3-2-image-names-spaced-answer-spaced": kept("Chi mal ten ango", "cleared", normalized="Chimaltenango",
+        authority="tgn:1000565"),
+    "claude3-2-image-names-spaced-answer-confirmed": kept("Chimaltenango", "cleared", authority="tgn:1000565"),
+    "codex2-d2-composed": kept("x", "cleared"),
+    "codex2-d4-illinois-answered": refused(),
+    "codex2-d5-shrubs-1946": kept("Shrubs", "text_only"),
+    "codex2-d6-transcript-literal": refused("Shrubs", "Shurbs"),
+    "codex3-1-inside-word": kept("x", "cleared"),
+    "codex3-2-semicolon-comma-1A": kept("Shrubs", "cleared"),
+    "codex3-2-semicolon-comma-1B": kept("Shrubs", "cleared"),
+    "codex3-2-shared-end": kept("Shrubs", "cleared"),
+    "codex3-3-shrubs-answered": refused(),
+    "codex3-3-grass-answered": kept("Grass", "cleared"),
+    "codex3-4-light-advised-habitat": kept("trap", "text_only"),
+    "codex3-4-megalippe-advised-dts": kept("Danaus plexippus", "text_only"),
+    "codex3-5-options-no-literal": refused("Shrubs", "Shurbs"),
+    "codex3-6-options-a-subset": refused("Shrubs", "Shurbs"),
+    "claude3-3a-danaus-advised-taxon": kept("Danaus plexippus", "text_only"),
+    "claude3-3b-image-uncertain": refused(),
+    "claude3-3b-image-names-1B": kept("6400", "cleared"),
+    "codex4-s1-names-1A": kept("Shrubs", "cleared"),
+    "codex4-s1-names-1B": kept("Shrubs", "cleared"),
+    "codex4-s1-names-both": kept("Shrubs", "cleared"),
+    "codex4-s2-person-two-lines": kept("Seliban Riv.\nMt. Apo", "cleared"),
+    "codex4-s3-sharp-s": refused(),
+    "codex4-s4-cloud-rain-forest": kept("forest", "text_only"),
+    "codex4-s4-agreed-neighbour": kept("Shrubs", "cleared"),
+    "codex4-s5-dry-forest": refused("dry forest", "forest"),
+    "claude4-t1-reader-order": kept("Mindanao", "conflict"),
+    "claude4-t1-reader-order-other-answered": refused(),
+    "claude4-t2-image-names-1B-answer-1A": refused(),
+    "claude4-t2-image-names-1B-answer-1B": kept("Yepocapa", "cleared", authority=TOWN_ID),
+    "claude4-t3-options-union": refused("Shrubs", "Shurbs", "Grassland"),
+    "mechanics-units-txt-example": kept("light trap", "cleared"),
+    **{f"mechanics-s1-second-label-agrees-names-{names}": (ValueState.SUPPORTED, "Shrubs", None, None, (),
+        ["cleared:L1", "cleared:L2"], []) for names in ("1A", "1B")},
+    **{f"codex2-d3-claude3-1a-not-visible-names-{names}": kept("trap", "cleared") for names in ("1A", "1B", "1A-1B")},
+    **{f"codex2-d3-claude3-1a-image-names-light-names-{names}": kept("trap", "text_only")
+        for names in ("1A", "1B", "1A-1B")},
+    **{f"claude3-1b-two-line-locality-names-{names}": kept("Seliban Riv.\nMt. Apo", "cleared")
+        for names in ("1A", "1B", "1A-1B")},
+}
+
+
+@pytest.mark.parametrize("row", [row for row, *_ in TABLE])
+def test_every_reviewer_input_through_the_step(tmp_path, monkeypatch, row):
+    """Each reviewer input of PR #425's four rounds (and the named mechanics rows), run through
+    the step: the stored FieldValue's state, literal and normalized value, the field's
+    cleared:/marked: findings and the run's reasons that name the field."""
+    [(build, _)] = [(build, what) for name, build, what in TABLE if name == row]
+    given = build()
+    assert through_step(tmp_path, monkeypatch, given["labels"], given["candidates"], given["key"], given["script"],
+        tools=given.get("tools"), person=given.get("person", False)) == EXPECTED[row]

@@ -2541,7 +2541,7 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
     findings go first, so a field researched again keeps only its latest; a value
     settled otherwise (location reconciliation, derivation) or left unsettled gets
     none, and apply_outcomes calls this for no field a person decided (human_keys)."""
-    from .agreement import CONTESTED, SOURCE_IDS, TRANSCRIPT, labels, literal_basis
+    from .agreement import CONTESTED, SOURCE_IDS, labels
 
     run.findings[:] = [finding for finding in run.findings
         if not (finding.rule_id == SETTLEMENT and finding.field_key == task.key)]
@@ -2555,8 +2555,8 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
     tools = frozenset(task.tools) & SOURCE_IDS
     answers = [item for item in sources if item.source_id in tools]
     named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and literal in by_name[n].text]
-    transcript = literal if named and literal_basis(task, readings, literal, named) == TRANSCRIPT else None
-    found = labels(task, readings, answers, transcript=transcript, named=named)
+    # The answer's literal is offered to every label, whatever readings it names (agreement.refusal).
+    found = labels(task, readings, answers, transcript=literal, named=named)
     rows = {item.id: item for item in run.evidence}
     for region, label in found.items():
         if not label.settled or not (label.cleared or label.why):
