@@ -12,6 +12,8 @@ a test sets label 1's images otherwise where it says so."""
 from __future__ import annotations
 
 import asyncio
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -524,7 +526,7 @@ def test_the_image_names_a_readers_text_only_as_that_text(image, named, exact):
 def test_a_text_another_reader_writes_more_of_is_named_only_where_the_more_is_not_visible(next_image, named):
     """B writes "Danaus plexippus", A "Danaus plexippus megalippe"; the image names the two
     words both write. B's text is named only when the image shows nothing at the unit where
-    A wrote more (agreement._bounded)."""
+    A wrote more (agreement.image_names' guard on units where the readers differ in presence)."""
     units = units_of("L", [{"a": "Danaus", "b": "Danaus"}, {"a": "plexippus", "b": "plexippus"},
         {"a": "megalippe", "b": ""}], ["Danaus", "plexippus", next_image])
     assert agreement.image_names(reading_of("b", units), "Danaus plexippus") is named
@@ -544,15 +546,14 @@ JOINED_UNCERTAIN = units_of("L3", [{"a": "Yepocapa, 4800", "b": "Yepocapa,4800"}
 def test_a_reader_with_no_text_for_the_field_writes_its_own_text_at_the_place_another_reader_writes_one():
     """t1-330's joined unit: A writes "Yepocapa, 4800 ft.", B "Yepocapa,4800 ft.", the
     organiser files the town from 1A only, and the image is uncertain. At A's unit B wrote
-    the same text, spacing aside, so B's own spelling of the town there is its text too
-    (agreement.own_text): two readers back it, and it settles marked."""
+    the same text, spacing aside, so B's spelling of the town there is its candidate too
+    (agreement._label_texts): two readers agree on it, and it settles marked."""
     a, b = reading_of("a", JOINED_UNCERTAIN), reading_of("b", JOINED_UNCERTAIN)
     task = FieldTask("city", True, FieldValue(), (Candidate("1A", "Yepocapa, 4800 ft.", "Yepocapa", "ev-a"),),
         FIELD_TOOLS["city"])
     label = agreement.labels(task, (a, b), [])["L3"]
     assert [(candidate.texts, candidate.readers) for candidate in label.candidates] == [(frozenset({"Yepocapa"}), 2)]
     assert (label.settled, label.why) == (frozenset({"Yepocapa"}), agreement.TEXT_ONLY)
-    assert agreement.own_text(a, b, "Yepocapa") == frozenset({"Yepocapa"})
 
 
 # ---- what the experts receive ---------------------------------------------------------------------
@@ -650,19 +651,22 @@ def test_a_given_up_label_a_person_has_transcribed_since_no_longer_goes_to_revie
     assert f"unresolved_transcription:{region}" not in run.reasons
 
 
-def test_two_literals_of_one_written_text_are_two_candidates():
-    """A limit of this package: both readers write "Elev.6400 ft", and the organiser gives 1A the
-    literal "Elev.6400 ft" and 1B "6400 ft". The image names the text there, so each literal has an
-    IMAGE backing; nothing merges texts of one place, so 1A's, the earlier reader's, settles
-    marked, 1B's listed."""
+def test_a_literal_inside_another_at_the_same_place_is_no_rival_of_it():
+    """Both readers write "Elev.6400 ft", and the organiser gives 1A the literal "Elev.6400 ft"
+    and 1B "6400 ft". The image names the text there, and both readers agree on each literal,
+    so each has IMAGE and TEXT; "6400 ft" lies inside "Elev.6400 ft" at the same place, so it
+    is no rival (agreement._nested): "Elev.6400 ft" settles cleared, and an answer of "6400 ft"
+    is refused."""
     readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading",
         "Elev.6400 ft") for letter in "AB"))
     task = FieldTask("elevation_from_ft", True, FieldValue(), (Candidate("1A", "Elev.6400 ft", "Elev.6400 ft", "ev-a"),
         Candidate("1B", "Elev.6400 ft", "6400 ft", "ev-b")), FIELD_TOOLS["elevation_from_ft"])
     label = agreement.labels(task, readings, [])["r1"]
-    assert [candidate.backings for candidate in label.candidates] == [frozenset({agreement.IMAGE})] * 2
-    assert (label.settled, label.why, label.others) == (frozenset({"Elev.6400 ft"}), agreement.CONTESTED,
-        ("6400 ft",))
+    assert [candidate.backings for candidate in label.candidates] == [frozenset({agreement.IMAGE,
+        agreement.TEXT})] * 2
+    assert (label.settled, label.cleared, label.others) == (frozenset({"Elev.6400 ft"}), True, ())
+    assert agreement.refusal(task, readings, literal="6400 ft", named=[readings[1]], value=None, authority_id=None,
+        cited=[], received=[]) is not None
 
 
 # ---- PR #425's first review round ------------------------------------------------------------
@@ -689,31 +693,6 @@ def test_a_confirmed_text_in_two_spellings_keeps_its_source_backing(tmp_path, na
     assert (label.settled, label.cleared, label.why) == (frozenset({"Illinois"}), not contested, why)
 
 
-def test_the_same_place_settles_on_the_text_the_image_names(tmp_path):
-    """Codex 2: 1A writes "Yepocapa,", 1B "Yepocapa", one GEOLocate answer confirms both as one
-    town, and the image names 1A's "Yepocapa,". The merged candidate's literal is the image's
-    text: an answer of 1B's spelling is refused, and 1A's settles."""
-    places = dict(country="Guatemala", province_state="Chimaltenango", county=None)
-    candidates = [*COLLECTORS, *((key, name, value, f"{key}: {value}") for key, value in places.items()
-        if value for name in ("1A", "1B")),
-        ("city", "1A", "Yepocapa,", "city: Yepocapa,"), ("city", "1B", "Yepocapa", "city: Yepocapa")]
-    for literal, reading, state in (("Yepocapa", "1B", ValueState.AMBIGUOUS), ("Yepocapa,", "1A", ValueState.SUPPORTED)):
-        rig = build_rig(tmp_path / reading, label_with(**places, city="Yepocapa,"), label_with(**places, city="Yepocapa"),
-            candidates=candidates)
-        naming(rig, 0)
-
-        async def city(task, readings, tools, literal=literal, reading=reading):
-            answer = await tools.lookup("geolocate", "Yepocapa, Chimaltenango, Guatemala", field_key=task.key)
-            return FieldOutcome(task.key, resolved(literal, reading=reading, value="Yepocapa",
-                authority_id=answer.candidates[0].authority_id, cited=[answer.evidence.id]),
-                evidence=[answer.evidence], model_calls=1)
-        settle(rig, Scripted({"country": from_tgn("Guatemala", "Guatemala", None, "tgn:7005493"),
-            "province_state": from_tgn("Chimaltenango", "Chimaltenango", None, "tgn:1000565"), "city": city}),
-            tools=Gazetteer(rig.blobs))
-        city = rig.specimen.run.fields["city"]
-        assert (city.state, city.literal) == (state, literal if state == ValueState.SUPPORTED else None)
-
-
 def test_a_decomposed_accent_is_found_where_the_reading_writes_it():
     """Codex 3: both readers write "Cafe" with a combining acute accent; the candidate is
     collapsed to NFC, one character for the accented "e". Its places are found in NFC and
@@ -730,7 +709,7 @@ def test_a_decomposed_accent_is_found_where_the_reading_writes_it():
 
 def test_a_readers_own_spelling_is_its_text_whichever_reader_the_organiser_filed():
     """Codex 4: A writes "shrubs", B "Shrubs", the image names A's text, and the organiser files
-    the habitat from 1B only. A's own text there is "shrubs" (agreement.own_text), so the label
+    the habitat from 1B only. A's text there is "shrubs" (agreement._label_texts), so the label
     settles on the image's spelling, cleared, and an answer of B's spelling is refused."""
     readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading",
         f"habitat: {text}") for letter, text in (("A", "shrubs"), ("B", "Shrubs"))), {"r1": "o1a"})
@@ -776,44 +755,11 @@ def test_sources_cannot_resolve_on_a_label_nothing_backs_is_ambiguous_with_the_r
             assert habitat.reason == "Nothing decides. Options: Shrubs; Shurbs."
 
 
-def test_a_shorter_readers_text_is_not_backed_through_the_longer_readers_image():
-    """Claude C1: A writes "Danaus plexippus megalippe", B "Danaus plexippus", the image names
-    each unit's text, and the organiser files the taxon from 1B only. A's own text at B's place
-    is the trinomial (the unit beside it where B wrote nothing is A's), so the binomial has no
-    backing of A's: the trinomial settles, and the binomial is refused."""
-    units = units_of("L", [{"a": "Danaus", "b": "Danaus"}, {"a": "plexippus", "b": "plexippus"},
-        {"a": "megalippe", "b": ""}], ["Danaus", "plexippus", "megalippe"])
-    a, b = reading_of("a", units), reading_of("b", units)
-    task = FieldTask("taxon", True, FieldValue(), (Candidate("1B", "Danaus plexippus", "Danaus plexippus", "ev-b"),),
-        FIELD_TOOLS["taxon"])
-    label = agreement.labels(task, (a, b), [])["L"]
-    assert label.settled == frozenset({"Danaus plexippus megalippe"})
-    refused = agreement.refusal(task, (a, b), literal="Danaus plexippus", named=[b], value=None,
-        authority_id=None, cited=[], received=[])
-    assert refused is not None and refused.differ
-    assert agreement.own_text(b, a, "Danaus plexippus") == frozenset({"Danaus plexippus megalippe"})
-
-
-def test_more_readers_rank_one_image_backed_text_above_another():
-    """Claude C2 (a), rule 5's readers tie-break: A and B write "Mindanao," over "Davao Prov.",
-    C "Mindanao," alone; the image names both texts. Both candidates have IMAGE and TEXT;
-    "Mindanao", which three readers write, settles marked, "Davao Prov." listed."""
-    texts = ("Mindanao,\nDavao Prov.", "Mindanao,\nDavao Prov.", "Mindanao,")
-    readings = with_units(three_readers(texts), {"r1": "o1a"})
-    task = FieldTask("province_state", True, FieldValue(), tuple(Candidate(name, text, literal, f"ev-{name}{literal}")
-        for name, text in zip(("1A", "1B", "1C"), texts) for literal in ("Davao Prov.", "Mindanao")
-        if literal in text), FIELD_TOOLS["province_state"])
-    label = agreement.labels(task, readings, [])["r1"]
-    assert {candidate.texts: (candidate.backings, candidate.readers) for candidate in label.candidates} == {
-        frozenset({"Mindanao"}): (frozenset({agreement.IMAGE, agreement.TEXT}), 3),
-        frozenset({"Davao Prov."}): (frozenset({agreement.IMAGE, agreement.TEXT}), 2)}
-    assert (label.settled, label.why, label.others) == (frozenset({"Mindanao"}), agreement.CONTESTED, ("Davao Prov.",))
-
-
 def test_a_text_beside_a_unit_its_reader_left_out_on_the_left_is_not_image_backed():
-    """Claude C2 (c), _bounded's leftward extension: A writes "E Slope Mt. McKinley", B
-    "Mt. McKinley", the image names A's text at each unit. B's text has no IMAGE backing (the
-    unit before it, where B wrote nothing, is not "not visible"); A's text settles cleared."""
+    """Claude C2 (c): A writes "E Slope Mt. McKinley", B "Mt. McKinley", the image names A's
+    text at each unit. B's text has no IMAGE backing (the unit before it, where B wrote nothing
+    and A wrote text, is not "not visible"); "Mt. McKinley" lies inside A's text there (no
+    rival of it, agreement._nested), and A's text settles cleared."""
     units = units_of("L", [{"a": "E Slope", "b": ""}, {"a": "Mt.", "b": "Mt."}, {"a": "McKinley", "b": "McKinley"}],
         ["E Slope", "Mt.", "McKinley"])
     a, b = reading_of("a", units), reading_of("b", units)
@@ -911,64 +857,6 @@ def test_every_place_found_starts_and_ends_where_the_readings_nfc_splits():
     assert found > 500
 
 
-@pytest.mark.parametrize("names", [("b",), ("a", "b")], ids=["names-1B", "names-both"])
-@pytest.mark.parametrize(("light", "settled", "trap_refused"), [(NOT_VISIBLE, "trap", False),
-    ("light", "light trap", True)], ids=["light-not-visible", "image-names-light"])
-def test_a_text_read_from_one_readers_transcript_settles_on_the_image_beside_a_longer_text(light, settled,
-        trap_refused, names):
-    """Codex round 2, D3: A writes "light trap", B "trap", in units "light" (B nothing) and "trap";
-    the image `light` at the first and "trap" at the second, and no organiser candidate. The
-    expert reads "trap" from B's transcript, or from both; A's own text there is "light trap"
-    (own_text, in place of A's "trap": _texts_at_units), and no clause check intervenes. With
-    "light" not visible, B's text has IMAGE and clears; with the image naming "light", A's has it:
-    "light trap" clears and "trap" is refused."""
-    units = units_of("L", [{"a": "light", "b": ""}, {"a": "trap", "b": "trap"}], [light, "trap"])
-    readings = {key: reading_of(key, units) for key in "ab"}
-    named = [readings[key] for key in names]
-    task = FieldTask("collection_method", True, FieldValue(), (), FIELD_TOOLS["collection_method"])
-    label = agreement.labels(task, tuple(readings.values()), [], transcript="trap", named=named)["L"]
-    assert (label.settled, label.cleared) == (frozenset({settled}), True)
-    refused = agreement.refusal(task, tuple(readings.values()), literal="trap", named=named, value=None,
-        authority_id=None, cited=[], received=[])
-    assert (refused is not None) is trap_refused
-
-
-def test_another_readers_different_text_inside_one_unit_is_its_candidate_there(tmp_path):
-    """Codex round 2, D4: one unit holds A's "province_state: Illinois" and B's "province_state:
-    Indiana", and the image names B's. The organiser files A's "Illinois" alone; Getty TGN
-    confirms Illinois, and nobody asked about Indiana. B's text there is "Indiana" (own_text: the
-    two texts' shared beginning is not the place's), which the image backs, and "Illinois" has
-    no SOURCE while "Indiana" is not ruled out: Indiana clears."""
-    units = units_of("L", [{"a": "province_state: Illinois", "b": "province_state: Indiana"}],
-        ["province_state: Indiana"])
-    a, b = reading_of("a", units), reading_of("b", units)
-    task = FieldTask("province_state", True, FieldValue(), (Candidate("1A", a.text, "Illinois", "ev-a"),),
-        FIELD_TOOLS["province_state"])
-    answers = [asyncio.run(FakeSources(LocalBlobs(tmp_path)).lookup("tgn", "Illinois", field_key="province_state"))]
-    label = agreement.labels(task, (a, b), answers)["L"]
-    assert {candidate.texts: candidate.backings for candidate in label.candidates} == {
-        frozenset({"Illinois"}): frozenset(), frozenset({"Indiana"}): frozenset({agreement.IMAGE})}
-    assert (label.settled, label.cleared) == (frozenset({"Indiana"}), True)
-    assert agreement.own_text(a, b, "Illinois", "province_state") == frozenset({"Indiana"})
-
-
-def test_a_unit_the_first_pass_advises_for_another_field_bounds_the_text():
-    """Codex round 2, D5: A writes "Shrubs" and "1946", B "Shrubs" alone; the first unit is
-    advised for the habitat, its image "Shrubs", the second for the date, its image "1946". The
-    organiser files the habitat from 1B. The date's unit bounds the habitat's place (_bounded):
-    A's text at B's place is "Shrubs", B's text keeps its IMAGE, and "Shrubs" clears."""
-    units = units_of("L", [{"a": "Shrubs", "b": "Shrubs"}, {"a": "1946", "b": ""}], ["Shrubs", "1946"],
-        [["habitat"], ["date_visited_from"]])
-    a, b = reading_of("a", units), reading_of("b", units)
-    task = FieldTask("habitat", True, FieldValue(), (Candidate("1B", "Shrubs", "Shrubs", "ev-b"),),
-        FIELD_TOOLS["habitat"])
-    label = agreement.labels(task, (a, b), [])["L"]
-    assert [(candidate.texts, candidate.backings, candidate.readers) for candidate in label.candidates] == [
-        (frozenset({"Shrubs"}), frozenset({agreement.IMAGE, agreement.TEXT}), 2)]
-    assert (label.settled, label.cleared) == (frozenset({"Shrubs"}), True)
-    assert agreement.own_text(b, a, "Shrubs", "habitat") == frozenset({"Shrubs"})
-
-
 def test_sources_cannot_resolve_quoting_a_transcript_text_on_a_label_nothing_backs_is_ambiguous(tmp_path):
     """Codex round 2, D6: 1A writes "habitat: Shrubs", 1B "habitat: Shurbs", the image uncertain
     there, and the organiser files no habitat. The expert answers sources_cannot_resolve with the
@@ -986,3 +874,247 @@ def test_sources_cannot_resolve_quoting_a_transcript_text_on_a_label_nothing_bac
     habitat = rig.specimen.run.fields["habitat"]
     assert (habitat.state, habitat.literal) == (ValueState.AMBIGUOUS, None)
     assert habitat.reason == "Nothing decides. Options: Shrubs; Shurbs."
+
+
+# ---- every reviewer input of PR #425, rounds 1 to 3 (P1-P8) -------------------------------------
+#
+# Each row is a label (hand-built units, two or three readers), the organiser's candidates, the
+# sources' answers and the expert's answer, with what the step stores for it: a resolved answer
+# the rule accepts is supported, cleared or marked as the label settles; one it refuses is
+# ambiguous when readers differ (step._field_value); sources_cannot_resolve is ambiguous with
+# rule 6's options when no candidate is backed (step._unsettled_options), else unresolved.
+
+def _answer(source, *queries, key="province_state"):
+    blobs = LocalBlobs(Path(tempfile.mkdtemp()))
+    return [asyncio.run(source(blobs).lookup(name, query, field_key=key)) for name, query in queries]
+
+
+def stored(readings, candidates, key, answer, answers=()):
+    """What the step stores for `answer` on these readings: (state, literal, how)."""
+    import inspect
+
+    task = FieldTask(key, True, FieldValue(), tuple(Candidate(name, next(r.text for r in readings if r.name == name),
+        literal, f"ev-{name}-{literal}") for name, literal in candidates), FIELD_TOOLS[key])
+    by_name = {reading.name: reading for reading in readings}
+    answers = list(answers)
+    if answer.outcome == "resolved":
+        named = [by_name[name] for name in answer.reading_names if answer.literal in by_name[name].text]
+        cited = [item for item in answers if item.evidence is not None and item.evidence.id in answer.source_evidence_ids]
+        refused = agreement.refusal(task, readings, literal=answer.literal, named=named, value=answer.value,
+            authority_id=answer.authority_id, cited=cited, received=answers)
+        if refused is not None:
+            return (ValueState.AMBIGUOUS if refused.differ else ValueState.UNRESOLVED), None, refused.options or None
+        basis = agreement.literal_basis(task, readings, answer.literal, named)
+        found = agreement.labels(task, readings, answers, transcript=answer.literal if basis == agreement.TRANSCRIPT
+            else None, named=named)
+        label = found[readings[0].region_id]
+        return ValueState.SUPPORTED, answer.literal, "cleared" if label.cleared else label.why
+    accepted = inspect.signature(field_step._unsettled_options).parameters
+    options = field_step._unsettled_options(task, readings, answers, answer=answer,
+        **({"by_name": by_name} if "by_name" in accepted else {}))
+    return (ValueState.AMBIGUOUS, None, tuple(options)) if options else (ValueState.UNRESOLVED, None, None)
+
+
+def answered(literal, *names, value=None, authority_id=None, cited=()):
+    from specimen_digitization.field_research.contracts import FieldAnswer
+
+    return FieldAnswer(outcome="resolved", literal=literal, reading_names=list(names), value=value,
+        authority_id=authority_id, source_evidence_ids=list(cited), explanation="Settled.")
+
+
+def declined(literal=None, *names, options=()):
+    from specimen_digitization.field_research.contracts import FieldAnswer
+
+    return FieldAnswer(outcome="sources_cannot_resolve", literal=literal, reading_names=list(names),
+        options=list(options), explanation="Nothing decides.")
+
+
+def two_lines(lines, images):
+    """Two readers that each write `lines`, one unit a line, the line break between them."""
+    units, offset = [], 0
+    for number, (text, image) in enumerate(zip(lines, images), 1):
+        span = UnitText(text=text, start=offset, end=offset + len(text))
+        units.append(ReadingUnit(id=f"L:{number}", label="L", lines=(number, number), readers={"a": span, "b": span},
+            image=image))
+        offset += len(text) + 1
+    entry = ReadingUnits(label="L", units=units)
+    return tuple(Reading(f"1{k.upper()}", "L", k, "raw_reading", "\n".join(lines), units=entry) for k in "ab")
+
+
+def labelled(texts_by_unit, images, fields=None):
+    units = units_of("L", texts_by_unit, images, fields)
+    return tuple(reading_of(key, units) for key in texts_by_unit[0])
+
+
+def place_row(texts, image, confirm, literal, reading, *, source="tgn", key="province_state"):
+    """Province rows: "province_state:" and each reader's text, the image `image` there, the
+    organiser's candidate for each reader, `confirm` asked of the source."""
+    readings = labelled([{k: "province_state:" for k in texts}, texts], ["province_state:", image])
+    found = _answer(FakeSources if source == "fake" else Gazetteer, *(("tgn", query) for query in confirm), key=key)
+    match = next(item for item in found if item.candidates)
+    # The candidate at the field's level (a first-level subdivision), as a province expert cites it.
+    place = next(c for c in match.candidates if "first level" in (c.kind or ""))
+    return readings, [(r.name, texts[r.observation_id]) for r in readings], key, answered(
+        literal, reading, value=place.name, authority_id=place.authority_id, cited=[match.evidence.id]), found
+
+
+def d4_illinois():
+    """One unit holds A's "province_state: Illinois" and B's "province_state: Indiana", the image
+    names B's; the organiser files A's "Illinois", which Getty TGN confirms; the answer is it."""
+    found = _answer(FakeSources, ("tgn", "Illinois"))
+    readings = labelled([{"a": "province_state: Illinois", "b": "province_state: Indiana"}], ["province_state: Indiana"])
+    return readings, [("1A", "Illinois")], "province_state", answered("Illinois", "1A", value="Illinois",
+        authority_id=found[0].candidates[0].authority_id, cited=[found[0].evidence.id]), found
+
+
+SHRUBS = [{"a": "habitat:", "b": "habitat:"}, {"a": "Shrubs", "b": "Shurbs"}]
+DANAUS = [{"a": "Danaus", "b": "Danaus"}, {"a": "plexippus", "b": "plexippus"}, {"a": "megalippe", "b": ""}]
+LIGHT = [{"a": "light", "b": ""}, {"a": "trap", "b": "trap"}]
+CHI = [{"a": "province_state:", "b": "province_state:"}, {"a": "Chi mal ten ango", "b": "Chimaltenango"}]
+
+
+def rows():
+    """(id, builder, expected): builder returns stored()'s arguments."""
+    S, A, U = ValueState.SUPPORTED, ValueState.AMBIGUOUS, ValueState.UNRESOLVED
+    table = [
+        # Codex round 1, 1: one confirmed text in two spellings keeps SOURCE.
+        ("codex1-1-image-uncertain", lambda: place_row({"a": "Illinois", "b": "ILLINOIS", "c": "Indiana"}, UNCERTAIN,
+            ["Illinois", "Indiana"], "Illinois", "1A", source="fake"), (S, "Illinois", "cleared")),
+        ("codex1-1-image-names-indiana", lambda: place_row({"a": "Illinois", "b": "ILLINOIS", "c": "Indiana"}, "Indiana",
+            ["Illinois", "Indiana"], "Illinois", "1A", source="fake"), (S, "Illinois", agreement.CONTESTED)),
+        # Codex round 1, 3: a decomposed accent.
+        ("codex1-3-decomposed", lambda: (labelled([{"a": "Cafe\u0301", "b": "Cafe\u0301"}, {"a": "forest", "b": "forest"}],
+            ["Cafe\u0301", "forest"]), [("1A", "Caf\u00e9 forest"), ("1B", "Caf\u00e9 forest")], "habitat",
+            answered("Cafe\u0301 forest", "1A")), (S, "Cafe\u0301 forest", "cleared")),
+        # Codex round 1, 4: a reader's own spelling, whichever reader the organiser filed.
+        ("codex1-4-image-spelling", lambda: (labelled([SHRUBS[0], {"a": "shrubs", "b": "Shrubs"}], ["habitat:", "shrubs"]),
+            [("1B", "Shrubs")], "habitat", answered("shrubs", "1A")), (S, "shrubs", "cleared")),
+        ("codex1-4-other-spelling", lambda: (labelled([SHRUBS[0], {"a": "shrubs", "b": "Shrubs"}], ["habitat:", "shrubs"]),
+            [("1B", "Shrubs")], "habitat", answered("Shrubs", "1B")), (A, None, None)),
+        # Codex round 1, 5: a text read from the transcript alone.
+        ("codex1-5-transcript", lambda: (labelled(SHRUBS, ["habitat:", "Shrubs"]), [], "habitat", answered("Shrubs", "1A")),
+            (S, "Shrubs", "cleared")),
+        # Codex round 1, 6: sources_cannot_resolve, nothing backed.
+        ("codex1-6-nothing-backed", lambda: (labelled(SHRUBS, ["habitat:", UNCERTAIN]), [("1A", "Shrubs"), ("1B", "Shurbs")],
+            "habitat", declined()), (A, None, ("Shrubs", "Shurbs"))),
+        # Claude round 1, C1: the binomial beside the trinomial, the image naming each unit.
+        ("claude1-c1-1B-only", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"]),
+            [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus", "1B")), (S, "Danaus plexippus", agreement.TEXT_ONLY)),
+        ("claude1-c1-trinomial-answered", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"]),
+            [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus megalippe", "1A")),
+            (S, "Danaus plexippus megalippe", "cleared")),
+        ("claude1-c1-both-filed", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"]),
+            [("1A", "Danaus plexippus megalippe"), ("1B", "Danaus plexippus")], "taxon",
+            answered("Danaus plexippus", "1B")), (A, None, None)),
+        ("claude1-c1-megalippe-not-visible", lambda: (labelled(DANAUS, ["Danaus", "plexippus", NOT_VISIBLE]),
+            [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus", "1B")), (S, "Danaus plexippus", "cleared")),
+        # Claude round 1, C2 (a): Mindanao beside Davao Prov., given to agreement.labels with no
+        # source (a free-text field here, so no place check asks for one); and the readers term deciding.
+        ("claude1-c2a-mindanao", lambda: (labelled([{"a": "Mindanao,", "b": "Mindanao,", "c": "Mindanao,"},
+            {"a": "Davao Prov.", "b": "Davao Prov.", "c": ""}], ["Mindanao,", "Davao Prov."]),
+            [("1A", "Mindanao"), ("1A", "Davao Prov."), ("1B", "Mindanao"), ("1B", "Davao Prov."), ("1C", "Mindanao")],
+            "habitat", answered("Davao Prov.", "1A")), (S, "Davao Prov.", agreement.CONTESTED)),
+        ("claude1-c2a-more-readers", lambda: (labelled([{"a": "Mindanao,", "b": "Mindanao,", "c": "Mindanao,"},
+            {"a": "Davao Prov.", "b": "Davao Prov.", "c": "Davao Pr."}], ["Mindanao,", "Davao Prov."]),
+            [("1A", "Mindanao"), ("1A", "Davao Prov."), ("1B", "Mindanao"), ("1B", "Davao Prov."), ("1C", "Mindanao")],
+            "habitat", answered("Mindanao", "1A")), (S, "Mindanao", agreement.CONTESTED)),
+        # Claude round 1, C2 (b): t1-330's joined unit, the organiser filing 1A only (given to
+        # agreement.labels with no source; a free-text field here, as for C2 (a)).
+        ("claude1-c2b-yepocapa", lambda: (labelled([{"a": "Yepocapa, 4800", "b": "Yepocapa,4800"}, {"a": "ft.", "b": "ft."}],
+            [UNCERTAIN, UNCERTAIN]), [("1A", "Yepocapa")], "habitat", answered("Yepocapa", "1A")),
+            (S, "Yepocapa", agreement.TEXT_ONLY)),
+        # Claude round 1, C2 (c): the McKinley slope.
+        ("claude1-c2c-mckinley-both-filed", lambda: (labelled([{"a": "E Slope", "b": ""}, {"a": "Mt.", "b": "Mt."},
+            {"a": "McKinley", "b": "McKinley"}], ["E Slope", "Mt.", "McKinley"]),
+            [("1A", "E Slope Mt. McKinley"), ("1B", "Mt. McKinley")], "precise_location",
+            answered("E Slope Mt. McKinley", "1A")), (S, "E Slope Mt. McKinley", "cleared")),
+        ("claude1-c2c-mckinley-1B-only", lambda: (labelled([{"a": "E Slope", "b": ""}, {"a": "Mt.", "b": "Mt."},
+            {"a": "McKinley", "b": "McKinley"}], ["E Slope", "Mt.", "McKinley"]), [("1B", "Mt. McKinley")],
+            "precise_location", answered("Mt. McKinley", "1B")), (S, "Mt. McKinley", agreement.TEXT_ONLY)),
+        # Claude round 1, C2 (d): the image at every place.
+        ("claude1-c2d-one-place-uncertain", lambda: (labelled([{"a": "la", "b": "la"}, {"a": "x", "b": "x"},
+            {"a": "la", "b": "la"}], ["la", "x", UNCERTAIN]), [("1A", "la"), ("1B", "la")], "collection_code",
+            answered("la", "1A")), (S, "la", agreement.TEXT_ONLY)),
+        ("claude1-c2d-both-named", lambda: (labelled([{"a": "la", "b": "la"}, {"a": "x", "b": "x"},
+            {"a": "la", "b": "la"}], ["la", "x", "la"]), [("1A", "la"), ("1B", "la")], "collection_code",
+            answered("la", "1A")), (S, "la", "cleared")),
+        # Codex round 2, D1, and Claude round 3, 2: a spacing variant of the confirmed text.
+        ("codex2-d1-image-uncertain", lambda: place_row({"a": "Chi mal ten ango", "b": "Chimaltenango"}, UNCERTAIN,
+            ["Chimaltenango"], "Chimaltenango", "1B"), (S, "Chimaltenango", "cleared")),
+        ("claude3-2-image-names-spaced-answer-spaced", lambda: place_row({"a": "Chi mal ten ango", "b": "Chimaltenango"},
+            "Chi mal ten ango", ["Chimaltenango"], "Chi mal ten ango", "1A"), (S, "Chi mal ten ango", "cleared")),
+        ("claude3-2-image-names-spaced-answer-confirmed", lambda: place_row({"a": "Chi mal ten ango", "b": "Chimaltenango"},
+            "Chi mal ten ango", ["Chimaltenango"], "Chimaltenango", "1B"), (S, "Chimaltenango", "cleared")),
+        # Codex round 2, D2: a literal after a composed sequence.
+        ("codex2-d2-composed", lambda: (tuple(Reading(f"1{k.upper()}", "L", k, "raw_reading", "e\u0301x",
+            units=adjacent("L", ["e\u0301", "x"], [UNCERTAIN, "x"])) for k in "ab"), [("1A", "x"), ("1B", "x")], "habitat",
+            answered("x", "1A")), (S, "x", "cleared")),
+        # Codex round 2, D4: another reader's different text inside one unit.
+        ("codex2-d4-illinois-answered", d4_illinois, (A, None, None)),
+        # Codex round 2, D5, and Codex round 3, 4: units advised for other fields (advice takes no part).
+        ("codex2-d5-shrubs-1946", lambda: (labelled([{"a": "Shrubs", "b": "Shrubs"}, {"a": "1946", "b": ""}], ["Shrubs", "1946"],
+            [["habitat"], ["date_visited_from"]]), [("1B", "Shrubs")], "habitat", answered("Shrubs", "1B")),
+            (S, "Shrubs", agreement.TEXT_ONLY)),
+        ("codex3-4-light-advised-habitat", lambda: (labelled(LIGHT, ["light", "trap"], [["habitat"], ["collection_method"]]),
+            [("1B", "trap")], "collection_method", answered("trap", "1B")), (S, "trap", agreement.TEXT_ONLY)),
+        ("codex3-4-megalippe-advised-dts", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"],
+            [["taxon"], ["taxon"], ["verbatim_dts"]]), [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus", "1B")),
+            (S, "Danaus plexippus", agreement.TEXT_ONLY)),
+        ("claude3-3a-danaus-advised-taxon", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"],
+            [["taxon"]] * 3), [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus", "1B")),
+            (S, "Danaus plexippus", agreement.TEXT_ONLY)),
+        # Codex round 2, D6, and Codex round 3, 5 and 6: rule 6's options.
+        ("codex2-d6-transcript-literal", lambda: (labelled(SHRUBS, ["habitat:", UNCERTAIN]), [], "habitat",
+            declined("Shrubs", "1A", options=["Shrubs", "Shurbs"])), (A, None, ("Shrubs", "Shurbs"))),
+        ("codex3-5-options-no-literal", lambda: (labelled(SHRUBS, ["habitat:", UNCERTAIN]), [], "habitat",
+            declined(None, "1A", "1B", options=["Shrubs", "Shurbs"])), (A, None, ("Shrubs", "Shurbs"))),
+        ("codex3-6-options-a-subset", lambda: (labelled(SHRUBS, ["habitat:", UNCERTAIN]), [], "habitat",
+            declined("Shrubs", "1A", options=["Shrubs"])), (A, None, ("Shrubs", "Shurbs"))),
+        # Codex round 3, 1: a whole-word place filtered out, an inside-word one kept.
+        ("codex3-1-inside-word", lambda: (labelled([{"a": "x\u0301", "b": "x\u0301"}, {"a": "ax", "b": "ax"}], [UNCERTAIN, "ax"]),
+            [("1A", "x"), ("1B", "x")], "habitat", answered("x", "1A")), (S, "x", "cleared")),
+        # Codex round 3, 2: punctuation and a prefix differing inside one unit.
+        ("codex3-2-semicolon-comma-1A", lambda: (labelled([{"a": "Shrubs;1946", "b": "Shrubs,1946"}], ["Shrubs,1946"]),
+            [("1A", "Shrubs")], "habitat", answered("Shrubs", "1A")), (S, "Shrubs", "cleared")),
+        ("codex3-2-semicolon-comma-1B", lambda: (labelled([{"a": "Shrubs;1946", "b": "Shrubs,1946"}], ["Shrubs,1946"]),
+            [("1A", "Shrubs")], "habitat", answered("Shrubs", "1B")), (S, "Shrubs", "cleared")),
+        ("codex3-2-shared-end", lambda: (labelled([{"a": "A Shrubs", "b": "B Shrubs"}], ["B Shrubs"]), [("1A", "Shrubs")],
+            "habitat", answered("Shrubs", "1A")), (S, "Shrubs", "cleared")),
+        # Codex round 3, 3: two differences in one unit.
+        ("codex3-3-shrubs-answered", lambda: (labelled([{"a": "habitat: Shrubs; code A", "b": "habitat: Grass; code B"}],
+            ["habitat: Grass; code B"]), [("1A", "Shrubs")], "habitat", answered("Shrubs", "1A")), (A, None, None)),
+        ("codex3-3-grass-answered", lambda: (labelled([{"a": "habitat: Shrubs; code A", "b": "habitat: Grass; code B"}],
+            ["habitat: Grass; code B"]), [("1A", "Shrubs")], "habitat", answered("Grass", "1B")), (S, "Grass", "cleared")),
+        # Claude round 3, 3b: a literal inside the two texts' shared end.
+        ("claude3-3b-image-uncertain", lambda: (labelled([{"a": "Elev. 6400 ft", "b": "El. 6400 ft"}], [UNCERTAIN]),
+            [("1A", "6400")], "habitat", answered("6400", "1A")), (A, None, None)),
+        ("claude3-3b-image-names-1B", lambda: (labelled([{"a": "Elev. 6400 ft", "b": "El. 6400 ft"}], ["El. 6400 ft"]),
+            [("1A", "6400")], "habitat", answered("6400", "1A")), (S, "6400", "cleared")),
+    ]
+    # Codex round 2, D3, and Claude round 3, 1a: "trap" beside "light trap", whichever readings
+    # the answer names.
+    for light, expected in ((NOT_VISIBLE, (S, "trap", "cleared")), ("light", (S, "trap", agreement.TEXT_ONLY))):
+        for names in (("1A",), ("1B",), ("1A", "1B")):
+            table.append((f"codex2-d3-claude3-1a-{'not-visible' if light == NOT_VISIBLE else 'image-names-light'}-names-"
+                + "-".join(names), lambda light=light, names=names: (labelled(LIGHT, [light, "trap"]), [],
+                "collection_method", answered("trap", *names)), expected))
+    # prompts/units.txt's example: "light trap" given as the literal, the image naming "light".
+    table.append(("units-txt-light-trap-answered", lambda: (labelled(LIGHT, ["light", "trap"]), [], "collection_method",
+        answered("light trap", "1A")), (S, "light trap", "cleared")))
+    # Claude round 3, 1b: an agreed two-line locality, the organiser filing each line.
+    for names in (("1A",), ("1B",), ("1A", "1B")):
+        table.append(("claude3-1b-two-line-locality-names-" + "-".join(names), lambda names=names: (two_lines(
+            ["Seliban Riv.", "Mt. Apo"], ["Seliban Riv.", "Mt. Apo"]),
+            [(name, line) for name in ("1A", "1B") for line in ("Seliban Riv.", "Mt. Apo")], "precise_location",
+            answered("Seliban Riv.\nMt. Apo", *names)), (S, "Seliban Riv.\nMt. Apo", "cleared")))
+    return table
+
+
+ROWS = rows()
+
+
+@pytest.mark.parametrize(("build", "expected"), [row[1:] for row in ROWS], ids=[row[0] for row in ROWS])
+def test_every_reviewer_input_stores_what_the_rule_gives(build, expected):
+    """PR #425's reviewer inputs, rounds 1 to 3, under P1-P8 (the PR body): what the step stores.
+    Rows whose expectation changed against earlier rounds say so in the PR body."""
+    assert stored(*build()) == expected

@@ -837,7 +837,7 @@ def test_a_county_never_takes_another_readers_spelling_of_the_settled_province(t
     province's, in another reader's spelling, so it is refused
     (IS_THE_PROVINCE) and the county does not settle. The real run settled
     it as "Chimaltenago,", which the reference scores wrong. On the units path
-    1A's text at 1B's unit is its candidate too (agreement.own_text), the image
+    1A's text at 1B's unit is a candidate once the expert offers it, the image
     names it, and TGN rules it out: the province settles on 1A's spelling with
     TGN's name as its value (the one-letter rule), and the county's text is
     then the province's own text: the label writes no county (not present)."""

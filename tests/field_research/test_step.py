@@ -1462,7 +1462,10 @@ def test_readers_whose_texts_name_two_places_never_settle(tmp_path):
 
 def test_a_taxon_the_readers_write_differently_needs_every_readers_name_looked_up(tmp_path):
     """The second review's B1: 1A writes the trinomial, 1B the binomial, and
-    GBIF was asked only the binomial, whose answer names 1B's text."""
+    GBIF was asked only the binomial, whose answer names 1B's text. On the
+    units path 1A writes the binomial over its units too (TEXT), no source
+    rules out the trinomial, and the image does not judge 1A's further unit
+    not visible: the binomial settles marked, and the record goes to review."""
     trinomial = TEXT.replace("taxon: Danaus plexippus", "taxon: " + TRINOMIAL)
     rig = build_rig(tmp_path, trinomial, TEXT, candidates=every_field(
         ("taxon", "1A", TRINOMIAL, "taxon: " + TRINOMIAL),
@@ -1476,6 +1479,11 @@ def test_a_taxon_the_readers_write_differently_needs_every_readers_name_looked_u
             lookups=[answer.taxonomy_lookup], model_calls=1)
     settle(rig, Scripted({"taxon": binomial_only}), tools=Subspecies(rig.blobs))
     taxon = run.fields["taxon"]
+    if PATH == "units":
+        assert (taxon.state, taxon.literal) == (ValueState.SUPPORTED, "Danaus plexippus")
+        assert run.disposition == Disposition.REVIEW
+        assert f"marked:taxon:{run.regions[0].id}:text_only" in run.reasons
+        return
     assert (taxon.state, taxon.literal) == (ValueState.AMBIGUOUS, None)
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
 

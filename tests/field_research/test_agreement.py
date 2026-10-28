@@ -1208,26 +1208,43 @@ def test_readers_whose_clauses_holding_the_text_agree_settle(first, second, lite
 
 
 @pytest.mark.parametrize(("key", "first", "second"), list(AROUND.values())[:4], ids=list(AROUND)[:4])
-def test_through_the_step_readers_that_write_more_words_go_to_review(tmp_path, key, first, second):
+def test_through_the_step_readers_that_write_more_words_go_to_review(tmp_path, key, first, second, first_pass_path):
     """The review's four cases end to end; on 61c193e93 each field is
     supported on the first reader's text, and the second reader's verbatim is
-    recorded as that text."""
+    recorded as that text. On the units path, where the rig's units give the
+    first reader's text a unit both readers write alike and the second
+    reader's further words units the first left empty, both agree on the text
+    there (TEXT), and the image does not judge those other units not visible,
+    so nothing images it (agreement.image_names): it settles marked for a
+    person. The date's units hold the second reader's whole range in one: the
+    readers disagree there, and it stays ambiguous."""
     rig = build_rig(tmp_path, first + "\nleg. J. Smith", second + "\nleg. J. Smith", candidates=[])
     run = rig.specimen.run
     settle(rig, Scripted({key: answering(FieldAnswer(outcome="resolved", literal=first, reading_names=["1A"],
         explanation="Read from the readings."))}))
     value = run.fields[key]
+    if first_pass_path == "units" and key != "date_visited_from":
+        assert (value.state, value.literal) == (ValueState.SUPPORTED, first)
+        assert [(f.reason_code, f.severity) for f in run.findings if f.rule_id == "field_settlement"
+            and f.field_key == key] == [(f"marked:{key}:{run.regions[0].id}:text_only", "warning")]
+        return
     assert (value.state, value.literal) == (ValueState.AMBIGUOUS, None)
     assert value.reason.startswith(agreement.DIFFER)
     assert f"transcript_literal:{key}" not in [f.reason_code for f in run.findings]
 
 
-def test_the_review_probe_p13_trap_and_light_trap_naming_both_readers(tmp_path):
+def test_the_review_probe_p13_trap_and_light_trap_naming_both_readers(tmp_path, first_pass_path):
+    """On the units path "trap" settles marked, as the four cases above do, whichever readings
+    the answer names."""
     rig = build_rig(tmp_path, "trap\nleg. J. Smith", "light trap\nleg. J. Smith", candidates=[])
     run = rig.specimen.run
     settle(rig, Scripted({"collection_method": answering(FieldAnswer(outcome="resolved", literal="trap",
         reading_names=["1A", "1B"], explanation="Both write it."))}))
     method = run.fields["collection_method"]
+    if first_pass_path == "units":
+        assert (method.state, method.literal) == (ValueState.SUPPORTED, "trap")
+        assert f"marked:collection_method:{run.regions[0].id}:text_only" in run.reasons
+        return
     assert (method.state, method.literal) == (ValueState.AMBIGUOUS, None)
 
 
