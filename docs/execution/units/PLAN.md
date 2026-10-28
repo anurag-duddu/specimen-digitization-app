@@ -54,9 +54,11 @@ when all three hold against the baseline:
    compared value (parsed, else normalized, else literal) after its normalisation. Per repeat, the
    number of fields cleared on different values between the pair arm and the three-reader arm is at
    most the number between the pair arm's own two repeats (the noise floor; on the 2026-10-25 runs
-   6 of 71 fields cleared in both pair repeats differ, and 3 of 58 between pair repeat 1 and
-   three-reader repeat 1). Each pair-versus-three difference is listed with whether the image
-   judgement differed between the two runs. Above the floor, the phase stops. The judge's stability
+   6 of 71 fields cleared in both pair repeats differ, and 2 of 58 between pair repeat 1 and
+   three-reader repeat 1, by WP 0's scorer; a third, t1-329's collectors "R.D.Mitchell" against
+   "R.D.mitchell", differs in letter case only, which the normalisation removes). Each
+   pair-versus-three difference is listed with whether the image judgement differed between the
+   two runs. Above the floor, the phase stops. The judge's stability
    is measured per reader-difference span from the alignment, independent of the model's
    segmentation: the verdict at each span is read off the unit covering it; stability is the share
    of spans with the same verdict in all three repeats of the first pass on the reference set; a span

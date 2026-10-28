@@ -85,9 +85,9 @@ A settled field is marked when the run carries the units path's code `marked:<fi
 or a finding's code; today's code writes none, so today every settled field is cleared. Right values (criterion
 1 (b)) are cleared right plus marked right. Criterion 2 counts the fields cleared with a value, unmarked, in both
 of two runs, and those among them whose compared values differ after normalisation (letters and digits, lower case;
-elevations as numbers). On the 2026-10-25 runs this definition gives 6 of 71 between the pair arm's repeats (the
-plan's figure) and 2 of 58 between pair and three-reader repeat 1; the plan's 3 of 58 counts "R.D.Mitchell" against
-"R.D.mitchell", a difference of letter case only.
+elevations as numbers). On the 2026-10-25 runs this definition gives 6 of 71 between the pair arm's repeats and
+2 of 58 between pair and three-reader repeat 1. The plan said 3 of 58 until this pull request, counting t1-329's
+collectors "R.D.Mitchell" against "R.D.mitchell", a difference of letter case only; its sentence now gives 2 of 58.
 
 `test_units_reference_score.py` pins the rule on fixed records (right, wrong, left without a value, absent; a
 marked value counted as marked, and as right when its value is right); `test_units_reference_manifest.py` fails
@@ -97,21 +97,76 @@ Usage: `python tests/reference/units_program/score.py <run>/r1/pair.jsonl <run>/
 
 ## The baseline
 
-Not run yet. Its rig is ready in the run folder: today's main frozen as `main-7a09445a2/` (a `git archive` of
-7a09445a2's `src`), `run_arm.py` (whole-slide specimens through the app's `Workflow`, the first pass live in every
-repeat, the organiser and field research live), `full_run.sh` (both arms, two repeats, repeat 1 before repeat 2),
-`analyse.py` (this scorer's report plus criterion 2's differences with the first pass at the label). The no-cost
-preflight builds and saves all 30 specimens for both arms.
-
-Estimate written into the run's ledger before any paid call: USD 7.592 by PLAN section 4's formula (field research
-7.332, first pass 0.26), plus the organiser's parse calls 0.247 and the live reader calls (62 labels x 3 routes) at
-most 0.214: USD 8.053 at list in all, under the USD 10 limit. The baseline's ledger phase stops a step that could
-pass USD 7.90.
+Run on 2026-10-28 from 08:06Z to about 10:10Z in `~/specimen-golive/runs/units-baseline-20261027/`: today's main
+(7a09445a2, frozen as a `git archive` of its `src`), the pair arm (readers A and B) and the three-reader arm (A, B,
+C), two repeats each, all 30 specimens, the first pass live in every repeat (on the 37 labels whose two readings
+differ, 47 whose three do; 38, 38, 48 and 48 first-pass steps with retries), the organiser and field research
+live, geography on. All 120 specimen runs finalized with no step error. The full
+report, with every difference and the cost per run, is the run folder's `score_baseline.md`.
 
 The readers' texts are fixed in `readings.json`: three pilot labels whose crop is byte-identical to a 2026-10-25
-crop keep that day's A, B and C readings; the other 62 labels were read live once per route. Reader B (Muse) and
-reader C (Nemotron) are read for all 62; reader A (Qwen on Novita) for 13, the other 49 wait. On 2026-10-28 Novita
-did not answer Qwen3-VL from about 01:10Z to 02:35Z (text-only probes timed out at 60 s while the same model on
-DeepInfra answered in 0.4 s), and from 05:05Z at the latest this workstation was asleep with dark wakes (`pmset -g
-log`), which froze the in-process calls. The organiser is reader A's route (`harness.extract_with_agent` uses `run.profile.routes[0]`), so
-the baseline needs Novita too.
+crop keep that day's A, B and C readings; the other 62 labels were read live once per route on 2026-10-27/28.
+Reader A (Qwen) failed on all four live calls for seven of them (six malformed answers, one provider failure); the
+rig replays that failure through the workflow's own reader step, which retries within its three attempts and then
+gives the reading up, as production does. Novita did not answer Qwen3-VL from about 01:10Z to 02:35Z on
+2026-10-28; nothing was switched to another provider.
+
+### Criterion 1, per run
+
+Fields of the ten pilot specimens; n is the number of fields scored in the category. Today's code writes no
+`marked:` code, so every settled value is cleared and the marked columns are 0.
+
+| Run | Category | n | Cleared right | Cleared wrong (of which partial) | Marked right | Marked wrong | Left without a value |
+|---|---|---|---|---|---|---|---|
+| pair, repeat 1 | primary | 69 | 45 | 18 (7) | 0 | 0 | 6 |
+| pair, repeat 1 | derived | 37 | 29 | 8 (0) | 0 | 0 | 0 |
+| pair, repeat 1 | absent | 4 | 4 | 0 | 0 | 0 | 0 |
+| pair, repeat 2 | primary | 69 | 44 | 14 (5) | 0 | 0 | 11 |
+| pair, repeat 2 | derived | 37 | 26 | 11 (0) | 0 | 0 | 0 |
+| pair, repeat 2 | absent | 4 | 4 | 0 | 0 | 0 | 0 |
+| three, repeat 1 | primary | 69 | 43 | 15 (6) | 0 | 0 | 11 |
+| three, repeat 1 | derived | 37 | 32 | 5 (0) | 0 | 0 | 0 |
+| three, repeat 1 | absent | 4 | 4 | 0 | 0 | 0 | 0 |
+| three, repeat 2 | primary | 69 | 43 | 16 (6) | 0 | 0 | 10 |
+| three, repeat 2 | derived | 37 | 29 | 7 (0) | 0 | 0 | 1 |
+| three, repeat 2 | absent | 4 | 4 | 0 | 0 | 0 | 0 |
+
+Per arm, the mean over the two repeats and the range (the noise rule's terms):
+
+| Arm | Category | Cleared wrong | Right | Left without a value |
+|---|---|---|---|---|
+| pair | primary (69) | 16 (14 to 18) | 44.5 (44 to 45) | 8.5 (6 to 11) |
+| pair | derived (37) | 9.5 (8 to 11) | 27.5 (26 to 29) | 0 |
+| pair | absent (4) | 0 | 4 | 0 |
+| three | primary (69) | 15.5 (15 to 16) | 43 (43) | 10.5 (10 to 11) |
+| three | derived (37) | 6 (5 to 7) | 30.5 (29 to 32) | 0.5 (0 to 1) |
+| three | absent (4) | 0 | 4 | 0 |
+
+Reported, not gated: marked values 0 in every run; specimens that reach a cleared disposition 1 of 30 (pair,
+repeat 1) and 0 of 30 in the other three runs. The 20 drawn specimens, counted over their 20 fields each (400 per
+run), cleared with a value / cleared as absent / left without a value: 130 / 187 / 83 and 135 / 191 / 74 (pair),
+118 / 192 / 90 and 123 / 192 / 85 (three).
+
+### Criterion 2
+
+| Comparison | Fields cleared with a value in both | Cleared on different values |
+|---|---|---|
+| pair repeat 1 against pair repeat 2 (the noise floor) | 209 | 7 |
+| pair repeat 1 against three-reader repeat 1 | 197 | 7 |
+| pair repeat 2 against three-reader repeat 2 | 204 | 7 |
+
+The floor's seven: 105526322 collectors ("H. Hoogstraal leg." / "H. Hoogstraal"), 105526323, 105526325 and
+105526327 precise location (another reader's spelling, or more or less of the locality block), 105526617 country
+("Mexico" / "México"), 105526461 and 105526456 verbatim D/T/S (another line of the label). `score_baseline.md` lists every
+pair-against-three difference with whether the first pass's image judgement at that label differed.
+
+### Cost
+
+Estimate written into the run's ledger before any paid call: USD 7.592 by PLAN section 4's formula (field research
+7.332, first pass 0.26), plus the organiser's parse calls 0.247 and the live reader calls at most 0.214: USD 8.053
+at list in all, under the USD 10 limit; the baseline's ledger phase refused any step that could pass USD 7.90.
+Actual at list as booked: the baseline USD 7.3535 (the 120 runs USD 7.3198; the rest is a first launch whose two
+first specimens stopped at parse on a rig fault, USD 0.0036, and two holds that launch left open, USD 0.03; by
+kind, field research 7.0823, parse 0.1464, first pass 0.0948 and the holds), the readers USD 0.4885 (unanswered calls booked at their worst case, USD 0.02 each), probes
+USD 0.016: USD 7.858 in all. Field research at the price list's cached-input rate: USD 1.3703; Hugging Face's own
+estimate: USD 0.9574.
