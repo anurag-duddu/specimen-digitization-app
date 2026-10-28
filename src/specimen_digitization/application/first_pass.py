@@ -14,7 +14,7 @@ The first pass v2 (docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOL
 sections 2 and 3; docs/execution/units/PLAN.md, WP 1.2) is the units path, behind
 SPECIMEN_FIRST_PASS_UNITS: it cuts each label into reading units, judges the image
 at each and settles nothing (first_pass_units_direct, below). The old path above is
-unchanged; a run follows the path it started on.
+unchanged; a run follows the path recorded at its creation (reading_units.SETTING).
 """
 
 from __future__ import annotations
@@ -49,9 +49,13 @@ from .domain import (
     ReadingSpan,
     RunFinding,
 )
-from .reading_units import (
+from .reading_units import (  # noqa: F401 - OLD, SETTING, first_pass_path: the path's names here too
     NOT_VISIBLE,
+    OLD,
+    SETTING,
     UNCERTAIN,
+    UNITS,
+    first_pass_path,
     ReadingUnit,
     ReadingUnits,
     UnitText,
@@ -604,29 +608,10 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
 
 # The first pass v2: reading units (docs/product-requirements/
 # FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md sections 2 and 3; docs/execution/units/PLAN.md, WP
-# 1.2), behind a switch. A run records the path it starts on (`Run.first_pass_path`, set when
-# its dependencies are first pinned) and keeps it: the first pass follows the run's path, never
-# the process's switch. Off, or unset, every run takes the old path and nothing changes.
-#
-# Rollback: the runtime before this change cannot load a run that records the units path or
-# holds units (`Record` refuses unknown keys, domain.py), nor a specimen whose previous runs do.
-# The switch is turned on only once this runtime (or a later one) serves both the API and the
-# worker; a rollback past it first turns the switch off and waits until no run that the older
-# runtime would load records the units path.
-SETTING = "SPECIMEN_FIRST_PASS_UNITS"
-OLD, UNITS = "old", "units"
-
-
-def first_pass_path(environ) -> str:
-    """The path a run that starts now takes: "units" when SPECIMEN_FIRST_PASS_UNITS is "on",
-    "old" when it is "off", empty or unset. Any other value raises, naming the setting and never
-    its value, so a mistyped value never decides the path."""
-    value = environ.get(SETTING, "")
-    if value in ("", "off"):
-        return OLD
-    if value == "on":
-        return UNITS
-    raise ValueError(f"{SETTING} must be on or off")
+# 1.2), behind SPECIMEN_FIRST_PASS_UNITS (reading_units.first_pass_path). A run records its path
+# when it is created and keeps it: the first pass follows the run's path, never the process's
+# switch, so turning the switch off or on changes only the runs created afterwards. The
+# rollback rule is at reading_units.SETTING.
 
 
 # The alignment, extended (section 3, "A given-up label, and a label with one reader, still
@@ -714,12 +699,23 @@ def reading_segments(texts) -> list[tuple[ReadingSpan, ...]]:
     ]
 
 
+# The line boundaries str.splitlines recognises: "\r\n" is one, as are "\r", "\n", the vertical
+# tab, the form feed, the file, group and record separators, NEL, U+2028 and U+2029.
+LINE_BREAK = re.compile("\r\n|[\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
+
+
+def _line_number(text: str, offset: int) -> int:
+    """The line, from 1, that the character at `offset` of `text` is on."""
+    return 1 + len(LINE_BREAK.findall(text, 0, offset))
+
+
 def _lines(readings, spans) -> tuple[int, int]:
-    """The first and last line a unit covers, in the first reading that wrote text there."""
+    """The first and last line a unit covers, in the first reading that wrote text there (the
+    unit's last character is never white space, so its line is the one before `end`)."""
     for reading, span in zip(readings, spans):
         if span.text:
             text = reading.literal_text
-            return 1 + text.count("\n", 0, span.start), 1 + text.count("\n", 0, span.end)
+            return _line_number(text, span.start), _line_number(text, span.end - 1)
     return 1, 1
 
 

@@ -233,7 +233,7 @@ above do not change.
 |---|---|---|
 | `decision_kind` | `identical_readings`, `first_pass`, `human` | how the decided transcript was reached |
 | `selected_observation_id` | `str \| None` | the reading chosen; `text` is its `literal_text`, verbatim |
-| `first_pass_call` | `Observation \| None` | the model call's provenance, same model as the readers' observations, with `literal_text` empty and the structured answer at `raw_ref`; set only for `first_pass`, and on the units path also for `identical_readings` (the call that cut the label's units; that kind's rule still decides the text). Its `input_sha256` is the crop's digest, like every observation's; `request_sha256` names its text request (S4, #98) and stays in the snapshot |
+| `first_pass_call` | `Observation \| None` | the model call's provenance, same model as the readers' observations, with `literal_text` empty and the structured answer at `raw_ref`; set only for `first_pass`, and on the units path also for `identical_readings` (the call that cut the label's units; that kind's rule still decides the text). The writer sends `firstPassObservationId` for `first_pass` only, as the operations' check requires (`((decisionKind == 'first_pass') == (firstPassObservationId != null))`, `dataconnect/connector/projection.gql`), so an identical-readings version names no call in SQL; the domain record keeps it. Its `input_sha256` is the crop's digest, like every observation's; `request_sha256` names its text request (S4, #98) and stays in the snapshot |
 | `differences` | `list[FirstPassDifference]` | one per aligned difference: `number`, `spans` (per observation, exact `start` and `end` offsets into that reading's `literal_text` and the `text`), `verdict` (an observation id, `neither` or `uncertain`) and `material` |
 | `reason` (exists) | `str \| None` | the first pass's rationale, or the reviewer's reason |
 | `handoffs` | `list[ReaderHandoff]` | one per reading handed to the harness |
@@ -271,21 +271,30 @@ exactly as before. The active graph's compact row keeps `reading_units` as an
 empty list, like the other per-label lists (`active_graph.run_summary`).
 
 **The first pass's path** (work package 1.2): `Run.first_pass_path`, `old` or
-`units`, recorded when the run's dependencies are first pinned from
-`SPECIMEN_FIRST_PASS_UNITS` (off unless `on`) and kept for the whole run;
-omitted from the stored record on the old path, so an old-path run keeps its
-bytes (`tests/test_first_pass_units.py`). On the units path the first pass runs
+`units`, recorded from `SPECIMEN_FIRST_PASS_UNITS` (off unless `on`) when the
+run is created (every place that creates a run: the API's intake, region
+review, classification review and reprocess, bulk intake and source import)
+and kept for the whole run; omitted from the stored record on the old path, so
+an old-path run keeps its bytes (`tests/test_first_pass_units.py`). A run
+follows the path recorded at its creation, so turning the switch off or on
+changes only the runs created afterwards: a units-path run created before the
+switch is turned off still writes units. On the units path the first pass runs
 for every label with two readings or more and some text, agreed readings
 included, and writes the label's units (`application/first_pass.py`); its
 decision names no reading and leaves every difference `uncertain`; a label with
 one reading, or one whose first pass was given up on, gets units from the
-alignment with `image` `uncertain` at each. Only the units path writes units,
-so with the switch off nothing reaches `AppendTranscriptionVersionV3`. A
-runtime before work package 1.2 cannot read a record that names the path, nor
-one before 1.1 a record that holds units (`Record` refuses an unknown key), in
-the run or in its previous runs: the switch is turned on only once this runtime
-serves the API and the worker, and a rollback past it turns the switch off
-first and waits until no record it would load names the units path.
+alignment with `image` `uncertain` at each. Every label's units are on the run
+(`Run.reading_units`), so the workspace route returns them; the normalized
+projection writes a label's units only with a `TranscriptionVersion`, which a
+label with one reading, or with differing readings and no first-pass decision
+(given up on), does not get (see the end of this section), so their units are
+on the run and the workspace route and not in the normalized projection. Main
+before this package (work package 1.1 included) loads `Run.reading_units` but
+not `Run.first_pass_path` (`Record` refuses an unknown key), so the rollback
+boundary is the path field, in the run and in its previous runs; before 1.1
+units are unknown too. The switch is turned on only once this runtime serves
+the API, the intake job and the worker, and a rollback past it turns the switch
+off first and waits until no record it would load names the units path.
 
 **The unresolved rule** is the one definition of unresolved used everywhere. A
 region's decision is unresolved when no reading was selected (G19: material

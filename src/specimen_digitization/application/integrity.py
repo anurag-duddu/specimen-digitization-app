@@ -127,18 +127,41 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
 
             decisions = {d.region_id: d for d in run.first_pass_decisions}
             units_path = run.first_pass_path == UNITS
-            # A units-path decision names no reading (docs/execution/units/PLAN.md, WP 1.2).
+            # A units-path decision names no reading and leaves every difference uncertain
+            # (docs/execution/units/PLAN.md, WP 1.2), and so does its transcript.
             require(not units_path or all(
-                d.selected_observation_id is None for d in run.first_pass_decisions
+                d.selected_observation_id is None
+                and all(difference.verdict == "uncertain" for difference in d.differences)
+                for d in run.first_pass_decisions
             ))
+            require(not units_path or all(
+                difference.verdict == "uncertain"
+                for transcript in run.transcripts
+                for difference in transcript.differences
+            ))
+            held = {entry.label for entry in run.reading_units}
+            require(len(held) == len(run.reading_units))
             for entry in run.reading_units:
-                # Each label's units name its own readings and tile them (section 3's checks).
+                # Each label's units tile every reading of the label the run holds (section 3's
+                # checks), not only the readings the units name.
                 require(entry.label in regions)
-                texts = {}
-                for ident in entry.units[0].readers:
-                    require(ident in observations and observations[ident].region_id == entry.label)
-                    texts[ident] = observations[ident].literal_text
+                texts = {
+                    o.id: o.literal_text
+                    for o in run.observations
+                    if o.region_id == entry.label
+                }
                 require(not unit_problems(entry, texts))
+            if units_path and "adjudicate" in run.completed_steps:
+                # From adjudicate on, every label with a reading that holds text has units.
+                require(all(
+                    region.id in held
+                    for region in run.regions
+                    if any(
+                        o.literal_text.strip()
+                        for o in run.observations
+                        if o.region_id == region.id
+                    )
+                ))
             for transcript in run.transcripts:
                 require(transcript.region_id in regions)
                 # A region no reader read (every reader's attempts failed) keeps

@@ -709,7 +709,6 @@ def _execute_drain(args, deadline):
     from .profile_runtime import published_risk_registry
     from ..research_harness.enablement import research_harness_enabled
 
-    from .first_pass import first_pass_path
     from .model_option import nvidia_stages
 
     try:
@@ -717,8 +716,6 @@ def _execute_drain(args, deadline):
         research_harness = research_harness_enabled(os.environ)
         # published_registry reads it too; checked here so --check-config sees it.
         nvidia_stages(os.environ)
-        # A run reads it when it starts (workflow, pin_dependencies); checked here too.
-        first_pass_path(os.environ)
     except ValueError as exc:
         # The message names the setting, never its value.
         print(json.dumps({

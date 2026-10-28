@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -244,6 +245,32 @@ def test_the_fallback_tiles_differing_readings_and_a_reader_that_wrote_nothing()
     last = units.units[-1]
     assert [last.readers[r.id].text for r in readings] == ["", "P-95-81-16", ""]
     assert last.lines == (4, 4)
+
+
+@pytest.mark.parametrize("separator", ["\r", "\r\n", "\n", "\u2028", "\u2029", "\x0b", "\x85"])
+def test_a_unit_s_lines_count_every_line_boundary(separator):
+    """Codex's review of bf1caab88: lines counted "\n" alone, so "Paris\rFrance" put "France" on
+    line 1. Every boundary str.splitlines knows counts, in the fallback and in the request."""
+    text = f"Paris{separator}France 1946"
+    readings = [reading(ROUTES[0], text), reading(ROUTES[1], text)]
+    assert len(text.splitlines()) == 2
+
+    units = alignment_units(REGION.id, readings)
+    request, _ = build_units_request(readings, reading_segments([text, text]))
+
+    assert [(u.readers[readings[0].id].text, u.lines) for u in units.units] == [
+        ("Paris", (1, 1)), ("France", (2, 2)), ("1946", (2, 2))
+    ]
+    assert 'Line 1: [1] "Paris"\nLine 2: [2] "France" [3] "1946"' in request
+
+
+def test_a_unit_across_a_line_boundary_covers_both_lines():
+    text = "E Slope Mt.\u2028McKinley"
+    readings = [reading(ROUTES[0], text)]
+    segments = reading_segments([text])
+    answer = UnitsOutput.model_validate({"units": [{"first": 1, "last": 4, "image": "A"}]})
+    (unit,) = units_from_output(REGION.id, answer, {"A": readings[0]}, segments).units
+    assert unit.lines == (1, 2)
 
 
 def test_a_label_whose_readings_hold_no_text_has_no_units():
@@ -512,9 +539,29 @@ def test_a_call_stopped_at_its_caps_gets_the_alignments_units(monkeypatch, tmp_p
 # ------------------------------------------------------------- the workflow, synthetic adapters
 
 
-def drained(tmp_path, monkeypatch, *, switch="on", alternate="taxon: different", readers=None):
-    from test_first_pass_workflow import start
+def start_run(tmp_path, adapters):
+    """test_first_pass_workflow.start's run: a specimen created through the API's intake, with a
+    fresh run in its place that keeps the path its creation recorded."""
+    from test_application import client, intake
 
+    from specimen_digitization.application.api import SYNTHETIC_COLLECTION, SYNTHETIC_ORG
+    from specimen_digitization.application.domain import Principal, Scope
+    from specimen_digitization.application.storage import SQLiteRepository, digest
+    from specimen_digitization.application.workflow import Workflow
+
+    row = intake(client(tmp_path))
+    repo = SQLiteRepository(tmp_path / "state.sqlite3")
+    scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+    principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
+    specimen = repo.get(scope, row["specimen_id"])
+    recorded = getattr(specimen.run, "first_pass_path", None)
+    specimen.run = Run(profile=specimen.run.profile,
+                       **({"first_pass_path": recorded} if recorded is not None else {}))
+    repo.save(principal, specimen, specimen.version, "new-run", digest({"new": True}))
+    return Workflow(repo, adapters.blobs, adapters), principal, specimen.id
+
+
+def drained(tmp_path, monkeypatch, *, switch="on", alternate="taxon: different", readers=None):
     from specimen_digitization.application.api import SYNTHETIC_TEXT
     from specimen_digitization.application.workflow import SyntheticAdapters
 
@@ -527,27 +574,22 @@ def drained(tmp_path, monkeypatch, *, switch="on", alternate="taxon: different",
     first_pass_units = getattr(adapters, "first_pass_units", None)
     if first_pass_units is not None:
         adapters.first_pass_units = lambda *args: calls.append(args[1].id) or first_pass_units(*args)
-    workflow, principal, ident = start(tmp_path, adapters)
+    workflow, principal, ident = start_run(tmp_path, adapters)
     return workflow, principal, ident, calls
 
 
-def test_a_run_records_its_path_when_it_starts_and_keeps_it(tmp_path, monkeypatch):
+def test_a_run_keeps_the_path_recorded_at_its_creation(tmp_path, monkeypatch):
     workflow, principal, ident, _ = drained(tmp_path, monkeypatch, switch="on")
-    specimen = workflow.step(principal, ident)
-    assert specimen.run.completed_steps == ["pin_dependencies"]
-    assert specimen.run.first_pass_path == UNITS
-    # The switch turned off after the run started: the run keeps its path, and its re-pin after
-    # classify keeps the units prompt.
+    assert workflow.repository.get(principal.scope, ident).run.first_pass_path == UNITS
+    # The switch turned off after the run was created: the run keeps its path.
     monkeypatch.setenv(SETTING, "off")
     specimen = workflow.drain(principal, ident)
     assert specimen.run.first_pass_path == UNITS
-    assert specimen.run.completed_steps.count("pin_dependencies") == 1
     assert specimen.run.reading_units and specimen.run.first_pass_decisions
 
 
-def test_a_run_started_on_the_old_path_stays_there(tmp_path, monkeypatch):
+def test_a_run_created_on_the_old_path_stays_there(tmp_path, monkeypatch):
     workflow, principal, ident, calls = drained(tmp_path, monkeypatch, switch=None)
-    workflow.step(principal, ident)
     monkeypatch.setenv(SETTING, "on")
 
     run = workflow.drain(principal, ident).run
@@ -555,6 +597,125 @@ def test_a_run_started_on_the_old_path_stays_there(tmp_path, monkeypatch):
     # A guard: main's runs take this path, and nothing on it names a path or holds units.
     assert getattr(run, "first_pass_path", OLD) == OLD and run.reading_units == [] and calls == []
     assert "first_pass_path" not in run.model_dump(mode="json")
+
+
+def test_the_switch_is_read_when_a_run_is_created_and_never_after(tmp_path, monkeypatch):
+    """Codex's review of bf1caab88: the path was read at the first pin, guarded by classify.
+    Now nothing after the run's creation reads the switch: with every reader of it made to fail,
+    the run still drains on its recorded path."""
+    from specimen_digitization.application import reading_units
+
+    workflow, principal, ident, calls = drained(tmp_path, monkeypatch, switch="on")
+
+    def read(environ):
+        raise AssertionError("the switch was read after the run's creation")
+
+    monkeypatch.setattr(reading_units, "first_pass_path", read)
+    monkeypatch.setattr(first_pass_module, "first_pass_path", read)
+    monkeypatch.setenv(SETTING, "off")
+    run = workflow.drain(principal, ident).run
+
+    assert run.first_pass_path == UNITS and calls == [run.regions[0].id] and run.reading_units
+
+
+def test_a_failed_first_pin_then_a_retry_keeps_the_recorded_path(tmp_path, monkeypatch):
+    from specimen_digitization.application.storage import digest
+
+    workflow, principal, ident, calls = drained(tmp_path, monkeypatch, switch="on")
+    adapters, failed = workflow.adapters, []
+
+    def pin_once(run):
+        if not failed:
+            failed.append(run.first_pass_path)
+            raise OperationalBlock("pinned_model_route_unavailable")
+        return {"adapter": "SyntheticAdapters", "synthetic": True, "path_at_pin": run.first_pass_path}
+
+    adapters.pin_dependencies = pin_once
+    blocked = workflow.step(principal, ident)
+    assert blocked.run.blocker == "pinned_model_route_unavailable"
+    assert "pin_dependencies" not in blocked.run.completed_steps and failed == [UNITS]
+    # The switch turns off; a person resumes the run (the API's resume keeps the run).
+    monkeypatch.setenv(SETTING, "off")
+    blocked.run.blocker, blocked.run.stage = None, "pin_dependencies"
+    workflow.repository.save(principal, blocked, blocked.version, "resume", digest({"resume": 1}))
+    run = workflow.drain(principal, ident).run
+
+    assert run.first_pass_path == UNITS and run.dependencies["path_at_pin"] == UNITS
+    assert calls == [run.regions[0].id] and run.reading_units
+
+
+@pytest.mark.parametrize("switch,path", [("on", UNITS), ("off", OLD), (None, OLD)])
+def test_the_api_records_the_switch_when_it_creates_a_run(tmp_path, monkeypatch, switch, path):
+    """Both places the review named: the intake's run and the new run of a region review."""
+    from test_application import HEADERS, PREFIX, client, intake
+
+    from specimen_digitization.application.api import SYNTHETIC_COLLECTION, SYNTHETIC_ORG, SYNTHETIC_TEXT
+    from specimen_digitization.application.domain import Principal, Scope
+    from specimen_digitization.application.storage import SQLiteRepository
+    from specimen_digitization.application.workflow import SyntheticAdapters, Workflow
+
+    flipped = {"on": "off", "off": "on", None: "on"}[switch]
+    if switch is None:
+        monkeypatch.delenv(SETTING, raising=False)
+    else:
+        monkeypatch.setenv(SETTING, switch)
+    http = client(tmp_path)
+    row = intake(http)
+    repo = SQLiteRepository(tmp_path / "state.sqlite3")
+    scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+    created = repo.get(scope, row["specimen_id"])
+    assert getattr(created.run, "first_pass_path", OLD) == path
+
+    adapters = SyntheticAdapters(LocalBlobs(tmp_path / "blobs"), SYNTHETIC_TEXT)
+    principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
+    drained = Workflow(repo, adapters.blobs, adapters).drain(principal, row["specimen_id"])
+    # The region review makes a new run, which records the switch as it is then.
+    monkeypatch.setenv(SETTING, flipped)
+    response = http.post(
+        PREFIX + f"/specimens/{row['specimen_id']}/regions",
+        headers=dict(HEADERS, **{"Idempotency-Key": "regions-1"}),
+        json={"expected_revision": drained.version, "base_run_id": drained.run.id,
+              "reason": "Reviewer drew the label",
+              "regions": [{"asset_id": drained.asset.id, "x": 0, "y": 0, "width": drained.asset.width,
+                           "height": drained.asset.height, "order": 0, "method": "reviewer_drawn",
+                           "version": "1"}]},
+    )
+    assert response.status_code == 200, response.text
+    reviewed = repo.get(scope, row["specimen_id"])
+    assert reviewed.run.id != drained.run.id
+    assert reviewed.run.first_pass_path == {"on": UNITS, "off": OLD}[flipped]
+    assert getattr(drained.run, "first_pass_path", OLD) == path
+
+
+def test_every_run_created_in_src_records_the_switch():
+    """A guard on every place in src that builds a Run: it passes first_pass_path read from the
+    switch (reading_units.first_pass_path(os.environ)), so no new run misses its path."""
+    import ast
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1] / "src/specimen_digitization"
+    sites = []
+    for path in sorted(root.rglob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Run":
+                keyword = next((k for k in node.keywords if k.arg == "first_pass_path"), None)
+                sites.append((path.relative_to(root).as_posix(), node.lineno, keyword is not None and ast.unparse(
+                    keyword.value) == "first_pass_path(os.environ)"))
+    assert {site[0] for site in sites} >= {"application/api.py", "application/bulk_intake.py",
+                                          "application/source_import.py"}
+    assert [site for site in sites if not site[2]] == []
+
+
+def test_a_mistyped_switch_stops_the_api_and_intake_configuration():
+    from test_api_runtime import config_env
+
+    from specimen_digitization.application.runtime_config import RuntimeConfig
+
+    for value in ("", "off", "on"):
+        RuntimeConfig.from_env(dict(config_env(), **{SETTING: value}))
+    with pytest.raises(ValueError) as error:
+        RuntimeConfig.from_env(dict(config_env(), **{SETTING: "secret-value"}))
+    assert SETTING in str(error.value) and "secret-value" not in str(error.value)
 
 
 def test_the_units_path_cuts_differing_readings_and_stores_the_units(tmp_path, monkeypatch):
@@ -665,7 +826,8 @@ def test_an_agreed_label_can_be_given_up_on_the_units_path(tmp_path, monkeypatch
     assert run.reading_units and {u.image for u in run.reading_units[0].units} == {UNCERTAIN}
 
 
-@pytest.mark.parametrize("forge", ["a pick", "units of another label", "units that do not tile", "no units"])
+@pytest.mark.parametrize("forge", ["a pick", "a verdict naming a reader", "units of another label",
+                                   "units that do not tile", "no units"])
 def test_the_step_refuses_a_units_answer_that_breaks_the_contract(tmp_path, monkeypatch, forge):
     workflow, principal, ident, _ = drained(tmp_path, monkeypatch)
     honest = workflow.adapters.first_pass_units
@@ -675,6 +837,9 @@ def test_the_step_refuses_a_units_answer_that_breaks_the_contract(tmp_path, monk
         if forge == "a pick":
             decision = decision.model_copy(update={"selected_observation_id": readings[0].id,
                                                    "differences": []})
+        elif forge == "a verdict naming a reader":
+            first = decision.differences[0].model_copy(update={"verdict": readings[0].id})
+            decision = decision.model_copy(update={"differences": [first, *decision.differences[1:]]})
         elif forge == "units of another label":
             units = alignment_units("another", readings)
         elif forge == "units that do not tile":
@@ -805,16 +970,24 @@ def invoke(tmp_path, value):
         model_runtime.run_isolated = original
 
 
-@pytest.mark.parametrize("units", ["missing", "another label", "not a record"])
+@pytest.mark.parametrize("units", ["missing", "another label", "not a record", "a verdict naming a reader",
+                                   "a pick"])
 def test_the_parent_refuses_units_it_cannot_validate(tmp_path, monkeypatch, units):
-    decision, _, readings = direct_units(monkeypatch, tmp_path, [], ANSWER, readings=pilot_readings(2))
+    decision, good, readings = direct_units(monkeypatch, tmp_path, [], ANSWER, readings=pilot_readings(2))
     decision = decision.model_copy(update={"call": decision.call.model_copy(
         update={"input_asset_id": ASSET.id})})
+    if units == "a verdict naming a reader":
+        first = decision.differences[0].model_copy(update={"verdict": readings[0].id})
+        decision = decision.model_copy(update={"differences": [first, *decision.differences[1:]]})
+    elif units == "a pick":
+        decision = decision.model_copy(update={"selected_observation_id": readings[0].id})
     value = {"decision": decision.model_dump(mode="json")}
     if units == "another label":
         value["units"] = alignment_units("another", readings).model_dump(mode="json")
     elif units == "not a record":
         value["units"] = {"label": REGION.id, "units": []}
+    elif units in ("a verdict naming a reader", "a pick"):
+        value["units"] = good.model_dump(mode="json")
 
     with pytest.raises(OperationalBlock, match="^external_outcome_unknown$"):
         invoke(tmp_path, value)
@@ -1054,7 +1227,10 @@ def test_a_decided_transcript_candidate_on_a_label_with_units_names_its_transcri
     )
 
 
-def test_an_agreed_label_s_units_are_projected_with_the_call_that_cut_them(tmp_path, monkeypatch):
+def test_an_agreed_label_s_units_are_projected_and_its_version_names_no_call(tmp_path, monkeypatch):
+    """Claude's review of bf1caab88: the version row of an agreed label named the first-pass
+    call, which AppendTranscriptionVersionV2 and V3 refuse (only `first_pass` names a call). The
+    domain transcript keeps the call; the row names none."""
     from test_reading_units import locate
 
     from specimen_digitization.application.api import SYNTHETIC_TEXT
@@ -1063,11 +1239,218 @@ def test_an_agreed_label_s_units_are_projected_with_the_call_that_cut_them(tmp_p
     workflow, principal, ident, _ = drained(tmp_path, monkeypatch, alternate=SYNTHETIC_TEXT)
     specimen = workflow.drain(principal, ident)
     (decision,) = specimen.run.first_pass_decisions
+    assert specimen.run.transcripts[0].first_pass_call == decision.call
 
     rows = writes(specimen, locate, lambda ref: 1, "worker-uid")
     (version,) = [w.variables for w in rows if w.operation == "AppendTranscriptionVersionV3"]
 
     assert version["decisionKind"] == "identical_readings"
-    assert version["firstPassObservationId"] == decision.call.id
+    assert version["firstPassObservationId"] is None
     assert version["readingUnits"] == specimen.run.reading_units[0].model_dump(mode="json")
-    assert [w.operation for w in rows if w.variables.get("id") == decision.call.id] != []
+    assert connector_refusals(rows) == []
+
+
+# ------------------------------------------------- the connector's checks, mirrored over the writes
+
+CONNECTOR = Path(__file__).resolve().parents[1] / "dataconnect/connector/projection.gql"
+
+
+def connector_rule(operation: str) -> list[str]:
+    """The conditions on an operation's own variables in its member @check, as the connector
+    writes them (the rest of the check is the caller's membership, which the writer adds)."""
+    text = CONNECTOR.read_text(encoding="utf-8")
+    start = text.index(f"mutation {operation}(")
+    body = text[start:text.index("\n}\n", start)]
+    expression = re.search(r'collectionMember\([^)]*\) @check\(expr: "([^"]*)"\)', body).group(1)
+    parts, depth, start, index = [], 0, 0, 0
+    while index < len(expression):
+        if expression[index] in "([":
+            depth += 1
+        elif expression[index] in ")]":
+            depth -= 1
+        elif depth == 0 and expression.startswith(" && ", index):
+            parts.append(expression[start:index])
+            index = start = index + 4
+            continue
+        index += 1
+    parts.append(expression[start:])
+    return [part.strip() for part in parts if "vars." in part and "this." not in part]
+
+
+def _python(condition: str) -> str:
+    condition = condition.replace("&&", " and ").replace("||", " or ").replace("null", "None")
+    return re.sub(r"vars\.(\w+)", r'v["\1"]', condition)
+
+
+def connector_refusals(rows) -> list[str]:
+    """What the connector would refuse among these writes, by the checks this module can mirror:
+    each TranscriptionVersion's variable conditions (V2 and V3; V3's units required), the
+    observations it names in the same writes (the selected reading independent, the first-pass
+    call not, both of its run and region), and each HarnessInput's decided-transcript and
+    identical-readings note rules."""
+    refused = []
+    observations = {w.variables["id"]: w.variables for w in rows if w.operation == "AppendModelObservationV2"}
+    versions = {}
+    for write in rows:
+        v = write.variables
+        if write.operation in ("AppendTranscriptionVersionV2", "AppendTranscriptionVersionV3"):
+            versions[v["id"]] = v
+            for condition in connector_rule(write.operation):
+                if not eval(_python(condition), {}, {"v": v}):  # noqa: S307 - the connector's own text
+                    refused.append(f"{write.operation} {v['decisionKind']}: {condition}")
+            if write.operation == "AppendTranscriptionVersionV3" and v.get("readingUnits") is None:
+                refused.append("AppendTranscriptionVersionV3 without readingUnits")
+            for key, independent in (("selectedObservationId", True), ("firstPassObservationId", False)):
+                named = v.get(key)
+                if named is not None and not (
+                    named in observations
+                    and observations[named]["runId"] == v["runId"]
+                    and observations[named]["regionId"] == v["regionId"]
+                    and observations[named]["independent"] is independent
+                ):
+                    refused.append(f"{write.operation}: {key} names no observation of its region")
+    for write in rows:
+        if write.operation == "AppendHarnessInputV1":
+            v, version = write.variables, versions[write.variables["transcriptionVersionId"]]
+            if (v["role"] == "decided_transcript") != (version["selectedObservationId"] == v["observationId"]):
+                refused.append("AppendHarnessInputV1: the decided transcript is the selected reading")
+            if version["decisionKind"] == "identical_readings" and v.get("note") is not None:
+                refused.append("AppendHarnessInputV1: identical readings carry no note")
+    return refused
+
+
+def test_the_mirrored_rule_is_the_connector_s_own_text():
+    """The guard reads the rule from the connector, so it follows a change of it."""
+    for operation in ("AppendTranscriptionVersionV2", "AppendTranscriptionVersionV3"):
+        rule = connector_rule(operation)
+        assert "((vars.decisionKind == 'first_pass') == (vars.firstPassObservationId != null))" in rule
+        assert "vars.decisionKind in ['identical_readings', 'first_pass', 'human']" in rule
+        assert len(rule) == 4, rule
+
+
+def one_reader(workflow):
+    from specimen_digitization.application.reliability import ReadingStopped
+
+    transcribe = workflow.adapters.transcribe
+
+    def stopped(specimen, region, route):
+        # Reader B's reading stops at its token limits: the label keeps reader A's alone.
+        if route == specimen.run.profile.routes[1]:
+            raise ReadingStopped("reader_output_limit")
+        return transcribe(specimen, region, route)
+
+    workflow.adapters.transcribe = stopped
+
+
+def given_up(workflow):
+    def malformed(*args):
+        raise AdapterFailure("first_pass_malformed_response", LookupStatus.MALFORMED)
+
+    workflow.adapters.first_pass_units = malformed
+
+
+@pytest.mark.parametrize("case", ["units, differing", "units, agreed", "units, one reader",
+                                  "units, given up", "old, differing"])
+def test_every_transcription_version_the_units_path_projects_passes_the_connector_s_checks(
+    tmp_path, monkeypatch, case
+):
+    from test_reading_units import locate
+
+    from specimen_digitization.application.api import SYNTHETIC_TEXT
+    from specimen_digitization.application.projection import writes
+
+    alternate = SYNTHETIC_TEXT if "agreed" in case else "taxon: different"
+    workflow, principal, ident, _ = drained(tmp_path, monkeypatch, alternate=alternate,
+                                            switch="off" if case.startswith("old") else "on")
+    if "one reader" in case:
+        one_reader(workflow)
+    if "given up" in case:
+        given_up(workflow)
+    specimen = workflow.drain(principal, ident)
+
+    rows = writes(specimen, locate, lambda ref: 1, "worker-uid")
+
+    assert connector_refusals(rows) == []
+
+
+@pytest.mark.parametrize("case", ["one reader", "given up"])
+def test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_workspace_only(
+    tmp_path, monkeypatch, case
+):
+    """Codex's review of bf1caab88: such a label's units reach no normalized row. That is the
+    contract (DATA_CONTRACT.md 4.2): the units are on the run, so the workspace route returns
+    them, and the normalized projection writes units only with a TranscriptionVersion."""
+    from test_reading_units import locate, workspace
+    from test_reading_units import app as workspace_app
+
+    from specimen_digitization.application.projection import writes
+
+    workflow, principal, ident, _ = drained(tmp_path, monkeypatch)
+    one_reader(workflow) if case == "one reader" else given_up(workflow)
+    specimen = workflow.drain(principal, ident)
+    (region,) = specimen.run.regions
+    (units,) = specimen.run.reading_units
+    assert units.label == region.id and specimen.run.transcripts[0].decision_kind is None
+
+    rows = writes(specimen, locate, lambda ref: 1, "worker-uid")
+    assert not [w for w in rows if w.operation.startswith("AppendTranscriptionVersion")]
+    assert not [w for w in rows if "readingUnits" in w.variables]
+
+    body = workspace(workspace_app(workflow.repository), ident)
+    assert body["run"]["reading_units"] == [units.model_dump(mode="json")]
+
+
+# --------------------------------------------------------------------------- integrity, again
+
+
+def test_integrity_holds_every_reading_of_a_label_to_its_units(tmp_path, monkeypatch):
+    """Codex's and Claude's reviews of bf1caab88: integrity checked the units against the readings
+    they name, so units that left a reading out passed."""
+    from specimen_digitization.application.integrity import EvidenceIntegrityError, verify_evidence
+
+    workflow, principal, ident, _ = drained(tmp_path, monkeypatch)
+    specimen = workflow.drain(principal, ident)
+    (region,) = specimen.run.regions
+    first, _second = [o for o in specimen.run.observations if o.region_id == region.id]
+    verify_evidence(specimen, workflow.blobs)
+
+    dropped = specimen.model_copy(deep=True)
+    dropped.run.reading_units = [alignment_units(region.id, [first])]
+    with pytest.raises(EvidenceIntegrityError):
+        verify_evidence(dropped, workflow.blobs)
+
+
+def test_integrity_holds_a_units_path_run_past_adjudicate_to_having_units(tmp_path, monkeypatch):
+    from specimen_digitization.application.integrity import EvidenceIntegrityError, verify_evidence
+
+    workflow, principal, ident, _ = drained(tmp_path, monkeypatch)
+    specimen = workflow.drain(principal, ident)
+    assert "adjudicate" in specimen.run.completed_steps
+
+    emptied = specimen.model_copy(deep=True)
+    emptied.run.reading_units = []
+    with pytest.raises(EvidenceIntegrityError):
+        verify_evidence(emptied, workflow.blobs)
+
+
+@pytest.mark.parametrize("where", ["the decision", "the transcript"])
+def test_integrity_holds_a_units_path_difference_to_uncertain(tmp_path, monkeypatch, where):
+    from specimen_digitization.application.integrity import EvidenceIntegrityError, verify_evidence
+
+    workflow, principal, ident, _ = drained(tmp_path, monkeypatch)
+    specimen = workflow.drain(principal, ident)
+    reader = specimen.run.observations[0].id
+    named = specimen.model_copy(deep=True)
+    if where == "the decision":
+        (decision,) = named.run.first_pass_decisions
+        first = decision.differences[0].model_copy(update={"verdict": reader})
+        named.run.first_pass_decisions = [decision.model_copy(
+            update={"differences": [first, *decision.differences[1:]]})]
+    else:
+        (transcript,) = named.run.transcripts
+        first = transcript.differences[0].model_copy(update={"verdict": reader})
+        named.run.transcripts = [transcript.model_copy(
+            update={"differences": [first, *transcript.differences[1:]]})]
+
+    with pytest.raises(EvidenceIntegrityError):
+        verify_evidence(named, workflow.blobs)

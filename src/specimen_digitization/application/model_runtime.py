@@ -301,13 +301,18 @@ def invoke_model(
             raise OperationalBlock("external_outcome_unknown")
         if run.first_pass_path != "units":
             return decision
-        # The units path: the parent validates the label's units as the run stores them
-        # (reading_units.ReadingUnits); the workflow's step checks them against the readings.
+        # The units path: a decision that names no reading and leaves every difference
+        # uncertain, and the label's units as the run stores them (reading_units.ReadingUnits);
+        # the workflow's step checks them against the readings.
         try:
             units = ReadingUnits.model_validate(value["units"])
         except (KeyError, TypeError, ValueError) as exc:
             raise OperationalBlock("external_outcome_unknown") from exc
-        if units.label != region.id:
+        if (
+            units.label != region.id
+            or decision.selected_observation_id is not None
+            or any(d.verdict != "uncertain" for d in decision.differences)
+        ):
             raise OperationalBlock("external_outcome_unknown")
         return decision, units
     fields = {k: FieldValue.model_validate(v) for k, v in value["fields"].items()}

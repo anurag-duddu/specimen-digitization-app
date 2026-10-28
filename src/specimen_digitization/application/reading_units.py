@@ -21,6 +21,33 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 UNCERTAIN = "uncertain"
 NOT_VISIBLE = "not visible"
 
+# The switch of the units path (docs/execution/units/PLAN.md, WP 1.2), read once per run: when
+# the run is created (`Run.first_pass_path`, every construction site in src passes it). The run
+# keeps that path for good, so the first pass, the model child and the experts follow the run,
+# and turning the switch off or on changes only the runs created afterwards. The processes that
+# create runs carry it: the API and the intake job (scripts/ci/runtime_settings.py).
+#
+# Rollback: main before this change (WP 1.1 included) loads `Run.reading_units` but not
+# `Run.first_pass_path` (`Record` refuses an unknown key, domain.py), so the boundary is the path
+# field, in the run and in its previous runs; before WP 1.1 units are unknown too. The switch is
+# turned on only once this runtime (or a later one) serves the API, the intake job and the
+# worker; a rollback past it first turns the switch off and waits until no record the older
+# runtime would load names the units path.
+SETTING = "SPECIMEN_FIRST_PASS_UNITS"
+OLD, UNITS = "old", "units"
+
+
+def first_pass_path(environ) -> str:
+    """The path a run created now takes: "units" when SPECIMEN_FIRST_PASS_UNITS is "on", "old"
+    when it is "off", empty or unset. Any other value raises, naming the setting and never its
+    value, so a mistyped value never decides the path."""
+    value = environ.get(SETTING, "")
+    if value in ("", "off"):
+        return OLD
+    if value == "on":
+        return UNITS
+    raise ValueError(f"{SETTING} must be on or off")
+
 Line = Annotated[int, Field(ge=1)]
 
 

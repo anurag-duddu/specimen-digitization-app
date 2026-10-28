@@ -5,7 +5,6 @@ import copy
 import hashlib
 import json
 import logging
-import os
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Protocol
@@ -849,12 +848,6 @@ class Workflow:
         parse_base = None
         try:
             if step == "pin_dependencies":
-                if "classify" not in run.completed_steps:
-                    # The run records its first-pass path when it starts and keeps it: the
-                    # re-pin after classify follows the run, never the process's switch.
-                    from .first_pass import first_pass_path
-
-                    run.first_pass_path = first_pass_path(os.environ)
                 retained_carries = copy.deepcopy(run.dependencies.get(CARRY_KEY, {}))
                 retained_regions = copy.deepcopy(run.dependencies.get(CARRY_REGIONS))
                 pinned = (
@@ -1029,11 +1022,13 @@ class Workflow:
                             for d in decision.differences
                         )
                         or g19_pick(selected, decision.differences) != selected
-                        # The units path: a decision that names no reading, and the label's
-                        # units, which tile its readings (section 3's checks).
+                        # The units path: a decision that names no reading and leaves every
+                        # difference uncertain, and the label's units, which tile its readings
+                        # (section 3's checks).
                         or units_path
                         and (
                             selected is not None
+                            or any(d.verdict != "uncertain" for d in decision.differences)
                             or units is None
                             or units.label != region.id
                             or unit_problems(units, {o.id: o.literal_text for o in readings})

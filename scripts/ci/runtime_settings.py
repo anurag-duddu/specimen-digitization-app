@@ -108,6 +108,10 @@ API = {
         "SPECIMEN_CORS_ORIGINS": "https://specimen-digitization.web.app,https://specimen-digitization.firebaseapp.com",
         "SPECIMEN_READINESS_OBJECT": READINESS_OBJECT, "SPECIMEN_WORKER_JOB": WORKER_JOB,
         "SPECIMEN_INTAKE_JOB": INTAKE_JOB,
+        # The first pass v2, reading units (docs/execution/units/PLAN.md, WP 1.2): off. A run
+        # records it when it is created (the API and, with this env, the intake job) and keeps it
+        # (application/reading_units.py, first_pass_path); WP 1.8 turns it on.
+        "SPECIMEN_FIRST_PASS_UNITS": "off",
     },
     "secret_env": {"LOGFIRE_TOKEN": "specimen-worker-logfire", "SPECIMEN_SOURCE_REGISTRY_JSON": "specimen-source-registry",
                    "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings",
@@ -140,10 +144,6 @@ WORKER = {
             # field_research/step.py; docs/execution/golive/FIELD_RESEARCH.md). "on" mounts the six-specialist
             # harness instead.
             "SPECIMEN_RESEARCH_HARNESS": "fields",
-            # The first pass v2, reading units (docs/execution/units/PLAN.md, WP 1.2): off. A run
-            # records the path it starts on and keeps it (application/first_pass.py); WP 1.8 turns
-            # this on once the runtime that reads units serves the API and the worker.
-            "SPECIMEN_FIRST_PASS_UNITS": "off",
             "SPECIMEN_WORKER_JOB": WORKER_JOB},  # The drain hands work left at its deadline to the next execution.
     "secret_env": {"HF_TOKEN": "huggingface-runtime-token", "LOGFIRE_TOKEN": "specimen-worker-logfire",
                    "SPECIMEN_WORKER_ACTOR_UID": "specimen-worker-actor-uid",

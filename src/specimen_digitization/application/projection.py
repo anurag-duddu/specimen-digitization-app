@@ -417,13 +417,7 @@ def _first_pass(
     if kind is None:
         return []
     result = []
-    # On the units path identical readings keep their rule and record the first-pass call that
-    # cut their units (first_pass.adjudication_record); the old path records none there.
-    call = (
-        getattr(transcript, "first_pass_call", None)
-        if kind in ("first_pass", "identical_readings")
-        else None
-    )
+    call = getattr(transcript, "first_pass_call", None) if kind == "first_pass" else None
     if call is not None:
         step = f"first_pass:{transcript.region_id}"
         raw = asset(call.raw_ref, "raw_response")
