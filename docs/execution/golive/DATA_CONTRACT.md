@@ -260,7 +260,9 @@ units keeps its bytes (`tests/test_reading_units.py`). `ReadingUnits` is
 keys of `FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md` section 3: `id`
 (`<label>:<n>`, from 1 in reading order), `label`, `lines` (first and last,
 from 1), `readers` (per reading its `text`, `start` and `end`, Python string
-indices, so code points; every unit of a label names the same readings),
+indices, so code points; every unit of a label names the same readings; on a
+label whose transcript a person decided, the one key `person`,
+`reading_units.PERSON`, for the person's text),
 `image` (one reader's text, `uncertain` or `not visible`), `means`, `role`
 (empty, `genus`, `species`, `author`, `day`, `month` or `year`), `fields` and
 `note` (`application/reading_units.py`). The writer sends a label's entry as
@@ -293,9 +295,17 @@ this section), so without a person's decision its units are on the run and the
 workspace route and not in the normalized projection
 (`test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_workspace_only`).
 A person's supported edit of such a label gives it a `human` version, which the
-reviewer's save writes with `AppendTranscriptionVersionV3` carrying the units as
-stored, the machine readings' units until work package 1.3
-(`test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_with_its_units`).
+reviewer's save writes with `AppendTranscriptionVersionV3` carrying the label's
+units (`test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_with_its_units`).
+On the units path a person's transcription decision regenerates the label's units
+from its text source (work package 1.3; `application/api.py`, `first_pass.source_units`,
+each image `uncertain`): an edit gives units of the person's text, keyed `person`;
+an abstention after an edit gives the readings' alignment again; an abstention
+on the readings' units keeps them
+(`test_a_person_s_edit_regenerates_the_label_s_units_from_the_person_s_text`,
+`test_an_abstention_after_an_edit_regenerates_the_units_from_the_readings_and_one_before_keeps_them`).
+The integrity check holds a label's units to that text source
+(`integrity.verify_evidence`).
 Main before this package (work package 1.1 included) loads `Run.reading_units`
 but not `Run.first_pass_path` (`Record` refuses an unknown key), so the rollback
 boundary is the path field, in the run and in its previous runs. The rule: turn

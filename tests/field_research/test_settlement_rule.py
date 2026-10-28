@@ -95,7 +95,7 @@ def naming(rig, reader):
 def findings(run, key):
     """How each label settled the field `key`: the units path's findings (step._settlement)."""
     return sorted((f.reason_code, f.severity) for f in run.findings
-        if f.rule_id == field_step.SETTLEMENT and f.field_key == key)
+        if f.rule_id == "field_settlement" and f.field_key == key)
 
 
 def place_script(literal, reading, *, asked, value=None, authority_id):
@@ -219,7 +219,7 @@ def test_the_image_against_a_source_of_another_place_settles_the_sources_text_ma
     province = run.fields["province_state"]
     assert (province.state, province.literal) == (ValueState.SUPPORTED, "Illinois")
     assert province.reason.endswith("Marked for a person: another text has backing too: 'Indiana'.")
-    [marked] = [f for f in run.findings if f.rule_id == field_step.SETTLEMENT and f.field_key == "province_state"]
+    [marked] = [f for f in run.findings if f.rule_id == "field_settlement" and f.field_key == "province_state"]
     rows = {item.id: item for item in run.evidence}
     assert [rows[i].excerpt for i in marked.evidence_ids] == ["province_state: Indiana"]
     assert reasons_for(run, "province_state") == [f"marked:province_state:{region}:conflict"]
@@ -626,3 +626,16 @@ def test_readers_that_differ_only_in_case_settle_on_the_images_spelling_else_the
     assert (run.fields["habitat"].state, run.fields["habitat"].literal) == (ValueState.SUPPORTED, spelling)
     assert findings(run, "habitat") == ([(f"marked:habitat:{region}:text_only", "warning")] if marked
         else [(f"cleared:habitat:{region}", "info")])
+
+
+def test_a_given_up_label_a_person_has_transcribed_since_no_longer_goes_to_review_for_it(tmp_path):
+    """The given-up agreed label above, then transcribed by a person (first_pass.person_decided),
+    its units from the person's text: the given-up check no longer sends it to review."""
+    rig = build_rig(tmp_path, refused=True)
+    region = rig.specimen.run.regions[0].id
+    mounted(rig, Scripted())
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert f"unresolved_transcription:{region}" in run.reasons
+    person_transcribed(run, run.observations[0], actor="reviewer@example.org")
+    field_step.refinalize(run)
+    assert f"unresolved_transcription:{region}" not in run.reasons

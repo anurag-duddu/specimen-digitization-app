@@ -1729,7 +1729,7 @@ def test_a_near_spelling_settles_when_every_other_place_field_is_among_its_paren
     assert (city.state, city.literal, city.normalized, city.authority_id) == (
         ValueState.SUPPORTED, "Chicag", "Chicago", "tgn:Chicago")
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
-    assert [f.reason_code for f in run.findings if f.rule_id != field_step.SETTLEMENT] == ["near_spelling:city"]
+    assert [f.reason_code for f in run.findings if f.rule_id != "field_settlement"] == ["near_spelling:city"]
 
 
 @pytest.mark.parametrize(("written", "query", "value", "authority_id", "fit"), [
@@ -1969,7 +1969,7 @@ def test_a_name_with_letters_dropped_and_a_period_after_is_no_abbreviation(
         assert (field.state, field.literal, field.normalized, field.authority_id) == (
             ValueState.SUPPORTED, written, query, authority_id)
         assert [f.reason_code for f in run.findings if f.field_key == key
-            and f.rule_id != field_step.SETTLEMENT] == [f"near_spelling:{key}"]
+            and f.rule_id != "field_settlement"] == [f"near_spelling:{key}"]
         return
     assert (field.state, field.reason) == (ValueState.UNRESOLVED, reason + " Settled.")
     assert not [f for f in run.findings if f.reason_code == f"near_spelling:{key}"]

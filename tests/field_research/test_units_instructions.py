@@ -3,8 +3,8 @@ units path (prompts.instructions(key, units=True)) and the old path's, unchanged
 
 The units path's text is the old path's with each text units.txt names replaced (common.txt's
 first_pass line, its rule 4 and a sentence of its literal's line; a line of each of the five
-tool-less briefs) and the specimen ontology (ontology.render) between the shared rules and the
-brief. Every test here runs once: this module's first_pass_path fixture replaces conftest.py's,
+tool-less briefs) and the specimen ontology's brief text (ontology.render(brief=True)) between the
+shared rules and the brief. Every test here runs once: this module's first_pass_path fixture replaces conftest.py's,
 as no run is built."""
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ def test_the_units_paths_instructions_are_the_old_ones_with_units_txt_s_texts_an
     replaced text back gives the old path's instructions, each text units.txt names standing
     once in the old ones and its replacement once in the units path's."""
     old, new = instructions(key), instructions(key, units=True)
-    rendered = render().strip()
+    rendered = render(brief=True).strip()
     brief = new[new.rindex("\n\nField: "):]
     assert new.count(rendered) == 1 and new.endswith(rendered + brief)
     undone = new.replace("\n\n" + rendered, "", 1)

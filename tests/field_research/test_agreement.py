@@ -159,7 +159,7 @@ def test_105526330s_province_settles_one_letter_off_beside_its_town(tmp_path):
     province = run.fields["province_state"]
     assert (province.state, province.literal, province.normalized, province.authority_id) == (
         ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango", "tgn:1000565")
-    assert [f.reason_code for f in run.findings if f.rule_id != field_step.SETTLEMENT] == ["near_spelling:province_state"]
+    assert [f.reason_code for f in run.findings if f.rule_id != "field_settlement"] == ["near_spelling:province_state"]
     assert run.fields["city"].state == ValueState.SUPPORTED
     assert not reasons_for(run, "province_state") and not reasons_for(run, "city")
 
@@ -1696,7 +1696,7 @@ def test_105526329s_province_settles_on_ngas_department_in_the_iso_code_of_the_c
     province = run.fields["province_state"]
     assert (province.state, province.literal, province.normalized, province.authority_id) == (
         ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango", "nga:-1132765")
-    assert [f.reason_code for f in run.findings if f.rule_id != field_step.SETTLEMENT] == ["near_spelling:province_state"]
+    assert [f.reason_code for f in run.findings if f.rule_id != "field_settlement"] == ["near_spelling:province_state"]
     assert (run.fields["city"].state, run.fields["city"].authority_id) == (ValueState.SUPPORTED, "nga:-1143757")
     assert not reasons_for(run, "province_state") and not reasons_for(run, "city")
     verify_evidence(rig.specimen, rig.blobs)

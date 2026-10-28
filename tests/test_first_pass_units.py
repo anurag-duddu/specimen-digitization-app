@@ -1592,6 +1592,27 @@ def test_an_abstention_after_an_edit_regenerates_the_units_from_the_readings_and
 # --------------------------------------------------------------------------- integrity, again
 
 
+def test_integrity_holds_a_label_s_units_to_its_text_source(tmp_path, monkeypatch):
+    """A label whose transcript a person decided (first_pass.person_decided) holds units of the
+    person's text, keyed `person`; any other label, units of its readings."""
+    from specimen_digitization.application.first_pass import source_units
+    from specimen_digitization.application.integrity import EvidenceIntegrityError, verify_evidence
+
+    workflow, principal, ident, _ = drained(tmp_path, monkeypatch)
+    specimen = workflow.drain(principal, ident)
+    (region,) = specimen.run.regions
+    machine = specimen.run.transcripts[0]
+    person = machine.model_copy(update={"text": "taxon: as a person reads it", "resolved": True, "actor": "A"})
+    specimen.run.transcripts = [person]
+    with pytest.raises(EvidenceIntegrityError):
+        verify_evidence(specimen, workflow.blobs)
+    store_reading_units(specimen.run, [source_units(specimen.run, region.id)])
+    verify_evidence(specimen, workflow.blobs)
+    specimen.run.transcripts = [machine]
+    with pytest.raises(EvidenceIntegrityError):
+        verify_evidence(specimen, workflow.blobs)
+
+
 def test_integrity_refuses_units_that_leave_a_reading_out(tmp_path, monkeypatch):
     """Units of reader A alone on a two-reader label fail verify_evidence."""
     from specimen_digitization.application.integrity import EvidenceIntegrityError, verify_evidence

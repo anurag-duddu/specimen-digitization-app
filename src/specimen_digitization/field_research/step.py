@@ -2504,9 +2504,11 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
     citing the field's literal rows of that label that contradict the value (the other
     candidates), the value's reason ending with a sentence that names why; an info
     finding cleared_code gives for one that settled it cleared, citing the label rows
-    that support it. The field's earlier such findings go first, so a field researched
-    again keeps only its latest; a value settled otherwise (location reconciliation,
-    derivation, a person) or left unsettled gets none."""
+    that support it and, where the image names a text one letter from the one a source
+    confirms (Label.matched), the confirmed text's rows. The field's earlier such
+    findings go first, so a field researched again keeps only its latest; a value
+    settled otherwise (location reconciliation, derivation) or left unsettled gets
+    none, and apply_outcomes calls this for no field a person decided (human_keys)."""
     from .agreement import CONTESTED, SOURCE_IDS, TRANSCRIPT, labels, literal_basis
 
     run.findings[:] = [finding for finding in run.findings

@@ -160,7 +160,7 @@ def with_units(readings, images=None):
 def settlement_findings(run, key):
     """The units path's findings of how each label settled the field `key` (step._settlement)."""
     return sorted((f.reason_code, f.severity) for f in run.findings
-        if f.rule_id == field_step.SETTLEMENT and f.field_key == key)
+        if f.rule_id == "field_settlement" and f.field_key == key)
 
 
 def second_label_read(monkeypatch, *texts):

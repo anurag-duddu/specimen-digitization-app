@@ -87,7 +87,10 @@ def _read(name: str, units: bool) -> str:
 def instructions(key: str, units: bool = False) -> str:
     """The expert's whole instructions for one field; an unknown field is refused. With
     `units` (a run whose first-pass path is units): the texts units.txt names replaced,
-    and the specimen ontology (ontology.render) between the shared rules and the brief."""
+    and the specimen ontology's brief text (ontology.render(brief=True), as the units
+    path's first pass carries it) between the shared rules and the brief: every request
+    an expert sends carries its instructions, which budget.input_token_bound counts
+    against budget.DEFAULT_MAX_INPUT_TOKENS."""
     if key not in FIELD_TOOLS or key not in FIELD_LABELS:
         raise KeyError(f"no field brief for {key!r}")
     common = _read("common.txt", units)
@@ -99,5 +102,5 @@ def instructions(key: str, units: bool = False) -> str:
     if units:
         from specimen_digitization.ontology import render
 
-        common += "\n\n" + render().strip()
+        common += "\n\n" + render(brief=True).strip()
     return common + "\n\n" + brief + "\n"

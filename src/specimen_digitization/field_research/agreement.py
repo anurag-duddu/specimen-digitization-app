@@ -1770,8 +1770,10 @@ def labels_by_rule(task: FieldTask, regions: Mapping[str, Sequence[Reading]],
        backing, else marked (TEXT_ONLY).
     5. Several have: with an IMAGE or a SOURCE backing among them, the best-backed settles
        (SOURCE above IMAGE above TEXT, then more readers, then the earlier reader), marked
-       (CONTESTED), the others listed in Label.others; with none, the label does not settle,
-       and the backed candidates' texts are its options.
+       (CONTESTED), the others listed in Label.others; when two or more rank first alike
+       (the same first reader too), the label does not settle and their texts are its
+       options (Label.tied); with no IMAGE or SOURCE backing among them, the label does not
+       settle, and the backed candidates' texts are its options.
     6. None has: the label does not settle.
     Text read from the transcript keeps `labels`' rules on a label no person transcribed:
     a reader that writes no text for the field leaves it unsettled (Label.unread), as do
@@ -1886,6 +1888,7 @@ def _settle_by_rule(task: FieldTask, region: str, group: Sequence[Reading], each
     if len(backed) > 1 and not strong:
         return Label(texts, candidates=tuple(candidates),
             options=tuple(literal_of[candidate] for candidate in sorted(backed, key=lambda c: c.first)))
+
     def rank(candidate: Backed) -> tuple[int, int, int]:
         return max(STRENGTH[kind] for kind in candidate.backings), candidate.readers, -candidate.first
 
