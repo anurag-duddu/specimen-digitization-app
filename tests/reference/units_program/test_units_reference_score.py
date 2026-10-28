@@ -142,9 +142,10 @@ def test_text_is_any_string_with_a_character_python_does_not_call_whitespace():
 
 
 def test_text_on_seeded_random_strings_is_any_character_python_does_not_call_whitespace():
-    # 20,000 strings of 0 to 12 characters drawn from every whitespace code point and a few others (letters, a
+    # 20,000 strings, each a body of 0 to 12 characters drawn from every whitespace code point and a few others (letters, a
     # digit, punctuation, a control character, a surrogate, an emoji), most with a leading or trailing newline or
-    # tab, against Python's own str.isspace, character by character.
+    # tab (an edge may be \r\n, so a string has up to 16 characters), against Python's own str.isspace, character by
+    # character.
     rng = random.Random(20261028)
     space = [c for c in map(chr, range(0x110000)) if c.isspace()]
     other = ["H", "x", "7", ".", "-", "'", chr(0), chr(0xD800), chr(0x1F600)]
