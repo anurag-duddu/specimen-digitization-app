@@ -114,7 +114,8 @@ text, `not_present` and `not_applicable` settle as absent whatever text they car
 (`unknown`, `unresolved`, `unreadable`, `ambiguous`) are left without a value whatever text they keep, a state the
 scorer does not place failing the test; boundary records: an empty, None or whitespace-only literal, a whitespace
 parsed value beside a literal, the default `reason` alone, a record with no state, and the refused states "",
-"SUPPORTED", "Supported", " supported" and "invented"; criterion 2 counting a cleared absence, giving each
+"SUPPORTED", "Supported", " supported" and "invented"; the compared value over all 64 combinations of parsed,
+normalized and literal, each None, "", "  " or text; criterion 2 counting a cleared absence, giving each
 difference its kind, "value_absent" or "two_values", and comparing ASCII letters and digits with case folded).
 `test_units_reference_manifest.py` pins the whole manifest's canonical digest and the fixture's digest, both written `sha256:<hex>`, and recomputes the draw from the
 sorted listing with the seed, so it fails when a digest, the seed or the truth file changes.

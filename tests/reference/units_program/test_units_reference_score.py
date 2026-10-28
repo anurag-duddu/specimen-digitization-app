@@ -1,5 +1,6 @@
 """The reference set's scorer pins the strict rule on fixed records (docs/execution/units/PLAN.md, WP 0)."""
 import importlib.util
+import itertools
 from pathlib import Path
 
 import pytest
@@ -123,6 +124,26 @@ def test_a_state_outside_the_domain_is_refused(state):
         score.settled({"state": state, "literal": "H. Hoogstraal"})
     with pytest.raises(ValueError):
         cells({"collectors": {"state": state, "literal": "H. Hoogstraal"}})
+
+
+PICK_TEXT = {"parsed": "H. Hoogstraal", "normalized": "R.D. Mitchell", "literal": "F.G. Werner"}  # one per key
+SHAPES = {"None": None, "empty": "", "blank": "  ", "text": "text"}
+
+
+@pytest.mark.parametrize("parsed,normalized,literal", list(itertools.product(SHAPES, repeat=3)))
+def test_the_compared_value_is_the_first_of_parsed_normalized_literal_that_has_text(parsed, normalized, literal):
+    # All 64 combinations of the three keys, each None, "", "  " or text (a different text per key). The compared
+    # value is the first key, in the order parsed, normalized, literal, whose string has a character other than
+    # whitespace; with none, a supported field is left without a value.
+    shapes = {"parsed": parsed, "normalized": normalized, "literal": literal}
+    field = {"state": "supported", **{key: PICK_TEXT[key] if shape == "text" else SHAPES[shape]
+                                      for key, shape in shapes.items()}}
+    pick = next((key for key in ("parsed", "normalized", "literal") if shapes[key] == "text"), None)
+    assert score.compared_value(field) == (PICK_TEXT[pick] if pick else None)
+    # Scored against a truth that is the expected pick's text: any other pick is cleared wrong.
+    expected = dict(PILOT_322, collectors=PICK_TEXT[pick] if pick else "H. Hoogstraal")
+    found = cells({"collectors": field}, expected=expected)["collectors"]
+    assert found == ("primary", "cleared_right" if pick else "left_without_value")
 
 
 def test_a_field_settled_absent_where_the_truth_holds_a_value_is_wrong():
