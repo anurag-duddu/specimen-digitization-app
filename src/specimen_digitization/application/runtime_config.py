@@ -122,8 +122,7 @@ class RuntimeConfig:
             raise ValueError(
                 "Firebase app IDs must belong to configured project number"
             )
-        # Read again at each run's creation (reading_units.first_pass_path); a mistyped value
-        # stops the API and the intake job at start-up, naming the setting, never its value.
+        # SPECIMEN_FIRST_PASS_UNITS: refused unless on, off, empty or unset.
         from .reading_units import first_pass_path
 
         first_pass_path(env)

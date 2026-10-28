@@ -89,7 +89,7 @@ def _model_child(payload):
             )
             value = {"observation": observation.model_dump(mode="json")}
         elif payload["operation"] == "first_pass" and payload.get("first_pass_path") == "units":
-            # The units path (first_pass.SETTING): the label's units beside the decision.
+            # The units path's call: the decision and the label's units.
             from .first_pass import first_pass_units_direct
 
             decision, units = first_pass_units_direct(
@@ -301,9 +301,8 @@ def invoke_model(
             raise OperationalBlock("external_outcome_unknown")
         if run.first_pass_path != "units":
             return decision
-        # The units path: a decision that names no reading and leaves every difference
-        # uncertain, and the label's units as the run stores them (reading_units.ReadingUnits);
-        # the workflow's step checks them against the readings.
+        # Units path: the units validate as ReadingUnits and name this region; the decision
+        # selects no reading and its verdicts are `uncertain`.
         try:
             units = ReadingUnits.model_validate(value["units"])
         except (KeyError, TypeError, ValueError) as exc:

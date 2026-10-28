@@ -289,8 +289,8 @@ are in `Run.reading_units`, which the workspace route returns;
 `projection._first_pass` writes a label's units in its
 `AppendTranscriptionVersionV3`. A label with one reading, or with differing
 readings and no first-pass decision, gets no machine version (see the end of
-this section), so its units are on the run and the workspace route and not in
-the normalized projection
+this section), so without a person's decision its units are on the run and the
+workspace route and not in the normalized projection
 (`test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_workspace_only`).
 A person's supported edit of such a label gives it a `human` version, which the
 reviewer's save writes with `AppendTranscriptionVersionV3` carrying the units as
@@ -323,8 +323,8 @@ The rationale and the notes are null for `identical_readings`. That kind also
 covers identical readings that stay unresolved, such as unreadable spans or an
 unmeasured alignment: no reading is selected there. A region with fewer than two
 readings, or with no recorded decision, has no machine `TranscriptionVersion`; a
-person's decision gives it a `human` one (see "The first pass's path" above);
-until then the run's stage and blocker say why it has none.
+person's supported edit gives it a `human` one (see "The first pass's path"
+above); until then the run's stage and blocker say why it has none.
 
 ### 4.3 From the harness (S4)
 
@@ -493,16 +493,19 @@ comparison's fixed order (section 3.1):
 and adding one over existing columns would not be additive, so the derived or
 domain id is their only replay guard: every writer uses these keys.
 
-A `ToolCall` row's key is `tool-call/{run}/{call_key}` (`projection._tool_call`),
-while its `transcriptionVersionId` is the label's version when the run is
-projected. The transcription branch of `api.py`'s decision route changes the
-transcript and leaves `run.tool_calls` as they are, and the transcript's text is
-part of the decision's digest (`projection._first_pass`, `content`; on the units
-path the units are too), so a later projection names a new version under the
-same key; `SqlConnectRepository` in `production.py` skips a key it has written
-and accepts a replay that meets the row's primary key, so the stored row keeps
-the version it was first written with. Main has this for the text; units add one
-more input to the digest.
+A `ToolCall` row's key is `tool-call/{run}/{call_key}`. `projection._tool_call`
+gives a call whose `input_source` is `decided_transcript` the label's version
+when the run is projected as `transcriptionVersionId`, and a call with another
+input source a null one and its `observationId`
+(`tests/test_projection_decisions.py`, `(None, right.id)`). The transcription
+branch of `api.py`'s decision route changes the transcript and leaves
+`run.tool_calls` as they are, and the transcript's text is part of the
+decision's digest (`projection._first_pass`, `content`; on the units path the
+units are too), so a later projection of a `decided_transcript` call names a
+new version under the same key; `SqlConnectRepository` in `production.py` skips
+a key it has written and accepts a replay that meets the row's primary key, so
+the stored row keeps the version it was first written with. Main has this for
+the text; units add one more input to the digest.
 
 Data Connect returns UUID key fields as 32 hex characters without dashes; the
 views (`SpecimenListing`) return them with dashes. Readers normalize. Inside a

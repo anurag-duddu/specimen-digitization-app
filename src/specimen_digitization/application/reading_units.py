@@ -21,27 +21,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 UNCERTAIN = "uncertain"
 NOT_VISIBLE = "not visible"
 
-# The switch of the units path (docs/execution/units/PLAN.md, WP 1.2). The `Run(...)` calls in
-# api.py, bulk_intake.py and source_import.py set `Run.first_pass_path` from it when they create a
-# run (tests/test_first_pass_units.py, test_the_run_calls_the_guard_detects_in_src_record_the_switch); the
-# pins, the scheduler, the step, the model child and integrity read the run's field, so a run
-# created with the switch on writes units after it is turned off
-# (test_a_run_keeps_the_path_recorded_at_its_creation). The API and the intake job carry it
-# (scripts/ci/runtime_settings.py).
-#
-# Rollback: main before this change (WP 1.1 included) loads `Run.reading_units` but not
-# `Run.first_pass_path` (`Record` refuses an unknown key, domain.py), so the boundary is the path
-# field, in the run and in its previous runs. The rule: turn the switch on once this runtime
-# serves the API, the intake job and the worker; to roll back past it, turn the switch off first
-# and wait until the records the older runtime would load name no units path.
 SETTING = "SPECIMEN_FIRST_PASS_UNITS"
 OLD, UNITS = "old", "units"
 
 
 def first_pass_path(environ) -> str:
-    """The path a run created now takes: "units" when SPECIMEN_FIRST_PASS_UNITS is "on", "old"
-    when it is "off", empty or unset. Any other value raises, naming the setting and never its
-    value, so a mistyped value never decides the path."""
+    """"units" when SPECIMEN_FIRST_PASS_UNITS is "on"; "old" when it is "off", empty or unset;
+    another value raises a ValueError that names the setting and not the value."""
     value = environ.get(SETTING, "")
     if value in ("", "off"):
         return OLD
@@ -119,8 +105,7 @@ class ReadingUnit(_Record):
 
     @model_validator(mode="after")
     def names_a_reading(self):
-        # A reader that wrote nothing here has an empty text, which names nothing the image
-        # could show: the image is a reader's non-empty text, uncertain or not visible.
+        # A reader's non-empty text here, uncertain or not visible.
         if self.image not in {UNCERTAIN, NOT_VISIBLE} | {
             reading.text for reading in self.readers.values() if reading.text
         }:

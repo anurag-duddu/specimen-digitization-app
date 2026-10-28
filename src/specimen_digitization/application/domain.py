@@ -553,9 +553,7 @@ class Run(Record):
     )
     # One entry per paid call, with its usage and cost (LANE.md T2c).
     paid_calls: list[dict] = Field(default_factory=list, exclude_if=lambda value: not value)
-    # The first-pass path the run takes (reading_units.first_pass_path, SPECIMEN_FIRST_PASS_UNITS),
-    # recorded when the run is created and kept for the whole run. Omitted on the old path, so a
-    # run that takes it keeps its stored bytes.
+    # Omitted from the stored record when "old".
     first_pass_path: Literal["old", "units"] = Field(
         default="old", exclude_if=lambda value: value == "old"
     )

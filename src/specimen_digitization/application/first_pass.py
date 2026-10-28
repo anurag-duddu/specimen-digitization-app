@@ -10,11 +10,8 @@ the harness if needed as then harness does its thing per field and settles as
 written or derived and so on" (the owner). Spec: docs/execution/golive/HARNESS.md
 section 3.
 
-The first pass v2 (docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md
-sections 2 and 3; docs/execution/units/PLAN.md, WP 1.2) is the units path, behind
-SPECIMEN_FIRST_PASS_UNITS: it cuts each label into reading units, judges the image
-at each and settles nothing (first_pass_units_direct, below). The old path above is
-unchanged; a run takes the path recorded at its creation (reading_units.SETTING).
+first_pass_units_direct, below, is the units path's call (docs/execution/units/PLAN.md,
+WP 1.2).
 """
 
 from __future__ import annotations
@@ -417,9 +414,9 @@ class InputBoundModel(WrapperModel):
 
 
 def _prepared(adapter, specimen, region, readings, prompt_name: PromptName):
-    """The checks every first-pass call makes before it sends anything, and what it sends
-    with: the pinned route's model (bounded by its input and output caps), the pinned
-    prompt and the crop."""
+    """The checks first_pass_direct and first_pass_units_direct make before they send
+    anything, and what they send with: the pinned route's model (bounded by its input and
+    output caps), the pinned prompt and the crop."""
     from .lane_reservations import image_rule
     from .workflow import OperationalBlock, crop_bytes
 
@@ -501,7 +498,7 @@ def _agent(prepared, name: str, output_type, request_options=None):
 
 def _called(agent, prepared, request: str):
     """The agent's run on the request and the crop: its result (None when it stopped at its
-    caps), usage, wall time, every provider response and the last one."""
+    caps), usage, wall time, the provider responses and the last one."""
     from .reliability import run_agent_bounded
 
     started = time.monotonic()
@@ -606,25 +603,6 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
     )
 
 
-# The first pass v2: reading units (docs/product-requirements/
-# FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md sections 2 and 3; docs/execution/units/PLAN.md, WP
-# 1.2), behind SPECIMEN_FIRST_PASS_UNITS (reading_units.first_pass_path), which sets a run's
-# `first_pass_path` when the run is created; the code below reads the run's field. The switch
-# and the rollback rule are at reading_units.SETTING.
-
-
-# The alignment, extended (section 3, "A given-up label, and a label with one reader, still
-# gets units: from the alignment"): reading_differences_among's differences and the agreed spans
-# between them, as consecutive segments that cover every reading. WP 1.2's cut:
-# - agreed text is cut at each space or line break that every reading has at the same point of
-#   the shared text (readings that differ only in spacing keep their spacing apart in one
-#   segment: "Davao Prov." and "DavaoProv.");
-# - each difference is one segment, joined to the text before or after it when a reading that
-#   wrote text on both sides has no white space between them ("Elev.6400" and "Elev.6400'");
-# - no segment ends inside a range of any reading (reading_units.range_spans).
-# A reading that wrote nothing at a difference has an empty span where its text would be.
-
-
 def _agreed(texts, starts, ends) -> list[list[tuple[int, int]]]:
     """The agreed stretch between two differences, cut at the white space every reading has."""
     marks = [
@@ -635,7 +613,7 @@ def _agreed(texts, starts, ends) -> list[list[tuple[int, int]]]:
     if not any(marks):
         return []
     if len(shown) > 1:
-        # Not one shared text (the alignment never leaves one): one piece.
+        # The readings' texts here differ: one piece.
         return [
             [(mark[0], mark[-1] + 1) if mark else (start, start) for mark, start in zip(marks, starts)]
         ]
@@ -668,9 +646,11 @@ def _joined(text: str, spans) -> ReadingSpan:
 
 
 def reading_segments(texts) -> list[tuple[ReadingSpan, ...]]:
-    """Every reading cut into consecutive segments, one exact span per reading each, in
-    reading order: the alignment's differences and its agreed spans, cut as above. One reading
-    is cut at its white space, ranges kept whole. Readings with no text have no segment."""
+    """The readings cut into consecutive segments, one span per reading each. The pieces are
+    reading_differences_among's differences and, between them, _agreed's cuts at the white
+    space the readings share; _apart joins two pieces when a reading with text on both sides
+    has no white space between them or a range spans the gap. A reading with no text at a
+    difference has an empty span there. Readings with no text give no segment."""
     texts = list(texts)
     differences = reading_differences_among(texts) if len(texts) > 1 else []
     pieces: list[list[tuple[int, int]]] = []
@@ -683,7 +663,7 @@ def reading_segments(texts) -> list[tuple[ReadingSpan, ...]]:
         if difference is not None:
             pieces.append([(s.start, s.end) for s in difference])
             cursor = [s.end for s in difference]
-    # Each segment as every reading's pieces, joined when no segment may end between them.
+    # Each group: each reading's pieces of one segment.
     groups: list[list[list[tuple[int, int]]]] = []
     for spans in pieces:
         if groups:
@@ -709,8 +689,8 @@ def _line_number(text: str, offset: int) -> int:
 
 
 def _lines(readings, spans) -> tuple[int, int]:
-    """The first and last line a unit covers, in the first reading that wrote text there (the
-    unit's last character is never white space, so its line is the one before `end`)."""
+    """The lines of a unit's first and last character (at `end - 1`), in the first reading
+    with text there."""
     for reading, span in zip(readings, spans):
         if span.text:
             text = reading.literal_text
@@ -732,9 +712,8 @@ def _unit(region_id: str, number: int, readings, spans, **judged) -> ReadingUnit
 
 
 def alignment_units(region_id: str, readings) -> ReadingUnits | None:
-    """A label's units from the alignment alone, each segment one unit whose image is
-    uncertain: for a label with one reading, one the first pass gave up on or one whose call
-    stopped at its caps. None when no reading holds text."""
+    """A label's units from reading_segments alone, a unit per segment, its image uncertain.
+    None when no reading holds text."""
     segments = reading_segments([r.literal_text for r in readings])
     if not segments:
         return None
@@ -756,17 +735,17 @@ _UNITS_TASK = (
 
 
 def build_units_request(readings, segments) -> tuple[str, dict[str, Observation]]:
-    """The user message of the units path: the readers by letter, and their texts as the
-    numbered segments, line by line (a segment's line is the first line it covers in the first
-    reading that wrote text there); a segment gives the text once where every reader wrote the
-    same, else each reader's text."""
+    """The units path's user message: the readers by letter, then the numbered segments grouped
+    by the line _lines gives each, a segment's text once when the readers' texts are equal,
+    else each reader's."""
     letters = dict(zip(string.ascii_uppercase, readings))
     names = list(letters)
     readers = ", ".join(names[:-1]) + f" and {names[-1]}" if len(names) > 1 else names[0]
     lines = [
         f"Independent readers {readers} transcribed the attached label image. Their texts, "
-        "unchanged, cut at every space or line break they share, in numbered segments line by "
-        'line; where the readers differ, each reader\'s text ("" where it wrote nothing):'
+        "unchanged, cut at spaces or line breaks they share, a range kept whole, in numbered "
+        'segments line by line; where the readers differ, each reader\'s text ("" where it '
+        "wrote nothing):"
     ]
     row, line = [], None
     for number, spans in enumerate(segments, 1):
@@ -790,9 +769,6 @@ def build_units_request(readings, segments) -> tuple[str, dict[str, Observation]
 
 
 class UnitAnswer(BaseModel):
-    """One unit of the answer. The prompt says what each key holds; the schema the call sends
-    carries no descriptions, which would repeat it at a cost on every call."""
-
     first: int
     # A unit of one segment may give its first alone.
     last: int | None = None
@@ -864,8 +840,7 @@ def units_from_output(region_id: str, output: UnitsOutput, letters, segments) ->
             image = spans[list(letters).index(image)].text
         means = answer.means.strip()
         if _plain(means) in {_plain(span.text) for span in spans}:
-            # The unit's text as a reader wrote it is no interpretation, and a meaning is
-            # never a literal (section 3, `means`): it is left empty.
+            # A meaning equal to a reader's text here (_plain) is left empty.
             means = ""
         units.append(
             _unit(
@@ -877,16 +852,11 @@ def units_from_output(region_id: str, output: UnitsOutput, letters, segments) ->
     return ReadingUnits(label=region_id, units=units)
 
 
-# The units path's request options over the route's own. Measured on GLM-5.3-Flash on Novita on
-# 2026-10-28 (~/specimen-golive/runs/units-wp12-20261028): at the route's "medium" a three-reader
-# units call reasoned 2,274 tokens and cost USD 0.0022 at list, twice the plan's bound of
-# 1.5 x USD 0.000738; at "low" 24 three-reader calls reasoned 0 to 677 tokens and cost
-# USD 0.00078 on average (docs/execution/units/PLAN.md, WP 1.2).
+# Request options first_pass_units_direct's agent sends over the route's own (_agent).
 UNITS_REQUEST_OPTIONS = {"reasoning_effort": "low"}
 
 
-# The decision a units-path call records beside its units (PLAN.md WP 1.2): it names no
-# reading, and every difference keeps the verdict uncertain.
+# _unpicked's decision selects no reading and gives each difference the verdict uncertain.
 UNITS_RATIONALE = "The first pass cut the label into reading units; it names no reading."
 
 
@@ -911,14 +881,14 @@ def _unpicked(region_id: str, readings, rationale: str, call: Observation) -> Fi
 
 
 def first_pass_units_direct(adapter, specimen, region, readings):
-    """The units path's first pass for one region, in the isolated model child: the label's
-    reading units and the decision beside them, which names no reading."""
+    """The units path's call for one region, in the isolated model child: the label's units and
+    the _unpicked decision."""
     from .workflow import OperationalBlock
 
     prepared = _prepared(adapter, specimen, region, readings, PromptName.FIRST_PASS_UNITS)
     segments = reading_segments([r.literal_text for r in readings])
     if not segments:
-        # The scheduler sends a label only when a reading holds text.
+        # No segment: no reading holds text.
         raise OperationalBlock("first_pass_contract_invalid")
     request, letters = build_units_request(readings, segments)
     texts = {reading.id: reading.literal_text for reading in readings}
@@ -940,7 +910,7 @@ def first_pass_units_direct(adapter, specimen, region, readings):
     result = called[0]
     call = _call_record(adapter, specimen, region, prepared, agent, request, called)
     if result is None:
-        # No answer within its caps: the alignment's units, the image uncertain at each.
+        # No answer within its caps: alignment_units.
         return _unpicked(region.id, readings, CAP_RATIONALE, call), alignment_units(
             region.id, readings
         )
@@ -949,8 +919,7 @@ def first_pass_units_direct(adapter, specimen, region, readings):
 
 
 def synthetic_units(blobs, region, readings):
-    """Deterministic fixture of the units path: the synthetic decision, and the alignment's
-    units with the image uncertain at each (no visual evidence)."""
+    """Deterministic fixture of the units path: synthetic_decision and alignment_units."""
     return synthetic_decision(blobs, region, readings), alignment_units(region.id, readings)
 
 
@@ -1077,9 +1046,8 @@ def _region(finding) -> str:
 def adjudication_record(readings, texts, resolved, decision, *, keep_call=False):
     """The region's transcript text, whether it is resolved, and its first-pass
     fields: identical readings keep the existing rule; differing readings take
-    the first pass's selected reading verbatim, or no text. With `keep_call`
-    (the units path, which calls the first pass on identical readings too),
-    identical readings keep their rule and record the call beside it."""
+    the first pass's selected reading verbatim, or no text. With `keep_call`,
+    identical readings with a decision also record its call."""
     if len(readings) > 1 and len(texts) == 1:
         selected, notes = readings[0].id if resolved else None, {}
         record = {"decision_kind": "identical_readings"}

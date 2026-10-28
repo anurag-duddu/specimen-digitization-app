@@ -1,13 +1,5 @@
-"""Work package 1.2: the first pass v2, reading units, behind a switch (docs/execution/units/PLAN.md).
-
-FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md sections 2 and 3: the first pass cuts each label's text
-into units at logical breaks, judges the image at each unit and settles nothing. A run records the
-path it starts on (SPECIMEN_FIRST_PASS_UNITS, off by default) and keeps it; on the old path nothing
-changes. Units come from the model's answer, which code checks (tiling, range) and sends back once
-with the failed check named; from the alignment for a label with one reading, one given up on, or
-a call that stopped at its caps. The units cross the model child to the parent and are stored on
-the run.
-"""
+"""Work package 1.2 of docs/execution/units/PLAN.md: the units path of application/first_pass.py
+and its switch, reading_units.first_pass_path."""
 
 from __future__ import annotations
 
@@ -140,7 +132,7 @@ def test_the_units_prompt_is_pinned_on_the_units_path_and_only_there(tmp_path):
     assert PromptName.FIRST_PASS_UNITS.value not in old["prompts"]
     assert set(old["prompts"]) == {name.value for name in PromptName} - {"first-pass-units"}
     pinned = ResolvedPrompt.model_validate(units["prompts"]["first-pass-units"])
-    # The prompt carries the ontology's first-pass text, so the run pins the version it read.
+    # The pinned text holds the brief render.
     from specimen_digitization import ontology
 
     assert ontology.render(brief=True) in pinned.text
@@ -249,8 +241,8 @@ def test_the_fallback_tiles_differing_readings_and_a_reader_that_wrote_nothing()
 
 @pytest.mark.parametrize("separator", ["\r", "\r\n", "\n", "\u2028", "\u2029", "\x0b", "\x85"])
 def test_a_unit_s_lines_count_these_line_boundaries(separator):
-    """Codex's review of bf1caab88: lines counted "\n" alone, so "Paris\rFrance" put "France" on
-    line 1. The boundaries listed here count, in the fallback and in the request."""
+    """Each separator parametrized here starts line 2, in alignment_units and in
+    build_units_request."""
     text = f"Paris{separator}France 1946"
     readings = [reading(ROUTES[0], text), reading(ROUTES[1], text)]
     assert len(text.splitlines()) == 2
@@ -279,8 +271,8 @@ def test_a_label_whose_readings_hold_no_text_has_no_units():
 
 
 def test_the_alignment_tiles_600_seeded_variations():
-    """Guard: seeded variations of the pilot readings (words dropped, added and changed,
-    spacing removed): for each of the 600, the alignment's units pass reading_units.problems."""
+    """For each of 600 seeded variations of the words below, alignment_units' units pass
+    reading_units.problems."""
     import random
 
     words = ["Elev.6400", "6400", "-", "7000", "to", "ft.", "Davao", "Prov.", "DavaoProv.", "P.I.",
@@ -357,8 +349,8 @@ def test_the_checks_refuse_units_that_name_other_readings():
 
 
 def test_the_image_names_a_readers_non_empty_text_never_an_empty_one():
-    """Carried from the review of PR #423: a reader that wrote nothing has an empty text, which
-    let `image == ""` validate."""
+    """An image "" is refused where a reader's text is empty; a reader's text, uncertain and
+    not visible are accepted."""
     readers = {"a": UnitText(text="", start=3, end=3), "b": UnitText(text="P-95", start=4, end=8)}
     unit = {"id": "L:1", "label": "L", "lines": (1, 1), "readers": readers}
 
@@ -484,7 +476,7 @@ def test_the_call_records_units_and_a_decision_that_names_no_reading(monkeypatch
     assert len(calls) == 1 and calls[0][0].instructions == UNITS_PROMPT.text
     assert [unit.image for unit in units.units][:3] == ["6-Sept-1946,", UNCERTAIN, "H. Hoogstraal"]
     assert problems(units, texts_of(readings)) == []
-    # The decision names no reading and every difference keeps the verdict uncertain.
+    # No selected reading; the verdicts are uncertain.
     assert decision.selected_observation_id is None and decision.rationale == UNITS_RATIONALE
     assert decision.notes == {} and decision.differences
     assert {d.verdict for d in decision.differences} == {"uncertain"}
@@ -540,8 +532,8 @@ def test_a_call_stopped_at_its_caps_gets_the_alignments_units(monkeypatch, tmp_p
 
 
 def start_run(tmp_path, adapters):
-    """test_first_pass_workflow.start's run: a specimen created through the API's intake, with a
-    fresh run in its place that keeps the path its creation recorded."""
+    """A specimen created through the API's intake, its run replaced by a fresh one that keeps
+    the intake run's path (test_first_pass_workflow.start keeps no path)."""
     from test_application import client, intake
 
     from specimen_digitization.application.api import SYNTHETIC_COLLECTION, SYNTHETIC_ORG
@@ -594,15 +586,14 @@ def test_a_run_created_on_the_old_path_stays_there(tmp_path, monkeypatch):
 
     run = workflow.drain(principal, ident).run
 
-    # A guard: on main too, the stored run names no path and holds no units.
+    # The stored run names no path and holds no units.
     assert getattr(run, "first_pass_path", OLD) == OLD and run.reading_units == [] and calls == []
     assert "first_pass_path" not in run.model_dump(mode="json")
 
 
 def test_a_run_drains_on_its_path_with_the_switch_readers_made_to_fail(tmp_path, monkeypatch):
-    """Codex's review of bf1caab88: the path was read at the first pin, guarded by classify.
-    With reading_units.first_pass_path and first_pass.first_pass_path made to fail after the
-    run's creation, the run drains on its recorded path."""
+    """With reading_units.first_pass_path and first_pass.first_pass_path made to fail after
+    the run's creation, and the switch off, the run drains on its units path."""
     from specimen_digitization.application import reading_units
 
     workflow, principal, ident, calls = drained(tmp_path, monkeypatch, switch="on")
@@ -634,7 +625,7 @@ def test_a_failed_first_pin_then_a_retry_keeps_the_recorded_path(tmp_path, monke
     blocked = workflow.step(principal, ident)
     assert blocked.run.blocker == "pinned_model_route_unavailable"
     assert "pin_dependencies" not in blocked.run.completed_steps and failed == [UNITS]
-    # The switch turns off; a person resumes the run (the API's resume keeps the run).
+    # The switch turns off; the run resumes with its blocker cleared and its stage set.
     monkeypatch.setenv(SETTING, "off")
     blocked.run.blocker, blocked.run.stage = None, "pin_dependencies"
     workflow.repository.save(principal, blocked, blocked.version, "resume", digest({"resume": 1}))
@@ -646,7 +637,8 @@ def test_a_failed_first_pin_then_a_retry_keeps_the_recorded_path(tmp_path, monke
 
 @pytest.mark.parametrize("switch,path", [("on", UNITS), ("off", OLD), (None, OLD)])
 def test_the_api_records_the_switch_when_it_creates_a_run(tmp_path, monkeypatch, switch, path):
-    """Both places the review named: the intake's run and the new run of a region review."""
+    """The intake's run and a region review's new run each take the switch's path at their
+    creation."""
     from test_application import HEADERS, PREFIX, client, intake
 
     from specimen_digitization.application.api import SYNTHETIC_COLLECTION, SYNTHETIC_ORG, SYNTHETIC_TEXT
@@ -688,10 +680,10 @@ def test_the_api_records_the_switch_when_it_creates_a_run(tmp_path, monkeypatch,
 
 
 def run_spellings(tree):
-    """The calls of the domain Run this guard detects: a call of a name imported as Run (an
-    alias included), of `<a name imported as the domain module>.Run`, and model_validate,
-    model_validate_json and model_construct on those. A name bound by assignment
-    (`RunType = DomainRun`) is not seen. Returns (line, kind, the call)."""
+    """The calls this guard detects: a call of a name `Run` (from any import) or of a name the
+    domain `Run` is imported as; of `<a name the domain module is imported as>.Run`; and
+    model_validate, model_validate_json and model_construct on those. A name bound by
+    assignment (`RunType = DomainRun`) is not seen. Returns (line, kind, the call)."""
     import ast
 
     run_names, module_names = {"Run"}, set()
@@ -726,9 +718,9 @@ def run_spellings(tree):
 
 
 def unrecorded_runs(source: str) -> list[tuple[int, str]]:
-    """Of the calls run_spellings detects in a module's source: a construction that does not pass
-    first_pass_path=first_pass_path(os.environ), and a model_validate, model_validate_json or
-    model_construct call (src has none today; a stored run comes back inside its Specimen)."""
+    """Of the calls run_spellings detects in a module's source: each construction without
+    first_pass_path=first_pass_path(os.environ), and each model_validate, model_validate_json
+    or model_construct call."""
     import ast
 
     missing = []
@@ -740,9 +732,8 @@ def unrecorded_runs(source: str) -> list[tuple[int, str]]:
 
 
 def test_the_run_calls_the_guard_detects_in_src_record_the_switch():
-    """A guard over src: the files with a call run_spellings detects are api.py, bulk_intake.py
-    and source_import.py, and each of those calls passes first_pass_path=first_pass_path(
-    os.environ). A Run built through a name bound by assignment is not seen."""
+    """In src, run_spellings detects calls in api.py, bulk_intake.py and source_import.py, and
+    unrecorded_runs reports none of them."""
     import ast
     from pathlib import Path
 
@@ -771,8 +762,7 @@ def test_the_run_calls_the_guard_detects_in_src_record_the_switch():
 ], ids=["bare", "module attribute", "module alias", "dotted module", "class alias", "model_validate",
         "model_construct", "aliased model_validate_json", "a fixed path", "keywords unpacked"])
 def test_the_guard_reports_each_probe_that_builds_a_run_without_the_switch(source):
-    """Claude's N1 and Codex's NB1 on fc5a14b6e: the guard saw bare `Run(...)` only. Each of these
-    probes builds a Run without recording the switch, and the guard reports it."""
+    """unrecorded_runs reports each probe."""
     assert unrecorded_runs(source)
 
 
@@ -839,7 +829,7 @@ def test_the_old_path_calls_no_first_pass_on_agreed_readings(tmp_path, monkeypat
                                                 alternate=SYNTHETIC_TEXT)
     run = workflow.drain(principal, ident).run
 
-    # A guard: main calls no first pass on agreed readings either.
+    # No first pass on agreed readings on the old path.
     assert calls == [] and run.first_pass_decisions == [] and run.reading_units == []
     assert not any(step.startswith("first_pass:") for step in run.completed_steps)
 
@@ -939,8 +929,8 @@ def test_the_step_refuses_a_units_answer_that_breaks_the_contract(tmp_path, monk
 
 
 def test_the_run_s_units_are_built_whole_through_its_validation():
-    """Carried from Codex's review of PR #423: the duplicate-label check runs only when the
-    list is validated, so the producer stores through store_reading_units."""
+    """store_reading_units replaces a label's entry, sorts the entries by region order and
+    refuses two entries of one label."""
     from specimen_digitization.application.domain import Region
 
     regions = [Region(id=f"L{n}", asset_id="a", x=0, y=0, width=1, height=1, order=n,
@@ -1083,21 +1073,16 @@ def test_the_parent_validates_and_returns_the_units(tmp_path, monkeypatch):
 
 # ------------------------------------------------------- the old path: main's stored record bytes
 
-# Pins computed on main 4172ab824 (before this change) by this module's frozen_old_path_run,
-# whose readings differ, so the old path's first pass runs: the stored record's bytes as
-# SQLiteRepository writes them, and the projection's writes. Written "sha256:<hex>". The same
-# on macOS (CPython 3.11, Unicode 14) and Linux (CI, CPython 3.12, Unicode 15): the drain fixes
-# both inputs that differ by platform.
+# Computed on main 4172ab824 by frozen_old_path_run: the stored bytes' SHA-256 and the
+# projection writes' digest.
 MAIN_OLD_PATH_STORED = "sha256:c2d19314b753550c1513f33cb7a0374acaa269328a50ff72e16cfbf905e18edd"
 MAIN_OLD_PATH_WRITES = "sha256:b69b17c8e43d5da547cae29e4bc80b50de8717ea290e92355da8232ddcc210b6"
 
 
 def frozen_old_path_run(tmp_path, monkeypatch, *, switch=None, unicode_version="15.0.0"):
-    """A whole synthetic run on the old path (switch unset or off) with readings that differ,
-    its ids and clocks fixed as the API contract exporter fixes them, and its two inputs that
-    differ by platform fixed too: PNG bytes (the exporter's portable encoder seam, whose own
-    tests are tests/test_general_api_contract_export_seam.py) and the Unicode version a
-    reading's metadata records (reading_evidence.py: CPython 3.11 has 14.0.0, CI's 3.12 15.0.0)."""
+    """A synthetic old-path run (switch unset or off) with differing readings: ids and clocks
+    fixed as scripts/ci/export_general_api_contract_fixtures.py fixes them, its PNG seam, and
+    reading_evidence's Unicode version set to `unicode_version`."""
     import importlib.util
     import itertools
     import unicodedata
@@ -1175,9 +1160,8 @@ def old_path_pins(specimen) -> tuple[str, str]:
 def test_the_unicode_version_reaches_the_old_path_record_only_through_reading_metadata(
     tmp_path, monkeypatch
 ):
-    """The one Python-dependent input of the pinned run (main's, too): two Unicode versions give
-    records that differ in each reading's metadata blob and nowhere else, and the same
-    projection writes. With it fixed, CPython 3.11 and 3.12 give the pins below byte for byte."""
+    """Two Unicode versions give stored records whose differing leaves are each observation's
+    reading_metadata blob_ref and sha256, and equal projection writes."""
     from specimen_digitization.application.active_graph import pack
 
     def stored(version):
@@ -1212,7 +1196,6 @@ def test_an_old_path_run_stores_main_s_bytes(tmp_path, monkeypatch, switch):
     specimen = frozen_old_path_run(tmp_path, monkeypatch, switch=switch)
     run = specimen.run
 
-    # A guard: the pins are main's own, so main passes it too.
     assert getattr(run, "first_pass_path", OLD) == OLD and run.reading_units == []
     assert any(step.startswith("first_pass:") for step in run.completed_steps)
     assert old_path_pins(specimen) == (MAIN_OLD_PATH_STORED, MAIN_OLD_PATH_WRITES)
@@ -1268,8 +1251,8 @@ def test_integrity_holds_a_units_path_decision_to_naming_no_reading(tmp_path, mo
 def test_a_decided_transcript_candidate_on_a_label_with_units_names_its_transcription_version(
     tmp_path, monkeypatch
 ):
-    """Carried from the review of PR #423: main's writes pin holds no decided-transcript
-    candidate, so the candidate id formula under units is pinned here directly."""
+    """On a label with units, a decided-transcript candidate's id ends with its version's id; a
+    raw-reading candidate's id has no version id."""
     from test_reading_units import locate
 
     from specimen_digitization.application.api import SYNTHETIC_TEXT
@@ -1305,9 +1288,8 @@ def test_a_decided_transcript_candidate_on_a_label_with_units_names_its_transcri
 
 
 def test_an_agreed_label_s_units_are_projected_and_its_version_names_no_call(tmp_path, monkeypatch):
-    """Claude's review of bf1caab88: the version row of an agreed label named the first-pass
-    call, which AppendTranscriptionVersionV2 and V3 refuse (only `first_pass` names a call). The
-    domain transcript keeps the call; the row names none."""
+    """An agreed label: the domain transcript holds the call; its V3 row names no call and
+    carries the units; connector_refusals reports nothing."""
     from test_reading_units import locate
 
     from specimen_digitization.application.api import SYNTHETIC_TEXT
@@ -1397,7 +1379,8 @@ def connector_refusals(rows) -> list[str]:
 
 
 def test_the_mirrored_rule_is_the_connector_s_own_text():
-    """The guard reads the rule from the connector, so it follows a change of it."""
+    """connector_rule reads four conditions of V2's and V3's member check from projection.gql,
+    these two among them."""
     for operation in ("AppendTranscriptionVersionV2", "AppendTranscriptionVersionV3"):
         rule = connector_rule(operation)
         assert "((vars.decisionKind == 'first_pass') == (vars.firstPassObservationId != null))" in rule
@@ -1454,10 +1437,8 @@ def test_the_versions_five_runs_project_pass_the_mirrored_connector_checks(
 def test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_workspace_only(
     tmp_path, monkeypatch, case
 ):
-    """Codex's review of bf1caab88 (DATA_CONTRACT.md 4.2): drained without a person's decision,
-    such a label's units are on the run and in the workspace route's body, and no write of its
-    projection is a TranscriptionVersion or carries readingUnits (a person's edit gives it a
-    version: the next test)."""
+    """Drained with no person's decision: the label's units are on the run and in the workspace
+    body, and no projected write is a TranscriptionVersion or carries readingUnits."""
     from test_reading_units import locate, workspace
     from test_reading_units import app as workspace_app
 
@@ -1481,10 +1462,8 @@ def test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_w
 def test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_with_its_units(
     tmp_path, monkeypatch
 ):
-    """Codex's review of fc5a14b6e: a label with one reading gets no machine version, but a
-    person's edit gives it a `human` one, which the reviewer's save writes with V3 and the
-    label's units as stored. Until WP 1.3 regenerates units from a person's text, those are the
-    machine readings' units; this pins it, so WP 1.3 changes it knowingly."""
+    """A supported edit posted to /decisions for the one-reader label: the reviewer's
+    projection has one V3 row, `human`, with the edited text, no call and the units as stored."""
     from test_reading_units import locate
     from test_reading_units import app as workspace_app
 
@@ -1512,8 +1491,7 @@ def test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_wit
     assert (transcript.actor, transcript.text) == ("A", edited)
     assert specimen.run.reading_units == [units]
 
-    # The reviewer's save: its review-decision rows need the repository's proofs of the audit
-    # events (SqlConnectRepository supplies them), which this test leaves out with the events.
+    # Projected without the audit's review events, whose rows need repository proofs.
     assert any(event.action == "review_transcription" for event in specimen.audit)
     saved = specimen.model_copy(update={"audit": [
         event for event in specimen.audit if not event.action.startswith("review_")]})
@@ -1531,8 +1509,7 @@ def test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_wit
 
 
 def test_integrity_refuses_units_that_leave_a_reading_out(tmp_path, monkeypatch):
-    """Codex's and Claude's reviews of bf1caab88: integrity checked the units against the readings
-    they name, so units that left a reading out passed."""
+    """Units of reader A alone on a two-reader label fail verify_evidence."""
     from specimen_digitization.application.integrity import EvidenceIntegrityError, verify_evidence
 
     workflow, principal, ident, _ = drained(tmp_path, monkeypatch)

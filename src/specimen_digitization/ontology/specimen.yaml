@@ -242,9 +242,7 @@ fields:
     # holds; the PRD records the collection manager's answer of 2026-10-07, and
     # WP 1.7 replaces the brief's sentence. No document of this repository names
     # its Darwin Core term: verbatimEventDate is Darwin Core's term for an
-    # event's date and time as written. (A comment, not a note: the rendered text
-    # is a model's instructions, and a model cannot use a plan's or a brief's
-    # history; WP 1.2.)
+    # event's date and time as written.
     source:
       - src/specimen_digitization/field_research/prompts/verbatim_dts.txt:1
       - docs/product-requirements/PRD.md:1224
@@ -439,11 +437,9 @@ notations:
     source:
       - insects.py:53-57 at 7a09445a2
       - src/specimen_digitization/field_research/prompts/common.txt:39
-  # The capital "M" exception is decided in code by field_research/written.py
-  # (_a_name, written.py:451-462; _counts_sexes, written.py:465-494; the unit
-  # decision, written.py:523-528), and WP 2.2 aligns this file with it. The
-  # reading states the rule in words and names no code: a model's instructions
-  # carry it, and a model cannot read a file's lines (WP 1.2).
+  # field_research/written.py decides the capital "M" exception in code (_a_name,
+  # written.py:451-462; _counts_sexes, written.py:465-494; the unit decision,
+  # written.py:523-528); WP 2.2 aligns this entry with it.
   - id: metres
     written: ["<n> m"]
     readings: ["metres, the unit of an elevation; not metres when a capital \"M\" stands before a name or in a count of males and females"]

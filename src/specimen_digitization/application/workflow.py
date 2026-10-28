@@ -397,8 +397,6 @@ class PipelineAdapters(Protocol):
     def first_pass(
         self, specimen: Specimen, region: Region, readings: list[Observation]
     ) -> FirstPassDecision: ...
-    # The units path's first pass (first_pass.first_pass_units_direct): the label's reading
-    # units and the decision beside them, which names no reading.
     def first_pass_units(
         self, specimen: Specimen, region: Region, readings: list[Observation]
     ) -> tuple[FirstPassDecision, ReadingUnits]: ...
@@ -1022,9 +1020,8 @@ class Workflow:
                             for d in decision.differences
                         )
                         or g19_pick(selected, decision.differences) != selected
-                        # The units path: a decision that names no reading and leaves every
-                        # difference uncertain, and the label's units, which tile its readings
-                        # (section 3's checks).
+                        # Units path: no selected reading, `uncertain` verdicts, and units of
+                        # this region that pass `problems`.
                         or units_path
                         and (
                             selected is not None
@@ -1046,8 +1043,7 @@ class Workflow:
                 run.transcripts = []
                 decisions = {d.region_id: d for d in run.first_pass_decisions}
                 if run.first_pass_path == "units":
-                    # A label the first pass gave no units (one reading, or given up on) gets
-                    # them from the alignment, the image uncertain at each (section 3).
+                    # A region with no units entry gets alignment_units.
                     from .first_pass import alignment_units
 
                     held = {entry.label for entry in run.reading_units}
@@ -2118,10 +2114,8 @@ class Workflow:
                 if key not in run.completed_steps:
                     return key
         if "adjudicate" not in run.completed_steps:
-            # Differing readings get the LLM first pass (HARNESS.md section 3). On the units
-            # path every label with two readings or more gets it, agreed readings included,
-            # unless no reading holds text; a label with one reading gets its units from the
-            # alignment at adjudicate (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 3).
+            # Differing readings get the LLM first pass (HARNESS.md section 3). Units path:
+            # two readings or more, and some text.
             for region in run.regions:
                 readings = [o for o in run.observations if o.region_id == region.id]
                 texts = {o.literal_text for o in readings}
@@ -2373,9 +2367,8 @@ class SyntheticAdapters:
 
 
 def store_reading_units(run: Run, entries: list[ReadingUnits]) -> None:
-    """The run's reading units with these labels' entries replaced, in label order, built
-    whole and validated as the run validates the field (one entry per label): assigning the
-    list alone would skip the run's validators."""
+    """The run's reading units with these labels' entries replaced, sorted by region order,
+    set through the run's validate_assignment (its one-entry-per-label check)."""
     labels = {entry.label for entry in entries}
     order = {region.id: index for index, region in enumerate(run.regions)}
     value = sorted(

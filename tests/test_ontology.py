@@ -116,8 +116,7 @@ def test_the_first_pass_text_is_pinned():
     assert ontology.render(brief=True) == RENDERED_BRIEF.read_text(encoding="utf-8")
 
 
-# What a model cannot use in its instructions: a code file or its lines, a work package, a
-# go-live gate, the PRD or a brief's history (WP 1.2, carried from Codex's review of PR #421).
+# Text naming a code or text file, file lines, a work package, a gate, the PRD or a brief.
 NOT_FOR_A_MODEL = re.compile(r"\.py\b|\b[\w/]+\.(?:txt|md|yaml)\b|:\d+(?:-\d+)?\b|\bWP \d|\bG\d{1,3}\b|\bPRD\b|\bbrief'?s?\b")
 
 
@@ -127,9 +126,9 @@ def test_the_rendered_text_names_no_code_line_work_package_or_gate(brief):
 
 
 def test_the_first_pass_text_keeps_what_cuts_and_reads_a_unit_and_leaves_out_what_writes_a_value():
-    """The brief text carries every field by key, display name and Darwin Core term, every
-    routing entry, notation and question; the things, the fields' descriptions and the rule
-    for writing a literal are the experts' (the first pass writes no value)."""
+    """render(brief=True) holds each field's key, display name and Darwin Core term, each
+    routing entry's fields, each notation's forms and each question, and none of the things'
+    examples, the fields' `holds` or the notation rule."""
     loaded = ontology.ontology()
     brief = ontology.render(brief=True)
     for entry in loaded.fields:
@@ -285,10 +284,8 @@ METRES_MEANING = (
 
 
 def test_the_metres_meaning_states_the_capital_m_exception_and_its_sources_name_written_py():
-    """The file states the exception in words and leaves the decision to
-    field_research/written.py, which its sources cite; it copies none of written.py's name or
-    sex-count logic (WP 2.2 aligns the two, docs/execution/units/PLAN.md:113). The meaning is a
-    model's, so it names no code (WP 1.2)."""
+    """The metres meaning states the capital "M" exception in words and matches no pattern of
+    NOT_FOR_A_MODEL; the entry's sources cite written.py's three line ranges."""
     loaded = ontology.ontology()
     metres = next(notation for notation in loaded.notations if notation.id == "metres")
 

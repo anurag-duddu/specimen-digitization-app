@@ -1415,8 +1415,7 @@ class ProductionAdapters:
             collection_name="Insects",
             schema_version=run.profile.schema_version,
         )
-        # The units path's first-pass prompt is pinned on a run that takes that path and only
-        # there, so an old-path run pins what it pinned before the path existed.
+        # FIRST_PASS_UNITS is pinned on a units-path run only.
         units = getattr(run, "first_pass_path", "old") == "units"
         prompts = {
             name.value: resolve_prompt(name, inputs).model_dump(mode="json")
@@ -1495,8 +1494,8 @@ class ProductionAdapters:
         )
 
     def first_pass_units(self, specimen, region, readings):
-        """The units path's first pass in the model child: (decision, units). The run's path
-        decides what the child returns (model_runtime.invoke_model)."""
+        """The units path's first pass in the model child; returns (decision, units). Refused
+        on an old-path run."""
         from .model_runtime import invoke_model
 
         if specimen.run.first_pass_path != "units":

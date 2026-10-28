@@ -89,10 +89,6 @@ def test_only_worker_turns_the_research_harness_on():
 
 
 def test_the_processes_that_create_runs_carry_the_first_pass_units_switch_off():
-    # docs/execution/units/PLAN.md, WP 1.2: off by default. The Run(...) calls that set a run's path
-    # from it are in api.py, bulk_intake.py and source_import.py (tests/test_first_pass_units.py),
-    # which the API and the intake job run; the worker's and SAM's env do not carry it. WP 1.8
-    # turns it on.
     from specimen_digitization.application.reading_units import OLD, SETTING, first_pass_path
 
     api = D.role_env("api", CHECKPOINT)

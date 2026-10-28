@@ -476,7 +476,7 @@ def test_bounded_prompt_resolution_uses_code_fallback_without_remote_provider(
     }.items():
         expected = expected.replace("{{" + key + "}}", value)
     if "{{ontology}}" in expected:
-        # The units path's first pass carries the ontology's first-pass text (WP 1.2).
+        # FIRST_PASS_UNITS's `ontology` input.
         from specimen_digitization import ontology
 
         expected = expected.replace("{{ontology}}", ontology.render(brief=True))

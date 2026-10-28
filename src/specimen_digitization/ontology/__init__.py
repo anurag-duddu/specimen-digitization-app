@@ -9,9 +9,8 @@ could belong to, and the questions waiting for the owner's reading.
 
 The loader refuses a key it does not know, a field that is not one of the
 profile's 20 (application/domain.py MANDATORY), and an entry with no source.
-`render` gives the text a model's instructions carry: its brief form is in
-the first pass's prompt (WP 1.2; prompts.py), the whole text is for the
-experts' (WP 1.3). `advice`
+`render` gives the text a model's instructions carry; `render(brief=True)`
+is the units path's first-pass prompt input (prompts.py). `advice`
 gives what the file says about one unit's text: the fields it could belong to
 and the readings of its notations, or the open question it holds.
 """
@@ -184,11 +183,8 @@ class Ontology:
     def render(self, brief: bool = False) -> str:
         """The ontology as a model's instructions carry it.
 
-        `brief` is the first pass's text (docs/execution/units/PLAN.md, WP 1.2): the fields by
-        key, display name and Darwin Core term, where a unit could belong, the notations and the
-        open questions. It leaves out the things, each field's description and the rule for
-        writing a literal, which serve the experts that write values; the first pass writes
-        none, and its call has a cost bound."""
+        `brief` leaves out the things, the fields' descriptions and notes, and the notation
+        rule."""
         frame = self.frame
         lines = [
             f"Specimen ontology, version {self.version}. Its frame is the "

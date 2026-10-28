@@ -921,7 +921,7 @@ def test_the_output_schema_and_pinned_files_match_the_current_contract():
     assert installed_validator_source_sha256(Path(evidence_module.__file__).parent) == VALIDATOR_SOURCE_SHA256
     assert sha(projection.__file__) == CANONICAL_PROJECTOR_SHA256 == (
         "cc3599bd1b47bf281be30700966c806003a02b59add5c05019d0eba4592f7361")  # pragma: allowlist secret
-    assert sha(domain.__file__) == "cb7ad300ff1a47c1b7c22a8fb5711943ff4ff9342f2f4e8de369b6622683ba21"  # pragma: allowlist secret
+    assert sha(domain.__file__) == "2bc916ce81d0366d5594115a9af0a056a5f80ed85b8a109ed871a20832e89d2e"  # pragma: allowlist secret
     assert sha(storage.__file__) == "64d919f9d10ac4912b8902e19abab2d5e90978da32d6356c28f0e4c1130e6315"  # pragma: allowlist secret
     assert sha(active_graph.__file__) == "2e1b3914fb47014210e8f7abfa0c6dabce4a895b98b30104eb21f62b19504898"  # pragma: allowlist secret
     for model in (FieldValue, Evidence, Run):

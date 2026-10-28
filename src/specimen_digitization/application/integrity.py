@@ -127,8 +127,8 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
 
             decisions = {d.region_id: d for d in run.first_pass_decisions}
             units_path = run.first_pass_path == UNITS
-            # A units-path decision names no reading and leaves every difference uncertain
-            # (docs/execution/units/PLAN.md, WP 1.2), and so does its transcript.
+            # Units path: decisions select no reading and give `uncertain` verdicts; the
+            # transcripts' verdicts are `uncertain`.
             require(not units_path or all(
                 d.selected_observation_id is None
                 and all(difference.verdict == "uncertain" for difference in d.differences)
@@ -142,8 +142,7 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
             held = {entry.label for entry in run.reading_units}
             require(len(held) == len(run.reading_units))
             for entry in run.reading_units:
-                # Each label's units tile every reading of the label the run holds (section 3's
-                # checks), not only the readings the units name.
+                # Checked with `problems` against the observations of the entry's region.
                 require(entry.label in regions)
                 texts = {
                     o.id: o.literal_text
@@ -152,7 +151,7 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                 }
                 require(not unit_problems(entry, texts))
             if units_path and "adjudicate" in run.completed_steps:
-                # From adjudicate on, every label with a reading that holds text has units.
+                # Once adjudicate has run: an entry for each region whose observations hold text.
                 require(all(
                     region.id in held
                     for region in run.regions
@@ -208,8 +207,8 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                     selected = transcript.selected_observation_id
                     decision = decisions.get(transcript.region_id)
                     if decision is not None and units_path:
-                        # The units path calls the first pass on identical readings too; their
-                        # rule still decides the transcript, which records the call.
+                        # Units path: the transcript is `first_pass` or `identical_readings` and
+                        # holds the decision's call.
                         require(transcript.decision_kind in {"first_pass", "identical_readings"})
                         require(transcript.first_pass_call == decision.call)
                     elif decision is not None:
