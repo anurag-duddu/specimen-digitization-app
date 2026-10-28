@@ -114,8 +114,9 @@ text, `not_present` and `not_applicable` settle as absent whatever text they car
 (`unknown`, `unresolved`, `unreadable`, `ambiguous`) are left without a value whatever text they keep, a state the
 scorer does not place failing the test; boundary records: an empty, None or whitespace-only literal, a whitespace
 parsed value beside a literal, the default `reason` alone, a record with no state, and the refused states "",
-"SUPPORTED", "Supported", " supported" and "invented"; a no-break space as the normalized value and the word
-"text" as the parsed value, each beside a literal; text checked on every code point against Python's `str.isspace`;
+"SUPPORTED", "Supported", " supported" and "invented"; a no-break space or a tab as the normalized value and the
+word "text" as the parsed value, each beside a literal; text checked on every code point, the surrogates included,
+against Python's `str.isspace`;
 the compared value over all 64 combinations of parsed, normalized and literal, each None, "", "  " or text;
 criterion 2 counting a cleared absence, giving each
 difference its kind, "value_absent" or "two_values", and comparing ASCII letters and digits with case folded).
