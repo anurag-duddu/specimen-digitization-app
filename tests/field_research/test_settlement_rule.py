@@ -434,17 +434,20 @@ def test_a_marked_fields_code_is_a_reason_and_the_record_goes_to_review(tmp_path
 
 # ---- how a literal maps to the units that cover it -----------------------------------------------
 
-def units_of(label, texts_by_unit, images_by_unit):
+def units_of(label, texts_by_unit, images_by_unit, fields_by_unit=None):
     """A label's units built by hand: `texts_by_unit` gives each unit's text per reader (keys
-    "a", "b"), joined by single spaces in each reader's text."""
+    "a", "b"), joined by single spaces in each reader's text; `fields_by_unit` each unit's
+    fields advice (none by default)."""
     offsets = {key: 0 for key in texts_by_unit[0]}
     units = []
-    for number, (texts, image) in enumerate(zip(texts_by_unit, images_by_unit), 1):
+    for number, (texts, image, fields) in enumerate(zip(texts_by_unit, images_by_unit,
+            fields_by_unit or [[]] * len(texts_by_unit)), 1):
         readers = {}
         for key, text in texts.items():
             readers[key] = UnitText(text=text, start=offsets[key], end=offsets[key] + len(text))
             offsets[key] += len(text) + (1 if text else 0)
-        units.append(ReadingUnit(id=f"{label}:{number}", label=label, lines=(1, 1), readers=readers, image=image))
+        units.append(ReadingUnit(id=f"{label}:{number}", label=label, lines=(1, 1), readers=readers, image=image,
+            fields=fields))
     return ReadingUnits(label=label, units=units)
 
 
@@ -828,3 +831,158 @@ def test_the_image_must_name_a_text_at_every_place_the_reader_writes_it(second, 
     backs the text only when it names it at the second too."""
     units = units_of("L", [{"a": "la", "b": "la"}, {"a": "x", "b": "x"}, {"a": "la", "b": "la"}], ["la", "x", second])
     assert agreement.image_names(reading_of("a", units), "la") is named
+
+
+# ---- PR #425's second review round -----------------------------------------------------------
+
+def test_a_confirmed_text_beside_its_spacing_variant_settles_on_the_confirmed_spelling(tmp_path):
+    """Codex round 2, D1: A writes "Chi mal ten ango", B "Chimaltenango", one candidate by
+    agreement_key, the image uncertain there, and Getty TGN confirms B's text by its own name.
+    The candidate settles on the text the source confirmed, cleared, and an answer of B's text
+    passes."""
+    readings = with_units(province_readings("Chi mal ten ango", "Chimaltenango"), {"r1": None})
+    task = task_of("province_state", readings, lambda text: text.split(": ")[1])
+    answers = [asyncio.run(Gazetteer(LocalBlobs(tmp_path)).lookup("tgn", "Chimaltenango", field_key="province_state"))]
+    label = agreement.labels(task, readings, answers)["r1"]
+    assert (label.settled, label.cleared, label.basis) == (frozenset({"Chimaltenango"}), True, agreement.BY_SOURCE)
+    assert agreement.refusal(task, readings, literal="Chimaltenango", named=[readings[1]], value=None,
+        authority_id="tgn:1000565", cited=answers, received=answers) is None
+
+
+def adjacent(label, texts, images):
+    """A label's units whose readers "a" and "b" both write `texts`, with nothing between them."""
+    units, offset = [], 0
+    for number, (text, image) in enumerate(zip(texts, images), 1):
+        span = UnitText(text=text, start=offset, end=offset + len(text))
+        units.append(ReadingUnit(id=f"{label}:{number}", label=label, lines=(1, 1), readers={"a": span, "b": span},
+            image=image))
+        offset += len(text)
+    return ReadingUnits(label=label, units=units)
+
+
+def test_a_literal_after_a_composed_sequence_starts_at_its_own_character():
+    """Codex round 2, D2: "e" with a combining acute accent before "x" is "\u00e9x" in NFC, as a
+    Hangul initial and medial before "x" are one syllable and "x". "x" is found at the reading's
+    own (2, 3), not over the accent or the medial. On a label whose units are "e" with its accent,
+    the image uncertain, and "x", which the image names, the readers' "x" clears."""
+    assert agreement.literal_places("e\u0301x", "x") == [(2, 3)]
+    assert agreement.literal_places("\u1100\u1161x", "x") == [(2, 3)]
+    assert agreement.literal_places("e\u0301x", "\u00e9x") == [(0, 3)]
+    assert agreement.literal_places("e\u0301x", "e") == []
+    units = adjacent("L", ["e\u0301", "x"], [UNCERTAIN, "x"])
+    readings = tuple(Reading(f"1{key.upper()}", "L", key, "raw_reading", "e\u0301x", units=units) for key in "ab")
+    assert not problems(units, {"a": "e\u0301x", "b": "e\u0301x"})
+    task = FieldTask("habitat", True, FieldValue(), tuple(Candidate(r.name, r.text, "x", "ev-" + r.name)
+        for r in readings), FIELD_TOOLS["habitat"])
+    label = agreement.labels(task, readings, [])["L"]
+    assert (label.settled, label.cleared) == (frozenset({"x"}), True)
+
+
+MIXED = ("a", "e", "x", " ", "\u0301", "\u0300", "\u0323", "\u00e9", "\u1100", "\u1161", "\u11a8")
+
+
+def test_every_place_found_starts_and_ends_where_the_readings_nfc_splits():
+    """Codex round 2, D2, seeded: readings of combining marks, Hangul jamo, plain letters and
+    spaces; each literal a cut of a reading's NFC. Every place literal_places gives starts and
+    ends at an offset where the reading splits under NFC (the NFC of the parts before and after
+    it, joined, is the reading's NFC), and starts and ends at no combining mark but at the
+    reading's ends, so not inside a combining sequence or a syllable; the reading's text there
+    is the literal in NFC, white space aside."""
+    import random
+    import unicodedata
+
+    def nfc(text):
+        return unicodedata.normalize("NFC", text)
+
+    rng = random.Random(1303)
+    found = 0
+    for _ in range(500):
+        raw = "".join(rng.choice(MIXED) for _ in range(rng.randint(1, 12)))
+        normal = nfc(raw)
+        for _ in range(4):
+            first, last = sorted(rng.sample(range(len(normal) + 1), 2))
+            literal = normal[first:last]
+            for start, end in agreement.literal_places(raw, literal):
+                found += 1
+                assert nfc(raw[:start]) + nfc(raw[start:]) == normal
+                assert nfc(raw[:end]) + nfc(raw[end:]) == normal
+                assert all(at in (0, len(raw)) or not unicodedata.combining(raw[at]) for at in (start, end))
+                assert nfc(raw[start:end]).split() == nfc(literal).split()
+    assert found > 500
+
+
+@pytest.mark.parametrize("names", [("b",), ("a", "b")], ids=["names-1B", "names-both"])
+@pytest.mark.parametrize(("light", "settled", "trap_refused"), [(NOT_VISIBLE, "trap", False),
+    ("light", "light trap", True)], ids=["light-not-visible", "image-names-light"])
+def test_a_text_read_from_one_readers_transcript_settles_on_the_image_beside_a_longer_text(light, settled,
+        trap_refused, names):
+    """Codex round 2, D3: A writes "light trap", B "trap", in units "light" (B nothing) and "trap";
+    the image `light` at the first and "trap" at the second, and no organiser candidate. The
+    expert reads "trap" from B's transcript, or from both; A's own text there is "light trap"
+    (own_text, in place of A's "trap": _texts_at_units), and no clause check intervenes. With
+    "light" not visible, B's text has IMAGE and clears; with the image naming "light", A's has it:
+    "light trap" clears and "trap" is refused."""
+    units = units_of("L", [{"a": "light", "b": ""}, {"a": "trap", "b": "trap"}], [light, "trap"])
+    readings = {key: reading_of(key, units) for key in "ab"}
+    named = [readings[key] for key in names]
+    task = FieldTask("collection_method", True, FieldValue(), (), FIELD_TOOLS["collection_method"])
+    label = agreement.labels(task, tuple(readings.values()), [], transcript="trap", named=named)["L"]
+    assert (label.settled, label.cleared) == (frozenset({settled}), True)
+    refused = agreement.refusal(task, tuple(readings.values()), literal="trap", named=named, value=None,
+        authority_id=None, cited=[], received=[])
+    assert (refused is not None) is trap_refused
+
+
+def test_another_readers_different_text_inside_one_unit_is_its_candidate_there(tmp_path):
+    """Codex round 2, D4: one unit holds A's "province_state: Illinois" and B's "province_state:
+    Indiana", and the image names B's. The organiser files A's "Illinois" alone; Getty TGN
+    confirms Illinois, and nobody asked about Indiana. B's text there is "Indiana" (own_text: the
+    two texts' shared beginning is not the place's), which the image backs, and "Illinois" has
+    no SOURCE while "Indiana" is not ruled out: Indiana clears."""
+    units = units_of("L", [{"a": "province_state: Illinois", "b": "province_state: Indiana"}],
+        ["province_state: Indiana"])
+    a, b = reading_of("a", units), reading_of("b", units)
+    task = FieldTask("province_state", True, FieldValue(), (Candidate("1A", a.text, "Illinois", "ev-a"),),
+        FIELD_TOOLS["province_state"])
+    answers = [asyncio.run(FakeSources(LocalBlobs(tmp_path)).lookup("tgn", "Illinois", field_key="province_state"))]
+    label = agreement.labels(task, (a, b), answers)["L"]
+    assert {candidate.texts: candidate.backings for candidate in label.candidates} == {
+        frozenset({"Illinois"}): frozenset(), frozenset({"Indiana"}): frozenset({agreement.IMAGE})}
+    assert (label.settled, label.cleared) == (frozenset({"Indiana"}), True)
+    assert agreement.own_text(a, b, "Illinois", "province_state") == frozenset({"Indiana"})
+
+
+def test_a_unit_the_first_pass_advises_for_another_field_bounds_the_text():
+    """Codex round 2, D5: A writes "Shrubs" and "1946", B "Shrubs" alone; the first unit is
+    advised for the habitat, its image "Shrubs", the second for the date, its image "1946". The
+    organiser files the habitat from 1B. The date's unit bounds the habitat's place (_bounded):
+    A's text at B's place is "Shrubs", B's text keeps its IMAGE, and "Shrubs" clears."""
+    units = units_of("L", [{"a": "Shrubs", "b": "Shrubs"}, {"a": "1946", "b": ""}], ["Shrubs", "1946"],
+        [["habitat"], ["date_visited_from"]])
+    a, b = reading_of("a", units), reading_of("b", units)
+    task = FieldTask("habitat", True, FieldValue(), (Candidate("1B", "Shrubs", "Shrubs", "ev-b"),),
+        FIELD_TOOLS["habitat"])
+    label = agreement.labels(task, (a, b), [])["L"]
+    assert [(candidate.texts, candidate.backings, candidate.readers) for candidate in label.candidates] == [
+        (frozenset({"Shrubs"}), frozenset({agreement.IMAGE, agreement.TEXT}), 2)]
+    assert (label.settled, label.cleared) == (frozenset({"Shrubs"}), True)
+    assert agreement.own_text(b, a, "Shrubs", "habitat") == frozenset({"Shrubs"})
+
+
+def test_sources_cannot_resolve_quoting_a_transcript_text_on_a_label_nothing_backs_is_ambiguous(tmp_path):
+    """Codex round 2, D6: 1A writes "habitat: Shrubs", 1B "habitat: Shurbs", the image uncertain
+    there, and the organiser files no habitat. The expert answers sources_cannot_resolve with the
+    literal "Shrubs" from 1A and both texts as options. Nothing backs either reader's text: the
+    habitat is ambiguous, each an option."""
+    from specimen_digitization.field_research.contracts import FieldAnswer
+
+    rig = build_rig(tmp_path, TEXT.replace("Synthetic grassland", "Shrubs"),
+        TEXT.replace("Synthetic grassland", "Shurbs"), candidates=[c for c in every_field() if c[0] != "habitat"])
+
+    async def declined(task, readings, tools):
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", literal="Shrubs",
+            reading_names=["1A"], options=["Shrubs", "Shurbs"], explanation="Nothing decides."), model_calls=1)
+    settle(rig, Scripted({"habitat": declined}))
+    habitat = rig.specimen.run.fields["habitat"]
+    assert (habitat.state, habitat.literal) == (ValueState.AMBIGUOUS, None)
+    assert habitat.reason == "Nothing decides. Options: Shrubs; Shurbs."

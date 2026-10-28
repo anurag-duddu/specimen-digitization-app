@@ -828,7 +828,7 @@ class WithMunicipio(Gazetteer):
             (("Chimaltenango", "tgn:1000565"), ("Guatemala", "tgn:7005493")))]}
 
 
-def test_a_county_never_takes_another_readers_spelling_of_the_settled_province(tmp_path):
+def test_a_county_never_takes_another_readers_spelling_of_the_settled_province(tmp_path, first_pass_path):
     """t1-329's county: the organiser filed the province only from 1B, so 1A
     writes no province text, and the province settles on 1B's
     "Chimaltenango" by TGN's exact match. The county's expert then read 1A's
@@ -836,7 +836,11 @@ def test_a_county_never_takes_another_readers_spelling_of_the_settled_province(t
     Chimaltenango, in Guatemala: the same word of the label as the
     province's, in another reader's spelling, so it is refused
     (IS_THE_PROVINCE) and the county does not settle. The real run settled
-    it as "Chimaltenago,", which the reference scores wrong."""
+    it as "Chimaltenago,", which the reference scores wrong. On the units path
+    1A's text at 1B's unit is its candidate too (agreement.own_text), the image
+    names it, and TGN rules it out: the province settles on 1A's spelling with
+    TGN's name as its value (the one-letter rule), and the county's text is
+    then the province's own text: the label writes no county (not present)."""
     rig = t1_329_rig(tmp_path, province_readers=("1B",))
     run = rig.specimen.run
 
@@ -846,11 +850,17 @@ def test_a_county_never_takes_another_readers_spelling_of_the_settled_province(t
         return FieldOutcome(task.key, resolved("Chimaltenago,", reading="1A", value="Chimaltenango",
             authority_id="tgn:chimaltenango-municipio", cited=[found.evidence.id]),
             evidence=[found.evidence, missing.evidence], model_calls=1)
-    settle(rig, guatemalan(province_state=province_on("Chimaltenango", "1B"), county=county),
-        tools=WithMunicipio(rig.blobs))
+    units = first_pass_path == "units"
+    province_script = province_on("Chimaltenago", "1A", "Chimaltenango") if units else province_on("Chimaltenango", "1B")
+    settle(rig, guatemalan(province_state=province_script, county=county), tools=WithMunicipio(rig.blobs))
     province = run.fields["province_state"]
-    assert (province.state, province.literal) == (ValueState.SUPPORTED, "Chimaltenango")
+    assert (province.state, province.literal) == (ValueState.SUPPORTED, "Chimaltenago" if units else "Chimaltenango")
     place = run.fields["county"]
+    if units:
+        assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
+        assert '"Chimaltenago," is the text of the Province/State field' in place.reason
+        assert "near_spelling:county" not in [f.reason_code for f in run.findings]
+        return
     assert (place.state, place.literal) == (ValueState.UNRESOLVED, None)
     assert place.reason.startswith(agreement.IS_THE_PROVINCE)
     assert "mandatory_unresolved:county" in run.reasons

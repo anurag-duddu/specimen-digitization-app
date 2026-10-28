@@ -1364,10 +1364,11 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
             else "B_declined:" + (why[0] if why else "unknown"))
         if unmatched is not None:
             return unmatched
-    if units_path(run) and not outcome.fallback and (options := _unsettled_options(task, readings, sources)):
-        # Units path, rules 5 and 6: an expert's sources_cannot_resolve on a label the rule
-        # does not settle leaves the field ambiguous, its readers' texts the options, as
-        # several_possibilities stores it. The resolver's fallback is no answer of the expert's.
+    if units_path(run) and not outcome.fallback and (
+            options := _unsettled_options(task, readings, sources, answer=answer, by_name=by_name)):
+        # Units path, rule 6: an expert's sources_cannot_resolve on a label none of whose
+        # candidates has a backing leaves the field ambiguous, its readers' texts the options,
+        # as several_possibilities stores it. The resolver's fallback is no answer of the expert's.
         decision["rule"] = "rule_unsettled"
         return _unsettled(task, ValueState.AMBIGUOUS, cited=cited,
             reason=answer.explanation + " Options: " + "; ".join(options) + ".")
@@ -1375,20 +1376,30 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
     return _unsettled(task, ValueState.UNRESOLVED, literal=literal, cited=cited, reason=answer.explanation)
 
 
-def _unsettled_options(task, readings, sources: Sequence[SourceAnswer]) -> list[str]:
-    """On the units path, the texts of the labels that write the field and that the rule
-    does not settle (agreement.labels_by_rule): a label's options when it has them (texts
-    against texts, or a tie), else its candidates' texts, each label's in its reading
-    order; empty when every label that writes the field settles."""
-    from .agreement import SOURCE_IDS, labels
+def _unsettled_options(task, readings, sources: Sequence[SourceAnswer], *, answer, by_name) -> list[str]:
+    """On the units path, the readers' texts on the labels that write the field and none
+    of whose candidates has a backing (agreement.labels_by_rule, rule 6), with the
+    answer's literal among them when the expert read it from the transcript of the
+    readings it names (agreement.TRANSCRIPT, as _first_pass_preference reads it): each
+    such label's candidates' texts in reading order, or the answer's options when each
+    of them is one of those texts (agreement_key); empty when every label that writes the
+    field has a backed candidate."""
+    from .agreement import SOURCE_IDS, TRANSCRIPT, agreement_key, labels, literal_basis
 
     tools = frozenset(task.tools) & SOURCE_IDS
+    literal = answer.literal if answer.literal and answer.literal.strip() else None
+    named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and literal in by_name[n].text
+        ] if literal else []
+    transcript = literal if named and literal_basis(task, readings, literal, named) == TRANSCRIPT else None
     options: list[str] = []
-    for label in labels(task, readings, [item for item in sources if item.source_id in tools]).values():
-        if label.settled:
+    for label in labels(task, readings, [item for item in sources if item.source_id in tools],
+            transcript=transcript, named=named).values():
+        if label.settled or not label.candidates or any(candidate.backings for candidate in label.candidates):
             continue
-        options += label.options or [min(candidate.texts) for candidate in sorted(label.candidates,
-            key=lambda candidate: candidate.first)]
+        options += [min(candidate.texts) for candidate in sorted(label.candidates, key=lambda c: c.first)]
+    given = [option for option in dict.fromkeys(answer.options) if option and option.strip()]
+    if options and given and {agreement_key(option) for option in given} <= {agreement_key(text) for text in options}:
+        return given
     return list(dict.fromkeys(options))
 
 
