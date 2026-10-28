@@ -39,6 +39,7 @@ from test_step import (
     build_rig,
     confirming,
     every_field,
+    from_tgn,
     guatemalan,
     label_with,
     mounted,
@@ -269,8 +270,8 @@ def test_a_near_spelling_of_the_sources_one_candidate_is_a_source_backing(tmp_pa
     run = rig.specimen.run
     readings, task, answers = rig_answers(rig, "city", "Chicago", "Chicag", "Chikag")
     label = agreement.labels(task, readings, answers)[run.regions[0].id]
-    assert [(candidate.texts, candidate.backings) for candidate in label.candidates] == [
-        (frozenset({"Chicag"}), frozenset({agreement.SOURCE})), (frozenset({"Chikag"}), frozenset())]
+    assert {candidate.texts: candidate.backings for candidate in label.candidates} == {
+        frozenset({"Chicag"}): frozenset({agreement.SOURCE}), frozenset({"Chikag"}): frozenset()}
     settle(rig, Scripted({"city": place_script("Chicag", "1B", asked=("Chicago", "Chicag", "Chikag"),
         value="Chicago", authority_id="tgn:Chicago")}))
     city = run.fields["city"]
@@ -533,17 +534,22 @@ def test_no_units_or_no_reader_of_them_maps_to_nothing():
     assert agreement.covering_units(stranger, "6400") == [] and not agreement.image_names(stranger, "6400")
 
 
-def test_a_reader_with_no_text_for_the_field_writes_the_text_it_writes_alike_at_its_unit():
-    """Text read from the transcript: A writes the town "Yepocapa" as a word, B "Yepocapa,4800"
-    with no space, so B has no run of it. At their joined unit the two write the same text,
-    spacing aside: B writes it too, and the label is not left unread (agreement._texts_at_units)."""
-    a, b = reading_of("a", JOINED), reading_of("b", JOINED)
-    assert agreement.writes_alike(a, b, "Yepocapa")
-    task = FieldTask("city", True, FieldValue(), (), FIELD_TOOLS["city"])
-    label = agreement.labels(task, (a, b), [], transcript="Yepocapa", named=[a])["L3"]
-    assert not label.unread and label.literals == frozenset({"Yepocapa"})
-    # The image names that unit, and both readers write it: an IMAGE and a TEXT backing.
-    assert [candidate.backings for candidate in label.candidates] == [frozenset({agreement.IMAGE, agreement.TEXT})]
+JOINED_UNCERTAIN = units_of("L3", [{"a": "Yepocapa, 4800", "b": "Yepocapa,4800"}, {"a": "ft.", "b": "ft."}],
+    [UNCERTAIN, UNCERTAIN])
+
+
+def test_a_reader_with_no_text_for_the_field_writes_its_own_text_at_the_place_another_reader_writes_one():
+    """t1-330's joined unit: A writes "Yepocapa, 4800 ft.", B "Yepocapa,4800 ft.", the
+    organiser files the town from 1A only, and the image is uncertain. At A's unit B wrote
+    the same text, spacing aside, so B's own spelling of the town there is its text too
+    (agreement.own_text): two readers back it, and it settles marked."""
+    a, b = reading_of("a", JOINED_UNCERTAIN), reading_of("b", JOINED_UNCERTAIN)
+    task = FieldTask("city", True, FieldValue(), (Candidate("1A", "Yepocapa, 4800 ft.", "Yepocapa", "ev-a"),),
+        FIELD_TOOLS["city"])
+    label = agreement.labels(task, (a, b), [])["L3"]
+    assert [(candidate.texts, candidate.readers) for candidate in label.candidates] == [(frozenset({"Yepocapa"}), 2)]
+    assert (label.settled, label.why) == (frozenset({"Yepocapa"}), agreement.TEXT_ONLY)
+    assert agreement.own_text(a, b, "Yepocapa") == frozenset({"Yepocapa"})
 
 
 # ---- what the experts receive ---------------------------------------------------------------------
@@ -654,3 +660,170 @@ def test_two_literals_of_one_written_text_are_two_candidates():
     assert [candidate.backings for candidate in label.candidates] == [frozenset({agreement.IMAGE})] * 2
     assert (label.settled, label.why, label.others) == (frozenset({"Elev.6400 ft"}), agreement.CONTESTED,
         ("6400 ft",))
+
+
+# ---- PR #425's first review round ------------------------------------------------------------
+
+def province_readings(*names, region="r1"):
+    return three_readers([f"province_state: {name}" for name in names], region=region)
+
+
+@pytest.mark.parametrize(("named", "why"), [(None, None), ("o1c", agreement.CONTESTED)],
+    ids=["image-uncertain", "image-names-Indiana"])
+def test_a_confirmed_text_in_two_spellings_keeps_its_source_backing(tmp_path, named, why):
+    """Codex 1: A "Illinois", B "ILLINOIS", C "Indiana"; Getty TGN confirms Illinois and finds
+    nothing for Indiana. A's and B's texts are one candidate (agreement_key), which the source
+    confirms: cleared with the image uncertain; with the image naming C's "Indiana", SOURCE
+    still ranks above IMAGE, and Illinois settles marked."""
+    readings = with_units(province_readings("Illinois", "ILLINOIS", "Indiana"), {"r1": named})
+    task = task_of("province_state", readings, lambda text: text.split(": ")[1])
+    sources = FakeSources(LocalBlobs(tmp_path))
+    answers = [asyncio.run(sources.lookup("tgn", query, field_key="province_state")) for query in ("Illinois", "Indiana")]
+    label = agreement.labels(task, readings, answers)["r1"]
+    assert {candidate.texts: SOURCE_OF(candidate) for candidate in label.candidates} == {
+        frozenset({"Illinois", "ILLINOIS"}): True, frozenset({"Indiana"}): False}
+    assert (label.settled, label.cleared, label.why) == (frozenset({"Illinois"}), why is None, why)
+
+
+def test_the_same_place_settles_on_the_text_the_image_names(tmp_path):
+    """Codex 2: 1A writes "Yepocapa,", 1B "Yepocapa", one GEOLocate answer confirms both as one
+    town, and the image names 1A's "Yepocapa,". The merged candidate's literal is the image's
+    text: an answer of 1B's spelling is refused, and 1A's settles."""
+    places = dict(country="Guatemala", province_state="Chimaltenango", county=None)
+    candidates = [*COLLECTORS, *((key, name, value, f"{key}: {value}") for key, value in places.items()
+        if value for name in ("1A", "1B")),
+        ("city", "1A", "Yepocapa,", "city: Yepocapa,"), ("city", "1B", "Yepocapa", "city: Yepocapa")]
+    for literal, reading, state in (("Yepocapa", "1B", ValueState.AMBIGUOUS), ("Yepocapa,", "1A", ValueState.SUPPORTED)):
+        rig = build_rig(tmp_path / reading, label_with(**places, city="Yepocapa,"), label_with(**places, city="Yepocapa"),
+            candidates=candidates)
+        naming(rig, 0)
+
+        async def city(task, readings, tools, literal=literal, reading=reading):
+            answer = await tools.lookup("geolocate", "Yepocapa, Chimaltenango, Guatemala", field_key=task.key)
+            return FieldOutcome(task.key, resolved(literal, reading=reading, value="Yepocapa",
+                authority_id=answer.candidates[0].authority_id, cited=[answer.evidence.id]),
+                evidence=[answer.evidence], model_calls=1)
+        settle(rig, Scripted({"country": from_tgn("Guatemala", "Guatemala", None, "tgn:7005493"),
+            "province_state": from_tgn("Chimaltenango", "Chimaltenango", None, "tgn:1000565"), "city": city}),
+            tools=Gazetteer(rig.blobs))
+        city = rig.specimen.run.fields["city"]
+        assert (city.state, city.literal) == (state, literal if state == ValueState.SUPPORTED else None)
+
+
+def test_a_decomposed_accent_is_found_where_the_reading_writes_it():
+    """Codex 3: both readers write "Cafe" with a combining acute accent; the candidate is
+    collapsed to NFC, one character for the accented "e". Its places are found in NFC and
+    given as the reading's own offsets, so the image naming the text there backs it, and it
+    clears."""
+    decomposed, composed = "Cafe\u0301 forest", "Caf\u00e9 forest"
+    assert agreement.literal_places("habitat: " + decomposed, composed) == [(9, 21)]
+    readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading",
+        "habitat: " + decomposed) for letter in "AB"))
+    task = task_of("habitat", readings, lambda text: text.split(": ")[1])
+    label = agreement.labels(task, readings, [])["r1"]
+    assert (label.settled, label.cleared) == (frozenset({composed}), True)
+
+
+def test_a_readers_own_spelling_is_its_text_whichever_reader_the_organiser_filed():
+    """Codex 4: A writes "shrubs", B "Shrubs", the image names A's text, and the organiser files
+    the habitat from 1B only. A's own text there is "shrubs" (agreement.own_text), so the label
+    settles on the image's spelling, cleared, and an answer of B's spelling is refused."""
+    readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading",
+        f"habitat: {text}") for letter, text in (("A", "shrubs"), ("B", "Shrubs"))), {"r1": "o1a"})
+    task = FieldTask("habitat", True, FieldValue(), (Candidate("1B", "habitat: Shrubs", "Shrubs", "ev-b"),),
+        FIELD_TOOLS["habitat"])
+    label = agreement.labels(task, readings, [])["r1"]
+    assert (label.settled, label.cleared) == (frozenset({"shrubs"}), True)
+    refused = agreement.refusal(task, readings, literal="Shrubs", named=[readings[1]], value=None,
+        authority_id=None, cited=[], received=[])
+    assert (refused.reason, refused.differ) == (agreement.DIFFER, True)
+
+
+def test_a_text_read_from_the_transcript_settles_on_the_image_alone(tmp_path):
+    """Codex 5: 1A writes "habitat: Shrubs", 1B "habitat: Shurbs", the organiser files no
+    habitat, and the image names 1A's text. The expert reads "Shrubs" from 1A's transcript;
+    1B's own text there, "Shurbs", is its candidate, and the image backs 1A's: cleared."""
+    rig = build_rig(tmp_path, TEXT.replace("Synthetic grassland", "Shrubs"),
+        TEXT.replace("Synthetic grassland", "Shurbs"), candidates=[c for c in every_field() if c[0] != "habitat"])
+    run = rig.specimen.run
+    naming(rig, 0)
+    settle(rig, Scripted({"habitat": answering(resolved("Shrubs", reading="1A"))}))
+    assert (run.fields["habitat"].state, run.fields["habitat"].literal) == (ValueState.SUPPORTED, "Shrubs")
+    assert findings(run, "habitat") == [(f"cleared:habitat:{run.regions[0].id}", "info")]
+
+
+def test_sources_cannot_resolve_on_a_label_nothing_backs_is_ambiguous_with_the_readers_texts(tmp_path):
+    """Codex 6, rule 6: 1A writes "Shrubs", 1B "Shurbs", the image is uncertain there, and the
+    expert answers sources_cannot_resolve: the habitat is ambiguous, each reader's text an
+    option. The resolver's fallback in place of an answer stays unresolved."""
+    from specimen_digitization.field_research.contracts import FieldAnswer
+
+    for fallback, state in ((False, ValueState.AMBIGUOUS), (True, ValueState.UNRESOLVED)):
+        rig = build_rig(tmp_path / str(fallback), TEXT.replace("Synthetic grassland", "Shrubs"),
+            TEXT.replace("Synthetic grassland", "Shurbs"), candidates=HABITATS)
+
+        async def declined(task, readings, tools):
+            return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve",
+                explanation="Nothing decides."), model_calls=1, fallback=fallback)
+        settle(rig, Scripted({"habitat": declined}))
+        habitat = rig.specimen.run.fields["habitat"]
+        assert habitat.state == state
+        if not fallback:
+            assert habitat.reason == "Nothing decides. Options: Shrubs; Shurbs."
+
+
+def test_a_shorter_readers_text_is_not_backed_through_the_longer_readers_image():
+    """Claude C1: A writes "Danaus plexippus megalippe", B "Danaus plexippus", the image names
+    each unit's text, and the organiser files the taxon from 1B only. A's own text at B's place
+    is the trinomial (the unit beside it where B wrote nothing is A's), so the binomial has no
+    backing of A's: the trinomial settles, and the binomial is refused."""
+    units = units_of("L", [{"a": "Danaus", "b": "Danaus"}, {"a": "plexippus", "b": "plexippus"},
+        {"a": "megalippe", "b": ""}], ["Danaus", "plexippus", "megalippe"])
+    a, b = reading_of("a", units), reading_of("b", units)
+    task = FieldTask("taxon", True, FieldValue(), (Candidate("1B", "Danaus plexippus", "Danaus plexippus", "ev-b"),),
+        FIELD_TOOLS["taxon"])
+    label = agreement.labels(task, (a, b), [])["L"]
+    assert label.settled == frozenset({"Danaus plexippus megalippe"})
+    refused = agreement.refusal(task, (a, b), literal="Danaus plexippus", named=[b], value=None,
+        authority_id=None, cited=[], received=[])
+    assert refused is not None and refused.differ
+    assert agreement.own_text(b, a, "Danaus plexippus") == frozenset({"Danaus plexippus megalippe"})
+
+
+def test_more_readers_rank_one_image_backed_text_above_another():
+    """Claude C2 (a), rule 5's readers tie-break: A and B write "Mindanao," over "Davao Prov.",
+    C "Mindanao," alone; the image names both texts. Both candidates have IMAGE and TEXT;
+    "Mindanao", which three readers write, settles marked, "Davao Prov." listed."""
+    texts = ("Mindanao,\nDavao Prov.", "Mindanao,\nDavao Prov.", "Mindanao,")
+    readings = with_units(three_readers(texts), {"r1": "o1a"})
+    task = FieldTask("province_state", True, FieldValue(), tuple(Candidate(name, text, literal, f"ev-{name}{literal}")
+        for name, text in zip(("1A", "1B", "1C"), texts) for literal in ("Davao Prov.", "Mindanao")
+        if literal in text), FIELD_TOOLS["province_state"])
+    label = agreement.labels(task, readings, [])["r1"]
+    assert {candidate.texts: (candidate.backings, candidate.readers) for candidate in label.candidates} == {
+        frozenset({"Mindanao"}): (frozenset({agreement.IMAGE, agreement.TEXT}), 3),
+        frozenset({"Davao Prov."}): (frozenset({agreement.IMAGE, agreement.TEXT}), 2)}
+    assert (label.settled, label.why, label.others) == (frozenset({"Mindanao"}), agreement.CONTESTED, ("Davao Prov.",))
+
+
+def test_a_text_beside_a_unit_its_reader_left_out_on_the_left_is_not_image_backed():
+    """Claude C2 (c), _bounded's leftward extension: A writes "E Slope Mt. McKinley", B
+    "Mt. McKinley", the image names A's text at each unit. B's text has no IMAGE backing (the
+    unit before it, where B wrote nothing, is not "not visible"); A's text settles cleared."""
+    units = units_of("L", [{"a": "E Slope", "b": ""}, {"a": "Mt.", "b": "Mt."}, {"a": "McKinley", "b": "McKinley"}],
+        ["E Slope", "Mt.", "McKinley"])
+    a, b = reading_of("a", units), reading_of("b", units)
+    assert not agreement.image_names(b, "Mt. McKinley") and agreement.image_names(a, "E Slope Mt. McKinley")
+    task = FieldTask("precise_location", True, FieldValue(), (
+        Candidate("1A", "E Slope Mt. McKinley", "E Slope Mt. McKinley", "ev-a"),
+        Candidate("1B", "Mt. McKinley", "Mt. McKinley", "ev-b")), FIELD_TOOLS["precise_location"])
+    label = agreement.labels(task, (a, b), [])["L"]
+    assert (label.settled, label.cleared) == (frozenset({"E Slope Mt. McKinley"}), True)
+
+
+@pytest.mark.parametrize(("second", "named"), [(UNCERTAIN, False), ("la", True)], ids=["one-uncertain", "both-named"])
+def test_the_image_must_name_a_text_at_every_place_the_reader_writes_it(second, named):
+    """Claude C2 (d): a reading writes "la" at two places; the image names it at the first. It
+    backs the text only when it names it at the second too."""
+    units = units_of("L", [{"a": "la", "b": "la"}, {"a": "x", "b": "x"}, {"a": "la", "b": "la"}], ["la", "x", second])
+    assert agreement.image_names(reading_of("a", units), "la") is named

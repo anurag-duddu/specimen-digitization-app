@@ -2190,9 +2190,10 @@ def create_app(
 
                 held = next((u for u in s.run.reading_units if u.label == body.target_id), None)
                 if transcript.resolved or held is None or PERSON in held.units[0].readers:
+                    # None: the text source holds no text, and the label keeps no units.
                     units = source_units(s.run, body.target_id)
-                    if units is not None:
-                        store_reading_units(s.run, [units])
+                    store_reading_units(s.run, [units] if units is not None else [],
+                                        dropped=() if units is not None else (body.target_id,))
             s.run.completed_steps = [
                 x
                 for x in s.run.completed_steps

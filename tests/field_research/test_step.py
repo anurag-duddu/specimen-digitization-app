@@ -194,7 +194,7 @@ def build_rig(tmp_path, text=TEXT, other=None, *, decided=False, candidates=COLL
     text becomes the label's transcript (G19); otherwise no reading is picked.
     With `refused` the workflow runs the first pass, which is refused on every
     attempt (each retry at its scheduled time) and given up on."""
-    if decided and other is not None and PATH == "units":
+    if decided and other is not None and other != text and PATH == "units":
         pytest.skip("`decided` has the old first pass pick reader 1A of readers that differ; the units path's "
             "first pass picks no reader")
     blobs = LocalBlobs(tmp_path / "blobs")

@@ -224,6 +224,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from functools import lru_cache
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -1512,8 +1513,8 @@ def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[Sourc
                 literals[name] = {text for text in literals[name]
                     if text == whole or not _within_runs(by_name[name].text, text, spans)}
     if any(reading.units is not None for reading in readings):
-        return labels_by_rule(task, regions, literals, allowed, answers, sourced=sourced, read_on=read_on,
-            answered=answered, held_of=lambda reading: (list(dict.fromkeys(_holding_across(reading.text, start, end)
+        return labels_by_rule(task, regions, literals, allowed, answers, sourced=sourced, answered=answered,
+            read_on=read_on, held_of=lambda reading: (list(dict.fromkeys(_holding_across(reading.text, start, end)
                 for start, end in spans_of.get(reading.name, ()))) if across
                 else holding_clauses(reading.text, transcript)))
     found: dict[str, Label] = {}
@@ -1633,16 +1634,36 @@ def _by_source(task: FieldTask, choices: frozenset[str], texts: frozenset[str],
 
 # ---- the units path: how a literal maps to the units that cover it, and the rule ----
 
+@lru_cache(maxsize=4096)
+def _normal(text: str) -> tuple[str, tuple[int, ...]]:
+    """The text in NFC (as collapse gives a literal) and, when that changes it, for each
+    offset j of the text the length of NFC(text[:j]); an empty tuple when NFC keeps it."""
+    normal = unicodedata.normalize("NFC", text)
+    if normal == text:
+        return text, ()
+    return normal, tuple(len(unicodedata.normalize("NFC", text[:j])) for j in range(len(text) + 1))
+
+
 def literal_places(text: str, literal: str) -> list[tuple[int, int]]:
-    """Where a reading writes the literal, as (start, end) code-point offsets, any run of
-    white space standing for each of its spaces: the places where it stands as whole words
-    (_places), else every place it stands, inside a word too ("6400" of "Elev.6400",
-    "Yepocapa" of "Yepocapa,4800"). Empty when it writes it nowhere."""
-    words = literal.split()
+    """Where a reading writes the literal, as (start, end) code-point offsets into the
+    reading, any run of white space standing for each of its spaces, both compared in NFC
+    (a literal is collapsed, so in NFC, where "e" and a combining acute accent are one
+    character): the places where it stands as whole words (_places), else every place it
+    stands, inside a word too ("6400" of "Elev.6400", "Yepocapa" of "Yepocapa,4800").
+    Empty when it writes it nowhere."""
+    words = unicodedata.normalize("NFC", literal).split()
     if not words:
         return []
+    normal, lengths = _normal(text)
     pattern = re.compile(r"\s+".join(re.escape(word) for word in words))
-    return _places(text, literal) or [match.span() for match in pattern.finditer(text)]
+    found = _places(normal, " ".join(words)) or [match.span() for match in pattern.finditer(normal)]
+    if not lengths:
+        return found
+    places = []
+    for start, end in found:
+        if start in lengths and end in lengths:
+            places.append((lengths.index(start), len(lengths) - 1 - lengths[::-1].index(end)))
+    return places
 
 
 def covering_units(reading: Reading, literal: str) -> list[list]:
@@ -1651,11 +1672,17 @@ def covering_units(reading: Reading, literal: str) -> list[list]:
     a literal that is a unit or a part of one, several for one that runs over units. Empty
     when the reading's label has no units, the units do not name the reading, or the
     reading writes the literal nowhere."""
+    return [cover for _, cover in _covered(reading, literal)]
+
+
+def _covered(reading: Reading, literal: str) -> list[tuple[tuple[int, int], list]]:
+    """Each place of the literal in the reading with the units covering it (covering_units)."""
     units = reading.units
     if units is None or reading.observation_id not in units.units[0].readers:
         return []
     key = reading.observation_id
-    return [[unit for unit in units.units if unit.readers[key].start < end and start < unit.readers[key].end]
+    return [((start, end), [unit for unit in units.units
+        if unit.readers[key].start < end and start < unit.readers[key].end])
         for start, end in literal_places(reading.text, literal)]
 
 
@@ -1699,32 +1726,64 @@ def image_names(reading: Reading, literal: str, *, exact: bool = False) -> bool:
     return True
 
 
-def writes_alike(reading: Reading, other: Reading, literal: str) -> bool:
-    """Whether `other` writes, at every unit covering the literal in `reading`, the same
-    text as `reading`, letter case and spacing aside, and not empty: the text it wrote at
-    the unit is the same ("Yepocapa,4800" beside "Yepocapa, 4800")."""
-    places = covering_units(reading, literal)
-    if not places or not all(places):
-        return False
-    for unit in (unit for place in places for unit in place):
-        theirs = unit.readers.get(other.observation_id)
-        if theirs is None or not theirs.text or (
-                agreement_key(theirs.text) != agreement_key(unit.readers[reading.observation_id].text)):
-            return False
-    return True
+def _key_offset(text: str, key: str) -> int | None:
+    """The least offset j of the text whose prefix text[:j] has the agreement key `key`."""
+    return next((j for j in range(len(text) + 1) if agreement_key(text[:j]) == key), None)
+
+
+def own_text(reading: Reading, other: Reading, literal: str) -> frozenset[str]:
+    """`other`'s own texts where `reading` writes the literal, collapsed: at each place
+    of it, the units covering the place with those beside it where `reading` wrote nothing
+    (_bounded), and there `other`'s text, when it wrote some. Where the literal is all
+    `reading` wrote at those units, that text is `other`'s whole text there ("Shurbs"
+    beside "Shrubs"; "Danaus plexippus megalippe" beside "Danaus plexippus"). Where the
+    literal is a part of it, `other`'s text there must be `reading`'s, letter case and
+    spacing aside, and its own spelling of the part is the one taken ("Yepocapa" of
+    "Yepocapa,4800" beside "Yepocapa" of "Yepocapa, 4800"); otherwise none."""
+    key, theirs_key = reading.observation_id, other.observation_id
+    found = set()
+    for (start, end), cover in _covered(reading, literal):
+        if not cover or theirs_key not in cover[0].readers:
+            continue
+        span = _bounded(reading, cover)
+        low, high = span[0].readers[key].start, span[-1].readers[key].end
+        their_low, their_high = span[0].readers[theirs_key].start, span[-1].readers[theirs_key].end
+        mine, theirs = reading.text[low:high], other.text[their_low:their_high]
+        if not theirs.strip():
+            continue
+        if collapse(reading.text[start:end]) == collapse(mine):
+            found.add(collapse(theirs))
+            continue
+        if agreement_key(mine) != agreement_key(theirs):
+            continue
+        first = _key_offset(theirs, agreement_key(reading.text[low:start]))
+        last = _key_offset(theirs, agreement_key(reading.text[low:end]))
+        if first is not None and last is not None:
+            part = collapse(theirs[first:last])
+            if part and agreement_key(part) == agreement_key(literal):
+                found.add(part)
+    return frozenset(found)
 
 
 def _texts_at_units(group: Sequence[Reading], literals: Mapping[str, Iterable[str]]) -> list[frozenset[str]]:
-    """Each reader's texts for the field: its own (`literals`), or, for a reader with none,
-    the texts of the label's other readers that it writes alike at their units
-    (writes_alike): what it wrote there is known from the units, so it writes them too."""
+    """Each reader's texts for the field: its own (`literals`), and, where another reader
+    of the label writes one of its texts at a place none of this reader's own texts
+    overlaps, this reader's own text there (own_text): what it wrote at those units is
+    known from them."""
     each = [frozenset(literals.get(reading.name, ())) for reading in group]
     found = []
     for reading, own in zip(group, each):
-        if not own:
-            own = frozenset(text for other, theirs in zip(group, each) if other is not reading
-                for text in theirs if writes_alike(other, reading, text))
-        found.append(own)
+        mine = [place for text in own for place in literal_places(reading.text, text)]
+        added = set()
+        for other, theirs in zip(group, each):
+            if other is reading or reading.units is None:
+                continue
+            for text in theirs:
+                for candidate in own_text(other, reading, text):
+                    places = literal_places(reading.text, candidate)
+                    if places and not any(low < end and start < high for start, end in places for low, high in mine):
+                        added.add(candidate)
+        found.append(own | added)
     return found
 
 
@@ -1740,34 +1799,50 @@ def _spelled(task: FieldTask, group: Sequence[Reading], each: Sequence[frozenset
     return _spelling(task, reading.name, {text for text in own if agreement_key(text) in keys})
 
 
+def _confirmed_group(task: FieldTask, groups: Sequence[frozenset[str]], answers: Sequence[SourceAnswer]
+        ) -> tuple[frozenset[str] | None, str | None]:
+    """_by_source over candidates (rule 1's groups of texts by agreement_key): the one group
+    a source confirms by its own name or expansion (identities), every text of every other
+    group ruled out (ruled_out, or for a place value field found_only_elsewhere), with
+    BY_SOURCE; else, when no group is so confirmed, the one group with a near spelling of a
+    source's one candidate, every other ruled out, with BY_NEAR_SPELLING; else (None, None)."""
+    for near, basis in ((False, BY_SOURCE), (True, BY_NEAR_SPELLING)):
+        ones = [group for group in groups if any(identities(answers, text, task.key, near=near) for text in group)]
+        if ones:
+            break
+    if len(ones) == 1 and all(ruled_out(answers, text) or found_only_elsewhere(answers, text, task.key)
+            for group in groups if group != ones[0] for text in group):
+        return ones[0], basis
+    return None, None
+
+
 def labels_by_rule(task: FieldTask, regions: Mapping[str, Sequence[Reading]],
         literals: Mapping[str, Iterable[str]], allowed: Mapping[str, Mapping[str, str]],
-        answers: Sequence[SourceAnswer], *, sourced: bool, read_on: frozenset[str], answered: frozenset[str],
+        answers: Sequence[SourceAnswer], *, sourced: bool, answered: frozenset[str], read_on: frozenset[str],
         held_of) -> dict[str, Label]:
     """`labels` on the units path: each label that writes the field, settled by the rule of
     FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4.
 
-    1. The candidates are the readers' texts for the field (their candidates and verbatims,
-       and the text read from the transcript, as `labels` gathers them; a reader with none
-       writes another reader's texts it writes alike at their units, _texts_at_units),
-       merged by agreement_key. For a place value field, texts a source confirms as one
-       authority, every text of the label confirmed (BY_SAME_PLACE's condition), are one
-       candidate; so are a text a source confirms by its own name, every other ruled out
-       (_by_source, BY_SOURCE), and the one other text one letter from it
-       (one_letter_apart): its literal is that other text when the image names it and not
-       the confirmed one, else the confirmed one, whose name is then its value through a
-       near spelling.
+    1. The candidates are the readers' own texts for the field: their candidates and
+       verbatims, the text read from the transcript, as `labels` gathers them, and each
+       reader's own text where another reader writes one of those (_texts_at_units),
+       grouped by agreement_key. For a place value field, the groups a source confirms as
+       one authority, every text of the label confirmed (BY_SAME_PLACE's condition), are one
+       candidate; so are the group a source confirms by its own name, every other ruled out
+       (_confirmed_group, BY_SOURCE), and the one other group one letter from it
+       (one_letter_apart).
     2. A label whose transcript a person decided (FirstPassAdvice.person_decided) settles
        on the person's text as `labels` settles it, cleared (BY_PERSON); a label whose
        person's reading writes nothing for the field takes no part unless the answer names
        one of its readers.
     3. A candidate's backings: IMAGE, the first pass names one of its texts where a reader
-       writes it (image_names); SOURCE, _by_source settles the label on one of its texts
-       (BY_SOURCE or BY_NEAR_SPELLING), or it is a merged candidate of point 1; TEXT,
-       MIN_BACKING_READERS or more readers of the label write it, or another label writes
-       it on which that many readers write it.
+       writes it (image_names); SOURCE, _confirmed_group gives it, or it is a merged
+       candidate of point 1; TEXT, MIN_BACKING_READERS or more readers of the label write
+       it, or another label writes it on which that many readers write it.
     4. Exactly one candidate has a backing: it settles, cleared with an IMAGE or a SOURCE
-       backing, else marked (TEXT_ONLY).
+       backing, else marked (TEXT_ONLY). A candidate settles on the text the image names
+       (_spelled), else, for one a source confirms, on the confirmed text, else the first
+       reader's; a same-place candidate the image names no single text of settles on each.
     5. Several have: with an IMAGE or a SOURCE backing among them, the best-backed settles
        (SOURCE above IMAGE above TEXT, then more readers, then the earlier reader), marked
        (CONTESTED), the others listed in Label.others; when two or more rank first alike
@@ -1775,9 +1850,9 @@ def labels_by_rule(task: FieldTask, regions: Mapping[str, Sequence[Reading]],
        options (Label.tied); with no IMAGE or SOURCE backing among them, the label does not
        settle, and the backed candidates' texts are its options.
     6. None has: the label does not settle.
-    Text read from the transcript keeps `labels`' rules on a label no person transcribed:
-    a reader that writes no text for the field leaves it unsettled (Label.unread), as do
-    readers whose clauses around the text differ (Label.around)."""
+    Text read from the transcript keeps one of `labels`' rules on a label no person
+    transcribed: readers whose clauses around the text differ leave it unsettled
+    (Label.around, "trap" beside "light trap")."""
     found: dict[str, Label] = {}
     prepared = {}
     agreed: dict[str, frozenset[str]] = {}
@@ -1809,76 +1884,74 @@ def labels_by_rule(task: FieldTask, regions: Mapping[str, Sequence[Reading]],
                 person=preferred.name, cleared=bool(settled))
             continue
         if region in read_on:
-            unread = frozenset(r.name for r, own in zip(group, each) if not own)
-            if unread:
-                found[region] = Label(texts, unread=unread)
-                continue
             held = {r.name: held_of(r) for r in group}
             keys = {frozenset(agreement_key(clause) for clause in clauses) for clauses in held.values() if clauses}
             if len(keys) > 1:
                 found[region] = Label(texts | frozenset(collapse(clause) for clauses in held.values()
                     for clause in clauses), around=True)
                 continue
-        found[region] = _settle_by_rule(task, region, group, each, writers, texts, answers, sourced=sourced,
+        found[region] = _settle_by_rule(task, group, each, writers, texts, answers, sourced=sourced,
             elsewhere=frozenset().union(*(keys for other, keys in agreed.items() if other != region)))
     return found
 
 
-def _settle_by_rule(task: FieldTask, region: str, group: Sequence[Reading], each: Sequence[frozenset[str]],
+def _settle_by_rule(task: FieldTask, group: Sequence[Reading], each: Sequence[frozenset[str]],
         writers: Mapping[str, set[str]], texts: frozenset[str], answers: Sequence[SourceAnswer], *,
         sourced: bool, elsewhere: frozenset[str]) -> Label:
     """One label no person transcribed, by points 1 and 3 to 6 of labels_by_rule;
     `elsewhere` holds the agreement keys of the texts another label backs as TEXT."""
     key_of = {text: agreement_key(text) for text in texts}
-    source = _by_source(task, texts, texts, answers) if sourced else None
-    confirmed = {text: identities(answers, text, task.key) for text in texts} if sourced else {}
-    if source is None and (task.key in PLACE_VALUE_FIELDS and confirmed and all(confirmed.values())
-            and frozenset.intersection(*(frozenset(ids) for ids in confirmed.values()))):
-        # Readers whose texts one authority confirms name one place: one candidate.
-        backed = Backed(texts, frozenset({SOURCE}), len(set().union(*writers.values())), 0)
-        return Label(texts, texts, by_source=True, basis=BY_SAME_PLACE, candidates=(backed,), cleared=True)
-    groups = [frozenset({key}) for key in dict.fromkeys(key_of[text] for text in sorted(texts))]
-    sourced_keys: frozenset[str] = frozenset()
-    one = None
-    near = None
-    if source is not None:
-        [one] = source.settled
-        sourced_keys = frozenset({key_of[one]})
-        if source.basis == BY_SOURCE and task.key in PLACE_VALUE_FIELDS:
-            close = {key_of[text] for text in texts if key_of[text] != key_of[one] and one_letter_apart(text, one)}
-            if len(close) == 1:
-                [near] = close
-                sourced_keys |= {near}
-                groups = [keys for keys in groups if not keys & sourced_keys] + [sourced_keys]
+    keys_in_order = list(dict.fromkeys(key_of[text] for text in sorted(texts)))
+    by_key = {key: frozenset(text for text in texts if key_of[text] == key) for key in keys_in_order}
     order = {reading.observation_id: index for index, reading in enumerate(group)}
+
+    def named(keys: frozenset[str]) -> bool:
+        return any(image_names(reading, text) for reading, own in zip(group, each) for text in own
+            if key_of.get(text, agreement_key(text)) in keys)
+
+    confirmed, basis = (_confirmed_group(task, list(by_key.values()), answers) if sourced else (None, None))
+    groups = [frozenset({key}) for key in keys_in_order]
+    sourced_keys: frozenset[str] = frozenset()
+    near: frozenset[str] = frozenset()
+    if confirmed is not None:
+        sourced_keys = frozenset(key_of[text] for text in confirmed)
+        if basis == BY_SOURCE and task.key in PLACE_VALUE_FIELDS:
+            close = {key_of[text] for text in texts if key_of[text] not in sourced_keys
+                and any(one_letter_apart(text, one) for one in confirmed)}
+            if len(close) == 1:
+                near = frozenset(close)
+        groups = [keys for keys in groups if not keys & (sourced_keys | near)] + [sourced_keys | near]
+    elif sourced and task.key in PLACE_VALUE_FIELDS:
+        identified = [frozenset(identities(answers, text, task.key)) for text in texts]
+        if all(identified) and frozenset.intersection(*identified):
+            # Readers whose texts one authority confirms name one place: one candidate, on
+            # the text the image names when it names the texts of one group alone, else on each.
+            seen = [key for key in keys_in_order if named(frozenset({key}))]
+            settled = (frozenset({_spelled(task, group, each, frozenset(seen))}) if len(seen) == 1 else texts)
+            backed = Backed(texts, frozenset({SOURCE}), len(set().union(*writers.values())), 0)
+            return Label(texts, settled, by_source=True, basis=BY_SAME_PLACE, candidates=(backed,), cleared=True)
 
     def backings(keys: frozenset[str]) -> frozenset[str]:
         kinds = set()
         if keys & sourced_keys:
             kinds.add(SOURCE)
-        if any(image_names(reading, text) for reading, own in zip(group, each) for text in own
-                if key_of.get(text, agreement_key(text)) in keys):
+        if named(keys):
             kinds.add(IMAGE)
         if len(set().union(*(writers.get(key, set()) for key in keys))) >= MIN_BACKING_READERS or keys & elsewhere:
             kinds.add(TEXT)
         return frozenset(kinds)
 
     candidates = []
+    literal_of = {}
     for keys in groups:
         ids = set().union(*(writers.get(key, set()) for key in keys))
-        candidates.append(Backed(frozenset(text for text in texts if key_of[text] in keys), backings(keys), len(ids),
-            min(order[i] for i in ids)))
-    literal_of = {}
-    for candidate, keys in zip(candidates, groups):
-        if keys == sourced_keys and one is not None:
-            literal_of[candidate] = one
-            if near is not None:
-                named_near = any(image_names(reading, text) for reading, own in zip(group, each) for text in own
-                    if key_of[text] == near)
-                named_one = any(image_names(reading, text) for reading, own in zip(group, each) for text in own
-                    if key_of[text] == key_of[one])
-                if named_near and not named_one:
-                    literal_of[candidate] = _spelled(task, group, each, frozenset({near}))
+        candidate = Backed(frozenset(text for text in texts if key_of[text] in keys), backings(keys), len(ids),
+            min(order[i] for i in ids))
+        candidates.append(candidate)
+        if sourced_keys and keys == sourced_keys | near:
+            # The confirmed candidate settles on the text the image names, else the confirmed text.
+            literal_of[candidate] = (_spelled(task, group, each, near) if near and named(near)
+                and not named(sourced_keys) else _spelled(task, group, each, sourced_keys))
         else:
             literal_of[candidate] = _spelled(task, group, each, keys)
     backed = [candidate for candidate in candidates if candidate.backings]
@@ -1901,13 +1974,13 @@ def _settle_by_rule(task: FieldTask, region: str, group: Sequence[Reading], each
     literal = literal_of[best]
     matched, matched_by = None, ()
     if SOURCE in best.backings:
-        basis = source.basis
-        if literal != one:
+        if key_of.get(literal, agreement_key(literal)) in near:
             # The image names the text one letter from the confirmed one: the label writes it,
             # and the confirmed name is its value through a near spelling.
-            basis, matched = BY_NEAR_SPELLING, one
+            basis = BY_NEAR_SPELLING
+            matched = _spelled(task, group, each, sourced_keys)
             matched_by = tuple(reading.name for reading, own in zip(group, each)
-                if any(key_of[text] == key_of[one] for text in own))
+                if any(key_of[text] in sourced_keys for text in own))
     elif IMAGE in best.backings:
         basis = BY_IMAGE
     else:
@@ -1937,21 +2010,17 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
     shown = "; ".join(repr(text) for text in every)
     if not found:
         return None
+    if any(reading.units is not None for reading in readings):
+        return _disagreement_by_rule(task, found, literal=literal, authority_id=authority_id, cited=cited,
+            answers=answers, sources=sources)
     unread = sorted(frozenset().union(*(label.unread for label in found.values())))
-    units = any(reading.units is not None for reading in readings)
     if unread:
         return Refusal(NOT_EVERY_READER, (
             f"You read {literal!r} from the transcript, and reading {', '.join(unread)} of the same "
             "label writes it nowhere (letter case and spacing aside), nor did the organiser find "
-            "other text for this field there. "
-            + ("On a label no person transcribed, text read from the transcript settles only when every "
-               "reader of the label writes it, or the same text at its unit. " if units else
-               "On a label whose first pass preferred no reader, text read from the transcript settles only "
-               "when every reader of the label writes it. ")
-            + "Answer several_possibilities with each reader's text, or sources_cannot_resolve."), differ=True)
-    if units:
-        return _disagreement_by_rule(task, found, literal=literal, authority_id=authority_id, cited=cited,
-            answers=answers, sources=sources)
+            "other text for this field there. On a label whose first pass preferred no reader, text "
+            "read from the transcript settles only when every reader of the label writes it. Answer "
+            "several_possibilities with each reader's text, or sources_cannot_resolve."), differ=True)
     conflicts = [label for label in found.values() if label.preference == CONFLICT]
     if conflicts:
         shown_here = "; ".join(repr(text) for text in sorted(frozenset().union(*(c.literals for c in conflicts))))
@@ -2024,8 +2093,8 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
 def _disagreement_by_rule(task: FieldTask, found: Mapping[str, Label], *, literal: str,
         authority_id: str | None, cited: Sequence[SourceAnswer], answers: Sequence[SourceAnswer],
         sources: frozenset[str]) -> Refusal | None:
-    """_disagreement on the units path, after its check of unread readers: the labels as
-    labels_by_rule settles them, with retries that name the rule's backings."""
+    """_disagreement on the units path: the labels as labels_by_rule settles them, with
+    retries that name the rule's backings."""
     settled = frozenset().union(*(label.settled for label in found.values()))
     shown = "; ".join(repr(text) for text in sorted(frozenset().union(*(label.literals for label in found.values()))))
     persons = [label for label in found.values() if label.person and collapse(literal) not in label.settled]

@@ -828,7 +828,7 @@ class WithMunicipio(Gazetteer):
             (("Chimaltenango", "tgn:1000565"), ("Guatemala", "tgn:7005493")))]}
 
 
-def test_a_county_never_takes_another_readers_spelling_of_the_settled_province(tmp_path, first_pass_path):
+def test_a_county_never_takes_another_readers_spelling_of_the_settled_province(tmp_path):
     """t1-329's county: the organiser filed the province only from 1B, so 1A
     writes no province text, and the province settles on 1B's
     "Chimaltenango" by TGN's exact match. The county's expert then read 1A's
@@ -836,10 +836,7 @@ def test_a_county_never_takes_another_readers_spelling_of_the_settled_province(t
     Chimaltenango, in Guatemala: the same word of the label as the
     province's, in another reader's spelling, so it is refused
     (IS_THE_PROVINCE) and the county does not settle. The real run settled
-    it as "Chimaltenago,", which the reference scores wrong. On the units
-    path, which prefers no reader, the county's text read from 1A's
-    transcript is refused before that check: 1B writes another text there
-    (NOT_EVERY_READER), and the county is ambiguous."""
+    it as "Chimaltenago,", which the reference scores wrong."""
     rig = t1_329_rig(tmp_path, province_readers=("1B",))
     run = rig.specimen.run
 
@@ -854,12 +851,8 @@ def test_a_county_never_takes_another_readers_spelling_of_the_settled_province(t
     province = run.fields["province_state"]
     assert (province.state, province.literal) == (ValueState.SUPPORTED, "Chimaltenango")
     place = run.fields["county"]
-    if first_pass_path == "units":
-        assert (place.state, place.literal) == (ValueState.AMBIGUOUS, None)
-        assert place.reason.startswith(agreement.NOT_EVERY_READER)
-    else:
-        assert (place.state, place.literal) == (ValueState.UNRESOLVED, None)
-        assert place.reason.startswith(agreement.IS_THE_PROVINCE)
+    assert (place.state, place.literal) == (ValueState.UNRESOLVED, None)
+    assert place.reason.startswith(agreement.IS_THE_PROVINCE)
     assert "mandatory_unresolved:county" in run.reasons
     assert "near_spelling:county" not in [f.reason_code for f in run.findings]
 

@@ -300,12 +300,21 @@ units (`test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version
 On the units path a person's transcription decision regenerates the label's units
 from its text source (work package 1.3; `application/api.py`, `first_pass.source_units`,
 each image `uncertain`): an edit gives units of the person's text, keyed `person`;
-an abstention after an edit gives the readings' alignment again; an abstention
-on the readings' units keeps them
+an abstention after an edit gives the readings' alignment again, or no units
+when the readings hold no text; an abstention on the readings' units keeps them
 (`test_a_person_s_edit_regenerates_the_label_s_units_from_the_person_s_text`,
-`test_an_abstention_after_an_edit_regenerates_the_units_from_the_readings_and_one_before_keeps_them`).
-The integrity check holds a label's units to that text source
-(`integrity.verify_evidence`).
+`test_an_abstention_after_an_edit_regenerates_the_units_from_the_readings_and_one_before_keeps_them`,
+`test_an_abstention_after_an_edit_of_readings_with_no_text_leaves_the_label_without_units`).
+On a units-path run the integrity check holds a label's units to that text source
+(`integrity.verify_evidence`); on an old-path run, to the readings
+(`test_an_old_path_record_with_units_keeps_them_through_a_person_s_edit_and_approval`).
+The deployed runtimes create old-path runs: the runtime settings set
+`SPECIMEN_FIRST_PASS_UNITS` to `off` for the API (`scripts/ci/runtime_settings.py:112`,
+since `427957877`), whose settings the intake job takes (`:127`), and
+`RuntimeConfig.from_env` refuses a value other than `on`, `off` or empty
+(`application/runtime_config.py:125-128`); so no production record a person edited
+under work package 1.2 holds the readings' units on a units-path run, and none needs a
+migration.
 Main before this package (work package 1.1 included) loads `Run.reading_units`
 but not `Run.first_pass_path` (`Record` refuses an unknown key), so the rollback
 boundary is the path field, in the run and in its previous runs. The rule: turn

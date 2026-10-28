@@ -1364,8 +1364,32 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
             else "B_declined:" + (why[0] if why else "unknown"))
         if unmatched is not None:
             return unmatched
+    if units_path(run) and not outcome.fallback and (options := _unsettled_options(task, readings, sources)):
+        # Units path, rules 5 and 6: an expert's sources_cannot_resolve on a label the rule
+        # does not settle leaves the field ambiguous, its readers' texts the options, as
+        # several_possibilities stores it. The resolver's fallback is no answer of the expert's.
+        decision["rule"] = "rule_unsettled"
+        return _unsettled(task, ValueState.AMBIGUOUS, cited=cited,
+            reason=answer.explanation + " Options: " + "; ".join(options) + ".")
     literal = answer.literal if answer.literal and any(answer.literal in r.text for r in readings) else current.literal
     return _unsettled(task, ValueState.UNRESOLVED, literal=literal, cited=cited, reason=answer.explanation)
+
+
+def _unsettled_options(task, readings, sources: Sequence[SourceAnswer]) -> list[str]:
+    """On the units path, the texts of the labels that write the field and that the rule
+    does not settle (agreement.labels_by_rule): a label's options when it has them (texts
+    against texts, or a tie), else its candidates' texts, each label's in its reading
+    order; empty when every label that writes the field settles."""
+    from .agreement import SOURCE_IDS, labels
+
+    tools = frozenset(task.tools) & SOURCE_IDS
+    options: list[str] = []
+    for label in labels(task, readings, [item for item in sources if item.source_id in tools]).values():
+        if label.settled:
+            continue
+        options += label.options or [min(candidate.texts) for candidate in sorted(label.candidates,
+            key=lambda candidate: candidate.first)]
+    return list(dict.fromkeys(options))
 
 
 # Owner decision B, 2026-10-09: a taxon whose label names no genus clears as

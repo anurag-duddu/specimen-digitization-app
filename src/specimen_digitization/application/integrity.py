@@ -145,13 +145,14 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
             from .reading_units import PERSON
 
             for entry in run.reading_units:
-                # Checked with `problems` against the entry's region's text source: a person's
-                # transcript (first_pass.person_decided), keyed PERSON, else its observations.
+                # Checked with `problems` against the entry's region's text source: on the units
+                # path a person's transcript (first_pass.person_decided), keyed PERSON, else its
+                # observations.
                 require(entry.label in regions)
                 transcript = next((t for t in run.transcripts if t.region_id == entry.label), None)
                 texts = (
                     {PERSON: transcript.text}
-                    if transcript is not None and person_decided(transcript)
+                    if units_path and transcript is not None and person_decided(transcript)
                     else {
                         o.id: o.literal_text
                         for o in run.observations

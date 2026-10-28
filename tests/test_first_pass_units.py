@@ -1592,6 +1592,69 @@ def test_an_abstention_after_an_edit_regenerates_the_units_from_the_readings_and
 # --------------------------------------------------------------------------- integrity, again
 
 
+def approve(workflow, principal, ident, key):
+    """A reviewer's approval of the record, posted to /decisions."""
+    from test_reading_units import app as workspace_app
+
+    http = workspace_app(workflow.repository)
+    body = http.get(f"/v1/organizations/{principal.scope.organization_id}/specimens/{ident}/workspace",
+                    headers={"Authorization": "Bearer A"}).json()
+    response = http.post(
+        f"/v1/organizations/{principal.scope.organization_id}/specimens/{ident}/decisions",
+        headers={"Authorization": "Bearer A", "Idempotency-Key": key},
+        json={"expected_revision": body["revision"], "base_record_version_id": body["record_version_id"],
+              "reason": "Reviewed", "kind": "approve"},
+    )
+    assert response.status_code == 200, response.text
+
+
+def test_an_abstention_after_an_edit_of_readings_with_no_text_leaves_the_label_without_units(
+    tmp_path, monkeypatch
+):
+    """Codex 7 of PR #425's review: the readers wrote only white space, so the label has no
+    units; a person's edit gives it units of the person's text; an abstention returns it to
+    the readings, which have none (first_pass.source_units gives None), so the entry goes,
+    and the run drains with its integrity held."""
+    from specimen_digitization.application.workflow import SyntheticAdapters
+
+    monkeypatch.setenv(SETTING, "on")
+    adapters = SyntheticAdapters(LocalBlobs(tmp_path / "blobs"), " ", " ")
+    workflow, principal, ident = start_run(tmp_path, adapters)
+    specimen = workflow.drain(principal, ident)
+    (region,) = specimen.run.regions
+    assert specimen.run.reading_units == []
+    decide(workflow, principal, ident, region.id, {"text": "taxon: as a person reads it", "state": "supported"},
+           "edit-1")
+    assert [entry.label for entry in workflow.repository.get(principal.scope, ident).run.reading_units] == [region.id]
+    decide(workflow, principal, ident, region.id, {"text": None, "state": "unreadable"}, "abstain-1")
+    assert workflow.repository.get(principal.scope, ident).run.reading_units == []
+    run = workflow.drain(principal, ident).run
+    assert run.blocker != "evidence_integrity_failure"
+
+
+def test_an_old_path_record_with_units_keeps_them_through_a_person_s_edit_and_approval(tmp_path, monkeypatch):
+    """Codex 8 of PR #425's review: integrity holds a person's units only on the units path. An
+    old-path record carrying the readings' units keeps them through a person's edit (the
+    decision regenerates units only on the units path), and integrity holds and its approval
+    leaves no integrity blocker."""
+    from specimen_digitization.application.integrity import verify_evidence
+
+    workflow, principal, ident, _ = drained(tmp_path, monkeypatch, switch="off")
+    specimen = workflow.drain(principal, ident)
+    (region,) = specimen.run.regions
+    units = alignment_units(region.id, [o for o in specimen.run.observations if o.region_id == region.id])
+    store_reading_units(specimen.run, [units])
+    workflow.repository.save(principal, specimen, specimen.version, "units", "units")
+    decide(workflow, principal, ident, region.id, {"text": "taxon: as a person reads it", "state": "supported"},
+           "edit-1")
+    edited = workflow.repository.get(principal.scope, ident)
+    assert (edited.run.first_pass_path, edited.run.reading_units) == (OLD, [units])
+    verify_evidence(edited, workflow.blobs)
+    workflow.drain(principal, ident)
+    approve(workflow, principal, ident, "approve-1")
+    assert workflow.repository.get(principal.scope, ident).run.blocker != "evidence_integrity_failure"
+
+
 def test_integrity_holds_a_label_s_units_to_its_text_source(tmp_path, monkeypatch):
     """A label whose transcript a person decided (first_pass.person_decided) holds units of the
     person's text, keyed `person`; any other label, units of its readings."""
