@@ -21,11 +21,13 @@ How labels are counted: by the app's own region step. `sam3_server.RunSegmenter`
 `sha256:9089029b241c8342be41225b51531bf0457f2db0c3b9896c844b22b3487ac9b8`) over the lab's `LocalObjects`, with the
 published profile's `segmentation_settings` (prompt "label", label threshold 0.5); the count is
 `label_coverage.check_coverage`'s `region_count` under the published coverage rule (regions merged at IoU 0.9). The
-slide's barcode label is a label region, so a slide with one handwritten label and its barcode counts 2. Run
-locally on CPU with no paid call: on the six pilot slides that the 2026-09-28 Docker lab segmented with the same
-checkpoint (transformers 5.14.0, torch 2.8.0), every region box and score is the same. The pilot slides count 2
-(321, 322, 323, 329, 330) or 3 (324 to 328), 25 labels; with the drawn 40, 65 labels in all. Every slide's coverage
-check is `confirmed`.
+slide's barcode label is a label region, so a slide with one handwritten label and its barcode counts 2: each of
+the 20 drawn slides holds one handwritten label and its barcode label, and behaviour across labels is measured on
+the pilot slides only (five of them, 324 to 328, have three labels). Run locally on CPU with no paid call: on the six
+pilot slides that the 2026-09-28 Docker lab segmented with the same checkpoint (transformers 5.14.0, torch 2.8.0,
+amd64; here torch 2.13.0, transformers 5.15.1, arm64), the boxes are equal and the scores within 3e-6 (four of the
+six differ at six decimals). The pilot slides count 2 (321, 322, 323, 329, 330) or 3 (324 to 328), 25 labels; with the
+drawn 40, 65 labels in all. Every slide's coverage check is `confirmed`.
 
 | Drawn, in order | Position | Catalogue number (QR) |
 |---|---|---|
@@ -57,13 +59,14 @@ check is `confirmed`.
   fixture author's interpretations where it says so (`:134`: CNHM read as the museum's old name, not a collector).
   The scorer reads its `expected` row; a scored field the row does not hold is absent (105526327's four elevation
   fields). The manifest records the fixture's digest and a test pins it.
-- **Drawn slides: none.** The museum's catalogue holds no record for them. Each slide's catalogue number was decoded
-  from its own QR code (zxing-cpp; no model, no pipeline output) and searched as an exact phrase in the museum's
-  public EMu-backed collections route (`FMNH_PUBLIC_COLLECTIONS_API_BASE_URL`, `collections-search`, catalog
-  Insects) on 2026-10-27: no record for any of the 29 slides whose code decoded, the ten pilot slides included,
-  while a published control number (FMNHINS 0005 238 368) was found. The EMu API needs credentials that are not
-  provisioned (`FMNH_EMU_API_*` are empty in `.env.example` and locally). So the 20 are measured for cleared /
-  marked / left without a value counts only.
+- **Drawn slides: none.** No truth could be obtained for them. Each slide's catalogue number was decoded from its
+  own QR code (zxing-cpp; no model, no pipeline output) and searched as an exact phrase in the museum's public
+  collections route (`FMNH_PUBLIC_COLLECTIONS_API_BASE_URL`, `collections-search`, catalog Insects) at
+  2026-10-28T01:33:35Z (UTC): no public-collections match for any of the 29 decoded catalogue numbers (the ten
+  pilot slides included), while a published control number (FMNHINS 0005 238 368) was found. 105526336's code did
+  not decode, so it was not searched. EMu API access is unavailable (`FMNH_EMU_API_*` are empty in `.env.example`
+  and locally). The truth source for the 20 is none: they are measured for cleared / marked / left without a value
+  counts only.
 - Fields without truth (collection code, county, city, habitat, collection method, verbatim D/T/S, taxon, date
   identified, identified-by IRN: the profile's 20 keys less the scorer's 11) are counts, never accuracy, on every
   specimen.
@@ -82,16 +85,22 @@ numbers, dates exactly, collectors and the catalogue number normalised).
 | absent | wrong (wrongly settled) | right | left without a value |
 
 A settled field is marked when the run carries the units path's code `marked:<field>:<label>:<why>` in its reasons
-or a finding's code; today's code writes none, so today every settled field is cleared. Right values (criterion
-1 (b)) are cleared right plus marked right. Criterion 2 counts the fields cleared with a value, unmarked, in both
-of two runs, and those among them whose compared values differ after normalisation (letters and digits, lower case;
-elevations as numbers). On the 2026-10-25 runs this definition gives 6 of 71 between the pair arm's repeats and
-2 of 58 between pair and three-reader repeat 1. The plan said 3 of 58 until this pull request, counting t1-329's
-collectors "R.D.Mitchell" against "R.D.mitchell", a difference of letter case only; its sentence now gives 2 of 58.
+or a finding's code; today's code writes none, so today every settled field is cleared. A field that is not
+settled is left without a value whatever text it keeps (an unresolved field may still hold a reader's literal).
+Right values (criterion 1 (b)) are cleared right plus marked right.
+
+Criterion 2: a field is cleared in a run when it is settled, with a value or as absent, and not marked. The fields
+compared are those cleared in both runs, and a difference is any change between the two cleared results: a value
+against absence, or two values whose compared values differ after `norm` (elevations as numbers). `norm` keeps ASCII
+letters and digits, lower case: a difference of letter case is none, but a letter with a diacritic is dropped
+("México" becomes "mxico"), so a diacritic-only difference counts. The plan's criterion 2 states this definition
+and quotes this baseline's numbers.
 
 `test_units_reference_score.py` pins the rule on fixed records (right, wrong, left without a value, absent; a
-marked value counted as marked, and as right when its value is right); `test_units_reference_manifest.py` fails
-when a digest, the seed or the truth file changes.
+marked value counted as marked, and as right when its value is right; an unresolved field keeping text left
+without a value; criterion 2 counting a cleared absence); `test_units_reference_manifest.py` pins the whole
+manifest's canonical digest and the fixture's digest, both written `sha256:<hex>`, and recomputes the draw from the
+sorted listing with the seed, so it fails when a digest, the seed or the truth file changes.
 
 Usage: `python tests/reference/units_program/score.py <run>/r1/pair.jsonl <run>/r1/three.jsonl ... [--json OUT]`.
 
@@ -101,8 +110,11 @@ Run on 2026-10-28 from 08:06Z to about 10:10Z in `~/specimen-golive/runs/units-b
 (7a09445a2, frozen as a `git archive` of its `src`), the pair arm (readers A and B) and the three-reader arm (A, B,
 C), two repeats each, all 30 specimens, the first pass live in every repeat (on the 37 labels whose two readings
 differ, 47 whose three do; 38, 38, 48 and 48 first-pass steps with retries), the organiser and field research
-live, geography on. All 120 specimen runs finalized with no step error. The full
-report, with every difference and the cost per run, is the run folder's `score_baseline.md`.
+live, geography on. All 120 specimen runs finalized with no step error. In pair repeat 2 the first pass gave up
+on two labels, 105526324-L2 and 105526329-L2 (finding `first_pass_given_up:<region>:model_malformed_response`,
+production's own given-up path), so that run stores 35 first-pass decisions against 37 in repeat 1; the other three
+runs gave none up. The full report, with every difference and the cost per run, is the run folder's
+`score_baseline.md`.
 
 The readers' texts are fixed in `readings.json`: three pilot labels whose crop is byte-identical to a 2026-10-25
 crop keep that day's A, B and C readings; the other 62 labels were read live once per route on 2026-10-27/28.
@@ -149,22 +161,27 @@ run), cleared with a value / cleared as absent / left without a value: 130 / 187
 
 ### Criterion 2
 
-| Comparison | Fields cleared with a value in both | Cleared on different values |
+| Comparison | Fields cleared in both (with a value or absent) | Differences |
 |---|---|---|
-| pair repeat 1 against pair repeat 2 (the noise floor) | 209 | 7 |
-| pair repeat 1 against three-reader repeat 1 | 197 | 7 |
-| pair repeat 2 against three-reader repeat 2 | 204 | 7 |
+| pair repeat 1 against pair repeat 2 (the noise floor) | 472 | 30 |
+| pair repeat 1 against three-reader repeat 1 | 459 | 30 |
+| pair repeat 2 against three-reader repeat 2 | 464 | 23 |
 
-The floor's seven: 105526322 collectors ("H. Hoogstraal leg." / "H. Hoogstraal"), 105526323, 105526325 and
-105526327 precise location (another reader's spelling, or more or less of the locality block), 105526617 country
-("Mexico" / "México"), 105526461 and 105526456 verbatim D/T/S (another line of the label). `score_baseline.md` lists every
-pair-against-three difference with whether the first pass's image judgement at that label differed.
+The floor's 30, on 17 specimens: 23 a value against absence (verbatim D/T/S 8, habitat 4, collection code 4, the
+three elevations derived on 105526324, and one each of city, collection method, collectors, precise location) and 7
+two different values (105526322 collectors "H. Hoogstraal leg." / "H. Hoogstraal"; 105526323, 105526325 and
+105526327 precise location, another reader's spelling or more or less of the locality block; 105526617 country
+"Mexico" / "México"; 105526461 and 105526456 verbatim D/T/S, another line of the label). `score_baseline.md` lists
+every difference, and for each pair-against-three one whether the first pass's image judgement at the label
+differed.
 
 ### Cost
 
 Estimate written into the run's ledger before any paid call: USD 7.592 by PLAN section 4's formula (field research
 7.332, first pass 0.26), plus the organiser's parse calls 0.247 and the live reader calls at most 0.214: USD 8.053
-at list in all, under the USD 10 limit; the baseline's ledger phase refused any step that could pass USD 7.90.
+at list in all. Limits: the plan's USD 8 at list per measurement by section 4's formula (7.592 before the run,
+7.3535 after), and the WP 0 brief's USD 10 at list in all, the estimate included; the baseline's ledger phase
+refused any step that could pass USD 7.90.
 Actual at list as booked: the baseline USD 7.3535 (the 120 runs USD 7.3198; the rest is a first launch whose two
 first specimens stopped at parse on a rig fault, USD 0.0036, and two holds that launch left open, USD 0.03; by
 kind, field research 7.0823, parse 0.1464, first pass 0.0948 and the holds), the readers USD 0.4885 (unanswered calls booked at their worst case, USD 0.02 each), probes

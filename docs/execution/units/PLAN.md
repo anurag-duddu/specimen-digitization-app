@@ -28,7 +28,9 @@ that package.
 The pipeline becomes: readers (N) -> first pass (reading units; never settles) -> field experts in
 parallel (the settlement rule, lookups, the ontology) -> one check stage -> a person for what is
 marked, ambiguous or unresolved. Measured on the reference set (WP 0), the steady state is reached
-when all three hold against the baseline:
+when all three hold against the baseline. Each of the reference set's 20 drawn "two-label" slides
+holds one handwritten label and its barcode label (the app's region step counts both), so behaviour
+across labels is measured on the pilot slides only (five of them have three labels):
 
 1. No more wrong values cleared, at least as many right values, no more fields left without a
    value; better on at least one. Scored per field by WP 0's scorer (the strict rule of the
@@ -50,13 +52,15 @@ when all three hold against the baseline:
    code on the whole reference set, both arms, two repeats; the 2026-10-25 numbers on 12 labels
    (primary 27 / 9 / 13 and 28 / 12 / 9 right / wrong / review;
    `~/specimen-golive/runs/free-harness-20261025/score_full.md`) are context only.
-2. Adding a reader changes no cleared value beyond noise. "Different value" is the scorer's
-   compared value (parsed, else normalized, else literal) after its normalisation. Per repeat, the
-   number of fields cleared on different values between the pair arm and the three-reader arm is at
-   most the number between the pair arm's own two repeats (the noise floor; on the 2026-10-25 runs
-   6 of 71 fields cleared in both pair repeats differ, and 2 of 58 between pair repeat 1 and
-   three-reader repeat 1, by WP 0's scorer; a third, t1-329's collectors "R.D.Mitchell" against
-   "R.D.mitchell", differs in letter case only, which the normalisation removes). Each
+2. Adding a reader changes no cleared value beyond noise. A field is cleared in a run when it is
+   settled, with a value or as absent, and not marked; the fields compared are those cleared in
+   both runs, and a difference is any change between the two cleared results: a value against
+   absence, or two values whose compared values (parsed, else normalized, else literal) differ after
+   the scorer's normalisation (ASCII letters and digits, lower case, elevations as numbers; a
+   diacritic-only difference counts). Per repeat, the number of differences between the pair arm
+   and the three-reader arm is at most the number between the pair arm's own two repeats (the
+   noise floor; on WP 0's baseline 30 of 472 fields cleared in both pair repeats differ, and 30 of
+   459 and 23 of 464 between the pair and three-reader arms in repeats 1 and 2). Each
    pair-versus-three difference is listed with whether the image judgement differed between the
    two runs. Above the floor, the phase stops. The judge's stability
    is measured per reader-difference span from the alignment, independent of the model's
@@ -91,7 +95,7 @@ readers and USD 0.000738 with three (`three-readers-20261025/fp_pair_reps*.jsonl
 
 | WP | Scope | Files | Model, effort | Acceptance |
 |---|---|---|---|---|
-| 0 Reference set, truth, scorer, baseline | Truth comes from the museum's own records only, never from pipeline output. (1) The ten pilot slides of `tests/fixtures/field_model_pilot_rows.json`, whose values are, in the fixture's own words, "hand-read from the images by go-live research session S8" and "a reading of the images, not a reader output" (`:2`), with the fixture's own interpretations where it says so (`:134`: its author, not S8, reads CNHM as the museum's old name, not a collector). (2) Twenty two-label slides from the 1,000 under `gs://specimen-digitization.firebasestorage.app/microscopic-slides/`: the object names sorted, shuffled by Python `random.Random(20261026)`, the first 20 in that order that are not pilot slides and whose label count is 2 by the app's own region step; WP 0 records how labels are counted and the list. Their truth from the museum's catalogue records (EMu), read-only, if WP 0 can obtain them; else those 20 are measured for cleared / marked / unresolved counts only and this row says so. Fields without truth (collection code, habitat, method, taxon) are counts, never accuracy. The scorer: the rig's `score.py` moved into the repository with tests. The baseline: today's main, both arms, two repeats, the whole set, live first pass | `tests/reference/units_program/manifest.json` (new), `tests/reference/units_program/score.py` (new), `tests/reference/units_program/README.md` (new); the run under `~/specimen-golive/runs/units-baseline-<date>/` | Opus 5.5, high (S7) | The manifest names 30 specimens with their label ids, blob digests and the seed; a test fails when a digest, the seed or the truth file changes; the scorer's tests pin the strict rule on fixed records (right, wrong, left without a value, absent; a marked value counted as marked, and as right when its value is right); the baseline report gives every count of criterion 1 with its denominator for both arms and both repeats; the truth source for the 20 is named (EMu, or none); cost at most USD 8 at list by section 4's formula, costed before the run |
+| 0 Reference set, truth, scorer, baseline | Truth comes from the museum's own records only, never from pipeline output. (1) The ten pilot slides of `tests/fixtures/field_model_pilot_rows.json`, whose values are, in the fixture's own words, "hand-read from the images by go-live research session S8" and "a reading of the images, not a reader output" (`:2`), with the fixture's own interpretations where it says so (`:134`: its author, not S8, reads CNHM as the museum's old name, not a collector). (2) Twenty two-label slides from the 1,000 under `gs://specimen-digitization.firebasestorage.app/microscopic-slides/`: the object names sorted, shuffled by Python `random.Random(20261026)`, the first 20 in that order that are not pilot slides and whose label count is 2 by the app's own region step; WP 0 records how labels are counted and the list. Their truth from the museum's catalogue records (EMu), read-only, if WP 0 can obtain them; else those 20 are measured for cleared / marked / unresolved counts only and this row says so. WP 0 could not obtain it: no public-collections match for the 29 decoded catalogue numbers, one code not decoded, no EMu API access; the 20 are measured as cleared / marked / left-without-a-value counts only. Fields without truth (collection code, habitat, method, taxon) are counts, never accuracy. The scorer: the rig's `score.py` moved into the repository with tests. The baseline: today's main, both arms, two repeats, the whole set, live first pass | `tests/reference/units_program/manifest.json` (new), `tests/reference/units_program/score.py` (new), `tests/reference/units_program/README.md` (new); the run under `~/specimen-golive/runs/units-baseline-<date>/` | Opus 5.5, high (S7) | The manifest names 30 specimens with their label ids, blob digests and the seed; a test fails when a digest, the seed or the truth file changes; the scorer's tests pin the strict rule on fixed records (right, wrong, left without a value, absent; a marked value counted as marked, and as right when its value is right); the baseline report gives every count of criterion 1 with its denominator for both arms and both repeats; the truth source for the 20 is named (EMu, or none); cost at most USD 8 at list by section 4's formula, costed before the run |
 
 ### Phase 1: the ontology's first version and the reading units
 

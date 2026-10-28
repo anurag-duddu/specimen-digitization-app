@@ -21,8 +21,11 @@ wrong (wrongly settled), else left without a value.
 Right values (criterion 1 (b)) are cleared right plus marked right. A specimen with no truth is counted
 (cleared, marked, left without a value) and never scored for accuracy.
 
-Criterion 2 compares two runs of the same specimens: the fields cleared with a value in both, and among them
-those whose compared values differ after `norm` (elevations compared as numbers).
+Criterion 2 compares two runs of the same specimens. A field is cleared in a run when it is settled (with a value
+or as absent) and not marked; the denominator is the fields cleared in both runs, and a difference is any change
+between the two cleared results: a value against absence, or two values whose compared values differ after `norm`
+(elevations compared as numbers). `norm` keeps ASCII letters and digits only, so a difference of letter case is
+none, while a letter with a diacritic is dropped ("México" -> "mxico") and a diacritic-only difference counts.
 
 Usage:
   python tests/reference/units_program/score.py RESULTS.jsonl [RESULTS.jsonl ...] [--json OUT]
@@ -211,8 +214,14 @@ def same_value(key, a, b):
     return norm(a) == norm(b)
 
 
+def cleared_result(field):
+    """What a cleared field holds, for criterion 2: its compared value, or "(absent)" when settled as absent."""
+    return compared_value(field) if settled(field) == "value" else "(absent)"
+
+
 def cleared_differences(rows_a, rows_b):
-    """Criterion 2: fields cleared with a value in both runs (unmarked), and those whose values differ."""
+    """Criterion 2: the fields cleared (settled with a value or as absent, unmarked) in both runs, and those whose
+    cleared results differ: a value against absence, or two values that differ after `norm`."""
     by_subject = {r["subject"]: r for r in rows_b}
     both, different = 0, []
     for a in rows_a:
@@ -222,12 +231,14 @@ def cleared_differences(rows_a, rows_b):
         marked_a, marked_b = marked_fields(a), marked_fields(b)
         for key, fa in (a.get("fields") or {}).items():
             fb = (b.get("fields") or {}).get(key) or {}
-            if (settled(fa) == "value" and settled(fb) == "value"
-                    and key not in marked_a and key not in marked_b):
-                both += 1
-                if not same_value(key, compared_value(fa), compared_value(fb)):
-                    different.append({"subject": a["subject"], "field": key,
-                                      "a": compared_value(fa), "b": compared_value(fb)})
+            how_a, how_b = settled(fa), settled(fb)
+            if how_a is None or how_b is None or key in marked_a or key in marked_b:
+                continue
+            both += 1
+            if how_a != how_b or (how_a == "value"
+                                  and not same_value(key, compared_value(fa), compared_value(fb))):
+                different.append({"subject": a["subject"], "field": key,
+                                  "a": cleared_result(fa), "b": cleared_result(fb)})
     return {"cleared_in_both": both, "different": len(different), "fields": different}
 
 

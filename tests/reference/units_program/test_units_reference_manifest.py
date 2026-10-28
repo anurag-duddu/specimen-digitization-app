@@ -12,27 +12,27 @@ MANIFEST = json.loads((HERE / "manifest.json").read_text())
 FIXTURE = ROOT / "tests" / "fixtures" / "field_model_pilot_rows.json"
 
 SEED = 20261026
-FIXTURE_SHA256 = "f327ca85d0e3b9b3359233b12780492b395f734cb4c1fb7787cb4a01f7126ffc"  # pragma: allowlist secret (file digest)
-# sha256 of the canonical JSON of the manifest's specimens (sort_keys, no spaces): every subject, object
-# generation, image and crop digest, label id and box.
-SPECIMENS_SHA256 = "be41d9c12d380e680bf2259a0e6adee0fd2ce91a86ad4069aef91a5f588682d9"  # pragma: allowlist secret (digest)
+FIXTURE_DIGEST = "sha256:f327ca85d0e3b9b3359233b12780492b395f734cb4c1fb7787cb4a01f7126ffc"
+# The canonical JSON (sort_keys, no spaces) of the whole manifest: every subject, object generation, image and
+# crop digest, label id and box, the draw, the region step's engine and checkpoint digest, the label counts and the
+# truth record.
+MANIFEST_DIGEST = "sha256:25daaf8b0376c037db17e1047d586e4dd6871f852c309aa3652e5bbd84c8bdc0"
 PILOT = [f"1055263{n}" for n in range(21, 31)]
 DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 
 
 def canonical(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
-                                     ensure_ascii=False).encode()).hexdigest()
+    return "sha256:" + hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
+                                                 ensure_ascii=False).encode()).hexdigest()
 
 
-def test_the_specimens_and_their_digests_are_the_recorded_ones():
-    assert canonical(MANIFEST["specimens"]) == SPECIMENS_SHA256
+def test_the_manifest_is_the_recorded_one():
+    assert canonical(MANIFEST) == MANIFEST_DIGEST
 
 
 def test_the_truth_file_is_the_one_the_manifest_names():
-    digest = hashlib.sha256(FIXTURE.read_bytes()).hexdigest()
-    assert digest == FIXTURE_SHA256
-    assert MANIFEST["truth"]["pilot"]["digest"] == "sha256:" + FIXTURE_SHA256
+    assert "sha256:" + hashlib.sha256(FIXTURE.read_bytes()).hexdigest() == FIXTURE_DIGEST
+    assert MANIFEST["truth"]["pilot"]["digest"] == FIXTURE_DIGEST
     rows = {r["subject"] for r in json.loads(FIXTURE.read_text())["rows"]}
     assert rows == set(PILOT)
 

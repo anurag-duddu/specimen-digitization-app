@@ -52,6 +52,13 @@ def test_a_field_with_no_entry_in_the_run_is_left_without_a_value():
     assert cells({})["date_visited_to"] == ("derived", "left_without_value")
 
 
+def test_a_field_not_settled_is_left_without_a_value_whatever_text_it_keeps():
+    # 105526322's pair runs keep reader text on an unresolved elevation: it is no value for a person.
+    field = {"state": "unresolved", "literal": "6400", "parsed": "6400"}
+    assert cells({"elevation_from_ft": field})["elevation_from_ft"] == ("primary", "left_without_value")
+    assert score.settled({"state": "ambiguous", "literal": "Davao"}) is None
+
+
 def test_a_supported_state_with_no_text_is_left_without_a_value():
     assert cells({"collectors": supported()})["collectors"] == ("primary", "left_without_value")
 
@@ -142,6 +149,27 @@ def test_criterion_two_counts_fields_cleared_in_both_runs_on_different_values():
     assert found["cleared_in_both"] == 3
     assert found["fields"] == [{"subject": "105526322", "field": "habitat", "a": "Mossy forest 6400'",
                                 "b": "Mossy forest"}]
+
+
+def test_criterion_two_counts_a_cleared_absence_as_cleared():
+    a = [row({"elevation_from_m": supported(parsed="1005.84"), "county": {"state": "not_present"},
+              "habitat": {"state": "not_present"}, "city": {"state": "not_present"}})]
+    b = [row({"elevation_from_m": {"state": "not_present"}, "county": {"state": "not_applicable"},
+              "habitat": supported("Forest"), "city": {"state": "unresolved"}})]
+    found = score.cleared_differences(a, b)
+    # city is not settled in b; county is absent in both (two absent states are one result).
+    assert found["cleared_in_both"] == 3
+    assert found["fields"] == [
+        {"subject": "105526322", "field": "elevation_from_m", "a": "1005.84", "b": "(absent)"},
+        {"subject": "105526322", "field": "habitat", "a": "(absent)", "b": "Forest"}]
+
+
+def test_criterion_two_ignores_letter_case_but_not_a_diacritic():
+    a = [row({"country": supported(parsed="Mexico"), "collectors": supported("R.D.Mitchell")})]
+    b = [row({"country": supported(parsed="México"), "collectors": supported("R.D.mitchell")})]
+    found = score.cleared_differences(a, b)
+    assert found["cleared_in_both"] == 2
+    assert [d["field"] for d in found["fields"]] == ["country"]
 
 
 def test_the_pilot_truth_is_the_fixture_and_the_drawn_slides_have_none():
