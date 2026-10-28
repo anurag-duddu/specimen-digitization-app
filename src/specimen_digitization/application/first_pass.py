@@ -885,7 +885,8 @@ def units_from_output(region_id: str, output: UnitsOutput, letters, segments) ->
 # The units path's request options over the route's own. Measured on GLM-5.3-Flash on Novita on
 # 2026-10-28 (~/specimen-golive/runs/units-wp12-20261028): at the route's "medium" a three-reader
 # units call reasoned 2,274 tokens and cost USD 0.0022 at list, twice the plan's bound of
-# 1.5 x USD 0.000738; at "low" it reasoned 0 to 252 and met it (docs/execution/units/PLAN.md, WP 1.2).
+# 1.5 x USD 0.000738; at "low" 24 three-reader calls reasoned 0 to 677 tokens and cost
+# USD 0.00078 on average (docs/execution/units/PLAN.md, WP 1.2).
 UNITS_REQUEST_OPTIONS = {"reasoning_effort": "low"}
 
 
