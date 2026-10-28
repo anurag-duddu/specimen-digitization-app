@@ -967,6 +967,16 @@ def d4_illinois():
         authority_id=found[0].candidates[0].authority_id, cited=[found[0].evidence.id]), found
 
 
+def same_town(literal, reading):
+    """Codex round 1, 2: 1A writes "city: Yepocapa,", 1B "city: Yepocapa", the image names 1A's
+    "Yepocapa,", and one GEOLocate answer confirms the town; the answer is `literal` from `reading`."""
+    found = _answer(Gazetteer, ("geolocate", "Yepocapa, Chimaltenango, Guatemala"), key="city")
+    readings = labelled([{"a": "city:", "b": "city:"}, {"a": "Yepocapa,", "b": "Yepocapa"}], ["city:", "Yepocapa,"])
+    town = found[0].candidates[0]
+    return readings, [("1A", "Yepocapa,"), ("1B", "Yepocapa")], "city", answered(literal, reading, value="Yepocapa",
+        authority_id=town.authority_id, cited=[found[0].evidence.id]), found
+
+
 SHRUBS = [{"a": "habitat:", "b": "habitat:"}, {"a": "Shrubs", "b": "Shurbs"}]
 DANAUS = [{"a": "Danaus", "b": "Danaus"}, {"a": "plexippus", "b": "plexippus"}, {"a": "megalippe", "b": ""}]
 LIGHT = [{"a": "light", "b": ""}, {"a": "trap", "b": "trap"}]
@@ -982,6 +992,9 @@ def rows():
             ["Illinois", "Indiana"], "Illinois", "1A", source="fake"), (S, "Illinois", "cleared")),
         ("codex1-1-image-names-indiana", lambda: place_row({"a": "Illinois", "b": "ILLINOIS", "c": "Indiana"}, "Indiana",
             ["Illinois", "Indiana"], "Illinois", "1A", source="fake"), (S, "Illinois", agreement.CONTESTED)),
+        # Codex round 1, 2: one town in two spellings, the image naming 1A's.
+        ("codex1-2-image-spelling", lambda: same_town("Yepocapa,", "1A"), (S, "Yepocapa,", "cleared")),
+        ("codex1-2-other-spelling", lambda: same_town("Yepocapa", "1B"), (S, "Yepocapa", "cleared")),
         # Codex round 1, 3: a decomposed accent.
         ("codex1-3-decomposed", lambda: (labelled([{"a": "Cafe\u0301", "b": "Cafe\u0301"}, {"a": "forest", "b": "forest"}],
             ["Cafe\u0301", "forest"]), [("1A", "Caf\u00e9 forest"), ("1B", "Caf\u00e9 forest")], "habitat",
