@@ -24,8 +24,10 @@ Right values (criterion 1 (b)) are cleared right plus marked right. A specimen w
 Criterion 2 compares two runs of the same specimens. A field is cleared in a run when it is settled (with a value
 or as absent) and not marked; the denominator is the fields cleared in both runs, and a difference is any change
 between the two cleared results: a value against absence, or two values whose compared values differ after `norm`
-(elevations compared as numbers). `norm` keeps ASCII letters and digits only, so a difference of letter case is
-none, while a letter with a diacritic is dropped ("México" -> "mxico") and a diacritic-only difference counts.
+(elevations compared as numbers). `norm` folds letter case and keeps ASCII letters and digits only, deleting every
+other character: "R.D.Mitchell" and "R.D.mitchell" are the same, "Mexico" and "México" differ ("mexico" against
+"mxico"), and "México" and "Mèxico" are the same ("mxico" both). Each difference carries its kind: "value_absent"
+when one run has a value and the other absence, "two_values" when both have values.
 
 Usage:
   python tests/reference/units_program/score.py RESULTS.jsonl [RESULTS.jsonl ...] [--json OUT]
@@ -237,7 +239,8 @@ def cleared_differences(rows_a, rows_b):
             both += 1
             if how_a != how_b or (how_a == "value"
                                   and not same_value(key, compared_value(fa), compared_value(fb))):
-                different.append({"subject": a["subject"], "field": key,
+                different.append({"subject": a["subject"], "field": key, "kind":
+                                  "value_absent" if how_a != how_b else "two_values",
                                   "a": cleared_result(fa), "b": cleared_result(fb)})
     return {"cleared_in_both": both, "different": len(different), "fields": different}
 

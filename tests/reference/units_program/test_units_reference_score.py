@@ -52,11 +52,16 @@ def test_a_field_with_no_entry_in_the_run_is_left_without_a_value():
     assert cells({})["date_visited_to"] == ("derived", "left_without_value")
 
 
-def test_a_field_not_settled_is_left_without_a_value_whatever_text_it_keeps():
-    # 105526322's pair runs keep reader text on an unresolved elevation: it is no value for a person.
-    field = {"state": "unresolved", "literal": "6400", "parsed": "6400"}
-    assert cells({"elevation_from_ft": field})["elevation_from_ft"] == ("primary", "left_without_value")
-    assert score.settled({"state": "ambiguous", "literal": "Davao"}) is None
+@pytest.mark.parametrize("state", ["unknown", "unresolved", "unreadable", "ambiguous"])
+def test_a_field_not_settled_is_left_without_a_value_whatever_text_it_keeps(state):
+    # 105526322's pair runs keep reader text on an unresolved elevation: it is no value for a person, in any state
+    # but supported (application/domain.py ValueState).
+    elevation = {"state": state, "literal": "6400", "parsed": "6400"}
+    collectors = {"state": state, "literal": "H. Hoogstraal"}
+    found = cells({"elevation_from_ft": elevation, "collectors": collectors})
+    assert found["elevation_from_ft"] == ("primary", "left_without_value")
+    assert found["collectors"] == ("primary", "left_without_value")
+    assert score.settled(collectors) is None
 
 
 def test_a_supported_state_with_no_text_is_left_without_a_value():
@@ -147,8 +152,8 @@ def test_criterion_two_counts_fields_cleared_in_both_runs_on_different_values():
     found = score.cleared_differences(a, b)
     # country is marked in b, city is not settled in a: neither counts; case and spacing are normalised away.
     assert found["cleared_in_both"] == 3
-    assert found["fields"] == [{"subject": "105526322", "field": "habitat", "a": "Mossy forest 6400'",
-                                "b": "Mossy forest"}]
+    assert found["fields"] == [{"subject": "105526322", "field": "habitat", "kind": "two_values",
+                                "a": "Mossy forest 6400'", "b": "Mossy forest"}]
 
 
 def test_criterion_two_counts_a_cleared_absence_as_cleared():
@@ -160,16 +165,22 @@ def test_criterion_two_counts_a_cleared_absence_as_cleared():
     # city is not settled in b; county is absent in both (two absent states are one result).
     assert found["cleared_in_both"] == 3
     assert found["fields"] == [
-        {"subject": "105526322", "field": "elevation_from_m", "a": "1005.84", "b": "(absent)"},
-        {"subject": "105526322", "field": "habitat", "a": "(absent)", "b": "Forest"}]
+        {"subject": "105526322", "field": "elevation_from_m", "kind": "value_absent", "a": "1005.84",
+         "b": "(absent)"},
+        {"subject": "105526322", "field": "habitat", "kind": "value_absent", "a": "(absent)", "b": "Forest"}]
 
 
-def test_criterion_two_ignores_letter_case_but_not_a_diacritic():
-    a = [row({"country": supported(parsed="Mexico"), "collectors": supported("R.D.Mitchell")})]
-    b = [row({"country": supported(parsed="México"), "collectors": supported("R.D.mitchell")})]
+def test_criterion_two_compares_ascii_letters_and_digits_folding_case():
+    # norm keeps ASCII letters and digits and folds case: "México" -> "mxico", "Mèxico" -> "mxico".
+    a = [row({"country": supported(parsed="Mexico"), "collectors": supported("R.D.Mitchell"),
+              "city": supported("México")})]
+    b = [row({"country": supported(parsed="México"), "collectors": supported("R.D.mitchell"),
+              "city": supported("Mèxico")})]
     found = score.cleared_differences(a, b)
-    assert found["cleared_in_both"] == 2
-    assert [d["field"] for d in found["fields"]] == ["country"]
+    assert found["cleared_in_both"] == 3
+    # 105526617's country in the baseline: two values, never a value against absence.
+    assert found["fields"] == [
+        {"subject": "105526322", "field": "country", "kind": "two_values", "a": "Mexico", "b": "México"}]
 
 
 def test_the_pilot_truth_is_the_fixture_and_the_drawn_slides_have_none():

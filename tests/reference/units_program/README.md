@@ -21,36 +21,40 @@ How labels are counted: by the app's own region step. `sam3_server.RunSegmenter`
 `sha256:9089029b241c8342be41225b51531bf0457f2db0c3b9896c844b22b3487ac9b8`) over the lab's `LocalObjects`, with the
 published profile's `segmentation_settings` (prompt "label", label threshold 0.5); the count is
 `label_coverage.check_coverage`'s `region_count` under the published coverage rule (regions merged at IoU 0.9). The
-slide's barcode label is a label region, so a slide with one handwritten label and its barcode counts 2: each of
-the 20 drawn slides holds one handwritten label and its barcode label, and behaviour across labels is measured on
-the pilot slides only (five of them, 324 to 328, have three labels). Run locally on CPU with no paid call: on the six
+slide's barcode label is a label region, so each of the 20 drawn slides holds one non-barcode label and its
+barcode label. Looked at slide by slide (the table below; crops and `kinds.json` in the run folder's
+`slides/drawn_labels/`), the non-barcode label is filled in by hand on 19 of the 20: 3 written by hand, 1 written by
+hand with a printed collector line, 9 printed LEWIS COLLECTION templates and 6 printed Siphonaptera of Utah templates
+filled in by hand; on 105526335 it is an unfilled LEWIS COLLECTION template (its only words, "LEWIS COLLECTION" and
+"col", are printed). Behaviour across labels is therefore measured on the pilot slides only: the five with three
+labels (105526324 to 105526328) hold two non-barcode labels each. Run locally on CPU with no paid call: on the six
 pilot slides that the 2026-09-28 Docker lab segmented with the same checkpoint (transformers 5.14.0, torch 2.8.0,
 amd64; here torch 2.13.0, transformers 5.15.1, arm64), the boxes are equal and the scores within 3e-6 (four of the
 six differ at six decimals). The pilot slides count 2 (321, 322, 323, 329, 330) or 3 (324 to 328), 25 labels; with the
 drawn 40, 65 labels in all. Every slide's coverage check is `confirmed`.
 
-| Drawn, in order | Position | Catalogue number (QR) |
-|---|---|---|
-| 105526596 | 10 | FMNHINS 0004 486 509 |
-| 105526452 | 15 | FMNHINS 0004 486 653 |
-| 105526348 | 17 | FMNHINS 0004 486 757 |
-| 105526487 | 23 | FMNHINS 0004 486 618 |
-| 105526371 | 24 | FMNHINS 0004 486 734 |
-| 105526632 | 26 | FMNHINS 0004 486 473 |
-| 105526446 | 30 | FMNHINS 0004 486 659 |
-| 105526617 | 35 | FMNHINS 0004 486 488 |
-| 105526448 | 36 | FMNHINS 0004 486 657 |
-| 105526461 | 37 | FMNHINS 0004 486 644 |
-| 105526647 | 48 | FMNHINS 0004 486 458 |
-| 105526490 | 51 | FMNHINS 0004 486 615 |
-| 105526468 | 53 | FMNHINS 0004 486 637 |
-| 105526336 | 54 | not decoded |
-| 105526369 | 65 | FMNHINS 0004 486 736 |
-| 105526459 | 67 | FMNHINS 0004 486 646 |
-| 105526359 | 71 | FMNHINS 0004 486 746 |
-| 105526456 | 76 | FMNHINS 0004 486 649 |
-| 105526335 | 84 | FMNHINS 0004 486 770 |
-| 105526522 | 107 | FMNHINS 0004 486 583 |
+| Drawn, in order | Position | Catalogue number (QR) | Non-barcode label |
+|---|---|---|---|
+| 105526596 | 10 | FMNHINS 0004 486 509 | written by hand |
+| 105526452 | 15 | FMNHINS 0004 486 653 | Siphonaptera of Utah template, filled in by hand |
+| 105526348 | 17 | FMNHINS 0004 486 757 | LEWIS COLLECTION template, filled in by hand |
+| 105526487 | 23 | FMNHINS 0004 486 618 | LEWIS COLLECTION template, filled in by hand |
+| 105526371 | 24 | FMNHINS 0004 486 734 | LEWIS COLLECTION template, filled in by hand |
+| 105526632 | 26 | FMNHINS 0004 486 473 | written by hand |
+| 105526446 | 30 | FMNHINS 0004 486 659 | Siphonaptera of Utah template, filled in by hand |
+| 105526617 | 35 | FMNHINS 0004 486 488 | written by hand |
+| 105526448 | 36 | FMNHINS 0004 486 657 | Siphonaptera of Utah template, filled in by hand |
+| 105526461 | 37 | FMNHINS 0004 486 644 | Siphonaptera of Utah template, filled in by hand |
+| 105526647 | 48 | FMNHINS 0004 486 458 | LEWIS COLLECTION template, filled in by hand |
+| 105526490 | 51 | FMNHINS 0004 486 615 | LEWIS COLLECTION template, filled in by hand |
+| 105526468 | 53 | FMNHINS 0004 486 637 | LEWIS COLLECTION template, filled in by hand |
+| 105526336 | 54 | not decoded | LEWIS COLLECTION template, filled in by hand |
+| 105526369 | 65 | FMNHINS 0004 486 736 | LEWIS COLLECTION template, filled in by hand |
+| 105526459 | 67 | FMNHINS 0004 486 646 | Siphonaptera of Utah template, filled in by hand |
+| 105526359 | 71 | FMNHINS 0004 486 746 | LEWIS COLLECTION template, filled in by hand |
+| 105526456 | 76 | FMNHINS 0004 486 649 | Siphonaptera of Utah template, filled in by hand |
+| 105526335 | 84 | FMNHINS 0004 486 770 | LEWIS COLLECTION template, unfilled |
+| 105526522 | 107 | FMNHINS 0004 486 583 | written by hand, printed collector line |
 
 ## Truth
 
@@ -92,13 +96,14 @@ Right values (criterion 1 (b)) are cleared right plus marked right.
 Criterion 2: a field is cleared in a run when it is settled, with a value or as absent, and not marked. The fields
 compared are those cleared in both runs, and a difference is any change between the two cleared results: a value
 against absence, or two values whose compared values differ after `norm` (elevations as numbers). `norm` keeps ASCII
-letters and digits, lower case: a difference of letter case is none, but a letter with a diacritic is dropped
-("México" becomes "mxico"), so a diacritic-only difference counts. The plan's criterion 2 states this definition
-and quotes this baseline's numbers.
+letters and digits and folds case, deleting every other character: "R.D.Mitchell" and "R.D.mitchell" are the same,
+"Mexico" and "México" differ ("mexico" against "mxico"), and "México" and "Mèxico" are the same ("mxico" both). The plan's criterion 2 states this definition
+and quotes this baseline's numbers. `score_baseline.md` labels each difference by the scorer's kind.
 
 `test_units_reference_score.py` pins the rule on fixed records (right, wrong, left without a value, absent; a
-marked value counted as marked, and as right when its value is right; an unresolved field keeping text left
-without a value; criterion 2 counting a cleared absence); `test_units_reference_manifest.py` pins the whole
+marked value counted as marked, and as right when its value is right; a field in any state but supported left
+without a value whatever text it keeps; criterion 2 counting a cleared absence, giving each difference its kind,
+"value_absent" or "two_values", and comparing ASCII letters and digits with case folded); `test_units_reference_manifest.py` pins the whole
 manifest's canonical digest and the fixture's digest, both written `sha256:<hex>`, and recomputes the draw from the
 sorted listing with the seed, so it fails when a digest, the seed or the truth file changes.
 
