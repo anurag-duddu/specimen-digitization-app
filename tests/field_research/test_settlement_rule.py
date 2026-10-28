@@ -639,3 +639,18 @@ def test_a_given_up_label_a_person_has_transcribed_since_no_longer_goes_to_revie
     person_transcribed(run, run.observations[0], actor="reviewer@example.org")
     field_step.refinalize(run)
     assert f"unresolved_transcription:{region}" not in run.reasons
+
+
+def test_two_literals_of_one_written_text_are_two_candidates():
+    """A limit of this package: both readers write "Elev.6400 ft", and the organiser gives 1A the
+    literal "Elev.6400 ft" and 1B "6400 ft". The image names the text there, so each literal has an
+    IMAGE backing; nothing merges texts of one place, so 1A's, the earlier reader's, settles
+    marked, 1B's listed."""
+    readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading",
+        "Elev.6400 ft") for letter in "AB"))
+    task = FieldTask("elevation_from_ft", True, FieldValue(), (Candidate("1A", "Elev.6400 ft", "Elev.6400 ft", "ev-a"),
+        Candidate("1B", "Elev.6400 ft", "6400 ft", "ev-b")), FIELD_TOOLS["elevation_from_ft"])
+    label = agreement.labels(task, readings, [])["r1"]
+    assert [candidate.backings for candidate in label.candidates] == [frozenset({agreement.IMAGE})] * 2
+    assert (label.settled, label.why, label.others) == (frozenset({"Elev.6400 ft"}), agreement.CONTESTED,
+        ("6400 ft",))
