@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from specimen_digitization.application.domain import ValueState
+
 SPEC = importlib.util.spec_from_file_location("units_program_score", Path(__file__).with_name("score.py"))
 score = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(score)
@@ -43,29 +45,52 @@ def test_the_strict_rule_reads_the_parsed_value_before_the_normalized_one():
     assert cells({"country": field})["country"] == ("primary", "cleared_wrong")
 
 
-@pytest.mark.parametrize("state", ["unknown", "unresolved", "ambiguous", "unreadable"])
-def test_a_field_not_settled_is_left_without_a_value(state):
-    assert cells({"collectors": {"state": state}})["collectors"] == ("primary", "left_without_value")
-
-
 def test_a_field_with_no_entry_in_the_run_is_left_without_a_value():
     assert cells({})["date_visited_to"] == ("derived", "left_without_value")
 
 
-@pytest.mark.parametrize("state", ["unknown", "unresolved", "unreadable", "ambiguous"])
-def test_a_field_not_settled_is_left_without_a_value_whatever_text_it_keeps(state):
-    # 105526322's pair runs keep reader text on an unresolved elevation: it is no value for a person, in any state
-    # but supported (application/domain.py ValueState).
-    elevation = {"state": state, "literal": "6400", "parsed": "6400"}
-    collectors = {"state": state, "literal": "H. Hoogstraal"}
-    found = cells({"elevation_from_ft": elevation, "collectors": collectors})
-    assert found["elevation_from_ft"] == ("primary", "left_without_value")
-    assert found["collectors"] == ("primary", "left_without_value")
-    assert score.settled(collectors) is None
+def test_the_scorer_groups_every_value_state_of_the_domain():
+    # A state added to application/domain.py fails here until the scorer places it.
+    states = {state.value for state in ValueState}
+    assert states == score.STATES
+    groups = (score.SETTLED_VALUE, score.SETTLED_ABSENT, score.UNSETTLED)
+    assert sum(len(g) for g in groups) == len(states)
+    with pytest.raises(ValueError):
+        score.settled({"state": "invented"})
 
 
-def test_a_supported_state_with_no_text_is_left_without_a_value():
-    assert cells({"collectors": supported()})["collectors"] == ("primary", "left_without_value")
+TEXTS = {  # the text a field can carry, the truth's collector "H. Hoogstraal" (PILOT_322)
+    "no text": {},
+    "literal only": {"literal": "H. Hoogstraal"},
+    "normalized only": {"normalized": "H. Hoogstraal"},
+    "parsed only": {"parsed": "H. Hoogstraal"},
+    "literal and normalized": {"literal": "H. Hoogstraal", "normalized": "H. Hoogstraal"},
+}
+# Per state: the outcome when the truth holds "H. Hoogstraal" and when it says the field is absent, each with
+# no text and with text.
+SETTLEMENT = {
+    "supported": {"truth": ("left_without_value", "cleared_right"), "absent": ("left_without_value", "cleared_wrong")},
+    "not_present": {"truth": ("cleared_wrong", "cleared_wrong"), "absent": ("cleared_right", "cleared_right")},
+    "not_applicable": {"truth": ("cleared_wrong", "cleared_wrong"), "absent": ("cleared_right", "cleared_right")},
+    "unknown": {"truth": ("left_without_value",) * 2, "absent": ("left_without_value",) * 2},
+    "unresolved": {"truth": ("left_without_value",) * 2, "absent": ("left_without_value",) * 2},
+    "unreadable": {"truth": ("left_without_value",) * 2, "absent": ("left_without_value",) * 2},
+    "ambiguous": {"truth": ("left_without_value",) * 2, "absent": ("left_without_value",) * 2},
+}
+
+
+@pytest.mark.parametrize("text", sorted(TEXTS))
+@pytest.mark.parametrize("state", sorted(state.value for state in ValueState))
+def test_every_value_state_with_every_kind_of_text_settles_by_the_strict_rule(state, text):
+    # supported settles a value when it has text; not_present and not_applicable settle absent whatever text they
+    # carry; unknown, unresolved, unreadable and ambiguous are left without a value whatever text they keep.
+    field = {"state": state, **TEXTS[text]}
+    with_text = text != "no text"
+    expected = {k: v for k, v in PILOT_322.items() if k != "collectors"}
+    found = cells({"collectors": field})["collectors"]
+    absent = cells({"collectors": field}, expected=expected)["collectors"]
+    assert found == ("primary", SETTLEMENT[state]["truth"][with_text])
+    assert absent == ("absent", SETTLEMENT[state]["absent"][with_text])
 
 
 def test_a_field_settled_absent_where_the_truth_holds_a_value_is_wrong():

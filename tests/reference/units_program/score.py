@@ -7,7 +7,8 @@ outcomes.
 
 The strict rule reads a field's value as its parsed value, else its normalized value, else its literal
 (`compared_value`), and `value_ok` compares it with the truth field by field. A field is settled when its
-state is `supported` with a value, or `not_present` / `not_applicable` (settled as absent). A settled field is
+state is `supported` with a value, or `not_present` / `not_applicable` (settled as absent, whatever text it carries);
+`unknown`, `unresolved`, `unreadable` and `ambiguous` are not settled, whatever text they keep. A settled field is
 marked when the run carries the units path's code `marked:<field>:<label>:<why>` in its reasons or in a
 finding's code (spec section 4, "Marked"); today's code writes no such code, so on today's code every settled
 field is cleared.
@@ -56,7 +57,13 @@ DERIVED = ("elevation_from_m", "elevation_to_m", "elevation_to_ft", "date_visite
 SCORED = PRIMARY + DERIVED
 CATEGORIES = ("primary", "derived", "absent")
 OUTCOMES = ("cleared_right", "cleared_wrong", "marked_right", "marked_wrong", "left_without_value")
+# The value states (application/domain.py ValueState), in three groups: settled with a value, settled as absent,
+# and not settled. A state outside them is refused.
+SETTLED_VALUE = {"supported"}
 SETTLED_ABSENT = {"not_present", "not_applicable"}
+UNSETTLED = {"unknown", "unresolved", "unreadable", "ambiguous"}
+STATES = SETTLED_VALUE | SETTLED_ABSENT | UNSETTLED
+TEXT = ("parsed", "normalized", "literal")
 COUNTRY = {"Philippines": {"philippines", "philippineislands", "republicofthephilippines"},
            "Guatemala": {"guatemala", "republicofguatemala"}}
 CORE = ("mckinley", "mckimley", "mtapo", "yepocapa", "slope")
@@ -101,9 +108,13 @@ def value_ok(key, field, expected):
 
 
 def settled(field):
-    """"value", "absent" or None (left without a value)."""
+    """"value" (supported, with text), "absent" (not_present or not_applicable, whatever text it carries) or None
+    (left without a value: supported with no text, or unknown, unresolved, unreadable or ambiguous whatever text
+    it keeps; also a field the run does not hold)."""
     state = field.get("state")
-    if state == "supported" and any(field.get(k) for k in ("parsed", "normalized", "literal")):
+    if state is not None and state not in STATES:
+        raise ValueError(f"unknown value state {state!r}")
+    if state == "supported" and any(field.get(k) for k in TEXT):
         return "value"
     return "absent" if state in SETTLED_ABSENT else None
 
