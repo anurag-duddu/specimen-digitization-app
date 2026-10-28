@@ -108,7 +108,7 @@ reads them.
 | 2 Coverage (G15) | `Run.coverage_check` (S3, section 4.1) | `EvidenceItem` with `source` `label-coverage-check`, outcome `recorded` and its own locator; a failed check also reaches the queue's reason codes and a hard `ValidationFinding` |
 | 3, 4 Readings | `Run.observations[]`, raw envelope at `raw_ref` | `ModelObservation` per reading: `independent` true, `stepKey` `transcribe:{region_id}:{route_id}`, `routeId`, `unreadableSpans`; `SourceAsset` kind `raw_response` for the envelope |
 | 5 Disagreement | `Transcript` alignment fields | `ReadingComparison` per pair of readings of a region, with the ratio and its components |
-| 6 First pass | `Transcript` per region, extended by S4 (section 4.2) | `TranscriptionVersion` with region, decision kind, selected reading and rationale; the first pass's model call as a `ModelObservation` with `independent` false and `stepKey` `first_pass:{region_id}`; `HarnessInput` per reading handed over |
+| 6 First pass | `Transcript` per region, extended by S4 (section 4.2); `Run.reading_units` | `TranscriptionVersion` with region, decision kind, selected reading and rationale, and the label's reading units when the run has them; the first pass's model call as a `ModelObservation` with `independent` false and `stepKey` `first_pass:{region_id}`; `HarnessInput` per reading handed over |
 | 7 Harness | S4's tool call records (section 4.3); `Run.lookups`; `Run.fields` | `ToolCall` per call attempt; `EvidenceItem` per lookup response; `FieldCandidate` per verbatim value, with its input source and the settled value; `CandidateEvidence` with its G23 relation |
 | 8 Queue | `Run.disposition`, `Run.reasons`, `Run.findings`, `Run.profile.policy_version`, `Run.fields`, `Run.field_groups` | `RecordVersion`, `ResolvedField` with `fieldGroup`, a hard `ValidationFinding` per reason code and a warning or info one per `Run.findings` entry; `Specimen.disposition` as today |
 | 9 Linkage | ids throughout | every row carries `runId` or a parent that does |
@@ -186,7 +186,7 @@ region.
 | `PipelineRun` | `traceId` (32 lowercase hex, recorded once) |
 | `LabelRegion` | `domainRegionId` (the domain's region id: SAM's, a corrected one, or `new-{microseconds}` for a region a person added; the row's own id is per run, section 5) |
 | `ModelObservation` | `routeId`, `unreadableSpans: [String!]` |
-| `TranscriptionVersion` | `regionId` (CONTRACTS.md 185), `decisionKind` (`identical_readings`, `first_pass` or `human`), `selectedObservationId` (the reading the first pass preferred: advice to the harness, which may settle a field on another reader's text when evidence backs it; null only when no reading was selected), `firstPassObservationId` (the first pass's model call), `rationale`. `unresolved` follows the one rule in section 4.2 |
+| `TranscriptionVersion` | `regionId` (CONTRACTS.md 185), `decisionKind` (`identical_readings`, `first_pass` or `human`), `selectedObservationId` (the reading the first pass preferred: advice to the harness, which may settle a field on another reader's text when evidence backs it; null only when no reading was selected), `firstPassObservationId` (the first pass's model call), `rationale`. `unresolved` follows the one rule in section 4.2. `readingUnits` (the label's reading units, section 4.2; null on a row written without them) |
 | `FieldCandidate` | `inputSource` (`decided_transcript` or `raw_reading`), `sourceTranscriptionId`, `sourceObservationId` |
 | `ResolvedField` | `fieldGroup` (`mandatory` or `optional`) |
 | `ValidationFinding` | `evidenceIds: [UUID!]` (the evidence behind the finding, all of the record version's run) |
@@ -251,6 +251,24 @@ The operation refuses a `raw_reading` handoff of the selected reading and a
 The writer maps `TranscriptionVersion.spans` from `differences`, and
 `alternatives` from the material differences whose verdict is `neither` or
 `uncertain`.
+
+**Reading units** (work package 1.1 of `docs/execution/units/PLAN.md`) sit on
+the run, not on the transcript: `Run.reading_units: list[ReadingUnits]`, one
+entry per label, omitted from the stored record while empty, so a run without
+units keeps its bytes (`tests/test_reading_units.py`). `ReadingUnits` is
+`label` (the region id) and `units`, at least one; each `ReadingUnit` holds the
+keys of `FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md` section 3: `id`
+(`<label>:<n>`, from 1 in reading order), `label`, `lines` (first and last,
+from 1), `readers` (per reading its `text`, `start` and `end`, Python string
+indices, so code points; every unit of a label names the same readings),
+`image` (one reader's text, `uncertain` or `not visible`), `means`, `role`
+(empty, `genus`, `species`, `author`, `day`, `month` or `year`), `fields` and
+`note` (`application/reading_units.py`). The writer sends a label's entry as
+`TranscriptionVersion.readingUnits` with `AppendTranscriptionVersionV3`, and the
+entry joins the decision's content, so other units are another version (section
+5). A label without units is written with `AppendTranscriptionVersionV2`
+exactly as before. The active graph's compact row keeps `reading_units` as an
+empty list, like the other per-label lists (`active_graph.run_summary`).
 
 **The unresolved rule** is the one definition of unresolved used everywhere. A
 region's decision is unresolved when no reading was selected (G19: material
@@ -426,11 +444,11 @@ comparison's fixed order (section 3.1):
 | `SourceAsset` other than the original | `asset/{specimen}/{bucket}/{object}/{generation}` |
 | `LabelRegion` | `region/{run}/{region}` |
 | `ProfileVersion` | `profile/{collection}/{profile key}/{version}/{config sha256}` |
-| `TranscriptionVersion` | `transcription/{run}/{region}/{digest of decision}` |
+| `TranscriptionVersion` | `transcription/{run}/{region}/{digest of decision}`; the decision includes the label's reading units when it has them |
 | `HarnessInput` | `handoff/{transcription version}/{observation}` |
 | `ReadingComparison` | `comparison/{run}/{region}/{left}/{right}` |
 | `ToolCall` | `tool-call/{run}/{call_key}` |
-| `FieldCandidate` | `candidate/{run}/{field key}/{observation or "-"}/{digest of value}` |
+| `FieldCandidate` | `candidate/{run}/{field key}/{observation or "-"}/{digest of value}`; for a candidate whose source transcription carries reading units, the key also ends with that transcription version's id |
 | `RecordVersion` | `record/{run}/{digest of disposition, reasons, summary, findings, field states and each field's resolved candidate}` |
 | `ResolvedField` | `{record version}/field/{field key}` |
 | `CandidateEvidence` | `candidate-evidence/{candidate}/{evidence}` |
@@ -548,7 +566,8 @@ The projection writes are in `dataconnect/connector/projection.gql`, all
 | `AppendLabelRegionV2` | `LabelRegion` with its `domainRegionId` (required), crop optional; supersedes only a region of its own run |
 | `AppendModelObservationV2` | `ModelObservation` (readings and first-pass calls) |
 | `AppendReadingComparisonV1` | `ReadingComparison`, in its fixed order |
-| `AppendTranscriptionVersionV2` | `TranscriptionVersion` with the section 3.2 columns; `human` needs a reviewer or above |
+| `AppendTranscriptionVersionV2` | `TranscriptionVersion` with the section 3.2 columns but `readingUnits`; `human` needs a reviewer or above |
+| `AppendTranscriptionVersionV3` | the same row and the same checks as V2, with `readingUnits` required; written only for a label that has reading units (section 4.2) |
 | `AppendHarnessInputV1` | `HarnessInput`, its role matching the decision's selection |
 | `AppendEvidenceItemV2` | `EvidenceItem`, locator optional; Google's rules in section 6 |
 | `AppendToolCallV1` | `ToolCall` |
@@ -760,6 +779,8 @@ against real PostgreSQL and the Data Connect emulator. It checks:
     no-pick `first_pass` decision with its `raw_reading` handoffs;
   - a G27 per-reader `raw_reading` candidate;
   - `identical_readings` and reviewer `human` decisions;
+  - a decision with the label's reading units (`AppendTranscriptionVersionV3`),
+    read back whole, under V2's rules and with its units required;
   - a crop with its parent asset, and a region with its crop;
   - a region superseding another of its run;
   - a Google `no_match` with no locator, recorded evidence linked to a

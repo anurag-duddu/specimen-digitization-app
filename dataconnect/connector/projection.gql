@@ -121,6 +121,23 @@ mutation AppendTranscriptionVersionV2($organizationId: UUID!, $collectionId: UUI
   }
   transcriptionVersion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, literalText: $literalText, spans: $spans, alternatives: $alternatives, unresolved: $unresolved, regionId: $regionId, decisionKind: $decisionKind, selectedObservationId: $selectedObservationId, firstPassObservationId: $firstPassObservationId, rationale: $rationale})
 }
+# AppendTranscriptionVersionV2 with the label's reading units, under the same checks. The writer uses it
+# only for a label that has units, so a label without them keeps V2 (DATA_CONTRACT.md 4.2).
+mutation AppendTranscriptionVersionV3($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $literalText: String!, $spans: Any!, $alternatives: Any!, $unresolved: Boolean!, $regionId: UUID!, $decisionKind: String!, $selectedObservationId: UUID, $firstPassObservationId: UUID, $rationale: String, $readingUnits: Any!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.decisionKind in ['identical_readings', 'first_pass', 'human'] && ((vars.decisionKind == 'first_pass') == (vars.firstPassObservationId != null)) && (vars.decisionKind == 'human' || vars.unresolved == (vars.selectedObservationId == null)) && (vars.decisionKind != 'human' || this.role in ['reviewer', 'manager', 'admin']) && (vars.decisionKind != 'identical_readings' || vars.rationale == null)") { active role canViewSensitive }
+  }
+  scope: query @redact {
+    pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimen { sensitive } }
+  }
+  parents: query @redact {
+    regions: labelRegions(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $regionId}, runId: {eq: $runId}}, limit: 1) @check(expr: "this.size() == 1", message: "region of another run") { id }
+    selected: modelObservations(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $selectedObservationId}, runId: {eq: $runId}, regionId: {eq: $regionId}, independent: {eq: true}}, limit: 2) @check(expr: "vars.selectedObservationId == null || this.size() == 1", message: "selected reading not of this region") { id }
+    firstPass: modelObservations(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $firstPassObservationId}, runId: {eq: $runId}, regionId: {eq: $regionId}, independent: {eq: false}}, limit: 2) @check(expr: "vars.firstPassObservationId == null || this.size() == 1", message: "first-pass call not of this region") { id }
+  }
+  transcriptionVersion_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, literalText: $literalText, spans: $spans, alternatives: $alternatives, unresolved: $unresolved, regionId: $regionId, decisionKind: $decisionKind, selectedObservationId: $selectedObservationId, firstPassObservationId: $firstPassObservationId, rationale: $rationale, readingUnits: $readingUnits})
+}
 # A handoff joins a decision and one of its region's readings, in the row's run. A decided
 # transcript is the decision's selected reading, and any other reading is a raw reading (S4, #98);
 # identical readings carry no note.
