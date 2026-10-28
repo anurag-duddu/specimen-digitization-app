@@ -140,6 +140,10 @@ WORKER = {
             # field_research/step.py; docs/execution/golive/FIELD_RESEARCH.md). "on" mounts the six-specialist
             # harness instead.
             "SPECIMEN_RESEARCH_HARNESS": "fields",
+            # The first pass v2, reading units (docs/execution/units/PLAN.md, WP 1.2): off. A run
+            # records the path it starts on and keeps it (application/first_pass.py); WP 1.8 turns
+            # this on once the runtime that reads units serves the API and the worker.
+            "SPECIMEN_FIRST_PASS_UNITS": "off",
             "SPECIMEN_WORKER_JOB": WORKER_JOB},  # The drain hands work left at its deadline to the next execution.
     "secret_env": {"HF_TOKEN": "huggingface-runtime-token", "LOGFIRE_TOKEN": "specimen-worker-logfire",
                    "SPECIMEN_WORKER_ACTOR_UID": "specimen-worker-actor-uid",

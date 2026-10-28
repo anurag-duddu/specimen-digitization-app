@@ -553,6 +553,12 @@ class Run(Record):
     )
     # One entry per paid call, with its usage and cost (LANE.md T2c).
     paid_calls: list[dict] = Field(default_factory=list, exclude_if=lambda value: not value)
+    # The first-pass path the run started on (application/first_pass.py, SPECIMEN_FIRST_PASS_UNITS),
+    # recorded when its dependencies are first pinned and kept for the whole run. Omitted on the
+    # old path, so a run that takes it keeps its stored bytes.
+    first_pass_path: Literal["old", "units"] = Field(
+        default="old", exclude_if=lambda value: value == "old"
+    )
     # Each label's reading units (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 3), one entry
     # per label. Omitted while empty, so a run without units keeps its stored bytes.
     reading_units: list[ReadingUnits] = Field(

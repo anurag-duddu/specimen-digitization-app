@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Protocol
@@ -28,6 +29,7 @@ from .domain import (
     Transcript,
     ValueState,
 )
+from .reading_units import ReadingUnits
 from .collection_runtime import (
     application_registry,
     SyntheticClassifier,
@@ -396,6 +398,11 @@ class PipelineAdapters(Protocol):
     def first_pass(
         self, specimen: Specimen, region: Region, readings: list[Observation]
     ) -> FirstPassDecision: ...
+    # The units path's first pass (first_pass.first_pass_units_direct): the label's reading
+    # units and the decision beside them, which names no reading.
+    def first_pass_units(
+        self, specimen: Specimen, region: Region, readings: list[Observation]
+    ) -> tuple[FirstPassDecision, ReadingUnits]: ...
     def lookup(self, name: str) -> Lookup: ...
 
 
@@ -842,6 +849,12 @@ class Workflow:
         parse_base = None
         try:
             if step == "pin_dependencies":
+                if "classify" not in run.completed_steps:
+                    # The run records its first-pass path when it starts and keeps it: the
+                    # re-pin after classify follows the run, never the process's switch.
+                    from .first_pass import first_pass_path
+
+                    run.first_pass_path = first_pass_path(os.environ)
                 retained_carries = copy.deepcopy(run.dependencies.get(CARRY_KEY, {}))
                 retained_regions = copy.deepcopy(run.dependencies.get(CARRY_REGIONS))
                 pinned = (
@@ -963,14 +976,22 @@ class Workflow:
                 region = next(r for r in run.regions if r.id == step.split(":", 1)[1])
                 readings = [o for o in run.observations if o.region_id == region.id]
                 from .first_pass import (
+                    UNITS,
                     UNRESOLVED_VERDICTS,
                     g19_pick,
                     give_up,
                     is_material,
                 )
+                from .reading_units import problems as unit_problems
 
+                units_path, units = run.first_pass_path == UNITS, None
                 try:
-                    decision = self.adapters.first_pass(specimen, region, readings)
+                    if units_path:
+                        decision, units = self.adapters.first_pass_units(
+                            specimen, region, readings
+                        )
+                    else:
+                        decision = self.adapters.first_pass(specimen, region, readings)
                 except AdapterFailure as failure:
                     if not self.first_pass_has_no_attempt_left(run, step, failure):
                         raise  # Retried, or a block that names its cause (below).
@@ -1008,16 +1029,48 @@ class Workflow:
                             for d in decision.differences
                         )
                         or g19_pick(selected, decision.differences) != selected
+                        # The units path: a decision that names no reading, and the label's
+                        # units, which tile its readings (section 3's checks).
+                        or units_path
+                        and (
+                            selected is not None
+                            or units is None
+                            or units.label != region.id
+                            or unit_problems(units, {o.id: o.literal_text for o in readings})
+                        )
                     ):
                         raise OperationalBlock("first_pass_contract_invalid")
                     run.first_pass_decisions = [
                         d for d in run.first_pass_decisions if d.region_id != region.id
                     ] + [decision]
+                    if units is not None:
+                        store_reading_units(run, [units])
                     call = decision.call
                     run.usage.tokens += call.input_tokens + call.output_tokens
             elif step == "adjudicate":
                 run.transcripts = []
                 decisions = {d.region_id: d for d in run.first_pass_decisions}
+                if run.first_pass_path == "units":
+                    # A label the first pass gave no units (one reading, or given up on) gets
+                    # them from the alignment, the image uncertain at each (section 3).
+                    from .first_pass import alignment_units
+
+                    held = {entry.label for entry in run.reading_units}
+                    store_reading_units(
+                        run,
+                        [
+                            units
+                            for region in run.regions
+                            if region.id not in held
+                            and (
+                                units := alignment_units(
+                                    region.id,
+                                    [o for o in run.observations if o.region_id == region.id],
+                                )
+                            )
+                            is not None
+                        ],
+                    )
                 for region in run.regions:
                     readings = [o for o in run.observations if o.region_id == region.id]
                     texts = list(dict.fromkeys(o.literal_text for o in readings))
@@ -1056,7 +1109,11 @@ class Workflow:
                         and not any(o.unreadable_spans for o in readings)
                     )
                     text, resolved, record = adjudication_record(
-                        readings, texts, resolved, decisions.get(region.id)
+                        readings,
+                        texts,
+                        resolved,
+                        decisions.get(region.id),
+                        keep_call=run.first_pass_path == "units",
                     )
                     run.transcripts.append(
                         Transcript(
@@ -2066,13 +2123,20 @@ class Workflow:
                 if key not in run.completed_steps:
                     return key
         if "adjudicate" not in run.completed_steps:
-            # Differing readings get the LLM first pass (HARNESS.md section 3).
+            # Differing readings get the LLM first pass (HARNESS.md section 3). On the units
+            # path every label with two readings or more gets it, agreed readings included,
+            # unless no reading holds text; a label with one reading gets its units from the
+            # alignment at adjudicate (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 3).
             for region in run.regions:
-                texts = {
-                    o.literal_text for o in run.observations if o.region_id == region.id
-                }
+                readings = [o for o in run.observations if o.region_id == region.id]
+                texts = {o.literal_text for o in readings}
                 key = f"first_pass:{region.id}"
-                if len(texts) > 1 and key not in run.completed_steps:
+                due = (
+                    len(readings) > 1 and any(text.strip() for text in texts)
+                    if run.first_pass_path == "units"
+                    else len(texts) > 1
+                )
+                if due and key not in run.completed_steps:
                     return key
         for step in (
             "adjudicate",
@@ -2291,6 +2355,13 @@ class SyntheticAdapters:
 
         return synthetic_decision(self.blobs, region, readings)
 
+    def first_pass_units(self, specimen, region, readings):
+        if not specimen.run.profile.synthetic:
+            raise OperationalBlock("synthetic_adapter_forbidden")
+        from .first_pass import synthetic_units
+
+        return synthetic_units(self.blobs, region, readings)
+
     def lookup(self, name):
         raw = (
             '{"synthetic":true,"name":' + __import__("json").dumps(name) + "}"
@@ -2304,6 +2375,19 @@ class SyntheticAdapters:
             raw_ref=self.blobs.put(raw),
             digest=hashlib.sha256(raw).hexdigest(),
         )
+
+
+def store_reading_units(run: Run, entries: list[ReadingUnits]) -> None:
+    """The run's reading units with these labels' entries replaced, in label order, built
+    whole and validated as the run validates the field (one entry per label): assigning the
+    list alone would skip the run's validators."""
+    labels = {entry.label for entry in entries}
+    order = {region.id: index for index, region in enumerate(run.regions)}
+    value = sorted(
+        [*(entry for entry in run.reading_units if entry.label not in labels), *entries],
+        key=lambda entry: order.get(entry.label, len(order)),
+    )
+    run.__pydantic_validator__.validate_assignment(run, "reading_units", value)
 
 
 def crop_bytes(blobs: BlobStore, specimen: Specimen, region: Region) -> bytes:

@@ -122,9 +122,23 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                     require(observation.input_asset_id == asset.id)
                 if observation.input_crop_ref is not None:
                     read(observation.input_crop_ref, observation.input_sha256)
-            from .first_pass import g19_pick
+            from .first_pass import UNITS, g19_pick
+            from .reading_units import problems as unit_problems
 
             decisions = {d.region_id: d for d in run.first_pass_decisions}
+            units_path = run.first_pass_path == UNITS
+            # A units-path decision names no reading (docs/execution/units/PLAN.md, WP 1.2).
+            require(not units_path or all(
+                d.selected_observation_id is None for d in run.first_pass_decisions
+            ))
+            for entry in run.reading_units:
+                # Each label's units name its own readings and tile them (section 3's checks).
+                require(entry.label in regions)
+                texts = {}
+                for ident in entry.units[0].readers:
+                    require(ident in observations and observations[ident].region_id == entry.label)
+                    texts[ident] = observations[ident].literal_text
+                require(not unit_problems(entry, texts))
             for transcript in run.transcripts:
                 require(transcript.region_id in regions)
                 # A region no reader read (every reader's attempts failed) keeps
@@ -170,7 +184,12 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                     require(transcript.text is None or transcript.text in literals)
                     selected = transcript.selected_observation_id
                     decision = decisions.get(transcript.region_id)
-                    if decision is not None:
+                    if decision is not None and units_path:
+                        # The units path calls the first pass on identical readings too; their
+                        # rule still decides the transcript, which records the call.
+                        require(transcript.decision_kind in {"first_pass", "identical_readings"})
+                        require(transcript.first_pass_call == decision.call)
+                    elif decision is not None:
                         require(transcript.decision_kind == "first_pass")
                     if transcript.decision_kind == "first_pass":
                         require(decision is not None)

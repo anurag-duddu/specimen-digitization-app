@@ -406,7 +406,7 @@ def test_supported_sdk_options_disable_ambient_native_exporters_and_credentials(
 
 @pytest.mark.parametrize("prompt_name", [
     "literal-label-transcription", "structured-field-extraction",
-    "transcription-disagreement-adjudication", "field-harness",
+    "transcription-disagreement-adjudication", "field-harness", "first-pass-units",
 ])
 def test_bounded_prompt_resolution_uses_code_fallback_without_remote_provider(
     tmp_path, monkeypatch, capfire, prompt_name
@@ -466,12 +466,17 @@ def test_bounded_prompt_resolution_uses_code_fallback_without_remote_provider(
         "structured-field-extraction": prompts._STRUCTURED_EXTRACTION_DEFAULT,
         "transcription-disagreement-adjudication": prompts._DISAGREEMENT_ADJUDICATION_DEFAULT,
         "field-harness": prompts._FIELD_HARNESS_DEFAULT,
+        "first-pass-units": prompts._FIRST_PASS_UNITS_DEFAULT,
     }
     expected = defaults[prompt_name]
+    from specimen_digitization import ontology
+
     for key, value in {
         "collection_profile_id": "synthetic-profile",
         "collection_name": "Synthetic collection",
         "schema_version": "synthetic-v1",
+        # The units path's first pass carries the ontology's first-pass text (WP 1.2).
+        "ontology": ontology.render(brief=True),
     }.items():
         expected = expected.replace("{{" + key + "}}", value)
     assert resolved.text == expected

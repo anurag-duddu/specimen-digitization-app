@@ -88,6 +88,17 @@ def test_only_worker_turns_the_research_harness_on():
     assert all(SETTING not in S.ROLES[role]["env"] for role in ("api", "sam"))
 
 
+def test_only_the_worker_carries_the_first_pass_units_switch_and_it_is_off():
+    # docs/execution/units/PLAN.md, WP 1.2: off by default. The worker's runs read it when they
+    # start; the API and SAM never do. WP 1.8 turns it on.
+    from specimen_digitization.application.first_pass import OLD, SETTING, first_pass_path
+
+    worker = D.role_env("worker", CHECKPOINT)
+    assert SETTING == "SPECIMEN_FIRST_PASS_UNITS" and worker[SETTING] == "off"
+    assert first_pass_path(worker) == OLD
+    assert all(SETTING not in S.ROLES[role]["env"] for role in ("api", "sam"))
+
+
 def test_the_api_and_the_worker_carry_the_same_nvidia_option():
     # NVIDIA_NEMOTRON_OPTION.md section 2: both processes load the published
     # profiles; the API copies a run's prices at queue time and the worker picks

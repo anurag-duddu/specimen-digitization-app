@@ -20,6 +20,7 @@ from .domain import (
 )
 from .field_resolution import Reading
 from .organiser import extraction_readings
+from .reading_units import ReadingUnits
 from .reliability import (
     AdapterFailure,
     ReadingStopped,
@@ -87,6 +88,20 @@ def _model_child(payload):
                 specimen, Region.model_validate(payload["region"]), payload["route"]
             )
             value = {"observation": observation.model_dump(mode="json")}
+        elif payload["operation"] == "first_pass" and payload.get("first_pass_path") == "units":
+            # The units path (first_pass.SETTING): the label's units beside the decision.
+            from .first_pass import first_pass_units_direct
+
+            decision, units = first_pass_units_direct(
+                adapter,
+                specimen,
+                Region.model_validate(payload["region"]),
+                [Observation.model_validate(o) for o in payload["readings"]],
+            )
+            value = {
+                "decision": decision.model_dump(mode="json"),
+                "units": units.model_dump(mode="json"),
+            }
         elif payload["operation"] == "first_pass":
             from .first_pass import first_pass_direct
 
@@ -201,6 +216,9 @@ def invoke_model(
             region=region.model_dump(mode="json"),
             readings=[o.model_dump(mode="json") for o in readings],
         )
+        if run.first_pass_path == "units":
+            # The child follows the run's path, never its own process's switch.
+            payload["first_pass_path"] = "units"
         step = "first_pass:" + region.id
     else:
         # The organiser reads every reading of every label, decided or raw: the
@@ -281,7 +299,17 @@ def invoke_model(
             or decision.call.input_asset_id != specimen.asset.id
         ):
             raise OperationalBlock("external_outcome_unknown")
-        return decision
+        if run.first_pass_path != "units":
+            return decision
+        # The units path: the parent validates the label's units as the run stores them
+        # (reading_units.ReadingUnits); the workflow's step checks them against the readings.
+        try:
+            units = ReadingUnits.model_validate(value["units"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise OperationalBlock("external_outcome_unknown") from exc
+        if units.label != region.id:
+            raise OperationalBlock("external_outcome_unknown")
+        return decision, units
     fields = {k: FieldValue.model_validate(v) for k, v in value["fields"].items()}
     evidence = [Evidence.model_validate(e) for e in value["evidence"]]
     tokens = value["tokens"]

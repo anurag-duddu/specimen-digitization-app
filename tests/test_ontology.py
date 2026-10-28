@@ -14,6 +14,8 @@ from specimen_digitization.field_research.prompts import FIELD_LABELS
 
 ROOT = Path(__file__).resolve().parents[1]
 RENDERED = Path(__file__).with_name("fixtures") / "ontology_v1_rendered.txt"
+# The first pass's text (WP 1.2): ontology.render(brief=True).
+RENDERED_BRIEF = Path(__file__).with_name("fixtures") / "ontology_v1_rendered_brief.txt"
 MOVED_AT = " at 7a09445a2"
 PLACE = (
     "a place; the sources decide which level it is (a country, a province or state, a county or municipio, a"
@@ -108,6 +110,41 @@ def test_the_loader_refuses_a_placeholder_it_cannot_match():
 
 def test_the_rendered_text_is_pinned():
     assert ontology.render() == RENDERED.read_text(encoding="utf-8")
+
+
+def test_the_first_pass_text_is_pinned():
+    assert ontology.render(brief=True) == RENDERED_BRIEF.read_text(encoding="utf-8")
+
+
+# What a model cannot use in its instructions: a code file or its lines, a work package, a
+# go-live gate, the PRD or a brief's history (WP 1.2, carried from Codex's review of PR #421).
+NOT_FOR_A_MODEL = re.compile(r"\.py\b|\b[\w/]+\.(?:txt|md|yaml)\b|:\d+(?:-\d+)?\b|\bWP \d|\bG\d{1,3}\b|\bPRD\b|\bbrief'?s?\b")
+
+
+@pytest.mark.parametrize("brief", [False, True], ids=["whole", "first pass"])
+def test_the_rendered_text_names_no_code_line_work_package_or_gate(brief):
+    assert NOT_FOR_A_MODEL.findall(ontology.render(brief=brief)) == []
+
+
+def test_the_first_pass_text_keeps_what_cuts_and_reads_a_unit_and_leaves_out_what_writes_a_value():
+    """The brief text carries every field by key, display name and Darwin Core term, every
+    routing entry, notation and question; the things, the fields' descriptions and the rule
+    for writing a literal are the experts' (the first pass writes no value)."""
+    loaded = ontology.ontology()
+    brief = ontology.render(brief=True)
+    for entry in loaded.fields:
+        assert f"- {entry.key} ({entry.label}), {entry.darwin_core}\n" in brief
+        assert entry.holds not in brief
+    for route in loaded.routing:
+        assert ", ".join(route.fields) in brief
+    for notation in loaded.notations:
+        assert ", ".join(f'"{form}"' for form in notation.written) in brief
+    for question in loaded.questions:
+        assert question.question in brief
+    for thing in loaded.things:
+        assert thing.examples not in brief
+    assert loaded.notation_rule not in brief and loaded.notation_rule in ontology.render()
+    assert len(brief) < len(ontology.render())
 
 
 # The eleven units of the pilot labels the plan names (WP 1.0's acceptance),
@@ -243,21 +280,21 @@ def test_a_form_matches_only_at_a_words_edge(text, notations):
 METRES = ("elevation_from_m", "elevation_to_m")
 METRES_MEANING = (
     'metres, the unit of an elevation; not metres when a capital "M" stands before a name or in a count of'
-    " males and females, which field_research/written.py decides (_a_name, written.py:451-462; _counts_sexes,"
-    " written.py:465-494; the unit decision, written.py:523-528), and WP 2.2 aligns this file with it"
+    " males and females"
 )
 
 
-def test_the_metres_meaning_states_the_capital_m_exception_and_names_written_py_as_its_judge():
+def test_the_metres_meaning_states_the_capital_m_exception_and_its_sources_name_written_py():
     """The file states the exception in words and leaves the decision to
-    field_research/written.py; it copies none of written.py's name or
-    sex-count logic (WP 2.2 aligns the two, docs/execution/units/PLAN.md:113)."""
+    field_research/written.py, which its sources cite; it copies none of written.py's name or
+    sex-count logic (WP 2.2 aligns the two, docs/execution/units/PLAN.md:113). The meaning is a
+    model's, so it names no code (WP 1.2)."""
     loaded = ontology.ontology()
     metres = next(notation for notation in loaded.notations if notation.id == "metres")
 
     assert loaded.advice("1200 m").means == (METRES_MEANING,)
+    assert NOT_FOR_A_MODEL.findall(METRES_MEANING) == []
     for lines in ("written.py:451-462", "written.py:465-494", "written.py:523-528"):
-        assert lines in METRES_MEANING
         assert f"src/specimen_digitization/field_research/{lines}" in metres.source
 
 

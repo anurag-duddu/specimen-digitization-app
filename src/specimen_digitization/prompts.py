@@ -14,6 +14,9 @@ class PromptName(StrEnum):
     STRUCTURED_EXTRACTION = "structured-field-extraction"
     DISAGREEMENT_ADJUDICATION = "transcription-disagreement-adjudication"
     FIELD_HARNESS = "field-harness"
+    # The first pass v2 (docs/execution/units/PLAN.md, WP 1.2): pinned only on a run that
+    # takes the units path (application/production.py, pin_dependencies).
+    FIRST_PASS_UNITS = "first-pass-units"
 
 
 class CollectionPromptInputs(BaseModel):
@@ -24,6 +27,13 @@ class CollectionPromptInputs(BaseModel):
     collection_profile_id: str = Field(min_length=1)
     collection_name: str = Field(min_length=1)
     schema_version: str = Field(min_length=1)
+
+
+class FirstPassUnitsPromptInputs(CollectionPromptInputs):
+    """The units path's first-pass inputs: the collection's, and the specimen ontology as the
+    first pass's instructions carry it (ontology.render, brief)."""
+
+    ontology: str = Field(min_length=1)
 
 
 class ResolvedPrompt(BaseModel):
@@ -149,6 +159,44 @@ never draw a conclusion without evidence. Never invent, complete, correct,
 expand or translate a literal. Return the requested structured output.
 """.strip()
 
+# The first pass v2 (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md sections 2 and 3): it cuts a
+# label into reading units, judges the image at each and settles nothing.
+_FIRST_PASS_UNITS_DEFAULT = """
+You are the first pass for {{collection_name}} using collection profile
+{{collection_profile_id}} and output schema {{schema_version}}.
+
+You work with biodiversity data. The image is one label of a natural-history
+specimen from {{collection_name}}: locality, elevation, collecting date,
+collector, taxon name, catalogue and slide codes, handwritten or typed.
+Independent machine readers transcribed it; their texts come cut into
+numbered segments at the spaces and line breaks they share.
+
+Group the segments into reading units, each one logical piece of the label: a
+word, a name, a number with its unit, a date, a code, or an abbreviation with
+what it qualifies. A unit may cross a line, but never joins pieces of two
+fields' values. For each unit:
+- image: the letter of the reader whose text the image shows there, even when
+  that reader alone wrote it; where all readers wrote the same and the image
+  shows it, the first reader's letter. "uncertain" only where the image does
+  not decide between differing texts; "not visible" where nothing is legible.
+  Never prefer a text because it reads more fluently: labels abbreviate,
+  misspell and use old or foreign place names.
+- means: your interpretation, if any: an expansion ("P.I.": Philippine
+  Islands), a normal form ("6-Sept-1946": 1946-09-06) or a role ("leg.":
+  collected by); never the text as written.
+- role: genus, species, author, day, month or year, only when the unit is
+  that part of a value alone.
+- fields: the field keys the unit could belong to, most likely first; none
+  for a unit that holds an open question below.
+- note: one short sentence, only for what the other keys do not say, such as
+  a mark one reader alone saw; never to restate the image or the meaning.
+
+You settle nothing: each field's expert decides with lookups. Return the
+requested structured output.
+
+{{ontology}}
+""".strip()
+
 PROMPT_VARIABLES = {
     PromptName.LITERAL_TRANSCRIPTION: logfire.template_var(
         name="prompt__literal_label_transcription",
@@ -174,6 +222,12 @@ PROMPT_VARIABLES = {
         default=_FIELD_HARNESS_DEFAULT,
         inputs_type=CollectionPromptInputs,
     ),
+    PromptName.FIRST_PASS_UNITS: logfire.template_var(
+        name="prompt__first_pass_units",
+        type=str,
+        default=_FIRST_PASS_UNITS_DEFAULT,
+        inputs_type=FirstPassUnitsPromptInputs,
+    ),
 }
 
 
@@ -184,8 +238,15 @@ def resolve_prompt(
     label: str | None = None,
     targeting_key: str | None = None,
 ) -> ResolvedPrompt:
-    """Resolve a managed prompt and retain the served version as run evidence."""
+    """Resolve a managed prompt and retain the served version as run evidence.
+
+    The units path's first-pass prompt carries the specimen ontology this code ships, so the
+    run's pinned text holds the version it was resolved with."""
     requested_label = label or os.getenv("LOGFIRE_PROMPT_LABEL", "development")
+    if name is PromptName.FIRST_PASS_UNITS and not isinstance(inputs, FirstPassUnitsPromptInputs):
+        from .ontology import render
+
+        inputs = FirstPassUnitsPromptInputs(**inputs.model_dump(), ontology=render(brief=True))
     variable = PROMPT_VARIABLES[name]
     with variable.get(
         inputs,

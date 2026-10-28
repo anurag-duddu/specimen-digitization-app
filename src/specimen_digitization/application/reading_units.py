@@ -2,15 +2,17 @@
 
 The record of FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 3, "What each unit holds",
 stored on the run (`Run.reading_units`, one entry per label). Work package 1.1 of
-docs/execution/units/PLAN.md stores and carries the record; nothing in this module makes units
-or settles a field on them.
+docs/execution/units/PLAN.md stores and carries the record; work package 1.2's first pass
+(application/first_pass.py) makes it. Nothing here settles a field.
 
-Only what a unit says about itself is checked here. Section 3's tiling and range checks need the
-readings' whole texts and are not made here.
+The models check what a unit says about itself. Section 3's tiling and range checks need the
+readings' whole texts: `problems` makes them on a label's units against its readings, for the
+first pass's answer, the workflow's step and the integrity check of a stored run.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -89,10 +91,14 @@ class ReadingUnit(_Record):
 
     @model_validator(mode="after")
     def names_a_reading(self):
+        # A reader that wrote nothing here has an empty text, which names nothing the image
+        # could show: the image is a reader's non-empty text, uncertain or not visible.
         if self.image not in {UNCERTAIN, NOT_VISIBLE} | {
-            reading.text for reading in self.readers.values()
+            reading.text for reading in self.readers.values() if reading.text
         }:
-            raise ValueError("The image names one reader's text, uncertain or not visible")
+            raise ValueError(
+                "The image names one reader's non-empty text, uncertain or not visible"
+            )
         return self
 
 
@@ -111,3 +117,93 @@ class ReadingUnits(_Record):
         if any(set(unit.readers) != readers for unit in self.units):
             raise ValueError("Every unit of a label names the label's same readers")
         return self
+
+
+# Section 3, "What code checks on every answer": the range. A range is a number or a date, a
+# joiner, then a number or a date of the same kind. The token rules (WP 1.2's decision):
+# - A value is digits, or a Roman month (I to XII, in capitals), and further such parts joined
+#   by ".", "/" or ",": "6400", "1,200", "1.5", "15.VII.1968", "7/15/68". It starts and ends at a
+#   word's edge, so no part of a letter-digit code ("1a2", "B12") is one.
+# - A sign ("+", "-" or the minus sign) belongs to a value only before a digit at the start of a
+#   token: "-20" is a value, so "6400 -7000" is two values and no range.
+# - A joiner is a hyphen or an en dash, with or without white space around it, or one of the
+#   words "to", "bis", "au" and "a" standing alone between white space.
+# - A value with a Roman month is a date, any other a number. The same kind: two numbers, two
+#   dates, or a number and a date that starts with a number (a day range: "12-15.VII.1968").
+# - Values joined in a chain are one range ("10-6-78" in a slide code).
+# A line-end hyphen inside a word ("Mos-\nsy") joins letters, never values, so it is no range.
+_MONTH = r"(?:XII|XI|IX|X|VIII|VII|VI|IV|V|III|II|I)"
+_PART = rf"(?:\d+|{_MONTH})"
+_VALUE = re.compile(
+    rf"(?:(?<!\S)[+\-\u2212](?=\d))?(?<!\w){_PART}(?:[./,]{_PART})*(?!\w)"
+)
+_JOINER = re.compile(r"\s*[-\u2013]\s*|\s+(?:to|bis|au|a)\s+", re.IGNORECASE)
+_DATE = re.compile(rf"(?<![A-Z]){_MONTH}(?![A-Z])")
+
+
+def _kind(value: str) -> str:
+    return "date" if _DATE.search(value) else "number"
+
+
+def _same_kind(left: str, right: str) -> bool:
+    kinds = _kind(left), _kind(right)
+    return kinds[0] == kinds[1] or (
+        kinds == ("number", "date") and right.lstrip("+-\u2212")[:1].isdigit()
+    )
+
+
+def range_spans(text: str) -> list[tuple[int, int]]:
+    """Each range in a reading as [start, end) code-point offsets, in reading order."""
+    values = list(_VALUE.finditer(text))
+    spans: list[list[int]] = []
+    for left, right in zip(values, values[1:]):
+        if _JOINER.fullmatch(text, left.end(), right.start()) and _same_kind(
+            left.group(), right.group()
+        ):
+            if spans and spans[-1][1] == left.end():
+                spans[-1][1] = right.end()
+            else:
+                spans.append([left.start(), right.end()])
+    return [(start, end) for start, end in spans]
+
+
+def splits_a_range(text: str, end: int, start: int) -> bool:
+    """Whether a boundary between two units, from `end` (where the first ends) to `start`
+    (where the next begins), lies inside a range of the reading `text`."""
+    return any(low < end and start < high for low, high in range_spans(text))
+
+
+def problems(units: ReadingUnits, readings: dict[str, str]) -> list[str]:
+    """Why a label's units fail section 3's checks against its readings, by reading key.
+
+    Tiling: every unit names exactly the label's readings; each reading's units, in order,
+    cover every character of it, with only white space before, between and after them; and a
+    unit holds some reader's text. Range: no unit ends inside a range of any reading.
+    """
+    if set(units.units[0].readers) != set(readings):
+        return ["the units do not name exactly the label's readings"]
+    found = []
+    for key, text in readings.items():
+        cursor, previous = 0, None
+        for unit in units.units:
+            span = unit.readers[key]
+            if (
+                span.start < cursor
+                or span.end > len(text)
+                or text[span.start : span.end] != span.text
+                or text[cursor : span.start].strip()
+            ):
+                found.append(f"{unit.id} does not go on in reading {key} where the unit before ended")
+                break
+            if previous is not None and splits_a_range(text, previous.end, span.start):
+                found.append(f"{unit.id} begins inside a range of reading {key}")
+            cursor, previous = span.end, span
+        else:
+            if text[cursor:].strip():
+                found.append(f"the units do not cover the end of reading {key}")
+    found += [
+        f"{unit.id} holds no reader's text"
+        for unit in units.units
+        if not any(span.text for span in unit.readers.values())
+    ]
+    return found
