@@ -108,6 +108,8 @@ API = {
         "SPECIMEN_CORS_ORIGINS": "https://specimen-digitization.web.app,https://specimen-digitization.firebaseapp.com",
         "SPECIMEN_READINESS_OBJECT": READINESS_OBJECT, "SPECIMEN_WORKER_JOB": WORKER_JOB,
         "SPECIMEN_INTAKE_JOB": INTAKE_JOB,
+        # WP 1.2's switch (application/reading_units.py, first_pass_path); WP 1.8 turns it on.
+        "SPECIMEN_FIRST_PASS_UNITS": "off",
     },
     "secret_env": {"LOGFIRE_TOKEN": "specimen-worker-logfire", "SPECIMEN_SOURCE_REGISTRY_JSON": "specimen-source-registry",
                    "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings",

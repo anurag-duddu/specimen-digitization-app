@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import time
 from uuid import NAMESPACE_URL, uuid4, uuid5
 from PIL import Image
 
+from .reading_units import first_pass_path
 from .domain import Asset, AuditEvent, Profile, Run, Specimen, now
 from .intake_image import verify_photo
 from .intake_models import Draft, DraftItem, Submission, SubmissionItem, SourceReference, MAX_PHOTOS, TERMINAL
@@ -653,7 +655,8 @@ class IntakeService:
                 existing = Specimen(id=ident(id, 'specimen'), scope=p.scope,
                     batch_id=ident(submission['id'], str(entry['photo_sensitive'])),
                     run=Run(profile=Profile(synthetic=self.synthetic,
-                        institutional_policy_approved=self.synthetic, semantics_confirmed=self.synthetic)), asset=asset)
+                        institutional_policy_approved=self.synthetic, semantics_confirmed=self.synthetic),
+                        first_pass_path=first_pass_path(os.environ)), asset=asset)
                 existing.audit.append(AuditEvent(actor=p.user_id, action='ingest', reason='Explicit batch submission; verified immutable original'))
                 self.queue_specimen(existing, p.user_id)
                 existing = self.repo.create(p, existing, 'bulk:' + id,

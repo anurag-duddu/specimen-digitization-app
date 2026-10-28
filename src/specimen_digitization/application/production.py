@@ -1415,9 +1415,12 @@ class ProductionAdapters:
             collection_name="Insects",
             schema_version=run.profile.schema_version,
         )
+        # FIRST_PASS_UNITS is pinned on a units-path run only.
+        units = getattr(run, "first_pass_path", "old") == "units"
         prompts = {
             name.value: resolve_prompt(name, inputs).model_dump(mode="json")
             for name in PromptName
+            if units or name is not PromptName.FIRST_PASS_UNITS
         }
         # A reader is pinned from the reader routes only (the initial pair and
         # the NVIDIA option's); a stage route named as a reader raises.
@@ -1486,6 +1489,17 @@ class ProductionAdapters:
     def first_pass(self, specimen, region, readings):
         from .model_runtime import invoke_model
 
+        return invoke_model(
+            self, specimen, "first_pass", region=region, readings=readings
+        )
+
+    def first_pass_units(self, specimen, region, readings):
+        """The units path's first pass in the model child; returns (decision, units). Refused
+        on an old-path run."""
+        from .model_runtime import invoke_model
+
+        if specimen.run.first_pass_path != "units":
+            raise OperationalBlock("first_pass_contract_invalid")
         return invoke_model(
             self, specimen, "first_pass", region=region, readings=readings
         )

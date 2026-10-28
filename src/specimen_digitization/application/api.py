@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import hmac
 import io
+import os
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
@@ -16,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import Field
 from PIL import Image, UnidentifiedImageError
 
+from .reading_units import first_pass_path
 from .domain import (
     Asset,
     AuditEvent,
@@ -1439,7 +1441,7 @@ def create_app(
             id=doc["specimen_id"],
             scope=p.scope,
             batch_id=doc["batch_id"],
-            run=Run(profile=profile),
+            run=Run(profile=profile, first_pass_path=first_pass_path(os.environ)),
             asset=Asset(
                 sensitive=doc.get("sensitive", True),
                 id=doc["asset_id"],
@@ -2646,6 +2648,7 @@ def create_app(
         old = s.run.model_copy(deep=True)
         s.previous_runs.append(old)
         s.run = Run(
+            first_pass_path=first_pass_path(os.environ),
             profile=old.profile,
             profile_snapshot=old.profile_snapshot,
             profile_rules=old.profile_rules,
@@ -2709,6 +2712,7 @@ def create_app(
             raise ValueError("Published profile unavailable: " + resolution.reason)
         s.previous_runs.append(s.run)
         s.run = Run(
+            first_pass_path=first_pass_path(os.environ),
             profile=s.run.profile,
             classification_selection=ManualSelection(
                 collection_id=body.profile_collection_id,
@@ -2859,7 +2863,8 @@ def create_app(
                         raise Conflict("Reprocessing cannot discard retained human field selections")
                     from .human_field_carry import prepare, install, keep_regions
                     next_run = Run(profile=s.run.profile,
-                        classification_selection=s.run.classification_selection)
+                        classification_selection=s.run.classification_selection,
+                        first_pass_path=first_pass_path(os.environ))
                     action_event = AuditEvent(actor=user, action=body.action, reason=body.reason)
                     carries = prepare(repository, s, next_run.id, action_event, blobs)
                     keep_regions(action_event, s.run, next_run)

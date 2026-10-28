@@ -238,12 +238,11 @@ fields:
       Text transcribed exactly as written: a non-standard collection-event
       date or time expression, such as "Avril 1917", "Summer 1914", "am",
       "pm", "sunrise" or "daylight".
-    note: >-
-      The brief's first line says the museum has not confirmed what the field
-      holds; the PRD records the collection manager's answer of 2026-10-07,
-      and WP 1.7 replaces the brief's sentence. No document of this
-      repository names its Darwin Core term: verbatimEventDate is Darwin
-      Core's term for an event's date and time as written.
+    # The brief's first line says the museum has not confirmed what the field
+    # holds; the PRD records the collection manager's answer of 2026-10-07, and
+    # WP 1.7 replaces the brief's sentence. No document of this repository names
+    # its Darwin Core term: verbatimEventDate is Darwin Core's term for an
+    # event's date and time as written.
     source:
       - src/specimen_digitization/field_research/prompts/verbatim_dts.txt:1
       - docs/product-requirements/PRD.md:1224
@@ -438,9 +437,12 @@ notations:
     source:
       - insects.py:53-57 at 7a09445a2
       - src/specimen_digitization/field_research/prompts/common.txt:39
+  # field_research/written.py decides the capital "M" exception in code (_a_name,
+  # written.py:451-462; _counts_sexes, written.py:465-494; the unit decision,
+  # written.py:523-528); WP 2.2 aligns this entry with it.
   - id: metres
     written: ["<n> m"]
-    readings: ["metres, the unit of an elevation; not metres when a capital \"M\" stands before a name or in a count of males and females, which field_research/written.py decides (_a_name, written.py:451-462; _counts_sexes, written.py:465-494; the unit decision, written.py:523-528), and WP 2.2 aligns this file with it"]
+    readings: ["metres, the unit of an elevation; not metres when a capital \"M\" stands before a name or in a count of males and females"]
     fields: [elevation_from_m, elevation_to_m]
     note: The unit decides the field.
     source:
@@ -530,7 +532,8 @@ notations:
     written: ["<Roman month>-<dd>-<yy>-<n>", "<mm>-<dd>-<yy>-<n><letter>"]
     readings: ["a slide or preparation code: a month, a day, a two-digit year and a slide number joined by hyphens; never a date, nor is any part of it"]
     fields: []
-    note: No field takes a slide code (G45).
+    # No field takes a slide code: go-live gate G45.
+    note: No field takes a slide code.
     source:
       - src/specimen_digitization/field_research/prompts/common.txt:48
       - src/specimen_digitization/field_research/prompts/collection_code.txt:6
