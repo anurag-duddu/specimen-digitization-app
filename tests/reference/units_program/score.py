@@ -78,9 +78,14 @@ def similar(a, b):
     return difflib.SequenceMatcher(None, norm(a), norm(b)).ratio()
 
 
+def has_text(value):
+    """Text a person can read: a string with a character other than whitespace."""
+    return isinstance(value, str) and bool(value.strip())
+
+
 def compared_value(field):
-    """The strict rule's value: parsed, else normalized, else literal."""
-    return field.get("parsed") or field.get("normalized") or field.get("literal")
+    """The strict rule's value: parsed, else normalized, else literal, the first that has text."""
+    return next((field.get(k) for k in TEXT if has_text(field.get(k))), None)
 
 
 def value_ok(key, field, expected):
@@ -108,13 +113,15 @@ def value_ok(key, field, expected):
 
 
 def settled(field):
-    """"value" (supported, with text), "absent" (not_present or not_applicable, whatever text it carries) or None
-    (left without a value: supported with no text, or unknown, unresolved, unreadable or ambiguous whatever text
-    it keeps; also a field the run does not hold)."""
+    """"value" (supported, with text: `has_text` in parsed, normalized or literal; an empty or whitespace-only
+    string, None and `reason` are not text), "absent" (not_present or not_applicable, whatever text it carries) or
+    None (left without a value: supported with no text, or unknown, unresolved, unreadable or ambiguous whatever text
+    it keeps, or a record with no state, which a stored FieldValue never has: its default is unknown). A state
+    outside STATES, "" and "SUPPORTED" included, is refused."""
     state = field.get("state")
     if state is not None and state not in STATES:
         raise ValueError(f"unknown value state {state!r}")
-    if state == "supported" and any(field.get(k) for k in TEXT):
+    if state == "supported" and any(has_text(field.get(k)) for k in TEXT):
         return "value"
     return "absent" if state in SETTLED_ABSENT else None
 

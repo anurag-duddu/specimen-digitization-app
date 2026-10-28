@@ -92,7 +92,12 @@ A settled field is marked when the run carries the units path's code `marked:<fi
 or a finding's code; today's code writes none, so today every settled field is cleared. A field that is not
 settled (`unknown`, `unresolved`, `unreadable`, `ambiguous`) is left without a value whatever text it keeps (an
 unresolved field may still hold a reader's literal); `not_present` and `not_applicable` settle as absent whatever text
-they carry.
+they carry. Text is a string with a character other than whitespace, in the parsed value, the normalized value or
+the literal: an empty or whitespace-only string, None and the field's `reason` are not text, so a `supported` field
+without text is left without a value, and the compared value is the first of parsed, normalized and literal that has
+text. (The rig's rule took any non-empty string; none of the baseline's 2,400 field states holds an empty or
+whitespace-only string, and the regenerated `score_baseline.md` is byte-identical.) A record with no state is left
+without a value, and a state outside `application/domain.py`'s seven, "" and "SUPPORTED" included, is refused.
 Right values (criterion 1 (b)) are cleared right plus marked right.
 
 Criterion 2: a field is cleared in a run when it is settled, with a value or as absent, and not marked. The fields
@@ -103,14 +108,15 @@ letters and digits and folds case, deleting every other character: "R.D.Mitchell
 and quotes this baseline's numbers. `score_baseline.md` labels each difference by the scorer's kind.
 
 `test_units_reference_score.py` pins the rule on fixed records (right, wrong, left without a value, absent; a
-marked value counted as marked, and as right when its value is right; every value state of `application/domain.py`
-with every kind of text, scored against a truth: `supported` settles a value when it has text, `not_present` and
-`not_applicable` settle as absent whatever text they carry, and the four unsettled states (`unknown`, `unresolved`,
-`unreadable`, `ambiguous`) are left without a value whatever text they keep, a state the scorer does not place
-failing the test; criterion 2 counting a cleared absence, giving each difference its kind, "value_absent" or
-"two_values", and comparing ASCII letters and digits with case folded); `test_units_reference_manifest.py` pins the
-whole
-manifest's canonical digest and the fixture's digest, both written `sha256:<hex>`, and recomputes the draw from the
+marked value counted as marked, and as right when its value is right; each value state of `application/domain.py`
+with five listed text shapes, scored against a truth and against absence: `supported` settles a value when it has
+text, `not_present` and `not_applicable` settle as absent whatever text they carry, and the four unsettled states
+(`unknown`, `unresolved`, `unreadable`, `ambiguous`) are left without a value whatever text they keep, a state the
+scorer does not place failing the test; boundary records: an empty, None or whitespace-only literal, a whitespace
+parsed value beside a literal, the default `reason` alone, a record with no state, and the refused states "",
+"SUPPORTED", "Supported", " supported" and "invented"; criterion 2 counting a cleared absence, giving each
+difference its kind, "value_absent" or "two_values", and comparing ASCII letters and digits with case folded).
+`test_units_reference_manifest.py` pins the whole manifest's canonical digest and the fixture's digest, both written `sha256:<hex>`, and recomputes the draw from the
 sorted listing with the seed, so it fails when a digest, the seed or the truth file changes.
 
 Usage: `python tests/reference/units_program/score.py <run>/r1/pair.jsonl <run>/r1/three.jsonl ... [--json OUT]`.

@@ -81,9 +81,10 @@ SETTLEMENT = {
 
 @pytest.mark.parametrize("text", sorted(TEXTS))
 @pytest.mark.parametrize("state", sorted(state.value for state in ValueState))
-def test_every_value_state_with_every_kind_of_text_settles_by_the_strict_rule(state, text):
-    # supported settles a value when it has text; not_present and not_applicable settle absent whatever text they
-    # carry; unknown, unresolved, unreadable and ambiguous are left without a value whatever text they keep.
+def test_each_value_state_with_the_listed_texts_settles_by_the_strict_rule(state, text):
+    # On these records: supported settles a value when it has text; not_present and not_applicable settle absent
+    # whatever text they carry; unknown, unresolved, unreadable and ambiguous are left without a value whatever
+    # text they keep.
     field = {"state": state, **TEXTS[text]}
     with_text = text != "no text"
     expected = {k: v for k, v in PILOT_322.items() if k != "collectors"}
@@ -91,6 +92,37 @@ def test_every_value_state_with_every_kind_of_text_settles_by_the_strict_rule(st
     absent = cells({"collectors": field}, expected=expected)["collectors"]
     assert found == ("primary", SETTLEMENT[state]["truth"][with_text])
     assert absent == ("absent", SETTLEMENT[state]["absent"][with_text])
+
+
+BOUNDARY = {  # fixed records at the edges of the rule: (field, outcome against the truth, outcome against absence)
+    "supported, empty literal": ({"state": "supported", "literal": ""}, "left_without_value", "left_without_value"),
+    "supported, literal None": ({"state": "supported", "literal": None}, "left_without_value", "left_without_value"),
+    "supported, whitespace literal": ({"state": "supported", "literal": "   "}, "left_without_value",
+                                      "left_without_value"),
+    "supported, whitespace parsed, text literal": ({"state": "supported", "parsed": "  ", "literal": "H. Hoogstraal"},
+                                                    "cleared_right", "cleared_wrong"),
+    # FieldValue's default reason (application/domain.py) is not text.
+    "supported, reason only": ({"state": "supported", "reason": "No supported source value"}, "left_without_value",
+                               "left_without_value"),
+    # No state key: a stored FieldValue's default state is unknown, never a value.
+    "no state, text literal": ({"literal": "H. Hoogstraal"}, "left_without_value", "left_without_value"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(BOUNDARY))
+def test_boundary_records_settle_by_the_strict_rule(name):
+    field, against_truth, against_absence = BOUNDARY[name]
+    expected = {k: v for k, v in PILOT_322.items() if k != "collectors"}
+    assert cells({"collectors": field})["collectors"] == ("primary", against_truth)
+    assert cells({"collectors": field}, expected=expected)["collectors"] == ("absent", against_absence)
+
+
+@pytest.mark.parametrize("state", ["", "SUPPORTED", "Supported", " supported", "invented"])
+def test_a_state_outside_the_domain_is_refused(state):
+    with pytest.raises(ValueError):
+        score.settled({"state": state, "literal": "H. Hoogstraal"})
+    with pytest.raises(ValueError):
+        cells({"collectors": {"state": state, "literal": "H. Hoogstraal"}})
 
 
 def test_a_field_settled_absent_where_the_truth_holds_a_value_is_wrong():
