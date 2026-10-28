@@ -107,6 +107,13 @@ BOUNDARY = {  # fixed records at the edges of the rule: (field, outcome against 
                                "left_without_value"),
     # No state key: a stored FieldValue's default state is unknown, never a value.
     "no state, text literal": ({"literal": "H. Hoogstraal"}, "left_without_value", "left_without_value"),
+    # A no-break space is whitespace: the literal is compared.
+    "supported, no-break space normalized, text literal": (
+        {"state": "supported", "normalized": "\u00a0", "literal": "H. Hoogstraal"}, "cleared_right",
+        "cleared_wrong"),
+    # The word "text" is text: it is compared, and it is not the collector.
+    "supported, parsed 'text', text literal": ({"state": "supported", "parsed": "text", "literal": "H. Hoogstraal"},
+                                               "cleared_wrong", "cleared_wrong"),
 }
 
 
@@ -116,6 +123,15 @@ def test_boundary_records_settle_by_the_strict_rule(name):
     expected = {k: v for k, v in PILOT_322.items() if k != "collectors"}
     assert cells({"collectors": field})["collectors"] == ("primary", against_truth)
     assert cells({"collectors": field}, expected=expected)["collectors"] == ("absent", against_absence)
+
+
+def test_text_is_any_string_with_a_character_python_does_not_call_whitespace():
+    # Every code point but the surrogates, alone and repeated, against Python's own str.isspace, so the check holds
+    # on whatever Unicode version the interpreter carries.
+    wrong = [cp for cp in range(0x110000) if not 0xD800 <= cp <= 0xDFFF
+             for c in (chr(cp),) if score.has_text(c) == c.isspace() or score.has_text(c * 3) == c.isspace()]
+    assert wrong == []
+    assert not score.has_text(None) and not score.has_text("") and score.has_text(" x ")
 
 
 @pytest.mark.parametrize("state", ["", "SUPPORTED", "Supported", " supported", "invented"])
