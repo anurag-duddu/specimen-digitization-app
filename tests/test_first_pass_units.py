@@ -835,19 +835,41 @@ def test_the_parent_validates_and_returns_the_units(tmp_path, monkeypatch):
 
 # Pins computed on main 4172ab824 (before this change) by this module's frozen_old_path_run,
 # whose readings differ, so the old path's first pass runs: the stored record's bytes as
-# SQLiteRepository writes them, and the projection's writes. Written "sha256:<hex>".
-MAIN_OLD_PATH_STORED = "sha256:0fe7d7e02313df9943b7ebc3355130f1c29e8459facfe3ca6261b800de877cc9"
-MAIN_OLD_PATH_WRITES = "sha256:3c5e8fbcf98fcdc4e378a2d55857008f239c2764cc8ecfa84dd1aae9049da077"
+# SQLiteRepository writes them, and the projection's writes. Written "sha256:<hex>". The same
+# on macOS (CPython 3.11, Unicode 14) and Linux (CI, CPython 3.12, Unicode 15): the drain fixes
+# both inputs that differ by platform.
+MAIN_OLD_PATH_STORED = "sha256:c2d19314b753550c1513f33cb7a0374acaa269328a50ff72e16cfbf905e18edd"
+MAIN_OLD_PATH_WRITES = "sha256:b69b17c8e43d5da547cae29e4bc80b50de8717ea290e92355da8232ddcc210b6"
 
 
-def frozen_old_path_run(tmp_path, monkeypatch, *, switch=None):
+def frozen_old_path_run(tmp_path, monkeypatch, *, switch=None, unicode_version="15.0.0"):
     """A whole synthetic run on the old path (switch unset or off) with readings that differ,
-    its ids and clocks fixed as the API contract exporter fixes them."""
+    its ids and clocks fixed as the API contract exporter fixes them, and its two inputs that
+    differ by platform fixed too: PNG bytes (the exporter's portable encoder seam, whose own
+    tests are tests/test_general_api_contract_export_seam.py) and the Unicode version a
+    reading's metadata records (reading_evidence.py: CPython 3.11 has 14.0.0, CI's 3.12 15.0.0)."""
+    import importlib.util
     import itertools
+    import unicodedata
     from datetime import datetime, timezone
+    from pathlib import Path
     from uuid import UUID
 
-    from specimen_digitization.application import api, domain, provider_circuit, review_risk, search
+    from specimen_digitization.application import (
+        api,
+        domain,
+        provider_circuit,
+        reading_evidence,
+        review_risk,
+        search,
+    )
+
+    path = Path(__file__).resolve().parents[1] / "scripts/ci/export_general_api_contract_fixtures.py"
+    spec = importlib.util.spec_from_file_location("old_path_exporter", path)
+    exporter = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(exporter)
+    monkeypatch.setattr(reading_evidence, "unicodedata",
+                        SimpleNamespace(name=unicodedata.name, unidata_version=unicode_version))
 
     fixed = datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc)
 
@@ -880,8 +902,9 @@ def frozen_old_path_run(tmp_path, monkeypatch, *, switch=None):
     else:
         monkeypatch.setenv(SETTING, switch)
     adapters = SyntheticAdapters(LocalBlobs(tmp_path / "blobs"), SYNTHETIC_TEXT, "taxon: different")
-    workflow, principal, ident = start(tmp_path, adapters)
-    return workflow.drain(principal, ident)
+    with exporter._portable_png_encoder():
+        workflow, principal, ident = start(tmp_path, adapters)
+        return workflow.drain(principal, ident)
 
 
 def old_path_pins(specimen) -> tuple[str, str]:
@@ -897,6 +920,41 @@ def old_path_pins(specimen) -> tuple[str, str]:
                         separators=(",", ":"))
     rows = [[w.operation, w.variables, w.key] for w in writes(specimen, locate, lambda ref: 1, "worker-uid")]
     return ("sha256:" + hashlib.sha256(stored.encode()).hexdigest(), "sha256:" + digest(rows))
+
+
+def test_the_unicode_version_reaches_the_old_path_record_only_through_reading_metadata(
+    tmp_path, monkeypatch
+):
+    """The one Python-dependent input of the pinned run (main's, too): two Unicode versions give
+    records that differ in each reading's metadata blob and nowhere else, and the same
+    projection writes. With it fixed, CPython 3.11 and 3.12 give the pins below byte for byte."""
+    from specimen_digitization.application.active_graph import pack
+
+    def stored(version):
+        with monkeypatch.context() as patch:
+            specimen = frozen_old_path_run(tmp_path / version, patch, unicode_version=version)
+        return specimen, pack(specimen.model_copy(deep=True), None)
+
+    (old, old_stored), (new, new_stored) = stored("14.0.0"), stored("15.0.0")
+
+    def leaves(value, path=()):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                yield from leaves(item, (*path, key))
+        elif isinstance(value, list):
+            for index, item in enumerate(value):
+                yield from leaves(item, (*path, index))
+        else:
+            yield path, value
+
+    one, two = dict(leaves(old_stored)), dict(leaves(new_stored))
+    differing = {path for path in one.keys() | two.keys() if one.get(path) != two.get(path)}
+    readings = {o.id for o in old.run.observations}
+    assert differing and {(path[-2], path[-1]) for path in differing} == {
+        (ident, key) for ident in readings for key in ("blob_ref", "sha256")
+    }
+    assert all("reading_metadata" in path for path in differing)
+    assert old_path_pins(old)[1] == old_path_pins(new)[1]
 
 
 @pytest.mark.parametrize("switch", [None, "off"], ids=["unset", "off"])
