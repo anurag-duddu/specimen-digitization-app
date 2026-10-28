@@ -687,23 +687,98 @@ def test_the_api_records_the_switch_when_it_creates_a_run(tmp_path, monkeypatch,
     assert getattr(drained.run, "first_pass_path", OLD) == path
 
 
+def run_spellings(tree):
+    """Every way a module builds or rebuilds the domain Run: a call of a name bound to Run (also
+    under an alias), of `<a name bound to the domain module>.Run`, and Run's model_validate,
+    model_validate_json and model_construct on either. Returns (line, kind, the call)."""
+    import ast
+
+    run_names, module_names = {"Run"}, set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name == "Run" and (node.module or "").endswith("domain"):
+                    run_names.add(alias.asname or "Run")
+                if alias.name == "domain":
+                    module_names.add(alias.asname or "domain")
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.endswith(".domain"):
+                    module_names.add(alias.asname or alias.name)
+
+    def is_run(expression):
+        return (isinstance(expression, ast.Name) and expression.id in run_names) or (
+            isinstance(expression, ast.Attribute) and expression.attr == "Run"
+            and ast.unparse(expression.value) in module_names
+        )
+
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if is_run(node.func):
+            found.append((node.lineno, "construction", node))
+        elif (isinstance(node.func, ast.Attribute) and is_run(node.func.value)
+              and node.func.attr in ("model_validate", "model_validate_json", "model_construct")):
+            found.append((node.lineno, node.func.attr, node))
+    return found
+
+
+def unrecorded_runs(source: str) -> list[tuple[int, str]]:
+    """The places in a module's source that build a Run without recording the switch: every
+    construction must pass first_pass_path=first_pass_path(os.environ), and src rebuilds no Run
+    from data (a stored run comes back inside its Specimen, path and all)."""
+    import ast
+
+    missing = []
+    for line, kind, node in run_spellings(ast.parse(source)):
+        keyword = next((k for k in node.keywords if k.arg == "first_pass_path"), None)
+        if kind != "construction" or keyword is None or ast.unparse(keyword.value) != "first_pass_path(os.environ)":
+            missing.append((line, kind))
+    return missing
+
+
 def test_every_run_created_in_src_records_the_switch():
-    """A guard on every place in src that builds a Run: it passes first_pass_path read from the
-    switch (reading_units.first_pass_path(os.environ)), so no new run misses its path."""
+    """A guard on every place in src that builds a Run, however it spells it (run_spellings):
+    each passes first_pass_path read from the switch, so no new run misses its path."""
     import ast
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1] / "src/specimen_digitization"
-    sites = []
+    sites, missing = set(), []
     for path in sorted(root.rglob("*.py")):
-        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Run":
-                keyword = next((k for k in node.keywords if k.arg == "first_pass_path"), None)
-                sites.append((path.relative_to(root).as_posix(), node.lineno, keyword is not None and ast.unparse(
-                    keyword.value) == "first_pass_path(os.environ)"))
-    assert {site[0] for site in sites} >= {"application/api.py", "application/bulk_intake.py",
-                                          "application/source_import.py"}
-    assert [site for site in sites if not site[2]] == []
+        source = path.read_text(encoding="utf-8")
+        if run_spellings(ast.parse(source)):
+            sites.add(path.relative_to(root).as_posix())
+        missing += [(path.relative_to(root).as_posix(), *site) for site in unrecorded_runs(source)]
+    assert sites == {"application/api.py", "application/bulk_intake.py", "application/source_import.py"}
+    assert missing == []
+
+
+@pytest.mark.parametrize("source", [
+    "from .domain import Run\nrun = Run(profile=Profile())\n",
+    "from . import domain\nrun = domain.Run(profile=Profile())\n",
+    "from ..application import domain as model\nrun = model.Run(profile=Profile())\n",
+    "import specimen_digitization.application.domain as d\nrun = d.Run()\n",
+    "from .domain import Run as PipelineRun\nrun = PipelineRun(profile=Profile())\n",
+    "from .domain import Run\nrun = Run.model_validate({})\n",
+    "from .domain import Run\nrun = Run.model_construct()\n",
+    "from .domain import Run as R\nrun = R.model_validate_json('{}')\n",
+    "from .domain import Run\nrun = Run(profile=p, first_pass_path='units')\n",
+    "from .domain import Run\nrun = Run(**fields)\n",
+], ids=["bare", "module attribute", "module alias", "dotted module", "class alias", "model_validate",
+        "model_construct", "aliased model_validate_json", "a fixed path", "keywords unpacked"])
+def test_the_guard_sees_every_spelling_of_a_run_without_the_switch(source):
+    """Claude's N1 and Codex's NB1 on fc5a14b6e: the guard saw bare `Run(...)` only. Each of these
+    probes builds a Run without recording the switch, and the guard reports it."""
+    assert unrecorded_runs(source)
+
+
+def test_the_guard_accepts_a_run_that_records_the_switch():
+    source = ("import os\nfrom .domain import Run as PipelineRun\nfrom . import domain\n"
+              "a = PipelineRun(profile=p, first_pass_path=first_pass_path(os.environ))\n"
+              "b = domain.Run(first_pass_path=first_pass_path(os.environ))\n")
+    assert unrecorded_runs(source) == []
 
 
 def test_a_mistyped_switch_stops_the_api_and_intake_configuration():
@@ -1377,9 +1452,10 @@ def test_every_transcription_version_the_units_path_projects_passes_the_connecto
 def test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_workspace_only(
     tmp_path, monkeypatch, case
 ):
-    """Codex's review of bf1caab88: such a label's units reach no normalized row. That is the
-    contract (DATA_CONTRACT.md 4.2): the units are on the run, so the workspace route returns
-    them, and the normalized projection writes units only with a TranscriptionVersion."""
+    """Codex's review of bf1caab88: until a person decides its transcript, such a label's units
+    reach no normalized row. That is the contract (DATA_CONTRACT.md 4.2): the units are on the
+    run, so the workspace route returns them, and the normalized projection writes units only
+    with a TranscriptionVersion (a person's edit gives it one: the next test)."""
     from test_reading_units import locate, workspace
     from test_reading_units import app as workspace_app
 
@@ -1398,6 +1474,55 @@ def test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_w
 
     body = workspace(workspace_app(workflow.repository), ident)
     assert body["run"]["reading_units"] == [units.model_dump(mode="json")]
+
+
+def test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_with_its_units(
+    tmp_path, monkeypatch
+):
+    """Codex's review of fc5a14b6e: a label with one reading gets no machine version, but a
+    person's edit gives it a `human` one, which the reviewer's save writes with V3 and the
+    label's units as stored. Until WP 1.3 regenerates units from a person's text, those are the
+    machine readings' units; this pins it, so WP 1.3 changes it knowingly."""
+    from test_reading_units import locate
+    from test_reading_units import app as workspace_app
+
+    from specimen_digitization.application.projection import writes
+
+    workflow, principal, ident, _ = drained(tmp_path, monkeypatch)
+    one_reader(workflow)
+    drained_specimen = workflow.drain(principal, ident)
+    (region,) = drained_specimen.run.regions
+    (units,) = drained_specimen.run.reading_units
+    http = workspace_app(workflow.repository)
+    body = http.get(f"/v1/organizations/{principal.scope.organization_id}/specimens/{ident}/workspace",
+                    headers={"Authorization": "Bearer A"}).json()
+    edited = "E. slope Mt. McKinley, as a person reads it"
+    response = http.post(
+        f"/v1/organizations/{principal.scope.organization_id}/specimens/{ident}/decisions",
+        headers={"Authorization": "Bearer A", "Idempotency-Key": "person-edit-1"},
+        json={"expected_revision": body["revision"], "base_record_version_id": body["record_version_id"],
+              "reason": "The person reads the label", "kind": "transcription", "target_id": region.id,
+              "after": {"text": edited, "state": "supported"}},
+    )
+    assert response.status_code == 200, response.text
+    specimen = workflow.repository.get(principal.scope, ident)
+    (transcript,) = specimen.run.transcripts
+    assert (transcript.actor, transcript.text) == ("A", edited)
+    assert specimen.run.reading_units == [units]
+
+    # The reviewer's save: its review-decision rows need the repository's proofs of the audit
+    # events (SqlConnectRepository supplies them), which this test leaves out with the events.
+    assert any(event.action == "review_transcription" for event in specimen.audit)
+    saved = specimen.model_copy(update={"audit": [
+        event for event in specimen.audit if not event.action.startswith("review_")]})
+    rows = writes(saved, locate, lambda ref: 1, "A", reviewer=True)
+    (version,) = [w.variables for w in rows if w.operation.startswith("AppendTranscriptionVersion")]
+    assert [w.operation for w in rows if w.operation.startswith("AppendTranscriptionVersion")] == [
+        "AppendTranscriptionVersionV3"]
+    assert (version["decisionKind"], version["literalText"]) == ("human", edited)
+    assert version["firstPassObservationId"] is None
+    assert version["readingUnits"] == units.model_dump(mode="json")
+    assert connector_refusals(rows) == []
 
 
 # --------------------------------------------------------------------------- integrity, again

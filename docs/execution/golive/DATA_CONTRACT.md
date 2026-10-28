@@ -285,10 +285,15 @@ decision names no reading and leaves every difference `uncertain`; a label with
 one reading, or one whose first pass was given up on, gets units from the
 alignment with `image` `uncertain` at each. Every label's units are on the run
 (`Run.reading_units`), so the workspace route returns them; the normalized
-projection writes a label's units only with a `TranscriptionVersion`, which a
-label with one reading, or with differing readings and no first-pass decision
-(given up on), does not get (see the end of this section), so their units are
-on the run and the workspace route and not in the normalized projection. Main
+projection writes a label's units only with a `TranscriptionVersion`. A label
+with one reading, or with differing readings and no first-pass decision (given
+up on), gets no machine version (see the end of this section), so until a person
+decides its transcript its units are on the run and the workspace route and not
+in the normalized projection. A person's edit or abstention gives it a `human`
+version, which the reviewer's save writes with `AppendTranscriptionVersionV3`
+carrying the label's units as stored: until work package 1.3 regenerates units
+from a person's text, those are the machine readings' units
+(`tests/test_first_pass_units.py`). Main
 before this package (work package 1.1 included) loads `Run.reading_units` but
 not `Run.first_pass_path` (`Record` refuses an unknown key), so the rollback
 boundary is the path field, in the run and in its previous runs; before 1.1
