@@ -32,6 +32,7 @@ def run_summary(run):
     omitted = {
         "observations",
         "first_pass_decisions",
+        "reading_units",
         "transcripts",
         "fields",
         "evidence",

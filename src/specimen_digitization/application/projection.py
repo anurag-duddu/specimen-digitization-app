@@ -401,6 +401,14 @@ def _decision_kind(run: Run, transcript: Transcript) -> str | None:
     return None
 
 
+def _reading_units(run: Run, region_id: str) -> dict | None:
+    """The label's reading units as the run stores them, or None when it has none."""
+    for entry in getattr(run, "reading_units", None) or []:
+        if entry.label == region_id:
+            return entry.model_dump(mode="json")
+    return None
+
+
 def _first_pass(
     run: Run, transcript: Transcript, asset, decisions: dict, reviewer: bool
 ) -> list[Write]:
@@ -440,29 +448,35 @@ def _first_pass(
         "rationale": transcript.reason,
         "call": call.id if call else None,
     }
+    units = _reading_units(run, transcript.region_id)
+    if units is not None:
+        # The label's units belong to its decision: other units are another version.
+        content["units"] = units
     decision = derived_id("transcription", run.id, transcript.region_id, digest(content))
     decisions[transcript.region_id] = decision
     if kind == "human" and not reviewer:
         # The reviewer's own save writes it; later rows may still name it.
         return result
-    result.append(
-        _write(
-            "AppendTranscriptionVersionV2",
-            {
-                "id": decision,
-                "runId": run.id,
-                "literalText": transcript.text or "",
-                "spans": differences,
-                "alternatives": still_open if differences else list(transcript.alternatives),
-                "unresolved": unresolved,
-                "regionId": _region_row(run.id, transcript.region_id),
-                "decisionKind": kind,
-                "selectedObservationId": selected,
-                "firstPassObservationId": call.id if call else None,
-                "rationale": transcript.reason,
-            },
+    variables = {
+        "id": decision,
+        "runId": run.id,
+        "literalText": transcript.text or "",
+        "spans": differences,
+        "alternatives": still_open if differences else list(transcript.alternatives),
+        "unresolved": unresolved,
+        "regionId": _region_row(run.id, transcript.region_id),
+        "decisionKind": kind,
+        "selectedObservationId": selected,
+        "firstPassObservationId": call.id if call else None,
+        "rationale": transcript.reason,
+    }
+    if units is None:
+        result.append(_write("AppendTranscriptionVersionV2", variables))
+    else:
+        # V2 with the units (section 7); a label without units keeps V2 and its rows' bytes.
+        result.append(
+            _write("AppendTranscriptionVersionV3", {**variables, "readingUnits": units})
         )
-    )
     for handoff in getattr(transcript, "handoffs", None) or []:
         if handoff.handed_text is None:
             continue

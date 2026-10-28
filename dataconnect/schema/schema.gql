@@ -195,6 +195,8 @@ type TranscriptionVersion @table(key: ["organizationId", "collectionId", "id"]) 
   firstPassObservationId: UUID
   firstPassObservation: ModelObservation @ref(constraintName: "transcription_first_pass", fields: ["organizationId", "collectionId", "firstPassObservationId"])
   rationale: String
+  # The label's reading units (DATA_CONTRACT.md 4.2); null on a row written without them.
+  readingUnits: Any
   createdAt: Timestamp! @default(expr: "request.time")
 }
 

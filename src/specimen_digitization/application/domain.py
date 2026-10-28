@@ -10,6 +10,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .reading_declarations import LanguageHandling
+from .reading_units import ReadingUnits
 
 
 def uid() -> str:
@@ -552,6 +553,18 @@ class Run(Record):
     )
     # One entry per paid call, with its usage and cost (LANE.md T2c).
     paid_calls: list[dict] = Field(default_factory=list, exclude_if=lambda value: not value)
+    # Each label's reading units (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 3), one entry
+    # per label. Omitted while empty, so a run without units keeps its stored bytes.
+    reading_units: list[ReadingUnits] = Field(
+        default_factory=list, exclude_if=lambda value: not value
+    )
+
+    @field_validator("reading_units")
+    @classmethod
+    def one_entry_per_label(cls, value):
+        if len({entry.label for entry in value}) != len(value):
+            raise ValueError("A run holds one entry of reading units per label")
+        return value
 
 
 class AuditEvent(Record):
