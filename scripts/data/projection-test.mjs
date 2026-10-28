@@ -78,6 +78,11 @@ async function chain(specimenId, actorUid) {
   w.firstPassCall = {...reading('first-pass', 'Chicago, Ill.'), stepKey: `first_pass:${w.region.domainRegionId}`, independent: false};
   w.comparison = {...v, id: id(), runId: w.run.id, regionId: w.region.id, ...pair(w.left.id, w.right.id), algorithm: 'bounded-levenshtein-fraction-v1', ratio: 1 / 13, editDistance: 1, lengthBasis: 13, status: 'difference', reasons: []};
   w.transcription = {...v, id: id(), runId: w.run.id, literalText: w.left.literalText, spans: [], alternatives: [w.left.literalText, w.right.literalText], unresolved: false, regionId: w.region.id, decisionKind: 'first_pass', selectedObservationId: w.left.id, firstPassObservationId: w.firstPassCall.id, rationale: 'The crop shows a lowercase l.'};
+  // The same decision with the label's reading units, as the writer sends them (DATA_CONTRACT.md 4.2):
+  // each reader's text by reading, its offsets in code points, the image's judgement.
+  const at = (reading, start, end) => ({text: reading.literalText.slice(start, end), start, end});
+  const unit = (n, start, end, image, fields) => ({id: `${w.region.domainRegionId}:${n}`, label: w.region.domainRegionId, lines: [1, 1], readers: Object.fromEntries([w.left, w.right, w.third].map(r => [r.id, at(r, start, end)])), image, means: '', role: '', fields, note: ''});
+  w.units = {...w.transcription, id: id(), readingUnits: {label: w.region.domainRegionId, units: [unit(1, 0, 8, 'Chicago,', ['city']), unit(2, 9, 13, 'Ill.', ['province_state'])]}};
   w.decided = {...v, id: id(), runId: w.run.id, transcriptionVersionId: w.transcription.id, observationId: w.left.id, role: 'decided_transcript', handedText: w.left.literalText, note: null};
   // Every other reading goes to the harness too, with the first pass's note (S4, #98).
   w.fallback = {...w.decided, id: id(), observationId: w.right.id, role: 'raw_reading', handedText: w.right.literalText, note: 'Reads the l as a one.'};
@@ -95,7 +100,7 @@ const writes = [
   ['AppendSourceAssetV2', 'original'], ['AppendSourceAssetV2', 'envelope'], ['AppendSourceAssetV2', 'placeRecord'], ['AppendPipelineRunV2', 'run'],
   ['AppendLabelRegionV2', 'region'], ['AppendModelObservationV2', 'left'], ['AppendModelObservationV2', 'right'], ['AppendModelObservationV2', 'third'],
   ['AppendModelObservationV2', 'firstPassCall'], ['AppendReadingComparisonV1', 'comparison'],
-  ['AppendTranscriptionVersionV2', 'transcription'], ['AppendHarnessInputV1', 'decided'], ['AppendHarnessInputV1', 'fallback'],
+  ['AppendTranscriptionVersionV2', 'transcription'], ['AppendTranscriptionVersionV3', 'units'], ['AppendHarnessInputV1', 'decided'], ['AppendHarnessInputV1', 'fallback'],
   ['AppendEvidenceItemV2', 'evidence'], ['AppendToolCallV1', 'toolCall'], ['AppendFieldCandidateV2', 'candidate'],
   ['AppendCandidateEvidenceV2', 'link'], ['AppendRecordVersionV2', 'record'], ['AppendResolvedFieldV2', 'resolved'],
   ['AppendValidationFindingV2', 'finding'], ['AppendCheckpointV2', 'checkpoint'],
@@ -110,7 +115,8 @@ const thread = ok(await raw(`query {
  labelRegions(where:{runId:{eq:"${work.run.id}"}}) { domainRegionId sourceAssetId cropAssetId }
  modelObservations(where:{runId:{eq:"${work.run.id}"}}, orderBy:{stepKey:ASC}) { stepKey independent literalText routeId unreadableSpans }
  readingComparisons(where:{runId:{eq:"${work.run.id}"}}) { ratio editDistance lengthBasis leftObservationId rightObservationId }
- transcriptionVersions(where:{runId:{eq:"${work.run.id}"}}) { regionId decisionKind selectedObservationId firstPassObservationId }
+ transcriptionVersions(where:{runId:{eq:"${work.run.id}"}, id:{eq:"${work.transcription.id}"}}) { regionId decisionKind selectedObservationId firstPassObservationId readingUnits }
+ units: transcriptionVersion(key:{${sc},id:"${work.units.id}"}) { regionId decisionKind selectedObservationId firstPassObservationId readingUnits }
  harnessInputs(where:{runId:{eq:"${work.run.id}"}}, orderBy:{role:ASC}) { role handedText observationId }
  toolCalls(where:{runId:{eq:"${work.run.id}"}}) { callKey source fieldKeys outcome inputSource evidenceId attempt }
  fieldCandidates(where:{runId:{eq:"${work.run.id}"}}) { inputSource sourceTranscriptionId }
@@ -121,7 +127,8 @@ same(thread.pipelineRun.specimenId, open);
 same(thread.labelRegions, [{domainRegionId: work.region.domainRegionId, sourceAssetId: work.original.id, cropAssetId: null}]);
 same(thread.modelObservations.map(o => [o.independent, o.routeId, o.unreadableSpans]), [[false, 'first-pass', []], [true, 'handwriting-muse', ['Il1.']], [true, 'handwriting-qwen', []], [true, 'handwriting-third', []]]);
 same([thread.readingComparisons[0].ratio, thread.readingComparisons[0].editDistance, thread.readingComparisons[0].lengthBasis], [1 / 13, 1, 13]);
-same(thread.transcriptionVersions, [{regionId: work.region.id, decisionKind: 'first_pass', selectedObservationId: work.left.id, firstPassObservationId: work.firstPassCall.id}]);
+same(thread.transcriptionVersions, [{regionId: work.region.id, decisionKind: 'first_pass', selectedObservationId: work.left.id, firstPassObservationId: work.firstPassCall.id, readingUnits: null}]);
+same(thread.units, {regionId: work.region.id, decisionKind: 'first_pass', selectedObservationId: work.left.id, firstPassObservationId: work.firstPassCall.id, readingUnits: work.units.readingUnits});
 same(thread.harnessInputs.map(h => [h.role, h.observationId]), [['decided_transcript', work.left.id], ['raw_reading', work.right.id]]);
 same(thread.toolCalls, [{callKey: work.toolCall.callKey, source: 'google-maps-geocoding', fieldKeys: ['country', 'province_state', 'county', 'city'], outcome: 'success', inputSource: 'decided_transcript', evidenceId: work.evidence.id, attempt: 1}]);
 same(thread.fieldCandidates, [{inputSource: 'decided_transcript', sourceTranscriptionId: work.transcription.id}]);
@@ -221,6 +228,19 @@ denied(await op('AppendReadingComparisonV1', {...work.comparison, id: randomUUID
 denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), outcome: 'found', locator: null}));
 ok(await op('AppendFieldCandidateV2', {...work.candidate, id: randomUUID(), derivation: 'human', inputSource: null, sourceTranscriptionId: null}));
 console.log('PASS closed vocabularies, decisions, handoff roles, the fixed pair order, image dimensions and the original checksum are enforced');
+
+// A decision with the label's reading units (AppendTranscriptionVersionV3) keeps V2's rules and needs its units.
+denied(await op('AppendTranscriptionVersionV3', {...work.units, id: randomUUID(), readingUnits: null}));
+denied(await op('AppendTranscriptionVersionV3', {...work.units, id: randomUUID(), decisionKind: 'llm', firstPassObservationId: null}));
+denied(await op('AppendTranscriptionVersionV3', {...work.units, id: randomUUID(), firstPassObservationId: null}));
+denied(await op('AppendTranscriptionVersionV3', {...work.units, id: randomUUID(), selectedObservationId: null, unresolved: false}));
+denied(await op('AppendTranscriptionVersionV3', {...work.units, id: randomUUID(), decisionKind: 'identical_readings', firstPassObservationId: null}));
+const unitsByPerson = {...work.units, id: randomUUID(), decisionKind: 'human', firstPassObservationId: null, selectedObservationId: null, unresolved: false, rationale: 'Read under the microscope.'};
+denied(await op('AppendTranscriptionVersionV3', unitsByPerson));
+ok(await op('AppendTranscriptionVersionV3', {...unitsByPerson, actorUid: 'reviewer'}));
+ok(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), transcriptionVersionId: work.units.id}));
+ok(await op('AppendHarnessInputV1', {...work.fallback, id: randomUUID(), transcriptionVersionId: work.units.id}));
+console.log('PASS a decision with reading units stores them, keeps V2\'s rules and needs its units');
 
 // Google keeps a place id only for a single match, points at an evidence record, and supports (G26).
 denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), locator: 'lookup/1'}));
@@ -344,6 +364,9 @@ const crossings = [
   ['AppendTranscriptionVersionV2', {...work.transcription, id: rid(), selectedObservationId: b.left.id}],
   ['AppendTranscriptionVersionV2', {...work.transcription, id: rid(), firstPassObservationId: b.firstPassCall.id}],
   ['AppendTranscriptionVersionV2', {...work.transcription, id: rid(), selectedObservationId: secondReading.id}],
+  ['AppendTranscriptionVersionV3', {...work.units, id: rid(), regionId: b.region.id}],
+  ['AppendTranscriptionVersionV3', {...work.units, id: rid(), selectedObservationId: b.left.id}],
+  ['AppendTranscriptionVersionV3', {...work.units, id: rid(), firstPassObservationId: b.firstPassCall.id}],
   ['AppendHarnessInputV1', {...work.decided, id: rid(), transcriptionVersionId: b.transcription.id}],
   ['AppendHarnessInputV1', {...work.fallback, id: rid(), observationId: b.left.id}],
   ['AppendHarnessInputV1', {...work.fallback, id: rid(), observationId: secondReading.id}],

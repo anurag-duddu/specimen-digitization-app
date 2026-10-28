@@ -320,3 +320,60 @@ def test_saves_project_the_first_pass_harness_fields_and_decision(tmp_path, capl
         assert counts_after["validationFindings"] == [{"ruleId": "mandatory_unresolved", "fieldKey": "county"}]
     finally:
         actor_uid.reset(token)
+
+
+def test_saves_store_and_project_a_labels_reading_units(tmp_path, caplog):
+    """WP 1.1: the units round-trip through the stored snapshot and land on the decision's row."""
+    from test_projection_decisions import DecidedTranscript, Difference, Handoff, HarnessRun
+
+    from specimen_digitization.application.reading_units import ReadingUnit, ReadingUnits, UnitText
+
+    token = actor_uid.set("synthetic-reviewer")
+    try:
+        scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+        principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
+        blobs = LocalBlobs(tmp_path / "blobs")
+        repo = SqlConnectRepository(project="demo-specimen-data", emulator_host=sql_emulator_host(), graph_blobs=blobs)
+        s = specimen(blobs, scope, principal.user_id)
+        s.run = HarnessRun()
+        created = repo.create(principal, s, "ingest:" + s.id, digest({"create": s.id}))
+        run = processed(created, blobs).run
+        left, right = run.observations
+        region = run.regions[0]
+        call_raw = blobs.put(b'{"units": "fixture"}')
+        call = left.model_copy(update={"id": Observation.model_fields["id"].default_factory(), "route_id": "first-pass", "literal_text": "", "raw_ref": call_raw, "raw_sha256": call_raw})
+        run.transcripts = [
+            DecidedTranscript(
+                **run.transcripts[0].model_dump(exclude=DECISION_FIELDS),
+                decision_kind="first_pass",
+                selected_observation_id=None,
+                first_pass_call=call,
+                differences=[Difference(number=1, spans={left.id: {"start": 11, "end": 12, "text": "l"}, right.id: {"start": 11, "end": 12, "text": "1"}}, verdict="uncertain", material=True)],
+                handoffs=[Handoff(observation_id=o.id, role="raw_reading", handed_text=o.literal_text) for o in (left, right)],
+            )
+        ]
+
+        def at(reading, start, end):
+            return UnitText(text=reading.literal_text[start:end], start=start, end=end)
+
+        units = ReadingUnits(label=region.id, units=[
+            ReadingUnit(id=f"{region.id}:1", label=region.id, lines=(1, 1), image="Chicago,", means="Chicago",
+                        readers={o.id: at(o, 0, 8) for o in (left, right)}, fields=["city"]),
+            ReadingUnit(id=f"{region.id}:2", label=region.id, lines=(1, 1), image="uncertain", means="Illinois",
+                        readers={o.id: at(o, 9, 13) for o in (left, right)}, fields=["province_state"],
+                        note="The last character is l or 1."),
+        ])
+        run.reading_units = [units]
+        with caplog.at_level(logging.WARNING):
+            saved = repo.save(principal, created, 1, "result:1:" + s.id, digest({"save": s.id}))
+        assert not [r for r in caplog.records if "Projection" in r.getMessage()], [r.getMessage() for r in caplog.records]
+        # The snapshot comes back through protobuf Struct with the units whole.
+        fresh = SqlConnectRepository(project="demo-specimen-data", emulator_host=sql_emulator_host(), graph_blobs=blobs)
+        assert fresh.get(scope, s.id).run.reading_units == [units]
+        (decision,) = admin(f"""query {{
+ transcriptionVersions(where:{{runId:{{eq:"{saved.run.id}"}}}}) {{ decisionKind unresolved readingUnits }}
+}}""")["transcriptionVersions"]
+        assert (decision["decisionKind"], decision["unresolved"]) == ("first_pass", True)
+        assert ReadingUnits.model_validate(decision["readingUnits"]) == units
+    finally:
+        actor_uid.reset(token)
