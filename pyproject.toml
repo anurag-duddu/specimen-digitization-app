@@ -16,6 +16,7 @@ dependencies = [
     "pydantic-monty-runtime==1.1.0",
     "pydantic-evals[logfire]==2.54.0",
     "pydantic-graph==2.54.0",
+    "pyyaml>=6,<7",
     "uvicorn>=0.30,<1",
 ]
 

@@ -1,0 +1,72 @@
+Specimen ontology, version 1.0. Its frame is the Darwin Core conceptual model of specimen data (https://dwc.tdwg.org/cm/, version 2026-10-13).
+
+Things the labels describe (examples on labels; the Darwin Core class and terms):
+- Specimen: the slide, its catalogue number, the institution that holds it (in Darwin Core, MaterialEntity; catalogNumber, institutionCode).
+- Collecting event: one act of collecting: where, when, how, in what habitat (in Darwin Core, Event: eventDate, samplingProtocol, habitat; the collectors as recordedBy).
+- Locality: the place of the event, in a chain country > province > county > city, with an elevation (in Darwin Core, dcterms:Location: locality, municipality, county, stateProvince, country, minimumElevationInMeters).
+- Agent: a collector, an identifier (in Darwin Core, Agent; recordedBy, identifiedBy).
+- Determination: a taxon name given to the specimen by a person on a date (in Darwin Core, Identification: identifiedBy, dateIdentified; the name as Taxon: scientificName).
+- Taxon: the name, its rank, its accepted name (in Darwin Core, Taxon).
+- Code: a slide or preparation code, a species number (in Darwin Core, no term fits them; the thing is this file's own).
+- Label: a physical label; it carries attributes of the things above and has a type (locality, determination, code) (in Darwin Core, no term; the thing is this file's own).
+
+The profile's 20 fields (key, display name, Darwin Core term: what it holds):
+- fmnh_ins_number (FMNH-INS#), catalogNumber: The Field Museum insect catalog number, often printed after "FMNH INS" or "FMNHINS", sometimes on a barcode label.
+- collection_code (Collection Code), collectionCode: A code the label writes for the collection or the collecting event, copied as written.
+- country (Country), country: The country where the specimen was collected, as the labels write it.
+- province_state (Province/State), stateProvince: The first-level administrative unit (province, state or department) where the specimen was collected, as the labels write it.
+- county (County), county: The country's second-level administrative unit where the specimen was collected, as the labels write it: a county, or whatever unit the country's local government holds at that level instead (a municipio, where that is the second level).
+- city (City), municipality: The city, town or municipality the labels name as the collecting place.
+- precise_location (Precise Location), verbatimLocality: The locality as the label writes it: the most specific place text, such as "E. slope Mt. <Mountain>, nr. <Town>". Darwin Core's locality is its interpretation and may equal it.
+- elevation_from_m (Elevation From (m)), minimumElevationInMeters: The lower, or only, elevation the label writes in metres.
+- elevation_to_m (Elevation To (m)), maximumElevationInMeters: The upper end of an elevation range the label writes in metres.
+- elevation_from_ft (Elevation From (ft)), verbatimElevation: The lower, or only, elevation the label writes in feet. The four elevation fields map to verbatimElevation, as written, and to minimumElevationInMeters and maximumElevationInMeters; an elevation in feet is the verbatimElevation ("4800 ft.").
+- elevation_to_ft (Elevation To (ft)), verbatimElevation: The upper end of an elevation range the label writes in feet. The four elevation fields map to verbatimElevation, as written, and to minimumElevationInMeters and maximumElevationInMeters; an elevation in feet is the verbatimElevation ("4800 ft.").
+- habitat (Habitat), habitat: The habitat, host or substrate the label writes, such as "under <substrate>", "on <host>" or "<vegetation> forest", copied as written.
+- collection_method (Collection Method), samplingProtocol: How the specimen was collected, as the label writes it, such as "Berlese", "light trap", "beating" or "sweeping".
+- date_visited_from (Date Visited From), eventDate: The date the specimen was collected, or the first date of a written collecting range, at the precision written.
+- date_visited_to (Date Visited To), eventDate: The last date of collecting, only when the label writes a range or an end date, at the precision written.
+- collectors (Collectors), recordedBy: The people who collected the specimen, exactly as the label writes them.
+- verbatim_dts (Verbatim D/T/S), verbatimEventDate: Text transcribed exactly as written: a non-standard collection-event date or time expression, such as "Avril 1917", "Summer 1914", "am", "pm", "sunrise" or "daylight". The brief's first line says the museum has not confirmed what the field holds; the PRD records the collection manager's answer of 2026-10-07, and WP 1.7 replaces the brief's sentence. No document of this repository names its Darwin Core term: verbatimEventDate is Darwin Core's term for an event's date and time as written.
+- taxon (Taxon), scientificName: The scientific name the labels give the specimen, at the rank written.
+- identified_by_irn (Identified by IRN), identifiedBy: The EMu Parties record number (IRN) of the person who identified the specimen. The museum's Darwin Core mapping resolves the identifier's Parties reference to the name it publishes as identifiedBy; its public archive maps no identifiedByID.
+- date_identified (Date Identified), dateIdentified: The date the specimen was identified (determined), at the precision written.
+
+The fields a unit could belong to are advice only: every field's expert receives every unit. A notation below names its fields. Where no notation does:
+- A place's name the label writes with no notation beside it ("<Town>", "<Province>", "<Country>", a mountain's name): country, province_state, county, city, precise_location. A place; the sources decide which level it is (a country, a province or state, a county or municipio, a city or town, or a place within them), never its name; a town and the second-level unit around it often share a name, and a mountain, an island, a river or an estate belongs to the precise location.
+- A person's name ("<Initials> <Surname>"): collectors, identified_by_irn. A person; the marker beside the name says the role ("leg.", "coll.", "Coll.": a collector; "det.": the determiner), and capitalisation or position alone establishes no role.
+
+Label notations and every reading each allows. A word in angle brackets stands for what the label writes there: <n> a number; <d>, <dd>, <d1>, <d2>, <mm>, <a> and <b> a day's or a month's one or two digits; <yy> a two-digit year; <yyyy> a four-digit year; <Roman month> a Roman numeral I to XII; <letter> one letter.
+Copy every literal exactly as the reading has it, character for character; a literal that is not in the reading is refused. Never complete, correct or translate a literal: readings of a notation are for calling the tools, never for the literal itself. Work through every reading a notation allows before a field is left for review, and let the tools and the specimen's other evidence decide between them. A field the label does not have stays empty.
+- "P.I.": Philippine Islands, the Philippines [country].
+- "Philippine Islands": the Philippines [country].
+- "Guat.": Guatemala [country].
+- "N.S.W.": New South Wales: a place abbreviation, looked up by its expansion [country, province_state, county, city, precise_location]. As for a place's name, the sources decide which level it is.
+- "Prov.": province, a word of the province's name, not the name [province_state]. Look it up with the word written out ("Davao Province" for "Davao, Prov.").
+- "Dept.": department, a word of the province's name, not the name [province_state].
+- "Co.": county, a word of the county's name, not the name [county]. Look it up with the word written out ("<County> County" for "<County> Co.").
+- "Mt.": mount, part of the place's name [precise_location].
+- "Mts.": a place abbreviation: when you know what it stands for, look up its expansion [country, province_state, county, city, precise_location]. As for a place's name, the sources decide which level it is.
+- "Is.": island or islands [precise_location, county, province_state].
+- "nr.": near [precise_location].
+- "E. slope", "W. side": a direction qualifying the place that follows [precise_location].
+- "leg.", "coll.", "Coll.": collected by, marking the collectors [collectors].
+- "det.": determined by, marking who identified the specimen [identified_by_irn].
+- "<n> m": metres, the unit of an elevation; not metres when a capital "M" stands before a name or in a count of males and females, which field_research/written.py decides (_a_name, written.py:451-462; _counts_sexes, written.py:465-494; the unit decision, written.py:523-528), and WP 2.2 aligns this file with it [elevation_from_m, elevation_to_m]. The unit decides the field.
+- "<n> ft.", "<n>'": feet, the unit of an elevation [elevation_from_ft, elevation_to_ft]. The unit decides the field.
+- "alt.", "el.": the heading of an elevation [elevation_from_m, elevation_to_m, elevation_from_ft, elevation_to_ft].
+- "ca.", "c.": about: the value is approximate [elevation_from_m, elevation_from_ft, date_visited_from].
+- "<d>.<Roman month>.<yyyy>", "<Roman month>-<d>-<yy>", "<yyyy>.<Roman month>.<d>": the month, January to December, in any position of the date, when the profile allows Roman months [date_visited_from, date_visited_to, date_identified].
+- "Jan.", "Feb.", "Mar.", "Apr.", "Jun.", "Jul.", "Aug.", "Sep.", "Sept.", "Oct.", "Nov.", "Dec.", "ene.", "janv.", "Mai", "Okt.", "agosto": the month [date_visited_from, date_visited_to, date_identified]. A month may be written by name in English, Spanish, French, German, Portuguese, Italian or Latin, abbreviated or not, with or without periods, and a day may carry an ordinal ("3rd", "1er"); the forms listed are examples.
+- "<a>-<b>-<yy>", "<a>.<b>.<yy>", "<a>/<b>/<yy>": month <a>, day <b>; or day <a>, month <b> [date_visited_from, date_visited_to, date_identified]. Settled only when a part over 12 fixes day against month; otherwise both readings stand until evidence decides.
+- "<d1>-<d2>.<Roman month>.<yyyy>", "<Roman month>-<Roman month>.<yy>", "<d1>.<Roman month>-<d2>.<Roman month>.<yyyy>": a range: its first date is the start and its second the end [date_visited_from, date_visited_to].
+- "'<yy>", "-<yy>": the year 19<yy>, under the profile's century rule [date_visited_from, date_visited_to, date_identified].
+- "?": the value before it is uncertain as written [no field].
+- "<Roman month>-<dd>-<yy>-<n>", "<mm>-<dd>-<yy>-<n><letter>": a slide or preparation code: a month, a day, a two-digit year and a slide number joined by hyphens; never a date, nor is any part of it [no field]. No field takes a slide code (G45).
+
+Open questions that wait for the owner's reading; until then a unit holding one carries no field.
+- "CNHM.": What is "CNHM." on these labels, and does it fill a field?
+- "Sp.30 ♀": Where does "Sp.30 ♀" go, and does it fill a field?
+- "P-95-81-16": What is "P-95-81-16", and does it fill a field?
+Open questions about a notation above, whose entry stands until the owner's reading:
+- "Is.": Which fields can "Is." (island or islands) belong to?
