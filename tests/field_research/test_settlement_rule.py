@@ -668,9 +668,9 @@ def province_readings(*names, region="r1"):
     return three_readers([f"province_state: {name}" for name in names], region=region)
 
 
-@pytest.mark.parametrize(("named", "why"), [(None, None), ("o1c", agreement.CONTESTED)],
+@pytest.mark.parametrize(("named", "contested"), [(None, False), ("o1c", True)],
     ids=["image-uncertain", "image-names-Indiana"])
-def test_a_confirmed_text_in_two_spellings_keeps_its_source_backing(tmp_path, named, why):
+def test_a_confirmed_text_in_two_spellings_keeps_its_source_backing(tmp_path, named, contested):
     """Codex 1: A "Illinois", B "ILLINOIS", C "Indiana"; Getty TGN confirms Illinois and finds
     nothing for Indiana. A's and B's texts are one candidate (agreement_key), which the source
     confirms: cleared with the image uncertain; with the image naming C's "Indiana", SOURCE
@@ -682,7 +682,8 @@ def test_a_confirmed_text_in_two_spellings_keeps_its_source_backing(tmp_path, na
     label = agreement.labels(task, readings, answers)["r1"]
     assert {candidate.texts: SOURCE_OF(candidate) for candidate in label.candidates} == {
         frozenset({"Illinois", "ILLINOIS"}): True, frozenset({"Indiana"}): False}
-    assert (label.settled, label.cleared, label.why) == (frozenset({"Illinois"}), why is None, why)
+    why = agreement.CONTESTED if contested else None
+    assert (label.settled, label.cleared, label.why) == (frozenset({"Illinois"}), not contested, why)
 
 
 def test_the_same_place_settles_on_the_text_the_image_names(tmp_path):
