@@ -248,7 +248,7 @@ def test_the_fallback_tiles_differing_readings_and_a_reader_that_wrote_nothing()
 
 
 @pytest.mark.parametrize("separator", ["\r", "\r\n", "\n", "\u2028", "\u2029", "\x0b", "\x85"])
-def test_a_unit_s_lines_count_every_line_boundary(separator):
+def test_a_unit_s_lines_count_these_line_boundaries(separator):
     """Codex's review of bf1caab88: lines counted "\n" alone, so "Paris\rFrance" put "France" on
     line 1. The boundaries listed here count, in the fallback and in the request."""
     text = f"Paris{separator}France 1946"
@@ -278,7 +278,7 @@ def test_a_label_whose_readings_hold_no_text_has_no_units():
     assert alignment_units(REGION.id, [reading(ROUTES[0], ""), reading(ROUTES[1], "  ")]) is None
 
 
-def test_the_alignment_tiles_every_recorded_and_varied_reading():
+def test_the_alignment_tiles_600_seeded_variations():
     """Guard: seeded variations of the pilot readings (words dropped, added and changed,
     spacing removed): for each of the 600, the alignment's units pass reading_units.problems."""
     import random
@@ -599,7 +599,7 @@ def test_a_run_created_on_the_old_path_stays_there(tmp_path, monkeypatch):
     assert "first_pass_path" not in run.model_dump(mode="json")
 
 
-def test_the_switch_is_read_when_a_run_is_created_and_never_after(tmp_path, monkeypatch):
+def test_a_run_drains_on_its_path_with_the_switch_readers_made_to_fail(tmp_path, monkeypatch):
     """Codex's review of bf1caab88: the path was read at the first pin, guarded by classify.
     With reading_units.first_pass_path and first_pass.first_pass_path made to fail after the
     run's creation, the run drains on its recorded path."""
@@ -739,7 +739,7 @@ def unrecorded_runs(source: str) -> list[tuple[int, str]]:
     return missing
 
 
-def test_every_run_created_in_src_records_the_switch():
+def test_the_run_calls_the_guard_detects_in_src_record_the_switch():
     """A guard over src: the files with a call run_spellings detects are api.py, bulk_intake.py
     and source_import.py, and each of those calls passes first_pass_path=first_pass_path(
     os.environ). A Run built through a name bound by assignment is not seen."""
@@ -770,7 +770,7 @@ def test_every_run_created_in_src_records_the_switch():
     "from .domain import Run\nrun = Run(**fields)\n",
 ], ids=["bare", "module attribute", "module alias", "dotted module", "class alias", "model_validate",
         "model_construct", "aliased model_validate_json", "a fixed path", "keywords unpacked"])
-def test_the_guard_sees_every_spelling_of_a_run_without_the_switch(source):
+def test_the_guard_reports_each_probe_that_builds_a_run_without_the_switch(source):
     """Claude's N1 and Codex's NB1 on fc5a14b6e: the guard saw bare `Run(...)` only. Each of these
     probes builds a Run without recording the switch, and the guard reports it."""
     assert unrecorded_runs(source)
@@ -1428,7 +1428,7 @@ def given_up(workflow):
 
 @pytest.mark.parametrize("case", ["units, differing", "units, agreed", "units, one reader",
                                   "units, given up", "old, differing"])
-def test_every_transcription_version_the_units_path_projects_passes_the_connector_s_checks(
+def test_the_versions_five_runs_project_pass_the_mirrored_connector_checks(
     tmp_path, monkeypatch, case
 ):
     from test_reading_units import locate
@@ -1530,7 +1530,7 @@ def test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_wit
 # --------------------------------------------------------------------------- integrity, again
 
 
-def test_integrity_holds_every_reading_of_a_label_to_its_units(tmp_path, monkeypatch):
+def test_integrity_refuses_units_that_leave_a_reading_out(tmp_path, monkeypatch):
     """Codex's and Claude's reviews of bf1caab88: integrity checked the units against the readings
     they name, so units that left a reading out passed."""
     from specimen_digitization.application.integrity import EvidenceIntegrityError, verify_evidence

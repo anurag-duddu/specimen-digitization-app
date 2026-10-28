@@ -23,7 +23,7 @@ NOT_VISIBLE = "not visible"
 
 # The switch of the units path (docs/execution/units/PLAN.md, WP 1.2). The `Run(...)` calls in
 # api.py, bulk_intake.py and source_import.py set `Run.first_pass_path` from it when they create a
-# run (tests/test_first_pass_units.py, test_every_run_created_in_src_records_the_switch); the
+# run (tests/test_first_pass_units.py, test_the_run_calls_the_guard_detects_in_src_record_the_switch); the
 # pins, the scheduler, the step, the model child and integrity read the run's field, so a run
 # created with the switch on writes units after it is turned off
 # (test_a_run_keeps_the_path_recorded_at_its_creation). The API and the intake job carry it

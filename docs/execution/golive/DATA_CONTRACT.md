@@ -275,7 +275,7 @@ empty list, like the other per-label lists (`active_graph.run_summary`).
 `on` gives `units`; `off`, empty or unset give `old`) by the `Run(...)` calls in
 `application/api.py` (intake, region review, classification review, reprocess),
 `application/bulk_intake.py` and `application/source_import.py`
-(`test_every_run_created_in_src_records_the_switch`). The stored record omits it
+(`test_the_run_calls_the_guard_detects_in_src_record_the_switch`). The stored record omits it
 when `old` (`test_an_old_path_run_stores_main_s_bytes`). A run created with the
 switch on writes units after the switch is turned off
 (`test_a_run_keeps_the_path_recorded_at_its_creation`). On the units path
