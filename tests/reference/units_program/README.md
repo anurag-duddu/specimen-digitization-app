@@ -116,7 +116,9 @@ scorer does not place failing the test; boundary records: an empty, None or whit
 parsed value beside a literal, the default `reason` alone, a record with no state, and the refused states "",
 "SUPPORTED", "Supported", " supported" and "invented"; a no-break space or a tab as the normalized value and the
 word "text" as the parsed value, each beside a literal; text checked on every code point, the surrogates included,
-against Python's `str.isspace`;
+against Python's `str.isspace`, and on 20,000 seeded random strings
+(`test_text_on_seeded_random_strings_is_any_character_python_does_not_call_whitespace`); a literal after a leading
+newline;
 the compared value over all 64 combinations of parsed, normalized and literal, each None, "", "  " or text;
 criterion 2 counting a cleared absence, giving each
 difference its kind, "value_absent" or "two_values", and comparing ASCII letters and digits with case folded).

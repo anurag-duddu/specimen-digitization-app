@@ -1,6 +1,7 @@
 """The reference set's scorer pins the strict rule on fixed records (docs/execution/units/PLAN.md, WP 0)."""
 import importlib.util
 import itertools
+import random
 from pathlib import Path
 
 import pytest
@@ -111,6 +112,9 @@ BOUNDARY = {  # fixed records at the edges of the rule: (field, outcome against 
     "supported, no-break space normalized, text literal": (
         {"state": "supported", "normalized": "\u00a0", "literal": "H. Hoogstraal"}, "cleared_right",
         "cleared_wrong"),
+    # Text after a leading newline is text: the literal is compared as it stands.
+    "supported, literal after a newline": ({"state": "supported", "literal": "\nH. Hoogstraal"}, "cleared_right",
+                                            "cleared_wrong"),
     # A tab is whitespace: the literal is compared.
     "supported, tab normalized, text literal": (
         {"state": "supported", "normalized": "\t", "literal": "H. Hoogstraal"}, "cleared_right", "cleared_wrong"),
@@ -135,6 +139,23 @@ def test_text_is_any_string_with_a_character_python_does_not_call_whitespace():
              if score.has_text(c) is not expected or score.has_text(c * 3) is not expected]
     assert wrong == []
     assert score.has_text(None) is False and score.has_text("") is False and score.has_text(" x ") is True
+
+
+def test_text_on_seeded_random_strings_is_any_character_python_does_not_call_whitespace():
+    # 20,000 strings of 0 to 12 characters drawn from every whitespace code point and a few others (letters, a
+    # digit, punctuation, a control character, a surrogate, an emoji), most with a leading or trailing newline or
+    # tab, against Python's own str.isspace, character by character.
+    rng = random.Random(20261028)
+    space = [c for c in map(chr, range(0x110000)) if c.isspace()]
+    other = ["H", "x", "7", ".", "-", "'", chr(0), chr(0xD800), chr(0x1F600)]
+    edges = ["\n", "\t", "\r\n", ""]
+    wrong = []
+    for _ in range(20_000):
+        body = "".join(rng.choice(space) if rng.random() < 0.6 else rng.choice(other) for _ in range(rng.randint(0, 12)))
+        text = rng.choice(edges) + body + rng.choice(edges)
+        if score.has_text(text) is not any(not c.isspace() for c in text):
+            wrong.append(text)
+    assert wrong == []
 
 
 @pytest.mark.parametrize("state", ["", "SUPPORTED", "Supported", " supported", "invented"])
