@@ -15,7 +15,11 @@ from specimen_digitization.field_research.prompts import FIELD_LABELS
 ROOT = Path(__file__).resolve().parents[1]
 RENDERED = Path(__file__).with_name("fixtures") / "ontology_v1_rendered.txt"
 MOVED_AT = " at 7a09445a2"
-PLACE = "a place; the sources decide which level it is"
+PLACE = (
+    "a place; the sources decide which level it is (a country, a province or state, a county or municipio, a"
+    " city or town, or a place within them), never its name; a town and the second-level unit around it"
+    " often share a name, and a mountain, an island, a river or an estate belongs to the precise location"
+)
 
 
 def shipped() -> dict:
@@ -124,9 +128,10 @@ PILOT_UNITS = [
     ("IV-29-68-4", None, (), (
         "a slide or preparation code: a month, a day, a two-digit year and a slide number joined by"
         " hyphens; never a date, nor is any part of it",), ()),
-    ("Yepocapa", "place_name", ("country", "province_state", "county", "city", "precise_location"), "place", ()),
+    ("Yepocapa", "place_name", ("country", "province_state", "county", "city", "precise_location"), (PLACE,), ()),
     ("4800ft.", None, ("elevation_from_ft", "elevation_to_ft"), FEET, ()),
-    ("Chimaltenago", "place_name", ("country", "province_state", "county", "city", "precise_location"), "place", ()),
+    ("Chimaltenago", "place_name", ("country", "province_state", "county", "city", "precise_location"), (PLACE,),
+     ()),
 ]
 
 
@@ -136,16 +141,13 @@ def test_the_eleven_pilot_units_get_the_fields_and_meaning_the_file_gives_them(t
 
     assert advice.fields == fields
     assert advice.questions == questions
-    if means == "place":
-        assert len(advice.means) == 1 and advice.means[0].startswith(PLACE)
-    else:
-        assert advice.means == means
+    assert advice.means == means
 
 
 def test_the_three_open_units_are_the_files_questions_and_carry_nothing_else():
     loaded = ontology.ontology()
 
-    assert [question.written for question in loaded.questions] == [
+    assert [question.written for question in loaded.questions if question.written] == [
         ("CNHM.",), ("Sp.30 \N{FEMALE SIGN}",), ("P-95-81-16",)]
     assert all(question.answered_in == "WP 2.1" for question in loaded.questions)
     # A question takes the whole unit, notations beside it too.
@@ -210,7 +212,7 @@ def test_the_insects_knowledge_is_moved_whole():
 
 @pytest.mark.parametrize("text,notation", [
     ("Mindanao, P.I.", "philippine_islands_abbreviation"), ("N.S.W.", "new_south_wales_abbreviation"),
-    ("Guat.", "guatemala_abbreviation"), ("Mts.", "mountains"), ("Davao, Prov.", "province"),
+    ("Guat.", "guatemala_abbreviation"), ("Mts.", "mts_abbreviation"), ("Davao, Prov.", "province"),
     ("Cook Co.", "county_word"), ("Dept.", "department"), ("E. slope", "direction"), ("W. side", "direction"),
     ("nr.", "near"), ("Is.", "island"), ("leg.", "collected_by"), ("det.", "determined_by"),
     ("ene.", "month_name"), ("janv.", "month_name"), ("Mai", "month_name"), ("Okt.", "month_name"),
@@ -232,10 +234,83 @@ def test_the_label_notations_of_the_experts_brief_are_in_the_file(text, notation
     ("Mossy forest", ()),
     ("IX", ()),  # a Roman numeral alone is no date
     ("6400 mostly", ()),
-    ("Mts.", ("mountains",)),  # not "Mt."
+    ("Mts.", ("mts_abbreviation",)),  # not "Mt."
 ])
 def test_a_form_matches_only_at_a_words_edge(text, notations):
     assert ontology.ontology().advice(text).notations == notations
+
+
+METRES = ("elevation_from_m", "elevation_to_m")
+
+
+@pytest.mark.parametrize("text", ["2 M. Smith", "2 M. 3 F.", "2 M Smith", "4800 M. R. Smith", "3 M 2 F"])
+def test_a_capital_m_before_a_name_or_in_a_count_of_males_and_females_is_no_metres(text):
+    """written.py: a capital "M" alone is no unit before a person's name or
+    initial, or when it counts males beside a count of females (:440-441,
+    :497-504; the experts' unit line, :986-994)."""
+    advice = ontology.ontology().advice(text)
+
+    assert advice.notations == ("capital_m_no_unit",)
+    assert advice.fields == ()
+
+
+@pytest.mark.parametrize("text", ["1200 m", "1200 M", "1200 M.", "2 m. Smith", "Alt. 1200 m"])
+def test_metres_stay_metres(text):
+    """A capital "M" alone after a number is metres, and a lower-case "m"
+    stays a unit whatever follows it (date_visited_from.txt:10)."""
+    advice = ontology.ontology().advice(text)
+
+    assert "metres" in advice.notations and "capital_m_no_unit" not in advice.notations
+    assert set(METRES) <= set(advice.fields)
+
+
+PLACE_FIELDS = ("country", "province_state", "county", "city", "precise_location")
+
+
+def test_a_place_abbreviation_the_brief_only_expands_is_routed_as_a_place_name():
+    """common.txt:27 and :36 give "N.S.W." its expansion and "Mts." none; the
+    sources decide the level of either, as for a place's name (county.txt:5)."""
+    loaded = ontology.ontology()
+
+    assert loaded.advice("N.S.W.").fields == PLACE_FIELDS
+    assert loaded.advice("N.S.W.").means == ("New South Wales: a place abbreviation, looked up by its expansion",)
+    assert loaded.advice("Mts.").fields == PLACE_FIELDS
+    assert loaded.advice("Mts.").means == (
+        "a place abbreviation: when you know what it stands for, look up its expansion",)
+    entries = {notation.id: notation for notation in loaded.notations}
+    # No expansion or level the briefs do not give.
+    assert "mountain" not in " ".join((*entries["mts_abbreviation"].readings, entries["mts_abbreviation"].note))
+    assert "state" not in " ".join((*entries["new_south_wales_abbreviation"].readings,
+                                    entries["new_south_wales_abbreviation"].note))
+
+
+def test_the_island_notation_keeps_its_fields_and_carries_a_question_for_the_owners_reading():
+    loaded = ontology.ontology()
+    question = next(question for question in loaded.questions if question.id == "island_fields")
+
+    assert (question.notation, question.written, question.answered_in) == ("island", (), "WP 2.1")
+    assert loaded.advice("Is.") == ontology.Advice(
+        fields=("precise_location", "county", "province_state"), means=("island or islands",),
+        notations=("island",))
+    assert '- "Is.": Which fields can "Is." (island or islands) belong to?' in loaded.render()
+
+
+@pytest.mark.parametrize("change,message", [
+    ({"notation": "island"}, "needs written forms or a notation, not both"),
+    ({"written": None}, "needs written forms or a notation, not both"),
+    ({"written": None, "notation": "islands"}, "no notation 'islands'"),
+])
+def test_a_question_is_about_units_or_about_one_notation_of_the_file(change, message):
+    data = shipped()
+    question = entry(data, "questions", "cnhm")
+    for key, value in change.items():
+        if value is None:
+            del question[key]
+        else:
+            question[key] = value
+
+    with pytest.raises(ontology.OntologyError, match=message):
+        ontology.parse(data)
 
 
 def _cited(source: str) -> tuple[Path, str]:
@@ -255,13 +330,14 @@ def test_every_source_names_a_file_and_lines_it_has():
             continue
         path, lines = _cited(source)
         assert re.fullmatch(r"\d+(-\d+)?", lines), source
+        first, last = (int(line) for line in (lines.split("-")[0], lines.split("-")[-1]))
+        assert 1 <= first <= last, source
         if source.endswith(MOVED_AT):
             # The Insects knowledge module this change deletes, at main 7a09445a2
             # (120 lines there).
-            assert source.startswith("insects.py:") and int(lines.split("-")[-1]) <= 120, source
+            assert source.startswith("insects.py:") and last <= 120, source
             continue
         assert path.is_file(), source
-        last = int(lines.split("-")[-1])
         assert last <= len(path.read_text(encoding="utf-8").splitlines()), source
 
 

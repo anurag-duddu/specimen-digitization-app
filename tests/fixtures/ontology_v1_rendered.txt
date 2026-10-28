@@ -36,23 +36,24 @@ The fields a unit could belong to are advice only: every field's expert receives
 - A place's name the label writes with no notation beside it ("<Town>", "<Province>", "<Country>", a mountain's name): country, province_state, county, city, precise_location. A place; the sources decide which level it is (a country, a province or state, a county or municipio, a city or town, or a place within them), never its name; a town and the second-level unit around it often share a name, and a mountain, an island, a river or an estate belongs to the precise location.
 - A person's name ("<Initials> <Surname>"): collectors, identified_by_irn. A person; the marker beside the name says the role ("leg.", "coll.", "Coll.": a collector; "det.": the determiner), and capitalisation or position alone establishes no role.
 
-Label notations and every reading each allows. A word in angle brackets stands for what the label writes there: <n> a number; <d>, <dd>, <d1>, <d2>, <mm>, <a> and <b> a day's or a month's one or two digits; <yy> a two-digit year; <yyyy> a four-digit year; <Roman month> a Roman numeral I to XII; <letter> one letter.
+Label notations and every reading each allows. A word in angle brackets stands for what the label writes there: <n> a number; <d>, <dd>, <d1>, <d2>, <mm>, <a> and <b> a day's or a month's one or two digits; <yy> a two-digit year; <yyyy> a four-digit year; <Roman month> a Roman numeral I to XII; <letter> one letter; <Surname> a person's name or initial.
 Copy every literal exactly as the reading has it, character for character; a literal that is not in the reading is refused. Never complete, correct or translate a literal: readings of a notation are for calling the tools, never for the literal itself. Work through every reading a notation allows before a field is left for review, and let the tools and the specimen's other evidence decide between them. A field the label does not have stays empty.
 - "P.I.": Philippine Islands, the Philippines [country].
 - "Philippine Islands": the Philippines [country].
 - "Guat.": Guatemala [country].
-- "N.S.W.": New South Wales [province_state]. New South Wales is a state, a first-level unit.
+- "N.S.W.": New South Wales: a place abbreviation, looked up by its expansion [country, province_state, county, city, precise_location]. As for a place's name, the sources decide which level it is.
 - "Prov.": province, a word of the province's name, not the name [province_state]. Look it up with the word written out ("Davao Province" for "Davao, Prov.").
 - "Dept.": department, a word of the province's name, not the name [province_state].
 - "Co.": county, a word of the county's name, not the name [county]. Look it up with the word written out ("<County> County" for "<County> Co.").
 - "Mt.": mount, part of the place's name [precise_location].
-- "Mts.": mountains, part of the place's name [precise_location].
+- "Mts.": a place abbreviation: when you know what it stands for, look up its expansion [country, province_state, county, city, precise_location]. As for a place's name, the sources decide which level it is.
 - "Is.": island or islands [precise_location, county, province_state].
 - "nr.": near [precise_location].
 - "E. slope", "W. side": a direction qualifying the place that follows [precise_location].
 - "leg.", "coll.", "Coll.": collected by, marking the collectors [collectors].
 - "det.": determined by, marking who identified the specimen [identified_by_irn].
-- "<n> m": metres, the unit of an elevation [elevation_from_m, elevation_to_m]. The unit decides the field. A capital "M" before a name or in a count of males and females is no unit ("<n> M. <Surname>", "<n> M. <n> F.").
+- "<n> m": metres, the unit of an elevation [elevation_from_m, elevation_to_m]. The unit decides the field.
+- "<n> M. <Surname>", "<n> M <Surname>", "<n> M. <n> F.", "<n> M <n> F": a capital "M" before a name or in a count of males and females: no unit, not metres [no field]. A capital "M" alone after a number, its period aside, is metres; a lower-case "m" stays a unit whatever follows it.
 - "<n> ft.", "<n>'": feet, the unit of an elevation [elevation_from_ft, elevation_to_ft]. The unit decides the field.
 - "alt.", "el.": the heading of an elevation [elevation_from_m, elevation_to_m, elevation_from_ft, elevation_to_ft].
 - "ca.", "c.": about: the value is approximate [elevation_from_m, elevation_from_ft, date_visited_from].
@@ -68,3 +69,5 @@ Open questions that wait for the owner's reading; until then a unit holding one 
 - "CNHM.": What is "CNHM." on these labels, and does it fill a field?
 - "Sp.30 ♀": Where does "Sp.30 ♀" go, and does it fill a field?
 - "P-95-81-16": What is "P-95-81-16", and does it fill a field?
+Open questions about a notation above, whose entry stands until the owner's reading:
+- "Is.": Which fields can "Is." (island or islands) belong to?

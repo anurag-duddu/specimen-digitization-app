@@ -19,17 +19,20 @@
 #
 # A notation's or a question's `written` forms are matched in a unit's text by
 # code (ontology.Ontology.advice): letter case aside, except in a word in angle
-# brackets; a space in a form matches any white space, a line break too, or
-# none; a form's final period is optional only where `periods_optional` is
-# true (common.txt:40, "with or without periods"); a form that begins or ends
-# with a letter, a digit or a word in angle brackets matches only at a word's
-# edge. A word in angle brackets stands for what the label writes there
-# (common.txt:4): <n> a number; <d>, <dd>, <d1>, <d2>, <mm>, <a>, <b> a day's
-# or a month's one or two digits; <yy> a two-digit year; <yyyy> a four-digit
-# year; <Roman month> a Roman numeral I to XII in capitals; <letter> one
-# letter. A match inside a longer match is dropped, so no part of a slide code
-# is read as a date (common.txt:48), and a unit holding an open question
-# carries no field and no reading.
+# brackets and in a notation whose `letter_case` is exact; a space in a form
+# matches any white space, a line break too, or none; a form's final period is
+# optional only where `periods_optional` is true (common.txt:40, "with or
+# without periods"); a form that begins or ends with a letter, a digit or a
+# word in angle brackets matches only at a word's edge. A word in angle
+# brackets stands for what the label writes there (common.txt:4): <n> a
+# number; <d>, <dd>, <d1>, <d2>, <mm>, <a>, <b> a day's or a month's one or two
+# digits; <yy> a two-digit year; <yyyy> a four-digit year; <Roman month> a
+# Roman numeral I to XII in capitals; <letter> one letter; <Surname> a
+# person's name or initial (a capital and a lower-case letter among the
+# letters after it, or a capital and a period). A match inside a longer match
+# is dropped, so no part of a slide code is read as a date (common.txt:48) and
+# a capital "M" before a name is no metres, and a unit holding an open
+# question carries no field and no reading.
 
 version: "1.0"
 
@@ -355,13 +358,13 @@ notations:
       - src/specimen_digitization/field_research/prompts/common.txt:36
   - id: new_south_wales_abbreviation
     written: ["N.S.W."]
-    readings: ["New South Wales"]
-    fields: [province_state]
-    note: New South Wales is a state, a first-level unit.
+    readings: ["New South Wales: a place abbreviation, looked up by its expansion"]
+    fields: [country, province_state, county, city, precise_location]
+    note: As for a place's name, the sources decide which level it is.
     source:
       - src/specimen_digitization/field_research/prompts/common.txt:27
       - src/specimen_digitization/field_research/prompts/common.txt:36
-      - src/specimen_digitization/field_research/prompts/province_state.txt:1
+      - src/specimen_digitization/field_research/prompts/county.txt:5
   - id: province
     written: ["Prov."]
     readings: ["province, a word of the province's name, not the name"]
@@ -395,13 +398,14 @@ notations:
       - insects.py:40 at 7a09445a2
       - src/specimen_digitization/field_research/prompts/common.txt:38
       - src/specimen_digitization/field_research/prompts/city.txt:6
-  - id: mountains
+  - id: mts_abbreviation
     written: ["Mts."]
-    readings: ["mountains, part of the place's name"]
-    fields: [precise_location]
+    readings: ["a place abbreviation: when you know what it stands for, look up its expansion"]
+    fields: [country, province_state, county, city, precise_location]
+    note: As for a place's name, the sources decide which level it is.
     source:
       - src/specimen_digitization/field_research/prompts/common.txt:36
-      - src/specimen_digitization/field_research/prompts/city.txt:6
+      - src/specimen_digitization/field_research/prompts/county.txt:5
   - id: island
     written: ["Is."]
     readings: ["island or islands"]
@@ -441,14 +445,22 @@ notations:
     written: ["<n> m"]
     readings: ["metres, the unit of an elevation"]
     fields: [elevation_from_m, elevation_to_m]
-    note: >-
-      The unit decides the field. A capital "M" before a name or in a count of
-      males and females is no unit ("<n> M. <Surname>", "<n> M. <n> F.").
+    note: The unit decides the field.
     source:
       - insects.py:58-62 at 7a09445a2
       - src/specimen_digitization/field_research/prompts/common.txt:44
       - src/specimen_digitization/field_research/prompts/elevation_from_m.txt:8
+  - id: capital_m_no_unit
+    written: ["<n> M. <Surname>", "<n> M <Surname>", "<n> M. <n> F.", "<n> M <n> F"]
+    letter_case: exact
+    readings: ["a capital \"M\" before a name or in a count of males and females: no unit, not metres"]
+    fields: []
+    note: A capital "M" alone after a number, its period aside, is metres; a lower-case "m" stays a unit whatever follows it.
+    source:
+      - src/specimen_digitization/field_research/written.py:440-441
+      - src/specimen_digitization/field_research/written.py:497-504
       - src/specimen_digitization/field_research/written.py:986-994
+      - src/specimen_digitization/field_research/prompts/date_visited_from.txt:10
   - id: feet
     written: ["<n> ft.", "<n>'"]
     readings: ["feet, the unit of an elevation"]
@@ -537,8 +549,10 @@ notations:
       - src/specimen_digitization/field_research/prompts/collection_method.txt:4
       - tests/fixtures/field_model_pilot_rows.json:134
 
-# Units whose meaning waits for the owner's single reading in WP 2.1 (plan
-# section 6). Until then a unit holding one carries no field.
+# Questions for the owner's single reading in WP 2.1 (plan section 6). A
+# question with `written` forms is about units: until the reading a unit
+# holding one carries no field. A question with `notation` is about that
+# notation's entry, which stands as it is until the reading.
 questions:
   - id: cnhm
     written: ["CNHM."]
@@ -588,3 +602,15 @@ questions:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:124-126
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:141
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:320-322
+  - id: island_fields
+    notation: island
+    question: Which fields can "Is." (island or islands) belong to?
+    context: >-
+      The Insects knowledge gives it precise_location, county and
+      province_state; the province brief says an island is not a province.
+      The notation keeps those fields until this reading.
+    answered_in: WP 2.1
+    source:
+      - insects.py:41-43 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/province_state.txt:7
+      - https://github.com/anurag-duddu/specimen-digitization-app/pull/421#issuecomment-6458120321

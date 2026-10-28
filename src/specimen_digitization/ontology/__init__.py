@@ -38,8 +38,12 @@ class OntologyError(ValueError):
 # What a word in angle brackets stands for in a written form (common.txt:4: a
 # word in angle brackets stands for whatever the label writes there). A Roman
 # month is written in capitals; the longer numerals come first so that "XII"
-# is not read as "X".
+# is not read as "X". A surname is a person's name or initial as
+# field_research/written.py `_a_name` reads one: a capital and a lower-case
+# letter among the letters after it ("Smith", "McRae"), or a capital and a
+# period ("R.").
 PLACEHOLDERS = {
+    "Surname": r"[A-Z\u00c0-\u00d6\u00d8-\u00de](?:\.|[^\W\d_]*[a-z\u00df-\u00f6\u00f8-\u00ff][^\W\d_]*)",
     "n": r"\d+",
     "d": r"\d{1,2}",
     "dd": r"\d{1,2}",
@@ -95,17 +99,23 @@ class Notation:
     source: tuple[str, ...]
     note: str = ""
     periods_optional: bool = False
+    letter_case: str = "any"
     patterns: tuple[re.Pattern[str], ...] = field(default=(), compare=False, repr=False)
 
 
 @dataclass(frozen=True)
 class Question:
+    """A question for the owner's reading: about units (`written`, matched in
+    a unit's text; the unit then carries no field) or about one notation's
+    entry (`notation`, never matched; the entry stands until the reading)."""
+
     id: str
     written: tuple[str, ...]
     question: str
     context: str
     answered_in: str
     source: tuple[str, ...]
+    notation: str = ""
     periods_optional: bool = False
     patterns: tuple[re.Pattern[str], ...] = field(default=(), compare=False, repr=False)
 
@@ -203,7 +213,8 @@ class Ontology:
             "Label notations and every reading each allows. A word in angle brackets stands "
             "for what the label writes there: <n> a number; <d>, <dd>, <d1>, <d2>, <mm>, <a> "
             "and <b> a day's or a month's one or two digits; <yy> a two-digit year; <yyyy> a "
-            "four-digit year; <Roman month> a Roman numeral I to XII; <letter> one letter.",
+            "four-digit year; <Roman month> a Roman numeral I to XII; <letter> one letter; <Surname> a "
+            "person's name or initial.",
             self.notation_rule,
         ]
         for notation in self.notations:
@@ -214,8 +225,16 @@ class Ontology:
             lines.append(f"- {written}: {readings}{where}.{note}")
         lines += ["", "Open questions that wait for the owner's reading; until then a unit holding one carries no field."]
         for question in self.questions:
-            written = ", ".join(f'"{form}"' for form in question.written)
-            lines.append(f"- {written}: {question.question}")
+            if question.written:
+                written = ", ".join(f'"{form}"' for form in question.written)
+                lines.append(f"- {written}: {question.question}")
+        about = [question for question in self.questions if question.notation]
+        if about:
+            lines.append("Open questions about a notation above, whose entry stands until the owner's reading:")
+            notations = {notation.id: notation for notation in self.notations}
+            for question in about:
+                written = ", ".join(f'"{form}"' for form in notations[question.notation].written)
+                lines.append(f"- {written}: {question.question}")
         return "\n".join(lines) + "\n"
 
 
@@ -299,8 +318,10 @@ def _flag(value: Any, where: str) -> bool:
     return value
 
 
-def _patterns(forms: tuple[str, ...], periods_optional: bool, where: str) -> tuple[re.Pattern[str], ...]:
-    """Each written form as a pattern (the file's header states the rules)."""
+def _patterns(forms: tuple[str, ...], periods_optional: bool, where: str,
+              exact: bool = False) -> tuple[re.Pattern[str], ...]:
+    """Each written form as a pattern (the file's header states the rules);
+    with `exact`, letter case is significant in its literals too."""
     patterns = []
     for form in forms:
         pieces = list(_PIECE.finditer(form))
@@ -316,10 +337,10 @@ def _patterns(forms: tuple[str, ...], periods_optional: bool, where: str) -> tup
             elif space is not None:
                 parts.append(r"\s*")
             elif periods_optional and index == len(pieces) - 1 and literal.endswith("."):
-                parts.append(f"(?i:{re.escape(literal[:-1])})" if literal[:-1] else "")
+                parts.append(_literal(literal[:-1], exact))
                 parts.append(r"(?:\.|(?!\w))")
             else:
-                parts.append(f"(?i:{re.escape(literal)})")
+                parts.append(_literal(literal, exact))
         first, last = form[0], form[-1]
         begins_in_a_word = pieces[0].group(1) is not None or first.isalnum()
         ends_in_a_word = pieces[-1].group(1) is not None or last.isalnum()
@@ -327,6 +348,12 @@ def _patterns(forms: tuple[str, ...], periods_optional: bool, where: str) -> tup
         after = r"(?!\w)" if ends_in_a_word else ""
         patterns.append(re.compile(before + "".join(parts) + after))
     return tuple(patterns)
+
+
+def _literal(text: str, exact: bool) -> str:
+    if not text:
+        return ""
+    return re.escape(text) if exact else f"(?i:{re.escape(text)})"
 
 
 def _unique_ids(entries, where: str) -> None:
@@ -399,9 +426,12 @@ def parse(data: Any) -> Ontology:
     for index, value in enumerate(_list(top["notations"], "notations")):
         where = f"notations[{index}]"
         entry = _entry(value, where, {"id", "written", "readings", "fields", "source"},
-                       frozenset({"note", "periods_optional"}))
+                       frozenset({"note", "periods_optional", "letter_case"}))
         written = _texts(entry["written"], f"{where}.written")
         optional = _flag(entry.get("periods_optional", False), f"{where}.periods_optional")
+        case = entry.get("letter_case", "any")
+        if case not in ("any", "exact"):
+            raise OntologyError(f"{where}.letter_case must be any or exact")
         notations.append(Notation(
             id=_text(entry["id"], f"{where}.id"),
             written=written,
@@ -410,20 +440,27 @@ def parse(data: Any) -> Ontology:
             source=_source(entry, where),
             note=_text(entry["note"], f"{where}.note") if "note" in entry else "",
             periods_optional=optional,
-            patterns=_patterns(written, optional, where),
+            letter_case=case,
+            patterns=_patterns(written, optional, where, exact=case == "exact"),
         ))
     _unique_ids(notations, "notations")
 
     questions = []
     for index, value in enumerate(_list(top["questions"], "questions")):
         where = f"questions[{index}]"
-        entry = _entry(value, where, {"id", "written", "question", "context", "answered_in", "source"},
-                       frozenset({"periods_optional"}))
-        written = _texts(entry["written"], f"{where}.written")
+        entry = _entry(value, where, {"id", "question", "context", "answered_in", "source"},
+                       frozenset({"written", "notation", "periods_optional"}))
+        if ("written" in entry) == ("notation" in entry):
+            raise OntologyError(f"{where} needs written forms or a notation, not both")
+        written = _texts(entry["written"], f"{where}.written") if "written" in entry else ()
+        notation = _text(entry["notation"], f"{where}.notation") if "notation" in entry else ""
+        if notation and notation not in {item.id for item in notations}:
+            raise OntologyError(f"{where}: no notation {notation!r}")
         optional = _flag(entry.get("periods_optional", False), f"{where}.periods_optional")
         questions.append(Question(
             id=_text(entry["id"], f"{where}.id"),
             written=written,
+            notation=notation,
             question=_text(entry["question"], f"{where}.question"),
             context=_text(entry["context"], f"{where}.context"),
             answered_in=_text(entry["answered_in"], f"{where}.answered_in"),
