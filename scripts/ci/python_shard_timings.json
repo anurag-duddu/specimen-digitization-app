@@ -1040,10 +1040,6 @@
       "sha256": "4c918589cb98428d805dcbd2b989d9bb5aaf6fe4c347212d8942bf39ef98e38c"
     },
     {
-      "path": "tests/test_harness_knowledge.py",
-      "sha256": "7d4f53ce605acd6cd88838b17e29c32ad23c265d21bded4fc11f1fa0e2e1dfab"
-    },
-    {
       "path": "tests/test_harness_ledger.py",
       "sha256": "2f5621db0244c75b36a3d033d17e2e4784a43660c4c7fc03f4b17998d726e6d3"
     },
@@ -1903,7 +1899,6 @@
     "tests/test_georef_tgn_search.py": 0.037267730000053234,
     "tests/test_georef_wikidata.py": 0.036621011999159236,
     "tests/test_hardening_concurrency.py": 0.6704890780001733,
-    "tests/test_harness_knowledge.py": 0.001545214999964628,
     "tests/test_harness_ledger.py": 0.030281241000011505,
     "tests/test_hf_collection_classifier.py": 26.059041659000172,
     "tests/test_hierarchy_approval.py": 0.09405834000085633,
@@ -2748,14 +2743,6 @@
     {
       "path": "src/specimen_digitization/application/harness.py",
       "sha256": "e4ea30e83100abf2673513a6f2f6e983fd5452d162a62786af0d1f750e989b22"
-    },
-    {
-      "path": "src/specimen_digitization/application/harness_knowledge/__init__.py",
-      "sha256": "69a43b79601cfcb13ad1364e3b67e1748710e0a9604af6172b3b589fbf77a11c"
-    },
-    {
-      "path": "src/specimen_digitization/application/harness_knowledge/insects.py",
-      "sha256": "1f62033aae04255d9960918cd2e7c57d39c66242f76e34febd1bd4245aa9c58c"
     },
     {
       "path": "src/specimen_digitization/application/harness_ledger.py",
@@ -4812,10 +4799,6 @@
     {
       "path": "tests/test_hardening_concurrency.py",
       "sha256": "7c18ec3903cc0484c7e17c7462b339caedcddc97be5051a0256ef6dce68cfc13"
-    },
-    {
-      "path": "tests/test_harness_knowledge.py",
-      "sha256": "93db93176be30e68467da501b8b0e9fbd543702e4dec3d0d35eb3d3912765677"
     },
     {
       "path": "tests/test_harness_ledger.py",
