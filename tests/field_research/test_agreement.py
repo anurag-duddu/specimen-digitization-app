@@ -159,7 +159,7 @@ def test_105526330s_province_settles_one_letter_off_beside_its_town(tmp_path):
     province = run.fields["province_state"]
     assert (province.state, province.literal, province.normalized, province.authority_id) == (
         ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango", "tgn:1000565")
-    assert [f.reason_code for f in run.findings] == ["near_spelling:province_state"]
+    assert [f.reason_code for f in run.findings if f.rule_id != field_step.SETTLEMENT] == ["near_spelling:province_state"]
     assert run.fields["city"].state == ValueState.SUPPORTED
     assert not reasons_for(run, "province_state") and not reasons_for(run, "city")
 
@@ -253,16 +253,31 @@ def test_readers_that_differ_in_punctuation_or_a_letter_still_disagree(key, firs
     assert refused is not None and refused.reason == agreement.DIFFER
 
 
-def test_readers_that_agree_settle_on_the_spelling_of_the_reader_the_first_pass_preferred():
+def test_readers_that_agree_settle_on_the_spelling_of_the_reader_the_first_pass_preferred(first_pass_path):
     """105526330's precise location: 2A, the reading the first pass preferred,
     writes "Yepocapa,4800 ft.", 2B "Yepocapa, 4800 ft.". Spacing aside they
     agree, on 2A's spelling; 2B's spelling is sent back for it (until
-    2026-10-25 as NOT_DECIDED, G19's binding)."""
+    2026-10-25 as NOT_DECIDED, G19's binding). On the units path, which
+    prefers no reader, they agree on the spelling the image names, else the
+    first reader's (agreement._spelled): cleared where the image names one,
+    marked where it is uncertain."""
     readings = (Reading("2A", "region-2", "obs-2A", "decided_transcript", "Yepocapa,4800 ft.\nIV-25 1948"),
         Reading("2B", "region-2", "obs-2B", "raw_reading", "Yepocapa, 4800 ft.\nIV-25 1948"))
     task = FieldTask("precise_location", False, FieldValue(state=ValueState.AMBIGUOUS),
         (Candidate("2A", "Yepocapa,4800 ft.", "Yepocapa,4800 ft.", "ev-2A"),
          Candidate("2B", "Yepocapa, 4800 ft.", "Yepocapa, 4800 ft.", "ev-2B")), FIELD_TOOLS["precise_location"])
+    if first_pass_path == "units":
+        from test_first_pass_advice import with_units
+
+        for named, spelling, cleared in (("obs-2B", "Yepocapa, 4800 ft.", True),
+                ("obs-2A", "Yepocapa,4800 ft.", True), (None, "Yepocapa,4800 ft.", False)):
+            seen = with_units(readings, {"region-2": named})
+            [label] = agreement.labels(task, seen, []).values()
+            assert (label.settled, label.cleared) == (frozenset({spelling}), cleared)
+            other = next(text for text in ("Yepocapa,4800 ft.", "Yepocapa, 4800 ft.") if text != spelling)
+            refused = refusal_of(task, seen, other, "2A" if other.startswith("Yepocapa,4") else "2B")
+            assert (refused.reason, refused.differ) == (agreement.DIFFER, True)
+        return
     assert refusal_of(task, readings, "Yepocapa,4800 ft.") is None
     refused = refusal_of(task, readings, "Yepocapa, 4800 ft.", "2B")
     assert (refused.reason, refused.differ) == (agreement.DIFFER, True)
@@ -279,10 +294,13 @@ def test_the_experts_check_accepts_the_first_readers_spelling():
     assert made.validate(given).reading_names == ["2A"]
 
 
-def test_readers_that_differ_only_in_case_settle_the_field_and_keep_both_texts(tmp_path):
+def test_readers_that_differ_only_in_case_settle_the_field_and_keep_both_texts(tmp_path, first_pass_path):
     """105526322's habitat through the step: no decided transcript, 1A writes
     "shrubs, mostly forest" and 1B "Shrubs, mostly forest". The value is 1A's
-    spelling; 1B's text stays in the lineage. On origin/main it is ambiguous."""
+    spelling; 1B's text stays in the lineage. On origin/main it is ambiguous.
+    On the units path the rig's first pass names no text where the readers'
+    texts differ (test_step.seen_units), so readers agreeing alone back it:
+    settled and marked."""
     first, second = "shrubs, mostly forest", "Shrubs, mostly forest"
     rig = build_rig(tmp_path, TEXT.replace("Synthetic grassland", first), TEXT.replace("Synthetic grassland", second),
         candidates=every_field(("habitat", "1A", first, "habitat: " + first),
@@ -294,7 +312,10 @@ def test_readers_that_differ_only_in_case_settle_the_field_and_keep_both_texts(t
     assert (habitat.state, habitat.literal, habitat.input_source) == (ValueState.SUPPORTED, first, "raw_reading")
     assert habitat.verbatim_by_observation == {reader_a.id: first, reader_b.id: second}
     assert cited_rows(run, "habitat")["habitat: " + first] == "supports"
-    assert not reasons_for(run, "habitat")
+    if first_pass_path == "units":
+        assert reasons_for(run, "habitat") == [f"marked:habitat:{run.regions[0].id}:text_only"]
+    else:
+        assert not reasons_for(run, "habitat")
 
 
 # ---- an expert may cite text the readings write, not only a candidate --------
@@ -1675,7 +1696,7 @@ def test_105526329s_province_settles_on_ngas_department_in_the_iso_code_of_the_c
     province = run.fields["province_state"]
     assert (province.state, province.literal, province.normalized, province.authority_id) == (
         ValueState.SUPPORTED, "Chimaltenago", "Chimaltenango", "nga:-1132765")
-    assert [f.reason_code for f in run.findings] == ["near_spelling:province_state"]
+    assert [f.reason_code for f in run.findings if f.rule_id != field_step.SETTLEMENT] == ["near_spelling:province_state"]
     assert (run.fields["city"].state, run.fields["city"].authority_id) == (ValueState.SUPPORTED, "nga:-1143757")
     assert not reasons_for(run, "province_state") and not reasons_for(run, "city")
     verify_evidence(rig.specimen, rig.blobs)

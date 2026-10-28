@@ -1459,13 +1459,56 @@ def test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_w
     assert body["run"]["reading_units"] == [units.model_dump(mode="json")]
 
 
+def review_proofs(before, after):
+    """The proofs of `after`'s one review event, from `before` (the specimen at its base
+    revision) and `after`, as tests/test_projection_decisions.py builds them: the two revisions'
+    snapshots and a save audit of the resulting revision."""
+    from specimen_digitization.application.projection import derived_id
+    from specimen_digitization.application.storage import ReviewProofReader, ReviewSnapshot, digest
+
+    snapshots = {}
+    for value in (before, after):
+        payload = value.model_dump(mode="json")
+        snapshots[value.version] = ReviewSnapshot(payload, digest(payload), value.model_copy(deep=True))
+    [event] = [event for event in after.audit if event.action.startswith("review_")]
+
+    def read_save_audits(base_revision, resulting_revision, original, prior, current):
+        assert (base_revision, resulting_revision) == (before.version, after.version)
+        return {"saveAudits": [{"id": derived_id("person-edit-save", after.id, resulting_revision),
+            "organizationId": after.scope.organization_id, "collectionId": after.scope.collection_id,
+            "specimenId": after.id, "actorUid": event.actor, "revision": resulting_revision,
+            "action": "checkpoint_or_review"}]}
+
+    return ReviewProofReader(after, snapshots.__getitem__, read_save_audits).prove()
+
+
+def decide(workflow, principal, ident, region_id, after, key):
+    """A person's transcription decision on the label, posted to /decisions; the specimen
+    before it."""
+    from test_reading_units import app as workspace_app
+
+    http = workspace_app(workflow.repository)
+    before = workflow.repository.get(principal.scope, ident)
+    body = http.get(f"/v1/organizations/{principal.scope.organization_id}/specimens/{ident}/workspace",
+                    headers={"Authorization": "Bearer A"}).json()
+    response = http.post(
+        f"/v1/organizations/{principal.scope.organization_id}/specimens/{ident}/decisions",
+        headers={"Authorization": "Bearer A", "Idempotency-Key": key},
+        json={"expected_revision": body["revision"], "base_record_version_id": body["record_version_id"],
+              "reason": "The person reads the label", "kind": "transcription", "target_id": region_id,
+              "after": after},
+    )
+    assert response.status_code == 200, response.text
+    return before
+
+
 def test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_with_its_units(
     tmp_path, monkeypatch
 ):
-    """A supported edit posted to /decisions for the one-reader label: the reviewer's
-    projection has one V3 row, `human`, with the edited text, no call and the units as stored."""
+    """A supported edit posted to /decisions for the one-reader label: its units come from the
+    person's text (WP 1.3), and the reviewer's save, projected whole with its review decision's
+    proofs, has one V3 row, `human`, with the edited text, no call and those units."""
     from test_reading_units import locate
-    from test_reading_units import app as workspace_app
 
     from specimen_digitization.application.projection import writes
 
@@ -1473,36 +1516,77 @@ def test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_wit
     one_reader(workflow)
     drained_specimen = workflow.drain(principal, ident)
     (region,) = drained_specimen.run.regions
-    (units,) = drained_specimen.run.reading_units
-    http = workspace_app(workflow.repository)
-    body = http.get(f"/v1/organizations/{principal.scope.organization_id}/specimens/{ident}/workspace",
-                    headers={"Authorization": "Bearer A"}).json()
     edited = "E. slope Mt. McKinley, as a person reads it"
-    response = http.post(
-        f"/v1/organizations/{principal.scope.organization_id}/specimens/{ident}/decisions",
-        headers={"Authorization": "Bearer A", "Idempotency-Key": "person-edit-1"},
-        json={"expected_revision": body["revision"], "base_record_version_id": body["record_version_id"],
-              "reason": "The person reads the label", "kind": "transcription", "target_id": region.id,
-              "after": {"text": edited, "state": "supported"}},
-    )
-    assert response.status_code == 200, response.text
+    before = decide(workflow, principal, ident, region.id, {"text": edited, "state": "supported"}, "person-edit-1")
     specimen = workflow.repository.get(principal.scope, ident)
     (transcript,) = specimen.run.transcripts
     assert (transcript.actor, transcript.text) == ("A", edited)
-    assert specimen.run.reading_units == [units]
+    person = alignment_units(region.id, [SimpleNamespace(id="person", literal_text=edited)])
+    assert specimen.run.reading_units == [person]
 
-    # Projected without the audit's review events, whose rows need repository proofs.
-    assert any(event.action == "review_transcription" for event in specimen.audit)
-    saved = specimen.model_copy(update={"audit": [
-        event for event in specimen.audit if not event.action.startswith("review_")]})
-    rows = writes(saved, locate, lambda ref: 1, "A", reviewer=True)
-    (version,) = [w.variables for w in rows if w.operation.startswith("AppendTranscriptionVersion")]
+    rows = writes(specimen, locate, lambda ref: 1, "A", reviewer=True, review_proofs=review_proofs(before, specimen))
     assert [w.operation for w in rows if w.operation.startswith("AppendTranscriptionVersion")] == [
         "AppendTranscriptionVersionV3"]
+    (version,) = [w.variables for w in rows if w.operation.startswith("AppendTranscriptionVersion")]
     assert (version["decisionKind"], version["literalText"]) == ("human", edited)
     assert version["firstPassObservationId"] is None
-    assert version["readingUnits"] == units.model_dump(mode="json")
+    assert version["readingUnits"] == person.model_dump(mode="json")
+    assert len([w for w in rows if w.operation == "AppendReviewDecisionV2"]) == 1
     assert connector_refusals(rows) == []
+
+
+def named(units, observation_id):
+    """The units with each image naming the reader's text where it wrote some, as a first pass
+    that saw the label gives them."""
+    return units.model_copy(update={"units": [
+        unit.model_copy(update={"image": unit.readers[observation_id].text}) if unit.readers[observation_id].text
+        else unit for unit in units.units]})
+
+
+def test_a_person_s_edit_regenerates_the_label_s_units_from_the_person_s_text(tmp_path, monkeypatch):
+    """A label whose readers differ, its units a first pass's: a person's edit gives it units
+    from the person's text, keyed `person` (reading_units.PERSON), each image uncertain; a
+    second edit, from the second text; the run then drains to its end, integrity holding the
+    units to the person's text (integrity.verify_evidence)."""
+    workflow, principal, ident, _ = drained(tmp_path, monkeypatch)
+    specimen = workflow.drain(principal, ident)
+    (region,) = specimen.run.regions
+    (units,) = specimen.run.reading_units
+    store_reading_units(specimen.run, [named(units, specimen.run.observations[0].id)])
+    workflow.repository.save(principal, specimen, specimen.version, "seen", "seen")
+
+    for number, text in enumerate(("taxon: as a person reads it", "taxon: as a person reads it again"), 1):
+        decide(workflow, principal, ident, region.id, {"text": text, "state": "supported"}, f"edit-{number}")
+        stored = workflow.repository.get(principal.scope, ident).run
+        assert stored.reading_units == [alignment_units(region.id, [SimpleNamespace(id="person", literal_text=text)])]
+    run = workflow.drain(principal, ident).run
+    assert run.stage == "finalized" and run.blocker is None
+    assert set(run.reading_units[0].units[0].readers) == {"person"}
+
+
+def test_an_abstention_after_an_edit_regenerates_the_units_from_the_readings_and_one_before_keeps_them(
+    tmp_path, monkeypatch
+):
+    """An abstention on a label whose units are the first pass's keeps them; after a person's
+    edit, an abstention returns the label to its readings, and its units are the alignment's
+    of the readings (first_pass.alignment_units), each image uncertain."""
+    workflow, principal, ident, _ = drained(tmp_path, monkeypatch)
+    specimen = workflow.drain(principal, ident)
+    (region,) = specimen.run.regions
+    (units,) = specimen.run.reading_units
+    seen = named(units, specimen.run.observations[0].id)
+    store_reading_units(specimen.run, [seen])
+    workflow.repository.save(principal, specimen, specimen.version, "seen", "seen")
+    readings = [o for o in specimen.run.observations if o.region_id == region.id]
+
+    decide(workflow, principal, ident, region.id, {"text": None, "state": "unreadable"}, "abstain-1")
+    assert workflow.repository.get(principal.scope, ident).run.reading_units == [seen]
+    decide(workflow, principal, ident, region.id, {"text": "taxon: a person's text", "state": "supported"}, "edit")
+    decide(workflow, principal, ident, region.id, {"text": None, "state": "unreadable"}, "abstain-2")
+    stored = workflow.repository.get(principal.scope, ident).run
+    assert stored.reading_units == [alignment_units(region.id, readings)] != [seen]
+    run = workflow.drain(principal, ident).run
+    assert run.stage == "finalized" and run.blocker is None
 
 
 # --------------------------------------------------------------------------- integrity, again

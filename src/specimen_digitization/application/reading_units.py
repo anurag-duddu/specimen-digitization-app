@@ -20,6 +20,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # What the image shows at a unit when it names no reader's text (section 3, `image`).
 UNCERTAIN = "uncertain"
 NOT_VISIBLE = "not visible"
+# The key of a person's transcript among the readers of its label's units, when a person
+# decided the label's text (application/api.py, a transcription decision).
+PERSON = "person"
 
 SETTING = "SPECIMEN_FIRST_PASS_UNITS"
 OLD, UNITS = "old", "units"

@@ -87,6 +87,7 @@ def review_summary(fields, reasons):
     Missing and review are separate, overlapping measures. A resolved absence
     is missing, but only needs review with an attached blocking reason. A
     not-applicable field is neither missing nor needing review without a reason.
+    A supported field with a `marked:` reason needs review.
     Warning/info findings and record/label/processing reasons do not inflate
     field counts. Pending edits are handled locally by the field presentation.
     """
@@ -107,6 +108,10 @@ def review_summary(fields, reasons):
         field = REASON_FIELDS.get(code)
         if base in FIELD_REASONS:
             field = suffix
+        elif base == "marked":
+            # marked:<field>:<label>:<why> (field_research.step.marked_code): the field is
+            # the first part after "marked:".
+            field = suffix.partition(":")[0]
         elif base in {"elevation_invalid", "elevation_range"} and suffix in {"m", "ft"}:
             field = f"elevation_from_{suffix}"
         elif base == "elevation_units_conflict" and suffix in {"from", "to"}:
