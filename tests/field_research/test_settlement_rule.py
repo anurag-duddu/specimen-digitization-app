@@ -1178,6 +1178,10 @@ TABLE = [
         "mechanics: the literal offered to every label, whatever readings the answer names (S1)"),
     ("mechanics-s1-second-label-agrees-names-1B", lambda: s1("1B", agreed=True),
         "mechanics: the literal offered to every label, whatever readings the answer names (S1)"),
+    ("mechanics-s1-refusal-offers-every-label", lambda: dict(labels=[[unit("Shrubs", "Shrubs", image=UNCERTAIN)],
+        [unit("Shrubs", "Shurbs", image=UNCERTAIN)], [unit("Shurbs", "Shurbs", image=UNCERTAIN)]],
+        candidates=filed("habitat", ("1A", "Shrubs"), ("2B", "Shurbs"), ("3A", "Shurbs")), key="habitat",
+        script=says("Shrubs", "1A")), "mechanics: the refusal offers the literal to every label (S1)"),
     ("mechanics-units-txt-example", lambda: dict(labels=[[unit("light", "", image=0), unit("trap", "trap")]],
         candidates=[], key="collection_method", script=says("light trap", "1A")), "mechanics: prompts/units.txt's example"),
 ]
@@ -1278,6 +1282,8 @@ EXPECTED: dict[str, tuple] = {
     "claude4-t2-image-names-1B-answer-1B": kept("Yepocapa", "cleared", authority=TOWN_ID),
     "claude4-t3-options-union": refused("Shrubs", "Shurbs", "Grassland"),
     "mechanics-units-txt-example": kept("light trap", "cleared"),
+    # L2 holds 2A's "Shrubs" too: its two texts each backed only by another label, the field ambiguous.
+    "mechanics-s1-refusal-offers-every-label": refused("Shrubs", "Shurbs"),
     **{f"mechanics-s1-second-label-agrees-names-{names}": (ValueState.SUPPORTED, "Shrubs", None, None, (),
         ["cleared:L1", "cleared:L2"], []) for names in ("1A", "1B")},
     **{f"codex2-d3-claude3-1a-not-visible-names-{names}": kept("trap", "cleared") for names in ("1A", "1B", "1A-1B")},
