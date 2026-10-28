@@ -1,0 +1,607 @@
+# The specimen ontology: the conceptual model of this collection's labels, one
+# file read by people and by code (docs/product-requirements/
+# FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 5; docs/execution/units/
+# PLAN.md, WP 1.0). The loader, ontology/__init__.py, refuses a key it does not
+# know, a field that is not one of the profile's 20, and an entry with no
+# source, and renders the file to the text a model's instructions carry.
+#
+# Version 1.0 holds no meaning the engineer invented: the things of the spec's
+# section 5 table, the profile's 20 fields with their Darwin Core terms, the
+# label notations moved from the Insects harness knowledge (its NOTATIONS,
+# PLACE_ALIASES and RULES; the module and its test are deleted with this
+# version) and from the label notations of field_research/prompts/common.txt,
+# the fields a unit could belong to, and the units whose meaning waits for the
+# owner's reading in WP 2.1. Every entry names its source. A source
+# "<path>:<lines>" is a file of this repository at the commit that adds this
+# file, its path from the repository's root; "insects.py:<lines> at 7a09445a2"
+# is the deleted module, at main 7a09445a2, where the plan's WP 1.0 row gives
+# its path (docs/execution/units/PLAN.md:98).
+#
+# A notation's or a question's `written` forms are matched in a unit's text by
+# code (ontology.Ontology.advice): letter case aside, except in a word in angle
+# brackets; a space in a form matches any white space, a line break too, or
+# none; a form's final period is optional only where `periods_optional` is
+# true (common.txt:40, "with or without periods"); a form that begins or ends
+# with a letter, a digit or a word in angle brackets matches only at a word's
+# edge. A word in angle brackets stands for what the label writes there
+# (common.txt:4): <n> a number; <d>, <dd>, <d1>, <d2>, <mm>, <a>, <b> a day's
+# or a month's one or two digits; <yy> a two-digit year; <yyyy> a four-digit
+# year; <Roman month> a Roman numeral I to XII in capitals; <letter> one
+# letter. A match inside a longer match is dropped, so no part of a slide code
+# is read as a date (common.txt:48), and a unit holding an open question
+# carries no field and no reading.
+
+version: "1.0"
+
+frame:
+  name: Darwin Core conceptual model of specimen data
+  reference: https://dwc.tdwg.org/cm/, version 2026-10-13
+  source:
+    - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:298-302
+
+things:
+  - id: specimen
+    name: Specimen
+    examples: the slide, its catalogue number, the institution that holds it
+    darwin_core: MaterialEntity; catalogNumber, institutionCode
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:306]
+  - id: collecting_event
+    name: Collecting event
+    examples: "one act of collecting: where, when, how, in what habitat"
+    darwin_core: "Event: eventDate, samplingProtocol, habitat; the collectors as recordedBy"
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:307]
+  - id: locality
+    name: Locality
+    examples: the place of the event, in a chain country > province > county > city, with an elevation
+    darwin_core: "dcterms:Location: locality, municipality, county, stateProvince, country, minimumElevationInMeters"
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:308]
+  - id: agent
+    name: Agent
+    examples: a collector, an identifier
+    darwin_core: Agent; recordedBy, identifiedBy
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:309]
+  - id: determination
+    name: Determination
+    examples: a taxon name given to the specimen by a person on a date
+    darwin_core: "Identification: identifiedBy, dateIdentified; the name as Taxon: scientificName"
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:310]
+  - id: taxon
+    name: Taxon
+    examples: the name, its rank, its accepted name
+    darwin_core: Taxon
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:311]
+  - id: code
+    name: Code
+    examples: a slide or preparation code, a species number
+    darwin_core: "no term fits them; the thing is this file's own"
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:312]
+  - id: label
+    name: Label
+    examples: a physical label; it carries attributes of the things above and has a type (locality, determination, code)
+    darwin_core: "no term; the thing is this file's own"
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:313]
+
+# The profile's 20 fields (application/domain.py MANDATORY, the Insects
+# profile's mandatory fields), in its order. `label` is the PRD table's display
+# name (field_research/prompts/__init__.py FIELD_LABELS); `holds` is the first
+# line of the field's brief, except where it says otherwise.
+fields:
+  - key: fmnh_ins_number
+    label: "FMNH-INS#"
+    darwin_core: catalogNumber
+    holds: >-
+      The Field Museum insect catalog number, often printed after "FMNH INS" or
+      "FMNHINS", sometimes on a barcode label.
+    source:
+      - src/specimen_digitization/field_research/prompts/fmnh_ins_number.txt:1
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:306
+      - src/specimen_digitization/research_harness/sources.py:45
+  - key: collection_code
+    label: Collection Code
+    darwin_core: collectionCode
+    holds: A code the label writes for the collection or the collecting event, copied as written.
+    source:
+      - src/specimen_digitization/field_research/prompts/collection_code.txt:1
+      - src/specimen_digitization/research_harness/sources.py:45
+  - key: country
+    label: Country
+    darwin_core: country
+    holds: The country where the specimen was collected, as the labels write it.
+    source:
+      - src/specimen_digitization/field_research/prompts/country.txt:1
+      - docs/product-requirements/GEOREFERENCING.md:259
+  - key: province_state
+    label: Province/State
+    darwin_core: stateProvince
+    holds: >-
+      The first-level administrative unit (province, state or department) where
+      the specimen was collected, as the labels write it.
+    source:
+      - src/specimen_digitization/field_research/prompts/province_state.txt:1
+      - docs/product-requirements/GEOREFERENCING.md:259
+  - key: county
+    label: County
+    darwin_core: county
+    holds: >-
+      The country's second-level administrative unit where the specimen was
+      collected, as the labels write it: a county, or whatever unit the
+      country's local government holds at that level instead (a municipio,
+      where that is the second level).
+    source:
+      - src/specimen_digitization/field_research/prompts/county.txt:1
+      - docs/product-requirements/GEOREFERENCING.md:259
+  - key: city
+    label: City
+    darwin_core: municipality
+    holds: The city, town or municipality the labels name as the collecting place.
+    source:
+      - src/specimen_digitization/field_research/prompts/city.txt:1
+      - docs/product-requirements/GEOREFERENCING.md:259
+  - key: precise_location
+    label: Precise Location
+    darwin_core: verbatimLocality
+    holds: >-
+      The locality as the label writes it: the most specific place text, such
+      as "E. slope Mt. <Mountain>, nr. <Town>".
+    note: Darwin Core's locality is its interpretation and may equal it.
+    source:
+      - src/specimen_digitization/field_research/prompts/precise_location.txt:1
+      - docs/product-requirements/GEOREFERENCING.md:258
+  - key: elevation_from_m
+    label: Elevation From (m)
+    darwin_core: minimumElevationInMeters
+    holds: The lower, or only, elevation the label writes in metres.
+    source:
+      - src/specimen_digitization/field_research/prompts/elevation_from_m.txt:1
+      - docs/product-requirements/GEOREFERENCING.md:261
+  - key: elevation_to_m
+    label: Elevation To (m)
+    darwin_core: maximumElevationInMeters
+    holds: The upper end of an elevation range the label writes in metres.
+    source:
+      - src/specimen_digitization/field_research/prompts/elevation_to_m.txt:1
+      - docs/product-requirements/GEOREFERENCING.md:261
+  - key: elevation_from_ft
+    label: Elevation From (ft)
+    darwin_core: verbatimElevation
+    holds: The lower, or only, elevation the label writes in feet.
+    note: >-
+      The four elevation fields map to verbatimElevation, as written, and to
+      minimumElevationInMeters and maximumElevationInMeters; an elevation in
+      feet is the verbatimElevation ("4800 ft.").
+    source:
+      - src/specimen_digitization/field_research/prompts/elevation_from_ft.txt:1
+      - docs/product-requirements/GEOREFERENCING.md:261
+      - docs/product-requirements/GEOREFERENCING.md:279
+  - key: elevation_to_ft
+    label: Elevation To (ft)
+    darwin_core: verbatimElevation
+    holds: The upper end of an elevation range the label writes in feet.
+    note: >-
+      The four elevation fields map to verbatimElevation, as written, and to
+      minimumElevationInMeters and maximumElevationInMeters; an elevation in
+      feet is the verbatimElevation ("4800 ft.").
+    source:
+      - src/specimen_digitization/field_research/prompts/elevation_to_ft.txt:1
+      - docs/product-requirements/GEOREFERENCING.md:261
+      - docs/product-requirements/GEOREFERENCING.md:279
+  - key: habitat
+    label: Habitat
+    darwin_core: habitat
+    holds: >-
+      The habitat, host or substrate the label writes, such as "under
+      <substrate>", "on <host>" or "<vegetation> forest", copied as written.
+    source:
+      - src/specimen_digitization/field_research/prompts/habitat.txt:1
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:307
+  - key: collection_method
+    label: Collection Method
+    darwin_core: samplingProtocol
+    holds: >-
+      How the specimen was collected, as the label writes it, such as
+      "Berlese", "light trap", "beating" or "sweeping".
+    source:
+      - src/specimen_digitization/field_research/prompts/collection_method.txt:1
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:307
+  - key: date_visited_from
+    label: Date Visited From
+    darwin_core: eventDate
+    holds: >-
+      The date the specimen was collected, or the first date of a written
+      collecting range, at the precision written.
+    source:
+      - src/specimen_digitization/field_research/prompts/date_visited_from.txt:1
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:307
+      - src/specimen_digitization/research_harness/sources.py:47
+  - key: date_visited_to
+    label: Date Visited To
+    darwin_core: eventDate
+    holds: >-
+      The last date of collecting, only when the label writes a range or an
+      end date, at the precision written.
+    source:
+      - src/specimen_digitization/field_research/prompts/date_visited_to.txt:1
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:307
+      - src/specimen_digitization/research_harness/sources.py:47
+  - key: collectors
+    label: Collectors
+    darwin_core: recordedBy
+    holds: The people who collected the specimen, exactly as the label writes them.
+    source:
+      - src/specimen_digitization/field_research/prompts/collectors.txt:1
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:307
+      - docs/product-requirements/EMU_PARTIES_IRN_RESEARCH.md:23
+  - key: verbatim_dts
+    label: Verbatim D/T/S
+    darwin_core: verbatimEventDate
+    holds: >-
+      Text transcribed exactly as written: a non-standard collection-event
+      date or time expression, such as "Avril 1917", "Summer 1914", "am",
+      "pm", "sunrise" or "daylight".
+    note: >-
+      The brief's first line says the museum has not confirmed what the field
+      holds; the PRD records the collection manager's answer of 2026-10-07,
+      and WP 1.7 replaces the brief's sentence. No document of this
+      repository names its Darwin Core term: verbatimEventDate is Darwin
+      Core's term for an event's date and time as written.
+    source:
+      - src/specimen_digitization/field_research/prompts/verbatim_dts.txt:1
+      - docs/product-requirements/PRD.md:1224
+      - https://dwc.tdwg.org/terms/#dwc:verbatimEventDate
+  - key: taxon
+    label: Taxon
+    darwin_core: scientificName
+    holds: The scientific name the labels give the specimen, at the rank written.
+    source:
+      - src/specimen_digitization/field_research/prompts/taxon.txt:1
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:310
+      - src/specimen_digitization/research_harness/sources.py:48
+  - key: identified_by_irn
+    label: Identified by IRN
+    darwin_core: identifiedBy
+    holds: The EMu Parties record number (IRN) of the person who identified the specimen.
+    note: >-
+      The museum's Darwin Core mapping resolves the identifier's Parties
+      reference to the name it publishes as identifiedBy; its public archive
+      maps no identifiedByID.
+    source:
+      - src/specimen_digitization/field_research/prompts/identified_by_irn.txt:1
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:309-310
+      - docs/product-requirements/EMU_PARTIES_IRN_RESEARCH.md:23
+      - docs/product-requirements/EMU_PARTIES_IRN_RESEARCH.md:28
+  - key: date_identified
+    label: Date Identified
+    darwin_core: dateIdentified
+    holds: The date the specimen was identified (determined), at the precision written.
+    source:
+      - src/specimen_digitization/field_research/prompts/date_identified.txt:1
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:310
+      - src/specimen_digitization/research_harness/sources.py:46
+
+# The fields a kind of unit could belong to, where no notation names them.
+# Advice only: every expert receives every unit (spec section 3, `fields`).
+# The order is the file's, not a likelihood.
+routing:
+  - id: place_name
+    unit: >-
+      a place's name the label writes with no notation beside it ("<Town>",
+      "<Province>", "<Country>", a mountain's name)
+    fields: [country, province_state, county, city, precise_location]
+    means: >-
+      a place; the sources decide which level it is (a country, a province or
+      state, a county or municipio, a city or town, or a place within them),
+      never its name; a town and the second-level unit around it often share
+      a name, and a mountain, an island, a river or an estate belongs to the
+      precise location
+    source:
+      - src/specimen_digitization/field_research/prompts/county.txt:5-6
+      - src/specimen_digitization/field_research/prompts/city.txt:6-7
+      - src/specimen_digitization/field_research/prompts/province_state.txt:7
+      - src/specimen_digitization/field_research/prompts/country.txt:6
+      - src/specimen_digitization/field_research/prompts/precise_location.txt:8
+  - id: person_name
+    unit: a person's name ("<Initials> <Surname>")
+    fields: [collectors, identified_by_irn]
+    means: >-
+      a person; the marker beside the name says the role ("leg.", "coll.",
+      "Coll.": a collector; "det.": the determiner), and capitalisation or
+      position alone establishes no role
+    source:
+      - src/specimen_digitization/field_research/prompts/collectors.txt:4
+      - src/specimen_digitization/field_research/prompts/collectors.txt:6-7
+      - src/specimen_digitization/field_research/prompts/identified_by_irn.txt:4
+
+# How the readings of a notation are used, moved with the notations
+# (insects.py RULES).
+notation_rule:
+  text: >-
+    Copy every literal exactly as the reading has it, character for character;
+    a literal that is not in the reading is refused. Never complete, correct or
+    translate a literal: readings of a notation are for calling the tools,
+    never for the literal itself. Work through every reading a notation allows
+    before a field is left for review, and let the tools and the specimen's
+    other evidence decide between them. A field the label does not have stays
+    empty.
+  source:
+    - insects.py:99-105 at 7a09445a2
+
+# The label notations and every reading each allows (G29), with the fields
+# each can belong to. The elevation unit spellings and the range joiners that
+# common.txt renders from field_research/written.py (its ELEVATION_UNITS and
+# RANGE_JOINERS lines) stay there until WP 2.2 makes this file their one source.
+notations:
+  - id: philippine_islands_abbreviation
+    written: ["P.I."]
+    readings: ["Philippine Islands, the Philippines"]
+    fields: [country]
+    source:
+      - insects.py:28 at 7a09445a2
+      - insects.py:94 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:36
+      - src/specimen_digitization/field_research/prompts/common.txt:27
+  - id: philippine_islands
+    written: [Philippine Islands]
+    readings: ["the Philippines"]
+    fields: [country]
+    source:
+      - insects.py:95 at 7a09445a2
+  - id: guatemala_abbreviation
+    written: ["Guat."]
+    readings: ["Guatemala"]
+    fields: [country]
+    source:
+      - insects.py:29 at 7a09445a2
+      - insects.py:96 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:36
+  - id: new_south_wales_abbreviation
+    written: ["N.S.W."]
+    readings: ["New South Wales: a place abbreviation, looked up by its expansion"]
+    fields: [country, province_state, county, city, precise_location]
+    note: As for a place's name, the sources decide which level it is.
+    source:
+      - src/specimen_digitization/field_research/prompts/common.txt:27
+      - src/specimen_digitization/field_research/prompts/common.txt:36
+      - src/specimen_digitization/field_research/prompts/county.txt:5
+  - id: province
+    written: ["Prov."]
+    readings: ["province, a word of the province's name, not the name"]
+    fields: [province_state]
+    note: Look it up with the word written out ("Davao Province" for "Davao, Prov.").
+    source:
+      - insects.py:30-34 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:27
+      - src/specimen_digitization/field_research/prompts/common.txt:37
+  - id: department
+    written: ["Dept."]
+    readings: ["department, a word of the province's name, not the name"]
+    fields: [province_state]
+    source:
+      - insects.py:35-39 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:37
+  - id: county_word
+    written: ["Co."]
+    readings: ["county, a word of the county's name, not the name"]
+    fields: [county]
+    note: Look it up with the word written out ("<County> County" for "<County> Co.").
+    source:
+      - src/specimen_digitization/field_research/prompts/common.txt:36
+      - src/specimen_digitization/field_research/prompts/county.txt:8
+      - src/specimen_digitization/field_research/prompts/county.txt:12
+  - id: mount
+    written: ["Mt."]
+    readings: ["mount, part of the place's name"]
+    fields: [precise_location]
+    source:
+      - insects.py:40 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:38
+      - src/specimen_digitization/field_research/prompts/city.txt:6
+  - id: mts_abbreviation
+    written: ["Mts."]
+    readings: ["a place abbreviation: when you know what it stands for, look up its expansion"]
+    fields: [country, province_state, county, city, precise_location]
+    note: As for a place's name, the sources decide which level it is.
+    source:
+      - src/specimen_digitization/field_research/prompts/common.txt:36
+      - src/specimen_digitization/field_research/prompts/county.txt:5
+  - id: island
+    written: ["Is."]
+    readings: ["island or islands"]
+    fields: [precise_location, county, province_state]
+    source:
+      - insects.py:41-43 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:38
+  - id: near
+    written: ["nr."]
+    readings: ["near"]
+    fields: [precise_location]
+    source:
+      - insects.py:44 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:38
+  - id: direction
+    written: ["E. slope", "W. side"]
+    readings: ["a direction qualifying the place that follows"]
+    fields: [precise_location]
+    source:
+      - insects.py:45-49 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:38
+  - id: collected_by
+    written: ["leg.", "coll.", "Coll."]
+    readings: ["collected by, marking the collectors"]
+    fields: [collectors]
+    source:
+      - insects.py:50-52 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:39
+  - id: determined_by
+    written: ["det."]
+    readings: ["determined by, marking who identified the specimen"]
+    fields: [identified_by_irn]
+    source:
+      - insects.py:53-57 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:39
+  - id: metres
+    written: ["<n> m"]
+    readings: ["metres, the unit of an elevation; not metres when a capital \"M\" stands before a name or in a count of males and females, which field_research/written.py decides (_a_name, written.py:451-462; _counts_sexes, written.py:465-494; the unit decision, written.py:523-528), and WP 2.2 aligns this file with it"]
+    fields: [elevation_from_m, elevation_to_m]
+    note: The unit decides the field.
+    source:
+      - insects.py:58-62 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:44
+      - src/specimen_digitization/field_research/prompts/elevation_from_m.txt:8
+      - src/specimen_digitization/field_research/written.py:451-462
+      - src/specimen_digitization/field_research/written.py:465-494
+      - src/specimen_digitization/field_research/written.py:523-528
+      - src/specimen_digitization/field_research/written.py:986-994
+      - docs/execution/units/PLAN.md:113
+  - id: feet
+    written: ["<n> ft.", "<n>'"]
+    readings: ["feet, the unit of an elevation"]
+    fields: [elevation_from_ft, elevation_to_ft]
+    note: The unit decides the field.
+    source:
+      - insects.py:58-62 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:44
+      - src/specimen_digitization/field_research/prompts/elevation_from_ft.txt:8
+  - id: elevation_heading
+    written: ["alt.", "el."]
+    readings: ["the heading of an elevation"]
+    fields: [elevation_from_m, elevation_to_m, elevation_from_ft, elevation_to_ft]
+    source:
+      - insects.py:58-62 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:44
+      - src/specimen_digitization/field_research/prompts/elevation_from_m.txt:9
+  - id: approximate
+    written: ["ca.", "c."]
+    readings: ["about: the value is approximate"]
+    fields: [elevation_from_m, elevation_from_ft, date_visited_from]
+    source:
+      - insects.py:63-67 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:44
+  - id: roman_month
+    written: ["<d>.<Roman month>.<yyyy>", "<Roman month>-<d>-<yy>", "<yyyy>.<Roman month>.<d>"]
+    readings: ["the month, January to December, in any position of the date, when the profile allows Roman months"]
+    fields: [date_visited_from, date_visited_to, date_identified]
+    source:
+      - insects.py:68-72 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:40
+  - id: month_name
+    written: ["Jan.", "Feb.", "Mar.", "Apr.", "Jun.", "Jul.", "Aug.", "Sep.", "Sept.", "Oct.", "Nov.", "Dec.", "ene.", "janv.", "Mai", "Okt.", "agosto"]
+    periods_optional: true
+    readings: ["the month"]
+    fields: [date_visited_from, date_visited_to, date_identified]
+    note: >-
+      A month may be written by name in English, Spanish, French, German,
+      Portuguese, Italian or Latin, abbreviated or not, with or without
+      periods, and a day may carry an ordinal ("3rd", "1er"); the forms listed
+      are examples.
+    source:
+      - insects.py:73-77 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:40
+  - id: numeric_date
+    written: ["<a>-<b>-<yy>", "<a>.<b>.<yy>", "<a>/<b>/<yy>"]
+    readings: ["month <a>, day <b>", "day <a>, month <b>"]
+    fields: [date_visited_from, date_visited_to, date_identified]
+    note: Settled only when a part over 12 fixes day against month; otherwise both readings stand until evidence decides.
+    source:
+      - insects.py:78-82 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:41
+  - id: date_range
+    written: ["<d1>-<d2>.<Roman month>.<yyyy>", "<Roman month>-<Roman month>.<yy>", "<d1>.<Roman month>-<d2>.<Roman month>.<yyyy>"]
+    readings: ["a range: its first date is the start and its second the end"]
+    fields: [date_visited_from, date_visited_to]
+    source:
+      - src/specimen_digitization/field_research/prompts/common.txt:42
+      - src/specimen_digitization/field_research/prompts/date_visited_from.txt:16
+      - src/specimen_digitization/field_research/prompts/date_visited_to.txt:6
+  - id: two_digit_year
+    written: ["'<yy>", "-<yy>"]
+    readings: ["the year 19<yy>, under the profile's century rule"]
+    fields: [date_visited_from, date_visited_to, date_identified]
+    source:
+      - insects.py:83-87 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:43
+  - id: uncertain
+    written: ["?"]
+    readings: ["the value before it is uncertain as written"]
+    fields: []
+    source:
+      - insects.py:88 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/common.txt:47
+  - id: slide_code
+    written: ["<Roman month>-<dd>-<yy>-<n>", "<mm>-<dd>-<yy>-<n><letter>"]
+    readings: ["a slide or preparation code: a month, a day, a two-digit year and a slide number joined by hyphens; never a date, nor is any part of it"]
+    fields: []
+    note: No field takes a slide code (G45).
+    source:
+      - src/specimen_digitization/field_research/prompts/common.txt:48
+      - src/specimen_digitization/field_research/prompts/collection_code.txt:6
+      - src/specimen_digitization/field_research/prompts/fmnh_ins_number.txt:6
+      - src/specimen_digitization/field_research/prompts/collectors.txt:8
+      - src/specimen_digitization/field_research/prompts/habitat.txt:4
+      - src/specimen_digitization/field_research/prompts/collection_method.txt:4
+      - tests/fixtures/field_model_pilot_rows.json:134
+
+# Questions for the owner's single reading in WP 2.1 (plan section 6). A
+# question with `written` forms is about units: until the reading a unit
+# holding one carries no field. A question with `notation` is about that
+# notation's entry, which stands as it is until the reading.
+questions:
+  - id: cnhm
+    written: ["CNHM."]
+    periods_optional: true
+    question: What is "CNHM." on these labels, and does it fill a field?
+    context: >-
+      The fixture's author, not S8, reads CNHM as the museum's old name rather
+      than a collector; S8's table lists "H. Hoogstraal; CNHM" in its collector
+      column. The spec's worked example reads it as Chicago Natural History
+      Museum, the Field Museum's name 1943-1966, with no field until this
+      reading.
+    answered_in: WP 2.1
+    source:
+      - docs/execution/units/PLAN.md:98
+      - docs/execution/units/PLAN.md:217-219
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:134
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:320-322
+      - tests/fixtures/field_model_pilot_rows.json:134
+  - id: species_number_and_sex
+    written: ["Sp.30 ♀"]
+    question: Where does "Sp.30 ♀" go, and does it fill a field?
+    context: >-
+      The readers of label e98a924c-L2 write "Sp.30 ♀", one of three "♂". The
+      spec's worked example reads it as species number 30, female, with no
+      field until this reading; its Code row lists a species number.
+    answered_in: WP 2.1
+    source:
+      - docs/execution/units/PLAN.md:98
+      - docs/execution/units/PLAN.md:217-219
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:120-122
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:140
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:312
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:320-322
+  - id: p_code
+    written: ["P-95-81-16"]
+    question: What is "P-95-81-16", and does it fill a field?
+    context: >-
+      One reader of label e98a924c-L2 writes it on a line of its own; over 12
+      recorded runs the first pass judged it uncertain in 7, reader A in 3 and
+      neither in 2. The spec's worked example reads it as a code, with no field
+      until this reading.
+    answered_in: WP 2.1
+    source:
+      - docs/execution/units/PLAN.md:98
+      - docs/execution/units/PLAN.md:217-219
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:121
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:124-126
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:141
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:320-322
+  - id: island_fields
+    notation: island
+    question: Which fields can "Is." (island or islands) belong to?
+    context: >-
+      The Insects knowledge gives it precise_location, county and
+      province_state; the province brief says an island is not a province.
+      The notation keeps those fields until this reading.
+    answered_in: WP 2.1
+    source:
+      - insects.py:41-43 at 7a09445a2
+      - src/specimen_digitization/field_research/prompts/province_state.txt:7
+      - https://github.com/anurag-duddu/specimen-digitization-app/pull/421#issuecomment-6458120321
