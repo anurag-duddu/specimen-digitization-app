@@ -22,15 +22,17 @@ from specimen_digitization.application.active_graph import pack, run_summary
 from specimen_digitization.application.api import SYNTHETIC_COLLECTION, SYNTHETIC_ORG, create_app
 from specimen_digitization.application.domain import (
     Asset,
+    FieldValue,
     Observation,
     Principal,
     Region,
     Run,
     Scope,
     Specimen,
+    ValueState,
 )
 from specimen_digitization.application.production import SqlConnectRepository
-from specimen_digitization.application.projection import Blob, writes
+from specimen_digitization.application.projection import Blob, derived_id, writes
 from specimen_digitization.application.reading_units import (
     ReadingUnit,
     ReadingUnits,
@@ -193,10 +195,18 @@ def test_a_run_holds_one_entry_of_units_per_label():
 # ---------------------------------------------------------------------------- old runs: main's bytes
 
 # Pins computed on main e2faa1316 (before this change) from the stored run main's code wrote into
-# general_api_contracts.json's workspace response, as the run of the specimen below.
-MAIN_STORED_SHA256 = "4da6079f9b4a9a4d090e6c648f33e1bcfa53ef8a4c1180b331b33c110a733476"  # pragma: allowlist secret
-MAIN_SNAPSHOT_DIGEST = "d9fa82359146af5cacaa126b90d2cfeb71883f7b64189ddc88a41dc57ab6a9c6"  # pragma: allowlist secret
-MAIN_WRITES_DIGEST = "15d9f864a7fb5308f725de4ced70e730e16d0b7d5ed1e554792b0ec5a5ad87c3"  # pragma: allowlist secret
+# general_api_contracts.json's workspace response, as the run of the specimen below. Each is
+# written "sha256:<hex>", as tests/reference/units_program writes its digests.
+MAIN_STORED_SHA256 = "sha256:4da6079f9b4a9a4d090e6c648f33e1bcfa53ef8a4c1180b331b33c110a733476"
+MAIN_SNAPSHOT_DIGEST = "sha256:d9fa82359146af5cacaa126b90d2cfeb71883f7b64189ddc88a41dc57ab6a9c6"
+MAIN_WRITES_DIGEST = "sha256:15d9f864a7fb5308f725de4ced70e730e16d0b7d5ed1e554792b0ec5a5ad87c3"
+
+
+def hex_of(pin: str) -> str:
+    """The hex digest of a "sha256:<hex>" pin."""
+    algorithm, _, value = pin.partition(":")
+    assert algorithm == "sha256" and len(value) == 64
+    return value
 
 
 def stored_from_main() -> tuple[dict, Specimen]:
@@ -243,23 +253,23 @@ def test_a_stored_run_from_main_loads_unchanged_and_stores_main_bytes():
         raw, ensure_ascii=False
     )
     text = stored_bytes(specimen)
-    assert hashlib.sha256(text.encode()).hexdigest() == MAIN_STORED_SHA256
-    assert digest(json.loads(text)) == MAIN_SNAPSHOT_DIGEST
+    assert hashlib.sha256(text.encode()).hexdigest() == hex_of(MAIN_STORED_SHA256)
+    assert digest(json.loads(text)) == hex_of(MAIN_SNAPSHOT_DIGEST)
     # SQL Connect's snapshot: the Struct round trip reads back the same record and digest.
     payload = json.loads(text)
     transported = json_format.MessageToDict(json_format.ParseDict(payload, Struct()))
     sql = SqlConnectRepository.__new__(SqlConnectRepository)
     sql.graph_blobs = None
-    restored = sql._snapshot({"snapshot": transported, "sha256": MAIN_SNAPSHOT_DIGEST})
+    restored = sql._snapshot({"snapshot": transported, "sha256": hex_of(MAIN_SNAPSHOT_DIGEST)})
     assert restored == specimen
     # Struct leaves untyped maps' numbers as doubles; the snapshot digest reads them as SQL does.
-    assert digest(json.loads(stored_bytes(restored))) == MAIN_SNAPSHOT_DIGEST
+    assert digest(json.loads(stored_bytes(restored))) == hex_of(MAIN_SNAPSHOT_DIGEST)
 
 
 def test_a_stored_run_from_main_projects_as_main_did_without_units():
     _, specimen = stored_from_main()
     rows = projected(specimen)
-    assert digest(rows) == MAIN_WRITES_DIGEST
+    assert digest(rows) == hex_of(MAIN_WRITES_DIGEST)
     assert "AppendTranscriptionVersionV2" in {row[0] for row in rows}
     assert "AppendTranscriptionVersionV3" not in {row[0] for row in rows}
     assert not any("readingUnits" in row[1] for row in rows)
@@ -393,15 +403,12 @@ def test_the_workspace_route_returns_a_runs_units_and_omits_them_for_a_run_witho
 # ---------------------------------------------------------------------------- the normalized projection
 
 
-def test_a_labels_units_are_written_with_its_transcription_version():
-    from test_projection_decisions import base, first_pass, rows
-
-    s = first_pass(base())
-    before = writes(s, locate, lambda ref: 1, "worker-uid")
+def chicago_units(s: Specimen) -> ReadingUnits:
+    """Units of the first-pass label of test_projection_decisions: "Chicago, Ill." against "Chicago, Il1."."""
     right, left = s.run.observations
     region = s.run.regions[0]
     readings = {left.id: left.literal_text, right.id: right.literal_text}
-    units = ReadingUnits(label=region.id, units=[
+    return ReadingUnits(label=region.id, units=[
         ReadingUnit(id=f"{region.id}:1", label=region.id, lines=(1, 1), image="Chicago,",
                     readers={key: at(text, "Chicago,") for key, text in readings.items()},
                     means="Chicago", fields=["city"]),
@@ -409,6 +416,14 @@ def test_a_labels_units_are_written_with_its_transcription_version():
                     readers={left.id: at(left.literal_text, "Ill."), right.id: at(right.literal_text, "Il1.")},
                     means="Illinois", fields=["province_state"]),
     ])
+
+
+def test_a_labels_units_are_written_with_its_transcription_version():
+    from test_projection_decisions import base, first_pass, rows
+
+    s = first_pass(base())
+    before = writes(s, locate, lambda ref: 1, "worker-uid")
+    units = chicago_units(s)
     s.run.reading_units = [units]
     after = writes(s, locate, lambda ref: 1, "worker-uid")
     assert [w.operation for w in after] == [
@@ -440,3 +455,39 @@ def test_a_label_without_units_keeps_v2_beside_a_label_with_them():
     after = writes(s, locate, lambda ref: 1, "worker-uid")
     assert rows(after, "AppendTranscriptionVersionV2") == before
     assert rows(after, "AppendTranscriptionVersionV3") == []
+
+
+def test_a_candidate_from_a_label_with_units_changes_its_id_with_its_transcription():
+    """Changed units are a new transcription version; a candidate settled on it is a new row too,
+    so SQL never keeps candidate C pointing at the old version while the projector names the new one."""
+    from test_projection_decisions import base, first_pass, rows
+
+    s = first_pass(base())
+    region = s.run.regions[0]
+    s.run.fields = {"city": FieldValue(state=ValueState.SUPPORTED, literal="Chicago",
+                                       input_source="decided_transcript", source_region_id=region.id)}
+    s.run.reading_units = [chicago_units(s)]
+
+    def saved() -> tuple[str, str]:
+        result = writes(s, locate, lambda ref: 1, "worker-uid")
+        (version,) = rows(result, "AppendTranscriptionVersionV3")
+        (candidate,) = rows(result, "AppendFieldCandidateV2")
+        assert candidate["sourceTranscriptionId"] == version["id"]
+        return version["id"], candidate["id"]
+
+    first = saved()
+    # The same units again: both ids stay.
+    assert saved() == first
+    # Only one unit's meaning changes: a new version, and the candidate follows it.
+    units = s.run.reading_units[0]
+    s.run.reading_units = [units.model_copy(update={"units": [
+        units.units[0].model_copy(update={"means": "Chicago, Illinois"}), units.units[1]]})]
+    second = saved()
+    assert second[0] != first[0]
+    assert second[1] != first[1]
+    # A label without units keeps main's candidate id: no transcription id in it.
+    s.run.reading_units = []
+    (candidate,) = rows(writes(s, locate, lambda ref: 1, "worker-uid"), "AppendFieldCandidateV2")
+    assert candidate["id"] == derived_id(
+        "candidate", s.run.id, "city", "-", digest(s.run.fields["city"].model_dump(mode="json"))
+    )

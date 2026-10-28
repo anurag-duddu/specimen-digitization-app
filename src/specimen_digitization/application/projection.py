@@ -671,6 +671,7 @@ def _human_research_choices(specimen: Specimen, proofs: list[ReviewDecisionProof
 def _fields(run: Run, decisions: dict, linkable: set, candidates: dict, *, human_choices: dict | None = None) -> list[Write]:
     """A candidate per verbatim value; the settling one carries the value and evidence."""
     result = []
+    labelled = {entry.label for entry in getattr(run, "reading_units", None) or []}
     for key, value in run.fields.items():
         human_choice = (human_choices or {}).get(key)
         verbatim = getattr(value, "verbatim_by_observation", None) or {}
@@ -704,8 +705,12 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict, *, human
         candidates[key] = None
         for text, entry_source, reading in entries:
             human_entry = human_choice is not None and text is None
+            parent = decisions.get(region) if entry_source == "decided_transcript" else None
+            # A transcription with reading units changes with them alone (_first_pass), so its id
+            # joins its candidates' ids; a label without units keeps the candidate ids it had.
+            unit_parent = (parent,) if parent is not None and region in labelled else ()
             candidate = (derived_id("candidate", run.id, key, "human", human_choice["selection_id"], content)
-                         if human_entry else derived_id("candidate", run.id, key, reading or "-", content))
+                         if human_entry else derived_id("candidate", run.id, key, reading or "-", content, *unit_parent))
             settles = human_entry if human_choice is not None else not verbatim or (confirmed is not None and reading == confirmed)
             if settles:
                 candidates[key] = candidate
@@ -723,9 +728,7 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict, *, human
                         "authorityId": value.authority_id if settles else None,
                         "derivation": _derivation(value, relations) if settles else "literal",
                         "inputSource": entry_source,
-                        "sourceTranscriptionId": decisions.get(region)
-                        if entry_source == "decided_transcript"
-                        else None,
+                        "sourceTranscriptionId": parent,
                         "sourceObservationId": reading,
                     },
                 )

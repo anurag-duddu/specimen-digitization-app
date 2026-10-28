@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts/ci"))
 import schema_gate  # noqa: E402
 
-MAIN = "e2faa1316785a9317e751c67b36175fa79d07382"  # pragma: allowlist secret (a commit id)
+MAIN = "e2faa1316"
 MAIN_OPERATIONS = (
     "AppendCandidateEvidence", "AppendCandidateEvidenceV2", "AppendCheckpoint",
     "AppendCheckpointV2", "AppendEvidenceItem", "AppendEvidenceItemV2", "AppendFieldCandidate",
@@ -51,7 +51,7 @@ MAIN_OPERATIONS = (
     "UpsertCostEntriesV1",
 )
 # The exact texts of MAIN's operations, in name order, joined by a blank line.
-MAIN_OPERATIONS_SHA256 = "03fa0686b4ea163fab367417300628e65f9ae244e2a6839027e257e644e6676b"  # pragma: allowlist secret
+MAIN_OPERATIONS_SHA256 = "sha256:03fa0686b4ea163fab367417300628e65f9ae244e2a6839027e257e644e6676b"
 MAIN_TYPES = (
     "ActiveIntakeJob", "AuditEvent", "AuxiliaryDocument", "AuxiliaryReceipt", "AuxiliaryVersion",
     "CandidateEvidence", "CanonicalResearchBindingV2", "CanonicalValueDependencyV2",
@@ -67,7 +67,7 @@ MAIN_TYPES = (
     "ValidationFinding",
 )
 # The exact texts of MAIN's types, in name order, joined by a blank line.
-MAIN_TYPES_SHA256 = "0c7e9cee5211e1129d89de57d96fbaeeefd7081eeca60931ffd33fb22a214b96"  # pragma: allowlist secret
+MAIN_TYPES_SHA256 = "sha256:0c7e9cee5211e1129d89de57d96fbaeeefd7081eeca60931ffd33fb22a214b96"
 NEW_OPERATION = "AppendTranscriptionVersionV3"
 NEW_FIELD = (
     "  # The label's reading units (DATA_CONTRACT.md 4.2); null on a row written without them.\n"
@@ -106,7 +106,8 @@ def joined(found: dict[str, str], names) -> str:
 
 
 def sha256(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
+    """The text's digest as the pins write it: "sha256:<hex>"."""
+    return "sha256:" + hashlib.sha256(text.encode()).hexdigest()
 
 
 def types_without_the_new_field() -> dict[str, str]:
@@ -130,14 +131,14 @@ def test_every_connector_operation_on_main_is_byte_identical_and_exactly_one_is_
     assert set(found) - set(MAIN_OPERATIONS) == {NEW_OPERATION}
     assert set(MAIN_OPERATIONS) <= set(found)
     assert sha256(joined(found, MAIN_OPERATIONS)) == MAIN_OPERATIONS_SHA256, (
-        f"an operation of main {MAIN[:9]} changed: compare with git show {MAIN[:9]}:dataconnect/connector"
+        f"an operation of main {MAIN} changed: compare with git show {MAIN}:dataconnect/connector"
     )
 
 
 def test_every_schema_type_on_main_is_byte_identical_but_transcription_versions_new_field():
     assert set(types()) == set(MAIN_TYPES)
     assert sha256(joined(types_without_the_new_field(), MAIN_TYPES)) == MAIN_TYPES_SHA256, (
-        f"a type of main {MAIN[:9]} changed: compare with git show {MAIN[:9]}:dataconnect/schema"
+        f"a type of main {MAIN} changed: compare with git show {MAIN}:dataconnect/schema"
     )
 
 
