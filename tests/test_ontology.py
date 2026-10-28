@@ -241,26 +241,33 @@ def test_a_form_matches_only_at_a_words_edge(text, notations):
 
 
 METRES = ("elevation_from_m", "elevation_to_m")
+METRES_MEANING = (
+    'metres, the unit of an elevation; not metres when a capital "M" stands before a name or in a count of'
+    " males and females, which field_research/written.py decides (_a_name, written.py:451-462; _counts_sexes,"
+    " written.py:465-494; the unit decision, written.py:523-528), and WP 2.2 aligns this file with it"
+)
 
 
-@pytest.mark.parametrize("text", ["2 M. Smith", "2 M. 3 F.", "2 M Smith", "4800 M. R. Smith", "3 M 2 F"])
-def test_a_capital_m_before_a_name_or_in_a_count_of_males_and_females_is_no_metres(text):
-    """written.py: a capital "M" alone is no unit before a person's name or
-    initial, or when it counts males beside a count of females (:440-441,
-    :497-504; the experts' unit line, :986-994)."""
-    advice = ontology.ontology().advice(text)
+def test_the_metres_meaning_states_the_capital_m_exception_and_names_written_py_as_its_judge():
+    """The file states the exception in words and leaves the decision to
+    field_research/written.py; it copies none of written.py's name or
+    sex-count logic (WP 2.2 aligns the two, docs/execution/units/PLAN.md:113)."""
+    loaded = ontology.ontology()
+    metres = next(notation for notation in loaded.notations if notation.id == "metres")
 
-    assert advice.notations == ("capital_m_no_unit",)
-    assert advice.fields == ()
+    assert loaded.advice("1200 m").means == (METRES_MEANING,)
+    for lines in ("written.py:451-462", "written.py:465-494", "written.py:523-528"):
+        assert lines in METRES_MEANING
+        assert f"src/specimen_digitization/field_research/{lines}" in metres.source
 
 
 @pytest.mark.parametrize("text", ["1200 m", "1200 M", "1200 M.", "2 m. Smith", "Alt. 1200 m"])
-def test_metres_stay_metres(text):
-    """A capital "M" alone after a number is metres, and a lower-case "m"
-    stays a unit whatever follows it (date_visited_from.txt:10)."""
+def test_guard_metres_stay_metres(text):
+    """A guard, not a fail-first test (it passes on a93fc6911 too): a number
+    with "m" or "M" after it keeps its metres advice."""
     advice = ontology.ontology().advice(text)
 
-    assert "metres" in advice.notations and "capital_m_no_unit" not in advice.notations
+    assert "metres" in advice.notations
     assert set(METRES) <= set(advice.fields)
 
 

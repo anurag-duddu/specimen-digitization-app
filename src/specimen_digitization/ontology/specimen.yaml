@@ -19,20 +19,17 @@
 #
 # A notation's or a question's `written` forms are matched in a unit's text by
 # code (ontology.Ontology.advice): letter case aside, except in a word in angle
-# brackets and in a notation whose `letter_case` is exact; a space in a form
-# matches any white space, a line break too, or none; a form's final period is
-# optional only where `periods_optional` is true (common.txt:40, "with or
-# without periods"); a form that begins or ends with a letter, a digit or a
-# word in angle brackets matches only at a word's edge. A word in angle
-# brackets stands for what the label writes there (common.txt:4): <n> a
-# number; <d>, <dd>, <d1>, <d2>, <mm>, <a>, <b> a day's or a month's one or two
-# digits; <yy> a two-digit year; <yyyy> a four-digit year; <Roman month> a
-# Roman numeral I to XII in capitals; <letter> one letter; <Surname> a
-# person's name or initial (a capital and a lower-case letter among the
-# letters after it, or a capital and a period). A match inside a longer match
-# is dropped, so no part of a slide code is read as a date (common.txt:48) and
-# a capital "M" before a name is no metres, and a unit holding an open
-# question carries no field and no reading.
+# brackets; a space in a form matches any white space, a line break too, or
+# none; a form's final period is optional only where `periods_optional` is
+# true (common.txt:40, "with or without periods"); a form that begins or ends
+# with a letter, a digit or a word in angle brackets matches only at a word's
+# edge. A word in angle brackets stands for what the label writes there
+# (common.txt:4): <n> a number; <d>, <dd>, <d1>, <d2>, <mm>, <a>, <b> a day's
+# or a month's one or two digits; <yy> a two-digit year; <yyyy> a four-digit
+# year; <Roman month> a Roman numeral I to XII in capitals; <letter> one
+# letter. A match inside a longer match is dropped, so no part of a slide code
+# is read as a date (common.txt:48), and a unit holding an open question
+# carries no field and no reading.
 
 version: "1.0"
 
@@ -443,24 +440,18 @@ notations:
       - src/specimen_digitization/field_research/prompts/common.txt:39
   - id: metres
     written: ["<n> m"]
-    readings: ["metres, the unit of an elevation"]
+    readings: ["metres, the unit of an elevation; not metres when a capital \"M\" stands before a name or in a count of males and females, which field_research/written.py decides (_a_name, written.py:451-462; _counts_sexes, written.py:465-494; the unit decision, written.py:523-528), and WP 2.2 aligns this file with it"]
     fields: [elevation_from_m, elevation_to_m]
     note: The unit decides the field.
     source:
       - insects.py:58-62 at 7a09445a2
       - src/specimen_digitization/field_research/prompts/common.txt:44
       - src/specimen_digitization/field_research/prompts/elevation_from_m.txt:8
-  - id: capital_m_no_unit
-    written: ["<n> M. <Surname>", "<n> M <Surname>", "<n> M. <n> F.", "<n> M <n> F"]
-    letter_case: exact
-    readings: ["a capital \"M\" before a name or in a count of males and females: no unit, not metres"]
-    fields: []
-    note: A capital "M" alone after a number, its period aside, is metres; a lower-case "m" stays a unit whatever follows it.
-    source:
-      - src/specimen_digitization/field_research/written.py:440-441
-      - src/specimen_digitization/field_research/written.py:497-504
+      - src/specimen_digitization/field_research/written.py:451-462
+      - src/specimen_digitization/field_research/written.py:465-494
+      - src/specimen_digitization/field_research/written.py:523-528
       - src/specimen_digitization/field_research/written.py:986-994
-      - src/specimen_digitization/field_research/prompts/date_visited_from.txt:10
+      - docs/execution/units/PLAN.md:113
   - id: feet
     written: ["<n> ft.", "<n>'"]
     readings: ["feet, the unit of an elevation"]

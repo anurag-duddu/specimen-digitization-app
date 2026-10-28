@@ -36,7 +36,7 @@ The fields a unit could belong to are advice only: every field's expert receives
 - A place's name the label writes with no notation beside it ("<Town>", "<Province>", "<Country>", a mountain's name): country, province_state, county, city, precise_location. A place; the sources decide which level it is (a country, a province or state, a county or municipio, a city or town, or a place within them), never its name; a town and the second-level unit around it often share a name, and a mountain, an island, a river or an estate belongs to the precise location.
 - A person's name ("<Initials> <Surname>"): collectors, identified_by_irn. A person; the marker beside the name says the role ("leg.", "coll.", "Coll.": a collector; "det.": the determiner), and capitalisation or position alone establishes no role.
 
-Label notations and every reading each allows. A word in angle brackets stands for what the label writes there: <n> a number; <d>, <dd>, <d1>, <d2>, <mm>, <a> and <b> a day's or a month's one or two digits; <yy> a two-digit year; <yyyy> a four-digit year; <Roman month> a Roman numeral I to XII; <letter> one letter; <Surname> a person's name or initial.
+Label notations and every reading each allows. A word in angle brackets stands for what the label writes there: <n> a number; <d>, <dd>, <d1>, <d2>, <mm>, <a> and <b> a day's or a month's one or two digits; <yy> a two-digit year; <yyyy> a four-digit year; <Roman month> a Roman numeral I to XII; <letter> one letter.
 Copy every literal exactly as the reading has it, character for character; a literal that is not in the reading is refused. Never complete, correct or translate a literal: readings of a notation are for calling the tools, never for the literal itself. Work through every reading a notation allows before a field is left for review, and let the tools and the specimen's other evidence decide between them. A field the label does not have stays empty.
 - "P.I.": Philippine Islands, the Philippines [country].
 - "Philippine Islands": the Philippines [country].
@@ -52,8 +52,7 @@ Copy every literal exactly as the reading has it, character for character; a lit
 - "E. slope", "W. side": a direction qualifying the place that follows [precise_location].
 - "leg.", "coll.", "Coll.": collected by, marking the collectors [collectors].
 - "det.": determined by, marking who identified the specimen [identified_by_irn].
-- "<n> m": metres, the unit of an elevation [elevation_from_m, elevation_to_m]. The unit decides the field.
-- "<n> M. <Surname>", "<n> M <Surname>", "<n> M. <n> F.", "<n> M <n> F": a capital "M" before a name or in a count of males and females: no unit, not metres [no field]. A capital "M" alone after a number, its period aside, is metres; a lower-case "m" stays a unit whatever follows it.
+- "<n> m": metres, the unit of an elevation; not metres when a capital "M" stands before a name or in a count of males and females, which field_research/written.py decides (_a_name, written.py:451-462; _counts_sexes, written.py:465-494; the unit decision, written.py:523-528), and WP 2.2 aligns this file with it [elevation_from_m, elevation_to_m]. The unit decides the field.
 - "<n> ft.", "<n>'": feet, the unit of an elevation [elevation_from_ft, elevation_to_ft]. The unit decides the field.
 - "alt.", "el.": the heading of an elevation [elevation_from_m, elevation_to_m, elevation_from_ft, elevation_to_ft].
 - "ca.", "c.": about: the value is approximate [elevation_from_m, elevation_from_ft, date_visited_from].
