@@ -524,8 +524,9 @@ def drained(tmp_path, monkeypatch, *, switch="on", alternate="taxon: different",
         monkeypatch.setenv(SETTING, switch)
     adapters = SyntheticAdapters(LocalBlobs(tmp_path / "blobs"), SYNTHETIC_TEXT, alternate)
     calls = []
-    first_pass_units = adapters.first_pass_units
-    adapters.first_pass_units = lambda *args: calls.append(args[1].id) or first_pass_units(*args)
+    first_pass_units = getattr(adapters, "first_pass_units", None)
+    if first_pass_units is not None:
+        adapters.first_pass_units = lambda *args: calls.append(args[1].id) or first_pass_units(*args)
     workflow, principal, ident = start(tmp_path, adapters)
     return workflow, principal, ident, calls
 
@@ -551,7 +552,8 @@ def test_a_run_started_on_the_old_path_stays_there(tmp_path, monkeypatch):
 
     run = workflow.drain(principal, ident).run
 
-    assert run.first_pass_path == OLD and run.reading_units == [] and calls == []
+    # A guard: main's runs take this path, and nothing on it names a path or holds units.
+    assert getattr(run, "first_pass_path", OLD) == OLD and run.reading_units == [] and calls == []
     assert "first_pass_path" not in run.model_dump(mode="json")
 
 
@@ -599,6 +601,7 @@ def test_the_old_path_calls_no_first_pass_on_agreed_readings(tmp_path, monkeypat
                                                 alternate=SYNTHETIC_TEXT)
     run = workflow.drain(principal, ident).run
 
+    # A guard: main calls no first pass on agreed readings either.
     assert calls == [] and run.first_pass_decisions == [] and run.reading_units == []
     assert not any(step.startswith("first_pass:") for step in run.completed_steps)
 
@@ -901,7 +904,8 @@ def test_an_old_path_run_stores_main_s_bytes(tmp_path, monkeypatch, switch):
     specimen = frozen_old_path_run(tmp_path, monkeypatch, switch=switch)
     run = specimen.run
 
-    assert run.first_pass_path == OLD and run.reading_units == []
+    # A guard: the pins are main's own, so main passes it too.
+    assert getattr(run, "first_pass_path", OLD) == OLD and run.reading_units == []
     assert any(step.startswith("first_pass:") for step in run.completed_steps)
     assert old_path_pins(specimen) == (MAIN_OLD_PATH_STORED, MAIN_OLD_PATH_WRITES)
 
