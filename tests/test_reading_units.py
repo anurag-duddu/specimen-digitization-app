@@ -196,7 +196,7 @@ def test_a_run_holds_one_entry_of_units_per_label():
 
 # Pins computed on main e2faa1316 (before this change) from the stored run main's code wrote into
 # general_api_contracts.json's workspace response, as the run of the specimen below. Each is
-# written "sha256:<hex>", as tests/reference/units_program writes its digests.
+# written "sha256:<hex>", as PR #422 writes its digests.
 MAIN_STORED_SHA256 = "sha256:4da6079f9b4a9a4d090e6c648f33e1bcfa53ef8a4c1180b331b33c110a733476"
 MAIN_SNAPSHOT_DIGEST = "sha256:d9fa82359146af5cacaa126b90d2cfeb71883f7b64189ddc88a41dc57ab6a9c6"
 MAIN_WRITES_DIGEST = "sha256:15d9f864a7fb5308f725de4ced70e730e16d0b7d5ed1e554792b0ec5a5ad87c3"

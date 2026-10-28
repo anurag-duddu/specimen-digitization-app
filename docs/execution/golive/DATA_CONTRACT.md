@@ -448,7 +448,7 @@ comparison's fixed order (section 3.1):
 | `HarnessInput` | `handoff/{transcription version}/{observation}` |
 | `ReadingComparison` | `comparison/{run}/{region}/{left}/{right}` |
 | `ToolCall` | `tool-call/{run}/{call_key}` |
-| `FieldCandidate` | `candidate/{run}/{field key}/{observation or "-"}/{digest of value}` |
+| `FieldCandidate` | `candidate/{run}/{field key}/{observation or "-"}/{digest of value}`; for a candidate whose source transcription carries reading units, the key also ends with that transcription version's id |
 | `RecordVersion` | `record/{run}/{digest of disposition, reasons, summary, findings, field states and each field's resolved candidate}` |
 | `ResolvedField` | `{record version}/field/{field key}` |
 | `CandidateEvidence` | `candidate-evidence/{candidate}/{evidence}` |
