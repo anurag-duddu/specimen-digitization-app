@@ -991,7 +991,7 @@ def rows():
         ("codex1-1-image-uncertain", lambda: place_row({"a": "Illinois", "b": "ILLINOIS", "c": "Indiana"}, UNCERTAIN,
             ["Illinois", "Indiana"], "Illinois", "1A", source="fake"), (S, "Illinois", "cleared")),
         ("codex1-1-image-names-indiana", lambda: place_row({"a": "Illinois", "b": "ILLINOIS", "c": "Indiana"}, "Indiana",
-            ["Illinois", "Indiana"], "Illinois", "1A", source="fake"), (S, "Illinois", agreement.CONTESTED)),
+            ["Illinois", "Indiana"], "Illinois", "1A", source="fake"), (S, "Illinois", "conflict")),
         # Codex round 1, 2: one town in two spellings, the image naming 1A's.
         ("codex1-2-image-spelling", lambda: same_town("Yepocapa,", "1A"), (S, "Yepocapa,", "cleared")),
         ("codex1-2-other-spelling", lambda: same_town("Yepocapa", "1B"), (S, "Yepocapa", "cleared")),
@@ -1012,7 +1012,7 @@ def rows():
             "habitat", declined()), (A, None, ("Shrubs", "Shurbs"))),
         # Claude round 1, C1: the binomial beside the trinomial, the image naming each unit.
         ("claude1-c1-1B-only", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"]),
-            [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus", "1B")), (S, "Danaus plexippus", agreement.TEXT_ONLY)),
+            [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus", "1B")), (S, "Danaus plexippus", "text_only")),
         ("claude1-c1-trinomial-answered", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"]),
             [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus megalippe", "1A")),
             (S, "Danaus plexippus megalippe", "cleared")),
@@ -1026,16 +1026,16 @@ def rows():
         ("claude1-c2a-mindanao", lambda: (labelled([{"a": "Mindanao,", "b": "Mindanao,", "c": "Mindanao,"},
             {"a": "Davao Prov.", "b": "Davao Prov.", "c": ""}], ["Mindanao,", "Davao Prov."]),
             [("1A", "Mindanao"), ("1A", "Davao Prov."), ("1B", "Mindanao"), ("1B", "Davao Prov."), ("1C", "Mindanao")],
-            "habitat", answered("Davao Prov.", "1A")), (S, "Davao Prov.", agreement.CONTESTED)),
+            "habitat", answered("Davao Prov.", "1A")), (S, "Davao Prov.", "conflict")),
         ("claude1-c2a-more-readers", lambda: (labelled([{"a": "Mindanao,", "b": "Mindanao,", "c": "Mindanao,"},
             {"a": "Davao Prov.", "b": "Davao Prov.", "c": "Davao Pr."}], ["Mindanao,", "Davao Prov."]),
             [("1A", "Mindanao"), ("1A", "Davao Prov."), ("1B", "Mindanao"), ("1B", "Davao Prov."), ("1C", "Mindanao")],
-            "habitat", answered("Mindanao", "1A")), (S, "Mindanao", agreement.CONTESTED)),
+            "habitat", answered("Mindanao", "1A")), (S, "Mindanao", "conflict")),
         # Claude round 1, C2 (b): t1-330's joined unit, the organiser filing 1A only (given to
         # agreement.labels with no source; a free-text field here, as for C2 (a)).
         ("claude1-c2b-yepocapa", lambda: (labelled([{"a": "Yepocapa, 4800", "b": "Yepocapa,4800"}, {"a": "ft.", "b": "ft."}],
             [UNCERTAIN, UNCERTAIN]), [("1A", "Yepocapa")], "habitat", answered("Yepocapa", "1A")),
-            (S, "Yepocapa", agreement.TEXT_ONLY)),
+            (S, "Yepocapa", "text_only")),
         # Claude round 1, C2 (c): the McKinley slope.
         ("claude1-c2c-mckinley-both-filed", lambda: (labelled([{"a": "E Slope", "b": ""}, {"a": "Mt.", "b": "Mt."},
             {"a": "McKinley", "b": "McKinley"}], ["E Slope", "Mt.", "McKinley"]),
@@ -1043,11 +1043,11 @@ def rows():
             answered("E Slope Mt. McKinley", "1A")), (S, "E Slope Mt. McKinley", "cleared")),
         ("claude1-c2c-mckinley-1B-only", lambda: (labelled([{"a": "E Slope", "b": ""}, {"a": "Mt.", "b": "Mt."},
             {"a": "McKinley", "b": "McKinley"}], ["E Slope", "Mt.", "McKinley"]), [("1B", "Mt. McKinley")],
-            "precise_location", answered("Mt. McKinley", "1B")), (S, "Mt. McKinley", agreement.TEXT_ONLY)),
+            "precise_location", answered("Mt. McKinley", "1B")), (S, "Mt. McKinley", "text_only")),
         # Claude round 1, C2 (d): the image at every place.
         ("claude1-c2d-one-place-uncertain", lambda: (labelled([{"a": "la", "b": "la"}, {"a": "x", "b": "x"},
             {"a": "la", "b": "la"}], ["la", "x", UNCERTAIN]), [("1A", "la"), ("1B", "la")], "collection_code",
-            answered("la", "1A")), (S, "la", agreement.TEXT_ONLY)),
+            answered("la", "1A")), (S, "la", "text_only")),
         ("claude1-c2d-both-named", lambda: (labelled([{"a": "la", "b": "la"}, {"a": "x", "b": "x"},
             {"a": "la", "b": "la"}], ["la", "x", "la"]), [("1A", "la"), ("1B", "la")], "collection_code",
             answered("la", "1A")), (S, "la", "cleared")),
@@ -1067,15 +1067,15 @@ def rows():
         # Codex round 2, D5, and Codex round 3, 4: units advised for other fields (advice takes no part).
         ("codex2-d5-shrubs-1946", lambda: (labelled([{"a": "Shrubs", "b": "Shrubs"}, {"a": "1946", "b": ""}], ["Shrubs", "1946"],
             [["habitat"], ["date_visited_from"]]), [("1B", "Shrubs")], "habitat", answered("Shrubs", "1B")),
-            (S, "Shrubs", agreement.TEXT_ONLY)),
+            (S, "Shrubs", "text_only")),
         ("codex3-4-light-advised-habitat", lambda: (labelled(LIGHT, ["light", "trap"], [["habitat"], ["collection_method"]]),
-            [("1B", "trap")], "collection_method", answered("trap", "1B")), (S, "trap", agreement.TEXT_ONLY)),
+            [("1B", "trap")], "collection_method", answered("trap", "1B")), (S, "trap", "text_only")),
         ("codex3-4-megalippe-advised-dts", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"],
             [["taxon"], ["taxon"], ["verbatim_dts"]]), [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus", "1B")),
-            (S, "Danaus plexippus", agreement.TEXT_ONLY)),
+            (S, "Danaus plexippus", "text_only")),
         ("claude3-3a-danaus-advised-taxon", lambda: (labelled(DANAUS, ["Danaus", "plexippus", "megalippe"],
             [["taxon"]] * 3), [("1B", "Danaus plexippus")], "taxon", answered("Danaus plexippus", "1B")),
-            (S, "Danaus plexippus", agreement.TEXT_ONLY)),
+            (S, "Danaus plexippus", "text_only")),
         # Codex round 2, D6, and Codex round 3, 5 and 6: rule 6's options.
         ("codex2-d6-transcript-literal", lambda: (labelled(SHRUBS, ["habitat:", UNCERTAIN]), [], "habitat",
             declined("Shrubs", "1A", options=["Shrubs", "Shurbs"])), (A, None, ("Shrubs", "Shurbs"))),
@@ -1106,7 +1106,7 @@ def rows():
     ]
     # Codex round 2, D3, and Claude round 3, 1a: "trap" beside "light trap", whichever readings
     # the answer names.
-    for light, expected in ((NOT_VISIBLE, (S, "trap", "cleared")), ("light", (S, "trap", agreement.TEXT_ONLY))):
+    for light, expected in ((NOT_VISIBLE, (S, "trap", "cleared")), ("light", (S, "trap", "text_only"))):
         for names in (("1A",), ("1B",), ("1A", "1B")):
             table.append((f"codex2-d3-claude3-1a-{'not-visible' if light == NOT_VISIBLE else 'image-names-light'}-names-"
                 + "-".join(names), lambda light=light, names=names: (labelled(LIGHT, [light, "trap"]), [],
@@ -1129,5 +1129,9 @@ ROWS = rows()
 @pytest.mark.parametrize(("build", "expected"), [row[1:] for row in ROWS], ids=[row[0] for row in ROWS])
 def test_every_reviewer_input_stores_what_the_rule_gives(build, expected):
     """PR #425's reviewer inputs, rounds 1 to 3, under P1-P8 (the PR body): what the step stores.
-    Rows whose expectation changed against earlier rounds say so in the PR body."""
-    assert stored(*build()) == expected
+    Rows whose expectation changed against earlier rounds say so in the PR body. A row names a
+    marked value's why as "conflict" or "text_only", read here as agreement's constants (the
+    table is built at collection, before any agreement name is read)."""
+    why = {"conflict": agreement.CONTESTED, "text_only": agreement.TEXT_ONLY}
+    state, literal, how = expected
+    assert stored(*build()) == (state, literal, why.get(how, how) if isinstance(how, str) else how)
