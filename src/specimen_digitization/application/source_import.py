@@ -21,11 +21,13 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 from uuid import NAMESPACE_URL, uuid5
 
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
+from .reading_units import first_pass_path
 from .domain import Asset, AuditEvent, Profile, Run, Specimen
 from .image_quality import ImageLimits, orientation_view
 from .source_reader import SourceObjectChanged, valid_generation
@@ -278,7 +280,8 @@ def create_from_object(
                 synthetic=synthetic,
                 institutional_policy_approved=synthetic,
                 semantics_confirmed=synthetic,
-            )
+            ),
+            first_pass_path=first_pass_path(os.environ),
         ),
         asset=Asset(
             sensitive=sensitive,

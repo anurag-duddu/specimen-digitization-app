@@ -20,6 +20,7 @@ from .domain import (
 )
 from .field_resolution import Reading
 from .organiser import extraction_readings
+from .reading_units import ReadingUnits
 from .reliability import (
     AdapterFailure,
     ReadingStopped,
@@ -87,6 +88,20 @@ def _model_child(payload):
                 specimen, Region.model_validate(payload["region"]), payload["route"]
             )
             value = {"observation": observation.model_dump(mode="json")}
+        elif payload["operation"] == "first_pass" and payload.get("first_pass_path") == "units":
+            # The units path's call: the decision and the label's units.
+            from .first_pass import first_pass_units_direct
+
+            decision, units = first_pass_units_direct(
+                adapter,
+                specimen,
+                Region.model_validate(payload["region"]),
+                [Observation.model_validate(o) for o in payload["readings"]],
+            )
+            value = {
+                "decision": decision.model_dump(mode="json"),
+                "units": units.model_dump(mode="json"),
+            }
         elif payload["operation"] == "first_pass":
             from .first_pass import first_pass_direct
 
@@ -201,6 +216,9 @@ def invoke_model(
             region=region.model_dump(mode="json"),
             readings=[o.model_dump(mode="json") for o in readings],
         )
+        if run.first_pass_path == "units":
+            # The child takes the run's path from this payload (model_child).
+            payload["first_pass_path"] = "units"
         step = "first_pass:" + region.id
     else:
         # The organiser reads every reading of every label, decided or raw: the
@@ -281,7 +299,21 @@ def invoke_model(
             or decision.call.input_asset_id != specimen.asset.id
         ):
             raise OperationalBlock("external_outcome_unknown")
-        return decision
+        if run.first_pass_path != "units":
+            return decision
+        # Units path: the units validate as ReadingUnits and name this region; the decision
+        # selects no reading and its verdicts are `uncertain`.
+        try:
+            units = ReadingUnits.model_validate(value["units"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise OperationalBlock("external_outcome_unknown") from exc
+        if (
+            units.label != region.id
+            or decision.selected_observation_id is not None
+            or any(d.verdict != "uncertain" for d in decision.differences)
+        ):
+            raise OperationalBlock("external_outcome_unknown")
+        return decision, units
     fields = {k: FieldValue.model_validate(v) for k, v in value["fields"].items()}
     evidence = [Evidence.model_validate(e) for e in value["evidence"]]
     tokens = value["tokens"]

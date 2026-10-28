@@ -233,7 +233,7 @@ above do not change.
 |---|---|---|
 | `decision_kind` | `identical_readings`, `first_pass`, `human` | how the decided transcript was reached |
 | `selected_observation_id` | `str \| None` | the reading chosen; `text` is its `literal_text`, verbatim |
-| `first_pass_call` | `Observation \| None` | the model call's provenance, same model as the readers' observations, with `literal_text` empty and the structured answer at `raw_ref`; set only for `first_pass`. Its `input_sha256` is the crop's digest, like every observation's; `request_sha256` names its text request (S4, #98) and stays in the snapshot |
+| `first_pass_call` | `Observation \| None` | the model call's provenance, same model as the readers' observations, with `literal_text` empty and the structured answer at `raw_ref`; set only for `first_pass`, and on the units path also for `identical_readings` (the call that cut the label's units; that kind's rule still decides the text). The writer sends `firstPassObservationId` for `first_pass` only, as the operations' check requires (`((decisionKind == 'first_pass') == (firstPassObservationId != null))`, `dataconnect/connector/projection.gql`), so an identical-readings version names no call in SQL; the domain record keeps it. Its `input_sha256` is the crop's digest, like every observation's; `request_sha256` names its text request (S4, #98) and stays in the snapshot |
 | `differences` | `list[FirstPassDifference]` | one per aligned difference: `number`, `spans` (per observation, exact `start` and `end` offsets into that reading's `literal_text` and the `text`), `verdict` (an observation id, `neither` or `uncertain`) and `material` |
 | `reason` (exists) | `str \| None` | the first pass's rationale, or the reviewer's reason |
 | `handoffs` | `list[ReaderHandoff]` | one per reading handed to the harness |
@@ -270,6 +270,39 @@ entry joins the decision's content, so other units are another version (section
 exactly as before. The active graph's compact row keeps `reading_units` as an
 empty list, like the other per-label lists (`active_graph.run_summary`).
 
+**The first pass's path** (work package 1.2): `Run.first_pass_path`, `old` or
+`units`, set from `SPECIMEN_FIRST_PASS_UNITS` (`reading_units.first_pass_path`:
+`on` gives `units`; `off`, empty or unset give `old`) by the `Run(...)` calls in
+`application/api.py` (intake, region review, classification review, reprocess),
+`application/bulk_intake.py` and `application/source_import.py`
+(`test_the_run_calls_the_guard_detects_in_src_record_the_switch`). The stored record omits it
+when `old` (`test_an_old_path_run_stores_main_s_bytes`). A run created with the
+switch on writes units after the switch is turned off
+(`test_a_run_keeps_the_path_recorded_at_its_creation`). On the units path
+`Workflow.next_step` schedules the first pass for a label with two readings or
+more and some text, agreed readings included; its decision names no reading and
+its differences stay `uncertain` (`first_pass._unpicked`); a label with one
+reading, or given up on, gets units from the alignment at `adjudicate`, `image`
+`uncertain` (`test_a_label_with_one_reading_gets_the_alignments_units_without_a_call`,
+`test_a_label_given_up_on_gets_the_alignments_units_at_adjudicate`). The units
+are in `Run.reading_units`, which the workspace route returns;
+`projection._first_pass` writes a label's units in its
+`AppendTranscriptionVersionV3`. A label with one reading, or with differing
+readings and no first-pass decision, gets no machine version (see the end of
+this section), so without a person's decision its units are on the run and the
+workspace route and not in the normalized projection
+(`test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_workspace_only`).
+A person's supported edit of such a label gives it a `human` version, which the
+reviewer's save writes with `AppendTranscriptionVersionV3` carrying the units as
+stored, the machine readings' units until work package 1.3
+(`test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_with_its_units`).
+Main before this package (work package 1.1 included) loads `Run.reading_units`
+but not `Run.first_pass_path` (`Record` refuses an unknown key), so the rollback
+boundary is the path field, in the run and in its previous runs. The rule: turn
+the switch on once this runtime serves the API, the intake job and the worker;
+to roll back past it, turn the switch off first and wait until the records the
+older runtime would load name no units path.
+
 **The unresolved rule** is the one definition of unresolved used everywhere. A
 region's decision is unresolved when no reading was selected (G19: material
 ambiguity means no pick; the harness then runs on each raw reading, and every
@@ -289,8 +322,9 @@ unresolved.
 The rationale and the notes are null for `identical_readings`. That kind also
 covers identical readings that stay unresolved, such as unreadable spans or an
 unmeasured alignment: no reading is selected there. A region with fewer than two
-readings, or with no recorded decision, has no `TranscriptionVersion`; the run's
-stage and blocker say why.
+readings, or with no recorded decision, has no machine `TranscriptionVersion`; a
+person's supported edit gives it a `human` one (see "The first pass's path"
+above); until then the run's stage and blocker say why it has none.
 
 ### 4.3 From the harness (S4)
 
@@ -448,7 +482,7 @@ comparison's fixed order (section 3.1):
 | `HarnessInput` | `handoff/{transcription version}/{observation}` |
 | `ReadingComparison` | `comparison/{run}/{region}/{left}/{right}` |
 | `ToolCall` | `tool-call/{run}/{call_key}` |
-| `FieldCandidate` | `candidate/{run}/{field key}/{observation or "-"}/{digest of value}`; for a candidate whose source transcription carries reading units, the key also ends with that transcription version's id |
+| `FieldCandidate` | `candidate/{run}/{field key}/{observation or "-"}/{digest of value}`; for a candidate whose source transcription carries reading units, the key also ends with that transcription version's id; a candidate a person selected from a source is `candidate/{run}/{field key}/human/{selection id}/{digest of value}` (`application/projection.py`, `_fields`) |
 | `RecordVersion` | `record/{run}/{digest of disposition, reasons, summary, findings, field states and each field's resolved candidate}` |
 | `ResolvedField` | `{record version}/field/{field key}` |
 | `CandidateEvidence` | `candidate-evidence/{candidate}/{evidence}` |
@@ -458,6 +492,20 @@ comparison's fixed order (section 3.1):
 `CandidateEvidence` and `ReviewDecision` have no natural-key unique constraint,
 and adding one over existing columns would not be additive, so the derived or
 domain id is their only replay guard: every writer uses these keys.
+
+A `ToolCall` row's key is `tool-call/{run}/{call_key}`. `projection._tool_call`
+gives a call whose `input_source` is `decided_transcript` the label's version
+when the run is projected as `transcriptionVersionId`, and a call with another
+input source a null one and its `observationId`
+(`tests/test_projection_decisions.py`, `(None, right.id)`). The transcription
+branch of `api.py`'s decision route changes the transcript and leaves
+`run.tool_calls` as they are, and the transcript's text is part of the
+decision's digest (`projection._first_pass`, `content`; on the units path the
+units are too), so a later projection of a `decided_transcript` call names a
+new version under the same key; `SqlConnectRepository` in `production.py` skips
+a key it has written and accepts a replay that meets the row's primary key, so
+the stored row keeps the version it was first written with. Main has this for
+the text; units add one more input to the digest.
 
 Data Connect returns UUID key fields as 32 hex characters without dashes; the
 views (`SpecimenListing`) return them with dashes. Readers normalize. Inside a

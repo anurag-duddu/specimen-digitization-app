@@ -122,9 +122,45 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                     require(observation.input_asset_id == asset.id)
                 if observation.input_crop_ref is not None:
                     read(observation.input_crop_ref, observation.input_sha256)
-            from .first_pass import g19_pick
+            from .first_pass import UNITS, g19_pick
+            from .reading_units import problems as unit_problems
 
             decisions = {d.region_id: d for d in run.first_pass_decisions}
+            units_path = run.first_pass_path == UNITS
+            # Units path: decisions select no reading and give `uncertain` verdicts; the
+            # transcripts' verdicts are `uncertain`.
+            require(not units_path or all(
+                d.selected_observation_id is None
+                and all(difference.verdict == "uncertain" for difference in d.differences)
+                for d in run.first_pass_decisions
+            ))
+            require(not units_path or all(
+                difference.verdict == "uncertain"
+                for transcript in run.transcripts
+                for difference in transcript.differences
+            ))
+            held = {entry.label for entry in run.reading_units}
+            require(len(held) == len(run.reading_units))
+            for entry in run.reading_units:
+                # Checked with `problems` against the observations of the entry's region.
+                require(entry.label in regions)
+                texts = {
+                    o.id: o.literal_text
+                    for o in run.observations
+                    if o.region_id == entry.label
+                }
+                require(not unit_problems(entry, texts))
+            if units_path and "adjudicate" in run.completed_steps:
+                # Once adjudicate has run: an entry for each region whose observations hold text.
+                require(all(
+                    region.id in held
+                    for region in run.regions
+                    if any(
+                        o.literal_text.strip()
+                        for o in run.observations
+                        if o.region_id == region.id
+                    )
+                ))
             for transcript in run.transcripts:
                 require(transcript.region_id in regions)
                 # A region no reader read (every reader's attempts failed) keeps
@@ -170,7 +206,12 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                     require(transcript.text is None or transcript.text in literals)
                     selected = transcript.selected_observation_id
                     decision = decisions.get(transcript.region_id)
-                    if decision is not None:
+                    if decision is not None and units_path:
+                        # Units path: the transcript is `first_pass` or `identical_readings` and
+                        # holds the decision's call.
+                        require(transcript.decision_kind in {"first_pass", "identical_readings"})
+                        require(transcript.first_pass_call == decision.call)
+                    elif decision is not None:
                         require(transcript.decision_kind == "first_pass")
                     if transcript.decision_kind == "first_pass":
                         require(decision is not None)

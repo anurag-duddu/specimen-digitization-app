@@ -9,8 +9,8 @@ could belong to, and the questions waiting for the owner's reading.
 
 The loader refuses a key it does not know, a field that is not one of the
 profile's 20 (application/domain.py MANDATORY), and an entry with no source.
-`render` gives the text a model's instructions carry; no prompt carries it
-yet (WP 1.2 and 1.3 put it into the first pass's and the experts'). `advice`
+`render` gives the text a model's instructions carry; `render(brief=True)`
+is the units path's first-pass prompt input (prompts.py). `advice`
 gives what the file says about one unit's text: the fields it could belong to
 and the readings of its notations, or the open question it holds.
 """
@@ -180,20 +180,27 @@ class Ontology:
             notations=tuple(entry.id for entry in notations),
         )
 
-    def render(self) -> str:
-        """The ontology as a model's instructions carry it."""
+    def render(self, brief: bool = False) -> str:
+        """The ontology as a model's instructions carry it.
+
+        `brief` leaves out the things, the fields' descriptions and notes, and the notation
+        rule."""
         frame = self.frame
         lines = [
             f"Specimen ontology, version {self.version}. Its frame is the "
             f"{frame['name']} ({frame['reference']}).",
-            "",
-            "Things the labels describe (examples on labels; the Darwin Core class and terms):",
         ]
-        lines += [f"- {thing.name}: {thing.examples} (in Darwin Core, {thing.darwin_core})." for thing in self.things]
-        lines += ["", "The profile's 20 fields (key, display name, Darwin Core term: what it holds):"]
-        for entry in self.fields:
-            note = f" {_sentence(entry.note)}" if entry.note else ""
-            lines.append(f"- {entry.key} ({entry.label}), {entry.darwin_core}: {entry.holds}{note}")
+        if not brief:
+            lines += ["", "Things the labels describe (examples on labels; the Darwin Core class and terms):"]
+            lines += [f"- {thing.name}: {thing.examples} (in Darwin Core, {thing.darwin_core})." for thing in self.things]
+        if brief:
+            lines += ["", "The profile's 20 fields (key, display name, Darwin Core term):"]
+            lines += [f"- {entry.key} ({entry.label}), {entry.darwin_core}" for entry in self.fields]
+        else:
+            lines += ["", "The profile's 20 fields (key, display name, Darwin Core term: what it holds):"]
+            for entry in self.fields:
+                note = f" {_sentence(entry.note)}" if entry.note else ""
+                lines.append(f"- {entry.key} ({entry.label}), {entry.darwin_core}: {entry.holds}{note}")
         lines += [
             "",
             "The fields a unit could belong to are advice only: every field's expert receives "
@@ -209,8 +216,9 @@ class Ontology:
             "for what the label writes there: <n> a number; <d>, <dd>, <d1>, <d2>, <mm>, <a> "
             "and <b> a day's or a month's one or two digits; <yy> a two-digit year; <yyyy> a "
             "four-digit year; <Roman month> a Roman numeral I to XII; <letter> one letter.",
-            self.notation_rule,
         ]
+        if not brief:
+            lines.append(self.notation_rule)
         for notation in self.notations:
             written = ", ".join(f'"{form}"' for form in notation.written)
             readings = "; or ".join(notation.readings)
@@ -485,6 +493,6 @@ def ontology() -> Ontology:
     return read(PATH.read_text(encoding="utf-8"))
 
 
-def render() -> str:
-    """The shipped ontology as a model's instructions carry it."""
-    return ontology().render()
+def render(brief: bool = False) -> str:
+    """The shipped ontology as a model's instructions carry it (`brief`: the first pass's)."""
+    return ontology().render(brief)
