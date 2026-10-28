@@ -28,7 +28,7 @@ class CollectionPromptInputs(BaseModel):
 
 
 class FirstPassUnitsPromptInputs(CollectionPromptInputs):
-    """The collection's inputs and `ontology`, which resolve_prompt fills."""
+    """The collection's inputs and the ontology text the units prompt carries."""
 
     ontology: str = Field(min_length=1)
 
@@ -235,7 +235,8 @@ def resolve_prompt(
 ) -> ResolvedPrompt:
     """Resolve a managed prompt and retain the served version as run evidence.
 
-    FIRST_PASS_UNITS gets `ontology.render(brief=True)` as its `ontology` input."""
+    For FIRST_PASS_UNITS, plain CollectionPromptInputs get `ontology.render(brief=True)` as
+    `ontology`; FirstPassUnitsPromptInputs are used as given."""
     requested_label = label or os.getenv("LOGFIRE_PROMPT_LABEL", "development")
     if name is PromptName.FIRST_PASS_UNITS and not isinstance(inputs, FirstPassUnitsPromptInputs):
         from .ontology import render
