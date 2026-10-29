@@ -97,6 +97,15 @@ def test_the_units_paths_instructions_name_no_first_pass_preference(key):
     assert "- units, when present:" in text
 
 
+@pytest.mark.parametrize("key", FIELD_TOOLS)
+def test_the_units_paths_instructions_state_the_rule_for_several_labels(key):
+    """Codex round 5, U3: a label none of whose texts has backing is no evidence against
+    another label's text (agreement._unbacked), not "every label settles to the same value"."""
+    text = instructions(key, units=True)
+    assert ("a label none of whose texts has backing is no evidence against a text another label backs" in text
+        and "A field on several labels settles only when every label settles to the same value." not in text)
+
+
 @pytest.mark.parametrize(("text", "found"), [
     ("", {}),
     ("# a comment\n\n== a.txt\n<<< x\n>>> y\n", {"a.txt": (("x", "y"),)}),

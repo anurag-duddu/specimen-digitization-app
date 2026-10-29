@@ -1182,6 +1182,16 @@ TABLE = [
         [unit("Shrubs", "Shurbs", image=UNCERTAIN)], [unit("Shurbs", "Shurbs", image=UNCERTAIN)]],
         candidates=filed("habitat", ("1A", "Shrubs"), ("2B", "Shurbs"), ("3A", "Shurbs")), key="habitat",
         script=says("Shrubs", "1A")), "mechanics: the refusal offers the literal to every label (S1)"),
+    ("codex5-u1-dry-forest-one-unit", lambda: dict(labels=[[unit("dry forest; forest", "dry forest; forest")]],
+        candidates=filed("habitat", ("1A", "dry forest"), ("1B", "forest")), key="habitat", script=says("dry forest", "1A")),
+        "Codex round 5, 1"),
+    ("codex5-u2-ypogegrammeni", lambda: dict(labels=[[unit("\u03b1\u0345", "\u03b1 \u03b9", image=UNCERTAIN)]],
+        candidates=filed("habitat", ("1B", "\u03b1")), key="habitat", script=says("\u03b1", "1B")), "Codex round 5, 2"),
+    ("claude5-u4-neighbour-in-another-case", lambda: dict(labels=[[unit("Shrubs", "Shrubs"), unit("Elev.", "elev.")]],
+        candidates=filed("habitat", ("1B", "Shrubs")), key="habitat", script=says("Shrubs", "1B")), "Claude round 5, U4"),
+    ("claude5-u4-neighbour-spaced-otherwise", lambda: dict(labels=[[unit("Shrubs", "Shrubs"),
+        unit("6-Sept-1946", "6-Sept- 1946")]], candidates=filed("habitat", ("1B", "Shrubs")), key="habitat",
+        script=says("Shrubs", "1B")), "Claude round 5, U4"),
     ("mechanics-units-txt-example", lambda: dict(labels=[[unit("light", "", image=0), unit("trap", "trap")]],
         candidates=[], key="collection_method", script=says("light trap", "1A")), "mechanics: prompts/units.txt's example"),
 ]
@@ -1282,6 +1292,13 @@ EXPECTED: dict[str, tuple] = {
     "claude4-t2-image-names-1B-answer-1B": kept("Yepocapa", "cleared", authority=TOWN_ID),
     "claude4-t3-options-union": refused("Shrubs", "Shurbs", "Grassland"),
     "mechanics-units-txt-example": kept("light trap", "cleared"),
+    # "forest" after "dry forest; " in the one unit is a rival: both IMAGE and TEXT, two readers, 1A first.
+    "codex5-u1-dry-forest-one-unit": refused("dry forest", "forest"),
+    # "\u03b1" maps into no place of 1A's composed text: one reader, no backing.
+    "codex5-u2-ypogegrammeni": refused(),
+    # A neighbour written alike, letter case and spacing aside, bounds nothing.
+    "claude5-u4-neighbour-in-another-case": kept("Shrubs", "cleared"),
+    "claude5-u4-neighbour-spaced-otherwise": kept("Shrubs", "cleared"),
     # L2 holds 2A's "Shrubs" too: its two texts each backed only by another label, the field ambiguous.
     "mechanics-s1-refusal-offers-every-label": refused("Shrubs", "Shurbs"),
     **{f"mechanics-s1-second-label-agrees-names-{names}": (ValueState.SUPPORTED, "Shrubs", None, None, (),

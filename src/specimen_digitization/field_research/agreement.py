@@ -1764,6 +1764,36 @@ def _span(reading: Reading, cover: list) -> tuple[int, int]:
     return cover[0].readers[key].start, cover[-1].readers[key].end
 
 
+def _on_segments(text: str, start: int, end: int) -> bool:
+    """Whether a span of the text starts and ends where literal_places lets a place: on its
+    NFC segments' boundaries (_normal), at no combining mark except at the text's ends."""
+    _, offsets = _normal(text)
+    bounds = None if offsets is None else frozenset(offsets.values())
+    return all((bounds is None or at in bounds) and (at in (0, len(text)) or not unicodedata.combining(text[at]))
+        for at in (start, end))
+
+
+def _key_mapped(reading: Reading, other: Reading, cover: list, start: int, end: int) -> tuple[int, int] | None:
+    """The reading's place (start, end) over the units `cover` as offsets of `other`'s text:
+    through the agreement key's offsets (_key_offset), where the two readers' texts over
+    those units are the same, letter case and spacing aside, and the span starts and ends
+    on `other`'s NFC segments (_on_segments); else None ("\u03b1" of "\u03b1 \u03b9" maps to no
+    place of "\u03b1" with a combining ypogegrammeni)."""
+    if other.observation_id not in cover[0].readers:
+        return None
+    low, high = _span(reading, cover)
+    their_low, their_high = _span(other, cover)
+    mine, theirs = reading.text[low:high], other.text[their_low:their_high]
+    if not theirs.strip() or agreement_key(theirs) != agreement_key(mine):
+        return None
+    first = _key_offset(theirs, agreement_key(reading.text[low:start]))
+    last = _key_offset(theirs, agreement_key(reading.text[low:end]))
+    if first is None or last is None or first >= last or not _on_segments(other.text, their_low + first,
+            their_low + last):
+        return None
+    return their_low + first, their_low + last
+
+
 def _label_texts(group: Sequence[Reading], offered: Iterable[str]
         ) -> tuple[list[frozenset[str]], tuple[str, ...], dict[str, frozenset[str]]]:
     """Each reader's candidates for the field, the texts readers write at their places that
@@ -1773,10 +1803,10 @@ def _label_texts(group: Sequence[Reading], offered: Iterable[str]
     (literal_places; inside a word only where no reader of the label writes it as whole
     words), in that reader's spelling there; and of each reader whose text over
     the covering units of one of those places is that reader's, letter case and spacing
-    aside, in its own spelling, through the agreement key's offsets. The readers that agree
-    on a candidate are, at the place where most do, its reader and those whose text over
-    its covering units is the same and into whose text the candidate maps through those
-    offsets ("s" of "s s" maps into no part of "\u00df"). A reader that writes another text over those units
+    aside, in its own spelling, through the agreement key's offsets (_key_mapped). The
+    readers that agree on a candidate are, at the place where most do, its reader and those
+    whose text over its covering units is the same and into whose text the candidate maps
+    so ("s" of "s s" maps into no part of "\u00df"). A reader that writes another text over those units
     agrees with nothing there, and when none of its own candidates lies in its text there,
     it has that text at the place: no part of it is cut out of the unit as a candidate."""
     offered = [text for text in dict.fromkeys(collapse(text) for text in offered) if text]
@@ -1798,23 +1828,16 @@ def _label_texts(group: Sequence[Reading], offered: Iterable[str]
     for index, reading in enumerate(group):
         for text in own[index]:
             for (start, end), cover in _covered(reading, text):
-                low, _ = _span(reading, cover)
-                mine = over(reading, cover)
                 for other_index, other in enumerate(group):
-                    theirs = over(other, cover) if other is not reading else None
-                    if not theirs or not theirs.strip() or agreement_key(theirs) != agreement_key(mine):
-                        continue
-                    first = _key_offset(theirs, agreement_key(reading.text[low:start]))
-                    last = _key_offset(theirs, agreement_key(reading.text[low:end]))
-                    if first is not None and last is not None and first < last:
-                        found[other_index].add(collapse(theirs[first:last]))
+                    mapped = _key_mapped(reading, other, cover, start, end) if other is not reading else None
+                    if mapped is not None:
+                        found[other_index].add(collapse(other.text[mapped[0]:mapped[1]]))
     blocked: list[str] = []
     agreeing: dict[str, frozenset[str]] = {}
     for index, reading in enumerate(group):
         for text in found[index]:
             best = frozenset({reading.observation_id})
             for (start, end), cover in _covered(reading, text):
-                low, _ = _span(reading, cover)
                 mine = over(reading, cover)
                 same = {reading.observation_id}
                 for other_index, other in enumerate(group):
@@ -1822,9 +1845,7 @@ def _label_texts(group: Sequence[Reading], offered: Iterable[str]
                     if not theirs or not theirs.strip():
                         continue
                     if agreement_key(theirs) == agreement_key(mine):
-                        first = _key_offset(theirs, agreement_key(reading.text[low:start]))
-                        last = _key_offset(theirs, agreement_key(reading.text[low:end]))
-                        if first is not None and last is not None and first < last:
+                        if _key_mapped(reading, other, cover, start, end) is not None:
                             same.add(other.observation_id)
                         continue
                     their_low, their_high = _span(other, cover)
@@ -1842,21 +1863,35 @@ def _label_texts(group: Sequence[Reading], offered: Iterable[str]
 def _nested(group: Sequence[Reading], each: Sequence[frozenset[str]], inner: frozenset[str],
         outer: frozenset[str]) -> bool:
     """Whether a candidate (`inner`, its texts) lies inside another (`outer`) at every place a
-    reader writes it: each place lies over units within those of a place of the other's,
-    in any reader of the label, whose text holds it (agreement_key), and in the same reader
-    within that place (an organiser's line inside the expert's two-line locality; 1B's
-    "Mt. McKinley" under 1A's "E Slope Mt. McKinley"). One place of it outside the other
-    ("forest" on a line of its own below "dry forest") keeps it a rival."""
-    containers = [(reading, agreement_key(one), (low, high), frozenset(unit.id for unit in cover))
-        for reading, own in zip(group, each) for one in own & outer for (low, high), cover in _covered(reading, one)]
+    reader writes it: inside a place of the other's in the same reader (an organiser's line
+    inside the expert's two-line locality), or inside a place of the other's in another
+    reader as mapped into this one: through the agreement key's offsets (_key_mapped), or,
+    where that place is all the other reader wrote over its units and its text holds this
+    one's (agreement_key), as this reader's text over those units (1B's "Mt. McKinley"
+    under 1A's "E Slope Mt. McKinley"; not 1C's "Indiana" in 1A's "Illinois"). One place of
+    it outside every such place ("forest" after "dry forest; " in one unit, or on a line of
+    its own) keeps it a rival."""
     found = False
     for reading, own in zip(group, each):
+        spans = []
+        for other, theirs in zip(group, each):
+            for one in theirs & outer:
+                if other is reading:
+                    spans.extend((low, high, True) for low, high in literal_places(reading.text, one))
+                    continue
+                for (low, high), cover in _covered(other, one):
+                    mapped = _key_mapped(other, reading, cover, low, high)
+                    if mapped is not None:
+                        spans.append((*mapped, None))
+                    elif (low, high) == _span(other, cover) and reading.observation_id in cover[0].readers:
+                        spans.append((*_span(reading, cover), agreement_key(one)))
         for text in own & inner:
             key = agreement_key(text)
-            for (start, end), cover in _covered(reading, text):
-                ids = frozenset(unit.id for unit in cover)
-                if not any(key != theirs and key in theirs and ids <= units and (other is not reading
-                        or (low <= start and end <= high)) for other, theirs, (low, high), units in containers):
+            for start, end in literal_places(reading.text, text):
+                if not any(low <= start and end <= high and (
+                        (low, high) != (start, end) if holds is True
+                        else holds is None or (key != holds and key in holds))
+                        for low, high, holds in spans):
                     return False
                 found = True
     return found
