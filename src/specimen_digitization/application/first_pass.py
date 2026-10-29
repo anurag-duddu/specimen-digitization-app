@@ -49,6 +49,7 @@ from .domain import (
 from .reading_units import (  # noqa: F401 - OLD, SETTING, first_pass_path: the path's names here too
     NOT_VISIBLE,
     OLD,
+    PERSON,
     SETTING,
     UNCERTAIN,
     UNITS,
@@ -724,6 +725,22 @@ def alignment_units(region_id: str, readings) -> ReadingUnits | None:
             for number, spans in enumerate(segments, 1)
         ],
     )
+
+
+def person_decided(transcript) -> bool:
+    """Whether a person decided the label's text: a person's transcription decision
+    (Transcript.actor) left it resolved with text."""
+    return bool(getattr(transcript, "actor", None) and transcript.resolved and transcript.text)
+
+
+def source_units(run, region_id: str) -> ReadingUnits | None:
+    """A label's units from its current text source, by alignment_units (each image
+    uncertain): a person's transcript (person_decided), keyed PERSON, else the region's
+    readings. None when that source holds no text."""
+    transcript = next((t for t in run.transcripts if t.region_id == region_id), None)
+    if transcript is not None and person_decided(transcript):
+        return alignment_units(region_id, [SimpleNamespace(id=PERSON, literal_text=transcript.text)])
+    return alignment_units(region_id, [o for o in run.observations if o.region_id == region_id])
 
 
 _UNITS_TASK = (

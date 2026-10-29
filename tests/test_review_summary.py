@@ -168,3 +168,26 @@ def test_api_workspace_and_queue_count_the_same_current_revision(tmp_path):
         assert len(rows) == 1
         assert rows[0]["revision"] == detail["revision"]
         assert rows[0]["review_summary"] == detail["review_summary"]
+
+
+@pytest.mark.parametrize(
+    "reason,review",
+    [
+        # field_research.step.marked_code: the field is the first part after "marked:".
+        ("marked:habitat:L1:text_only", 1),
+        ("marked:habitat:L1:conflict", 1),
+        ("marked:habitat", 1),
+        # Another field, a field in other letter case, none, or another code.
+        ("marked:city:L1:text_only", 0),
+        ("marked:Habitat:L1:text_only", 0),
+        ("marked::L1:text_only", 0),
+        ("marked:", 0),
+        ("marked", 0),
+        ("unmarked:habitat:L1:text_only", 0),
+    ],
+)
+def test_a_marked_reason_names_its_field_for_review(reason, review):
+    """Work package 1.3 of docs/execution/units/PLAN.md: a supported habitat carrying
+    marked:habitat:<label>:<why> needs review."""
+    fields = {"habitat": {"state": "supported", "has_value": True}}
+    assert review_summary(fields, [reason, reason]) == {"review": review, "missing": 0}

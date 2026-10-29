@@ -14,6 +14,7 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, ConfigDict, Field
 
 from specimen_digitization.application.domain import Evidence, FieldValue, LookupStatus
+from specimen_digitization.application.reading_units import ReadingUnits
 
 
 PLACE_SOURCES = ("geolocate", "tgn", "wikidata", "nga")
@@ -127,7 +128,9 @@ class Reading:
     the first pass preferred for its label, which is advice to the harness,
     not a constraint (owner, 2026-10-25). `first_pass` is the first pass's
     opinion of the reading's label (the same for each of its readings), or
-    None when the label had none; it takes no part in comparing readings."""
+    None when the label had none; it takes no part in comparing readings.
+    `units` is the reading units of the reading's label on a run whose
+    first-pass path is units (step.run_readings), None on the old path."""
 
     name: str
     region_id: str
@@ -135,6 +138,7 @@ class Reading:
     input_source: Literal["decided_transcript", "raw_reading"]
     text: str
     first_pass: FirstPassAdvice | None = field(default=None, compare=False)
+    units: ReadingUnits | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True)

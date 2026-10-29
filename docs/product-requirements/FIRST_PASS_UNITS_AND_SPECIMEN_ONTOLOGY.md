@@ -197,7 +197,7 @@ writes it:
    backing, the field takes the best-backed candidate (SOURCE above IMAGE above TEXT; a tie broken
    by the number of readers that wrote it, then by reader order, A before B before C), MARKED, with
    the others listed. When none has (text against text), the field is `ambiguous` with the
-   candidates as options, as today's `several_possibilities` (`step.py:1339-1342`). Today an
+   candidates as options, as rule 6 stores it. Today an
    exact source confirmation settles against an image-confirmed pick (`agreement.py:1515-1529`,
    `:1575-1582`), except that a pick one letter from the confirmed text stays the literal and the
    confirmed name is its value (rule 1; test
@@ -208,7 +208,7 @@ writes it:
 6. No candidate has a backing: the field does not settle. Its state is `ambiguous` and its
    reason is written as today for the path that got it there: an expert's
    `several_possibilities` lists its options (`field_research/step.py:1339-1342`); a literal the
-   rule refuses keeps the refusal text (`step.py:1313-1317`). Unless the check stage infers a
+   rule refuses keeps the refusal text (`step.py:1315-1317`). Unless the check stage infers a
    value (below).
 
 The finding codes `first_pass_followed`, `first_pass_overridden`, `first_pass_absent` and
@@ -348,7 +348,7 @@ lists none); a people source is put to the owner with phase 1's measurement, nev
 | What settles a field | readers agree (every reader); a source; a near spelling; one place; another label; the preferred reader's text; a person's text (`agreement.labels`, `:1366-1557`) | the rule of section 4: candidates, three kinds of backing, cleared or marked |
 | The image guard | a near spelling or another label never overrides a text the first pass confirmed in the image; the conflict settles nothing (`confirmed_against_image`, `:1303`; `CONFLICT`, `:1526`, `:1547`) | the image is one backing; a conflict gives the best-backed value, marked, or `ambiguous` when none would clear |
 | Checks and derivation | place parents checked at apply time (`parents_refusal`, `:2065-2089`); feet/metres, end date, parent places derived (`derive.py:66-91`) | the apply-time refusal stays; one check stage after the experts; a failed check marks; an inference fills an open part, marked; derivation as today |
-| Review | several possibilities, or sources cannot resolve (`step.py:1339-1355`) | marked (a value with a review finding), `ambiguous` with options, or unresolved |
+| Review | several possibilities, or sources cannot resolve (`step.py:1339-1355`) | marked (a value with a review finding), `ambiguous` with options as rule 6 stores it, or unresolved |
 
 ## 7. Build order
 

@@ -2180,6 +2180,20 @@ def create_app(
             transcript.value_state = ValueState(state)
             transcript.actor = user
             transcript.reason = body.reason
+            if s.run.first_pass_path == "units":
+                # The label's units follow its text source (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md
+                # section 3): the person's text after an edit; the readings again after an
+                # abstention that follows an edit. An abstention on the readings' units keeps them.
+                from .first_pass import source_units
+                from .reading_units import PERSON
+                from .workflow import store_reading_units
+
+                held = next((u for u in s.run.reading_units if u.label == body.target_id), None)
+                if transcript.resolved or held is None or PERSON in held.units[0].readers:
+                    # None: the text source holds no text, and the label keeps no units.
+                    units = source_units(s.run, body.target_id)
+                    store_reading_units(s.run, [units] if units is not None else [],
+                                        dropped=() if units is not None else (body.target_id,))
             s.run.completed_steps = [
                 x
                 for x in s.run.completed_steps

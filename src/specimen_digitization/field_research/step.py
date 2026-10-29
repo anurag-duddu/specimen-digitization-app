@@ -206,14 +206,23 @@ def field_keys(profile: CollectionProfile) -> tuple[str, ...]:
     return (*profile.mandatory_fields, *profile.optional_fields)
 
 
+def units_path(run) -> bool:
+    """Whether the run's first-pass path is units (Run.first_pass_path, recorded when the
+    run was created): its experts take the reading units (Reading.units)."""
+    return getattr(run, "first_pass_path", "old") == "units"
+
+
 def run_readings(run) -> tuple[Reading, ...]:
     """Every reading of every label, named as the organiser names them, each
-    with its label's first pass opinion (first_pass_advice)."""
+    with its label's first pass opinion (first_pass_advice) and, on the units
+    path, its label's reading units (Run.reading_units)."""
     named = labelled(extraction_readings(run))
     advice = first_pass_advice(run, named)
+    units = {entry.label: entry for entry in getattr(run, "reading_units", None) or ()} if units_path(run) else {}
     return tuple(
         Reading(name=name, region_id=item.region_id, observation_id=item.observation_id,
-            input_source=item.role, text=item.text, first_pass=advice.get(item.region_id))
+            input_source=item.role, text=item.text, first_pass=advice.get(item.region_id),
+            units=units.get(item.region_id))
         for name, item in named.items()
     )
 
@@ -230,8 +239,11 @@ def first_pass_advice(run, named: Mapping[str, object]) -> dict[str, FirstPassAd
     A reader with no text is not among the readings, so it is left out. A
     label whose transcript a person decided (Transcript.actor) gets no first
     pass opinion, only `person_decided` and its decided reading: a person's
-    reading of the image binds the label's text (agreement.labels)."""
+    reading of the image binds the label's text (agreement.labels). On the
+    units path only that person's form is given: the experts take the units
+    in place of the first pass's opinion."""
     found: dict[str, FirstPassAdvice] = {}
+    units = units_path(run)
     for transcript in getattr(run, "transcripts", None) or ():
         names: dict[str, str] = {}
         preferred = None
@@ -246,7 +258,7 @@ def first_pass_advice(run, named: Mapping[str, object]) -> dict[str, FirstPassAd
                 found[transcript.region_id] = FirstPassAdvice(preferred=preferred, rationale="", reader_notes={},
                     differences=(), person_decided=True)
             continue
-        if transcript.decision_kind != "first_pass":
+        if units or transcript.decision_kind != "first_pass":
             continue
         notes = {names[h.observation_id]: h.note for h in transcript.handoffs if h.note and h.observation_id in names}
         differences = tuple(
@@ -1313,8 +1325,9 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
                 # A pick between readers no source settles is ambiguous; a value no
                 # decided transcript or place source supports is unresolved.
                 if refused.differ:
+                    options = f" Options: {'; '.join(refused.options)}." if refused.options else ""
                     return _unsettled(task, ValueState.AMBIGUOUS, cited=cited,
-                        reason=f"{refused.reason} {answer.explanation}")
+                        reason=f"{refused.reason} {answer.explanation}{options}")
                 return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
                     reason=f"{refused.reason} {answer.explanation}")
         if not reconciled:
@@ -1351,8 +1364,40 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
             else "B_declined:" + (why[0] if why else "unknown"))
         if unmatched is not None:
             return unmatched
+    if units_path(run) and not outcome.fallback and (
+            options := _unsettled_options(task, readings, sources, answer=answer)):
+        # Units path, rule 6: an expert's sources_cannot_resolve on a label none of whose
+        # candidates has a backing leaves the field ambiguous, its readers' texts the options,
+        # as several_possibilities stores it. The resolver's fallback is no answer of the expert's.
+        decision["rule"] = "rule_unsettled"
+        return _unsettled(task, ValueState.AMBIGUOUS, cited=cited,
+            reason=answer.explanation + " Options: " + "; ".join(options) + ".")
     literal = answer.literal if answer.literal and any(answer.literal in r.text for r in readings) else current.literal
     return _unsettled(task, ValueState.UNRESOLVED, literal=literal, cited=cited, reason=answer.explanation)
+
+
+def _unsettled_options(task, readings, sources: Sequence[SourceAnswer], *, answer) -> list[str]:
+    """On the units path (rule 6), with the answer's literal and options offered to every
+    label (agreement.labels_by_rule): the union of the readers' texts at the places of the
+    labels none of whose candidates has a backing (candidates in reading order, then the
+    texts no candidate holds, Label.blocked) and the answer's options, letter case and
+    spacing aside; empty when there is no such label."""
+    from .agreement import SOURCE_IDS, agreement_key, labels
+
+    tools = frozenset(task.tools) & SOURCE_IDS
+    given = [option for option in dict.fromkeys(answer.options) if option and option.strip()]
+    offered = [answer.literal] if answer.literal and answer.literal.strip() else []
+    found = labels(task, readings, [item for item in sources if item.source_id in tools], offered=offered + given)
+    unbacked = [label for label in found.values() if not label.settled and label.candidates
+        and not any(candidate.backings for candidate in label.candidates)]
+    if not unbacked:
+        return []
+    texts = [text for label in unbacked for text in [*(min(candidate.texts) for candidate in sorted(
+        label.candidates, key=lambda c: c.first)), *label.blocked]]
+    options: dict[str, str] = {}
+    for text in [*texts, *given]:
+        options.setdefault(agreement_key(text), text)
+    return list(options.values())
 
 
 # Owner decision B, 2026-10-09: a taxon whose label names no genus clears as
@@ -2375,9 +2420,10 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
                 and outcome.key not in human and value is not None and value.layer != "derived"):
             value.reason = " ".join(part for part in (value.reason, _unreachable_note(outcome, value, rows))
                 if part)
+    record = _settlement if units_path(run) else _first_pass_preference
     for outcome in outcomes:
         if outcome.key in tasks_by_key and outcome.key not in human:
-            _first_pass_preference(run, tasks_by_key[outcome.key], outcome, readings=readings, by_name=by_name,
+            record(run, tasks_by_key[outcome.key], outcome, readings=readings, by_name=by_name,
                 sources=received.get(outcome.key, ()), decision=decisions.get(outcome.key, {}))
     return derived
 
@@ -2454,6 +2500,91 @@ def _first_pass_preference(run, task, outcome: FieldOutcome, *, readings, by_nam
         run.findings.append(RunFinding(rule_id="first_pass_preference", rule_version=FIRST_PASS_RULES,
             severity="info", field_key=task.key, reason_code=first_pass_code(label.preference, task.key, region),
             evidence_ids=cited))
+
+
+# The units path's findings (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4): how each
+# label settled a field, cleared or marked for a person. A marked finding's code is one of
+# the run's reasons too (scientific_reasons), as a finding alone never routes the record.
+SETTLEMENT = "field_settlement"
+SETTLEMENT_RULES = "field-research-settlement-rule-v1"
+
+
+def cleared_code(key: str, region_id: str) -> str:
+    """`cleared:<field>:<label>`: the label settled the field on a text the image or a
+    source backs, or on a person's transcript."""
+    return f"cleared:{key}:{region_id}"
+
+
+def marked_code(key: str, region_id: str, why: str) -> str:
+    """`marked:<field>:<label>:<why>`: the label settled the field on a text that only
+    readers that agree or another label back (text_only), or against another backed
+    text (conflict)."""
+    return f"marked:{key}:{region_id}:{why}"
+
+
+def marked_reasons(run) -> list[str]:
+    """The codes of the run's marked findings, in their order."""
+    return [finding.reason_code for finding in getattr(run, "findings", None) or ()
+        if finding.rule_id == SETTLEMENT and finding.reason_code.startswith("marked:")]
+
+
+def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
+        decision: Mapping[str, str]) -> None:
+    """On the units path, record how each label settled a value its expert's resolved
+    answer supports (agreement.labels_by_rule): a warning finding
+    marked_code gives (rule field_settlement) for a label that settled it marked,
+    citing the field's literal rows of that label that contradict the value (the other
+    candidates), the value's reason ending with a sentence that names why; an info
+    finding cleared_code gives for one that settled it cleared, citing the label rows
+    that support it and, where the image names a text one letter from the one a source
+    confirms (Label.matched), the confirmed text's rows. The field's earlier such
+    findings go first, so a field researched again keeps only its latest; a value
+    settled otherwise (location reconciliation, derivation) or left unsettled gets
+    none, and apply_outcomes calls this for no field a person decided (human_keys)."""
+    from .agreement import CONTESTED, SOURCE_IDS, labels
+
+    run.findings[:] = [finding for finding in run.findings
+        if not (finding.rule_id == SETTLEMENT and finding.field_key == task.key)]
+    answer, value = outcome.answer, run.fields.get(task.key)
+    if (value is None or decision.get("rule") == "location_reconciliation" or value.layer == "derived"
+            or value.state != ValueState.SUPPORTED):
+        return
+    literal = answer.literal if answer is not None and answer.outcome == "resolved" else None
+    if not literal or value.literal != literal or value.layer not in ("settled", "verbatim"):
+        return
+    tools = frozenset(task.tools) & SOURCE_IDS
+    answers = [item for item in sources if item.source_id in tools]
+    named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and literal in by_name[n].text]
+    # The answer's literal is offered to every label, whatever readings it names (agreement.refusal).
+    found = labels(task, readings, answers, transcript=literal, named=named)
+    rows = {item.id: item for item in run.evidence}
+    for region, label in found.items():
+        if not label.settled or not (label.cleared or label.why):
+            continue
+        own = [i for i in value.evidence_ids if (row := rows.get(i)) is not None and row.kind == "literal"
+            and row.region_id == region]
+        notes = []
+        if label.matched:
+            matched = {by_name[name].observation_id for name in label.matched_by if name in by_name}
+            notes.append(f"The source confirmed reader {', '.join(label.matched_by)}'s {label.matched!r}, one letter "
+                f"from the text the image names, {value.literal!r}, which the label writes.")
+        else:
+            matched = set()
+        if label.cleared:
+            code, severity = cleared_code(task.key, region), "info"
+            cited = [i for i in own if value.evidence_relations.get(i) == "supports"
+                or set(rows[i].observation_ids) & matched]
+        else:
+            code, severity = marked_code(task.key, region, label.why), "warning"
+            cited = [i for i in own if value.evidence_relations.get(i) == "contradicts"]
+            notes.append("Marked for a person: " + (
+                "another text has backing too: " + "; ".join(repr(text) for text in label.others) + "."
+                if label.why == CONTESTED else
+                "only readers that agree or another label back this text; neither the image nor an approved "
+                "source does."))
+        value.reason = " ".join(part for part in (value.reason, *notes) if part)
+        run.findings.append(RunFinding(rule_id=SETTLEMENT, rule_version=SETTLEMENT_RULES, severity=severity,
+            field_key=task.key, reason_code=code, evidence_ids=cited))
 
 
 def _across_lines(outcomes: Sequence[FieldOutcome], by_name: Mapping[str, Reading]) -> tuple[FieldOutcome, ...]:
@@ -3489,7 +3620,8 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
 REFUSALS = ("DIFFER", "LABELS_DIFFER", "FIRST_PASS_CONFLICT", "PERSON_DECIDED", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
     "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
     "NOT_EVERY_READER", "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "A_DISTANCE", "HOLDS_AN_ELEVATION",
-    "HOLDS_A_DATE", "HOLDS_A_RANGE", "FIRST_LEVEL_TOO", "NO_PROVINCE", "IS_THE_PROVINCE")
+    "HOLDS_A_DATE", "HOLDS_A_RANGE", "FIRST_LEVEL_TOO", "NO_PROVINCE", "IS_THE_PROVINCE", "ONE_READER",
+    "TEXTS_CONTESTED", "TIED")
 # A lookup's status as a field's trace names it. Logfire's default scrubber
 # replaces any attribute whose value holds "auth" or "credential", so the two
 # refusals (HTTP 401 and 403) are renamed.
@@ -3721,7 +3853,11 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
       (taxon_unmatched), is not taxonomy_unresolved (owner decision B).
     - 203-217: a label whose first pass the workflow gave up on
       (first_pass.given_up_regions) is unresolved_transcription however its
-      fields settle: no first pass compared its readings.
+      fields settle, and whether or not its readers agree, until a person
+      transcribes it: no first pass compared its readings.
+    - Not in canonical_materialization_v2: the code of each marked finding
+      (marked_reasons), until a person approves the record, as the labels'
+      review_required reasons above.
     """
     reasons: list[str] = []
     # 198-199
@@ -3740,15 +3876,18 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
         if any(not item.raw_ref or not item.raw_sha256 for item in readings):
             reasons.append(f"raw_provenance_missing:{region.id}")
         transcripts = [item for item in run.transcripts if item.region_id == region.id]
-        if not transcripts or any(not item.resolved or not item.text for item in transcripts):
+        # A label whose first pass was given up on (workflow, first_pass.give_up)
+        # was never compared: it goes to a person however its fields settle, an
+        # agreed label too, unless a person has transcribed it since.
+        if region.id in given_up and not (transcripts and all(
+                getattr(item, "actor", None) and item.resolved and item.text for item in transcripts)):
+            reasons.append(f"unresolved_transcription:{region.id}")
+        elif not transcripts or any(not item.resolved or not item.text for item in transcripts):
             ids = {reading.id for reading in readings}
             drawn = [key for key, value in run.fields.items() if key != IRN and (
                 value.source_region_id == region.id or any(identifier in ids for identifier in value.verbatim_by_observation)
                 or any(item.id in value.evidence_ids and item.region_id == region.id for item in run.evidence))]
-            # A label whose first pass was given up on (workflow, first_pass.give_up)
-            # was never compared: its transcript stays for a person to resolve,
-            # however its fields settle.
-            if region.id in given_up or not drawn or any(run.fields[key].state != ValueState.SUPPORTED
+            if not drawn or any(run.fields[key].state != ValueState.SUPPORTED
                     or not _raw_grounded(run.fields[key], run) and key not in qualified
                     for key in drawn if latest_work.get(key) in TERMINAL):
                 reasons.append(f"unresolved_transcription:{region.id}")
@@ -3854,6 +3993,8 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
     if latest_work.get("fmnh_ins_number") in TERMINAL and not CATALOG.fullmatch(
             identifier.normalized or identifier.parsed or identifier.literal or ""):
         reasons.append("identifier_format")
+    if not getattr(run, "human_approved", False):
+        reasons += marked_reasons(run)
     return list(dict.fromkeys(reasons))
 
 
