@@ -278,7 +278,9 @@ void main() {
     );
 
     final ScrollableState scroller = tester.state<ScrollableState>(
-      find.byType(Scrollable),
+      find
+          .ancestor(of: find.text('Row 39'), matching: find.byType(Scrollable))
+          .first,
     );
     expect(
       scroller.position.maxScrollExtent,
@@ -311,7 +313,15 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    expect(find.byType(SingleChildScrollView), findsNothing);
+    expect(
+      find.ancestor(
+        of: find.byType(ListView),
+        matching: find.byType(SingleChildScrollView),
+      ),
+      findsNothing,
+      reason:
+          'The caller-owned body has its own bounded viewport; header scrolling must not nest it.',
+    );
   });
 
   testWidgets('the actions stack with the primary on top when they do not '
@@ -418,6 +428,7 @@ void main() {
       semanticsLabel: 'Save correction',
       labelsNeverWrap: true,
       wrappingContent: <String>{
+        _title,
         _body,
         // See the same entry in `dialog_test.dart`: the button's own fit is
         // slot G1's row of the table.

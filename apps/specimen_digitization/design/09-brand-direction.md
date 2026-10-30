@@ -1,623 +1,252 @@
-# 09. Brand direction: an instrument under frosted glass
+# 09. Brand direction: Specimen Digitization
 
-Status: **agreed direction, not yet built.** Written 2026-09-16 after the
-rebuild shipped and was judged to read as stock Material 3. This document
-replaces section 2 (brand direction), section 3 (color), section 4
-(typography), section 5.3 (shape) and section 6 (iconography) of
-[03-design-system.md](03-design-system.md). Everything else in 03 stands:
-the eight principles in section 1, spacing in 5.1, sizing in 5.2, touch
-targets in 5.5, density in 5.6, the atomic inventory in 7, and the testing
-approach in 8. The v1 tables stay in 03 as the record of what shipped.
+Status: active implementation guidance, updated 2026-10-22. The owner's
+`SD_brand.png` is the visual authority. The current scope and acceptance
+contract are in [15-design-system-standard.md](15-design-system-standard.md).
+That reference and 15 supersede conflicting appearance guidance in older
+versions of this document, 03 and 14. Historical screenshots and verification
+reports are evidence of earlier builds, never a palette to restore.
 
-Runtime amendment, 2026-09-23: [14-enterprise-surface-alignment.md](14-enterprise-surface-alignment.md)
-supersedes this document's atmospheric field, default glass, elevation and
-shell-atmosphere rules. The field and glass recipes below remain the explicit
-opt-in primitives and historical record; they are no longer runtime defaults.
-Geist, Phosphor, shape, semantic status colour, density and accessibility rules
-remain in force.
+Untitled UI supplies the reference standard for coverage, component anatomy,
+variants and care. It does not supply this application's colours or identity.
+Use the owned `specimen_ui` Flutter package on every supported platform.
 
-The component library that renders this direction is specified in
-[10-component-library.md](10-component-library.md). The build plan is in
-[../../../docs/execution/FRONT_END_REFACTOR.md](../../../docs/execution/FRONT_END_REFACTOR.md).
+## 0. Why a component system
 
-## 0. Why the rebuild still looked like Google
-
-The v1 foundation did the token work and kept every Material component. Three
-things carried Google's identity through untouched:
-
-1. **The fonts never shipped.** `bundledProductFonts` is `false`
-   (`lib/src/theme/typography.dart:139`), there is no `assets/` directory and no
-   `fonts:` entry in `pubspec.yaml`. Every screenshot in `screenshots/rebuild/`
-   is Roboto on Android and would be SF Pro on iOS.
-2. **Material Symbols.** 154 uses of `Symbols.`, 78 distinct glyphs, in 40
-   files.
-3. **Material anatomy.** `SegmentedButton`, the `NavigationBar` and
-   `NavigationRail` pill indicators, tonal `FilledButton`, the notched
-   floating-label `OutlineInputBorder`, `ExpansionTile`, the ink ripple. The
-   component themes changed radii and removed tint and shadow; the anatomy,
-   which is what a viewer recognises, stayed. 75 of 107 Dart files under
-   `lib/` import `material.dart` directly.
-
-Tokens change the paint. Components carry the identity. This direction
-therefore comes with its own component library rather than another theme.
+A coherent interface needs more than repainting Material defaults. The owned
+components share semantic roles, label and supporting-text slots, controlled
+state, accessible focus, keyboard operation and predictable responsive fit.
+[10-component-library.md](10-component-library.md) describes the inventory;
+[11-fit-and-scale.md](11-fit-and-scale.md) governs available space and text.
 
 ## 1. The reference, in words
 
-A near-white ground. Large, soft fields of light in acid yellow, lavender,
-rose and mint that bleed into the ground with heavy feathering, the way a
-projector wash lands on a wall. Panes of frosted glass sit over those fields:
-they blur what is behind them, lift it toward white, and catch a hairline of
-light along their top edge. Corners are superellipses, not circles glued to
-straight edges. Controls are capsules. The primary navigation floats as a row
-of glass discs with the current one filled in ink. Numbers are very large and
-very light; their units are small and quiet beside them. Labels are sentence
-case and short. Data visualisations are made of dots and thin arcs with a
-small triangular marker in the accent colour. Nothing is outlined in black;
-structure comes from tone, blur and light.
+Obsidian typography on warm Paper. Mist separates quiet surfaces. Iris is the
+secondary brand colour. The Amber-to-Iris gradient is the hero: a deliberate
+brand region on an introduction, welcome or empty-state composition. The
+working interface stays legible, with enough spacing to let photographic
+evidence and the reviewer's next action lead.
 
-The register: an instrument under frosted glass. A specimen drawer under a
-glass lid is the same object. The photograph is the specimen; the chrome is
-the glass.
+The source image's icon-style suggestions are not the interface icon system.
+Interface icons remain Phosphor. The existing launcher mark's geometry is
+retained while its palette follows this contract.
 
 ## 2. Principles that decide arguments
 
-These sit alongside the eight principles in 03 section 1 and win any argument
-about appearance.
-
-1. **Evidence is neutral; atmosphere is chrome.** The photograph pane and
-   every label region sit on a neutral matte with no colour field within 24 dp
-   of the matte's edge. Light fields live in the shell, the queue, intake,
-   dashboards and empty states. A colour cast on a faded label is a data
-   error, so this rule is not negotiable.
-2. **Glass is a container, not a texture.** A `GlassSurface` is a pane the
-   user reads as one thing: the navigation, a sheet, a tile group, a popover.
-   Repeated items (rows, chips, cells) are never glass. At most four glass
-   panes are on screen at once and at most one of them is modal.
-3. **One accent, and it means "you".** Acid yellow marks the mark, the current
-   position, the active marker on a gauge, the region under the pointer.
-   It is never a button fill, never a status, never text.
-4. **Big numbers, small words.** Hierarchy comes from size and weight in one
-   family. Numerals go light as they go large. Units are small, tracked and
-   upper case. Everything else is sentence case.
-5. **Behaviour adapts, identity does not.** Scroll physics, back gestures,
-   page transitions, safe areas, text selection, haptics and pickers follow
-   the platform (05 section 5). Type, colour, shape, icons, motion signature
-   and component anatomy are ours on every platform.
+1. Evidence stays neutral. No coloured overlay, gradient, blur or decorative
+   field changes a photograph or label crop. A tint on evidence changes data.
+2. The gradient has a named role. Use `UiBrandHero` or `UiBrandAccent`; copy and
+   actions sit on a separate solid surface. Never put body text directly over
+   a gradient or use a decorative colour to imply a record's status.
+3. Iris provides secondary emphasis. Use `ui.brand.secondary.content` for text
+   and meaningful glyphs, and its matching fill/on-fill pair for containers.
+   The exact Iris seed alone is not a universal foreground on light paper.
+4. Labels and icons carry state meaning. Classification does not earn a new
+   colour. Processing and external references use Iris; model observations
+   and deferred work use neutrals. Success, attention and blocking outcomes
+   retain functional green, warm amber and red.
+5. Behaviour adapts while identity stays consistent. Safe areas, input methods,
+   navigation gestures and text selection follow the platform. Colour, type,
+   icons, component anatomy and interaction states come from shared tokens.
 
 ## 3. Colour
 
-All values are `Color(0x...)` literals in exactly one file,
-`packages/specimen_ui/lib/src/foundation/palette.dart`. Everything else reads
-a role. Roles are named for what they do, never for a value.
+`packages/specimen_ui/lib/src/foundation/palette.dart` is the only Flutter
+colour-value table. `UiColor` supplies functional roles; `UiBrandColors`
+supplies brand roles through `context.ui.brand`. The asset generator reads
+BrandPalette from that same file, so it cannot carry a second stale palette.
 
 ### 3.1 Ground and ink
 
-| Role | Light | Dark | Use |
-|---|---|---|---|
-| `ground` | `#F6F6F4` | `#0E0F11` | The window background. One unit of warmth, neutral enough that a photograph placed on it reads true. |
-| `paper` | `#FFFFFF` | `#17181B` | Solid surface where glass is not warranted: list bodies, tables, fields. |
-| `matte` | `#FFFFFF` | `#1E2024` | The letterbox behind a photograph. Lowest surface in light, highest in dark, so label paper reads as paper in both. |
-| `ink` | `#111214` | `#F2F2EF` | Primary text, glyphs, the filled navigation disc, primary buttons. |
-| `ink.secondary` | `#4B4F57` | `#B9BCC3` | Supporting text, labels above fields, timestamps. |
-| `ink.tertiary` | `#646870` | `#9599A0` | Units, hints, placeholder text. Clears 4.5:1 on `paper` and on every glass level over every field. |
-| `hairline` | `#E4E5E1` | `#25272B` | Decorative separation. 1 dp. Never a boundary. |
-| `boundary` | `#82867B` | `#747A86` | Any edge a user must be able to find: field edges, unfilled checkboxes. 3:1 against `paper`. |
-| `disabled.content` | `#62666E` | `#A6AAB1` | Text and glyphs of a disabled control. 4.5:1 on every surface; a disabled control in this product states a server reason and must stay readable (03 section 3.6). |
-| `disabled.outline` | `#81858D` | `#757A82` | Edge of a disabled control. 3:1 floor. |
-| `disabled.fill` | `ink` at 6% | `ink` at 8% | Behind a disabled control. |
-| `scrim` | `#000000` at 32% | `#000000` at 56% | Behind modal glass. Lower than v1 because the pane itself already blurs. |
+| Role | Light | Dark |
+| --- | --- | --- |
+| Ground | Paper `#FAF9F6` | Obsidian `#0E0E11` |
+| Solid paper | `#FFFFFF` | `#19191E` |
+| Photograph matte | `#FFFFFF` | `#25252B` |
+| Principal ink | Obsidian `#0E0E11` | Paper `#FAF9F6` |
+| Supporting ink | `#494950` | `#C4C4CC` |
+| Tertiary and disabled content | `#64646E` | `#AEAEB8` |
+| Decorative hairline | Mist `#E6E6EA` | `#36363E` |
+| Actionable boundary | `#82828C` | `#858590` |
 
-### 3.2 Light fields
+A hairline is decorative separation. A control that needs a findable edge
+uses `boundary`. Disabled reasons remain readable; they are not faded text.
 
-A field is a radial gradient from a centre colour at a centre alpha to fully
-transparent at its radius. Fields are painted once, behind everything, inside
-a `RepaintBoundary`, by one widget (`FieldLayer`). Nothing else paints a
-gradient.
+### 3.2 Brand regions and compatibility fields
 
-| Field | Light centre | Light alpha | Dark centre | Dark alpha |
-|---|---|---|---|---|
-| `field.sun` | `#F2FF66` | 0.90 | `#B7C700` | 0.32 |
-| `field.violet` | `#CDBBFF` | 0.85 | `#6E5AD1` | 0.40 |
-| `field.rose` | `#FFB8D6` | 0.80 | `#C4568F` | 0.36 |
-| `field.mint` | `#A9F2D8` | 0.85 | `#2FA07E` | 0.36 |
-| `field.ember` | `#FFB466` | 0.85 | `#C87A2C` | 0.36 |
+Exact seeds: Obsidian `#0E0E11`, Paper `#FAF9F6`, Amber `#F5A45B`, Iris
+`#7B61FF`, Mist `#E6E6EA`. The hero gradient runs from Amber to Iris.
+`UiBrandHero` places a decorative region above a solid text/action panel;
+`UiBrandAccent` has no content slot. Neither encodes application data.
 
-Geometry rules:
+Runtime themes suppress decorative sky placements. The legacy field API is
+source compatible, but every slot now resolves to Amber, Iris or Mist at low
+opacity. New callers and the catalog use `ui.field.brandFields`, with the
+canonical names `amber`, `iris` and `mist`. Historical names are aliases,
+not additional hues or an invitation to revive former backdrops.
 
-- Radius is 45 to 70 percent of the window's **longer** side. Alpha falls off
-  on a Gaussian profile, `exp(-4 t squared)` normalised to one at the centre
-  and zero at the radius, sampled into 32 gradient stops. A Gaussian holds
-  near the centre, falls through the middle and thins out over a long tail,
-  and it has no inflection, so no stop count puts a ring in it. Half the
-  centre alpha is carried out to 41 percent of the radius, which is the number
-  a window reads as the field's size.
-- Fields are placed by **sky preset**, chosen per surface role, never per
-  screen ad hoc:
+### 3.3 Surfaces and glass
 
-| Preset | Fields | Where |
-|---|---|---|
-| `sky.home` | `sun` centred at (18%, 6%) r 55%; `violet` at (92%, 28%) r 60%; `rose` at (70%, 96%) r 50% | Sign-in, queue, intake, sources, help, empty states |
-| `sky.work` | `violet` at (100%, 0%) r 45% at 60 percent of its alpha | Workbench, region editor, large-record fallback. Everything under the matte's 24 dp exclusion is clipped out. |
-| `sky.none` | none | Sheets, dialogs, popovers, toasts. They blur what is beneath them instead. |
+Working surfaces use solid `paper`. `GlassSurface` and `FieldLayer` retain
+compatibility APIs, but the standard theme has `GlassQuality.off` and no sky
+placements. Repeated rows, chips and cells are solid. Evidence receives no
+blur or brand wash. See [14-enterprise-surface-alignment.md](14-enterprise-surface-alignment.md).
 
-- **A field never encodes data.** A tile's spotlight field is fixed by its
-  slot in a grid, not by the value it shows. The record-count tile is not
-  redder when the count is higher. Status is carried by the status triples in
-  3.5 and by icon and word, as before.
-- In dark mode the same presets apply with the dark column. Dark is not an
-  inversion: alphas drop by more than half so the fields read as light in a
-  dark room rather than as coloured paint.
+### 3.4 Secondary emphasis and the mark
 
-Centres and radii in the preset table are fractions of the window: x of its
-width, y of its height, r of its longer side.
+The exact Iris seed is `ui.color.accent`; Obsidian is `onAccent`. Their pair
+clears 4.5:1. Accessible secondary text uses derived Iris content:
+`#5B46C4` in light mode and `#B7A8FF` in dark mode. `ui.brand.secondary`
+binds each content role to the correct container fill and on-fill role.
 
-**Amendment, wave 1 (2026-09-16).** The rule above first bound the radius to
-the window's **shorter** side and fell off on `Curves.easeOutQuad`. Rendered
-at four real windows for the first time, that reads as three spots on a ground
-rather than as light, which is the opposite of section 1. Measured on
-`sky.home`, `field.sun`, at the radius where the field still carries half its
-centre alpha:
+### 3.5 Functional states
 
-| Window | Shorter side, `easeOutQuad` | Longer side, Gaussian |
-|---|---|---|
-| 390 by 844 | 63 dp: 16 percent of the width, 7 percent of the height | 191 dp: 49 percent of the width, 23 percent of the height |
-| 768 by 1024 | 124 dp: 16 percent, 12 percent | 231 dp: 30 percent, 23 percent |
-| 1180 by 820 | 132 dp: 11 percent, 16 percent | 267 dp: 23 percent, 33 percent |
-| 1440 by 900 | 145 dp: 10 percent, 16 percent | 325 dp: 23 percent, 36 percent |
+| Family | Meaning |
+| --- | --- |
+| Green | Cleared, human affirmation, low risk, added-value marker |
+| Warm amber | Needs review, attention, medium risk, changed-value marker, synthetic-environment notice |
+| Red | Blocking or destructive outcome, high risk |
+| Iris | Processing and external-reference emphasis |
+| Neutral | Model observation, deferred work, unchanged content |
 
-The share of the window carrying any field at all, measured as a pixel
-differing from `ground` by more than one part in 85, moved from 47, 69, 67 and
-62 percent to 99, 89, 93 and 95 percent at those four windows. Two things
-were wrong and each fixed half of it. The shorter side is the wrong reference
-for a tall window: on a phone it put the whole of `sky.home` in the top
-quarter. And a quadratic falloff is a spot with a soft edge: it is down to a
-quarter of its centre alpha at 29 percent of the radius, where the Gaussian is
-still at 69 percent.
+Never remove the label and Phosphor icon because two states share a colour.
+An authority match does not imply human approval. A process colour does not
+change Queue membership or final disposition. Risk indicators retain their
+uncalibrated caveat. Image-region strokes keep their two-tone casing so they
+remain visible against arbitrary photographs.
 
-Every centre colour and every centre alpha in the table above is unchanged, so
-the composite contrast measurements in 3.7 still hold: the gate composites
-against a field's centre, which is the one point the geometry does not move.
-The `matteExclusion` of 24 dp is unchanged. The stop count moved from 16 to 32
-because a Gaussian has more curvature than a quadratic: at 16 stops the drawn
-gradient sits up to 0.57 of one 8 bit level from the curve on the sun field,
-and 32 holds it at 0.13.
+### 3.6 Focus and selection
 
-### 3.3 Glass
+Focus uses a mode-aware monochrome ring, with a two dp stroke and two dp gap.
+Text selection is a neutral tint. Focus, selected, hover, pressed and disabled
+states remain distinct without relying only on hue.
 
-The recipe for a `GlassSurface`, at three levels. Blur is `ImageFilter.blur`
-with `TileMode.mirror`. The highlight is a 1 dp inner line along the top edge
-only, drawn as a vertical gradient so it fades before the corners.
+### 3.7 Contrast and regression checks
 
-| Level | Blur sigma | Fill (light) | Fill (dark) | Highlight | Stroke | Shadow | Used by |
-|---|---|---|---|---|---|---|---|
-| `glass.flat` | 16 | `#FFFFFF` at 0.62 | `#1C1E22` at 0.55 | `#FFFFFF` at 0.85 light, 0.12 dark | `ink` at 6% light, `#FFFFFF` at 8% dark | none | In-flow panes: tile groups, the top bar, filter rows |
-| `glass.floating` | 20 | 0.66 | 0.58 | same | same | `ink` at 10% light, `#000000` at 45% dark; blur 24; offset (0, 8) | Navigation, popovers, menus, toasts, the sticky action bar |
-| `glass.modal` | 24 | 0.72 | 0.66 | same | same | `ink` at 14% light, `#000000` at 55% dark; blur 32; offset (0, 12), plus `scrim` | Sheets and dialogs |
+Normal text, disabled reasons and meaningful glyphs clear 4.5:1. Findable
+edges and focus rings clear 3:1. Status text is checked on its own fill and on
+all supported surfaces. The composite test also checks the retained field and
+glass compatibility recipes. Decorative hairlines remain below the edge floor.
 
-Performance budget, enforced by a test that counts `BackdropFilter` nodes in
-every golden window:
+`test/foundation/brand_test.dart` checks the exact identity seeds, derived
+secondary contrast and the small family count. It rejects the removed
+fluorescent yellow-green hue family in the palette and its old source values.
+Application asset checks cover generated launcher, splash and browser artwork.
+Old screenshot goldens are not silently regenerated as proof of acceptance.
 
-- At most 4 glass panes per window, at most 1 modal.
-- No glass inside a scrolling list. The list's container may be glass; its
-  rows are `paper` or transparent.
-- Fields behind glass are static. Nothing animates under a blur except the
-  content the user is scrolling.
-- A `GlassQuality` setting (`full`, `reduced`, `off`) is read from the theme.
-  `reduced` halves every sigma; `off` replaces the blur with a `paper` fill at
-  0.92. The device run on the slowest supported Android tablet decides the
-  default for that platform; the value is recorded in the verification report.
-
-### 3.4 Accent
-
-| Role | Both modes | Use |
-|---|---|---|
-| `accent` | `#E8FF47` | The mark. The current-position marker on a gauge or map. The active region marker over the photograph. The current page dot. |
-| `on.accent` | `#111214` | Anything drawn on the accent. |
-
-The accent is one hue at one value in both modes; it is luminous enough to
-carry. It appears on at most three elements per window. It is not a button
-fill, not a link colour, not a selected-row colour, not a status, not a focus
-ring. Anything that means "affirmed", "attention" or "stop" uses the status
-triples.
-
-Amended in wave 1: the accent takes a 1 dp `ink` casing wherever it is the
-only thing saying where a value is. The accent measures near 1 to 1 on
-`paper`, so the gauge marker `UiArcIndicator` draws was invisible on the
-surface it is drawn over most; section 3.6 already casings a region stroke
-over a photograph for the same reason, and this is that rule applied to the
-one other graphic that carries a value rather than a decoration.
-
-### 3.5 Status and evidence hues
-
-The v1 triples (`content`, `fill`, `onFill` for cleared, needs review,
-deferred, processing, blocked, model, human, authority; the diff, region and
-risk tokens) carry over **unchanged in value** in this step. They pass the
-contrast test on the v2 surfaces because `paper` and light glass are both
-lighter than the v1 surface ramp. A later polish pass may lift their
-saturation toward the new register; the contrast test decides, not taste.
-
-Two rules move from 03 unchanged and are restated because glass tempts people
-to break them: status is never colour alone (icon plus word plus colour,
-always), and herbarium green is the only thing allowed to look affirmative.
-Green is no longer the primary colour of anything else.
-
-### 3.6 Focus ring
-
-`focus.ring` is `ink` in light and `#F2F2EF` in dark: 2 dp stroke, 2 dp gap in
-the parent surface colour, drawn outside the component so it never reflows
-layout, ring radius equal to the component radius plus 4. The v1 blue is
-retired; a monochrome ring reads as part of this system and clears 3:1 against
-every surface and every field. Over the photograph it keeps the 1 dp dark
-outer and 1 dp light inner casing from 03 section 5.8.
-
-**Amendment, fit (2026-09-16, 11 sections 4 and 6).** The ring follows the
-component's shape: a superellipse ring around a superellipse, a stadium ring
-around a capsule, never a circular rounded rectangle around either, so ring and
-edge run concentric at every corner. A control that has an edge keeps that
-edge unchanged on focus; the ring is the whole focus treatment, and a field's
-outline no longer thickens to `stroke.emphasis`. A field shows the ring for any
-focus, pointer or keyboard, because a focused field is being edited; every
-other control shows it for keyboard focus only.
-
-### 3.7 What the contrast tests must now do
-
-`test/theme/contrast_test.dart` and `test/accessibility/contrast_test.dart`
-extend from the v1 token table to composited surfaces:
-
-- Every text role on `ground`, `paper`, `matte`, and on each glass level
-  composited over the lightest and darkest point of every field in both modes.
-- `boundary`, `disabled.outline` and `focus.ring` at 3:1 on the same set.
-- Status `content` colours on light glass over each field.
-
-The composite is computed with `Color.alphaBlend`, which is what the engine
-does for a flat fill; blur only averages neighbouring pixels and cannot push
-contrast outside the range of the two extremes tested.
-
-**Amendment, wave 0 (2026-09-16).** Running that test for the first time moved
-three roles, in both modes. The values in 3.1 above are the corrected ones;
-these were the values first written, and what they measured at their worst
-composite:
-
-| Role | First written | Measured | Floor | Now |
-|---|---|---|---|---|
-| `ink.tertiary` light | `#6B6F78` | 4.19:1 | 4.5:1 | `#646870` |
-| `ink.tertiary` dark | `#878B93` | 3.88:1 | 4.5:1 | `#9599A0` |
-| `boundary` light | `#C6C8C3` | 1.40:1 | 3:1 | `#82867B` |
-| `boundary` dark | `#3B3E44` | 1.24:1 | 3:1 | `#747A86` |
-| `disabled.outline` light | `#8E9299` | 2.60:1 | 3:1 | `#81858D` |
-| `disabled.outline` dark | `#6A6E76` | 2.59:1 | 3:1 | `#757A82` |
-
-Each moved along its own hue, holding hue and saturation and lowering or
-raising only lightness, to the first value clearing its floor with a two
-percent margin. `boundary` moved furthest, and the move is the point of the
-role: at `#C6C8C3` it was a hairline by another name, and no value that light
-can carry a 3:1 edge on white. `hairline` is unchanged and still measures
-under 3:1 everywhere, which is what keeps the two roles distinct. Every other
-pair in the table passed unchanged, including every status content colour on
-light glass over every field.
-
-## 4. Typography: Geist
+## 4. Typography
 
 ### 4.1 The family and how it ships
 
-| Role | Family | File | License |
-|---|---|---|---|
-| Everything proportional | Geist | `GeistVF.ttf` (variable, `wght` 100 to 900) | SIL OFL 1.1 |
-| Literal, identifier, digest, code | Geist Mono | `GeistMonoVF.ttf` (variable, `wght` 100 to 900) | SIL OFL 1.1 |
-
-The files on the design machine are version 1.200 (March 2024). They ship
-inside the `specimen_ui` package under `assets/fonts/`, declared in that
-package's `pubspec.yaml`, and referenced as `fontFamily: 'Geist', package:
-'specimen_ui'`. The OFL text is taken from Vercel's `geist-font` release and
-registered with `LicenseRegistry.addLicense` at startup. `google_fonts` is
-removed from the app entirely; runtime fetching was what the v1 document
-forbade and what shipped anyway.
-
-Weight is set through `FontVariation('wght', n)` because the files are
-variable, with `fontWeight` mirrored so the platform fallback face chooses
-sensibly if the asset ever fails to load. A startup test asserts the two
-families resolve to the bundled assets.
-
-OpenType features verified in the bundled files: Sans carries `tnum`, `pnum`,
-`frac`, `liga`, `dlig` and stylistic sets `ss01` to `ss09`; Mono carries
-`liga`, `frac` and `ss01` to `ss09`. Rules:
-
-- Every count, catalogue number, coordinate, duration and version number in
-  Geist is set with `FontFeature.tabularFigures()` so a changed digit is
-  visible by position.
-- Geist Mono sets `FontFeature.disable('liga')` and
-  `FontFeature.disable('calt')` in the literal roles; a ligature replaces two
-  characters with one glyph, which is exactly wrong for verbatim evidence.
-- Before JetBrains Mono is retired, a golden renders `0O 1lI 5S 2Z 8B` in Geist
-  Mono at `mono.literal` and a reviewer confirms each pair is distinct. If the
-  zero is not distinguished, the stylistic set that slashes or dots it is
-  enabled in `mono.*` and pinned by that golden.
+The brand reference names Söhne. No licensed Söhne font is bundled. Geist is
+the explicit implementation fallback; it is not presented as Söhne. Geist and
+Geist Mono are bundled package assets with their SIL OFL licences. No runtime
+font fetching is permitted. The Google sign-in button retains its separately
+scoped provider-prescribed face and colours.
 
 ### 4.2 The scale
 
-Sizes in logical pixels. Line height as a multiplier. Tracking in em.
-
-| Role | Size | `wght` | Line | Tracking | Use |
-|---|---|---|---|---|---|
-| `display.hero` | 64 | 200 | 1.00 | -0.020 | One number per window: the count that matters, a distance, a total. Tabular. |
-| `display.large` | 48 | 300 | 1.05 | -0.020 | Tile numerals. Tabular. |
-| `display.medium` | 36 | 300 | 1.10 | -0.015 | Section numerals, the record count in the queue header. Tabular. |
-| `headline` | 28 | 400 | 1.15 | -0.010 | Screen titles ("Queue", "GCT Balance" in the reference). |
-| `title.large` | 22 | 500 | 1.20 | 0 | Pane titles, sheet titles. |
-| `title` | 17 | 500 | 1.25 | 0 | Row titles, card titles, button labels at `lg`. |
-| `body.large` | 17 | 400 | 1.45 | 0 | Reading text on wide windows. |
-| `body` | 15 | 400 | 1.45 | 0 | Default text. |
-| `body.small` | 13 | 400 | 1.40 | 0.005 | Secondary lines in rows, help text. |
-| `label` | 13 | 500 | 1.20 | 0.020 | Field labels, chip text, button labels at `md`. Sentence case. |
-| `label.small` | 11 | 500 | 1.20 | 0.030 | Badges, key caps, nav labels. |
-| `unit` | 12 | 400 | 1.00 | 0.080 | Upper case unit beside a numeral: KM, SPM, MS. The only upper case in the product. `ink.tertiary`. |
-
-Monospace roles keep their v1 sizes and rules (03 section 4.3) in Geist Mono:
-`mono.literal` 15, `mono.literalDense` 13, `mono.identifier` 13, `mono.digest`
-12, `mono.code` 13, all `wght` 400.
-
-Weight rules: nothing below 14 px is lighter than 400. `wght` 200 appears only
-at 48 px and above. Light weights never sit on `glass.flat` in dark mode below
-36 px. Hero numerals may carry a text shadow of `ink` at 8 percent, blur 12,
-in light mode only; no other text has a shadow or glow.
+`UiType.standard` owns the scale. Display roles are 40/32/24 dp; headings
+24/20/16 dp; reading text 17/15/13 dp; labels 13/12 dp. Hierarchy uses weight,
+spacing and size. Text uses the user's scaler and grows its container.
+Identifiers and code use Geist Mono; verbatim roles disable ligatures.
+Counts and changing measurements use tabular figures. Do not shrink text to
+force it into a control.
 
 ### 4.3 The Material bridge
 
-`ThemeData.textTheme` still exists for the infrastructure widgets that read
-it (text selection, the default `DefaultTextStyle`). It is derived from this
-scale, never the other way round: `displayLarge` = `display.large`,
-`displayMedium` = `display.medium`, `displaySmall` = `headline`,
-`headlineLarge` = `headline`, `headlineMedium` = `title.large`,
-`headlineSmall` = `title`, `titleLarge` = `title.large`, `titleMedium` =
-`title`, `titleSmall` = `label`, `bodyLarge` = `body.large`, `bodyMedium` =
-`body`, `bodySmall` = `body.small`, `labelLarge` = `label`, `labelMedium` =
-`label`, `labelSmall` = `label.small`. Product code never reads
-`Theme.of(context).textTheme`; it reads `context.ui.type.*`.
+`UiThemeData.toTextTheme()` and `toColorScheme()` derive Material's carrier
+values from owned tokens. Product components read `context.ui`; the bridge
+exists for infrastructure such as editable text and selection. `UiTheme`
+publishes the default text style for widgets and overlays.
 
-## 5. Shape: the superellipse
+## 5. Shape
 
-Corners use `RoundedSuperellipseBorder` and `ClipRSuperellipse`, which ship in
-this SDK (Flutter 3.38.5, `painting/rounded_rectangle_border.dart` and
-`widgets/basic.dart`). A superellipse corner has continuous curvature, so the
-edge never visibly "starts to turn"; it is what makes the reference read as
-soft rather than as rounded rectangles.
-
-| Token | Radius | Applied to |
-|---|---|---|
-| `radius.capsule` | full height (`StadiumBorder`) | Buttons, toggles, chips, the navigation and its discs, search fields, badges |
-| `radius.sheet` | 28 | Sheets, dialogs, large panes, the photograph matte |
-| `radius.tile` | 20 | Data tiles, cards, tile groups, popovers, toasts |
-| `radius.field` | 14 | Text fields, selects, textareas |
-| `radius.inner` | 8 | Nested elements: thumbnails inside rows, key caps, swatches |
-| `radius.none` | 0 | Diff spans, table cells, region overlays, the environment banner |
-
-Rules:
-
-- Optical nesting: an inner element's radius is its parent's radius minus the
-  inset between them, floored at `radius.inner`. A tile at 20 with 12 dp
-  padding gives its children 8.
-- The photograph is never clipped by the matte's corner. It sits inset by at
-  least 12 dp inside the matte, so no evidence pixel is hidden under a curve.
-- A superellipse whose radius is at least half its height is drawn as a
-  capsule; do not hand-tune between the two.
-- Strokes: `hairline` 1 dp, `boundary` 1 dp, `emphasis` 2 dp (selected region,
-  selected chip), `focus` 2 dp with a 2 dp gap, `bar` 3 dp (the leading bar of
-  a selected row and of a diff addition).
+Use shared shape tokens: sheets/dialogs 16 dp; cards, fields and inner
+surfaces 8 dp; table cells, evidence regions and structural planes 0 dp.
+Capsules belong to intrinsically rounded forms such as switches and radios.
+Superellipse helpers own rounded geometry. Evidence pixels are never hidden
+under a decorative corner. Hairline/boundary strokes are 1 dp, emphasis and
+focus 2 dp, and the diff/selection bar 3 dp.
 
 ## 6. Spacing and density
 
-The 4 px grid and the `space1` to `space12` tokens from 03 section 5.1 are
-unchanged. Density becomes two named tokens resolved from the input
-modality, not the platform:
-
-| Token | Row height | Control height | Gutter | Tile padding | Chosen when |
-|---|---|---|---|---|---|
-| `density.touch` | 56 | 48 | 20 | 20 | The last pointer event was a touch, or no pointer event has been seen on a window narrower than 840 |
-| `density.pointer` | 44 | 40 visual, 48 hit box | 16 | 16 | The last pointer event was a mouse or trackpad |
-
-A control's hit box is 48 dp in both densities; in `pointer` the extra 8 dp
-is transparent slop around the 40 dp visual. Density never changes a hit box
-(03 section 5.6). `Density.of(context)` is the only way to read it.
+Structural spacing follows an eight dp grid with a four dp optical half step.
+Density follows input modality, not an operating-system check. Touch controls
+are 48 dp high; pointer controls may look 40 dp high while retaining 48 dp
+hit targets. Standard gutters and internal padding are 16 dp. A change in
+text size can grow a control beyond its resting height.
 
 ## 7. Iconography: Phosphor
 
-`phosphor_flutter` 2.1.0 (MIT) replaces `material_symbols_icons`. Phosphor's
-weights map onto the v1 rules directly.
+All interface glyphs come through `UiIcons`. Regular weight is the default;
+fill identifies settled disposition and the current navigation destination.
+Decorative glyphs may use light weight at display size. Standard sizes are
+16, 20, 24 and 40 dp. A glyph inherits its adjacent text colour unless a
+semantic role requires otherwise. One meaning has one registered icon.
+The reference sheet's icon experiments do not replace Phosphor.
 
-| Weight | Use |
-|---|---|
-| `regular` | Every interface glyph by default: actions, navigation, chips, rows |
-| `fill` | A settled disposition (cleared, deferred, needs review) and the current navigation destination. This is the v1 `fill01 = 1` rule, kept. |
-| `light` | Decorative glyphs at 40 dp and above: empty states, the help screen |
-| `thin`, `bold`, `duotone` | Not used. `bold` appears only inside the mark. |
+## 8. Motion
 
-Sizes: 16 (inline with `label.small`), 20 (inline with `body`), 24 (actions,
-rows, navigation), 40 (empty states). Colour follows the text it sits with.
+Use `MotionTokens` and [04-motion-and-microinteractions.md](04-motion-and-microinteractions.md).
+Reduced motion remains authoritative. Essential state changes remain visible
+without motion. Brand gradients are static; no drifting field, animated blur,
+parallax or decorative pulse is added. Primary actions cannot submit twice
+while busy.
 
-Every glyph enters the tree through `UiIcons`, the registry in
-`packages/specimen_ui/lib/src/foundation/icons.dart`. A screen never names a
-Phosphor glyph directly, so one meaning has one icon across the product
-(03 section 6.2 rule, kept). The product meanings:
+## 9. The supplied mark and app icon
 
-| Meaning | Phosphor glyph | Weight |
-|---|---|---|
-| Cleared | `checkCircle` | fill |
-| Needs human review | `flag` | fill |
-| Deferred | `pauseCircle` | fill |
-| Processing | `spinnerGap` | regular, with the progress ring when determinate |
-| Processing blocked | `prohibit` | regular |
-| Retry scheduled (a stopped run with a set retry; the registry's `time` entry) | `clock` | regular |
-| Paused (shares `blocked`: processing has stopped until someone acts; the word tells them apart) | `prohibit` | regular |
-| Cancelled (draws the "Cancel processing" action's `stop` entry) | `stopCircle` | regular |
-| State unknown, Unknown (one registry key, `unknown`) | `question` | regular |
-| Model reading | `cpu` | regular |
-| Reviewer decision | `user` | regular |
-| Authority match | `bookOpenText` | regular |
-| Risk low, medium, high | `cellSignalLow`, `cellSignalMedium`, `cellSignalFull` | regular |
-| Synthetic environment | `flask` | regular |
-| Unreadable | `eyeSlash` | regular |
-| Not present | `minus` | regular |
-| Unmeasured | `circleDashed` | regular |
-| Queue | `tray` | regular; fill when current |
-| Intake | `plusSquare` | regular; fill when current |
-| Sources | `folderOpen` | regular; fill when current |
-| Help | `lifebuoy` | regular |
-| Account | `userCircle` | regular |
-| Reload | `arrowClockwise` | regular |
-| Retry processing | `arrowCounterClockwise` | regular |
-| Rotate the view | `arrowsClockwise` | regular |
-| Sign out | `signOut` | regular |
-| Filter | `funnel` | regular |
-| Search | `magnifyingGlass` | regular |
-| Correct label regions | `crop` | regular |
-| Copy | `copy` | regular |
-| Keyboard | `keyboard` | regular |
-| Back | `arrowLeft` | regular |
-| Close | `x` | regular |
-| Expand, collapse | `caretDown`, `caretUp` | regular |
-| Next, previous record | `caretRight`, `caretLeft` | regular |
+The owner selected the interlocking three-ribbon mark from `SD_brand.png` on
+23 October 2026. The two outer ribbons are Obsidian and the inner fold carries
+the Amber/Iris gradient. The lower ribbon has an open counter. The former
+pin-in-a-disc was not the supplied identity and is retired.
 
-The remaining glyphs of the 78 in use are mapped in the migration table kept
-with the codemod (`docs/execution/FRONT_END_REFACTOR.md`, appendix A). Two
-glyphs for one meaning is a defect; the registry test asserts every icon
-value in `UiIcons` is unique.
+`design/brand-reference/owner-primary-mark.png` and `owner-app-icon.png` retain
+the owner's selected crops. `assets/brand/specimen-mark.svg` is the scalable
+trace and the single geometry source. `tool/brand/generate_flutter_mark.py`
+generates the Flutter paths; `tool/brand/render_mark.py` generates raster assets
+from that same SVG. Preserve the silhouette, open counter and gradient fold;
+do not substitute a Phosphor glyph or invent a new symbol.
 
-## 8. Motion signature
+The app icon places the same mark on a Paper rounded square. Its middle ribbon
+ends in Amber, matching the separate app-icon crop; the primary mark ends in
+Obsidian. Both gradients include a muted fold shade derived from the same
+Amber, Iris and Obsidian seeds, not an additional interface color role.
+`UiMark.appIcon` selects the app-icon treatment for a caller-supplied Paper
+plate. Native/adaptive and maskable browser assets keep it within platform safe
+zones. Flutter dark
+surfaces use Paper outer ribbons for contrast, and the monochrome variant uses
+the current ink role for all three ribbons. The shape never mirrors, rotates
+or animates.
 
-The tokens and the reduced-motion policy in
-[04-motion-and-microinteractions.md](04-motion-and-microinteractions.md) are
-unchanged. This direction adds exactly three signature motions and one
-prohibition.
-
-| Motion | What moves | Duration and curve | Under reduced motion |
-|---|---|---|---|
-| Navigation glide | The ink disc slides from the previous destination to the current one behind the glyphs | `medium` (250 ms), emphasized | Disc appears at the new position, no slide |
-| Capsule fill | A capsule toggle fills from its centre when selected; the check fades in after 40 percent | `short` (150 ms), standard | Fill and check appear together |
-| Numeral tick | A hero or tile numeral cross-fades and slides 6 dp upward on change; digits are tabular so the width holds | `short` (150 ms), standard | Cross-fade only |
-
-Prohibition: fields never move. The one exception is the sign-in screen,
-where `sky.home` may drift by at most 4 percent of the window over 40
-seconds; it is disabled under reduced motion and on battery saver. No
-parallax, no blur that changes with scroll, no glass that animates its
-opacity.
-
-## 9. The mark and the app icon
-
-The product's name is deferred; "Specimen Digitization" stays as the
-descriptive name in the top bar on expanded windows and in store listings
-until a naming pass.
-
-The mark is **the pin**: the entomologist's pin seen from the side, a
-vertical 2 dp `ink` stroke with a filled circular head, standing in a disc of
-`accent`. It is the one object every insect specimen in the collection shares
-and the verb the product performs on a record. It replaces the stock Flutter
-launcher icon that ships today in `android/`, `ios/` and `web/icons/`.
-
-Specification:
-
-- Disc: `accent` `#E8FF47`. Pin: `ink` `#111214`, stroke 2 dp at 24 dp overall,
-  head diameter 5 dp, pin height 16 dp, optically centred (the head sits 1 dp
-  above geometric centre).
-- App icon: a superellipse of `accent` with the pin at 44 percent of the icon
-  height. Android adaptive icon foreground and background layers, iOS icon
-  set, web favicon and maskable icons are generated from one SVG with
-  `flutter_launcher_icons` 0.14.4. The splash, via `flutter_native_splash`
-  2.4.8, is `ground` with the disc centred; no wordmark on the splash.
-- Monochrome variant: `ink` pin on `paper`, for the environment banner and
-  the help screen.
-- The mark never rotates, never animates, never sits on a field.
-
-**Amendment, slot E6 (2026-09-16).** Built for the first time, three of the
-numbers above needed a measurement rather than a reading.
-
-`flutter_native_splash` is **2.4.7**, not 2.4.8. 2.4.8 depends on `meta`
-^1.18.0 and every `flutter_test` from Flutter 3.38.5 depends on `meta` 1.17.0,
-so it does not resolve on the pinned toolchain and pub says so. 2.4.7 is the
-last one that does. Revisit it with the SDK, not on its own.
-`flutter_launcher_icons` 0.14.4 resolves and is unchanged.
-
-The superellipse of the app icon is drawn at **exponent 5**, inscribed in the
-square. Measured at the 45 degree point on a 1024 icon, that curve passes
-446 px from the centre and Apple's own icon mask passes 445 px, so the
-`ground` that fills the icon's corners is removed by the platform mask instead
-of surviving as a sliver.
-
-The pin is 44 percent of **the icon a mask shows**, not of the source canvas.
-An Android adaptive foreground's canvas shows its central 66 percent and a web
-maskable icon's shows its central 80 percent, so the pin is 44 percent of
-those frames in each. Drawn against the canvas instead, the same pin reads at
-67 and 55 percent of the masked icon and the three platforms disagree.
-
-Two things the splash needs that this section did not say. Android 12 and
-later clip the splash icon to a circle and mask a third of the foreground
-away, and the mark's head reaches three quarters of the disc's radius, so the
-full bleed disc comes back with a flattened head and a cut tip. That platform
-takes the same disc drawn at two thirds of the size, which survives the mask
-whole. And "optically centred" is the whole pin nudged up one unit, not the
-head alone: a head sitting 1 dp above the centre cannot also carry a 16 dp pin
-below it. The pin's box therefore runs from 9 dp above the centre to 7 dp
-below it.
+`foundation/mark.dart` remains the shared runtime entry point.
+[The brand asset README](../assets/brand/README.md) documents regeneration and
+its platform checks. Native/browser backgrounds use the same Paper and
+Obsidian seeds as Flutter.
 
 ## 10. Dark mode
 
-Both modes ship from the same token table. In dark, `ground` is `#0E0F11`,
-glass fills are dark and lifted by their highlight rather than by white, and
-fields drop to a third of their alpha. Hero numerals lose their shadow.
-Contrast tests run on both columns of every table above.
+Dark mode has explicit semantic roles. It is not an inverted screenshot.
+Obsidian is the canvas; elevated surfaces remain neutral; text and secondary
+Iris emphasis use lighter accessible relatives. The hero gradient keeps the
+same identity endpoints. Both modes receive the same behavioural, fit and
+contrast checks.
 
-## 11. What we explicitly reject
+## 11. Rejected treatments
 
-This list replaces the v1 rejections in 03 section 2, which banned gradients
-and glass outright. Those bans are lifted for the fields and panes defined
-above and replaced with these sharper ones:
+- The former fluorescent yellow-green palette, including in optional fields,
+  launcher artwork, splash screens or browser icons.
+- Additional decorative blue, teal, clay, rose or mint families to distinguish
+  classifications that already have labels and icons.
+- Body text on gradients, tinted evidence, decorative blur or stacked glass.
+- New raw colour or geometry literals in screens.
+- Platform icon substitutions, runtime fonts or an unlicensed Söhne asset.
+- Screenshot replacement used to conceal an unexamined visual regression.
 
-- **Saturated purple or violet as a brand colour, glows, glassmorphism as
-  decoration.** The fields are pale and placed by preset; glass is a
-  container with a budget. A gradient anywhere other than `FieldLayer` is a
-  defect.
-- **Glass on repeated items.** Rows, chips and cells are never blurred panes.
-- **Glow or shadow on text** other than hero numerals in light mode.
-- **Upper case** anywhere but the `unit` role.
-- **Material anatomy**: the ink ripple, the notched floating label, the pill
-  indicator inside a bar, tonal container buttons, `ExpansionTile` chevron
-  rows, the M3 segmented button. If a Material component widget appears on a
-  screen, the gate in 10 section 8 fails.
-- **Apple assets**: SF Symbols and SF Pro are licensed for Apple platforms
-  only and never ship in this cross-platform app.
-- **Runtime font fetching.** Fonts are assets or they are not in the product.
-- **Colour that encodes data anywhere but a status triple.** A field, a
-  tile's tint or an accent marker never varies with a value.
-- **Beige and brass, serif small caps, textured paper.** Still rejected, for
-  the reasons in the v1 document.
+## 12. Implementation checklist
 
-## 12. Do and do not
-
-| Do | Do not |
-|---|---|
-| Read every colour from `context.ui.color.*` or a status triple. | Write `Color(0x...)` outside `palette.dart`. |
-| Paint fields only through `FieldLayer` with a sky preset. | Add a `LinearGradient` or `RadialGradient` to a widget. |
-| Put glass around a pane the user reads as one object. | Put glass on a row, a chip or a cell, or exceed four panes per window. |
-| Set weight with `FontVariation('wght', n)` from the type roles. | Pick a weight at a call site or set text below 14 px lighter than 400. |
-| Use `unit` for a unit and nothing else in upper case. | Set a label, a button or a heading in upper case. |
-| Draw corners with `RoundedSuperellipseBorder` at a shape token. | Use `BorderRadius.circular` with a literal. |
-| Use the accent for position markers and the mark. | Fill a button, a selected row or a status with the accent. |
-| Keep the matte neutral with 24 dp of field exclusion. | Let a field, a tint or glass touch the photograph. |
-| Get a glyph from `UiIcons`. | Name a Phosphor glyph in a screen, or use two glyphs for one meaning. |
-| Choose density from the input modality with `Density.of`. | Choose density from `Platform` or device type. |
-| Keep icon plus word plus colour on every status. | Let glass or a field stand in for a status. |
-| Use a hyphen, comma, colon or period. | Use an em dash or an en dash anywhere, including here. |
-
-## Sources
-
-- Reference boards supplied by the product owner, 2026-09-16: a running-app
-  concept showing frosted panes over yellow, lavender, rose and mint fields,
-  a floating disc navigation, thin large numerals with small units, and
-  dot-matrix visualisations.
-- Geist: <https://vercel.com/font>, files `GeistVF.ttf` and `GeistMonoVF.ttf`
-  version 1.200, license SIL OFL 1.1 in the `geist-font` repository.
-- Phosphor Icons: <https://phosphoricons.com>, `phosphor_flutter` 2.1.0, MIT.
-- Flutter 3.38.5 SDK: `RoundedSuperellipseBorder`, `ClipRSuperellipse`,
-  `RSuperellipse`, `BackdropFilter`, `FontVariation`.
-- WCAG 2.2: SC 1.4.3 (contrast minimum), SC 1.4.11 (non-text contrast),
-  SC 2.4.13 (focus appearance), SC 2.3.3 (animation from interactions).
-- v1 record: [03-design-system.md](03-design-system.md) sections 2 to 6.
+Use semantic tokens and real controls, document the state/size/slot axes,
+exercise keyboard and screen-reader behaviour, and test at 320/390, 768 and
+1180/1440 dp with 100/200 percent text and RTL. Preserve data, authentication,
+upload and Queue semantics while improving presentation. Local catalog and
+synthetic evidence do not establish production acceptance.

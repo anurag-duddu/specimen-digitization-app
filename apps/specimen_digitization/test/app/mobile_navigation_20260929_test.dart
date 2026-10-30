@@ -23,7 +23,7 @@ import '../reading_region_comparison_test.dart' show selectLabel;
 Finder _tabBar(TargetPlatform platform) => find.byType(UiTabBar);
 
 Finder _tab(TargetPlatform platform, String label) =>
-    find.descendant(of: _tabBar(platform), matching: find.text(label));
+    find.descendant(of: _tabBar(platform), matching: uiDestination(label));
 
 Finder get _record => find.byType(ReviewWorkbench);
 Finder get _backToSpecimens => uiIconButton('Back to specimens');
@@ -86,12 +86,12 @@ int _selectedTab(WidgetTester tester, TargetPlatform platform) =>
 void _expectNoSidebar() {
   expect(find.byKey(const ValueKey('global-rail')), findsNothing);
   expect(find.byKey(const ValueKey('global-sidebar')), findsNothing);
-  expect(uiIconButton('Open sidebar'), findsNothing);
-  expect(uiIconButton('Close sidebar'), findsNothing);
+  expect(uiIconButton('Show queue'), findsNothing);
+  expect(uiIconButton('Hide queue'), findsNothing);
   expect(
     find.byWidgetPredicate(
       (widget) =>
-          widget is ModalBarrier && widget.semanticsLabel == 'Close sidebar',
+          widget is ModalBarrier && widget.semanticsLabel == 'Hide queue',
     ),
     findsNothing,
   );

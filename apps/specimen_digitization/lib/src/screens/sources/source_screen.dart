@@ -589,20 +589,10 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return Wrap(
-      alignment: WrapAlignment.spaceBetween,
-      crossAxisAlignment: WrapCrossAlignment.center,
-      spacing: ui.space.s4,
-      runSpacing: ui.space.s2,
-      children: [
-        Semantics(
-          header: true,
-          child: Text(
-            source.displayName,
-            style: ui.type.headline.copyWith(color: ui.color.ink),
-          ),
-        ),
+    return UiSectionHeader(
+      title: source.displayName,
+      role: UiSectionHeaderRole.page,
+      actions: [
         UiButton(
           label: 'Source details',
           variant: UiButtonVariant.ghost,

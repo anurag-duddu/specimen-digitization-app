@@ -1,0 +1,49 @@
+{
+  "version": "infrastructure-prices-2026-10-20",
+  "as_of": "2026-10-20",
+  "currency": "USD",
+  "units": "Amounts are micro-USD. A rate named per_million is micro-USD per million seconds, unit-seconds or requests.",
+  "region": "us-east4",
+  "sources": [
+    "https://cloud.google.com/run/pricing",
+    "https://docs.cloud.google.com/run/docs/configuring/billing-settings",
+    "https://cloud.google.com/storage/pricing",
+    "https://cloud.google.com/storage/docs/storage-classes",
+    "https://cloud.google.com/sql/pricing",
+    "https://firebase.google.com/docs/sql-connect/pricing",
+    "https://docs.cloud.google.com/billing/docs/how-to/reports"
+  ],
+  "cloud_run": {
+    "tier": 1,
+    "instance_based": {
+      "vcpu_micros_per_million_seconds": 18000000,
+      "gib_micros_per_million_seconds": 2000000
+    },
+    "request_based": {
+      "vcpu_micros_per_million_seconds": 24000000,
+      "gib_micros_per_million_seconds": 2500000,
+      "request_micros_per_million": 400000
+    },
+    "free_tier": {
+      "instance_based": {"vcpu_seconds": 240000, "gib_seconds": 450000},
+      "request_based": {"vcpu_seconds": 180000, "gib_seconds": 360000, "requests": 2000000}
+    },
+    "services": {
+      "specimen-sam": {"billing": "instance_based", "vcpus": 4, "memory_gib": 16},
+      "specimen-api": {"billing": "request_based", "vcpus": 1, "memory_gib": 1}
+    },
+    "jobs": {"billing": "instance_based", "vcpus": 1, "memory_gib": 1}
+  },
+  "cloud_storage": {
+    "hours_per_month": 730,
+    "standard_micros_per_gib_month": {"us-east1": 20000, "us-east4": 23000, "us": 26000},
+    "note": "us-east1 (South Carolina, USD 0.02 per GiB-month) was read from cloud.google.com/storage/pricing on 2026-10-26, after the rest of this file. The app bucket is in US-EAST1 and its default class is the legacy REGIONAL, which cloud.google.com/storage/docs/storage-classes says is equivalent to Standard in a region."
+  },
+  "cloud_sql": {
+    "machine": "db-f1-micro",
+    "instance_micros_per_hour": 11200,
+    "storage_gib": 10,
+    "ssd_micros_per_gib_month": 181900,
+    "hours_per_month": 730
+  }
+}

@@ -286,3 +286,35 @@ def test_new_runtime_requires_explicit_language_pin():
     assert profile.language_handling.version == "language-handling-v1"
     with pytest.raises(ValueError, match="language_handling_rule_missing"):
         resolve_profile_rules(profile, (SYNTHETIC_SCORING_POLICY,))
+
+
+def _profile_naming_priced_readers(count):
+    """The published pilot profile with `count` readers, every one priced."""
+    from specimen_digitization.application.collection_profiles import (
+        CollectionProfile,
+        published_registry,
+    )
+
+    pilot = published_registry().resolve("insects").profile
+    routes = tuple(f"handwriting-reader-{n}" for n in range(1, count + 1))
+    definition = pilot.model_dump()
+    prices = definition["processing"]["price_list"]["models"]
+    # Every reader reads crops, so each needs the context length the rule asks for.
+    prices.update({route: prices["handwriting-qwen"] for route in routes})
+    return CollectionProfile.model_validate({**definition, "model_routes": routes})
+
+
+def test_a_profile_names_at_most_the_label_risk_budget_of_readers():
+    from specimen_digitization.application.review_risk import MAX_LABEL_READINGS
+
+    assert MAX_LABEL_READINGS == 8
+    # A first pass could letter 26 readers, but the label risk measure compares
+    # every pair of a label's readings and takes 8, so a ninth fails here and
+    # not later when the evidence is refreshed.
+    for count in (2, 3, MAX_LABEL_READINGS):
+        profile = _profile_naming_priced_readers(count)
+        assert len(set(profile.model_routes)) == len(profile.model_routes) == count
+    with pytest.raises(ValidationError, match="at most 8 readers"):
+        _profile_naming_priced_readers(MAX_LABEL_READINGS + 1)
+    with pytest.raises(ValidationError, match="at most 8 readers"):
+        _profile_naming_priced_readers(26)

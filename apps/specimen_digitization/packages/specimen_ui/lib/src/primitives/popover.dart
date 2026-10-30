@@ -103,6 +103,7 @@ class Popover extends StatefulWidget {
     this.radius,
     this.semanticsLabel,
     this.barrierDismissible = true,
+    this.flipWhenClipped = false,
   });
 
   /// Opens and closes this popover.
@@ -144,6 +145,14 @@ class Popover extends StatefulWidget {
 
   /// True when a tap outside closes the popover.
   final bool barrierDismissible;
+
+  /// Treats [placement] as a preference when the pane would leave the viewport.
+  ///
+  /// The measured pane moves to the opposite side when necessary, then stays
+  /// inside the safe area. Passive tooltips use this so a control against a
+  /// window edge still has a readable explanation. Defaults to false so menus
+  /// and other intentionally positioned panes retain their placement contract.
+  final bool flipWhenClipped;
 
   @override
   State<Popover> createState() => _PopoverState();
@@ -342,6 +351,7 @@ class _PopoverState extends State<Popover> {
           math.max(safe.bottom, MediaQuery.viewInsetsOf(context).bottom) +
           ui.space.s4,
       direction: Directionality.of(context),
+      flipWhenClipped: widget.flipWhenClipped,
     );
   }
 
@@ -406,6 +416,7 @@ class _PopoverGeometry {
     required this.insetTop,
     required this.insetBottom,
     required this.direction,
+    required this.flipWhenClipped,
   });
 
   /// The trigger's rectangle.
@@ -429,12 +440,20 @@ class _PopoverGeometry {
   final double insetTop;
   final double insetBottom;
 
-  double get heightRoom => math.max(0, switch (placement) {
-    PopoverPlacement.above => trigger.top - gap - insetTop,
-    PopoverPlacement.below ||
-    PopoverPlacement.auto => bounds.height - insetBottom - trigger.bottom - gap,
-    _ => bounds.height - insetTop - insetBottom,
-  });
+  /// Whether placement may change to preserve the measured content.
+  final bool flipWhenClipped;
+
+  double get heightRoom => math.max(
+    0,
+    flipWhenClipped
+        ? bounds.height - insetTop - insetBottom
+        : switch (placement) {
+            PopoverPlacement.above => trigger.top - gap - insetTop,
+            PopoverPlacement.below || PopoverPlacement.auto =>
+              bounds.height - insetBottom - trigger.bottom - gap,
+            _ => bounds.height - insetTop - insetBottom,
+          },
+  );
 
   /// The reading direction, which decides which edge is the leading one.
   final TextDirection direction;
@@ -444,10 +463,13 @@ class _PopoverGeometry {
   /// The inset, or the trigger's own left edge where the trigger is already
   /// closer: a pane never has to keep further from an edge than the control
   /// that opened it.
-  double get minLeft => math.min(insetStart, trigger.left);
+  double get minLeft =>
+      flipWhenClipped ? insetStart : math.min(insetStart, trigger.left);
 
   /// The right most point the pane may reach, by the same rule.
-  double get maxRight => math.max(bounds.width - insetEnd, trigger.right);
+  double get maxRight => flipWhenClipped
+      ? bounds.width - insetEnd
+      : math.max(bounds.width - insetEnd, trigger.right);
 
   /// The width the pane has to fit in.
   double get room => math.max(0, maxRight - minLeft);
@@ -463,6 +485,7 @@ class _PopoverGeometry {
       other.insetEnd == insetEnd &&
       other.insetTop == insetTop &&
       other.insetBottom == insetBottom &&
+      other.flipWhenClipped == flipWhenClipped &&
       other.direction == direction;
 
   @override
@@ -475,6 +498,7 @@ class _PopoverGeometry {
     insetEnd,
     insetTop,
     insetBottom,
+    flipWhenClipped,
     direction,
   );
 }
@@ -509,19 +533,44 @@ class _PopoverLayout extends SingleChildLayoutDelegate {
       case PopoverPlacement.above:
       case PopoverPlacement.below:
       case PopoverPlacement.auto:
-        final double top = geometry.placement == PopoverPlacement.above
+        double top = geometry.placement == PopoverPlacement.above
             ? trigger.top - gap - childSize.height
             : trigger.bottom + gap;
+        if (geometry.flipWhenClipped) {
+          final double bottomLimit =
+              geometry.bounds.height - geometry.insetBottom;
+          if (top < geometry.insetTop || top + childSize.height > bottomLimit) {
+            top = geometry.placement == PopoverPlacement.above
+                ? trigger.bottom + gap
+                : trigger.top - gap - childSize.height;
+          }
+          top = top.clamp(
+            geometry.insetTop,
+            math.max(geometry.insetTop, bottomLimit - childSize.height),
+          );
+        }
         return Offset(_fitted(childSize.width, rtl: rtl), top);
       case PopoverPlacement.start:
       case PopoverPlacement.end:
-        // Beside the trigger, in the reading direction. Placed there on
-        // purpose by the caller, so the pane is not moved to the other side.
+        // Beside the trigger, in the reading direction. Explicit placement
+        // stays on that side unless the caller opted into the edge fallback.
         final bool before =
             (geometry.placement == PopoverPlacement.start) != rtl;
-        final double left = before
+        double left = before
             ? trigger.left - gap - childSize.width
             : trigger.right + gap;
+        if (geometry.flipWhenClipped) {
+          if (left < geometry.minLeft ||
+              left + childSize.width > geometry.maxRight) {
+            left = before
+                ? trigger.right + gap
+                : trigger.left - gap - childSize.width;
+          }
+          left = left.clamp(
+            geometry.minLeft,
+            math.max(geometry.minLeft, geometry.maxRight - childSize.width),
+          );
+        }
         return Offset(
           left,
           (trigger.center.dy - childSize.height / 2).clamp(

@@ -9,11 +9,13 @@
 // a count that moved under the reviewer while they read it would not be.
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -46,10 +48,15 @@ class BulkRepository extends TestRepository {
 
   /// Set to fail the call itself rather than refuse individual records.
   Object? failure;
+  Object? permissionFailure;
+  int permissionReads = 0;
 
   @override
-  Future<Specimen> specimen(CollectionScope scope, String id) async =>
-      records.firstWhere((record) => record.id == id);
+  Future<Specimen> specimen(CollectionScope scope, String id) async {
+    permissionReads++;
+    if (permissionFailure case final Object error) throw error;
+    return records.firstWhere((record) => record.id == id);
+  }
 
   @override
   Future<SpecimenPage> specimenPage(
@@ -191,27 +198,267 @@ void main() {
     expect(repository.calls, isEmpty);
     expect(tester.takeException(), isNull);
   });
+  testWidgets('search Escape clears then unfocuses without losing selection', (
+    tester,
+  ) async {
+    final repository = BulkRepository(queue(3));
+    await pumpQueue(tester, repository, window: const Size(1440, 900));
+    await pick(tester, 'Pinned beetle 1');
+    final pane = find.byType(QueuePane);
+    final controller = WorkspaceScope.read(tester.element(pane));
+    final search = tester.widget<UiSearchField>(find.byType(UiSearchField));
+    await tester.enterText(uiField('Search by specimen ID'), 'fixture-001');
+    await tester.pumpAndSettle();
+    expect(controller.query, 'fixture-001');
+    expect(search.focusNode!.hasFocus, isTrue);
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(controller.query, isEmpty);
+    expect(search.controller!.text, isEmpty);
+    expect(search.focusNode!.hasFocus, isTrue);
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(search.focusNode!.hasFocus, isFalse);
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+
+    tester
+        .widget<QueueRow>(find.byType(QueueRow).first)
+        .focusNode!
+        .requestFocus();
+    await tester.pumpAndSettle();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(rowBoxes, findsNothing);
+    expect(uiButton('Select'), findsOneWidget);
+    expect(controller.query, isEmpty);
+    expect(repository.calls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('companion search Escape dismisses without changing its query', (
+    tester,
+  ) async {
+    final repository = BulkRepository(queue(3));
+    await pumpQueue(tester, repository, window: const Size(1440, 900));
+    await pick(tester, 'Pinned beetle 1');
+    final pane = find.byType(QueuePane);
+    final queueState = tester.state(pane);
+    final controller = WorkspaceScope.read(tester.element(pane));
+    await tester.enterText(uiField('Search by specimen ID'), 'fixture-001');
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(QueueRow).first,
+        matching: find.text('fixture-001'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(pane, findsOneWidget);
+    expect(tester.widget<QueuePane>(pane).onDismiss, isNotNull);
+    final search = tester.widget<UiSearchField>(find.byType(UiSearchField));
+    search.focusNode!.requestFocus();
+    await tester.pumpAndSettle();
+    expect(search.focusNode!.hasFocus, isTrue);
+    expect(search.controller!.text, 'fixture-001');
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(repository.calls, isEmpty);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(pane, findsNothing);
+    expect(
+      tester.state(find.byType(QueuePane, skipOffstage: false)),
+      same(queueState),
+    );
+    expect(controller.query, 'fixture-001');
+    expect(search.controller!.text, 'fixture-001');
+    expect(repository.calls, isEmpty);
+
+    await tester.tap(uiIconButton('Show queue'));
+    await tester.pumpAndSettle();
+    expect(tester.state(pane), same(queueState));
+    expect(search.controller!.text, 'fixture-001');
+    expect(find.text('1 record selected'), findsOneWidget);
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   group('picking records', () {
+    for (final scenario in [
+      (size: const Size(1440, 900), scale: 1.0),
+      (size: const Size(390, 844), scale: 2.0),
+      (size: const Size(768, 480), scale: 2.0),
+    ]) {
+      testWidgets(
+        'selection count and primary stay visible without footer scrolling at ${scenario.size}, ${scenario.scale}',
+        (tester) async {
+          tester.platformDispatcher.textScaleFactorTestValue = scenario.scale;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          final repository = BulkRepository(queue(4));
+          await pumpQueue(tester, repository, window: scenario.size);
+          await tester.tap(uiButton('Select'));
+          await tester.pumpAndSettle();
+          await tester.ensureVisible(rowBoxes.first);
+          await tester.tap(rowBoxes.first);
+          await tester.pumpAndSettle();
+          final pane = tester.getRect(find.byType(QueuePane));
+          final footerFinder = find.byKey(
+            const ValueKey('queue-selection-footer'),
+          );
+          final footer = tester.getRect(footerFinder);
+          expect(footer.left, pane.left);
+          expect(footer.right, pane.right);
+          expect(footer.bottom, pane.bottom);
+          expect(
+            footer.height,
+            lessThan(pane.height - 48),
+            reason: 'Selection keeps at least one record target in the list.',
+          );
+          expect(
+            find.descendant(
+              of: footerFinder,
+              matching: find.byType(Scrollable),
+            ),
+            findsNothing,
+            reason:
+                'Essential selection controls must not require footer scrolling.',
+          );
+          final decision = tester.widget<UiDecisionBar>(
+            find.descendant(
+              of: footerFinder,
+              matching: find.byType(UiDecisionBar),
+            ),
+          );
+          for (final label in ['Done', decision.primary.label]) {
+            final command = find.descendant(
+              of: footerFinder,
+              matching: uiButton(label),
+            );
+            expect(command.hitTestable(), findsOneWidget);
+            final bounds = tester.getRect(command);
+            expect(bounds.top, greaterThanOrEqualTo(footer.top));
+            expect(bounds.bottom, lessThanOrEqualTo(footer.bottom));
+          }
+          expect(repository.calls, isEmpty);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox());
+        },
+      );
+    }
+
+    testWidgets(
+      'a verified denied selection explains the real reasons without suggesting a failed check',
+      (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final repository = BulkRepository([
+          for (final specimen in queue(3))
+            Specimen({...specimen.data, 'available_actions': <String>[]}),
+        ]);
+        await pumpQueue(tester, repository, window: const Size(390, 844));
+        await tester.tap(uiButton('Select'));
+        await tester.pumpAndSettle();
+        await tester.tap(rowBoxes.first);
+        await tester.pumpAndSettle();
+        expect(find.text('No eligible bulk actions'), findsOneWidget);
+        expect(uiButton('Selection details').hitTestable(), findsOneWidget);
+        expect(uiButton('Check permissions'), findsNothing);
+        expect(uiButton('Done').hitTestable(), findsOneWidget);
+        expect(find.textContaining('eligible for approval'), findsNothing);
+        await tester.tap(uiMenuTrigger('More selection actions'));
+        await tester.pumpAndSettle();
+        final menu = tester.widget<UiMenuTrigger>(
+          uiMenuTrigger('More selection actions'),
+        );
+        final approval = menu.items.firstWhere(
+          (item) => item.label == 'Approve',
+        );
+        expect(approval.onSelected, isNull);
+        expect(
+          approval.disabledReason,
+          contains('None of the selected records'),
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        await tester.tap(uiButton('Selection details'));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('0 eligible for approval. 0 eligible for label coverage.'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            'This action is not permitted on the current record version.',
+          ),
+          findsOneWidget,
+          reason:
+              'The actual reason is shown once for both unavailable actions.',
+        );
+        expect(find.text('Approve · Confirm coverage'), findsOneWidget);
+        expect(uiButton('Check permissions again'), findsOneWidget);
+        expect(repository.calls, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'an unverified selection offers a check and recovers to the permitted action',
+      (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final repository = BulkRepository(queue(3))
+          ..permissionFailure = StateError('offline');
+        await pumpQueue(tester, repository, window: const Size(390, 844));
+        await tester.tap(uiButton('Select'));
+        await tester.pumpAndSettle();
+        await tester.tap(rowBoxes.first);
+        await tester.pumpAndSettle();
+        expect(find.text('Permissions could not be verified'), findsOneWidget);
+        expect(find.text('No eligible bulk actions'), findsNothing);
+        expect(uiButton('Check permissions').hitTestable(), findsOneWidget);
+        final reads = repository.permissionReads;
+        repository.permissionFailure = null;
+        await tester.tap(uiButton('Check permissions'));
+        await tester.pumpAndSettle();
+        expect(repository.permissionReads, greaterThan(reads));
+        expect(uiButton('Approve').hitTestable(), findsOneWidget);
+        expect(find.text('Permissions could not be verified'), findsNothing);
+        expect(repository.calls, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets(
       'a wide window selects by long press and can finish selecting',
       (WidgetTester tester) async {
         await pumpQueue(tester, BulkRepository(queue(4)));
         expect(rowBoxes, findsNothing);
         expect(uiMenuTrigger('Specimen list actions'), findsNothing);
-        expect(uiIconButton('Done selecting'), findsNothing);
+        expect(uiButton('Done'), findsNothing);
         await tester.longPress(find.text('fixture-002'));
         await tester.pumpAndSettle();
         expect(rowBoxes, findsNWidgets(4));
         expect(find.text('1 record selected'), findsOneWidget);
-        expect(uiIconButton('Done selecting'), findsOneWidget);
+        expect(uiButton('Done'), findsOneWidget);
 
-        await tester.tap(uiIconButton('Done selecting'));
+        await tester.tap(uiButton('Done'));
         await tester.pumpAndSettle();
         expect(rowBoxes, findsNothing);
         expect(find.textContaining('selected'), findsNothing);
-        expect(uiIconButton('Done selecting'), findsNothing);
+        expect(uiButton('Done'), findsNothing);
         expect(uiMenuTrigger('Specimen list actions'), findsNothing);
       },
     );
@@ -248,7 +495,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('5 records selected'), findsOneWidget);
       expect(
-        find.text(SelectionBar.recordsMoreMatch),
+        find.text('Loaded records only'),
         findsOneWidget,
         reason: 'the server still has a page, so the reach has to be named',
       );

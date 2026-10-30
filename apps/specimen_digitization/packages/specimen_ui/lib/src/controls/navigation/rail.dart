@@ -7,11 +7,27 @@ import 'package:flutter/semantics.dart' show SemanticsRole;
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/density.dart';
+import '../../foundation/icons.dart';
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
+import '../../primitives/label.dart';
+import '../../primitives/popover.dart';
+import '../../primitives/pressable.dart';
+import '../overlays/tooltip.dart';
 import 'nav_destination.dart';
-import 'nav_disc.dart';
 import 'nav_group.dart';
+
+/// Whether rail destinations need visible text in addition to named icons.
+enum UiRailLabelPresentation {
+  /// Icons on pointer-only desktops; labels below on touch or non-hover hosts.
+  adaptive,
+
+  /// Icon buttons with hover and keyboard-focus tooltips.
+  icons,
+
+  /// Every destination name is visible below its icon.
+  below,
+}
 
 /// The resolved measurements of one rail (10 section 1.5).
 ///
@@ -102,27 +118,24 @@ class UiRailStyle {
       width: extended ? math.max(minWidth, widest + padding * 2) : minWidth,
       discExtent: UiDensity.hitBox,
       discVisual: ui.density.controlHeight,
-      itemExtent: UiDensity.hitBox + (extended ? ui.space.s1 + lineHeight : 0),
+      itemExtent:
+          UiDensity.hitBox +
+          (extended ? ui.space.s1 + lineHeight + ui.space.s2 : 0),
       padding: padding,
-      currentFill: ui.color.ink,
+      currentFill: ui.color.ink.withValues(alpha: ui.color.hoverOpacity),
       glide: ui.motion.navigationGlide,
       curve: MotionTokens.emphasizedCurve,
     );
   }
 }
 
-/// A column of the pill's discs for a medium window, top aligned under the
-/// mark.
+/// Compact primary navigation with quiet selection and filled Phosphor icons.
 ///
-/// The collapsed form is glyphs only; [extended] draws each destination's
-/// words under its glyph in `label.small`. The `ink` disc glides between
-/// destinations exactly as it does in the pill (09 section 8).
-///
-/// The rail carries no glass. 10 section 4.4 gives the sidebar `glass.flat`
-/// and gives the rail nothing, and a column of discs reads as the reference's
-/// floating navigation without a pane around it. That also leaves the window's
-/// four pane budget for the top bar, the action bar and whatever the body
-/// holds (09 section 3.3).
+/// Pointer-only desktops expose each name on hover or keyboard focus. Touch
+/// tablets and hybrids retain every label below its icon, including with a
+/// trackpad attached. This policy reads input capabilities, never screen width.
+/// Leading and footer slots share the scroller so short windows and large text
+/// cannot strand account access outside the viewport.
 ///
 /// Semantics: a tab list of tabs, one selected. `Up` and `Down` move between
 /// them; `Enter` and `Space` select.
@@ -136,7 +149,9 @@ class UiRail extends StatelessWidget {
     required this.currentIndex,
     required this.onSelect,
     this.leading,
-    this.extended = false,
+    this.footer,
+    this.extended,
+    this.labelPresentation = UiRailLabelPresentation.adaptive,
     this.semanticsLabel,
   });
 
@@ -153,12 +168,15 @@ class UiRail extends StatelessWidget {
   /// one.
   final Widget? leading;
 
-  /// True to draw each destination's words under its glyph.
-  ///
-  /// 05 section 2 gives the collapsed form to medium windows and the extended
-  /// form to expanded ones. The rail does not decide that for itself: the
-  /// window class does, and the shell reads it.
-  final bool extended;
+  /// Account or utility actions, at the bottom when height permits.
+  final Widget? footer;
+
+  /// Legacy explicit label override. Null uses [labelPresentation].
+  /// True keeps labels below icons; false keeps the icon-only presentation.
+  final bool? extended;
+
+  /// Label policy, shared by the rendered rail and [widthOf].
+  final UiRailLabelPresentation labelPresentation;
 
   /// What the tab list is called to a screen reader, or null for no name.
   ///
@@ -175,6 +193,41 @@ class UiRail extends StatelessWidget {
   /// does not.
   static const int minDestinations = 2;
 
+  /// Resolves visible names from capabilities without relying on viewport size.
+  static bool showsLabelsOf(
+    BuildContext context, {
+    UiRailLabelPresentation labelPresentation =
+        UiRailLabelPresentation.adaptive,
+    bool? extended,
+  }) {
+    if (extended != null) return extended;
+    return switch (labelPresentation) {
+      UiRailLabelPresentation.icons => false,
+      UiRailLabelPresentation.below => true,
+      UiRailLabelPresentation.adaptive =>
+        Density.inputsOf(context).touch || !Density.inputsOf(context).hover,
+    };
+  }
+
+  /// The same measured width used to render the rail at this text scale.
+  static double widthOf(
+    BuildContext context, {
+    required List<UiNavDestination> destinations,
+    UiRailLabelPresentation labelPresentation =
+        UiRailLabelPresentation.adaptive,
+    bool? extended,
+  }) => UiRailStyle.resolve(
+    context.ui,
+    extended: showsLabelsOf(
+      context,
+      labelPresentation: labelPresentation,
+      extended: extended,
+    ),
+    destinations: destinations,
+    textScaler: MediaQuery.textScalerOf(context),
+    textDirection: Directionality.of(context),
+  ).width;
+
   @override
   Widget build(BuildContext context) {
     assert(
@@ -183,86 +236,174 @@ class UiRail extends StatelessWidget {
       '${destinations.length}. One destination is a title, not a navigation.',
     );
     final UiThemeData ui = context.ui;
+    final showLabels = showsLabelsOf(
+      context,
+      labelPresentation: labelPresentation,
+      extended: extended,
+    );
     final UiRailStyle style = UiRailStyle.resolve(
       ui,
-      extended: extended,
+      extended: showLabels,
       destinations: destinations,
       textScaler: MediaQuery.textScalerOf(context),
       textDirection: Directionality.of(context),
     );
     final int current = currentIndex.clamp(0, destinations.length - 1);
 
-    return SizedBox(
-      width: style.width,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          if (leading != null)
-            Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(
-                0,
-                ui.space.s4,
-                0,
-                ui.space.s6,
-              ),
-              child: leading,
-            ),
-          NavGroup(
-            length: destinations.length,
-            axis: NavAxis.vertical,
-            builder: (BuildContext context, List<FocusNode> nodes) => Semantics(
-              container: true,
-              explicitChildNodes: true,
-              role: SemanticsRole.tabBar,
-              label: semanticsLabel,
-              child: SizedBox(
-                height: style.itemExtent * destinations.length,
-                child: Stack(
-                  children: <Widget>[
-                    // Signature motion 1 (09 section 8), running down the
-                    // column instead of along the capsule. Start and end are
-                    // both pinned so the disc stays centred in the column at
-                    // any width, in either direction.
-                    AnimatedPositionedDirectional(
-                      top: style.itemExtent * current,
-                      start: 0,
-                      end: 0,
-                      height: style.discExtent,
-                      duration: style.glide,
-                      curve: style.curve,
-                      child: Center(
-                        child: SizedBox.square(
-                          dimension: style.discVisual,
-                          child: DecoratedBox(
-                            decoration: ShapeDecoration(
-                              shape: const StadiumBorder(),
-                              color: style.currentFill,
-                            ),
-                          ),
+    final navigation = NavGroup(
+      length: destinations.length,
+      axis: NavAxis.vertical,
+      builder: (BuildContext context, List<FocusNode> nodes) => Semantics(
+        container: true,
+        explicitChildNodes: true,
+        role: SemanticsRole.tabBar,
+        label: semanticsLabel,
+        child: SizedBox(
+          height: style.itemExtent * destinations.length,
+          child: Stack(
+            children: <Widget>[
+              // Signature motion 1 (09 section 8), running down the
+              // column instead of along the capsule. Start and end are
+              // both pinned so the disc stays centred in the column at
+              // any width, in either direction.
+              AnimatedPositionedDirectional(
+                top: style.itemExtent * current,
+                start: 0,
+                end: 0,
+                height: style.discExtent,
+                duration: style.glide,
+                curve: style.curve,
+                child: Center(
+                  child: SizedBox.square(
+                    dimension: style.discVisual,
+                    child: DecoratedBox(
+                      decoration: ShapeDecoration(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(ui.shape.inner),
                         ),
+                        color: style.currentFill,
                       ),
                     ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        for (int i = 0; i < destinations.length; i++)
-                          NavDisc(
-                            destination: destinations[i],
-                            current: i == current,
-                            extent: style.discExtent,
-                            showLabel: extended,
-                            focusNode: nodes[i],
-                            onPressed: () => onSelect(i),
-                          ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
+              ),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  for (int i = 0; i < destinations.length; i++)
+                    _destination(
+                      context,
+                      style,
+                      i,
+                      current: i == current,
+                      showLabel: showLabels,
+                      focusNode: nodes[i],
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return SizedBox(
+      width: style.width,
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.hasBoundedHeight
+                  ? constraints.maxHeight
+                  : 0,
+            ),
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: ui.space.s3),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (leading != null) ...[
+                        leading!,
+                        SizedBox(height: ui.space.s6),
+                      ],
+                      navigation,
+                    ],
+                  ),
+                  if (footer != null)
+                    Padding(
+                      padding: EdgeInsets.only(top: ui.space.s6),
+                      child: footer,
+                    ),
+                ],
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
+  }
+
+  Widget _destination(
+    BuildContext context,
+    UiRailStyle style,
+    int index, {
+    required bool current,
+    required bool showLabel,
+    required FocusNode focusNode,
+  }) {
+    final ui = context.ui;
+    final destination = destinations[index];
+    final control = Pressable(
+      semanticsLabel: destination.label,
+      role: PressableRole.tab,
+      selected: current,
+      focusNode: focusNode,
+      radius: ui.shape.inner,
+      onPressed: () => onSelect(index),
+      builder: (context, states) => SizedBox(
+        height: style.itemExtent,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox.square(
+              dimension: style.discExtent,
+              child: Center(
+                child: UiIcon(
+                  destination.icon,
+                  current: current,
+                  color: current ? ui.color.ink : ui.color.inkSecondary,
+                ),
+              ),
+            ),
+            if (showLabel) ...[
+              SizedBox(height: ui.space.s1),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: style.padding),
+                child: UiLabel(
+                  destination.label,
+                  style: ui.type.labelSmall.copyWith(
+                    color: current ? ui.color.ink : ui.color.inkSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+    return showLabel
+        ? control
+        : MergeSemantics(
+            child: UiTooltip(
+              message: destination.label,
+              placement: PopoverPlacement.end,
+              excludeSemantics: true,
+              child: control,
+            ),
+          );
   }
 }

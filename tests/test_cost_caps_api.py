@@ -119,6 +119,27 @@ def test_caps_that_cannot_be_read_leave_the_costs_whole(failure):
     assert body["caps_status"] == "unavailable" and body["totals"]["cost_micros"] == 9_550
 
 
+def test_shared_cost_allocations_and_their_credits_are_not_a_cap_s_spend():
+    # A month in Google's free tier: Beetles' SAM 3 credit is larger than its residual.
+    allocations = [
+        {**GROUPS[0], "source": "allocation", "kind": "allocation", "stage": "label_finding", "provider": "google_cloud",
+         "resource": "specimen-sam", "cost_basis": "allocated", "cost_micros": "-2000", "list_cost_micros": "300",
+         "entries": "2"},
+        {**GROUPS[1], "source": "allocation", "kind": "allocation", "stage": "database", "provider": "google_cloud",
+         "resource": "cloud-sql", "cost_basis": "allocated", "cost_micros": "700", "list_cost_micros": "700",
+         "entries": "1"},
+    ]
+    repository = capped([(INSECTS, 9_600), (BEETLES, 500)], groups=GROUPS + allocations)
+    http, _ = client([membership("admin")], repository=repository)
+    with http:
+        response = http.get(URL, params={"from": "2026-10", "to": "2026-10"}, headers=HEADERS)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["caps_status"] == "ok"
+    assert caps_of(body) == (None, {INSECTS: position(9_600, 9_550), BEETLES: position(500, 550)})
+    assert body["totals"]["cost_micros"] == 9_550 - 2_000 + 700  # The report itself counts them.
+
+
 def test_a_failed_read_of_the_current_month_leaves_the_costs_whole():
     repository = capped([("organization", 20_000)])
     repository.cost_totals.side_effect = [{"collections": COLLECTIONS, "groups": []}, Conflict("rejected")]

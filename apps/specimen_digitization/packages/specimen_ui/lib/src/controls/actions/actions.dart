@@ -7,6 +7,10 @@
 /// `ActionChip`, `FilterChip`, `ChoiceChip`, `SegmentedButton` and `Badge`.
 library;
 
+export 'shared_actions.dart';
+
+export 'button_group.dart';
+
 export 'badge.dart';
 export 'button.dart';
 export 'button_row.dart';

@@ -140,6 +140,12 @@ class ModelPrice(FrozenRecord):
 
     input_micros_per_million: int = Field(ge=0, le=10**12)
     output_micros_per_million: int = Field(ge=0, le=10**12)
+    # What the provider charges for an input token it served from its prompt
+    # cache, when it publishes a rate for that. Only a request whose answer
+    # reports its cached tokens is priced with it; a reservation never is.
+    cached_input_micros_per_million: int | None = Field(
+        default=None, ge=0, le=10**12, exclude_if=lambda value: value is None
+    )
     # The route's context length: no request's input can exceed it (PLAN 4.3).
     context_tokens: int | None = Field(
         default=None, ge=1, le=10**8, exclude_if=lambda value: value is None
@@ -165,6 +171,8 @@ class ModelPrice(FrozenRecord):
             self.context_tokens is None or self.max_input_tokens > self.context_tokens
         ):
             raise ValueError("a request's input bound must fit the route's context length")
+        if (self.cached_input_micros_per_million or 0) > self.input_micros_per_million:
+            raise ValueError("a cached input token cannot cost more than an input token")
         return self
 
 
@@ -327,6 +335,16 @@ class CollectionProfile(FrozenRecord):
             raise ValueError("field groups must be nonblank and disjoint")
         if len(set(self.model_routes)) < 2:
             raise ValueError("two independent model routes required")
+        # Lazy, like storage.digest: collection_profiles stays light to import.
+        from .review_risk import MAX_LABEL_READINGS
+
+        if len(self.model_routes) > MAX_LABEL_READINGS:
+            # The first pass could letter 26 readers, but every pair of a
+            # label's readings is risk-scored, and that measure takes this many.
+            raise ValueError(
+                f"a profile names at most {MAX_LABEL_READINGS} readers "
+                "(the label risk budget)"
+            )
         if not set(self.field_tools) <= set(fields) or any(
             tool not in self.tools for tools in self.field_tools.values() for tool in tools
         ):

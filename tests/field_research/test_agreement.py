@@ -253,17 +253,20 @@ def test_readers_that_differ_in_punctuation_or_a_letter_still_disagree(key, firs
     assert refused is not None and refused.reason == agreement.DIFFER
 
 
-def test_a_decided_transcript_keeps_its_own_spelling():
-    """105526330's precise location: 2A, the decided reading, writes
-    "Yepocapa,4800 ft.", 2B "Yepocapa, 4800 ft.". G19 decides on 2A's text;
-    2B's spelling is refused as before."""
+def test_readers_that_agree_settle_on_the_spelling_of_the_reader_the_first_pass_preferred():
+    """105526330's precise location: 2A, the reading the first pass preferred,
+    writes "Yepocapa,4800 ft.", 2B "Yepocapa, 4800 ft.". Spacing aside they
+    agree, on 2A's spelling; 2B's spelling is sent back for it (until
+    2026-10-25 as NOT_DECIDED, G19's binding)."""
     readings = (Reading("2A", "region-2", "obs-2A", "decided_transcript", "Yepocapa,4800 ft.\nIV-25 1948"),
         Reading("2B", "region-2", "obs-2B", "raw_reading", "Yepocapa, 4800 ft.\nIV-25 1948"))
     task = FieldTask("precise_location", False, FieldValue(state=ValueState.AMBIGUOUS),
         (Candidate("2A", "Yepocapa,4800 ft.", "Yepocapa,4800 ft.", "ev-2A"),
          Candidate("2B", "Yepocapa, 4800 ft.", "Yepocapa, 4800 ft.", "ev-2B")), FIELD_TOOLS["precise_location"])
     assert refusal_of(task, readings, "Yepocapa,4800 ft.") is None
-    assert refusal_of(task, readings, "Yepocapa, 4800 ft.", "2B").reason == agreement.NOT_DECIDED
+    refused = refusal_of(task, readings, "Yepocapa, 4800 ft.", "2B")
+    assert (refused.reason, refused.differ) == (agreement.DIFFER, True)
+    assert "agree on 'Yepocapa,4800 ft.'" in refused.retry
 
 
 def test_the_experts_check_accepts_the_first_readers_spelling():
@@ -513,13 +516,15 @@ def test_a_run_of_whole_words_within_one_line(text, literal, found):
     assert bool(agreement.verbatim_runs(text, literal)) == found
 
 
-def test_text_from_the_transcript_on_a_decided_label_is_the_decided_readings():
-    """G19, as for a candidate: 105526330's other reader's spacing, which the
-    decided reading does not write, is refused."""
-    readings = label("Yepocapa,4800 ft.\nIV-25", "Yepocapa, 4800 ft.\nIV-25", decided=True)
-    refused = agreement.refusal(uncandidated("precise_location"), readings, literal="Yepocapa, 4800 ft.",
+def test_text_from_the_transcript_settles_on_the_preferred_readers_spelling_when_readers_agree():
+    """As for a candidate: the other reader's spacing (as on 105526330's
+    locality), which the reading the first pass preferred does not write, is
+    sent back for that reader's spelling (until 2026-10-25 as NOT_DECIDED)."""
+    readings = label("E. slope,Mt. Apo\nIV-25", "E. slope, Mt. Apo\nIV-25", decided=True)
+    refused = agreement.refusal(uncandidated("precise_location"), readings, literal="E. slope, Mt. Apo",
         named=[readings[1]], value=None, authority_id=None, cited=[], received=[])
-    assert refused is not None and refused.reason == agreement.NOT_DECIDED
+    assert refused is not None and refused.reason == agreement.DIFFER
+    assert "agree on 'E. slope,Mt. Apo'" in refused.retry
 
 
 # The step, end to end.

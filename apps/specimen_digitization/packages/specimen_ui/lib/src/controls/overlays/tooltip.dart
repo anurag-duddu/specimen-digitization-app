@@ -8,12 +8,21 @@ import 'dart:async';
 // "dismiss" string a revealed tooltip publishes on touch. The widget itself is
 // not used; this package owns the tooltip.
 import 'package:flutter/material.dart' show MaterialLocalizations;
-import 'package:flutter/gestures.dart' show PointerEnterEvent, PointerExitEvent;
 import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 
 import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/popover.dart';
+
+/// Contrast treatment of a tooltip surface.
+enum UiTooltipEmphasis {
+  /// The current theme's paper surface.
+  standard,
+
+  /// Ink surface with paper-colored text.
+  inverse,
+}
 
 /// The resolved paint of one tooltip.
 @immutable
@@ -91,6 +100,8 @@ class UiTooltip extends StatefulWidget {
     this.enabled = true,
     this.excludeSemantics = false,
     this.style,
+    this.supportingText,
+    this.emphasis = UiTooltipEmphasis.standard,
   }) : builder = null,
        reason = null;
 
@@ -109,6 +120,8 @@ class UiTooltip extends StatefulWidget {
     this.enabled = true,
     this.excludeSemantics = false,
     this.style,
+    this.supportingText,
+    this.emphasis = UiTooltipEmphasis.standard,
   }) : message = null,
        child = null;
 
@@ -128,7 +141,8 @@ class UiTooltip extends StatefulWidget {
   final Widget Function(BuildContext context, ValueChanged<String> report)?
   builder;
 
-  /// Where the tooltip sits relative to the control.
+  /// Preferred side of the control. Flips at window edges to keep the message
+  /// readable, including at large text sizes.
   final PopoverPlacement placement;
 
   /// False to suppress the tooltip without changing the tree around it.
@@ -149,6 +163,12 @@ class UiTooltip extends StatefulWidget {
 
   /// Overrides the resolved style. A code review event (10 section 1.5).
   final UiTooltipStyle? style;
+
+  /// Optional explanatory body beneath the short message heading.
+  final String? supportingText;
+
+  /// Surface contrast; defaults preserve the standard paper tooltip.
+  final UiTooltipEmphasis emphasis;
 
   @override
   State<UiTooltip> createState() => _UiTooltipState();
@@ -223,6 +243,7 @@ class _UiTooltipState extends State<UiTooltip> {
     return Popover(
       controller: _controller,
       placement: widget.placement,
+      flipWhenClipped: true,
       surface: PopoverSurface.paper,
       interactive: false,
       radius: style.radius,
@@ -231,20 +252,43 @@ class _UiTooltipState extends State<UiTooltip> {
       barrierDismissible: false,
       overlayBuilder: (BuildContext context) => _TooltipPane(
         message: _message ?? '',
+        supportingText: widget.supportingText,
+        inverse: widget.emphasis == UiTooltipEmphasis.inverse,
         style: style,
         dismissLabel: _fromTouch ? _dismissLabel(context) : null,
         onDismiss: _hide,
         excludeSemantics: widget.excludeSemantics,
       ),
-      child: MouseRegion(
-        onEnter: (PointerEnterEvent _) => _pointerEntered(),
-        onExit: (PointerExitEvent _) => _hide(),
-        child: GestureDetector(
-          behavior: HitTestBehavior.deferToChild,
-          excludeFromSemantics: true,
-          onLongPress: () => _show(fromTouch: true),
-          onTap: _hide,
-          child: control,
+      child: Focus(
+        canRequestFocus: false,
+        onFocusChange: (focused) {
+          if (focused &&
+              FocusManager.instance.highlightMode ==
+                  FocusHighlightMode.traditional) {
+            _show(fromTouch: false);
+          } else if (!focused) {
+            _hide();
+          }
+        },
+        onKeyEvent: (_, event) {
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.escape &&
+              _controller.isOpen) {
+            _hide();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: MouseRegion(
+          onEnter: (PointerEnterEvent _) => _pointerEntered(),
+          onExit: (PointerExitEvent _) => _hide(),
+          child: GestureDetector(
+            behavior: HitTestBehavior.deferToChild,
+            excludeFromSemantics: true,
+            onLongPress: () => _show(fromTouch: true),
+            onTap: _hide,
+            child: control,
+          ),
         ),
       ),
     );
@@ -270,6 +314,8 @@ class _TooltipPane extends StatelessWidget {
     required this.dismissLabel,
     required this.onDismiss,
     required this.excludeSemantics,
+    this.supportingText,
+    this.inverse = false,
   });
 
   final String message;
@@ -277,6 +323,8 @@ class _TooltipPane extends StatelessWidget {
   final String? dismissLabel;
   final VoidCallback onDismiss;
   final bool excludeSemantics;
+  final String? supportingText;
+  final bool inverse;
 
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
@@ -286,11 +334,17 @@ class _TooltipPane extends StatelessWidget {
       // whatever the overlay sits in. The pane publishes the product's style
       // so the message is never set in the framework fallback (11 section 5).
       style: context.ui.defaultTextStyle,
-      child: _pane(),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: inverse ? context.ui.color.ink : context.ui.color.paper,
+          borderRadius: BorderRadius.circular(style.radius),
+        ),
+        child: _pane(context),
+      ),
     ),
   );
 
-  Widget _pane() => Semantics(
+  Widget _pane(BuildContext context) => Semantics(
     container: true,
     // The `tooltip` property rather than `SemanticsRole.tooltip`: the role
     // exists in this SDK but its debug checks do not, so setting it throws
@@ -298,16 +352,39 @@ class _TooltipPane extends StatelessWidget {
     // (Flutter 3.38.5, `semantics.dart`, `_DebugSemanticsRoleChecks`). The
     // property is what carries a tooltip to the platform in any case, and the
     // message reaches the node's label through the `Text` below.
-    tooltip: message,
+    tooltip: [message, ?supportingText].join('. '),
     hint: dismissLabel,
     onDismiss: dismissLabel == null ? null : onDismiss,
     child: ConstrainedBox(
       constraints: BoxConstraints(maxWidth: style.maxWidth),
       child: Padding(
         padding: style.padding,
-        child: Text(
-          message,
-          style: style.label.copyWith(color: style.foreground),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              message,
+              style:
+                  (supportingText == null
+                          ? style.label
+                          : context.ui.type.labelSmall)
+                      .copyWith(
+                        color: inverse
+                            ? context.ui.color.paper
+                            : style.foreground,
+                      ),
+            ),
+            if (supportingText != null) ...[
+              SizedBox(height: context.ui.space.s1),
+              Text(
+                supportingText!,
+                style: style.label.copyWith(
+                  color: inverse ? context.ui.color.paper : style.foreground,
+                ),
+              ),
+            ],
+          ],
         ),
       ),
     ),

@@ -5,6 +5,7 @@ import asyncio
 import hashlib
 import hmac
 import io
+import os
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
@@ -16,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import Field
 from PIL import Image, UnidentifiedImageError
 
+from .reading_units import first_pass_path
 from .domain import (
     Asset,
     AuditEvent,
@@ -337,6 +339,7 @@ def classify_error(exc) -> tuple[int, str, str, str]:
 
 def summary(specimen: Specimen, role: str = "viewer") -> dict:
     from .intake_progress import intake_progress
+    from .review_summary import project_fields, review_summary
 
     run = specimen.run
     status = run_status(run)
@@ -357,6 +360,13 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         "intake_progress": intake_progress(run),
         "disposition": run.disposition,
         "reason_codes": run.reasons,
+        "review_summary": review_summary(
+            project_fields({
+                key: value.model_dump(mode="json")
+                for key, value in run.fields.items()
+            }),
+            run.reasons,
+        ),
         "blocker": run.blocker,
         "profile_id": run.profile.id,
         "profile_version": run.profile.version,
@@ -826,11 +836,28 @@ def create_app(
 
     @app.get(prefix + "/collections")
     def collections(organization_id: str, user=Depends(identity)):
+        members = [m for m in member_rows(user) if m['organization_id'] == organization_id]
+        if not members:
+            # Catalog names are still organization information. Check the caller
+            # before even asking the repository for another organization's tree.
+            raise PermissionError()
+        load_hierarchy = getattr(repository, 'collection_hierarchy', None)
+        hierarchy = load_hierarchy(organization_id, user) if callable(load_hierarchy) else []
+        authorized = {m['collection_id'] for m in members}
+        hierarchy = [node for node in hierarchy if node['kind'] != 'testing' or node['collection_id'] in authorized]
+        nodes = {node['collection_id']: node for node in hierarchy}
+        if callable(load_hierarchy) and not authorized.issubset(nodes):
+            raise OperationalBlock('collection_hierarchy_incomplete')
+        preferred = next((node['collection_id'] for node in hierarchy
+                          if node['collection_id'] in authorized and node['kind'] != 'testing'), None)
         return {
             "items": [
                 {
                     "collection_id": m["collection_id"],
                     "display_name": m.get("collection_name") or m["collection_id"],
+                    "parent_collection_id": nodes.get(m['collection_id'], {}).get('parent_collection_id'),
+                    "kind": nodes.get(m['collection_id'], {}).get('kind', 'museum'),
+                    "is_default": m['collection_id'] == preferred,
                     "role": m["role"],
                     "profiles": [p.model_dump(mode="json") for p in registry.profiles],
                     "profile_registry_version": registry.version,
@@ -838,9 +865,9 @@ def create_app(
                         node.model_dump(mode="json") for node in registry.nodes
                     ],
                 }
-                for m in member_rows(user)
-                if m["organization_id"] == organization_id
+                for m in members
             ],
+            "hierarchy": hierarchy,
             "next_cursor": None,
         }
 
@@ -884,8 +911,15 @@ def create_app(
         if not callable(totals):
             raise OperationalBlock("cost_meter_unavailable")
         read = totals(organization_id, first, last)
+        # How far the shared Google costs are allocated (cost_allocation); null
+        # for a repository without the allocation read.
+        status, meter = getattr(repository, "cost_allocation_status", None), None
         try:
-            report = cost_report(organization_id, first, last, read["collections"], read["groups"])
+            if callable(status):
+                from .cost_allocation import meter as allocation_meter
+
+                meter = allocation_meter(status(organization_id)["latest_occurred_at"], datetime.now(timezone.utc))
+            report = cost_report(organization_id, first, last, read["collections"], read["groups"], meter)
         except (ValueError, KeyError, TypeError) as exc:
             code = "cost_collection_tree_invalid" if str(exc) == "collection_tree_cycle" else "cost_meter_unavailable"
             raise OperationalBlock(code) from exc
@@ -1014,12 +1048,9 @@ def create_app(
             and m.get("can_view_sensitive") is True
             for m in member_rows(user)
         )
-        document["items"] = [
-            u
-            for u in repository.documents(p.scope, "upload")
-            if u["batch_id"] == batch_id
-            and (can_view_sensitive or u.get("sensitive", True) is False)
-        ]
+        document["items"] = repository.uploads_for_batch(
+            p.scope, batch_id, include_sensitive=can_view_sensitive
+        )
         return document
 
     def duplicate_source(p, user, checksum):
@@ -1051,14 +1082,11 @@ def create_app(
             raise ValueError("Declare both pixel dimensions or omit both")
         if body.width is not None and body.width * body.height > 40000000:
             raise ValueError("Image exceeds 40 megapixel decoding limit")
-        for prior in repository.documents(p.scope, "upload"):
-            if (
-                prior["batch_id"] == batch_id
-                and prior.get("idempotency_key") == idempotency_key
-            ):
-                if prior["request_digest"] != digest(body.model_dump()):
-                    raise Conflict("Idempotency payload mismatch")
-                return prior
+        prior = repository.upload_by_idempotency(p.scope, batch_id, idempotency_key)
+        if prior is not None:
+            if prior["request_digest"] != digest(body.model_dump()):
+                raise Conflict("Idempotency payload mismatch")
+            return prior
         ident = str(uuid5(NAMESPACE_URL, batch_id + body.client_item_id))
         payload = dict(
             body.model_dump(),
@@ -1413,7 +1441,7 @@ def create_app(
             id=doc["specimen_id"],
             scope=p.scope,
             batch_id=doc["batch_id"],
-            run=Run(profile=profile),
+            run=Run(profile=profile, first_pass_path=first_pass_path(os.environ)),
             asset=Asset(
                 sensitive=doc.get("sensitive", True),
                 id=doc["asset_id"],
@@ -1908,7 +1936,8 @@ def create_app(
         bound = binding(p.scope, filters, user, sensitive)
         cutoff, after_created, after_id = decode_cursor(cursor, bound)
         items = repository.search(
-            p.scope, filters, cutoff, after_created, after_id, limit, sensitive
+            p.scope, filters, cutoff, after_created, after_id, limit, sensitive,
+            hydrate_review=True,
         )
         # A full page may have an empty terminal page. This keeps each DB query <=100.
         following = (
@@ -1916,7 +1945,8 @@ def create_app(
         )
         for item in items:
             # Metadata rows lack pilot pins and lease state. Fetch scoped detail/
-            # workspace before offering mutations; do not reconstruct paged graphs.
+            # workspace before offering mutations. Legacy queue count reads do not
+            # reconstruct models or grant any actions from graph metadata.
             item["available_actions"] = []
         return {"items": items, "next_cursor": following, "cutoff": cutoff}
 
@@ -2618,6 +2648,7 @@ def create_app(
         old = s.run.model_copy(deep=True)
         s.previous_runs.append(old)
         s.run = Run(
+            first_pass_path=first_pass_path(os.environ),
             profile=old.profile,
             profile_snapshot=old.profile_snapshot,
             profile_rules=old.profile_rules,
@@ -2681,6 +2712,7 @@ def create_app(
             raise ValueError("Published profile unavailable: " + resolution.reason)
         s.previous_runs.append(s.run)
         s.run = Run(
+            first_pass_path=first_pass_path(os.environ),
             profile=s.run.profile,
             classification_selection=ManualSelection(
                 collection_id=body.profile_collection_id,
@@ -2831,7 +2863,8 @@ def create_app(
                         raise Conflict("Reprocessing cannot discard retained human field selections")
                     from .human_field_carry import prepare, install, keep_regions
                     next_run = Run(profile=s.run.profile,
-                        classification_selection=s.run.classification_selection)
+                        classification_selection=s.run.classification_selection,
+                        first_pass_path=first_pass_path(os.environ))
                     action_event = AuditEvent(actor=user, action=body.action, reason=body.reason)
                     carries = prepare(repository, s, next_run.id, action_event, blobs)
                     keep_regions(action_event, s.run, next_run)

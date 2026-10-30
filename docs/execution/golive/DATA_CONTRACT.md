@@ -108,7 +108,7 @@ reads them.
 | 2 Coverage (G15) | `Run.coverage_check` (S3, section 4.1) | `EvidenceItem` with `source` `label-coverage-check`, outcome `recorded` and its own locator; a failed check also reaches the queue's reason codes and a hard `ValidationFinding` |
 | 3, 4 Readings | `Run.observations[]`, raw envelope at `raw_ref` | `ModelObservation` per reading: `independent` true, `stepKey` `transcribe:{region_id}:{route_id}`, `routeId`, `unreadableSpans`; `SourceAsset` kind `raw_response` for the envelope |
 | 5 Disagreement | `Transcript` alignment fields | `ReadingComparison` per pair of readings of a region, with the ratio and its components |
-| 6 First pass | `Transcript` per region, extended by S4 (section 4.2) | `TranscriptionVersion` with region, decision kind, selected reading and rationale; the first pass's model call as a `ModelObservation` with `independent` false and `stepKey` `first_pass:{region_id}`; `HarnessInput` per reading handed over |
+| 6 First pass | `Transcript` per region, extended by S4 (section 4.2); `Run.reading_units` | `TranscriptionVersion` with region, decision kind, selected reading and rationale, and the label's reading units when the run has them; the first pass's model call as a `ModelObservation` with `independent` false and `stepKey` `first_pass:{region_id}`; `HarnessInput` per reading handed over |
 | 7 Harness | S4's tool call records (section 4.3); `Run.lookups`; `Run.fields` | `ToolCall` per call attempt; `EvidenceItem` per lookup response; `FieldCandidate` per verbatim value, with its input source and the settled value; `CandidateEvidence` with its G23 relation |
 | 8 Queue | `Run.disposition`, `Run.reasons`, `Run.findings`, `Run.profile.policy_version`, `Run.fields`, `Run.field_groups` | `RecordVersion`, `ResolvedField` with `fieldGroup`, a hard `ValidationFinding` per reason code and a warning or info one per `Run.findings` entry; `Specimen.disposition` as today |
 | 9 Linkage | ids throughout | every row carries `runId` or a parent that does |
@@ -186,7 +186,7 @@ region.
 | `PipelineRun` | `traceId` (32 lowercase hex, recorded once) |
 | `LabelRegion` | `domainRegionId` (the domain's region id: SAM's, a corrected one, or `new-{microseconds}` for a region a person added; the row's own id is per run, section 5) |
 | `ModelObservation` | `routeId`, `unreadableSpans: [String!]` |
-| `TranscriptionVersion` | `regionId` (CONTRACTS.md 185), `decisionKind` (`identical_readings`, `first_pass` or `human`), `selectedObservationId` (the reading whose raw transcript the harness runs against; null only when no reading was selected), `firstPassObservationId` (the first pass's model call), `rationale`. `unresolved` follows the one rule in section 4.2 |
+| `TranscriptionVersion` | `regionId` (CONTRACTS.md 185), `decisionKind` (`identical_readings`, `first_pass` or `human`), `selectedObservationId` (the reading the first pass preferred: advice to the harness, which may settle a field on another reader's text when evidence backs it; null only when no reading was selected), `firstPassObservationId` (the first pass's model call), `rationale`. `unresolved` follows the one rule in section 4.2. `readingUnits` (the label's reading units, section 4.2; null on a row written without them) |
 | `FieldCandidate` | `inputSource` (`decided_transcript` or `raw_reading`), `sourceTranscriptionId`, `sourceObservationId` |
 | `ResolvedField` | `fieldGroup` (`mandatory` or `optional`) |
 | `ValidationFinding` | `evidenceIds: [UUID!]` (the evidence behind the finding, all of the record version's run) |
@@ -233,10 +233,11 @@ above do not change.
 |---|---|---|
 | `decision_kind` | `identical_readings`, `first_pass`, `human` | how the decided transcript was reached |
 | `selected_observation_id` | `str \| None` | the reading chosen; `text` is its `literal_text`, verbatim |
-| `first_pass_call` | `Observation \| None` | the model call's provenance, same model as the readers' observations, with `literal_text` empty and the structured answer at `raw_ref`; set only for `first_pass`. Its `input_sha256` is the crop's digest, like every observation's; `request_sha256` names its text request (S4, #98) and stays in the snapshot |
+| `first_pass_call` | `Observation \| None` | the model call's provenance, same model as the readers' observations, with `literal_text` empty and the structured answer at `raw_ref`; set only for `first_pass`, and on the units path also for `identical_readings` (the call that cut the label's units; that kind's rule still decides the text). The writer sends `firstPassObservationId` for `first_pass` only, as the operations' check requires (`((decisionKind == 'first_pass') == (firstPassObservationId != null))`, `dataconnect/connector/projection.gql`), so an identical-readings version names no call in SQL; the domain record keeps it. Its `input_sha256` is the crop's digest, like every observation's; `request_sha256` names its text request (S4, #98) and stays in the snapshot |
 | `differences` | `list[FirstPassDifference]` | one per aligned difference: `number`, `spans` (per observation, exact `start` and `end` offsets into that reading's `literal_text` and the `text`), `verdict` (an observation id, `neither` or `uncertain`) and `material` |
 | `reason` (exists) | `str \| None` | the first pass's rationale, or the reviewer's reason |
 | `handoffs` | `list[ReaderHandoff]` | one per reading handed to the harness |
+| `comparisons` | `list[ReadingPairComparison]` | only for a region with more than two readings: every pair in route order, each with `left_observation_id`, `right_observation_id`, `status`, `reasons` and `disagreement_ratio`; the transcript's own alignment fields then report the least-agreeing pair. Absent for two readings |
 
 `ReaderHandoff`: `observation_id: str`, `role: Literal["decided_transcript",
 "raw_reading"]`, `handed_text: str`, `note: str | None`. With a selected
@@ -251,12 +252,64 @@ The writer maps `TranscriptionVersion.spans` from `differences`, and
 `alternatives` from the material differences whose verdict is `neither` or
 `uncertain`.
 
+**Reading units** (work package 1.1 of `docs/execution/units/PLAN.md`) sit on
+the run, not on the transcript: `Run.reading_units: list[ReadingUnits]`, one
+entry per label, omitted from the stored record while empty, so a run without
+units keeps its bytes (`tests/test_reading_units.py`). `ReadingUnits` is
+`label` (the region id) and `units`, at least one; each `ReadingUnit` holds the
+keys of `FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md` section 3: `id`
+(`<label>:<n>`, from 1 in reading order), `label`, `lines` (first and last,
+from 1), `readers` (per reading its `text`, `start` and `end`, Python string
+indices, so code points; every unit of a label names the same readings),
+`image` (one reader's text, `uncertain` or `not visible`), `means`, `role`
+(empty, `genus`, `species`, `author`, `day`, `month` or `year`), `fields` and
+`note` (`application/reading_units.py`). The writer sends a label's entry as
+`TranscriptionVersion.readingUnits` with `AppendTranscriptionVersionV3`, and the
+entry joins the decision's content, so other units are another version (section
+5). A label without units is written with `AppendTranscriptionVersionV2`
+exactly as before. The active graph's compact row keeps `reading_units` as an
+empty list, like the other per-label lists (`active_graph.run_summary`).
+
+**The first pass's path** (work package 1.2): `Run.first_pass_path`, `old` or
+`units`, set from `SPECIMEN_FIRST_PASS_UNITS` (`reading_units.first_pass_path`:
+`on` gives `units`; `off`, empty or unset give `old`) by the `Run(...)` calls in
+`application/api.py` (intake, region review, classification review, reprocess),
+`application/bulk_intake.py` and `application/source_import.py`
+(`test_the_run_calls_the_guard_detects_in_src_record_the_switch`). The stored record omits it
+when `old` (`test_an_old_path_run_stores_main_s_bytes`). A run created with the
+switch on writes units after the switch is turned off
+(`test_a_run_keeps_the_path_recorded_at_its_creation`). On the units path
+`Workflow.next_step` schedules the first pass for a label with two readings or
+more and some text, agreed readings included; its decision names no reading and
+its differences stay `uncertain` (`first_pass._unpicked`); a label with one
+reading, or given up on, gets units from the alignment at `adjudicate`, `image`
+`uncertain` (`test_a_label_with_one_reading_gets_the_alignments_units_without_a_call`,
+`test_a_label_given_up_on_gets_the_alignments_units_at_adjudicate`). The units
+are in `Run.reading_units`, which the workspace route returns;
+`projection._first_pass` writes a label's units in its
+`AppendTranscriptionVersionV3`. A label with one reading, or with differing
+readings and no first-pass decision, gets no machine version (see the end of
+this section), so without a person's decision its units are on the run and the
+workspace route and not in the normalized projection
+(`test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_workspace_only`).
+A person's supported edit of such a label gives it a `human` version, which the
+reviewer's save writes with `AppendTranscriptionVersionV3` carrying the units as
+stored, the machine readings' units until work package 1.3
+(`test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_with_its_units`).
+Main before this package (work package 1.1 included) loads `Run.reading_units`
+but not `Run.first_pass_path` (`Record` refuses an unknown key), so the rollback
+boundary is the path field, in the run and in its previous runs. The rule: turn
+the switch on once this runtime serves the API, the intake job and the worker;
+to roll back past it, turn the switch off first and wait until the records the
+older runtime would load name no units path.
+
 **The unresolved rule** is the one definition of unresolved used everywhere. A
 region's decision is unresolved when no reading was selected (G19: material
 ambiguity means no pick; the harness then runs on each raw reading, and every
 reading is a `raw_reading` handoff). The first pass selects a reading only when
-every material difference's verdict supports it: a material difference whose
-verdict is `neither` or `uncertain` means no pick, and "material" means more
+every material difference's verdict supports it (names it or, with more than
+two readings, a reading with the same text there, lower-cased): a material
+difference whose verdict is `neither` or `uncertain` means no pick, and "material" means more
 than capitalization: spans are compared lower-cased in code, so "Straße" and
 "Strasse" differ (coordinator readings, 2026-09-25 12:31Z and 14:05Z; S4, #98).
 So only a reviewer's decision can select a reading while a material difference
@@ -269,8 +322,9 @@ unresolved.
 The rationale and the notes are null for `identical_readings`. That kind also
 covers identical readings that stay unresolved, such as unreadable spans or an
 unmeasured alignment: no reading is selected there. A region with fewer than two
-readings, or with no recorded decision, has no `TranscriptionVersion`; the run's
-stage and blocker say why.
+readings, or with no recorded decision, has no machine `TranscriptionVersion`; a
+person's supported edit gives it a `human` one (see "The first pass's path"
+above); until then the run's stage and blocker say why it has none.
 
 ### 4.3 From the harness (S4)
 
@@ -424,11 +478,11 @@ comparison's fixed order (section 3.1):
 | `SourceAsset` other than the original | `asset/{specimen}/{bucket}/{object}/{generation}` |
 | `LabelRegion` | `region/{run}/{region}` |
 | `ProfileVersion` | `profile/{collection}/{profile key}/{version}/{config sha256}` |
-| `TranscriptionVersion` | `transcription/{run}/{region}/{digest of decision}` |
+| `TranscriptionVersion` | `transcription/{run}/{region}/{digest of decision}`; the decision includes the label's reading units when it has them |
 | `HarnessInput` | `handoff/{transcription version}/{observation}` |
 | `ReadingComparison` | `comparison/{run}/{region}/{left}/{right}` |
 | `ToolCall` | `tool-call/{run}/{call_key}` |
-| `FieldCandidate` | `candidate/{run}/{field key}/{observation or "-"}/{digest of value}` |
+| `FieldCandidate` | `candidate/{run}/{field key}/{observation or "-"}/{digest of value}`; for a candidate whose source transcription carries reading units, the key also ends with that transcription version's id; a candidate a person selected from a source is `candidate/{run}/{field key}/human/{selection id}/{digest of value}` (`application/projection.py`, `_fields`) |
 | `RecordVersion` | `record/{run}/{digest of disposition, reasons, summary, findings, field states and each field's resolved candidate}` |
 | `ResolvedField` | `{record version}/field/{field key}` |
 | `CandidateEvidence` | `candidate-evidence/{candidate}/{evidence}` |
@@ -438,6 +492,20 @@ comparison's fixed order (section 3.1):
 `CandidateEvidence` and `ReviewDecision` have no natural-key unique constraint,
 and adding one over existing columns would not be additive, so the derived or
 domain id is their only replay guard: every writer uses these keys.
+
+A `ToolCall` row's key is `tool-call/{run}/{call_key}`. `projection._tool_call`
+gives a call whose `input_source` is `decided_transcript` the label's version
+when the run is projected as `transcriptionVersionId`, and a call with another
+input source a null one and its `observationId`
+(`tests/test_projection_decisions.py`, `(None, right.id)`). The transcription
+branch of `api.py`'s decision route changes the transcript and leaves
+`run.tool_calls` as they are, and the transcript's text is part of the
+decision's digest (`projection._first_pass`, `content`; on the units path the
+units are too), so a later projection of a `decided_transcript` call names a
+new version under the same key; `SqlConnectRepository` in `production.py` skips
+a key it has written and accepts a replay that meets the row's primary key, so
+the stored row keeps the version it was first written with. Main has this for
+the text; units add one more input to the digest.
 
 Data Connect returns UUID key fields as 32 hex characters without dashes; the
 views (`SpecimenListing`) return them with dashes. Readers normalize. Inside a
@@ -546,7 +614,8 @@ The projection writes are in `dataconnect/connector/projection.gql`, all
 | `AppendLabelRegionV2` | `LabelRegion` with its `domainRegionId` (required), crop optional; supersedes only a region of its own run |
 | `AppendModelObservationV2` | `ModelObservation` (readings and first-pass calls) |
 | `AppendReadingComparisonV1` | `ReadingComparison`, in its fixed order |
-| `AppendTranscriptionVersionV2` | `TranscriptionVersion` with the section 3.2 columns; `human` needs a reviewer or above |
+| `AppendTranscriptionVersionV2` | `TranscriptionVersion` with the section 3.2 columns but `readingUnits`; `human` needs a reviewer or above |
+| `AppendTranscriptionVersionV3` | the same row and the same checks as V2, with `readingUnits` required; written only for a label that has reading units (section 4.2) |
 | `AppendHarnessInputV1` | `HarnessInput`, its role matching the decision's selection |
 | `AppendEvidenceItemV2` | `EvidenceItem`, locator optional; Google's rules in section 6 |
 | `AppendToolCallV1` | `ToolCall` |
@@ -758,6 +827,8 @@ against real PostgreSQL and the Data Connect emulator. It checks:
     no-pick `first_pass` decision with its `raw_reading` handoffs;
   - a G27 per-reader `raw_reading` candidate;
   - `identical_readings` and reviewer `human` decisions;
+  - a decision with the label's reading units (`AppendTranscriptionVersionV3`),
+    read back whole, under V2's rules and with its units required;
   - a crop with its parent asset, and a region with its crop;
   - a region superseding another of its run;
   - a Google `no_match` with no locator, recorded evidence linked to a
@@ -844,4 +915,4 @@ T2a mapping:
 | `LabelRegion` | id `region/{run}/{Region.id}` (section 5); `domainRegionId` `Region.id`; `sourceAssetId` the original; `geometry` `{x, y, width, height, rotation_quarter_turns, pixel_basis}`; `ordinal` `Region.order`; `regionType` `label`; `segmentationVersion` `{method}:{version}` |
 | `SourceAsset` raw response | id `asset/{specimen}/{bucket}/{object}/{generation}`, so byte-identical responses of two specimens are two rows of one stored object; kind `raw_response`, `application/json`, no dimensions, `acquisitionMethod` `model_response`, `uploaderUid` the writing actor |
 | `ModelObservation` reading | id `Observation.id`; `regionId` the region row's id, while `stepKey` keeps the domain region id; `modelVersion` `model_id`; `parameters` `{model_settings, provider_model_id, input_tokens, output_tokens, latency_seconds, latency_basis}`; `outcome` `completion_state`, else `finish_state`; `independent` true; `routeId`; `unreadableSpans` |
-| `ReadingComparison` | for a region's transcript with exactly two readings and an alignment algorithm; `regionId` the region row's id; readings in the fixed id order (section 3.1); `lengthBasis` the longer literal's length, at least 1; `editDistance` `ratio × lengthBasis`, rounded |
+| `ReadingComparison` | one per pair of a region's readings, for a transcript with an alignment algorithm: with exactly two readings its own pair (its ratio, status and reasons), with more each pair in its `comparisons`; `regionId` the region row's id; readings in the fixed id order (section 3.1); `lengthBasis` the longer literal's length, at least 1; `editDistance` `ratio × lengthBasis`, rounded |

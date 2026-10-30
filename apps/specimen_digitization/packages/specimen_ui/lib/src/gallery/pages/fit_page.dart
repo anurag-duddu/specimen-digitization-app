@@ -134,7 +134,15 @@ class _FitPageState extends State<_FitPage> {
             leading: UiIcons.check,
             onPressed: _noop,
           ),
-          ring: const _Ring(shape: FocusRingShape.stadium),
+          ring: _Ring(
+            radius: ui.shape.inner,
+            visualHeight: UiButtonStyle.resolve(
+              ui,
+              UiButtonVariant.primary,
+              UiSize.md,
+              textScaler: MediaQuery.textScalerOf(context),
+            ).minHeight,
+          ),
         ),
         _Section(
           title: 'UiChip',
@@ -148,7 +156,18 @@ class _FitPageState extends State<_FitPage> {
             selected: _filter,
             onPressed: () => setState(() => _filter = !_filter),
           ),
-          ring: const _Ring(shape: FocusRingShape.stadium),
+          ring: _Ring(
+            radius: UiChipStyle.resolve(
+              ui,
+              UiChipVariant.filter,
+              textScaler: MediaQuery.textScalerOf(context),
+            ).radius,
+            visualHeight: UiChipStyle.resolve(
+              ui,
+              UiChipVariant.filter,
+              textScaler: MediaQuery.textScalerOf(context),
+            ).height,
+          ),
         ),
         _Section(
           title: 'UiTabs and the navigation row',
@@ -383,13 +402,21 @@ class _Preamble extends StatelessWidget {
 /// How a section draws the ring its control carries under focus.
 @immutable
 class _Ring {
-  const _Ring({this.radius, this.shape = FocusRingShape.superellipse});
+  const _Ring({
+    this.radius,
+    this.shape = FocusRingShape.superellipse,
+    this.visualHeight,
+  });
 
   /// The control's own corner radius, or null for the primitive's default.
   final double? radius;
 
   /// The shape the control is drawn in, which is the shape of its ring.
   final FocusRingShape shape;
+
+  /// The painted contour, where the control pads a smaller visual to a 48 dp
+  /// hit target. The focus ring follows that contour, not transparent slop.
+  final double? visualHeight;
 }
 
 /// Draws [child] carrying the ring it takes under focus.
@@ -407,12 +434,32 @@ class _Ringed extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => FocusRing(
-    visible: true,
-    radius: ring.radius,
-    shape: ring.shape,
-    child: child,
-  );
+  Widget build(BuildContext context) {
+    final height = ring.visualHeight;
+    Widget focused(Widget content) => FocusRing(
+      visible: true,
+      radius: ring.radius,
+      shape: ring.shape,
+      child: content,
+    );
+    if (height == null) return focused(child);
+    return Stack(
+      children: [
+        child,
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Center(
+              child: SizedBox(
+                width: double.infinity,
+                height: height,
+                child: focused(const SizedBox.expand()),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// One row of the fit table, drawn at each of [fitColumns].
@@ -486,6 +533,14 @@ class _Section extends StatelessWidget {
           // is not about.
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
+            // The first and last focus contours paint outside their controls.
+            // Keep that paint inside the scroll viewport without changing the
+            // declared 200/280/360/480 dp specimen widths.
+            padding: focusedCell == null
+                ? EdgeInsets.zero
+                : EdgeInsets.all(
+                    ui.shape.stroke.focusGap + ui.shape.stroke.focus,
+                  ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[

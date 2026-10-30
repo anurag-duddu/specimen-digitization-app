@@ -215,6 +215,14 @@ void main() {
           await tester.tap(rowBoxes.first);
           await tester.pumpAndSettle();
         }
+        if (find
+            .text(SelectionBar.selectAllLabel)
+            .hitTestable()
+            .evaluate()
+            .isEmpty) {
+          await tester.tap(uiMenuTrigger('More selection actions'));
+          await tester.pumpAndSettle();
+        }
         await tester.tap(find.text(SelectionBar.selectAllLabel));
         await tester.pumpAndSettle();
         expect(find.text('4 records selected'), findsOneWidget);
@@ -337,7 +345,7 @@ void main() {
             location: goldenCostsLocation,
             repository: GoldenCostRepository(),
           );
-          expect(find.text('Cost in October 2026'), findsOneWidget);
+          expect(find.text('Known cost in October 2026'), findsOneWidget);
           expectKnownOverflow(tester, 'costs__${window}__$theme');
           expectGlassBudget(tester, window: window);
           await expectGolden(

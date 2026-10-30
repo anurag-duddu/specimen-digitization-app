@@ -14,11 +14,10 @@ PreviewThemeData shellPreviewThemes() => PreviewThemeData(
   materialDark: AppTheme.dark(),
 );
 
-@Preview(name: 'Rail navigation', group: 'Shell', theme: shellPreviewThemes)
+@Preview(name: 'Primary rail', group: 'Shell', theme: shellPreviewThemes)
 Widget shellNavigationPreview() {
   WorkspaceDestination selected = WorkspaceDestination.queue;
-  // The docked shell's destinations are the design system's `UiRail`, in the
-  // scaffold's `nav` slot, exactly as `AppShell` draws them.
+  // The same capability-aware primary rail used by the application shell.
   return StatefulBuilder(
     builder: (BuildContext context, StateSetter setState) => UiScaffold(
       nav: UiRail(

@@ -1,402 +1,217 @@
 #!/usr/bin/env python3
-"""Render every brand raster from one geometry.
+"""Render platform artwork from the owner's canonical interlocking SVG.
 
-Run from the application root:
+Run from the application root, using pinned, self-contained raster tools:
 
-    uv run --with pillow python tool/brand/render_mark.py
-
-The mark is the pin (`design/09-brand-direction.md` section 9): a vertical
-`ink` stroke with a filled circular head, standing in a disc of `accent`.
-Every number below is stated once, at the 24 dp mark 09 specifies, and every
-raster scales from it. Nothing here is hand placed, so a change to the
-specification is a change to one constant and a re-run.
-
-Drawing happens at four times the output side and is resolved down with a
-Lanczos filter, which is where the anti-aliasing comes from: Pillow itself
-draws hard edged polygons. Colour and coverage are carried in separate
-channels and resolved separately, so a disc on transparency keeps a clean
-edge instead of the dark halo an un-premultiplied RGBA resize leaves behind.
-
-The two generators that consume these files overwrite four of the web shell
-renders, so the documented order is:
-
-    uv run --with pillow python tool/brand/render_mark.py
+    uv run --with resvg-py==0.5.0 --with pillow==11.3.0 python tool/brand/render_mark.py
     dart run flutter_launcher_icons
     dart run flutter_native_splash:create
-    uv run --with pillow python tool/brand/render_mark.py --only web
+    uv run --with resvg-py==0.5.0 --with pillow==11.3.0 python tool/brand/render_mark.py --only web
 
-The last pass restores `web/favicon.png`, the Apple touch icon and the two
-maskable web icons. `--only sources` renders the other half on its own.
+The SVG, not a second Python path description, owns the three ribbons, aperture,
+and fold gradient. resvg renders the vector; Pillow composes the Paper plate and
+resolves supersampling with premultiplied alpha. iOS and legacy launcher sources
+are opaque squares: the platform supplies the rounded mask. Splash and favicon
+plates have rounded transparent corners so the mark remains legible on dark
+surfaces. Android adaptive and Android 12 artwork respect their safe area.
 """
 
 from __future__ import annotations
 
 import argparse
+from io import BytesIO
 import json
-import math
 import re
 import sys
 from pathlib import Path
+import xml.etree.ElementTree as ET
 
 from PIL import Image, ImageDraw
+import resvg_py
 
 APP_ROOT = Path(__file__).resolve().parents[2]
-
-# Colour, 09 section 3. The roles, not the values, are what the product reads;
-# these literals exist here because a PNG cannot look a token up.
-ACCENT = (0xE8, 0xFF, 0x47)
-ON_ACCENT = (0x11, 0x12, 0x14)
-INK = (0x11, 0x12, 0x14)
-PAPER = (0xFF, 0xFF, 0xFF)
-GROUND_LIGHT = (0xF6, 0xF6, 0xF4)
-GROUND_DARK = (0x0E, 0x0F, 0x11)
-
-# Geometry, 09 section 9, stated at the 24 dp mark.
-MARK_BOX = 24.0
-PIN_HEIGHT = 16.0
-PIN_STROKE = 2.0
-HEAD_DIAMETER = 5.0
-
-# Optical centring. 09 puts the head 1 dp above the geometric centre at 24 dp,
-# which is the whole pin nudged up by one unit: a head heavy shape sitting on
-# the exact centre reads as low. The nudge scales with the mark like every
-# other number here.
-OPTICAL_RISE = 1.0
-
+PALETTE_PATH = APP_ROOT / "packages/specimen_ui/lib/src/foundation/palette.dart"
+SVG_PATH = APP_ROOT / "assets/brand/specimen-mark.svg"
+SVG_NS = "{http://www.w3.org/2000/svg}"
 SUPERSAMPLE = 4
-
-# The app icon's shape, 09 sections 5 and 9. Five is the iOS icon exponent: an
-# n = 5 superellipse inscribed in a 1024 square passes 446 px from its centre
-# at 45 degrees and Apple's own mask passes 445 px, so the ground that fills
-# the corners here is removed by the platform mask rather than surviving as a
-# sliver.
-SQUIRCLE_EXPONENT = 5.0
-SQUIRCLE_SAMPLES = 8192
-
-# The pin's height as a fraction of the icon it stands in (09 section 9).
-ICON_PIN_FRACTION = 0.44
-
-# An Android adaptive icon's foreground is a canvas whose central 66 percent
-# is the icon a launcher mask actually shows, and a web maskable icon's is its
-# central 80 percent. The pin is 44 percent of that frame in each, never 44
-# percent of the canvas, so the masked Android icon, the masked maskable icon
-# and the iOS icon all carry a pin of the same optical size.
 ADAPTIVE_FRAME_FRACTION = 0.66
 MASKABLE_FRAME_FRACTION = 0.80
-
-# Android 12 and later clip the splash icon to a circle and mask a third of
-# the foreground away, so the art has to sit inside the central two thirds.
-# The mark's own head reaches three quarters of the disc's radius, so the
-# full bleed disc would come back with a flattened head. The splash source
-# for that platform carries the same disc drawn two thirds of the size.
 ANDROID12_FRAME_FRACTION = 2.0 / 3.0
+PLATE_RADIUS_FRACTION = 0.22
 
 
-class Plate:
-    """One square raster, drawn at SUPERSAMPLE times its output side.
-
-    Colour and coverage are two images. Painting a shape means painting it
-    into `colour`, into `cover`, or into both; what separates an opaque plate
-    from a cut out one is only which of the two the caller reaches for.
-    """
-
-    def __init__(self, size: int, colour: tuple[int, int, int], cover: int) -> None:
-        self.size = size
-        self.px = size * SUPERSAMPLE
-        self._colour = Image.new("RGB", (self.px, self.px), colour)
-        self._cover = Image.new("L", (self.px, self.px), cover)
-        self.colour = ImageDraw.Draw(self._colour)
-        self.cover = ImageDraw.Draw(self._cover)
-
-    @property
-    def centre(self) -> float:
-        """The centre of the plate, in supersampled pixels."""
-        return self.px / 2
-
-    def write(self, path: Path, *, opaque: bool) -> None:
-        """Resolve the plate to its output size and write it to `path`."""
-        image = self._colour.resize((self.size, self.size), Image.Resampling.LANCZOS)
-        if not opaque:
-            image.putalpha(
-                self._cover.resize((self.size, self.size), Image.Resampling.LANCZOS)
-            )
-        path.parent.mkdir(parents=True, exist_ok=True)
-        image.save(path, format="PNG", optimize=True)
-
-
-def full_bleed(plate: Plate) -> list[float]:
-    """The bounding box of a shape that touches all four edges."""
-    return [0, 0, plate.px - 1, plate.px - 1]
-
-
-def superellipse(
-    centre: float, half: float, exponent: float
-) -> list[tuple[float, float]]:
-    """The superellipse `|x / half| ** n + |y / half| ** n == 1`, as a polygon."""
-    points: list[tuple[float, float]] = []
-    power = 2.0 / exponent
-    for step in range(SQUIRCLE_SAMPLES):
-        angle = 2.0 * math.pi * step / SQUIRCLE_SAMPLES
-        cosine = math.cos(angle)
-        sine = math.sin(angle)
-        points.append(
-            (
-                centre + half * math.copysign(abs(cosine) ** power, cosine),
-                centre + half * math.copysign(abs(sine) ** power, sine),
-            )
-        )
-    return points
-
-
-def draw_pin(
-    draw: ImageDraw.ImageDraw,
-    centre_x: float,
-    centre_y: float,
-    height: float,
-    fill: tuple[int, int, int] | int,
-) -> None:
-    """Draw the pin of `height`, centred on the point given plus the rise.
-
-    The pin is one object in three pieces: the head, the shaft, and the round
-    cap that ends it. The cap is why the shaft stops half a stroke short of
-    the tip, and it is what keeps the pin's total height exactly `height`.
-    """
-    unit = height / PIN_HEIGHT
-    top = centre_y - OPTICAL_RISE * unit - height / 2
-    bottom = top + height
-    head_radius = HEAD_DIAMETER * unit / 2
-    head_y = top + head_radius
-    shaft_half = PIN_STROKE * unit / 2
-    draw.ellipse(
-        [
-            centre_x - head_radius,
-            head_y - head_radius,
-            centre_x + head_radius,
-            head_y + head_radius,
-        ],
-        fill=fill,
+def brand_seed(name: str) -> tuple[int, int, int]:
+    """Read an exact opaque seed from Flutter's BrandPalette, failing closed."""
+    source = PALETTE_PATH.read_text(encoding="utf-8")
+    table = re.search(r"class BrandPalette\s*\{(.*?)\n\}", source, flags=re.DOTALL)
+    if table is None:
+        raise ValueError("BrandPalette is missing from the Flutter palette")
+    matches = re.findall(
+        rf"static const Color {re.escape(name)} = Color\(0xFF([0-9A-Fa-f]{{6}})\);",
+        table.group(1),
     )
-    draw.rectangle(
-        [centre_x - shaft_half, head_y, centre_x + shaft_half, bottom - shaft_half],
-        fill=fill,
-    )
-    draw.ellipse(
-        [
-            centre_x - shaft_half,
-            bottom - 2 * shaft_half,
-            centre_x + shaft_half,
-            bottom,
-        ],
-        fill=fill,
-    )
+    if len(matches) != 1:
+        raise ValueError(f"Expected one opaque BrandPalette.{name} seed")
+    value = matches[0]
+    return tuple(int(value[index:index + 2], 16) for index in (0, 2, 4))
 
 
-def mark(
-    size: int,
-    *,
-    disc: tuple[int, int, int],
-    pin: tuple[int, int, int],
-    ground: tuple[int, int, int] | None,
-    frame: float = 1.0,
-) -> Plate:
-    """The mark: the pin standing in a disc of `frame` times the square.
-
-    With a `ground` the plate is opaque and whatever the disc leaves carries
-    it. With `None` that area is cut away and the colour under it stays the
-    disc's own, so the resolved edge never darkens toward a transparent black.
-    """
-    cut_out = ground is None
-    plate = Plate(size, disc if cut_out else ground, 0 if cut_out else 255)
-    diameter = plate.px * frame
-    inset = (plate.px - diameter) / 2
-    box = [inset, inset, inset + diameter - 1, inset + diameter - 1]
-    if cut_out:
-        plate.cover.ellipse(box, fill=255)
-    else:
-        plate.colour.ellipse(box, fill=disc)
-    draw_pin(
-        plate.colour,
-        plate.centre,
-        plate.centre,
-        diameter * PIN_HEIGHT / MARK_BOX,
-        pin,
-    )
-    return plate
-
-
-def app_icon(size: int) -> Plate:
-    """The app icon: an accent superellipse with the pin at 44 percent."""
-    plate = Plate(size, GROUND_LIGHT, 255)
-    plate.colour.polygon(
-        superellipse(plate.centre, plate.px / 2, SQUIRCLE_EXPONENT), fill=ACCENT
-    )
-    draw_pin(
-        plate.colour,
-        plate.centre,
-        plate.centre,
-        plate.px * ICON_PIN_FRACTION,
-        ON_ACCENT,
-    )
-    return plate
-
-
-def adaptive_foreground(size: int) -> Plate:
-    """The Android adaptive foreground: the pin alone, on nothing.
-
-    The background layer is a flat accent declared in the launcher icon
-    configuration, so this layer carries coverage and one colour.
-    """
-    plate = Plate(size, INK, 0)
-    frame = plate.px * ADAPTIVE_FRAME_FRACTION
-    draw_pin(plate.cover, plate.centre, plate.centre, frame * ICON_PIN_FRACTION, 255)
-    return plate
-
-
-def maskable_icon(size: int) -> Plate:
-    """The web maskable icon: accent to every edge, pin inside the safe zone."""
-    plate = Plate(size, ACCENT, 255)
-    frame = plate.px * MASKABLE_FRAME_FRACTION
-    draw_pin(
-        plate.colour, plate.centre, plate.centre, frame * ICON_PIN_FRACTION, ON_ACCENT
-    )
-    return plate
-
-
-def render_sources() -> list[Path]:
-    """The six brand rasters the two generators read."""
-    brand = APP_ROOT / "assets" / "brand"
-    written: list[Path] = []
-    for name, plate, opaque in (
-        (
-            "mark-1024.png",
-            mark(1024, disc=ACCENT, pin=ON_ACCENT, ground=GROUND_LIGHT),
-            True,
-        ),
-        (
-            "splash-mark-1024.png",
-            mark(1024, disc=ACCENT, pin=ON_ACCENT, ground=None),
-            False,
-        ),
-        (
-            "splash-mark-android12-1024.png",
-            mark(
-                1024,
-                disc=ACCENT,
-                pin=ON_ACCENT,
-                ground=None,
-                frame=ANDROID12_FRAME_FRACTION,
-            ),
-            False,
-        ),
-        (
-            "mark-mono-1024.png",
-            mark(1024, disc=PAPER, pin=INK, ground=GROUND_LIGHT),
-            True,
-        ),
-        ("icon-1024.png", app_icon(1024), True),
-        ("icon-foreground-1024.png", adaptive_foreground(1024), False),
-        ("icon-maskable-1024.png", maskable_icon(1024), True),
-    ):
-        path = brand / name
-        plate.write(path, opaque=opaque)
-        written.append(path)
-    return written
-
-
-def render_web() -> list[Path]:
-    """The four web shell rasters the generators cannot produce correctly.
-
-    `flutter_launcher_icons` resizes one source into all of them, which gives
-    the favicon a square of ground it should not have and gives the two
-    maskable icons corners a launcher mask may well show. Each is rendered
-    here from the geometry that suits it instead.
-    """
-    web = APP_ROOT / "web"
-    written: list[Path] = []
-    for path, plate, opaque in (
-        (
-            web / "favicon.png",
-            mark(64, disc=ACCENT, pin=ON_ACCENT, ground=None),
-            False,
-        ),
-        (web / "icons" / "apple-touch-icon-180.png", app_icon(180), True),
-        (web / "icons" / "Icon-maskable-192.png", maskable_icon(192), True),
-        (web / "icons" / "Icon-maskable-512.png", maskable_icon(512), True),
-    ):
-        plate.write(path, opaque=opaque)
-        written.append(path)
-    return written
+IRIS = brand_seed("iris")
+AMBER = brand_seed("amber")
+OBSIDIAN = brand_seed("obsidian")
+PAPER = brand_seed("paper")
 
 
 def hexed(colour: tuple[int, int, int]) -> str:
-    """`colour` as an upper case hex triplet."""
+    """Return an upper-case RGB triplet."""
     return "#{:02X}{:02X}{:02X}".format(*colour)
 
 
-def check_colours() -> list[str]:
-    """Report any place the shipped configuration drifted from the palette.
+def vector(*, monochrome: bool = False, app_icon: bool = False) -> str:
+    """Load the vector, selecting its named app-icon or monochrome treatment."""
+    source = SVG_PATH.read_text(encoding="utf-8")
+    root = ET.fromstring(source)
+    paths = root.findall(f".//{SVG_NS}path")
+    if root.get("viewBox") != "0 0 512 512" or [p.get("id") for p in paths] != [
+        "upper", "folded", "lower"
+    ]:
+        raise ValueError("The canonical mark must retain its three interlocking ribbons")
+    if app_icon:
+        if root.find(f".//{SVG_NS}linearGradient[@id='fold-app-icon']") is None:
+            raise ValueError("The canonical app-icon fold gradient is missing")
+        paths[1].set("fill", "url(#fold-app-icon)")
+    if monochrome:
+        for path in paths:
+            path.set("fill", hexed(OBSIDIAN))
+    return ET.tostring(root, encoding="unicode") if monochrome or app_icon else source
 
-    The rasters and the platform configuration carry the same five colours in
-    four file formats, and nothing else compares them.
-    """
+
+def raster(
+    size: int,
+    *,
+    frame: float = 1.0,
+    ground: bool = False,
+    rounded_plate: bool = False,
+    monochrome: bool = False,
+    app_icon: bool = False,
+) -> Image.Image:
+    """Render the SVG in a centered frame, optionally on the owner's Paper plate."""
+    px = size * SUPERSAMPLE
+    art_side = round(px * frame)
+    art = Image.open(BytesIO(resvg_py.svg_to_bytes(
+        svg_string=vector(monochrome=monochrome, app_icon=app_icon),
+        width=art_side,
+        height=art_side,
+        skip_system_fonts=True,
+    ))).convert("RGBA")
+    plate = Image.new("RGBA", (px, px), PAPER + ((255,) if ground else (0,)))
+    if rounded_plate:
+        ImageDraw.Draw(plate).rounded_rectangle(
+            (0, 0, px - 1, px - 1),
+            radius=round(px * PLATE_RADIUS_FRACTION),
+            fill=PAPER + (255,),
+        )
+    inset = (px - art_side) // 2
+    plate.alpha_composite(art, (inset, inset))
+    # Resolve colour and coverage together; transparent edges retain their colour.
+    resolved = plate.convert("RGBa").resize(
+        (size, size), Image.Resampling.LANCZOS
+    ).convert("RGBA")
+    return resolved.convert("RGB") if ground else resolved
+
+
+def write(path: Path, rendered: Image.Image) -> Path:
+    """Write a deterministic PNG without timestamps or ancillary metadata."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rendered.save(path, format="PNG", optimize=True)
+    return path
+
+
+def render_sources() -> list[Path]:
+    """Render the seven reference and native-generator inputs."""
+    brand = APP_ROOT / "assets/brand"
+    return [
+        write(brand / "mark-1024.png", raster(1024, ground=True)),
+        write(brand / "mark-mono-1024.png", raster(1024, ground=True, monochrome=True)),
+        write(brand / "splash-mark-1024.png", raster(1024, rounded_plate=True, app_icon=True)),
+        write(brand / "splash-mark-android12-1024.png", raster(
+            1024, frame=ANDROID12_FRAME_FRACTION, app_icon=True,
+        )),
+        write(brand / "icon-1024.png", raster(1024, ground=True, app_icon=True)),
+        write(brand / "icon-foreground-1024.png", raster(
+            1024, frame=ADAPTIVE_FRAME_FRACTION, app_icon=True,
+        )),
+        write(brand / "icon-maskable-1024.png", raster(
+            1024, frame=MASKABLE_FRAME_FRACTION, ground=True, app_icon=True,
+        )),
+    ]
+
+
+def render_web() -> list[Path]:
+    """Restore the high-resolution favicon and correct maskable safe areas."""
+    web = APP_ROOT / "web"
+    return [
+        write(web / "favicon.png", raster(64, rounded_plate=True, app_icon=True)),
+        write(web / "icons/apple-touch-icon-180.png", raster(180, ground=True, app_icon=True)),
+        write(web / "icons/Icon-maskable-192.png", raster(
+            192, frame=MASKABLE_FRAME_FRACTION, ground=True, app_icon=True,
+        )),
+        write(web / "icons/Icon-maskable-512.png", raster(
+            512, frame=MASKABLE_FRAME_FRACTION, ground=True, app_icon=True,
+        )),
+    ]
+
+
+def check_colours() -> list[str]:
+    """Fail if the canonical vector or platform colours drift from Flutter."""
     expected = {
-        APP_ROOT / "flutter_launcher_icons.yaml": [hexed(ACCENT), hexed(GROUND_LIGHT)],
-        APP_ROOT / "flutter_native_splash.yaml": [
-            hexed(GROUND_LIGHT),
-            hexed(GROUND_DARK),
-        ],
-        APP_ROOT / "web" / "index.html": [hexed(GROUND_LIGHT), hexed(GROUND_DARK)],
+        SVG_PATH: [hexed(OBSIDIAN), hexed(AMBER), hexed(IRIS)],
+        APP_ROOT / "flutter_launcher_icons.yaml": [hexed(PAPER)],
+        APP_ROOT / "flutter_native_splash.yaml": [hexed(PAPER), hexed(OBSIDIAN)],
+        APP_ROOT / "web/index.html": [hexed(PAPER), hexed(OBSIDIAN)],
     }
     drift: list[str] = []
     for path, colours in expected.items():
         if not path.exists():
-            drift.append("{} is missing".format(path.relative_to(APP_ROOT)))
+            drift.append(f"{path.relative_to(APP_ROOT)} is missing")
             continue
-        text = path.read_text(encoding="utf-8")
+        source = path.read_text(encoding="utf-8")
         for colour in colours:
-            if not re.search(colour, text, flags=re.IGNORECASE):
-                drift.append(
-                    "{} does not carry {}".format(path.relative_to(APP_ROOT), colour)
-                )
-
-    manifest = APP_ROOT / "web" / "manifest.json"
+            if not re.search(colour, source, flags=re.IGNORECASE):
+                drift.append(f"{path.relative_to(APP_ROOT)} does not carry {colour}")
+    manifest = APP_ROOT / "web/manifest.json"
     if manifest.exists():
         loaded = json.loads(manifest.read_text(encoding="utf-8"))
         for key in ("background_color", "theme_color"):
             value = str(loaded.get(key, ""))
-            if value.upper() != hexed(GROUND_LIGHT):
-                drift.append(
-                    "web/manifest.json {} is {}".format(key, value or "unset")
-                )
+            if value.upper() != hexed(PAPER):
+                drift.append(f"web/manifest.json {key} is {value or 'unset'}")
     else:
         drift.append("web/manifest.json is missing")
     return drift
 
 
 def main() -> int:
-    """Render the assets named by `--only` and report what moved."""
-    parser = argparse.ArgumentParser(description="Render the brand rasters.")
+    """Validate sources, then render the requested assets."""
+    parser = argparse.ArgumentParser(description="Render the canonical brand SVG.")
     parser.add_argument(
-        "--only",
-        choices=("sources", "web", "all"),
-        default="all",
-        help="render the brand sources, the web shell renders, or both",
+        "--only", choices=("sources", "web", "all"), default="all",
+        help="render brand sources, web shell assets, or both",
     )
     arguments = parser.parse_args()
-
+    drift = check_colours()
+    if drift:
+        for line in drift:
+            print(f"colour drift: {line}", file=sys.stderr)
+        return 1
     written: list[Path] = []
     if arguments.only in ("sources", "all"):
         written += render_sources()
     if arguments.only in ("web", "all"):
         written += render_web()
-
     for path in written:
-        print("{} {}".format(path.relative_to(APP_ROOT), path.stat().st_size))
-
-    drift = check_colours()
-    for line in drift:
-        print("colour drift: {}".format(line), file=sys.stderr)
-    return 1 if drift else 0
+        print(f"{path.relative_to(APP_ROOT)} {path.stat().st_size}")
+    return 0
 
 
 if __name__ == "__main__":

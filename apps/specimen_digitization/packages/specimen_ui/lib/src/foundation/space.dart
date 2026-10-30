@@ -118,6 +118,24 @@ class UiSpace {
   /// Bounded height of an import workspace on a large window.
   double get importWorkspaceHeight => 800;
 
+  /// Default dimension-line extent in review documentation.
+  double get annotationExtent => 120;
+
+  /// Minimum file-format identity width.
+  double get fileMarkMin => 48;
+
+  /// File thumbnail and payment-mark height.
+  double get identityPreview => 32;
+
+  /// Maximum inline provider/logo width and notification-leading extent.
+  double get identityLeadingMax => 64;
+
+  /// Maximum featured media width beside a modal heading.
+  double get modalLeadingMax => 80;
+
+  /// Smallest width that supports media beside a modal heading.
+  double get modalHorizontalMin => 360;
+
   /// Every step of the grid, by name. The gallery page walks this.
   Map<String, double> get steps => <String, double>{
     's0': s0,

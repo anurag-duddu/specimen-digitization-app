@@ -177,13 +177,6 @@ def read_entries(blobs, inventory: SourceInventory) -> tuple[InventoryEntry, ...
     return entries
 
 
-def find_entry(entries, object_name: str) -> InventoryEntry | None:
-    for entry in entries:
-        if entry.source_object.object_name == object_name:
-            return entry
-    return None
-
-
 class InventoryFilters(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

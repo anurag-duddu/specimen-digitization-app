@@ -2,11 +2,14 @@
 
 import hashlib
 import json
+import math
+import re
 
 GRAPH_THRESHOLD = 96 * 1024
 GRAPH_LIMIT = 16 * 1024 * 1024
 NORMAL_GRAPH_LIMIT = GRAPH_LIMIT - 16 * 1024
 WORKSPACE_LIMIT = 4 * 1024 * 1024
+FIELD_REVIEW_LIMIT = 16 * 1024
 
 
 class GraphTooLarge(ValueError):
@@ -29,6 +32,7 @@ def run_summary(run):
     omitted = {
         "observations",
         "first_pass_decisions",
+        "reading_units",
         "transcripts",
         "fields",
         "evidence",
@@ -61,8 +65,72 @@ def envelope(specimen):
     }
 
 
-def pack(specimen, blobs):
+def field_review_projection(run):
+    """Content-free fields from exactly the run stored in the immutable graph."""
+    from .review_summary import project_fields
     from .storage import digest
+
+    return {
+        "version": "field-review-v1",
+        "fields": project_fields(run.get("fields")),
+        "reasons_sha256": digest(run.get("reasons", [])),
+    }
+
+
+def metadata_integer(value, maximum):
+    """Struct transports integers as doubles; reject fractions and booleans."""
+    if (type(value) not in (int, float) or not math.isfinite(value)
+            or value != int(value) or not 0 < value <= maximum):
+        raise ValueError("Invalid graph integer")
+    return int(value)
+
+
+def validate_graph_metadata(metadata, *, scope, specimen_id, revision, run_id):
+    """Bind an immutable graph to the exact authorized current row before I/O."""
+    if not isinstance(metadata, dict) or (
+        metadata.get("contract_version") != "active-run-v1"
+        or metadata.get("scope") != scope
+        or metadata.get("specimen_id") != specimen_id
+        or metadata_integer(metadata.get("revision"), 2**53 - 1) != revision
+        or metadata.get("run_id") != run_id
+        or not isinstance(run_id, str) or not run_id
+    ):
+        raise ValueError("Graph identity mismatch")
+    size = metadata_integer(metadata.get("size_bytes"), GRAPH_LIMIT)
+    for name in ("sha256", "run_sha256"):
+        if not isinstance(metadata.get(name), str) or not re.fullmatch(r"[0-9a-f]{64}", metadata[name]):
+            raise ValueError("Invalid graph digest")
+    ref = metadata.get("blob_ref")
+    if (not isinstance(ref, str)
+            or not re.fullmatch(r"[0-9a-f]{64}(?::[1-9][0-9]*)?", ref)
+            or ref.split(":", 1)[0] != metadata["sha256"]):
+        raise ValueError("Invalid immutable graph reference")
+    return size
+
+
+def verified_graph_run(raw, metadata):
+    """Shared byte/envelope validator; callers first bind metadata to their row."""
+    from .storage import digest
+
+    if len(raw) != metadata["size_bytes"] or hashlib.sha256(raw).hexdigest() != metadata["sha256"]:
+        raise ValueError("Graph bytes mismatch")
+    value = json.loads(raw)
+    if (
+        value["contract_version"] != "active-run-v1"
+        or value["scope"] != metadata["scope"]
+        or value["specimen_id"] != metadata["specimen_id"]
+        or metadata_integer(value["revision"], 2**53 - 1) != metadata["revision"]
+        or value["run"]["id"] != metadata["run_id"]
+        or digest(value["run"]) != metadata["run_sha256"]
+    ):
+        raise ValueError("Graph envelope mismatch")
+    if "field_review" in metadata and metadata["field_review"] != field_review_projection(value["run"]):
+        raise ValueError("Graph field projection mismatch")
+    return value["run"]
+
+
+def pack(specimen, blobs):
+    from .storage import digest, check_snapshot, SnapshotTooLarge
 
     payload = specimen.model_dump(mode="json")
     payload["active_graph"] = None
@@ -91,8 +159,18 @@ def pack(specimen, blobs):
         "run_sha256": digest(value["run"]),
         "size_bytes": len(raw),
     }
+    projection = field_review_projection(value["run"])
+    if len(encoded(projection)) <= FIELD_REVIEW_LIMIT:
+        metadata["field_review"] = projection
     payload["active_graph"] = metadata
     payload["run"] = run_summary(value["run"])
+    # Optional acceleration cannot make an otherwise supported snapshot fail its
+    # existing persistence limit. Wide/near-limit records use verified reads.
+    if "field_review" in metadata:
+        try:
+            check_snapshot(encoded(payload).decode())
+        except SnapshotTooLarge:
+            metadata.pop("field_review")
     specimen.active_graph = metadata
     return payload
 
@@ -104,39 +182,16 @@ def read_graph(payload, blobs):
     if metadata is None:
         return None
     try:
-        if (
-            blobs is None
-            or metadata["contract_version"] != "active-run-v1"
-            or not 0 < metadata["size_bytes"] <= GRAPH_LIMIT
-        ):
+        if blobs is None:
             raise ValueError()
-        if (
-            metadata["scope"] != payload["scope"]
-            or metadata["specimen_id"] != payload["id"]
-            or metadata["revision"] != payload["version"]
-            or metadata["run_id"] != payload["run"]["id"]
-        ):
+        size = validate_graph_metadata(metadata, scope=payload["scope"],
+            specimen_id=payload["id"], revision=payload["version"], run_id=payload["run"]["id"])
+        raw = blobs.get_bounded(metadata["blob_ref"], size)
+        run = verified_graph_run(raw, metadata)
+        # This historical integrity check is intentionally unchanged in meaning.
+        if digest(run_summary(run)) != digest(payload["run"]):
             raise ValueError()
-        raw = blobs.get_bounded(metadata["blob_ref"], GRAPH_LIMIT)
-        if (
-            len(raw) != metadata["size_bytes"]
-            or hashlib.sha256(raw).hexdigest() != metadata["sha256"]
-        ):
-            raise ValueError()
-        value = json.loads(raw)
-        if (
-            value["contract_version"] != "active-run-v1"
-            or value["scope"] != metadata["scope"]
-            or value["specimen_id"] != metadata["specimen_id"]
-            or value["revision"] != metadata["revision"]
-            or value["run"]["id"] != metadata["run_id"]
-        ):
-            raise ValueError()
-        if digest(value["run"]) != metadata["run_sha256"] or digest(
-            run_summary(value["run"])
-        ) != digest(payload["run"]):
-            raise ValueError()
-        return raw, value["run"]
+        return raw, run
     except Exception as exc:
         raise Conflict("Active graph integrity or storage failure") from exc
 

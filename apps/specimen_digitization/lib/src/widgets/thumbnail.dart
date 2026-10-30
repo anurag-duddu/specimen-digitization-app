@@ -6,6 +6,7 @@
 /// record, so it is drawn rather than left as a hole in the row.
 library;
 
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
@@ -32,6 +33,13 @@ class SpecimenThumbnail extends StatelessWidget {
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final Uint8List? data = bytes;
+    // Decode at display size, by width alone. Setting both cache dimensions
+    // decodes to exactly that square whatever the photograph's shape, which
+    // squashes a 4:3 or 3:2 frame before `BoxFit.cover` can crop it.
+    final int cacheWidth = math.max(
+      1,
+      (side * MediaQuery.devicePixelRatioOf(context)).ceil(),
+    );
     final Widget placeholder = Center(
       child: UiIcon(
         UiIcons.image,
@@ -61,6 +69,7 @@ class SpecimenThumbnail extends StatelessWidget {
                     width: side,
                     height: side,
                     fit: BoxFit.cover,
+                    cacheWidth: cacheWidth,
                     gaplessPlayback: true,
                     errorBuilder: (BuildContext _, Object _, StackTrace? _) =>
                         placeholder,

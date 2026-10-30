@@ -406,7 +406,7 @@ def test_supported_sdk_options_disable_ambient_native_exporters_and_credentials(
 
 @pytest.mark.parametrize("prompt_name", [
     "literal-label-transcription", "structured-field-extraction",
-    "transcription-disagreement-adjudication", "field-harness",
+    "transcription-disagreement-adjudication", "field-harness", "first-pass-units",
 ])
 def test_bounded_prompt_resolution_uses_code_fallback_without_remote_provider(
     tmp_path, monkeypatch, capfire, prompt_name
@@ -462,18 +462,24 @@ def test_bounded_prompt_resolution_uses_code_fallback_without_remote_provider(
     assert not starts and not network
     assert resolved is not None
     defaults = {
-        "literal-label-transcription": prompts._LITERAL_TRANSCRIPTION_DEFAULT,
-        "structured-field-extraction": prompts._STRUCTURED_EXTRACTION_DEFAULT,
-        "transcription-disagreement-adjudication": prompts._DISAGREEMENT_ADJUDICATION_DEFAULT,
-        "field-harness": prompts._FIELD_HARNESS_DEFAULT,
+        "literal-label-transcription": "_LITERAL_TRANSCRIPTION_DEFAULT",
+        "structured-field-extraction": "_STRUCTURED_EXTRACTION_DEFAULT",
+        "transcription-disagreement-adjudication": "_DISAGREEMENT_ADJUDICATION_DEFAULT",
+        "field-harness": "_FIELD_HARNESS_DEFAULT",
+        "first-pass-units": "_FIRST_PASS_UNITS_DEFAULT",
     }
-    expected = defaults[prompt_name]
+    expected = getattr(prompts, defaults[prompt_name])
     for key, value in {
         "collection_profile_id": "synthetic-profile",
         "collection_name": "Synthetic collection",
         "schema_version": "synthetic-v1",
     }.items():
         expected = expected.replace("{{" + key + "}}", value)
+    if "{{ontology}}" in expected:
+        # FIRST_PASS_UNITS's `ontology` input.
+        from specimen_digitization import ontology
+
+        expected = expected.replace("{{ontology}}", ontology.render(brief=True))
     assert resolved.text == expected
     assert resolved.version is None
     assert resolved.text.encode() not in b"".join(batches)

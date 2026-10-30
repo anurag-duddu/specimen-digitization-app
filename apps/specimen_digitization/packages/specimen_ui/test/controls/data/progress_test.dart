@@ -97,30 +97,31 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('the three ring sizes are the three 10 section 4.5 names', (
-    WidgetTester tester,
-  ) async {
-    expect(
-      UiProgressSize.values.map((UiProgressSize s) => s.diameter),
-      <double>[16, 24, 40],
-    );
-    for (final UiProgressSize size in UiProgressSize.values) {
-      await tester.pumpWidget(
-        uiHarness(
-          child: UiProgress.ring(
-            semanticsLabel: 'Upload progress',
-            value: 0.5,
-            size: size,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
+  testWidgets(
+    'ring sizes preserve the three base diameters and standalone loading size',
+    (WidgetTester tester) async {
       expect(
-        tester.getSize(find.byType(CustomPaint).first),
-        Size.square(size.diameter),
+        UiProgressSize.values.map((UiProgressSize s) => s.diameter),
+        <double>[16, 24, 40, 64],
       );
-    }
-  });
+      for (final UiProgressSize size in UiProgressSize.values) {
+        await tester.pumpWidget(
+          uiHarness(
+            child: UiProgress.ring(
+              semanticsLabel: 'Upload progress',
+              value: 0.5,
+              size: size,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester.getSize(find.byType(CustomPaint).first),
+          Size.square(size.diameter),
+        );
+      }
+    },
+  );
 
   testWidgets('the bar is 4 dp and takes the width it is given', (
     WidgetTester tester,

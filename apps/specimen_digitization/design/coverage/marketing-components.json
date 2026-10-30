@@ -1,0 +1,3564 @@
+{
+  "updated": "2026-10-23",
+  "status": "Fresh source-frame anatomy reviewed for 31 families and demonstrated gaps resolved; focused and integrated continuation checks passed, including simulator/emulator flows; full visual and physical-device parity not confirmed",
+  "source": "Original on-brand equivalence; no Untitled UI visual identity/assets copied",
+  "rows": [
+    {
+      "pageId": "683:17952",
+      "family": "header",
+      "variantAxes": {
+        "Icon": [
+          "Featured",
+          "Small",
+          "False"
+        ],
+        "State": [
+          "Default",
+          "Focused",
+          "Hover"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Open": [
+          "False",
+          "True"
+        ],
+        "Type": [
+          "Video card",
+          "Feature card",
+          "Image card",
+          "2-col with sidebar",
+          "3-col with sidebar",
+          "4-col with footer",
+          "2-col with links",
+          "4-col slim with footer",
+          "Blog posts with footer",
+          "Blog posts with sidebar",
+          "Simple",
+          "Simple with footer",
+          "Simple 2-col",
+          "Simple 2-col with footer",
+          "Featured card",
+          "2-col with links and footer",
+          "Featured posts"
+        ],
+        "Stacked": [
+          "Horizontal",
+          "Vertical"
+        ],
+        "Mobile subnav open": [
+          "False",
+          "True"
+        ],
+        "Opened": [
+          "False",
+          "True"
+        ],
+        "Logged in": [
+          "False",
+          "True"
+        ]
+      },
+      "requiredCapabilities": [
+        "compact menu / desktop navigation",
+        "direct links, grouped links, rich featured/sidebar/footer panel",
+        "keyboard activation; Escape/outside dismissal and focus return"
+      ],
+      "implementations": [
+        "UiMarketingHeader",
+        "UiMegaMenuContent"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingheader",
+        "marketing/uimegamenucontent"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/controls/navigation/menu_focus_review_test.dart covers pointer opening from unrelated focus, Escape ownership and actual-trigger return for marketing and command menus; coordinator reports 28 navigation/menu checks passed."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 212,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/header.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/header.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1284:4375",
+          "frameName": "Type=Feature card, Stacked=Vertical, State=Default, Breakpoint=Mobile",
+          "sampleOnly": true,
+          "findings": "Inspected the mobile featured-card anatomy. UiMegaMenuContent provides featured/sidebar/footer composition slots. Separate interaction checks verify pointer opening establishes the actual trigger as the Escape and focus-return target."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "739:496",
+      "family": "hero",
+      "variantAxes": {
+        "Type": [
+          "Screen mockup 01",
+          "Screen mockup 06",
+          "Screen mockup 05",
+          "iPhone mockup 01",
+          "iPhone mockup 02",
+          "iPhone mockup 03",
+          "iPhone mockup 04",
+          "Color card 01",
+          "Color card 02",
+          "Color card 03",
+          "Color card 04",
+          "Screen mockup 07",
+          "Screen mockup 08",
+          "Screen mockup 03",
+          "Screen mockup 04",
+          "Screen mockup 02",
+          "Card mockup 02",
+          "Card mockup 06",
+          "Split image 03",
+          "Split image 04",
+          "Geometric shapes 01",
+          "Geometric shapes 02",
+          "Split form 02",
+          "Split form 01",
+          "Split image 05",
+          "Split image 06",
+          "Card mockup 10",
+          "Split image 01",
+          "Geometric shapes 03",
+          "Card mockup 12",
+          "Split image 02",
+          "Card mockup 04",
+          "Card mockup 08",
+          "Card mockup 01",
+          "Card mockup 05",
+          "Geometric shapes 04",
+          "Card mockup 09",
+          "Simple text",
+          "Card mockup 11",
+          "Card mockup 03",
+          "Card mockup 07",
+          "Abstract angles 02",
+          "Abstract angles 03",
+          "Abstract angles 04",
+          "Abstract angles 01"
+        ],
+        "Theme": [
+          "Default",
+          "Gray light",
+          "Gray dark",
+          "Primary dark"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Alignment": [
+          "Center",
+          "Left",
+          "Space between"
+        ],
+        "Actions": [
+          "Buttons",
+          "False",
+          "Tabs",
+          "Email capture",
+          "Search bar"
+        ],
+        "Color": [
+          "Default",
+          "Gray dark",
+          "Primary dark"
+        ]
+      },
+      "requiredCapabilities": [
+        "start, centered, split and reverse split; brand/card/plain",
+        "real button, email, search or tab lead slots; optional product/media slots",
+        "pre-heading announcement/badge/link slot with actual host action"
+      ],
+      "implementations": [
+        "UiHeroSection",
+        "UiDeviceMockup",
+        "UiBrandPattern"
+      ],
+      "catalogPaths": [
+        "marketing/uiherosection",
+        "marketing/uidevicemockup",
+        "marketing/uibrandpattern"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/page_anatomy_test.dart, 6 cases passed for controlled remember preference, announcement action/order, editable recovery and email content order; includes a 320px 2x dark RTL announcement case."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 186,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/hero.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/hero.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1316:3370",
+          "frameName": "Type=Abstract angles 03, Theme=Default, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Resolved the pre-heading announcement slot with UiHeroSection.announcement through UiMarketingSection.leading; existing media, actions and responsive layouts remain composable."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "736:22481",
+      "family": "features",
+      "variantAxes": {
+        "Type": [
+          "Featured icon box",
+          "Integration icon box",
+          "Featured icon top left",
+          "Icon top left",
+          "Integration icon top left",
+          "Featured icon top centered",
+          "Icon top centered",
+          "Integration icon top centered",
+          "Text centered",
+          "Featured icon left",
+          "Icon left",
+          "Text left",
+          "Integration icon left",
+          "Featured icon card",
+          "Icon card",
+          "Alternating layout 01",
+          "Alternating layout 03",
+          "Simple icons 01",
+          "Simple icons 02",
+          "Integrations icons 03",
+          "Integrations icons 04",
+          "Simple icons 03",
+          "Icon cards 01",
+          "Simple icons 04",
+          "Icon cards 02",
+          "Icons and image 01",
+          "Icons and mockup 01",
+          "Icons and mockup 06",
+          "Icons and mockup 07",
+          "Icons and mockup 08",
+          "Icons and image 02",
+          "Icons and mockup 02",
+          "Icons and mockup 03",
+          "Tabs mockup 05",
+          "Tabs mockup 07",
+          "Tabs mockup 08",
+          "Tabs mockup 09",
+          "Tabs mockup 10",
+          "Tabs mockup 11",
+          "Tabs mockup 12",
+          "Tabs mockup 06",
+          "Icons and mockup 05",
+          "Icons and mockup 04",
+          "Center mockup 01",
+          "Center mockup 02",
+          "Tabs mockup 01",
+          "Tabs mockup 04",
+          "Tabs mockup 02",
+          "Tabs mockup 03",
+          "Large screen mockup 01",
+          "Integrations icons 02",
+          "Alternating layout 02",
+          "Icons and image 03",
+          "Integrations icons 01",
+          "Icons and image 04",
+          "Large screen mockup 02",
+          "Alternating layout 04"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Theme": [
+          "Default",
+          "Primary dark",
+          "Gray dark"
+        ],
+        "Current": [
+          "True",
+          "False"
+        ],
+        "Orientation": [
+          "Vertical",
+          "Horizontal"
+        ]
+      },
+      "requiredCapabilities": [
+        "horizontal, stacked, centered and card items",
+        "static grid, controlled feature selection, alternating text/media rows",
+        "icon or authorized integration visual, description and actual command",
+        "alternating feature rows with heading icon and explicit check-benefit list"
+      ],
+      "implementations": [
+        "UiFeatureCard",
+        "UiFeatureSection",
+        "UiFeatureShowcase"
+      ],
+      "catalogPaths": [
+        "marketing/uifeaturecard",
+        "marketing/uifeaturesection",
+        "marketing/uifeatureshowcase"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 142,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/features.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/features.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1344:6",
+          "frameName": "Type=Alternating layout 04, Theme=Default, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Resolved the alternating feature-row icon and check-benefit anatomy with UiFeatureShowcaseItem.icon and benefits."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "708:20673",
+      "family": "pricing",
+      "variantAxes": {
+        "Type": [
+          "Row header",
+          "Column header",
+          "Dual action",
+          "Dual check items",
+          "Icon",
+          "Primary card icon",
+          "Badge group",
+          "Badge",
+          "Banner",
+          "Call out",
+          "Primary card simple",
+          "Icon offset",
+          "Simple icon",
+          "Simple call out",
+          "Simple icon offset",
+          "Grey badge",
+          "Simple dual check items",
+          "Large table 01",
+          "Simple banner",
+          "Simple accent line",
+          "Large table 02",
+          "Simple dual action",
+          "Primary dark badge group",
+          "Abstract angles",
+          "Featured cards 04",
+          "Featured cards 01",
+          "Featured cards 02",
+          "Featured cards 03",
+          "Simple cards 01",
+          "Simple cards 02",
+          "Simple cards 03",
+          "Simple cards 04"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Text": [
+          "True",
+          "False"
+        ],
+        "Icon": [
+          "Text only",
+          "Check",
+          "Minus"
+        ],
+        "Alignment": [
+          "Left",
+          "Center"
+        ]
+      },
+      "requiredCapabilities": [
+        "tier identity/icon/badge/price/cadence/checklist/actions",
+        "centered/start; single or dual feature columns; featured boundary",
+        "controlled monthly/annual billing; no fabricated price calculation",
+        "comparison table becomes plan-labeled cards on narrow layouts"
+      ],
+      "implementations": [
+        "UiPricingCard",
+        "UiPricingSection",
+        "UiPricingComparison"
+      ],
+      "catalogPaths": [
+        "marketing/uipricingcard",
+        "marketing/uipricingsection",
+        "marketing/uipricingcomparison"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives"
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 88,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/pricing.json",
+        "visual": "/private/tmp/untitled-ui-reference/browser/pricing-section.png"
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "645:15070",
+      "family": "cta",
+      "variantAxes": {
+        "Type": [
+          "Simple centered",
+          "Simple left",
+          "Card hortizontal split",
+          "Card hortizontal",
+          "Card vertical",
+          "Simple logos 01",
+          "Simple logos 02",
+          "iPhone mockup 01",
+          "Split image 02",
+          "Abstract images",
+          "iPhone mockup 02",
+          "iPhone mockup 03",
+          "Screen mockup 01",
+          "Screen mockup 02",
+          "Split image 04",
+          "Screen mockup 04",
+          "iPhone mockup 04",
+          "Split image 01",
+          "Split image 03",
+          "Screen mockup 03",
+          "Split image quote 01",
+          "Split image quote 03",
+          "Split image quote 02",
+          "Split image quote 04"
+        ],
+        "Theme": [
+          "Default",
+          "Primary dark",
+          "Gray dark",
+          "Gray light"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "requiredCapabilities": [
+        "centered/start/split/reversed; plain/card/brand; one or multiple real actions",
+        "optional image, mockup or other media slot"
+      ],
+      "implementations": [
+        "UiCallToActionSection"
+      ],
+      "catalogPaths": [
+        "marketing/uicalltoactionsection"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives"
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 78,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/cta.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/cta.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1365:198705",
+          "frameName": "Type=Split image 03, Theme=Default, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected split-media call-to-action anatomy against UiCallToActionSection; title, supporting text, real actions and caller-owned media are represented."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "291:164",
+      "family": "metrics",
+      "variantAxes": {
+        "Type": [
+          "Card text and supporting text",
+          "Card text",
+          "Centered with supporting text",
+          "Centered text",
+          "Left aligned with supporting text",
+          "Left aligned text",
+          "Small featured icon",
+          "Small accent line",
+          "Simple accent line",
+          "Simple centered text",
+          "Minimal centered text",
+          "Split image 01",
+          "Split image 02",
+          "Card gray dark",
+          "Card primary dark",
+          "Card primary light",
+          "Card gray light",
+          "Image with cards 01",
+          "Simple with actions 01",
+          "Simple with actions 02",
+          "Image with cards 02"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Theme": [
+          "Default",
+          "Gray dark",
+          "Primary dark",
+          "Primary light",
+          "Gray light"
+        ]
+      },
+      "requiredCapabilities": [
+        "centered/start; plain/card; optional icon, support text and media",
+        "supplied localized values; no invented measured data",
+        "eyebrow and introductory description; responsive split or reversed media layout"
+      ],
+      "implementations": [
+        "UiMetricsSection"
+      ],
+      "catalogPaths": [
+        "marketing/uimetricssection"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 62,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/metrics.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/metrics.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1369:939",
+          "frameName": "Type=Split image 01, Theme=Default, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Resolved introductory eyebrow/description and split media placement with UiMetricsSection.eyebrow, description and layout; localized values remain host supplied."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "641:15058",
+      "family": "newsletter",
+      "variantAxes": {
+        "Type": [
+          "Simple centered",
+          "Simple left",
+          "Card hortizontal split",
+          "Card hortizontal",
+          "Card vertical",
+          "iPhone mockup 01",
+          "iPhone mockup 02",
+          "iPhone mockup 03",
+          "Screen mockup 01",
+          "Screen mockup 02",
+          "Screen mockup 04",
+          "iPhone mockup 04",
+          "Screen mockup 03"
+        ],
+        "Theme": [
+          "Default",
+          "Primary dark",
+          "Gray dark",
+          "Gray light"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "requiredCapabilities": [
+        "centered/start/split/reverse; plain/card/brand",
+        "native email field, consent/privacy slot, actual async submission",
+        "validation/focus/pending/deduplication/success/error/retry/unmount states"
+      ],
+      "implementations": [
+        "UiNewsletterSection",
+        "UiEmailCapture"
+      ],
+      "catalogPaths": [
+        "marketing/uinewslettersection",
+        "marketing/uiemailcapture"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives"
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 42,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/newsletter.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/newsletter.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1365:209591",
+          "frameName": "Type=Screen mockup 03, Theme=Default, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected copy, email capture, privacy content and product-media anatomy against UiNewsletterSection/UiEmailCapture; these slots and asynchronous feedback already exist."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "648:16272",
+      "family": "testimonials",
+      "variantAxes": {
+        "Size": [
+          "lg",
+          "md",
+          "sm"
+        ],
+        "Arrow": [
+          "Left",
+          "Right"
+        ],
+        "Type": [
+          "Button chevron",
+          "Button arrow",
+          "Arrow",
+          "Floating",
+          "Full-width",
+          "Simple centered 01",
+          "Simple left aligned",
+          "Simple centered 02",
+          "Simple centered 03",
+          "Split image 01",
+          "Split image 02",
+          "Card",
+          "Split image 03",
+          "Abstract image",
+          "Card split image",
+          "Glassmorphic cards 01",
+          "Glassmorphic cards 02",
+          "Case study cards",
+          "Glassmorphic cards 03"
+        ],
+        "State": [
+          "Default",
+          "Disabled",
+          "Hover"
+        ],
+        "Quote": [
+          "False",
+          "True"
+        ],
+        "Breakpoint": [
+          "Mobile",
+          "Desktop"
+        ],
+        "Theme": [
+          "Default",
+          "Primary dark",
+          "Gray dark",
+          "Gray light"
+        ]
+      },
+      "requiredCapabilities": [
+        "controlled non-autoplay carousel or quote grid",
+        "portrait split/centered layouts, attribution, optional rating",
+        "explicit bounded previous/next controls, live result announcement",
+        "introductory description and real section actions"
+      ],
+      "implementations": [
+        "UiTestimonialSection"
+      ],
+      "catalogPaths": [
+        "marketing/uitestimonialsection"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 104,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/testimonials.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/testimonials.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1377:11853",
+          "frameName": "Type=Glassmorphic cards 03, Theme=Default, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Resolved introductory supporting copy and section actions with UiTestimonialSection.description and actions; portrait, quote, attribution, rating and carousel remain available. Glass treatment is an intentional brand adaptation."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "286:15521",
+      "family": "social",
+      "variantAxes": {
+        "Type": [
+          "Full width",
+          "Full width dual",
+          "Card"
+        ],
+        "Theme": [
+          "Default",
+          "Primary dark",
+          "Centered dark",
+          "Centered light"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "requiredCapabilities": [
+        "identity strip or cards, authorized dynamic image/text identities",
+        "optional explicitly named real destinations; no third-party logos copied"
+      ],
+      "implementations": [
+        "UiSocialProofSection"
+      ],
+      "catalogPaths": [
+        "marketing/uisocialproofsection"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives"
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 24,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/social.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/social.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1667:399453",
+          "frameName": "Type=Card, Theme=Centered light, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected identity-strip/card anatomy against UiSocialProofSection; authorized identity content and named destination slots already exist."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "665:1107",
+      "family": "blog",
+      "variantAxes": {
+        "Type": [
+          "Simple 02",
+          "Card full-width image 02",
+          "Simple 03",
+          "Card full-width image 03",
+          "Simple 01",
+          "Card full-width image 01",
+          "Simple 04",
+          "Card full-width image 04",
+          "Default",
+          "Line",
+          "Featured post 01",
+          "Featured post 02",
+          "Simple 05",
+          "Sidebar 02",
+          "Sidebar 01",
+          "Alt layout 01",
+          "Alt layout 02",
+          "Featured post 03",
+          "Alt layout 04",
+          "Alt layout 03",
+          "Simple 06",
+          "Featured post 04",
+          "Split layout 02",
+          "Split layout 01",
+          "Simple left aligned 01",
+          "Carousel layout 01",
+          "Carousel layout 02",
+          "Simple left aligned 02",
+          "Simple center aligned 01",
+          "Simple center aligned 02"
+        ],
+        "Orientation": [
+          "Vertical",
+          "Horizontal"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "requiredCapabilities": [
+        "vertical image-first, horizontal, card; category/author/date/reading metadata",
+        "controlled category filter, actual read callbacks and pagination/load-more slot",
+        "grid, featured-leading article, sidebar filters/newsletter and controlled non-autoplay article carousel",
+        "independent featured article plus sidebar; structured author widget; eyebrow/description",
+        "host-owned sorting/search toolbar with controlled article order"
+      ],
+      "implementations": [
+        "UiArticleCard",
+        "UiBlogSection"
+      ],
+      "catalogPaths": [
+        "marketing/uiarticlecard",
+        "marketing/uiblogsection"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 84,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/blog.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/blog.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "5042:378066",
+          "frameName": "Type=Featured post 02, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Resolved simultaneous featured article and sidebar composition, structured author attribution and introductory context with UiBlogSection.featured, eyebrow, description and UiArticleCard.author. UiBlogSection.toolbar accepts real host-owned sorting controls."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "647:15097",
+      "family": "content",
+      "variantAxes": {
+        "Type": [
+          "Large image 01",
+          "Alternative 02",
+          "Large image 02",
+          "Simple",
+          "Large image 03",
+          "Split image 04",
+          "Alternative 03",
+          "Split image 02",
+          "Split image 03",
+          "Alternative 01",
+          "Split image 01",
+          "Large image 04",
+          "Simple 03",
+          "Simple 04",
+          "Simple 05",
+          "Simple 02",
+          "Simple 01",
+          "Rich text 01",
+          "Rich text 02",
+          "Heading",
+          "Paragraph",
+          "Image landscape",
+          "Image square",
+          "Image portrait",
+          "Quote left",
+          "Quote center",
+          "Divider",
+          "Feature text"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Size": [
+          "sm",
+          "md",
+          "lg",
+          "xl",
+          "2xl"
+        ]
+      },
+      "requiredCapabilities": [
+        "heading/paragraph/figure/quote/divider/feature compositions",
+        "landscape/square/portrait ratio, alternatives/captions/attribution",
+        "responsive contents rail/disclosure, actual anchors and share callbacks",
+        "native text selection and host-owned rich content",
+        "category and structured byline before the hero figure"
+      ],
+      "implementations": [
+        "UiContentSection",
+        "UiEditorialFigure",
+        "UiEditorialQuote"
+      ],
+      "catalogPaths": [
+        "marketing/uicontentsection",
+        "marketing/uieditorialfigure",
+        "marketing/uieditorialquote"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 100,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/content.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/content.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1429:223052",
+          "frameName": "Type=Large image 04, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Resolved pre-hero category and author/date attribution with UiContentSection.category and byline; editorial body, figure, quote, contents and share slots remain available."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "673:20368",
+      "family": "contact",
+      "variantAxes": {
+        "Type": [
+          "Featured icon box",
+          "Featured icon top left",
+          "Icon top left",
+          "Featured icon top centered",
+          "Icon top centered",
+          "Text only center aligned",
+          "Featured icon left",
+          "Icon left",
+          "Text only left aligned",
+          "Featured icon card",
+          "Icon card",
+          "Simple icons 01",
+          "Simple icons 02",
+          "Simple form 01",
+          "Simple icons 03",
+          "Icon cards 01",
+          "Simple icons 04",
+          "Icon cards 02",
+          "Icons and form",
+          "Icons and map 01",
+          "Tabs map 02",
+          "Center map",
+          "Icon cards 03",
+          "Tabs map 01",
+          "Vector map 03",
+          "Icons and image",
+          "Icons and map 02",
+          "Simple form 02",
+          "Simple form 03",
+          "Simple form 05",
+          "Simple form 04",
+          "Form and image 01",
+          "Simple form",
+          "Simple links 02",
+          "Simple links 01",
+          "Map 01",
+          "Map 02",
+          "Form and map",
+          "Form and image 02"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "State": [
+          "Default",
+          "Hover"
+        ],
+        "Theme": [
+          "Default",
+          "Gray dark",
+          "Primary dark"
+        ]
+      },
+      "requiredCapabilities": [
+        "minimal or split-name form; optional native phone and country selection; service checkboxes",
+        "actual email/message validation, consent, pending/success/error/retry",
+        "contact methods, map/image slots; split/reverse/centered layout",
+        "controlled location selection updates address/actions/map together; unknown selected ID never displays another location"
+      ],
+      "implementations": [
+        "UiContactSection",
+        "UiContactForm",
+        "UiContactLocations"
+      ],
+      "catalogPaths": [
+        "marketing/uicontactsection",
+        "marketing/uicontactform",
+        "marketing/uicontactlocations"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives"
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 106,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/contact.json",
+        "visual": "/private/tmp/untitled-ui-reference/browser/contact-section.png"
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "673:16258",
+      "family": "team",
+      "variantAxes": {
+        "Type": [
+          "Simple left",
+          "Simple left top",
+          "Simple center aligned",
+          "Image top",
+          "Image left",
+          "Image glass floating",
+          "Image glass full-width",
+          "Image card 04",
+          "Image glass 04",
+          "Simple 01",
+          "Simple 04",
+          "Image card 01",
+          "Image glass 01",
+          "Image collage 01",
+          "Simple 02",
+          "Image card 02",
+          "Image glass 02",
+          "Image card 03",
+          "Simple 03",
+          "Image glass 03",
+          "Image collage 02"
+        ],
+        "Breakpoint": [
+          "Mobile",
+          "Desktop"
+        ]
+      },
+      "requiredCapabilities": [
+        "leading/centered profiles, portrait/biography/role/social actions, plain or card",
+        "responsive grid and recruiting actions",
+        "horizontal portrait/biography and full-width portrait over readable solid panel"
+      ],
+      "implementations": [
+        "UiTeamMemberCard",
+        "UiTeamSection"
+      ],
+      "catalogPaths": [
+        "marketing/uiteammembercard",
+        "marketing/uiteamsection"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives"
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 42,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/team.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/team.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1497:249243",
+          "frameName": "Type=Image collage 01, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected portrait, name, role, biography, social links and recruiting actions against UiTeamSection; these slots already exist. Collage and glass decoration are intentionally adapted."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1458:239246",
+      "family": "careers",
+      "variantAxes": {
+        "Type": [
+          "Simple",
+          "Card 02",
+          "Card 01",
+          "Simple 01",
+          "Simple 02",
+          "Simple 03",
+          "Simple 04",
+          "Card 04",
+          "Card 03"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Theme": [
+          "Default",
+          "Gray dark",
+          "Primary dark"
+        ]
+      },
+      "requiredCapabilities": [
+        "simple row or card, role/description/location/schedule/compensation metadata",
+        "actual application callback and controlled department filter",
+        "introductory media; actual department groups preserved during controlled filtering"
+      ],
+      "implementations": [
+        "UiCareerCard",
+        "UiCareersSection"
+      ],
+      "catalogPaths": [
+        "marketing/uicareercard",
+        "marketing/uicareerssection"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 38,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/careers.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/careers.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1507:252420",
+          "frameName": "Type=Card 03, Theme=Default, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Resolved introductory media and actual department groups with UiCareersSection.media and groups using UiCareerGroup; filtering retains group headings and real application callbacks."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "282:168",
+      "family": "faq",
+      "variantAxes": {
+        "Expanded": [
+          "True",
+          "False"
+        ],
+        "Divider": [
+          "False",
+          "True"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Icon position": [
+          "Right",
+          "Left"
+        ],
+        "Type": [
+          "Simple 01",
+          "Accordion 01",
+          "Accordion 02",
+          "Simple 02",
+          "Simple 04",
+          "Simple 03",
+          "Accordion 04",
+          "Accordion 03"
+        ],
+        "Theme": [
+          "Default",
+          "Primary dark",
+          "Gray dark"
+        ]
+      },
+      "requiredCapabilities": [
+        "keyboard accordion with stable IDs and expansion semantics",
+        "always-visible question grid; optional support call to action",
+        "host-owned search/filter control, stable-ID filtered items and explicit no-results content"
+      ],
+      "implementations": [
+        "UiFaqSection"
+      ],
+      "catalogPaths": [
+        "marketing/uifaqsection"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed.",
+        "Continuation: disclosure_readability_test.dart verifies full visible question height at 320px, 1x/2x text, LTR/RTL and with/without a status chip; eight checks pass. Browser inspection confirms the full question before expansion."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 64,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/faq.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/faq.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1360:3711",
+          "frameName": "Type=Accordion 01, Theme=Default, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected accordion, introductory content and support action. UiFaqSection.search and emptyState additionally resolve the searchable FAQ-page composition, with caller-filtered stable-ID items."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "278:13503",
+      "family": "footer",
+      "variantAxes": {
+        "Badge": [
+          "False",
+          "True"
+        ],
+        "Color": [
+          "Gray",
+          "Primary"
+        ],
+        "Theme": [
+          "Light",
+          "Dark",
+          "Default",
+          "Gray dark",
+          "Primary dark"
+        ],
+        "State": [
+          "Default",
+          "Hover"
+        ],
+        "Type": [
+          "Large 02",
+          "Large 06",
+          "Large 12",
+          "Large 10",
+          "Large 04",
+          "Large 03",
+          "Small 01",
+          "Small 03",
+          "Small 02",
+          "Small 04",
+          "Large 07",
+          "Large 11",
+          "Large 15",
+          "Large 13",
+          "Large 16",
+          "Large 14",
+          "Large 08",
+          "Large 01",
+          "Large 05",
+          "Large 09"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "requiredCapabilities": [
+        "minimal/footer groups, legal/social destinations, identity, newsletter slot",
+        "responsive destination columns with actual callbacks",
+        "optional introductory CTA slot before destination groups"
+      ],
+      "implementations": [
+        "UiMarketingFooter"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingfooter"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 140,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/footer.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/footer.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1509:260009",
+          "frameName": "Type=Large 09, Theme=Default, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Resolved an explicit introductory CTA composition with UiMarketingFooter.callToAction; identity, grouped destinations, newsletter and legal/social slots remain available."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1624:424681",
+      "family": "banner",
+      "variantAxes": {
+        "Type": [
+          "Text field",
+          "Single action",
+          "Dual action",
+          "Slim"
+        ],
+        "Theme": [
+          "Primary light",
+          "Gray light",
+          "Primary dark"
+        ],
+        "Size": [
+          "Floating",
+          "Full-width"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "requiredCapabilities": [
+        "slim text, single/dual commands, inline capture; full width/floating card",
+        "caller-owned dismissal and accessible dismiss name",
+        "leading icon, separate title and supporting body"
+      ],
+      "implementations": [
+        "UiAnnouncementBanner"
+      ],
+      "catalogPaths": [
+        "marketing/uiannouncementbanner"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 48,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/banner.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/banner.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1130:89327",
+          "frameName": "Type=Text field, Theme=Primary light, Size=Full-width, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Resolved leading icon plus separate title and supporting body with UiAnnouncementBanner.icon and title; existing message, form/action and dismissal slots remain available."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "134:3146",
+      "family": "auth",
+      "variantAxes": {
+        "Type": [
+          "Card separated",
+          "Card combined",
+          "Simple header navigation",
+          "Simple",
+          "Split image",
+          "Split mockup",
+          "Split mockup quote",
+          "Split quote",
+          "Split quote image 02",
+          "Split quote image 03",
+          "Split image quote 01",
+          "Split geometric shapes",
+          "Split carousel",
+          "Simple illustration",
+          "Simple minimal",
+          "Simple social logins",
+          "Simple social login leading",
+          "Split quote carousel",
+          "Split image background",
+          "Sidebar progress 02",
+          "Sidebar progress 01",
+          "Split app mockup",
+          "Split arrow",
+          "Simple progress 01",
+          "Simple progress 02",
+          "Simple progress 03",
+          "Split quote image 01"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Step": [
+          "Step 1 \u2013 Forgot password",
+          "Step 2 \u2013 Check email",
+          "Step 3 \u2013 Success",
+          "Step 3 \u2013 Set new password",
+          "Sidebar version",
+          "Step 1 \u2013 Check email",
+          "Step 2 \u2013 Enter code manually"
+        ]
+      },
+      "requiredCapabilities": [
+        "centered/card/split/reverse, image/quote/mockup/progress/provider slots",
+        "sign in/sign up/recovery/reset/email-link/verification stages",
+        "native keyboard/autofill, password visibility, host policy, pending/error/success",
+        "ignore stale async stage results; no session or email delivery invented",
+        "optional controlled sign-in remember preference included in the submitted snapshot"
+      ],
+      "implementations": [
+        "UiAuthLayout",
+        "UiAuthForm"
+      ],
+      "catalogPaths": [
+        "marketing/uiauthlayout",
+        "marketing/uiauthform"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/page_anatomy_test.dart, 6 cases passed for controlled remember preference, announcement action/order, editable recovery and email content order; includes a 320px 2x dark RTL announcement case."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 92,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/auth.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/auth.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1267:132073",
+          "frameName": "Type=Card separated, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Resolved the sign-in remember preference with controlled UiAuthForm.rememberSession/onRememberSessionChanged and UiAuthSubmission.rememberSession; this supplies a host preference, not session persistence."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1176:99947",
+      "family": "error",
+      "variantAxes": {
+        "Type": [
+          "Split image 01",
+          "Simple 04",
+          "Simple 03",
+          "Simple 05",
+          "Simple 06",
+          "Simple 02",
+          "Simple 01",
+          "Split image 04",
+          "Illustration",
+          "Screen mockup",
+          "Under maintenance",
+          "Split image 05",
+          "Split image 02",
+          "Split image 03"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ]
+      },
+      "requiredCapabilities": [
+        "centered/start/split/reverse, status code, accessible explanatory copy",
+        "real recovery commands and dynamic illustration",
+        "editable host-owned search/recovery content slot"
+      ],
+      "implementations": [
+        "UiErrorPage"
+      ],
+      "catalogPaths": [
+        "marketing/uierrorpage"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/page_anatomy_test.dart, 6 cases passed for controlled remember preference, announcement action/order, editable recovery and email content order; includes a 320px 2x dark RTL announcement case."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 28,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/error.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/error.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "5037:375620",
+          "frameName": "Type=Split image 01, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Resolved editable contextual recovery/search composition with UiErrorPage.recovery alongside real navigation commands and caller-owned illustration."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1226:360",
+      "family": "email",
+      "variantAxes": {
+        "Type": [
+          "Left aligned",
+          "Center aligned",
+          "Center aligned divider",
+          "Simple welcome 01",
+          "Image welcome",
+          "Simple verification",
+          "Simple invite",
+          "Simple welcome 02",
+          "Video welcome 01",
+          "Video welcome 02",
+          "Mockup 01",
+          "Video welcome 03",
+          "Mockup 02"
+        ],
+        "Actions": [
+          "False",
+          "True"
+        ],
+        "Links": [
+          "False",
+          "True",
+          "Social"
+        ]
+      },
+      "requiredCapabilities": [
+        "header/identity/preheader/body/actions/summary/legal/footer; center or leading",
+        "welcome/verification/recovery/invitation/receipt/digest/notification compositions",
+        "Flutter composition preview; host HTML transport and email-client verification remain separate",
+        "body and summary precede actions; actions precede the footer"
+      ],
+      "implementations": [
+        "UiEmailTemplate"
+      ],
+      "catalogPaths": [
+        "marketing/uiemailtemplate"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives",
+        "Continuation: test/marketing/page_anatomy_test.dart, 6 cases passed for controlled remember preference, announcement action/order, editable recovery and email content order; includes a 320px 2x dark RTL announcement case."
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 22,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/email.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/email.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1387:210036",
+          "frameName": "Type=Simple welcome 02",
+          "sampleOnly": true,
+          "findings": "Resolved content order in UiEmailTemplate: body and summary precede actions, which precede the footer. This is a Flutter composition preview, not email-client rendering acceptance."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1291:157819",
+      "family": "assets",
+      "variantAxes": {
+        "Style": [
+          "Line pattern",
+          "Dot cube",
+          "Wavy lines",
+          "Topographic",
+          "Line",
+          "Glassmorphism",
+          "Outline"
+        ],
+        "Theme": [
+          "Transparent",
+          "Transparent strip",
+          "Gray strip",
+          "Gradient strip",
+          "Gray strip vertical",
+          "Gradient strip vertical",
+          "Salmon strip vertical",
+          "Salmon strip",
+          "Transparent gradient",
+          "Transparent gradient strip",
+          "Transparent gradient strip vertical",
+          "Primary dark",
+          "Gray dark",
+          "Primary light gradient",
+          "Primary light",
+          "Gray light",
+          "Gray light gradient"
+        ],
+        "Lines": [
+          "False",
+          "True"
+        ],
+        "Size": [
+          "lg",
+          "md",
+          "sm",
+          "xs",
+          "2xl",
+          "xl"
+        ],
+        "Line": [
+          "Circle",
+          "Squiggle"
+        ],
+        "Shadow": [
+          "True",
+          "False"
+        ],
+        "Playing": [
+          "False",
+          "True"
+        ],
+        "State": [
+          "Default",
+          "Hover"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Type": [
+          "Safari browser",
+          "App mockup"
+        ],
+        "Color": [
+          "Default",
+          "White"
+        ],
+        "Arrow": [
+          "16",
+          "21",
+          "34",
+          "12",
+          "15",
+          "32",
+          "28",
+          "26",
+          "30",
+          "40",
+          "23",
+          "14",
+          "07",
+          "03",
+          "19",
+          "01",
+          "10",
+          "22",
+          "25",
+          "20",
+          "42",
+          "24",
+          "29",
+          "41",
+          "39",
+          "18",
+          "09",
+          "17",
+          "36",
+          "04",
+          "13",
+          "11",
+          "02",
+          "31",
+          "38",
+          "06",
+          "27",
+          "33",
+          "37",
+          "05",
+          "35",
+          "08"
+        ],
+        "Underline": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06",
+          "07",
+          "08",
+          "09",
+          "10"
+        ],
+        "Accent": [
+          "01",
+          "02",
+          "03",
+          "04",
+          "05",
+          "06",
+          "09",
+          "10",
+          "11",
+          "12",
+          "13",
+          "14",
+          "15",
+          "16",
+          "17",
+          "18",
+          "19"
+        ],
+        "Pen scribble": [
+          "Underline 01",
+          "Underline 02",
+          "Underline 03",
+          "Underline 04",
+          "Underline 05",
+          "Underline 06",
+          "Underline 07",
+          "Underline 08",
+          "Underline 09",
+          "Circle 01",
+          "Circle 02",
+          "Circle 03",
+          "Circle 04",
+          "Circle 05",
+          "Circle 06",
+          "Circle 07"
+        ]
+      },
+      "requiredCapabilities": [
+        "phone/tablet/browser presentation frames; actual content slots",
+        "masked card credential; refuses complete payment-card data",
+        "controlled playback/seek/volume/captions/fullscreen/buffer/error/retry; host media engine",
+        "brand-owned decorative equivalents and Phosphor rather than copied marks or hand-drawn icon language"
+      ],
+      "implementations": [
+        "UiDeviceMockup",
+        "UiPaymentCardMockup",
+        "UiMediaPlayer",
+        "UiBrandPattern"
+      ],
+      "catalogPaths": [
+        "marketing/uidevicemockup",
+        "marketing/uipaymentcardmockup",
+        "marketing/uimediaplayer",
+        "marketing/uibrandpattern"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives"
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 155,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/assets.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/assets.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1296:924",
+          "frameName": "Size=2xl",
+          "sampleOnly": true,
+          "findings": "Inspected device presentation-frame anatomy against UiDeviceMockup and caller-provided content; owned visual assets intentionally replace reference media and marks."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "4938:371336",
+      "family": "backgrounds",
+      "variantAxes": {
+        "Background": [
+          "True",
+          "False"
+        ],
+        "Size": [
+          "md",
+          "sm",
+          "lg"
+        ],
+        "Type": [
+          "Grid check",
+          "Grid dot",
+          "Empty",
+          "Grid",
+          "Circles",
+          "Squares",
+          "Default",
+          "Transparent",
+          "Gradient"
+        ],
+        "Breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "Direction": [
+          "Radial center",
+          "Radial down",
+          "Linear down",
+          "Radial up",
+          "Linear up"
+        ],
+        "Background blur": [
+          "True",
+          "False"
+        ]
+      },
+      "requiredCapabilities": [
+        "dots/grid/diagonal/circles/squares/checks/gradient geometries",
+        "approved semantic colors only, decorative semantics excluded; no text over changing contrast"
+      ],
+      "implementations": [
+        "UiBrandPattern"
+      ],
+      "catalogPaths": [
+        "marketing/uibrandpattern"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: test/marketing/marketing_test.dart: async, keyboard, value and semantics contracts",
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: every registered story across 320/390/768/1180/1440 with 2x RTL/dark representatives"
+      ],
+      "referenceEvidence": {
+        "metadataVariants": 42,
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/backgrounds.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/backgrounds.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "4931:463190",
+          "frameName": "Background=True, Size=md, Type=Grid check, Breakpoint=Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected grid/check background geometry against UiBrandPattern; approved brand roles and decorative semantics exclusions replace reference colors."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    },
+    {
+      "pageId": "1622:261460",
+      "family": "landing",
+      "variantAxes": {
+        "breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "sectionFamilies": [
+          "Hero header section",
+          "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+          "Social proof section",
+          "Features section",
+          "Testimonial section",
+          "FAQ section",
+          "Blog section",
+          "Footer",
+          "CTA section",
+          "Newsletter CTA section",
+          "Pricing section",
+          "Contact sections",
+          "Metrics section",
+          "Content section",
+          "Press mentions section"
+        ]
+      },
+      "requiredCapabilities": [
+        "Reusable page composition with real section widgets, explicit host navigation and no copied third-party content"
+      ],
+      "implementations": [
+        "UiMarketingPage",
+        "UiHeroSection",
+        "UiMarketingHeader",
+        "UiContentDivider",
+        "UiSocialProofSection",
+        "UiFeatureSection",
+        "UiFeatureShowcase",
+        "UiTestimonialSection",
+        "UiFaqSection",
+        "UiBlogSection",
+        "UiMarketingFooter",
+        "UiCallToActionSection",
+        "UiNewsletterSection",
+        "UiPricingSection",
+        "UiPricingComparison",
+        "UiContactSection",
+        "UiContactLocations",
+        "UiMetricsSection",
+        "UiContentSection",
+        "UiEditorialFigure",
+        "UiEditorialQuote",
+        "UiPressMentionsSection"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/landing"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: five device environments",
+        "Continuation: test/marketing/page_anatomy_test.dart, 6 cases passed for controlled remember preference, announcement action/order, editable recovery and email content order; includes a 320px 2x dark RTL announcement case."
+      ],
+      "referenceEvidence": {
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/landing.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/landing.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1647:376184",
+          "frameName": "Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected one full landing-page composition and mapped its section anatomy to the registered UiMarketingPage composition; the shared hero, feature, metrics and testimonial slots resolve the corresponding section findings."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ],
+      "referencePageCompositions": {
+        "frames": 40,
+        "sectionMappings": [
+          {
+            "referenceName": "Hero header section",
+            "occurrences": 40,
+            "equivalents": [
+              "UiHeroSection",
+              "UiMarketingHeader"
+            ]
+          },
+          {
+            "referenceName": "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+            "occurrences": 54,
+            "equivalents": [
+              "UiContentDivider"
+            ]
+          },
+          {
+            "referenceName": "Social proof section",
+            "occurrences": 35,
+            "equivalents": [
+              "UiSocialProofSection"
+            ]
+          },
+          {
+            "referenceName": "Features section",
+            "occurrences": 62,
+            "equivalents": [
+              "UiFeatureSection",
+              "UiFeatureShowcase"
+            ]
+          },
+          {
+            "referenceName": "Testimonial section",
+            "occurrences": 28,
+            "equivalents": [
+              "UiTestimonialSection"
+            ]
+          },
+          {
+            "referenceName": "FAQ section",
+            "occurrences": 6,
+            "equivalents": [
+              "UiFaqSection"
+            ]
+          },
+          {
+            "referenceName": "Blog section",
+            "occurrences": 6,
+            "equivalents": [
+              "UiBlogSection"
+            ]
+          },
+          {
+            "referenceName": "Footer",
+            "occurrences": 40,
+            "equivalents": [
+              "UiMarketingFooter"
+            ]
+          },
+          {
+            "referenceName": "CTA section",
+            "occurrences": 46,
+            "equivalents": [
+              "UiCallToActionSection"
+            ]
+          },
+          {
+            "referenceName": "Newsletter CTA section",
+            "occurrences": 18,
+            "equivalents": [
+              "UiNewsletterSection"
+            ]
+          },
+          {
+            "referenceName": "Pricing section",
+            "occurrences": 20,
+            "equivalents": [
+              "UiPricingSection",
+              "UiPricingComparison"
+            ]
+          },
+          {
+            "referenceName": "Contact sections",
+            "occurrences": 6,
+            "equivalents": [
+              "UiContactSection",
+              "UiContactLocations"
+            ]
+          },
+          {
+            "referenceName": "Metrics section",
+            "occurrences": 12,
+            "equivalents": [
+              "UiMetricsSection"
+            ]
+          },
+          {
+            "referenceName": "Content section",
+            "occurrences": 2,
+            "equivalents": [
+              "UiContentSection",
+              "UiEditorialFigure",
+              "UiEditorialQuote"
+            ]
+          },
+          {
+            "referenceName": "Press mentions section",
+            "occurrences": 2,
+            "equivalents": [
+              "UiPressMentionsSection"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "pageId": "1622:261461",
+      "family": "pricingExamples",
+      "variantAxes": {
+        "breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "sectionFamilies": [
+          "Dropdown header navigation",
+          "Pricing page header",
+          "Features section",
+          "FAQ section",
+          "CTA section",
+          "Footer",
+          "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+          "Social proof section",
+          "Banner"
+        ]
+      },
+      "requiredCapabilities": [
+        "Reusable page composition with real section widgets, explicit host navigation and no copied third-party content"
+      ],
+      "implementations": [
+        "UiMarketingPage",
+        "UiMarketingHeader",
+        "UiMegaMenuContent",
+        "UiHeroSection",
+        "UiPricingSection",
+        "UiPricingComparison",
+        "UiFeatureSection",
+        "UiFeatureShowcase",
+        "UiFaqSection",
+        "UiCallToActionSection",
+        "UiMarketingFooter",
+        "UiContentDivider",
+        "UiSocialProofSection",
+        "UiAnnouncementBanner"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/pricing"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: five device environments"
+      ],
+      "referenceEvidence": {
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/pricingExamples.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/pricingExamples.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1623:261471",
+          "frameName": "Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected one pricing-page composition against the existing pricing, billing, comparison and surrounding marketing-section equivalents."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ],
+      "referencePageCompositions": {
+        "frames": 20,
+        "sectionMappings": [
+          {
+            "referenceName": "Dropdown header navigation",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingHeader",
+              "UiMegaMenuContent"
+            ]
+          },
+          {
+            "referenceName": "Pricing page header",
+            "occurrences": 20,
+            "equivalents": [
+              "UiHeroSection",
+              "UiPricingSection",
+              "UiPricingComparison"
+            ]
+          },
+          {
+            "referenceName": "Features section",
+            "occurrences": 10,
+            "equivalents": [
+              "UiFeatureSection",
+              "UiFeatureShowcase"
+            ]
+          },
+          {
+            "referenceName": "FAQ section",
+            "occurrences": 18,
+            "equivalents": [
+              "UiFaqSection"
+            ]
+          },
+          {
+            "referenceName": "CTA section",
+            "occurrences": 26,
+            "equivalents": [
+              "UiCallToActionSection"
+            ]
+          },
+          {
+            "referenceName": "Footer",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingFooter"
+            ]
+          },
+          {
+            "referenceName": "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+            "occurrences": 16,
+            "equivalents": [
+              "UiContentDivider"
+            ]
+          },
+          {
+            "referenceName": "Social proof section",
+            "occurrences": 4,
+            "equivalents": [
+              "UiSocialProofSection"
+            ]
+          },
+          {
+            "referenceName": "Banner",
+            "occurrences": 4,
+            "equivalents": [
+              "UiAnnouncementBanner"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "pageId": "1622:261459",
+      "family": "blogs",
+      "variantAxes": {
+        "breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "sectionFamilies": [
+          "Dropdown header navigation",
+          "Blog page header",
+          "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+          "CTA section",
+          "Footer",
+          "Newsletter CTA section",
+          "Banner",
+          "Blog section",
+          "Social proof section"
+        ]
+      },
+      "requiredCapabilities": [
+        "Reusable page composition with real section widgets, explicit host navigation and no copied third-party content",
+        "working sort toolbar with host-controlled article ordering"
+      ],
+      "implementations": [
+        "UiMarketingPage",
+        "UiMarketingHeader",
+        "UiMegaMenuContent",
+        "UiHeroSection",
+        "UiBlogSection",
+        "UiContentDivider",
+        "UiCallToActionSection",
+        "UiMarketingFooter",
+        "UiNewsletterSection",
+        "UiAnnouncementBanner",
+        "UiSocialProofSection"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/blog"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: five device environments",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed."
+      ],
+      "referenceEvidence": {
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/blogs.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/blogs.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1624:472083",
+          "frameName": "Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected one blog-page composition; UiBlogSection.toolbar now supports a real host-owned Most recent sort, with featured/sidebar and author slots available independently."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ],
+      "referencePageCompositions": {
+        "frames": 20,
+        "sectionMappings": [
+          {
+            "referenceName": "Dropdown header navigation",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingHeader",
+              "UiMegaMenuContent"
+            ]
+          },
+          {
+            "referenceName": "Blog page header",
+            "occurrences": 20,
+            "equivalents": [
+              "UiHeroSection",
+              "UiBlogSection"
+            ]
+          },
+          {
+            "referenceName": "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+            "occurrences": 10,
+            "equivalents": [
+              "UiContentDivider"
+            ]
+          },
+          {
+            "referenceName": "CTA section",
+            "occurrences": 18,
+            "equivalents": [
+              "UiCallToActionSection"
+            ]
+          },
+          {
+            "referenceName": "Footer",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingFooter"
+            ]
+          },
+          {
+            "referenceName": "Newsletter CTA section",
+            "occurrences": 6,
+            "equivalents": [
+              "UiNewsletterSection"
+            ]
+          },
+          {
+            "referenceName": "Banner",
+            "occurrences": 2,
+            "equivalents": [
+              "UiAnnouncementBanner"
+            ]
+          },
+          {
+            "referenceName": "Blog section",
+            "occurrences": 8,
+            "equivalents": [
+              "UiBlogSection"
+            ]
+          },
+          {
+            "referenceName": "Social proof section",
+            "occurrences": 2,
+            "equivalents": [
+              "UiSocialProofSection"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "pageId": "1631:330597",
+      "family": "posts",
+      "variantAxes": {
+        "breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "sectionFamilies": [
+          "Dropdown header navigation",
+          "Blog post page header",
+          "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+          "Blog section",
+          "CTA section",
+          "Newsletter CTA section",
+          "Footer",
+          "Banner"
+        ]
+      },
+      "requiredCapabilities": [
+        "Reusable page composition with real section widgets, explicit host navigation and no copied third-party content",
+        "category and structured byline before the hero figure"
+      ],
+      "implementations": [
+        "UiMarketingPage",
+        "UiMarketingHeader",
+        "UiMegaMenuContent",
+        "UiHeroSection",
+        "UiContentSection",
+        "UiContentDivider",
+        "UiBlogSection",
+        "UiCallToActionSection",
+        "UiNewsletterSection",
+        "UiMarketingFooter",
+        "UiAnnouncementBanner"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/article"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: five device environments",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed."
+      ],
+      "referenceEvidence": {
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/posts.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/posts.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1631:331831",
+          "frameName": "Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected one editorial post composition; UiContentSection.category and byline now preserve pre-hero attribution alongside existing editorial and sharing slots."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ],
+      "referencePageCompositions": {
+        "frames": 20,
+        "sectionMappings": [
+          {
+            "referenceName": "Dropdown header navigation",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingHeader",
+              "UiMegaMenuContent"
+            ]
+          },
+          {
+            "referenceName": "Blog post page header",
+            "occurrences": 20,
+            "equivalents": [
+              "UiHeroSection",
+              "UiContentSection"
+            ]
+          },
+          {
+            "referenceName": "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+            "occurrences": 30,
+            "equivalents": [
+              "UiContentDivider"
+            ]
+          },
+          {
+            "referenceName": "Blog section",
+            "occurrences": 18,
+            "equivalents": [
+              "UiBlogSection"
+            ]
+          },
+          {
+            "referenceName": "CTA section",
+            "occurrences": 10,
+            "equivalents": [
+              "UiCallToActionSection"
+            ]
+          },
+          {
+            "referenceName": "Newsletter CTA section",
+            "occurrences": 12,
+            "equivalents": [
+              "UiNewsletterSection"
+            ]
+          },
+          {
+            "referenceName": "Footer",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingFooter"
+            ]
+          },
+          {
+            "referenceName": "Banner",
+            "occurrences": 4,
+            "equivalents": [
+              "UiAnnouncementBanner"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "pageId": "1622:261463",
+      "family": "about",
+      "variantAxes": {
+        "breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "sectionFamilies": [
+          "Dropdown header navigation",
+          "Header section",
+          "Metrics section",
+          "Social proof section",
+          "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+          "Team section",
+          "Features section",
+          "Careers section",
+          "Footer",
+          "Newsletter CTA section",
+          "Banner",
+          "Contact page header",
+          "CTA section",
+          "Testimonial section",
+          "Contact sections",
+          "Press mentions section",
+          "Content section",
+          "FAQ section"
+        ]
+      },
+      "requiredCapabilities": [
+        "Reusable page composition with real section widgets, explicit host navigation and no copied third-party content"
+      ],
+      "implementations": [
+        "UiMarketingPage",
+        "UiMarketingHeader",
+        "UiMegaMenuContent",
+        "UiHeroSection",
+        "UiMetricsSection",
+        "UiSocialProofSection",
+        "UiContentDivider",
+        "UiTeamSection",
+        "UiFeatureSection",
+        "UiFeatureShowcase",
+        "UiCareersSection",
+        "UiMarketingFooter",
+        "UiNewsletterSection",
+        "UiAnnouncementBanner",
+        "UiContactSection",
+        "UiCallToActionSection",
+        "UiTestimonialSection",
+        "UiContactLocations",
+        "UiPressMentionsSection",
+        "UiContentSection",
+        "UiEditorialFigure",
+        "UiEditorialQuote",
+        "UiFaqSection"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/about"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: five device environments"
+      ],
+      "referenceEvidence": {
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/about.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/about.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1639:434862",
+          "frameName": "Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected one about-page composition against reusable hero, metrics, feature, testimonial, team and footer section slots; the newly added section anatomy is available to the host."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ],
+      "referencePageCompositions": {
+        "frames": 20,
+        "sectionMappings": [
+          {
+            "referenceName": "Dropdown header navigation",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingHeader",
+              "UiMegaMenuContent"
+            ]
+          },
+          {
+            "referenceName": "Header section",
+            "occurrences": 16,
+            "equivalents": [
+              "UiHeroSection"
+            ]
+          },
+          {
+            "referenceName": "Metrics section",
+            "occurrences": 10,
+            "equivalents": [
+              "UiMetricsSection"
+            ]
+          },
+          {
+            "referenceName": "Social proof section",
+            "occurrences": 4,
+            "equivalents": [
+              "UiSocialProofSection"
+            ]
+          },
+          {
+            "referenceName": "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+            "occurrences": 32,
+            "equivalents": [
+              "UiContentDivider"
+            ]
+          },
+          {
+            "referenceName": "Team section",
+            "occurrences": 16,
+            "equivalents": [
+              "UiTeamSection"
+            ]
+          },
+          {
+            "referenceName": "Features section",
+            "occurrences": 8,
+            "equivalents": [
+              "UiFeatureSection",
+              "UiFeatureShowcase"
+            ]
+          },
+          {
+            "referenceName": "Careers section",
+            "occurrences": 14,
+            "equivalents": [
+              "UiCareersSection"
+            ]
+          },
+          {
+            "referenceName": "Footer",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingFooter"
+            ]
+          },
+          {
+            "referenceName": "Newsletter CTA section",
+            "occurrences": 8,
+            "equivalents": [
+              "UiNewsletterSection"
+            ]
+          },
+          {
+            "referenceName": "Banner",
+            "occurrences": 2,
+            "equivalents": [
+              "UiAnnouncementBanner"
+            ]
+          },
+          {
+            "referenceName": "Contact page header",
+            "occurrences": 4,
+            "equivalents": [
+              "UiHeroSection",
+              "UiContactSection"
+            ]
+          },
+          {
+            "referenceName": "CTA section",
+            "occurrences": 4,
+            "equivalents": [
+              "UiCallToActionSection"
+            ]
+          },
+          {
+            "referenceName": "Testimonial section",
+            "occurrences": 8,
+            "equivalents": [
+              "UiTestimonialSection"
+            ]
+          },
+          {
+            "referenceName": "Contact sections",
+            "occurrences": 10,
+            "equivalents": [
+              "UiContactSection",
+              "UiContactLocations"
+            ]
+          },
+          {
+            "referenceName": "Press mentions section",
+            "occurrences": 2,
+            "equivalents": [
+              "UiPressMentionsSection"
+            ]
+          },
+          {
+            "referenceName": "Content section",
+            "occurrences": 2,
+            "equivalents": [
+              "UiContentSection",
+              "UiEditorialFigure",
+              "UiEditorialQuote"
+            ]
+          },
+          {
+            "referenceName": "FAQ section",
+            "occurrences": 2,
+            "equivalents": [
+              "UiFaqSection"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "pageId": "1622:261464",
+      "family": "contactExamples",
+      "variantAxes": {
+        "breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "sectionFamilies": [
+          "Dropdown header navigation",
+          "Contact page header",
+          "Footer",
+          "Contact sections",
+          "CTA section",
+          "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+          "Newsletter CTA section"
+        ]
+      },
+      "requiredCapabilities": [
+        "Reusable page composition with real section widgets, explicit host navigation and no copied third-party content"
+      ],
+      "implementations": [
+        "UiMarketingPage",
+        "UiMarketingHeader",
+        "UiMegaMenuContent",
+        "UiHeroSection",
+        "UiContactSection",
+        "UiMarketingFooter",
+        "UiContactLocations",
+        "UiCallToActionSection",
+        "UiContentDivider",
+        "UiNewsletterSection"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/contact"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: five device environments"
+      ],
+      "referenceEvidence": {
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/contactExamples.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/contactExamples.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1639:343791",
+          "frameName": "Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected one contact-page composition against existing contact form, contact-method, image/map and surrounding marketing-section slots."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ],
+      "referencePageCompositions": {
+        "frames": 20,
+        "sectionMappings": [
+          {
+            "referenceName": "Dropdown header navigation",
+            "occurrences": 18,
+            "equivalents": [
+              "UiMarketingHeader",
+              "UiMegaMenuContent"
+            ]
+          },
+          {
+            "referenceName": "Contact page header",
+            "occurrences": 16,
+            "equivalents": [
+              "UiHeroSection",
+              "UiContactSection"
+            ]
+          },
+          {
+            "referenceName": "Footer",
+            "occurrences": 16,
+            "equivalents": [
+              "UiMarketingFooter"
+            ]
+          },
+          {
+            "referenceName": "Contact sections",
+            "occurrences": 22,
+            "equivalents": [
+              "UiContactSection",
+              "UiContactLocations"
+            ]
+          },
+          {
+            "referenceName": "CTA section",
+            "occurrences": 4,
+            "equivalents": [
+              "UiCallToActionSection"
+            ]
+          },
+          {
+            "referenceName": "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+            "occurrences": 8,
+            "equivalents": [
+              "UiContentDivider"
+            ]
+          },
+          {
+            "referenceName": "Newsletter CTA section",
+            "occurrences": 4,
+            "equivalents": [
+              "UiNewsletterSection"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "pageId": "1639:514589",
+      "family": "teamExamples",
+      "variantAxes": {
+        "breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "sectionFamilies": [
+          "Dropdown header navigation",
+          "Header section",
+          "Team section",
+          "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+          "Careers section",
+          "Newsletter CTA section",
+          "Footer",
+          "CTA section",
+          "Testimonial section",
+          "Features section",
+          "Contact sections",
+          "Metrics section",
+          "Content section"
+        ]
+      },
+      "requiredCapabilities": [
+        "Reusable page composition with real section widgets, explicit host navigation and no copied third-party content"
+      ],
+      "implementations": [
+        "UiMarketingPage",
+        "UiMarketingHeader",
+        "UiMegaMenuContent",
+        "UiHeroSection",
+        "UiTeamSection",
+        "UiContentDivider",
+        "UiCareersSection",
+        "UiNewsletterSection",
+        "UiMarketingFooter",
+        "UiCallToActionSection",
+        "UiTestimonialSection",
+        "UiFeatureSection",
+        "UiFeatureShowcase",
+        "UiContactSection",
+        "UiContactLocations",
+        "UiMetricsSection",
+        "UiContentSection",
+        "UiEditorialFigure",
+        "UiEditorialQuote"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/team"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: five device environments",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed."
+      ],
+      "referenceEvidence": {
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/teamExamples.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/teamExamples.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1639:514590",
+          "frameName": "Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected one team-page composition against profile, recruiting and careers sections; introductory media and department groups are now explicit reusable careers slots."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ],
+      "referencePageCompositions": {
+        "frames": 20,
+        "sectionMappings": [
+          {
+            "referenceName": "Dropdown header navigation",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingHeader",
+              "UiMegaMenuContent"
+            ]
+          },
+          {
+            "referenceName": "Header section",
+            "occurrences": 20,
+            "equivalents": [
+              "UiHeroSection"
+            ]
+          },
+          {
+            "referenceName": "Team section",
+            "occurrences": 24,
+            "equivalents": [
+              "UiTeamSection"
+            ]
+          },
+          {
+            "referenceName": "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+            "occurrences": 36,
+            "equivalents": [
+              "UiContentDivider"
+            ]
+          },
+          {
+            "referenceName": "Careers section",
+            "occurrences": 20,
+            "equivalents": [
+              "UiCareersSection"
+            ]
+          },
+          {
+            "referenceName": "Newsletter CTA section",
+            "occurrences": 14,
+            "equivalents": [
+              "UiNewsletterSection"
+            ]
+          },
+          {
+            "referenceName": "Footer",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingFooter"
+            ]
+          },
+          {
+            "referenceName": "CTA section",
+            "occurrences": 4,
+            "equivalents": [
+              "UiCallToActionSection"
+            ]
+          },
+          {
+            "referenceName": "Testimonial section",
+            "occurrences": 8,
+            "equivalents": [
+              "UiTestimonialSection"
+            ]
+          },
+          {
+            "referenceName": "Features section",
+            "occurrences": 8,
+            "equivalents": [
+              "UiFeatureSection",
+              "UiFeatureShowcase"
+            ]
+          },
+          {
+            "referenceName": "Contact sections",
+            "occurrences": 2,
+            "equivalents": [
+              "UiContactSection",
+              "UiContactLocations"
+            ]
+          },
+          {
+            "referenceName": "Metrics section",
+            "occurrences": 2,
+            "equivalents": [
+              "UiMetricsSection"
+            ]
+          },
+          {
+            "referenceName": "Content section",
+            "occurrences": 2,
+            "equivalents": [
+              "UiContentSection",
+              "UiEditorialFigure",
+              "UiEditorialQuote"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "pageId": "1622:261466",
+      "family": "legal",
+      "variantAxes": {
+        "breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "sectionFamilies": [
+          "Dropdown header navigation",
+          "Header section",
+          "Content section",
+          "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+          "Footer",
+          "Banner",
+          "CTA section"
+        ]
+      },
+      "requiredCapabilities": [
+        "Reusable page composition with real section widgets, explicit host navigation and no copied third-party content"
+      ],
+      "implementations": [
+        "UiMarketingPage",
+        "UiMarketingHeader",
+        "UiMegaMenuContent",
+        "UiHeroSection",
+        "UiContentSection",
+        "UiEditorialFigure",
+        "UiEditorialQuote",
+        "UiContentDivider",
+        "UiMarketingFooter",
+        "UiAnnouncementBanner",
+        "UiCallToActionSection"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/legal"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: five device environments"
+      ],
+      "referenceEvidence": {
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/legal.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/legal.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1646:379018",
+          "frameName": "Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected one legal-page composition against host-owned selectable editorial content and shared marketing navigation/footer sections."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ],
+      "referencePageCompositions": {
+        "frames": 10,
+        "sectionMappings": [
+          {
+            "referenceName": "Dropdown header navigation",
+            "occurrences": 10,
+            "equivalents": [
+              "UiMarketingHeader",
+              "UiMegaMenuContent"
+            ]
+          },
+          {
+            "referenceName": "Header section",
+            "occurrences": 10,
+            "equivalents": [
+              "UiHeroSection"
+            ]
+          },
+          {
+            "referenceName": "Content section",
+            "occurrences": 10,
+            "equivalents": [
+              "UiContentSection",
+              "UiEditorialFigure",
+              "UiEditorialQuote"
+            ]
+          },
+          {
+            "referenceName": "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+            "occurrences": 12,
+            "equivalents": [
+              "UiContentDivider"
+            ]
+          },
+          {
+            "referenceName": "Footer",
+            "occurrences": 10,
+            "equivalents": [
+              "UiMarketingFooter"
+            ]
+          },
+          {
+            "referenceName": "Banner",
+            "occurrences": 2,
+            "equivalents": [
+              "UiAnnouncementBanner"
+            ]
+          },
+          {
+            "referenceName": "CTA section",
+            "occurrences": 8,
+            "equivalents": [
+              "UiCallToActionSection"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "pageId": "1622:261465",
+      "family": "faqExamples",
+      "variantAxes": {
+        "breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "sectionFamilies": [
+          "Dropdown header navigation",
+          "Header section",
+          "FAQ section",
+          "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+          "CTA section",
+          "Footer",
+          "Features section",
+          "Team section",
+          "Newsletter CTA section",
+          "Content section",
+          "Testimonial section"
+        ]
+      },
+      "requiredCapabilities": [
+        "Reusable page composition with real section widgets, explicit host navigation and no copied third-party content",
+        "working query control, filtered accordion results and no-results content"
+      ],
+      "implementations": [
+        "UiMarketingPage",
+        "UiMarketingHeader",
+        "UiMegaMenuContent",
+        "UiHeroSection",
+        "UiFaqSection",
+        "UiContentDivider",
+        "UiCallToActionSection",
+        "UiMarketingFooter",
+        "UiFeatureSection",
+        "UiFeatureShowcase",
+        "UiTeamSection",
+        "UiNewsletterSection",
+        "UiContentSection",
+        "UiEditorialFigure",
+        "UiEditorialQuote",
+        "UiTestimonialSection"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/faq"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: five device environments",
+        "Continuation: test/marketing/marketing_visual_slots_test.dart, 10 focused cases passed for section anatomy, real actions/filtering/sorting and selected 2x/4x RTL layouts; 20 existing marketing contracts also passed.",
+        "Continuation: disclosure_readability_test.dart verifies full visible question height at 320px, 1x/2x text, LTR/RTL and with/without a status chip; eight checks pass. Browser inspection confirms the full question before expansion."
+      ],
+      "referenceEvidence": {
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/faqExamples.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/faqExamples.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1641:346294",
+          "frameName": "Desktop",
+          "sampleOnly": true,
+          "findings": "Resolved the visible search/filter composition with UiFaqSection.search, host-filtered stable-ID items and emptyState; the registered example uses a working query field."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ],
+      "referencePageCompositions": {
+        "frames": 20,
+        "sectionMappings": [
+          {
+            "referenceName": "Dropdown header navigation",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingHeader",
+              "UiMegaMenuContent"
+            ]
+          },
+          {
+            "referenceName": "Header section",
+            "occurrences": 20,
+            "equivalents": [
+              "UiHeroSection"
+            ]
+          },
+          {
+            "referenceName": "FAQ section",
+            "occurrences": 20,
+            "equivalents": [
+              "UiFaqSection"
+            ]
+          },
+          {
+            "referenceName": "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+            "occurrences": 22,
+            "equivalents": [
+              "UiContentDivider"
+            ]
+          },
+          {
+            "referenceName": "CTA section",
+            "occurrences": 14,
+            "equivalents": [
+              "UiCallToActionSection"
+            ]
+          },
+          {
+            "referenceName": "Footer",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingFooter"
+            ]
+          },
+          {
+            "referenceName": "Features section",
+            "occurrences": 6,
+            "equivalents": [
+              "UiFeatureSection",
+              "UiFeatureShowcase"
+            ]
+          },
+          {
+            "referenceName": "Team section",
+            "occurrences": 2,
+            "equivalents": [
+              "UiTeamSection"
+            ]
+          },
+          {
+            "referenceName": "Newsletter CTA section",
+            "occurrences": 8,
+            "equivalents": [
+              "UiNewsletterSection"
+            ]
+          },
+          {
+            "referenceName": "Content section",
+            "occurrences": 6,
+            "equivalents": [
+              "UiContentSection",
+              "UiEditorialFigure",
+              "UiEditorialQuote"
+            ]
+          },
+          {
+            "referenceName": "Testimonial section",
+            "occurrences": 2,
+            "equivalents": [
+              "UiTestimonialSection"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "pageId": "1623:261469",
+      "family": "authExamples",
+      "variantAxes": {
+        "breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "sectionFamilies": [
+          "Dropdown header navigation",
+          "Log in",
+          "Sign up"
+        ]
+      },
+      "requiredCapabilities": [
+        "Reusable page composition with real section widgets, explicit host navigation and no copied third-party content",
+        "controlled sign-in remember preference; non-sign-in submissions omit it"
+      ],
+      "implementations": [
+        "UiMarketingPage",
+        "UiMarketingHeader",
+        "UiMegaMenuContent",
+        "UiAuthLayout",
+        "UiAuthForm"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/authentication"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: five device environments",
+        "Continuation: test/marketing/page_anatomy_test.dart, 6 cases passed for controlled remember preference, announcement action/order, editable recovery and email content order; includes a 320px 2x dark RTL announcement case."
+      ],
+      "referenceEvidence": {
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/authExamples.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/authExamples.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1646:394822",
+          "frameName": "Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected one authentication-page composition; controlled remember preference is available in sign-in and omitted from other stage submissions."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ],
+      "referencePageCompositions": {
+        "frames": 24,
+        "sectionMappings": [
+          {
+            "referenceName": "Dropdown header navigation",
+            "occurrences": 4,
+            "equivalents": [
+              "UiMarketingHeader",
+              "UiMegaMenuContent"
+            ]
+          },
+          {
+            "referenceName": "Log in",
+            "occurrences": 12,
+            "equivalents": [
+              "UiAuthLayout",
+              "UiAuthForm"
+            ]
+          },
+          {
+            "referenceName": "Sign up",
+            "occurrences": 12,
+            "equivalents": [
+              "UiAuthLayout",
+              "UiAuthForm"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "pageId": "1623:261468",
+      "family": "errorExamples",
+      "variantAxes": {
+        "breakpoint": [
+          "Desktop",
+          "Mobile"
+        ],
+        "sectionFamilies": [
+          "Dropdown header navigation",
+          "404 section",
+          "Footer",
+          "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+          "Blog section",
+          "CTA section",
+          "Newsletter CTA section"
+        ]
+      },
+      "requiredCapabilities": [
+        "Reusable page composition with real section widgets, explicit host navigation and no copied third-party content",
+        "working host-owned search/recovery control"
+      ],
+      "implementations": [
+        "UiMarketingPage",
+        "UiMarketingHeader",
+        "UiMegaMenuContent",
+        "UiErrorPage",
+        "UiMarketingFooter",
+        "UiContentDivider",
+        "UiBlogSection",
+        "UiCallToActionSection",
+        "UiNewsletterSection"
+      ],
+      "catalogPaths": [
+        "marketing/uimarketingpage/not-found"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart: five device environments",
+        "Continuation: test/marketing/page_anatomy_test.dart, 6 cases passed for controlled remember preference, announcement action/order, editable recovery and email content order; includes a 320px 2x dark RTL announcement case."
+      ],
+      "referenceEvidence": {
+        "rawMetadata": "/private/tmp/untitled-ui-reference/marketing/errorExamples.json",
+        "visual": "/private/tmp/untitled-ui-reference/followup/errorExamples.png",
+        "visualReview": {
+          "checkedAt": "2026-10-23",
+          "source": "Fresh direct Figma MCP render; coordinated root and family-reviewer inspection",
+          "nodeId": "1646:448476",
+          "frameName": "Desktop",
+          "sampleOnly": true,
+          "findings": "Inspected one not-found-page composition; UiErrorPage.recovery accepts a working host-owned search/recovery control alongside existing navigation actions."
+        }
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ],
+      "referencePageCompositions": {
+        "frames": 20,
+        "sectionMappings": [
+          {
+            "referenceName": "Dropdown header navigation",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingHeader",
+              "UiMegaMenuContent"
+            ]
+          },
+          {
+            "referenceName": "404 section",
+            "occurrences": 20,
+            "equivalents": [
+              "UiErrorPage"
+            ]
+          },
+          {
+            "referenceName": "Footer",
+            "occurrences": 20,
+            "equivalents": [
+              "UiMarketingFooter"
+            ]
+          },
+          {
+            "referenceName": "\u2013\u2013\u2013\u2013 Section divider \u2013\u2013\u2013\u2013",
+            "occurrences": 14,
+            "equivalents": [
+              "UiContentDivider"
+            ]
+          },
+          {
+            "referenceName": "Blog section",
+            "occurrences": 10,
+            "equivalents": [
+              "UiBlogSection"
+            ]
+          },
+          {
+            "referenceName": "CTA section",
+            "occurrences": 8,
+            "equivalents": [
+              "UiCallToActionSection"
+            ]
+          },
+          {
+            "referenceName": "Newsletter CTA section",
+            "occurrences": 2,
+            "equivalents": [
+              "UiNewsletterSection"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "pageId": "1622:261460",
+      "family": "press-mentions",
+      "variantAxes": {
+        "layout": [
+          "card grid",
+          "editorial list"
+        ]
+      },
+      "requiredCapabilities": [
+        "Source-attributed mentions with publication, date, authorized logo slot and actual read action"
+      ],
+      "implementations": [
+        "UiPressMentionsSection"
+      ],
+      "catalogPaths": [
+        "marketing/uipressmentionssection"
+      ],
+      "testEvidence": [
+        "Baseline dea0542f2: apps/specimen_widgetbook/test/marketing_catalog_test.dart"
+      ],
+      "referenceEvidence": {
+        "source": "landing and about example-page child instance metadata",
+        "instances": [
+          "1655:384206",
+          "1659:455221",
+          "1639:474063",
+          "1639:492962"
+        ],
+        "visual": null
+      },
+      "remainingGaps": [
+        "Every reference instance and knob combination has not been individually visually compared; full combinatorial visual parity is not confirmed.",
+        "Manual assistive-technology and physical-device acceptance are not confirmed."
+      ]
+    }
+  ],
+  "equivalencePolicy": "Reference component anatomy, interaction states and composition slots are mapped to original Specimen controls. Reference purple palettes, photographic assets, logos and ornamental permutations are intentionally replaced by approved brand roles, Phosphor and caller-provided media, following the owner instruction.",
+  "verification": {
+    "checkedAt": "2026-10-22",
+    "packageContracts": {
+      "path": "apps/specimen_digitization/packages/specimen_ui/test/marketing/marketing_test.dart",
+      "passed": 20
+    },
+    "catalog": {
+      "path": "apps/specimen_widgetbook/test/marketing_catalog_test.dart",
+      "passed": 4,
+      "viewports": [
+        320,
+        390,
+        768,
+        1180,
+        1440
+      ],
+      "includes": "all registered marketing use cases, light/dark, 2x text and RTL representatives"
+    },
+    "analysis": "absolute scoped paths; no errors",
+    "limit": "These are local synthetic Flutter checks. They do not establish deployed UI, email-client compatibility or physical-device acceptance.",
+    "scope": "Baseline dea0542f2, before this continuation; not a claim that the expanded source has passed the integrated gates."
+  },
+  "validationEvidence": [
+    "Baseline dea0542f2: Integrated Widgetbook validation passed 29 checks, including all 911 examples at default knobs across five environments. This does not exercise every knob combination.",
+    "Baseline dea0542f2: Representative source and implementation review found no further capability blocker. Reviewed sources included pricing, contact, press mentions, settings, dashboards and informational examples; this is not visual comparison of every reference instance.",
+    "Baseline dea0542f2: Isolated iPad and iPhone simulator and Android emulator catalog checks and reviewed screenshots passed. iPad evidence includes paired-calendar range selection; iPhone and Android smoke checks cover the brand hero, a real tap and its callback receipt.",
+    "Baseline dea0542f2: Native checks predate the final calendar weekday copy change to Mon through Sun. All 12 affected weekday-header goldens were subsequently independently reviewed: labels remain distinct, centered and unclipped in light and dark modes.",
+    "Baseline dea0542f2: All local gates defined in scripts/ci/verify.sh passed after the weekday copy change, in segments resumed at unchanged remaining gates after formatter-only corrections. Independent source and representative visual review cleared reported findings. No physical-device, manual assistive-technology or production approval is claimed."
+  ],
+  "continuationVerification": {
+    "checkedAt": "2026-10-23",
+    "sourceRenderReview": {
+      "manifest": "/private/tmp/untitled-ui-reference/visual-followup-targets.json",
+      "referenceFileId": "fIfKyBB3UUanoV9lZoTBx9",
+      "familiesInspected": 31,
+      "scope": "One selected direct source render per listed family inspected for visible anatomy and equivalent composition capabilities. Exact node IDs and frame names are recorded per row. This is not a pixel comparison of every implementation or exhaustive review of source variants, states, breakpoints and knob combinations."
+    },
+    "focusedPackageChecks": [
+      {
+        "path": "apps/specimen_digitization/packages/specimen_ui/test/marketing/marketing_visual_slots_test.dart",
+        "passed": 10,
+        "scope": "New section anatomy and meaningful action/filter/sort/layout checks"
+      },
+      {
+        "path": "apps/specimen_digitization/packages/specimen_ui/test/marketing/marketing_test.dart",
+        "passed": 20,
+        "scope": "Existing marketing contracts rerun against the expanded source"
+      },
+      {
+        "path": "apps/specimen_digitization/packages/specimen_ui/test/marketing/page_anatomy_test.dart",
+        "passed": 6,
+        "scope": "New page/form anatomy checks; reported by the owning reviewer"
+      },
+      {
+        "path": "apps/specimen_digitization/packages/specimen_ui/test/gates/no_literal_geometry_test.dart",
+        "passed": 4,
+        "scope": "Focused geometry gate checks after section changes"
+      }
+    ],
+    "analysis": "Shared-package, catalog and application analysis clean; all 731 application/package/catalog Dart files pass unchanged formatting checks.",
+    "menuReview": "Independent read-only review found no actionable issue in the UiMenuTrigger focus and label-wrap diff. Coordinator reports 28 navigation/menu checks passed; no duplicate test run was performed for this audit.",
+    "integratedValidation": {
+      "package": {
+        "passed": 1656,
+        "report": "/private/tmp/design-continuation-package-final.jsonl",
+        "includes": "Exact golden comparisons; package golden images unchanged"
+      },
+      "catalog": {
+        "passed": 38,
+        "report": "/private/tmp/design-continuation-catalog-final.jsonl",
+        "includes": "All 911 registered stories at default knobs across five environments plus meaningful interaction regressions"
+      },
+      "web": "Final Widgetbook release build succeeded; actual browser FAQ search, no-results, reset, disclosure expansion, journal sorting and completed auth preference receipt verified",
+      "application": {
+        "passed": 3657,
+        "skipped": 7,
+        "skipScope": "Existing opt-in live-backend tests",
+        "report": "/private/tmp/design-continuation-app-verified.jsonl",
+        "webBuild": "Release build passed; local smoke checks passed all 11 declared routes and five security headers. No production deployment.",
+        "additionalFocusedRegression": {
+          "passed": 13,
+          "newTests": 2,
+          "report": "/private/tmp/workbench-large-text-scroll-focused-final.jsonl",
+          "scope": "Full workbench Fields and History endpoints scroll fully into view at390x844/200 percent; fixed approval opens real confirmation. Existing scroll contracts and final documentation typography gate also pass."
+        }
+      },
+      "native": {
+        "platforms": [
+          "iPhone simulator",
+          "iPad simulator",
+          "Android emulator"
+        ],
+        "passed": true,
+        "flowsPerPlatform": 7,
+        "screenshots": 21,
+        "scope": "Actual copied catalog hero action; FAQ filtering, expansion, no-results and reset; both remembered-session submission receipts; dark header navigation. Phone catalog viewport 320 dp, tablet 768 dp. Synthetic local callbacks, not production authentication.",
+        "reports": [
+          "/private/tmp/specimen-widgetbook-native-01a161f6/qa/results/iphone/result.json",
+          "/private/tmp/specimen-widgetbook-native-01a161f6/qa/results/ipad/result.json",
+          "/private/tmp/specimen-widgetbook-native-01a161f6/qa/results/android/result.json"
+        ],
+        "snapshotVerification": "/private/tmp/specimen-widgetbook-native-01a161f6/qa/snapshot-verification.json",
+        "sourceFiles": 183,
+        "byteIdenticalRuntimeFiles": 182,
+        "runtimeErrors": 0
+      },
+      "applicationVisualReview": {
+        "images": 6,
+        "scope": "Compact 390x844 at 200 percent text, workbench readings/fields/history in light/dark. Full disclosure title and 40px scroll-content flow independently reviewed; top and footer unchanged. Exactly these six images adopted, exact comparison retained.",
+        "evidence": "/private/tmp/disclosure-six-review/adopted-images.json"
+      }
+    },
+    "limits": [
+      "Full combinatorial visual parity is not confirmed.",
+      "Manual assistive-technology and physical-device acceptance are not confirmed.",
+      "No deployed UI, email-client compatibility or production release approval is claimed."
+    ],
+    "browserEvidence": [
+      "/Users/anuragduddu/.codex/visualizations/2026/10/22/01a161f6-9906-75f1-bc98-e9c3ebeca013/faq-mobile-final.png",
+      "/Users/anuragduddu/.codex/visualizations/2026/10/22/01a161f6-9906-75f1-bc98-e9c3ebeca013/auth-receipt-mobile-final.png",
+      "/Users/anuragduddu/.codex/visualizations/2026/10/22/01a161f6-9906-75f1-bc98-e9c3ebeca013/journal-desktop-final.png"
+    ]
+  }
+}

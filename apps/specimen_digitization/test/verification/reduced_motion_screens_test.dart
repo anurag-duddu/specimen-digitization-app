@@ -201,12 +201,11 @@ void main() {
             brightness: Brightness.light,
             location: goldenQueueLocation,
           );
-          final filter = find.byKey(const ValueKey('queue-filter-deferred'));
+          final filter = find.byKey(const ValueKey('queue-view'));
           expect(filter.hitTestable(), findsOneWidget);
-          await tester.tap(filter);
-          await tester.pump();
+          await pickSpecimenQueue(tester, 'Deferred');
           await recordTransition(tester, signal, 'status filter change');
-          expect(tester.widget<Pressable>(filter).selected, isTrue);
+          expect(tester.widget<UiViewTabs<String>>(filter).value, 'deferred');
           final destination = tester.getRect(filter);
           await tester.pump(const Duration(milliseconds: 400));
           expect(

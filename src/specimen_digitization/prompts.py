@@ -14,6 +14,7 @@ class PromptName(StrEnum):
     STRUCTURED_EXTRACTION = "structured-field-extraction"
     DISAGREEMENT_ADJUDICATION = "transcription-disagreement-adjudication"
     FIELD_HARNESS = "field-harness"
+    FIRST_PASS_UNITS = "first-pass-units"
 
 
 class CollectionPromptInputs(BaseModel):
@@ -24,6 +25,12 @@ class CollectionPromptInputs(BaseModel):
     collection_profile_id: str = Field(min_length=1)
     collection_name: str = Field(min_length=1)
     schema_version: str = Field(min_length=1)
+
+
+class FirstPassUnitsPromptInputs(CollectionPromptInputs):
+    """The collection's inputs and the ontology text the units prompt carries."""
+
+    ontology: str = Field(min_length=1)
 
 
 class ResolvedPrompt(BaseModel):
@@ -54,13 +61,13 @@ _STRUCTURED_EXTRACTION_DEFAULT = """
 You are the field organiser for {{collection_name}} using collection profile
 {{collection_profile_id}} and output schema {{schema_version}}.
 
-You are given every reading of every label on one specimen. Two independent
-readers read each label, and a reading is named by its label number and a
-letter: 1A, 1B, 2A and so on. A decided transcript is the reading chosen for its
-label; a raw reading is another reader's reading of it; a label with no decided
-transcript has raw readings only. What the specimen records is often spread over
-several labels and over both readers' readings, so read all of them before you
-answer.
+You are given every reading of every label on one specimen. Two or more
+independent readers read each label, and a reading is named by its label number
+and a letter: 1A, 1B, 1C, 2A and so on. A decided transcript is the reading
+chosen for its label; a raw reading is another reader's reading of it; a label
+with no decided transcript has raw readings only. What the specimen records is
+often spread over several labels and over every reader's readings, so read all
+of them before you answer.
 
 Organise what the readings state into field-value candidates:
 - Give a candidate only where a reading plainly states a value for the field.
@@ -77,9 +84,8 @@ Organise what the readings state into field-value candidates:
   identified_by_irn is the number of a record in another system and no label
   states it: give no candidate for it.
 - Where a field is stated, give a candidate for each reading that states it.
-  When two readers or two labels give the same value, give both. When they
-  differ, give each differing value; do not choose between them and do not
-  merge them.
+  When readers or labels give the same value, give each. When they differ,
+  give each differing value; do not choose between them and do not merge them.
 - "reading" is the one reading you take the value from, named as in the request.
 - "literal" is the value exactly as that reading writes it, line breaks
   included. Never normalize, expand, correct, translate, convert, complete or
@@ -103,25 +109,43 @@ _DISAGREEMENT_ADJUDICATION_DEFAULT = """
 You are the transcription adjudicator for {{collection_name}} using collection
 profile {{collection_profile_id}} and output schema {{schema_version}}.
 
-Compare the independent candidate transcripts against the supplied image.
-Resolve a value only when the visual evidence supports it. Preserve unresolved
-differences explicitly and route material ambiguity to human review. Never
-choose a candidate merely because it is more fluent. Return the requested
-structured output.
+You work with biodiversity data. The supplied image is one label of a
+natural-history specimen from {{collection_name}}, with handwritten or typed
+collecting data: the locality, elevation, collecting date, collector, taxon
+name, and catalogue and slide codes. Independent machine readers transcribed
+it; compare their candidate transcripts against the image.
+
+Resolve a value only when the visual evidence supports it. Prefer a reader only
+when the image supports that reader's text at every material difference.
+Preserve unresolved differences explicitly and route material ambiguity to
+human review. Never choose a candidate merely because it is more fluent: labels
+abbreviate, misspell and use old or foreign place names, and a name is read as
+written, not as you expect it.
+
+Your preferred reader is advice to a field harness that settles each field with
+lookups against biodiversity sources and may overrule you with any reader's
+text, so say in your notes what you saw at each difference. Return the
+requested structured output.
 """.strip()
 
 
+# No agent reads this prompt: production.pin_dependencies resolves and pins it
+# with every run's prompts, and field research's experts take their
+# instructions from field_research/prompts. Logfire shows it beside the others,
+# so its text follows the design (2026-10-25: the first pass's pick is advice).
 _FIELD_HARNESS_DEFAULT = """
 You are the field harness for {{collection_name}} using collection profile
 {{collection_profile_id}} and output schema {{schema_version}}.
 
 Everything transcribed on the specimen is your context for every field: every
-label, every reading and every field. A decided transcript is its label's
-verbatim text; a raw reading is another model's reading of the same label, used
-to check a value the decided transcript's lookups cannot settle, or every
-reading when none was decided. For every field of the profile, give its literal
-exactly as each reading has it, and leave a field out for a reading that does
-not have it.
+label, every reading and every field. Each reading is one model's raw
+transcription of its label. The first pass's preferred reading is advice from a
+model that saw the label image: follow it when nothing backs another reader's
+text. Another reader's text is a possibility it may have missed, which your
+lookups may confirm. Evidence is what settles a field: a source's match,
+readers that agree, another label of the specimen that writes the text. For
+every field of the profile, give its literal exactly as each reading has it,
+and leave a field out for a reading that does not have it.
 
 Work through every reading a notation allows. Keep looking things up with the
 tools each field names, and keep weighing the evidence, until a field settles
@@ -130,6 +154,42 @@ values. A field the label leaves out is filled only by derivation from settled
 fields, with its authority and evidence. You never decide a value yourself and
 never draw a conclusion without evidence. Never invent, complete, correct,
 expand or translate a literal. Return the requested structured output.
+""".strip()
+
+_FIRST_PASS_UNITS_DEFAULT = """
+You are the first pass for {{collection_name}} using collection profile
+{{collection_profile_id}} and output schema {{schema_version}}.
+
+You work with biodiversity data. The image is one label of a natural-history
+specimen from {{collection_name}}: locality, elevation, collecting date,
+collector, taxon name, catalogue and slide codes, handwritten or typed.
+Independent machine readers transcribed it; their texts come cut into
+numbered segments at spaces and line breaks they share, a range kept whole.
+
+Group the segments into reading units, each one logical piece of the label: a
+word, a name, a number with its unit, a date, a code, or an abbreviation with
+what it qualifies. A unit may cross a line, but never joins pieces of two
+fields' values. For each unit:
+- image: the letter of the reader whose text the image shows there, even when
+  that reader alone wrote it; where all readers wrote the same and the image
+  shows it, the first reader's letter. "uncertain" only where the image does
+  not decide between differing texts; "not visible" where nothing is legible.
+  Never prefer a text because it reads more fluently: labels abbreviate,
+  misspell and use old or foreign place names.
+- means: your interpretation, if any: an expansion ("P.I.": Philippine
+  Islands), a normal form ("6-Sept-1946": 1946-09-06) or a role ("leg.":
+  collected by); never the text as written.
+- role: genus, species, author, day, month or year, only when the unit is
+  that part of a value alone.
+- fields: the field keys the unit could belong to, most likely first; none
+  for a unit that holds an open question below.
+- note: one short sentence, only for what the other keys do not say, such as
+  a mark one reader alone saw; never to restate the image or the meaning.
+
+You settle nothing: each field's expert decides with lookups. Return the
+requested structured output.
+
+{{ontology}}
 """.strip()
 
 PROMPT_VARIABLES = {
@@ -157,6 +217,12 @@ PROMPT_VARIABLES = {
         default=_FIELD_HARNESS_DEFAULT,
         inputs_type=CollectionPromptInputs,
     ),
+    PromptName.FIRST_PASS_UNITS: logfire.template_var(
+        name="prompt__first_pass_units",
+        type=str,
+        default=_FIRST_PASS_UNITS_DEFAULT,
+        inputs_type=FirstPassUnitsPromptInputs,
+    ),
 }
 
 
@@ -167,8 +233,15 @@ def resolve_prompt(
     label: str | None = None,
     targeting_key: str | None = None,
 ) -> ResolvedPrompt:
-    """Resolve a managed prompt and retain the served version as run evidence."""
+    """Resolve a managed prompt and retain the served version as run evidence.
+
+    For FIRST_PASS_UNITS, plain CollectionPromptInputs get `ontology.render(brief=True)` as
+    `ontology`; FirstPassUnitsPromptInputs are used as given."""
     requested_label = label or os.getenv("LOGFIRE_PROMPT_LABEL", "development")
+    if name is PromptName.FIRST_PASS_UNITS and not isinstance(inputs, FirstPassUnitsPromptInputs):
+        from .ontology import render
+
+        inputs = FirstPassUnitsPromptInputs(**inputs.model_dump(), ontology=render(brief=True))
     variable = PROMPT_VARIABLES[name]
     with variable.get(
         inputs,

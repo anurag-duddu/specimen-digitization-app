@@ -221,6 +221,20 @@ def test_costs_price_each_reading_and_bound_the_remaining_tokens():
     assert costs["other_usd_upper_bound"] == pytest.approx(1600 * 1.20e-6)
 
 
+def test_a_nemotron_reading_is_priced_at_the_published_row():
+    # The NVIDIA option's reader C (NVIDIA_NEMOTRON_OPTION.md 3): USD 0.20 in, 0.50 out per million.
+    profiles = run_specimen.REPOSITORY / "src/specimen_digitization/application/profiles/published.json"
+    published = json.loads(profiles.read_text())["profiles"][0]["processing"]["price_list"]["models"]
+    row = published["handwriting-nemotron"]
+    assert run_specimen.PRICES["handwriting-nemotron"] == (
+        row["input_micros_per_million"] / 1e6, row["output_micros_per_million"] / 1e6)
+    snap = snapshot()
+    snap["run"]["observations"][1]["route_id"] = "handwriting-nemotron"
+    costs = run_specimen.price(snap)
+    assert costs["unpriced_routes"] == []
+    assert [r["route"] for r in costs["readings"]][1] == "handwriting-nemotron"
+
+
 def test_the_redactor_removes_token_values_and_token_shapes():
     redact = run_specimen.Redactor({"HF_TOKEN": TOKEN, "SPECIMEN_APPROVED_INFERENCE": "true"})
     text = redact(

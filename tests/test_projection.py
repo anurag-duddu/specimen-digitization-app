@@ -310,6 +310,53 @@ def test_unmeasured_or_incomplete_pairs_have_no_invented_components():
     assert "AppendReadingComparisonV1" not in ops(writes(s, locate, size, "worker-uid"))
 
 
+def test_three_readings_write_one_comparison_per_pair():
+    # NVIDIA_NEMOTRON_OPTION.md: a third reader. The transcript keeps every pair
+    # (Transcript.comparisons), and each is a row, keyed by its pair.
+    from specimen_digitization.application.domain import ReadingPairComparison
+
+    s = read(pinned(specimen()))
+    region = s.run.regions[0]
+    right, left = s.run.observations
+    third = reading(region, "handwriting-nemotron", "Chicago, Ill", "e")
+    s.run.observations.append(third)
+    pairs = [(right, left, 1 / 13, "disagreement"), (right, third, 2 / 13, "disagreement"),
+        (left, third, 1 / 13, "disagreement")]
+    s.run.transcripts[0] = s.run.transcripts[0].model_copy(update={
+        "observation_ids": [right.id, left.id, third.id],
+        "alternatives": [o.literal_text for o in (right, left, third)],
+        "disagreement_ratio": 2 / 13,
+        "comparisons": [
+            ReadingPairComparison(left_observation_id=a.id, right_observation_id=b.id,
+                status=status, reasons=["raw_readings_disagree"], disagreement_ratio=ratio)
+            for a, b, ratio, status in pairs
+        ],
+    })
+
+    rows = [w.variables for w in writes(s, locate, size, "worker-uid")
+        if w.operation == "AppendReadingComparisonV1"]
+
+    assert len(rows) == 3
+    for row, (a, b, ratio, status) in zip(rows, pairs):
+        ordered = sorted((a.id, b.id), key=lambda i: i.replace("-", "").lower())
+        assert (row["leftObservationId"], row["rightObservationId"]) == tuple(ordered)
+        assert row["id"] == derived_id("comparison", s.run.id, region.id, *ordered)
+        basis = max(len(a.literal_text), len(b.literal_text))
+        assert (row["ratio"], row["lengthBasis"], row["editDistance"]) == (ratio, basis, round(ratio * basis))
+        assert (row["status"], row["reasons"]) == (status, ["raw_readings_disagree"])
+    assert len({row["id"] for row in rows}) == 3
+
+
+def test_three_readings_with_no_pair_recorded_write_no_comparison():
+    s = read(pinned(specimen()))
+    region = s.run.regions[0]
+    third = reading(region, "handwriting-nemotron", "Chicago, Ill", "e")
+    s.run.observations.append(third)
+    s.run.transcripts[0].observation_ids.append(third.id)
+
+    assert "AppendReadingComparisonV1" not in ops(writes(s, locate, size, "worker-uid"))
+
+
 def test_every_write_has_a_distinct_key_and_repeats_are_identical():
     s = read(pinned(specimen(trace_id="0af7" * 8)))
     first, second = writes(s, locate, size, "worker-uid"), writes(s, locate, size, "worker-uid")

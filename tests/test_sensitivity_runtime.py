@@ -249,8 +249,16 @@ def test_auxiliary_v2_contract_preserves_scope_and_classification(tmp_path):
         calls.append((op, variables, mutation))
         if op == "GetDocumentV2":
             return {"auxiliaryDocument": {"sensitive": False, "payload": {"sensitive": False, "revision": 1}}}
-        if op == "ListDocumentPageV2":
-            return {"auxiliaryDocuments": [{"id": ident, "sensitive": False}]}
+        if op == "ListDocumentsV2":
+            return {
+                "auxiliaryDocuments": [
+                    {
+                        "id": ident,
+                        "sensitive": False,
+                        "payload": {"sensitive": False, "revision": 1},
+                    }
+                ]
+            }
         return {}
     sql.execute = execute
     actor_uid.set("reviewer")
@@ -258,9 +266,18 @@ def test_auxiliary_v2_contract_preserves_scope_and_classification(tmp_path):
     assert len(sql.documents(scope, "batch")) == 1
     sql.put_document(scope, "batch", ident, {"sensitive": False}, 0)
     sql.put_document(scope, "batch", ident, {"sensitive": False}, 1)
-    assert [v["includeSensitive"] for op, v, _ in calls if op == "ListDocumentPageV2"] == [False]
-    assert all(v["sensitive"] is False for op, v, _ in calls if op in {"CreateDocumentV2", "SaveDocumentV2"})
-    assert all(v["actorUid"] == "reviewer" and v["collectionId"] == SYNTHETIC_COLLECTION for _, v, _ in calls)
+    assert [v["includeSensitive"] for op, v, _ in calls if op == "ListDocumentsV2"] == [
+        False
+    ]
+    assert all(
+        v["sensitive"] is False
+        for op, v, _ in calls
+        if op in {"CreateDocumentV2", "SaveDocumentV2"}
+    )
+    assert all(
+        v["actorUid"] == "reviewer" and v["collectionId"] == SYNTHETIC_COLLECTION
+        for _, v, _ in calls
+    )
     sql.execute = lambda *_args, **_kwargs: {"auxiliaryDocument": {"sensitive": False, "payload": {"revision": 1}}}
     with pytest.raises(Conflict, match="sensitivity metadata mismatch"):
         sql.document(scope, "batch", ident)

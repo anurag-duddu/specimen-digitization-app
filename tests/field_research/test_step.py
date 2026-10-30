@@ -461,11 +461,14 @@ def test_a_decided_transcript_settles_a_field_no_source_checks_beside_a_reader_t
     assert field_step._refusal(task, answer, readings=readings, by_name=by_name, sources=()) is None
 
 
-def test_a_collectors_answer_on_a_decided_label_names_the_readings_that_settle_it():
-    """The second review's note: label 1's decided transcript writes no
+def test_another_label_whose_readers_agree_backs_a_non_preferred_readers_text():
+    """The second review's note: label 1's preferred reader 1A writes no
     collector, its other reader 1B writes "leg. J. Smith", and both readers of
-    label 2 write it. The expert's answer naming label 2 settles; naming 1B,
-    the decided label's other reader, it does not (G19)."""
+    label 2 write it. The expert's answer naming label 2 settles, and so,
+    since 2026-10-25, does one naming 1B, whose text label 2 corroborates
+    (until then G19 refused it). Without label 2's text, 1B alone does not;
+    and a 1B text label 2 does not write leaves label 1 out of an answer
+    naming label 2, as before."""
     readings = (Reading("1A", "r1", "o1a", "decided_transcript", "Det. label\nno collector here"),
         Reading("1B", "r1", "o1b", "raw_reading", "Det. label\nleg. J. Smith"),
         Reading("2A", "r2", "o2a", "raw_reading", "Guatemala\nleg. J. Smith"),
@@ -483,7 +486,16 @@ def test_a_collectors_answer_on_a_decided_label_names_the_readings_that_settle_i
     by_name = {reading.name: reading for reading in readings}
     assert field_step._refusal(task, outcome.answer, readings=readings, by_name=by_name, sources=()) is None
     on_1b = answer.model_copy(update={"reading_names": ["1B"]})
-    assert field_step._refusal(task, on_1b, readings=readings, by_name=by_name, sources=()) is not None
+    assert field_step._refusal(task, on_1b, readings=readings, by_name=by_name, sources=()) is None
+    alone = FieldTask("collectors", True, task.current, task.candidates[:1], FIELD_TOOLS["collectors"])
+    refused = field_step._refusal(alone, on_1b, readings=readings[:2], by_name=by_name, sources=())
+    assert refused is not None and refused.reason == agreement.DIFFER
+    # A label whose preferred reader writes no collector takes no part when
+    # the answer names none of its readers, whatever its other reader writes.
+    smyth = (readings[0], Reading("1B", "r1", "o1b", "raw_reading", "Det. label\nleg. J. Smyth"), *readings[2:])
+    other = FieldTask("collectors", True, task.current,
+        (Candidate("1B", "leg. J. Smyth", "J. Smyth", "ev-1B"), *task.candidates[1:]), FIELD_TOOLS["collectors"])
+    assert field_step._refusal(other, answer, readings=smyth, by_name={r.name: r for r in smyth}, sources=()) is None
 
 
 def test_resolvers_run_concurrently_up_to_the_limit(rig):
@@ -1965,9 +1977,12 @@ SLOPE, SPACED = "E. slope Mt. McKinley", "E.slope Mt. McKinley"
 
 
 @pytest.mark.parametrize(("literal", "reading"), [(SLOPE, "1A"), (SPACED, "1B")])
-def test_a_labels_decided_transcript_decides_its_text_and_the_other_reader_is_evidence(tmp_path, literal, reading):
-    """As on 105526321's second label: the first pass decided the reading that
-    writes "E. slope Mt. McKinley"; the other reader writes "E.slope"."""
+def test_readers_that_agree_settle_on_the_preferred_readers_spelling_through_the_step(tmp_path, literal, reading):
+    """As on 105526321's second label: the first pass preferred the reading
+    that writes "E. slope Mt. McKinley"; the other reader writes "E.slope".
+    Spacing aside they agree, on the preferred reader's spelling; the other
+    spelling is ambiguous for review (until 2026-10-25 G19 refused it as
+    NOT_DECIDED, unresolved)."""
     garden = LABEL["precise_location"]
     rig = build_rig(tmp_path, TEXT.replace(garden, SLOPE), TEXT.replace(garden, SPACED), decided=True,
         candidates=[*COLLECTORS, ("precise_location", "1B", SPACED, "precise_location: " + SPACED)])
@@ -1976,8 +1991,8 @@ def test_a_labels_decided_transcript_decides_its_text_and_the_other_reader_is_ev
     settle(rig, Scripted({"precise_location": answering(resolved(literal, reading=reading))}))
     place = run.fields["precise_location"]
     if reading == "1B":
-        assert (place.state, place.literal) == (ValueState.UNRESOLVED, SLOPE)
-        assert place.reason == agreement.NOT_DECIDED + " Settled."
+        assert (place.state, place.literal) == (ValueState.AMBIGUOUS, None)
+        assert place.reason == agreement.DIFFER + " Settled."
         assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:precise_location"])
         return
     assert (place.state, place.literal, place.input_source) == (ValueState.SUPPORTED, SLOPE, "decided_transcript")

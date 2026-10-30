@@ -24,7 +24,7 @@ A gap is always `metered - billed`: positive when the meter is above the bill.
 
 | Pair | Billed side | Meter side |
 |---|---|---|
-| Each Hugging Face model | The usage page's requests and nano-USD for the model, summed over the month's UTC days | The model's paid-call rows, found through the route registry: settled (cost basis not `reserved`) and held (basis `reserved`) |
+| Each Hugging Face model | The usage page's requests and nano-USD for the model, summed over the month's UTC days | The model's paid-call rows, found through the route registry: settled (cost basis not `reserved`; of it, estimated: basis `trued_up`) and held (basis `reserved`), and the requests they made (`usage.model_calls` where a row records it, as field research does, else one per row) |
 | Each Google cost family | The family's lines, cost plus the free-allowance credits ("billed after allowance") | The family's rows: before the free allowance (`listCostMicros`) and after it (`costMicros`) |
 
 Google families, by the bill's service and SKU (`google_family`):
@@ -41,17 +41,25 @@ The standard export does not name the Cloud Run service, so every
 instance-based SKU is taken to be `specimen-sam`, the only instance-based
 service the app deploys.
 
-Everything else on the Google bill (Artifact Registry, Logging, Secret Manager,
-Firebase Hosting, SQL Connect, Monitoring, BigQuery, network lines of Cloud Run,
-and so on), and any `tax` or `rounding_error` row, is listed as **not metered**
-with its amount. Tool calls (provider `tool`) and any Google row the check
-cannot place are listed beside the comparison and never compared with a bill.
+Everything else on the Google bill, and any `tax` or `rounding_error` row, is
+listed under "Google lines the meter does not split" with its amount and its
+treatment (`line_treatment`):
+
+| Treatment | Lines | Why |
+|---|---|---|
+| fixed platform | Artifact Registry, Cloud Build, Secret Manager | The cost of running the platform (the releases' images, their builds, the secrets), which no tenant's use drives. Stated apart, never split |
+| shared, not split yet | Cloud Run internet data transfer out; SQL Connect operations | Driven by use. Cloud Monitoring (`run.googleapis.com/container/network/sent_bytes_count`, read 2026-10-25) put 27.5 of October's 27.8 GiB of internet egress (98.8%) on `specimen-api`: its answers to people's browsers, over about 128,000 requests. Most SQL Connect operations are the API's reads for each request (`Memberships` was 387,041 of 700,138). Both belong with the API's allocation, by organization; the meter does not split them yet |
+| not metered | the rest (Logging, Hosting, Monitoring, BigQuery and so on) | Not looked at |
+
+Tool calls (provider `tool`) and any Google row the check cannot place are
+listed beside the comparison and never compared with a bill.
 
 The allocation rows come from the shared-Google-cost change (COST_METER.md,
 "What the later changes add"). The check works with or without them: with none,
 the Google families compare against direct SAM 3 calls only and say so. It
 recognizes an allocation row by source `allocation`, kind `allocation` or an
-`allocationMethodId`; places it by its resource (`specimen-sam`,
+`allocationMethodId` on a row that is not a paid call (a trued-up paid call
+carries a method too, and stays a paid call); places it by its resource (`specimen-sam`,
 `specimen-worker`, `specimen-api`, `cloud-sql`) or, failing that, its stage
 (`label_finding`, `worker`, `api`, `storage`, `database`); and takes a row
 whose method id contains `free-allowance` as a free-allowance credit (negative
@@ -79,7 +87,8 @@ file to `--meter-rows` (repeatable); a row that appears on two pages counts
 once. If a file holds a multiple of 1,000 rows, the command warns (on standard
 error and under "Warnings" in the report) that the next page may not have been
 fetched. The endpoint refuses mutations. The query asks for the columns the
-check uses and not `usage`.
+check uses, `usage` among them for one number: a field research row's
+`model_calls`, the requests it made.
 
 The file may be the response (`{"data": {"costEntries": [...]}}`), the list of
 rows, or one row per line.
@@ -192,8 +201,9 @@ estimate, not a figure from a Google page).
 | `held_calls` | Hugging Face, Google SAM | The meter is above the bill and holds calls with unknown spend (a timeout, a server error, no usage reported), counted at their reservation. For Hugging Face it says whether the settled calls alone are within the limit |
 | `provider_discount` | Hugging Face | The request counts agree (within the held calls) and the bill is under 97% of the settled figure, as with cached input |
 | `billed_above_list` | Hugging Face | The request counts agree and the bill is over 103% of the settled figure; names the price list versions on the rows |
-| `requests_outside_meter` | Hugging Face | The bill counts more requests than the meter has calls (refused ones included): calls made outside the app on the same account, or rows the sweep has not written |
-| `calls_not_billed` | Hugging Face | The meter settled more calls than the bill has requests |
+| `requests_outside_meter` | Hugging Face | The bill counts more requests than the meter's calls made (refused ones included; a row's requests are its `usage.model_calls`, else one), and about how much of the bill that is (each day's requests beyond the meter's at that day's billed mean, `billed_outside_meter_micros`; the headline says it too): calls made outside the app on the same account, or rows the sweep has not written |
+| `calls_not_billed` | Hugging Face | The meter's settled calls made more requests than the bill has |
+| `trued_up` | Hugging Face | Part of the meter's figure was estimated after the call (cost basis `trued_up`, COST_METER.md "Trued up"): says how much and for how many calls |
 | `no_meter_rows` | Hugging Face | The bill has a model the meter has no call for; says whether the registry names the model |
 | `route_not_in_registry` | Hugging Face | The meter has calls on a route that the registry does not name |
 | `day_boundary` | Hugging Face | At least half of the daily gaps (by absolute size, and more than half the limit) sit on the month's first or last UTC day |
@@ -246,6 +256,26 @@ meter fix removes:
 - Tool calls have no provider in the meter and are never compared.
 - Google reports late usage on the next invoice month, so the latest days of a
   bill can change after the report.
+
+## Truing up the month
+
+After the check, put the month's Hugging Face days into the committed bills so
+the meter trues up that month's held and list-priced calls (COST_METER.md,
+"Trued up"):
+
+```
+uv run --frozen python scripts/ops/reconcile_costs.py --month 2026-10 \
+    --huggingface hf_usage_2026-10.json \
+    --update-bills src/specimen_digitization/application/profiles/provider_bills.json \
+    --bills-as-of 2026-10-24
+```
+
+It keeps the models the route registry names and the days with requests,
+replaces that month's days and leaves other months as they were, and sets the
+version to `provider-bills-<as of>`. The file holds days, model ids, request
+counts and nano-USD only. Commit it by pull request; after the release the next
+sweep reads every record again and rewrites their rows. Read the usage page
+only once a day has ended in UTC, so no day is partial.
 
 ## Running it
 

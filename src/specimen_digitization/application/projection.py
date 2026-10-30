@@ -117,7 +117,7 @@ def writes(
 
     for observation in run.observations:
         result.append(_reading(run, observation, asset(observation.raw_ref, "raw_response")))
-    result += [c for t in run.transcripts if (c := _comparison(run, t)) is not None]
+    result += [c for t in run.transcripts for c in _comparisons(run, t)]
     decisions: dict[str, str] = {}
     for transcript in run.transcripts:
         result += _first_pass(run, transcript, asset, decisions, reviewer)
@@ -328,14 +328,47 @@ def _reading(
     )
 
 
-def _comparison(run: Run, transcript: Transcript) -> Write | None:
-    if len(transcript.observation_ids) != 2 or not transcript.alignment_algorithm:
+def _comparisons(run: Run, transcript: Transcript) -> list[Write]:
+    """One ReadingComparison row per pair of the region's readings: a
+    two-reading transcript's own pair, or each pair a transcript of more
+    readings keeps (Transcript.comparisons)."""
+    if len(transcript.observation_ids) == 2:
+        row = _comparison(
+            run,
+            transcript,
+            transcript.observation_ids,
+            transcript.disagreement_ratio,
+            transcript.alignment_status,
+            transcript.alignment_reasons,
+        )
+        return [row] if row is not None else []
+    if len(transcript.observation_ids) < 2:
+        return []
+    rows = [
+        _comparison(
+            run,
+            transcript,
+            (pair.left_observation_id, pair.right_observation_id),
+            pair.disagreement_ratio,
+            pair.status,
+            pair.reasons,
+        )
+        for pair in transcript.comparisons
+        if {pair.left_observation_id, pair.right_observation_id}
+        <= set(transcript.observation_ids)
+    ]
+    return [row for row in rows if row is not None]
+
+
+def _comparison(
+    run: Run, transcript: Transcript, ids, ratio, status, reasons
+) -> Write | None:
+    if not transcript.alignment_algorithm:
         return None
     readings = {o.id: o for o in run.observations}
-    if not all(i in readings for i in transcript.observation_ids):
+    if not all(i in readings for i in ids):
         return None
-    left, right = _fixed_order(*transcript.observation_ids)
-    ratio = transcript.disagreement_ratio
+    left, right = _fixed_order(*ids)
     length_basis = max(1, *(len(readings[i].literal_text) for i in (left, right)))
     return _write(
         "AppendReadingComparisonV1",
@@ -349,8 +382,8 @@ def _comparison(run: Run, transcript: Transcript) -> Write | None:
             "ratio": ratio,
             "editDistance": None if ratio is None else round(ratio * length_basis),
             "lengthBasis": length_basis,
-            "status": transcript.alignment_status or "unknown",
-            "reasons": list(transcript.alignment_reasons),
+            "status": status or "unknown",
+            "reasons": list(reasons),
         },
     )
 
@@ -365,6 +398,14 @@ def _decision_kind(run: Run, transcript: Transcript) -> str | None:
     texts = {readings[i].literal_text for i in transcript.observation_ids if i in readings}
     if transcript.resolved and len(transcript.observation_ids) >= 2 and len(texts) == 1:
         return "identical_readings"
+    return None
+
+
+def _reading_units(run: Run, region_id: str) -> dict | None:
+    """The label's reading units as the run stores them, or None when it has none."""
+    for entry in getattr(run, "reading_units", None) or []:
+        if entry.label == region_id:
+            return entry.model_dump(mode="json")
     return None
 
 
@@ -407,29 +448,35 @@ def _first_pass(
         "rationale": transcript.reason,
         "call": call.id if call else None,
     }
+    units = _reading_units(run, transcript.region_id)
+    if units is not None:
+        # The label's units belong to its decision: other units are another version.
+        content["units"] = units
     decision = derived_id("transcription", run.id, transcript.region_id, digest(content))
     decisions[transcript.region_id] = decision
     if kind == "human" and not reviewer:
         # The reviewer's own save writes it; later rows may still name it.
         return result
-    result.append(
-        _write(
-            "AppendTranscriptionVersionV2",
-            {
-                "id": decision,
-                "runId": run.id,
-                "literalText": transcript.text or "",
-                "spans": differences,
-                "alternatives": still_open if differences else list(transcript.alternatives),
-                "unresolved": unresolved,
-                "regionId": _region_row(run.id, transcript.region_id),
-                "decisionKind": kind,
-                "selectedObservationId": selected,
-                "firstPassObservationId": call.id if call else None,
-                "rationale": transcript.reason,
-            },
+    variables = {
+        "id": decision,
+        "runId": run.id,
+        "literalText": transcript.text or "",
+        "spans": differences,
+        "alternatives": still_open if differences else list(transcript.alternatives),
+        "unresolved": unresolved,
+        "regionId": _region_row(run.id, transcript.region_id),
+        "decisionKind": kind,
+        "selectedObservationId": selected,
+        "firstPassObservationId": call.id if call else None,
+        "rationale": transcript.reason,
+    }
+    if units is None:
+        result.append(_write("AppendTranscriptionVersionV2", variables))
+    else:
+        # V2 with the units (section 7); a label without units keeps V2 and its rows' bytes.
+        result.append(
+            _write("AppendTranscriptionVersionV3", {**variables, "readingUnits": units})
         )
-    )
     for handoff in getattr(transcript, "handoffs", None) or []:
         if handoff.handed_text is None:
             continue
@@ -624,6 +671,7 @@ def _human_research_choices(specimen: Specimen, proofs: list[ReviewDecisionProof
 def _fields(run: Run, decisions: dict, linkable: set, candidates: dict, *, human_choices: dict | None = None) -> list[Write]:
     """A candidate per verbatim value; the settling one carries the value and evidence."""
     result = []
+    labelled = {entry.label for entry in getattr(run, "reading_units", None) or []}
     for key, value in run.fields.items():
         human_choice = (human_choices or {}).get(key)
         verbatim = getattr(value, "verbatim_by_observation", None) or {}
@@ -657,8 +705,12 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict, *, human
         candidates[key] = None
         for text, entry_source, reading in entries:
             human_entry = human_choice is not None and text is None
+            parent = decisions.get(region) if entry_source == "decided_transcript" else None
+            # A transcription with reading units changes with them alone (_first_pass), so its id
+            # joins its candidates' ids; a label without units keeps the candidate ids it had.
+            unit_parent = (parent,) if parent is not None and region in labelled else ()
             candidate = (derived_id("candidate", run.id, key, "human", human_choice["selection_id"], content)
-                         if human_entry else derived_id("candidate", run.id, key, reading or "-", content))
+                         if human_entry else derived_id("candidate", run.id, key, reading or "-", content, *unit_parent))
             settles = human_entry if human_choice is not None else not verbatim or (confirmed is not None and reading == confirmed)
             if settles:
                 candidates[key] = candidate
@@ -676,9 +728,7 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict, *, human
                         "authorityId": value.authority_id if settles else None,
                         "derivation": _derivation(value, relations) if settles else "literal",
                         "inputSource": entry_source,
-                        "sourceTranscriptionId": decisions.get(region)
-                        if entry_source == "decided_transcript"
-                        else None,
+                        "sourceTranscriptionId": parent,
                         "sourceObservationId": reading,
                     },
                 )

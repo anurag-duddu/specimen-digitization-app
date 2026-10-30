@@ -48,6 +48,29 @@ Future<void> press(WidgetTester tester, LogicalKeyboardKey key) async {
   await tester.pumpAndSettle();
 }
 
+/// Uses the same named action in an edge button, responsive decision menu,
+/// or the compact record's command menu.
+Future<void> pressDecisionNavigation(WidgetTester tester, String label) async {
+  final edge = uiIconButton(label);
+  if (edge.evaluate().isNotEmpty) {
+    expect(edge.hitTestable(), findsOneWidget);
+    await tester.tap(edge);
+  } else {
+    final menu = find.byWidgetPredicate(
+      (widget) =>
+          widget is UiMenuTrigger &&
+          widget.items.any((item) => item.label == label),
+    );
+    expect(menu.hitTestable(), findsOneWidget);
+    await tester.tap(menu);
+    await tester.pumpAndSettle();
+    final item = find.text(label);
+    expect(item.hitTestable(), findsOneWidget);
+    await tester.tap(item);
+  }
+  await tester.pumpAndSettle();
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
@@ -219,11 +242,27 @@ void main() {
     // disabled with the reason on its hint and its tooltip, so the end of the
     // queue says why rather than moving nowhere (13 section 3.3, polish 3;
     // pass criterion 5.6, finding V-2).
-    final UiIconButton previous = tester.widget<UiIconButton>(
-      uiIconButton('Previous specimen'),
-    );
-    expect(previous.onPressed, isNull);
-    expect(previous.disabledReason, 'This is the first record in the queue.');
+    final previous = uiIconButton('Previous specimen');
+    if (previous.evaluate().isNotEmpty) {
+      final button = tester.widget<UiIconButton>(previous);
+      expect(button.onPressed, isNull);
+      expect(button.disabledReason, 'This is the first record in the queue.');
+    } else {
+      final overflow = uiMenuTrigger(UiDecisionBar.defaultOverflowLabel);
+      final item = tester
+          .widget<UiMenuTrigger>(overflow)
+          .items
+          .singleWhere((item) => item.label == 'Previous specimen');
+      expect(item.onSelected, isNull);
+      expect(item.disabledReason, 'This is the first record in the queue.');
+      await tester.tap(overflow);
+      await tester.pumpAndSettle();
+      expect(find.text('Previous specimen').hitTestable(), findsOneWidget);
+      await tester.tap(find.text('Previous specimen'));
+      await tester.pumpAndSettle();
+      expect(locationOf(tester), opened);
+      await press(tester, LogicalKeyboardKey.escape);
+    }
     await press(tester, LogicalKeyboardKey.keyK);
     expect(locationOf(tester), opened, reason: 'K at the head wraps nowhere');
 
@@ -232,35 +271,38 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('the decision bar moves between records without the keyboard', (
-    WidgetTester tester,
-  ) async {
-    await pumpGoldenApp(
-      tester,
-      window: keyboardWindow,
-      brightness: Brightness.light,
-      location: goldenSpecimenLocation,
-      repository: GoldenQueueRepository(goldenQueue(3)),
-    );
-    await tester.tap(uiIconButton('Next specimen'));
-    await tester.pumpAndSettle();
-    expect(locationOf(tester), endsWith('/fixture-002'));
-    expect(find.text('2 of 3'), findsOneWidget);
+  for (final window in [
+    keyboardWindow,
+    const Size(1440, 900),
+    const Size(390, 844),
+  ]) {
+    testWidgets('record navigation moves between records at $window', (
+      WidgetTester tester,
+    ) async {
+      await pumpGoldenApp(
+        tester,
+        window: window,
+        brightness: Brightness.light,
+        location: goldenSpecimenLocation,
+        repository: GoldenQueueRepository(goldenQueue(3)),
+      );
+      // The narrow rail leaves room for direct decision navigation at both
+      // desktop widths. The phone keeps the same commands in its named menu.
+      expect(
+        uiIconButton('Next specimen'),
+        window.width >= keyboardWindow.width ? findsOneWidget : findsNothing,
+      );
+      await pressDecisionNavigation(tester, 'Next specimen');
+      expect(locationOf(tester), endsWith('/fixture-002'));
+      expect(find.text('2 of 3'), findsOneWidget);
 
-    final Finder previous = uiIconButton('Previous specimen');
-    if (previous.evaluate().isNotEmpty) {
-      await tester.tap(previous);
-    } else {
-      // The specimen sidebar can reduce the detail pane after navigation.
-      // The same action remains in the responsive decision bar's menu.
-      await tester.tap(uiMenuTrigger(UiDecisionBar.defaultOverflowLabel));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Previous specimen'));
-    }
-    await tester.pumpAndSettle();
-    expect(locationOf(tester), endsWith('/fixture-001'));
-    await tester.pumpWidget(const SizedBox());
-  });
+      await pressDecisionNavigation(tester, 'Previous specimen');
+      expect(locationOf(tester), endsWith('/fixture-001'));
+      expect(find.text('1 of 3'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
 
   testWidgets('the shortcut list is one key away and names every binding', (
     WidgetTester tester,

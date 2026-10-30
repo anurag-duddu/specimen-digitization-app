@@ -6,7 +6,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/theme.dart';
 import '../actions/button_row.dart';
 import '../../foundation/type.dart';
-import '../../primitives/label.dart';
+import 'modal_content_layout.dart';
 import '../../primitives/modal_routes.dart';
 import '../actions/button.dart';
 
@@ -179,7 +179,7 @@ class UiSheet extends StatelessWidget {
   /// True to draw the handle at the top of the sheet.
   final bool showDragHandle;
 
-  /// True to scroll [child] inside the height the chrome leaves it.
+  /// True to scroll the wrapping title and [child] together inside the pane.
   ///
   /// The default, and what a body of stacked controls needs: the sheet is
   /// bounded by the window, so a body taller than the window scrolls rather
@@ -242,32 +242,24 @@ class UiSheet extends StatelessWidget {
         Flexible(
           child: Padding(
             padding: paint.padding,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                Semantics(
-                  header: true,
-                  child: UiLabel(
-                    title,
-                    style: paint.title.copyWith(color: paint.titleColor),
-                  ),
+            child: ModalContentLayout(
+              heading: Semantics(
+                header: true,
+                child: Text(
+                  title,
+                  style: paint.title.copyWith(color: paint.titleColor),
+                  strutStyle: UiType.strutOf(paint.title),
                 ),
-                SizedBox(height: paint.gap),
-                Flexible(
-                  child: scrollBody
-                      ? SingleChildScrollView(child: child)
-                      : child,
-                ),
-                if (primaryAction != null ||
-                    secondaryAction != null) ...<Widget>[
-                  SizedBox(height: paint.gap),
-                  UiModalActions(
-                    primary: primaryAction,
-                    secondary: secondaryAction,
-                  ),
-                ],
-              ],
+              ),
+              body: child,
+              gap: paint.gap,
+              scrollBody: scrollBody,
+              actions: primaryAction != null || secondaryAction != null
+                  ? UiModalActions(
+                      primary: primaryAction,
+                      secondary: secondaryAction,
+                    )
+                  : null,
             ),
           ),
         ),

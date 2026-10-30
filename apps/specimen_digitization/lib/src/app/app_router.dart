@@ -9,6 +9,7 @@ library;
 
 import 'dart:async';
 
+import 'package:file_selector/file_selector.dart' show XFile;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/cupertino.dart' show CupertinoRouteTransitionMixin;
 import 'package:flutter/widgets.dart';
@@ -17,6 +18,7 @@ import 'package:specimen_ui/gallery.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../auth.dart';
+import '../capture/capture_camera.dart' show CaptureCameraFactory;
 import '../costs.dart';
 import '../email_verification.dart';
 import '../intake.dart';
@@ -43,6 +45,8 @@ import 'setup_screen.dart';
 ///
 /// [controller] is null until the build has both a session and a collection
 /// API; the redirect then keeps every collection location out of reach.
+/// Embedders may supply intake device hooks and a bulk feature override; omitted
+/// values preserve the production picker, camera and build-time feature gate.
 GoRouter buildAppRouter({
   required AppSessionNotifier sessionNotifier,
   WorkspaceController? controller,
@@ -51,6 +55,10 @@ GoRouter buildAppRouter({
   Future<void> Function()? reloadApp,
   bool synthetic = false,
   String initialLocation = AppRoutes.setup,
+  bool overridePlatformDefaultLocation = false,
+  bool? bulkIntakeEnabled,
+  Future<List<XFile>> Function()? intakePickFiles,
+  CaptureCameraFactory? intakeCameraFactory,
   List<NavigatorObserver> observers = const <NavigatorObserver>[],
 }) {
   final SessionAccess? session = sessionNotifier.session;
@@ -195,8 +203,14 @@ GoRouter buildAppRouter({
       path:
           '${AppRoutes.collectionPrefix}/'
           ':${AppRoutes.collectionParameter}/intake',
-      pageBuilder: (context, state) =>
-          _WorkspacePage<void>(key: state.pageKey, child: const _IntakeRoute()),
+      pageBuilder: (context, state) => _WorkspacePage<void>(
+        key: state.pageKey,
+        child: _IntakeRoute(
+          bulkEnabled: bulkIntakeEnabled,
+          pickFiles: intakePickFiles,
+          cameraFactory: intakeCameraFactory,
+        ),
+      ),
       routes: <RouteBase>[
         GoRoute(
           path: 'sources',
@@ -362,6 +376,7 @@ GoRouter buildAppRouter({
   return _WorkspaceRouter(
     config: config,
     initialLocation: initialLocation,
+    overridePlatformDefaultLocation: overridePlatformDefaultLocation,
     observers: observers,
     refreshListenable: Listenable.merge([
       sessionNotifier,
@@ -412,6 +427,7 @@ class _WorkspaceRouter extends GoRouter {
   _WorkspaceRouter({
     required _WorkspaceRoutingConfig config,
     required String initialLocation,
+    required super.overridePlatformDefaultLocation,
     required List<NavigatorObserver> observers,
     required Listenable refreshListenable,
   }) : _ownedConfig = config,
@@ -829,8 +845,17 @@ class _LeaveVerificationState extends State<_LeaveVerification> {
 
 /// Intake, wired to the open collection.
 class _IntakeRoute extends StatelessWidget {
-  const _IntakeRoute({this.initialProvider, this.initialSourceId});
+  const _IntakeRoute({
+    this.initialProvider,
+    this.initialSourceId,
+    this.bulkEnabled,
+    this.pickFiles,
+    this.cameraFactory,
+  });
   final String? initialProvider, initialSourceId;
+  final bool? bulkEnabled;
+  final Future<List<XFile>> Function()? pickFiles;
+  final CaptureCameraFactory? cameraFactory;
 
   @override
   Widget build(BuildContext context) {
@@ -843,15 +868,18 @@ class _IntakeRoute extends StatelessWidget {
     }
     final repository = controller.repository;
     if (repository is BulkIntakeRepository &&
-        const bool.fromEnvironment(
-          'BULK_INTAKE_ENABLED',
-          defaultValue: !kReleaseMode,
-        )) {
+        (bulkEnabled ??
+            const bool.fromEnvironment(
+              'BULK_INTAKE_ENABLED',
+              defaultValue: !kReleaseMode,
+            ))) {
       return BulkIntakeScreen(
         key: ValueKey('${controller.session.userId}:${scope.key}'),
         repository: repository as BulkIntakeRepository,
         scope: scope,
         userId: controller.session.userId,
+        pickFiles: pickFiles,
+        cameraFactory: cameraFactory,
         initialProvider: initialProvider,
         initialSourceId: initialSourceId,
         onViewSpecimens: () {

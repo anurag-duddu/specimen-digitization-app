@@ -122,6 +122,10 @@ class RuntimeConfig:
             raise ValueError(
                 "Firebase app IDs must belong to configured project number"
             )
+        # SPECIMEN_FIRST_PASS_UNITS: refused unless on, off, empty or unset.
+        from .reading_units import first_pass_path
+
+        first_pass_path(env)
         origins = exact_origins(env.get("SPECIMEN_CORS_ORIGINS", "").split(","))
         try:
             port = int(env.get("PORT", "8080"))

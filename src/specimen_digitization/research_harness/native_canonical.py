@@ -48,7 +48,7 @@ def fail(code: str = "native_canonical_binding_unavailable"):
 
 
 
-CANONICAL_PROJECTOR_SHA256 = "82edfd98e7d477863aecf720e2aa13c1d911a503bec96752c5bd3f52b931db71"  # pragma: allowlist secret (projector source digest)
+CANONICAL_PROJECTOR_SHA256 = "cc3599bd1b47bf281be30700966c806003a02b59add5c05019d0eba4592f7361"  # pragma: allowlist secret (projector source digest)
 ACCESS_DENIED = "native_canonical_access_denied"
 
 
@@ -67,9 +67,9 @@ class CanonicalProjectionServicesV1:
             fail("canonical_projector_source_not_qualified")
         from sys import modules
         expected = {
-            "specimen_digitization.application.domain":"688b93cd47a8a7df577734c67bbb17f434dc492fc29e269c873d46901aa5c67f",
-            "specimen_digitization.application.storage":"6d4d1368c93eddf0509f359e84dae3ce0391945f8e4088224da5a925455a9ca4",  # pragma: allowlist secret (storage source digest)
-            "specimen_digitization.application.active_graph":"9f22032c3443a564f034d92fc41eda616bbee6f36de6002653bd14aacc892d47",
+            "specimen_digitization.application.domain":"2bc916ce81d0366d5594115a9af0a056a5f80ed85b8a109ed871a20832e89d2e",  # pragma: allowlist secret (domain source digest)
+            "specimen_digitization.application.storage":"64d919f9d10ac4912b8902e19abab2d5e90978da32d6356c28f0e4c1130e6315",  # pragma: allowlist secret (storage source digest)
+            "specimen_digitization.application.active_graph":"2e1b3914fb47014210e8f7abfa0c6dabce4a895b98b30104eb21f62b19504898",  # pragma: allowlist secret (active graph source digest)
         }
         for name,source_sha in expected.items():
             loaded=modules.get(name)

@@ -1066,6 +1066,18 @@ script refuses to run outside GitHub Actions.
    tester/original-worker memberships. This optional artifact is checked
    separately: conflicting existing rows stop the release without overwriting
    them. It creates no generic signup/collection API, content or pipeline work.
+   When the optional `OWNER_COLLECTION_ACCESS_B64` configuration is present,
+   the owner's collection-access correction verifies its exact identities
+   and scopes against both existing artifacts, their shared Insects scope, the
+   existing administrator and tester memberships, and their distinct
+   identities. It inserts only the tester's missing Insects membership with
+   the same administrator and sensitive-data access as the original owner.
+   It also marks the artifact's existing test collection as `testing`, so the
+   selector can distinguish it from the museum hierarchy. Conflicting rows
+   are refused; existing test memberships, content and private drafts are
+   retained. The write checks its prerequisites transactionally and verifies
+   the resulting rows. This is the owner's bounded two-identity correction,
+   not a general membership-inheritance or account-linking mechanism.
 9. **Done.** The last line is `data release complete for <sha>`.
 
 The workflow then publishes the pinned georeferencing datasets and runs
@@ -1157,8 +1169,8 @@ prints the completion line and succeeds.
 
 - `DATA_BOOTSTRAP_ARTIFACT_B64`, a secret of the `data-production`
   environment: the prepared organization and collection rows, base64-encoded.
-  Together with the optional intake artifact below, these are the only GitHub
-  secrets the data release reads. When this secret is
+  Together with the optional intake and owner-access inputs below, these are
+  the only GitHub secrets the data release reads. When this secret is
   unset and no organization exists, the step fails and says so. When the
   secret is unset and an organization exists, the step is skipped without
   comparing anything.
@@ -1173,8 +1185,23 @@ prints the completion line and succeeds.
   nothing. This provisions no content and starts no pipeline work. Remove the
   optional artifact after verified provisioning if later permission changes
   should no longer be compared with its initial values.
+- Optional `OWNER_COLLECTION_ACCESS_B64`, also in `data-production`: explicit
+  base64 JSON containing exactly `organization_id`, `insects_collection_id`,
+  `testing_collection_id`, `owner_uid` and `second_uid`, identifying the
+  original administrator, their second sign-in identity, the organization,
+  Insects and the existing test collection.
+  It must match both provisioning artifacts and the current memberships.
+  Without this input, no owner-access correction runs; an intake-test artifact
+  alone never authorizes a grant on Insects. No private identifiers are
+  committed or printed. This configuration grants no other membership and
+  does not link Firebase accounts or share personal OAuth credentials.
+  After the protected release and exact readback confirm the correction,
+  remove only this optional configuration and verify its absence. Keeping
+  the one-time intent indefinitely could recreate a later-deleted membership.
+  Retain it until readback succeeds so an incomplete release can be retried.
 - The Secret Manager secret `specimen-worker-actor-uid`, version 1: the
-  worker's user ID, read during the bootstrap step when either artifact is set.
+  worker's user ID, read during the bootstrap step when a provisioning or
+  owner-access input needs it.
 - Everything else the release reads is committed in this repository:
   `dataconnect/`, `storage.rules`, `firebase.auth.json`, the collection tree under
   `infra/reference/` and the release scripts.
@@ -1328,7 +1355,7 @@ admin rights on the repository. It is idempotent: each step reads the live
 state first and changes only what is missing, so running it again is safe. It
 prints every command before running it, asks no questions and needs no
 terminal. The owner runs it; an agent runs it only when the owner has
-authorized that run first-hand. The setup part does eight things.
+authorized that run first-hand. The setup part does nine things.
 
 1. It removes four expired, time-limited role bindings left on the data
    release identity, each matched by its exact condition.
@@ -1360,16 +1387,30 @@ authorized that run first-hand. The setup part does eight things.
    identity on the `specimen-runtime` repository, tags that can move, and the
    committed cleanup policy in dry-run mode. Each part waits for the one
    before it to hold.
-5. It widens the condition of the three release providers to accept
+5. It sets up the cost meter's shared-cost split
+   (`docs/execution/golive/COST_METER.md`, "Shared Google costs"): the custom
+   role `specimenCostMeterRead`, holding only `monitoring.timeSeries.list`,
+   bound on the project to `specimen-worker-runtime`, so the worker can list
+   the project's Cloud Monitoring time series and do nothing else in
+   Monitoring; and the
+   user-defined counter log-based metric
+   `specimen_api_requests_by_organization` over `specimen-api`'s request logs,
+   labelled with the organization id in the request path. The same step alone
+   is `bash scripts/ops/owner_setup.sh --cost-meter-only` (add `--dry-run` to
+   inspect first); it needs `gcloud` signed in as a project owner, not `gh`,
+   and starts no release. Until it has run, the worker's allocation logs
+   `cost_allocation_monitoring_unavailable` once per execution and writes
+   nothing.
+6. It widens the condition of the three release providers to accept
    `workflow_dispatch` as well as `push`, and changes nothing else in it. The
    Hosting provider is not touched.
-6. It sets the repository variables `SPECIMEN_API_BASE_URL` and
+7. It sets the repository variables `SPECIMEN_API_BASE_URL` and
    `SPECIMEN_RECAPTCHA_SITE_KEY`, described next.
-7. It sets the `DATA_BOOTSTRAP_ARTIFACT_B64` secret in `data-production` from
+8. It sets the `DATA_BOOTSTRAP_ARTIFACT_B64` secret in `data-production` from
    the owner's private artifact file when that file is on the machine. The
    value goes through a pipe and is never printed. GitHub cannot show a
    secret, so this one step repeats on every run.
-8. It prints, and does not remove, what the retired process left behind: the
+9. It prints, and does not remove, what the retired process left behind: the
    `RELEASE_*` variables and the unused secrets of `data-production`, the
    `data-initialization-production` environment with its provider and service
    account, and the roles nothing uses any more.

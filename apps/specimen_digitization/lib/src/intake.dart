@@ -22,6 +22,7 @@ import 'app/shell.dart';
 import 'capture/capture_camera.dart';
 import 'capture/capture_screen.dart';
 import 'capture_quality.dart';
+import 'intake_compute.dart';
 import 'intake_image_dimensions.dart';
 import 'models.dart';
 import 'screens/intake/capture_card.dart';
@@ -42,6 +43,9 @@ export 'screens/intake/manifest_entry.dart' show ManifestEntry;
 /// Builds the production camera. A factory, not a constructor reference,
 /// because the interface hands back a future.
 Future<CaptureCamera> _platformCamera() async => PlatformCaptureCamera();
+
+/// SHA-256 digest for intake bytes. Top-level so [intakeRunOffUi] can ship it.
+String intakeSha256Digest(Uint8List bytes) => sha256.convert(bytes).toString();
 
 /// The largest file this client will read, in bytes.
 const int intakeMaximumBytes = 25000000;
@@ -645,6 +649,9 @@ class _IntakeScreenState extends State<IntakeScreen> {
     bool owns() => mounted && identical(session, _session);
     int admitted = 0;
     for (final XFile file in files) {
+      // Drop work once Intake is gone or the session moved on. A gated
+      // follow-up file must not keep hashing or decoding after the operator
+      // leaves the screen.
       if (!owns()) return admitted;
       try {
         final int size = await file.length();
@@ -661,7 +668,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
         }
         final Uint8List bytes = await file.readAsBytes();
         if (!owns()) return admitted;
-        final String digest = sha256.convert(bytes).toString();
+        final String digest = await intakeRunOffUi(
+          () => intakeSha256Digest(bytes),
+        );
+        if (!owns()) return admitted;
         final String extension = file.name.split('.').last.toLowerCase();
         final String mime = switch (extension) {
           'jpg' || 'jpeg' => 'image/jpeg',
@@ -715,10 +725,14 @@ class _IntakeScreenState extends State<IntakeScreen> {
                   format: ui.ImageByteFormat.rawRgba,
                 );
                 if (pixels != null) {
-                  quality = CaptureQuality.measure(
+                  // Decode stays on the UI isolate; measure RGBA off-thread.
+                  final Uint8List rgba = Uint8List.fromList(
                     pixels.buffer.asUint8List(),
-                    frame.image.width,
-                    frame.image.height,
+                  );
+                  final int width = frame.image.width;
+                  final int height = frame.image.height;
+                  quality = await intakeRunOffUi(
+                    () => measureCaptureQuality(rgba, width, height),
                   );
                 }
               } finally {
@@ -916,32 +930,14 @@ class _IntakeScreenState extends State<IntakeScreen> {
     onDismiss: () => setState(() => _error = null),
   );
 
-  Widget _batchHeader(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: <Widget>[
-      Focus(
-        focusNode: _headingFocus,
-        includeSemantics: false,
-        child: Semantics(
-          header: true,
-          child: Text(
-            intakeTitle,
-            style: context.ui.type.headline.copyWith(
-              color: context.ui.color.ink,
-            ),
-          ),
-        ),
-      ),
-      if (_entries.isEmpty) ...[
-        SizedBox(height: context.ui.space.s2),
-        Text(
-          intakePurpose,
-          style: context.ui.type.body.copyWith(
-            color: context.ui.color.inkSecondary,
-          ),
-        ),
-      ],
-    ],
+  Widget _batchHeader(BuildContext context) => Focus(
+    focusNode: _headingFocus,
+    includeSemantics: false,
+    child: UiSectionHeader(
+      title: intakeTitle,
+      role: UiSectionHeaderRole.page,
+      supporting: _entries.isEmpty ? intakePurpose : null,
+    ),
   );
 
   Widget _sensitivityControl(BuildContext context) => Align(
@@ -1160,9 +1156,9 @@ class _IntakeScreenState extends State<IntakeScreen> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               SizedBox(height: layout.sectionGap),
-                              Semantics(
-                                header: true,
-                                child: Text('Photos', style: ui.type.title),
+                              const UiSectionHeader(
+                                title: 'Photos',
+                                role: UiSectionHeaderRole.card,
                               ),
                               SizedBox(height: ui.space.s2),
                               Align(

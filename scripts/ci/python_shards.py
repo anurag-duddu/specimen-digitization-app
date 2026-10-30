@@ -466,10 +466,24 @@ def main():
     if args.command == "run":
         if not 0 <= args.index < args.count:
             parser.error("shard index must be within count")
-        # Match the pytest console entry point's import path and argv. Keep
-        # ordinary default discovery/prepend behavior, including scripts/.
+        # Match the pytest console entry point's import path and argv. Pass
+        # `tests` and the whole `scripts` tree as explicit roots so pyproject
+        # testpaths can stay `["tests"]` only while shards keep exactly the
+        # coverage bare discovery had (naming scripts/ci, scripts/release and
+        # scripts/qa alone silently dropped scripts/lab, scripts/ops and
+        # scripts/research: 345 tests). Fixture tmp trees that only drop
+        # test_*.py at cwd must pass `.` — an empty path list would still
+        # honor testpaths=["tests"] and miss fixtures.
         sys.path[0] = str(Path(sys.executable).parent)
-        sys.argv = [str(Path(sys.executable).parent / "pytest"), "-q", "--durations=25"]
+        collection = [
+            path for path in ("tests", "scripts") if Path(path).is_dir()
+        ]
+        sys.argv = [
+            str(Path(sys.executable).parent / "pytest"),
+            "-q",
+            "--durations=25",
+            *(collection or ["."]),
+        ]
         if args.collect_only:
             sys.argv.append("--collect-only")
         import pytest

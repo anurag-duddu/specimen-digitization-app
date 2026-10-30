@@ -40,7 +40,7 @@ class UiStatusTriple {
   );
 }
 
-/// The status and evidence triples, carried from v1 unchanged in value.
+/// The status and evidence meanings with a deliberately small colour family.
 @immutable
 class UiStatusColors {
   /// Binds every status token.
@@ -72,25 +72,25 @@ class UiStatusColors {
   /// Green. A human affirmed it.
   final UiStatusTriple cleared;
 
-  /// Ochre. Attention, not failure.
+  /// Amber. Attention, not failure.
   final UiStatusTriple needsReview;
 
-  /// Clay. Shelved, not judged.
+  /// Neutral. Shelved, not judged.
   final UiStatusTriple deferred;
 
-  /// Steel. Never a final queue; always paired with a progress affordance.
+  /// Iris. Never a final queue; always paired with a progress affordance.
   final UiStatusTriple processing;
 
-  /// Oxide. Operational, not evidentiary.
+  /// Error red. Operational, not evidentiary.
   final UiStatusTriple blocked;
 
-  /// Slate. A model reading is an observation, not a decision.
+  /// Neutral. A model reading is an observation, not a decision.
   final UiStatusTriple model;
 
   /// Green. The only thing in this product allowed to look affirmative.
   final UiStatusTriple human;
 
-  /// Teal. An external reference file.
+  /// Iris. An external reference file, identified by its label and icon.
   final UiStatusTriple authority;
 
   /// Marker `+` plus a 3 dp leading bar.
@@ -398,7 +398,7 @@ class UiColor {
   /// Behind modal glass.
   final Color scrim;
 
-  /// The mark. Never a fill, never a status, never text.
+  /// The exact Iris brand seed. Use the accessible brand roles for text.
   final Color accent;
 
   /// Anything drawn on [accent].
@@ -425,9 +425,9 @@ class UiColor {
     disabledContent: GroundPalette.disabledContentLight,
     disabledOutline: GroundPalette.disabledOutlineLight,
     disabledFill: Color.fromRGBO(
+      0x0E,
+      0x0E,
       0x11,
-      0x12,
-      0x14,
       GroundPalette.disabledFillOpacityLight,
     ),
     scrim: Color.fromRGBO(0, 0, 0, GroundPalette.scrimOpacityLight),
@@ -451,9 +451,9 @@ class UiColor {
     disabledContent: GroundPalette.disabledContentDark,
     disabledOutline: GroundPalette.disabledOutlineDark,
     disabledFill: Color.fromRGBO(
-      0xF2,
-      0xF2,
-      0xEF,
+      0xFA,
+      0xF9,
+      0xF6,
       GroundPalette.disabledFillOpacityDark,
     ),
     scrim: Color.fromRGBO(0, 0, 0, GroundPalette.scrimOpacityDark),

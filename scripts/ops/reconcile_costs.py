@@ -39,8 +39,10 @@ from specimen_digitization.application import cost_reconciliation as cr  # noqa:
 
 PAGE = 1000
 DATA_CONNECT = "specimen-digitization-service"
+# usage is read for one number, a field research call's model_calls: the requests it made, which
+# the check compares with the requests Hugging Face billed.
 FIELDS = ("organizationId collectionId id source specimenId runId step stage attempt kind ordinal provider resource "
-          "reservedMicros costMicros listCostMicros costBasis outcome failureCode priceListVersion priceListAsOf "
+          "usage reservedMicros costMicros listCostMicros costBasis outcome failureCode priceListVersion priceListAsOf "
           "occurredAt month allocationMethodId updatedAt")
 OFFSET_MARK = "__OFFSET__"
 # Runs in the browser console of the signed-in usage page. It reads the page's own data-props and copies one
@@ -207,6 +209,10 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--print-queries", action="store_true", help="print the read-only queries and exit")
     p.add_argument("--bq-table", default="BILLING_PROJECT.BILLING_DATASET.gcp_billing_export_v1_BILLING_ACCOUNT_ID",
                    help="the billing export table, for the printed SQL")
+    p.add_argument("--update-bills", metavar="FILE",
+                   help="put the month's Hugging Face days into this provider_bills.json (commit it by pull request), "
+                        "then exit; needs --huggingface")
+    p.add_argument("--bills-as-of", metavar="YYYY-MM-DD", help="the day the bill was read, for --update-bills")
     return p
 
 
@@ -230,6 +236,19 @@ def main(argv=None) -> int:
         p.error("--month must be YYYY-MM")
     if args.print_queries:
         print(queries(args.month, ops.project(), ops.region(), args.bq_table))
+        return 0
+    if args.update_bills:
+        if not args.huggingface or not args.bills_as_of:
+            p.error("--update-bills needs --huggingface and --bills-as-of")
+        try:
+            committed = load_json(args.update_bills)
+            updated = cr.bills_with_month(committed, load_json(args.huggingface), args.month, args.bills_as_of)
+        except (cr.ReconciliationInputError, UnreadableInput, KeyError, ValueError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 2
+        Path(args.update_bills).write_text(json.dumps(updated, indent=2) + "\n", encoding="utf-8")
+        days = [day for day in updated["huggingface"]["days"] if day.startswith(args.month + "-")]
+        print(f"{args.month}: {len(days)} days in {args.update_bills}, version {updated['version']}.")
         return 0
     if not args.meter_rows:
         p.error("--meter-rows is required (see --print-queries)")

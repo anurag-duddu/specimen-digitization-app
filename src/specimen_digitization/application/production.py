@@ -50,8 +50,11 @@ from .reliability import ReadingStopped, run_agent_bounded, stopped_usage
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
+from .upload_documents import bind_sqlite_upload_lookups
 from .worker_deadline import deadline_call, guarded
 from ..process_logging import log_code
+
+bind_sqlite_upload_lookups()
 
 actor_uid = contextvars.ContextVar("verified_actor_uid", default=None)
 
@@ -165,8 +168,11 @@ class SqlConnectRepository:
         emulator_host=None,
         graph_blobs=None,
     ):
+        from .graph_review_summary import GraphReviewCache
+
         self.project = project
         self.graph_blobs = graph_blobs
+        self.review_graph_cache = GraphReviewCache()
         self._projected: OrderedDict[str, set[str]] = OrderedDict()
         # Specimen id -> {cost row id: digest of the row as last sent}.
         self._costed: OrderedDict[str, dict[str, str]] = OrderedDict()
@@ -289,6 +295,38 @@ class SqlConnectRepository:
             if m["active"] and str(UUID(m["organizationId"])) in orgs
         ]
 
+    def collection_hierarchy(self, organization_id, uid):
+        """Organization navigation names; membership checks still authorize every action."""
+        result = self.execute("ListCollectionHierarchy", {"organizationId": organization_id, "actorUid": uid})
+        rows = result.get("collections")
+        try:
+            if not isinstance(rows, list) or len(rows) > 1000:
+                raise ValueError
+            nodes = {}
+            for row in rows:
+                ident = str(UUID(row['id']))
+                if (ident in nodes or not isinstance(row['name'], str) or not row['name'].strip()
+                        or row.get('kind') not in {None, 'museum', 'testing'}):
+                    raise ValueError
+                nodes[ident] = {'collection_id': ident, 'display_name': row['name'],
+                                'parent_collection_id': str(UUID(row['parentId'])) if row.get('parentId') else None,
+                                'kind': row.get('kind') or 'museum'}
+
+            def path(node):
+                names, seen = [], set()
+                while node:
+                    if node['collection_id'] in seen:
+                        raise ValueError
+                    seen.add(node['collection_id'])
+                    names.append((node['display_name'].casefold(), node['collection_id']))
+                    parent = node['parent_collection_id']
+                    node = nodes[parent] if parent else None
+                return tuple(reversed(names))
+
+            return sorted(nodes.values(), key=path)
+        except (ValueError, KeyError, TypeError, AttributeError):
+            raise OperationalBlock('collection_hierarchy_invalid') from None
+
     def get(self, scope, specimen_id):
         # GetSpecimen takes `$id: UUID!`. Any other id names no specimen: it is
         # Missing (404), not a refused query read as a conflict (409).
@@ -331,6 +369,8 @@ class SqlConnectRepository:
         after_id="",
         limit=50,
         include_sensitive=False,
+        *,
+        hydrate_review=False,
     ):
         from .search import sql_item
 
@@ -365,7 +405,10 @@ class SqlConnectRepository:
             {mapping[key]: value for key, value in filters.model_dump().items()}
         )
         rows = self.execute("SearchSpecimens", variables).get("items", [])
-        return [sql_item(row, scope) for row in rows]
+        items = [sql_item(row, scope) for row in rows]
+        if hydrate_review:
+            self.review_graph_cache.hydrate(items, [row.get("activeGraph") for row in rows], self.graph_blobs)
+        return items
 
     def _snapshot(self, row):
         payload = row["snapshot"]
@@ -505,13 +548,11 @@ class SqlConnectRepository:
         )
 
     def list(self, scope):
+        # Memberships once per call. ListSpecimenPage is metadata-only (no snapshot
+        # payload), so each row still needs get(); a payload-bearing specimen list
+        # would be a data-release follow-up.
         results, after, cutoff = [], "", now()
-        sensitive = any(
-            m["organization_id"] == scope.organization_id
-            and m["collection_id"] == scope.collection_id
-            and m["can_view_sensitive"]
-            for m in self.memberships(actor_uid.get())
-        )
+        sensitive = self._can_view_sensitive(scope)
         while True:
             rows = self.execute(
                 "ListSpecimenPage",
@@ -824,6 +865,65 @@ class SqlConnectRepository:
             raise OperationalBlock("cost_meter_unavailable")
         return {"collections": data["collections"], "groups": totals["groups"]}
 
+    def cost_allocation_inputs(self, scope, day_start, day_end, month_start, gap_seconds) -> list:
+        """Every collection's measures for one billing day (CostAllocationInputsV1).
+
+        Ids and numbers only, for the whole deployment: the caller must be an
+        active operator, reviewer, manager or admin of ``scope``.
+        """
+        from datetime import timezone
+
+        def stamp(moment):
+            return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        row = self.execute(
+            "CostAllocationInputsV1",
+            dict(self.variables(scope), dayStart=stamp(day_start), dayEnd=stamp(day_end),
+                 monthStart=stamp(month_start), gapSeconds=gap_seconds),
+        ).get("inputs")
+        if not isinstance(row, dict) or not isinstance(row.get("inputs_json"), str):
+            raise OperationalBlock("cost_allocation_inputs_unavailable")
+        inputs = json.loads(row["inputs_json"])
+        if inputs.get("admitted") is not True:
+            raise PermissionError("Cost allocation inputs need an active operator")
+        if not isinstance(inputs.get("collections"), list):
+            raise OperationalBlock("cost_allocation_inputs_unavailable")
+        return inputs["collections"]
+
+    def send_cost_allocations(self, scope, rows) -> int:
+        """Upsert one collection's allocation rows; raises unless every row is written."""
+        written = 0
+        for start in range(0, len(rows), COST_ROWS_PER_CALL):
+            chunk = rows[start:start + COST_ROWS_PER_CALL]
+            response = self.execute(
+                "UpsertCostAllocationsV1",
+                dict(self.variables(scope),
+                     rowsJson=json.dumps(chunk, separators=(",", ":"), allow_nan=False)),
+                mutation=True,
+            )
+            if response.get("upserted") != len(chunk):
+                raise Conflict("cost_allocations_refused")
+            written += len(chunk)
+        return written
+
+    def cost_allocation_status(self, organization_id) -> dict:
+        """The latest allocation row's time for the organization (CostAllocationStatusV1)."""
+        uid = actor_uid.get()
+        if not uid:
+            raise PermissionError("Verified actor context required")
+        row = self.execute(
+            "CostAllocationStatusV1", {"organizationId": organization_id, "actorUid": uid}
+        ).get("status")
+        if not isinstance(row, dict) or not isinstance(row.get("status_json"), str):
+            raise OperationalBlock("cost_meter_unavailable")
+        status = json.loads(row["status_json"])
+        if status.get("admitted") is not True:
+            raise PermissionError("Cost allocation status needs an administrator")
+        latest = status.get("latest_occurred_at")
+        if latest is not None and not isinstance(latest, str):
+            raise OperationalBlock("cost_meter_unavailable")
+        return {"latest_occurred_at": latest}
+
     def write_projection(self, scope, specimen, reviewer=False) -> ProjectionResult:
         """Write the normalized rows this revision supports (DATA_CONTRACT.md 11).
 
@@ -934,12 +1034,16 @@ class SqlConnectRepository:
             self._sizes[ref] = self.blob_size(ref)
         return self._sizes[ref]
 
-    def document(self, scope, kind, ident):
-        row = self.execute(
-            "GetDocumentV2", dict(self.variables(scope), kind=kind, id=ident)
-        ).get("auxiliaryDocument")
-        if not row:
-            raise Missing(ident)
+    def _can_view_sensitive(self, scope):
+        return any(
+            m["organization_id"] == scope.organization_id
+            and m["collection_id"] == scope.collection_id
+            and m["can_view_sensitive"]
+            for m in self.memberships(actor_uid.get())
+        )
+
+    @staticmethod
+    def _document_payload(row):
         if (
             type(row.get("sensitive")) is not bool
             or type(row["payload"].get("sensitive", True)) is not bool
@@ -948,32 +1052,86 @@ class SqlConnectRepository:
             raise Conflict("Document sensitivity metadata mismatch")
         return row["payload"]
 
-    def documents(self, scope, kind):
-        results, after, cutoff = [], "", now()
+    def document(self, scope, kind, ident):
+        row = self.execute(
+            "GetDocumentV2", dict(self.variables(scope), kind=kind, id=ident)
+        ).get("auxiliaryDocument")
+        if not row:
+            raise Missing(ident)
+        return self._document_payload(row)
+
+    def _document_payloads(self, scope, kind, include_sensitive=None):
+        """Page ListDocumentsV2 payloads (limit/offset). Memberships resolved once.
+
+        The query is newest first and the offset is not insert-stable: a document
+        created between two pages shifts every row down one place, so the next
+        page opens with the last row of the previous one. Rows are de-duplicated
+        by id and returned by id ascending, the order the SQLite helper and
+        ``ListDocumentPageV2`` give, so both backends list a kind the same way.
+        """
+        if include_sensitive is None:
+            include_sensitive = self._can_view_sensitive(scope)
+        rows_by_id, offset = {}, 0
         while True:
-            sensitive = any(
-                m["organization_id"] == scope.organization_id
-                and m["collection_id"] == scope.collection_id
-                and m["can_view_sensitive"]
-                for m in self.memberships(actor_uid.get())
-            )
             rows = self.execute(
-                "ListDocumentPageV2",
+                "ListDocumentsV2",
                 dict(
                     self.variables(scope),
                     kind=kind,
-                    cutoff=cutoff,
-                    afterId=after,
                     limit=100,
-                    includeSensitive=sensitive,
+                    offset=offset,
+                    includeSensitive=include_sensitive,
                 ),
             ).get("auxiliaryDocuments", [])
-            results.extend(
-                self.document(scope, kind, str(UUID(row["id"]))) for row in rows
-            )
+            for row in rows:
+                rows_by_id.setdefault(str(UUID(row["id"])), row)
             if len(rows) < 100:
-                return results
-            after = str(UUID(rows[-1]["id"]))
+                return [
+                    self._document_payload(rows_by_id[ident])
+                    for ident in sorted(rows_by_id)
+                ]
+            offset += len(rows)
+
+    def documents(self, scope, kind):
+        return self._document_payloads(scope, kind)
+
+    def uploads_for_batch(self, scope, batch_id, include_sensitive=False):
+        # ListDocumentsV2 has no batch_id filter yet; a filtered GQL query is a
+        # data-release follow-up. Page payloads and filter in process.
+        return [
+            payload
+            for payload in self._document_payloads(
+                scope, "upload", include_sensitive=include_sensitive
+            )
+            if payload.get("batch_id") == batch_id
+        ]
+
+    def upload_by_idempotency(self, scope, batch_id, idempotency_key):
+        # Early-stop on match. batch_id/idempotency GQL filters are a
+        # data-release follow-up.
+        include_sensitive = self._can_view_sensitive(scope)
+        offset = 0
+        while True:
+            rows = self.execute(
+                "ListDocumentsV2",
+                dict(
+                    self.variables(scope),
+                    kind="upload",
+                    limit=100,
+                    offset=offset,
+                    includeSensitive=include_sensitive,
+                ),
+            ).get("auxiliaryDocuments", [])
+            for row in rows:
+                payload = self._document_payload(row)
+                if (
+                    payload.get("batch_id") == batch_id
+                    and payload.get("idempotency_key") == idempotency_key
+                ):
+                    return payload
+            if len(rows) < 100:
+                return None
+            offset += len(rows)
 
     def put_document(self, scope, kind, ident, payload, expected):
         payload = dict(payload, revision=expected + 1)
@@ -1124,6 +1282,61 @@ class GcsBlobs:
 
         return self.get_bounded(ref, ORIGINAL_BYTES)
 
+    def get_bounded_until(self, ref, max_bytes, deadline):
+        """Deadline-aware queue read, separate from supervised worker I/O.
+
+        read1 performs one underlying read, rather than waiting to fill a large
+        buffer across an arbitrarily slow stream. The socket inactivity timeout
+        is at most one second; the absolute deadline is checked between reads.
+        All responses are closed before this call returns or raises.
+        """
+        from urllib.parse import quote
+        from .blob_limits import read_limited, verify_digest, BlobTooLarge
+
+        if not isinstance(ref, str) or not re.fullmatch(r"[0-9a-f]{64}:[1-9][0-9]*", ref):
+            raise Missing("Invalid object reference")
+        checksum, generation = ref.split(":")
+
+        def remaining():
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise TimeoutError("Graph count read expired")
+            return left
+
+        left = remaining()
+        timeout = min(1.0, left)
+        url = ("https://storage.googleapis.com/storage/v1/b/"
+            + quote(self.bucket.name, safe="") + "/o/"
+            + quote("application/sha256/" + checksum, safe=""))
+        response = self.bucket.client._http.get(
+            url, params={"alt": "media", "generation": generation}, stream=True,
+            headers={"Accept-Encoding": "identity"}, allow_redirects=False,
+            timeout=(timeout, timeout), max_allowed_time=left,
+        )
+        with response:
+            remaining()
+            if response.status_code == 404:
+                raise Missing("Object generation not found")
+            if response.status_code != 200:
+                raise OperationalBlock("object_storage_unavailable")
+            declared = response.headers.get("Content-Length")
+            if declared is not None:
+                declared = int(declared)
+                if declared < 0:
+                    raise ValueError("Invalid object length")
+                if declared > max_bytes:
+                    raise BlobTooLarge("Evidence exceeds the configured byte limit")
+
+            def read(count):
+                remaining()
+                chunk = response.raw.read1(count, decode_content=False)
+                remaining()
+                return chunk
+
+            data = read_limited(read, max_bytes)
+        remaining()
+        return verify_digest(data, checksum)
+
     @guarded
     def get_bounded(self, ref, max_bytes):
         from urllib.parse import quote
@@ -1202,9 +1415,12 @@ class ProductionAdapters:
             collection_name="Insects",
             schema_version=run.profile.schema_version,
         )
+        # FIRST_PASS_UNITS is pinned on a units-path run only.
+        units = getattr(run, "first_pass_path", "old") == "units"
         prompts = {
             name.value: resolve_prompt(name, inputs).model_dump(mode="json")
             for name in PromptName
+            if units or name is not PromptName.FIRST_PASS_UNITS
         }
         # A reader is pinned from the reader routes only (the initial pair and
         # the NVIDIA option's); a stage route named as a reader raises.
@@ -1273,6 +1489,17 @@ class ProductionAdapters:
     def first_pass(self, specimen, region, readings):
         from .model_runtime import invoke_model
 
+        return invoke_model(
+            self, specimen, "first_pass", region=region, readings=readings
+        )
+
+    def first_pass_units(self, specimen, region, readings):
+        """The units path's first pass in the model child; returns (decision, units). Refused
+        on an old-path run."""
+        from .model_runtime import invoke_model
+
+        if specimen.run.first_pass_path != "units":
+            raise OperationalBlock("first_pass_contract_invalid")
         return invoke_model(
             self, specimen, "first_pass", region=region, readings=readings
         )

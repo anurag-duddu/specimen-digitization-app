@@ -1,0 +1,33 @@
+{
+  "timeSeries": [
+    {
+      "metric": {"type": "run.googleapis.com/request_count",
+                 "labels": {"response_code": "200", "response_code_class": "2xx", "route": ""}},
+      "resource": {"type": "cloud_run_revision",
+                   "labels": {"project_id": "specimen-digitization", "service_name": "specimen-api",
+                              "revision_name": "specimen-api-00107-z4m", "location": "us-east4",
+                              "configuration_name": "specimen-api"}},
+      "metricKind": "DELTA",
+      "valueType": "INT64",
+      "points": [
+        {"interval": {"startTime": "2026-10-19T09:00:00Z", "endTime": "2026-10-19T10:00:00Z"},
+         "value": {"int64Value": "812"}}
+      ]
+    },
+    {
+      "metric": {"type": "run.googleapis.com/request_count",
+                 "labels": {"response_code": "403", "response_code_class": "4xx", "route": ""}},
+      "resource": {"type": "cloud_run_revision",
+                   "labels": {"project_id": "specimen-digitization", "service_name": "specimen-api",
+                              "revision_name": "specimen-api-00107-z4m", "location": "us-east4",
+                              "configuration_name": "specimen-api"}},
+      "metricKind": "DELTA",
+      "valueType": "INT64",
+      "points": [
+        {"interval": {"startTime": "2026-10-19T09:00:00Z", "endTime": "2026-10-19T10:00:00Z"},
+         "value": {"int64Value": "18"}}
+      ]
+    }
+  ],
+  "unit": "1"
+}

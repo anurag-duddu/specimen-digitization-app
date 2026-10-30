@@ -301,14 +301,18 @@ def d10333ff_readings(second=LABEL_3B):
         Reading("3B", "label3", "obs3b", "raw_reading", second))
 
 
-def test_a_decided_labels_other_reader_writes_its_own_text_only_as_evidence():
-    """G19: d10333ff's label 1 decided on 1A; 1B's "BONITELL" is evidence only."""
+def test_a_non_preferred_readers_text_nothing_backs_is_only_a_possibility():
+    """d10333ff's label 1: its first pass preferred 1A; 1B's "BONITELL" is a
+    possibility nothing on the labels backs. Another label's reading that
+    writes it would back it (the owner, 2026-10-25)."""
     readings = d10333ff_readings()
-    assert agreement.evidence_only("BONITELL", readings[1], readings)
-    assert not agreement.evidence_only("ILLINOIS", readings[0], readings)
-    # Text both readers of the decided label write is the label's.
-    assert not agreement.evidence_only("Edgar", readings[1], readings)
-    assert not agreement.evidence_only("Panama", readings[2], readings)
+    assert agreement.only_a_possibility("BONITELL", readings[1], readings)
+    assert not agreement.only_a_possibility("ILLINOIS", readings[0], readings)
+    # Text both readers of the label write is the label's.
+    assert not agreement.only_a_possibility("Edgar", readings[1], readings)
+    assert not agreement.only_a_possibility("Panama", readings[2], readings)
+    backed = d10333ff_readings(second="BONITELL\nsp. ?")
+    assert not agreement.only_a_possibility("BONITELL", backed[1], backed)
 
 
 def test_text_the_other_reader_reads_as_another_fields_is_disputed():
@@ -352,6 +356,26 @@ def test_other_words_no_field_holds_are_no_dispute():
     assert not agreement.set_aside("Panama", readings, {"3B": {"Panorpas"}})
     # A field text that holds them as whole words is enough: the taxon "Panorpa sp. ?".
     assert agreement.set_aside("Panama", readings, {"3B": {"Panorpa sp. ?"}})
+
+
+def test_three_readers_dispute_a_text_only_when_every_other_reader_does():
+    """A third reader of label 3 (NVIDIA_NEMOTRON_OPTION.md 1): the label's
+    readers dispute 3A's "Panama" when each other reader passes the test two
+    readers have."""
+    base = d10333ff_readings()
+    disputing = Reading("3C", "label3", "obs3c", "raw_reading", LABEL_3B)
+    readings = (*base, disputing)
+    taxon = {"3B": {"Panorpa"}, "3C": {"Panorpa"}}
+    assert agreement.disputed("Panama", readings[2], readings, taxon)
+    assert agreement.set_aside("Panama", readings, taxon)
+    # Reader C's words there are no field of its own: C does not dispute it.
+    assert not agreement.disputed("Panama", readings[2], readings, {"3B": {"Panorpa"}})
+    assert not agreement.set_aside("Panama", readings, {"3B": {"Panorpa"}})
+    # Reader C writes "Panama" too: two readers of three write it, and it stands.
+    agreeing = Reading("3C", "label3", "obs3c", "raw_reading", LABEL_3A)
+    readings = (*base, agreeing)
+    assert not agreement.disputed("Panama", readings[2], readings, taxon)
+    assert not agreement.set_aside("Panama", readings, taxon)
 
 
 def two_label_rig(tmp_path, *, first, second, candidates):

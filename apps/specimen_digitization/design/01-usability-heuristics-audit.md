@@ -20,7 +20,7 @@ here is inferred from screenshots; every claim is read off the source. Requireme
 | # | Screen or dialog | Owning file | Primary role |
 |---|---|---|---|
 | 1 | Connection setup / setup blocked | `lib/main.dart:161-242` (`_ConnectionSetup`) | All users, before any collection access |
-| 2 | Magic-link bootstrap spinner | `lib/src/magic_link_screen.dart:44-46` (`EmailLinkEntry`) | All users |
+| 2 | Magic-link bootstrap spinner | Removed: `EmailLinkEntry` had no caller and is gone from `lib/src/magic_link_screen.dart` | None |
 | 3 | Magic-link sign-in (send link, check email, confirm email) | `lib/src/magic_link_screen.dart:49-234` (`MagicLinkSignInScreen`) | All users |
 | 4 | Fixture sign-in (email plus token or password) | `lib/src/auth.dart:126-299` (`_FixtureSignInScreen`) | Developer, synthetic environment only |
 | 5 | Non-staff account block | `lib/src/email_verification.dart:40-64` | All users |

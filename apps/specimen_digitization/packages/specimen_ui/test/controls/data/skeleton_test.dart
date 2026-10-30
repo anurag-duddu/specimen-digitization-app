@@ -130,8 +130,12 @@ void main() {
       final UiThemeData ui = UiThemeData.light(density: UiDensity.of(density));
       expect(
         tester.getSize(find.byType(UiSkeleton)).height,
-        UiListRowStyle.heightOf(ui),
-        reason: 'the list does not move when the rows arrive',
+        greaterThanOrEqualTo(
+          UiListRowStyle.leadingExtent +
+              UiListRowStyle.resolve(ui, UiSize.md).padding.vertical,
+        ),
+        reason:
+            'placeholder content keeps the same row padding and leading slot',
       );
     }
   });

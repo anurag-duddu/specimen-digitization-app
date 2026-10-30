@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -10,7 +10,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from specimen_digitization.application.api import create_app
+from specimen_digitization.application.cost_allocation import day_bounds, latest_complete_day
 from specimen_digitization.application.lane_dispatch import DispatchOutcome
+from specimen_digitization.application.workflow import OperationalBlock
 
 ORG = "00000000-0000-4000-8000-0000000000a1"
 INSECTS = "00000000-0000-4000-8000-0000000000b2"
@@ -49,7 +51,8 @@ def client(rows, repository=None, dispatcher=None):
 
 
 def amount(cost, held=0, entries=1):
-    return {"cost_micros": cost, "held_micros": held, "list_cost_micros": cost, "entries": entries}
+    return {"cost_micros": cost, "held_micros": held, "settled_micros": cost - held, "estimated_micros": 0,
+            "list_cost_micros": cost, "entries": entries}
 
 
 def test_an_administrator_reads_the_organization_s_costs_in_the_contract_shape():
@@ -198,3 +201,70 @@ def test_refresh_without_a_worker_job_starts_nothing():
         response = http.post(f"/v1/organizations/{ORG}/costs/refresh", headers=HEADERS)
     assert response.status_code == 200, response.text
     assert response.json() == {"started": False}
+
+
+# ---- the shared-cost allocation's meter (PR 3) --------------------------------
+
+def metered(latest, groups=GROUPS):
+    repository = Mock(spec=["cost_totals", "cost_allocation_status"])
+    repository.cost_totals.return_value = {"collections": COLLECTIONS, "groups": groups}
+    repository.cost_allocation_status.return_value = {"latest_occurred_at": latest}
+    return repository
+
+
+def pacific_day_start(days_ago):
+    """The UTC start of the billing day ``days_ago`` before the last complete one."""
+    day = latest_complete_day(datetime.now(timezone.utc)) - timedelta(days=days_ago)
+    return day, day_bounds(day)[0].strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@pytest.mark.parametrize("days_ago,status", [(0, "ok"), (2, "ok"), (3, "behind")])
+def test_the_meter_names_the_last_allocated_billing_day_and_whether_it_lags(days_ago, status):
+    day, latest = pacific_day_start(days_ago)
+    repository = metered(latest)
+    http, _ = client([membership("admin")], repository=repository)
+    with http:
+        response = http.get(f"/v1/organizations/{ORG}/costs", headers=HEADERS)
+    assert response.status_code == 200, response.text
+    assert response.json()["meter"] == {"allocated_through": day.isoformat(), "allocation_status": status}
+    repository.cost_allocation_status.assert_called_once_with(ORG)
+
+
+def test_an_organization_never_allocated_says_so():
+    http, _ = client([membership("admin")], repository=metered(None))
+    with http:
+        response = http.get(f"/v1/organizations/{ORG}/costs", headers=HEADERS)
+    assert response.json()["meter"] == {"allocated_through": None, "allocation_status": "never_run"}
+
+
+def test_credits_and_a_negative_residual_reduce_the_totals_and_never_the_list_cost():
+    credit = {**GROUPS[1], "source": "allocation", "kind": "allocation", "resource": "specimen-sam",
+              "cost_basis": "allocated", "cost_micros": "-9500", "list_cost_micros": "0", "entries": "2"}
+    residual = {**credit, "cost_micros": "-120", "list_cost_micros": "-120", "entries": "1"}
+    http, _ = client([membership("admin")], repository=metered(None, GROUPS + [credit, residual]))
+    with http:
+        response = http.get(f"/v1/organizations/{ORG}/costs", params={"from": "2026-10"}, headers=HEADERS)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["totals"] == {"cost_micros": 9_550 - 9_500 - 120, "held_micros": 9_000,
+                              "settled_micros": 9_550 - 9_500 - 120 - 9_000, "estimated_micros": 0,
+                              "list_cost_micros": 9_550 - 120, "entries": 5}
+    assert [item["resource"] for item in body["models"]] == ["sam3", "handwriting-qwen"]  # no allocation row
+
+
+@pytest.mark.parametrize("value", ["-", "--5", "1e3", "-1.5", "+5"])
+def test_a_malformed_signed_sum_is_unavailable(value):
+    bad = {**GROUPS[1], "cost_micros": value}
+    http, _ = client([membership("admin")], repository=metered(None, [bad]))
+    with http:
+        response = http.get(f"/v1/organizations/{ORG}/costs", params={"from": "2026-10"}, headers=HEADERS)
+    assert response.status_code == 503 and response.json()["error"]["message"] == "cost_meter_unavailable"
+
+
+def test_an_unreadable_allocation_status_is_unavailable():
+    repository = metered(None)
+    repository.cost_allocation_status.side_effect = OperationalBlock("cost_meter_unavailable")
+    http, _ = client([membership("admin")], repository=repository)
+    with http:
+        response = http.get(f"/v1/organizations/{ORG}/costs", headers=HEADERS)
+    assert response.status_code == 503 and response.json()["error"]["message"] == "cost_meter_unavailable"

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Specimen Digitization interlocking mark</title>
+  <!-- Traced from the owner's selected SD_brand.png primary mark, 2026-10-23.
+       This is the canonical geometry for Flutter, launcher and splash assets. -->
+  <defs>
+    <!-- Muted fold: 40% Iris in Amber, then 60% Obsidian. This is artwork
+         shading derived from the seeds, not an additional interface color. -->
+    <linearGradient id="fold" gradientUnits="userSpaceOnUse" x1="145" y1="315" x2="300" y2="137">
+      <stop offset="0" stop-color="#7B61FF"/>
+      <stop offset="0.4" stop-color="#F5A45B"/>
+      <stop offset="0.72" stop-color="#573F49"/>
+      <stop offset="1" stop-color="#0E0E11"/>
+    </linearGradient>
+    <!-- The owner's app-icon crop has the same ribbons with an Amber tip. -->
+    <linearGradient id="fold-app-icon" gradientUnits="userSpaceOnUse" x1="145" y1="315" x2="390" y2="115">
+      <stop offset="0" stop-color="#7B61FF"/>
+      <stop offset="0.28" stop-color="#F5A45B"/>
+      <stop offset="0.50" stop-color="#573F49"/>
+      <stop offset="0.72" stop-color="#0E0E11"/>
+      <stop offset="1" stop-color="#F5A45B"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(1 42)">
+    <path id="upper" fill="#0E0E11" d="M 60 155 Q 60 139 78 130 L 288 43 Q 303 36 316 43 L 335 58 Q 343 65 337 72 L 131 161 Q 102 174 102 199 L 102 267 Q 102 284 87 275 L 71 265 Q 60 259 60 245 Z"/>
+    <path id="folded" fill="url(#fold)" d="M 132 219 L 132 293 Q 132 309 146 318 L 162 326 Q 174 333 174 317 L 174 257 Q 174 232 193 222 L 398 128 Q 412 122 401 113 L 386 101 Q 374 91 362 97 L 157 187 Q 132 197 132 219 Z"/>
+    <path id="lower" fill="#0E0E11" fill-rule="evenodd" d="M 205 265 Q 205 247 225 237 L 420 150 Q 439 141 450 153 Q 455 159 455 171 L 455 272 Q 455 287 440 295 L 259 371 Q 242 380 225 372 L 214 366 Q 205 359 205 345 Z M 277 279 Q 277 271 286 267 L 383 223 Q 391 219 391 227 L 391 248 Q 391 256 384 260 L 285 304 Q 277 308 277 299 Z"/>
+  </g>
+</svg>

@@ -6,8 +6,9 @@
 /// stacked and a dialog where it is docked, with the payload in `mono.code` and a copy control
 /// beside its size. Closed, the payload is not in the tree at all, so a screen
 /// reader user is never made to walk a thousand lines of JSON to reach the
-/// next control. Open, the text keeps its own real semantics rather than one
-/// synthetic label (accessibility, section 3.1).
+/// next control. Open, a bounded preview keeps its own real semantics rather
+/// than one synthetic label (accessibility, section 3.1); copying always takes
+/// the complete payload.
 library;
 
 import 'dart:convert';
@@ -57,7 +58,7 @@ class EvidenceDrawer extends StatelessWidget {
   /// the spoken label only, so the visible word stays constant.
   final String? section;
 
-  /// Pretty prints a payload the way the drawer renders it.
+  /// Pretty prints the complete payload used by the drawer's copy control.
   ///
   /// A payload that is not JSON encodable is shown as its `toString`, because
   /// showing the reviewer something is better than showing an exception.
@@ -138,6 +139,36 @@ class EvidenceDrawer extends StatelessWidget {
   }
 }
 
+// Bound both paragraph shaping and the selectable/semantic text. A line limit
+// alone does not bound a large JSON string, and a character limit alone can
+// still produce thousands of very short lines. Only inspect a bounded prefix;
+// never split the entire payload just to decide what can be shown.
+String _preview(String text) {
+  const maxCharacters = 4096;
+  const maxLines = 80;
+  var end = text.length < maxCharacters ? text.length : maxCharacters;
+  var lines = 1;
+  for (var index = 0; index < end; index++) {
+    if (text.codeUnitAt(index) == 0x0a && ++lines > maxLines) {
+      end = index;
+      break;
+    }
+  }
+  if (end == text.length) return text;
+
+  // Include one complete scalar beyond the cut, then discard its grapheme.
+  // A dangling high surrogate would form a separate incomplete grapheme and
+  // could leave part of the preceding emoji/flag visible. This inspects at
+  // most two extra code units, even for an enormous combining sequence.
+  var lookahead = end + 1;
+  final last = text.codeUnitAt(lookahead - 1);
+  if (last >= 0xd800 && last <= 0xdbff && lookahead < text.length) {
+    final next = text.codeUnitAt(lookahead);
+    if (next >= 0xdc00 && next <= 0xdfff) lookahead++;
+  }
+  return text.substring(0, lookahead).characters.skipLast(1).toString();
+}
+
 /// The payload, its size, and the control that takes it.
 class _Payload extends StatelessWidget {
   const _Payload({
@@ -164,6 +195,8 @@ class _Payload extends StatelessWidget {
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     final bool hasPayload = text.isNotEmpty;
+    final String preview = _preview(text);
+    final bool shortened = preview.length < text.length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -177,7 +210,7 @@ class _Payload extends StatelessWidget {
                 style: ui.type.label.copyWith(color: ui.color.inkSecondary),
               ),
             ),
-            if (hasPayload)
+            if (hasPayload && !shortened)
               UiIconButton(
                 icon: UiIcons.copy,
                 semanticsLabel: EvidenceDrawer.copyLabel,
@@ -187,22 +220,39 @@ class _Payload extends StatelessWidget {
           ],
         ),
         if (hasPayload) ...<Widget>[
+          if (shortened) ...<Widget>[
+            SizedBox(height: ui.space.s2),
+            Text(
+              'Preview shortened. Copy includes the full payload.',
+              style: ui.type.body.copyWith(color: ui.color.inkSecondary),
+            ),
+            SizedBox(height: ui.space.s2),
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: UiButton(
+                label: 'Copy full payload',
+                leading: UiIcons.copy,
+                variant: UiButtonVariant.secondary,
+                onPressed: _copy,
+              ),
+            ),
+          ],
           SizedBox(height: ui.space.s2),
           // Real text semantics, and a selection the reviewer can act on. No
           // synthetic label over the top.
           if (scrollable)
-            Flexible(child: SingleChildScrollView(child: _code(ui)))
+            Flexible(child: SingleChildScrollView(child: _code(ui, preview)))
           else
-            _code(ui),
+            _code(ui, preview),
         ],
       ],
     );
   }
 
-  Widget _code(UiThemeData ui) => Surface(
+  Widget _code(UiThemeData ui, String preview) => Surface(
     role: SurfaceRole.matte,
     radius: ui.shape.inner,
     padding: EdgeInsetsDirectional.all(ui.space.s3),
-    child: SelectableEvidence(child: Text(text, style: ui.type.mono.code)),
+    child: SelectableEvidence(child: Text(preview, style: ui.type.mono.code)),
   );
 }

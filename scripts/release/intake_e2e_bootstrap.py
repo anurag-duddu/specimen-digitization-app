@@ -8,7 +8,7 @@ NAME = 'Intake E2E'
 READ = '''query ReadIntakeE2E($org: UUID!, $parent: UUID!, $collection: UUID!, $uids: [String!]!) {
   organization: organization(key: {id: $org}) { id }
   parent: collection(key: {organizationId: $org, id: $parent}) { id name }
-  collection: collection(key: {organizationId: $org, id: $collection}) { id name parentId }
+  collection: collection(key: {organizationId: $org, id: $collection}) { id name parentId kind }
   organizations: organizationMembers(where: {organizationId: {eq: $org}, uid: {in: $uids}}, limit: 3) { uid active }
   members: collectionMembers(where: {organizationId: {eq: $org}, collectionId: {eq: $collection}, uid: {in: $uids}}, limit: 3) {
     uid active role canViewSensitive
@@ -56,7 +56,8 @@ def missing_request(payload, worker, live):
             raise ValueError
         collection = live['collection']
         if collection is not None and (str(UUID(collection['id'])) != values['collection']
-                or collection['name'] != NAME or str(UUID(collection['parentId'])) != values['parent']):
+                or collection['name'] != NAME or str(UUID(collection['parentId'])) != values['parent']
+                or collection.get('kind') not in (None, 'testing')):
             raise ValueError
         by_kind = {}
         for key in ('organizations', 'members'):
@@ -79,7 +80,7 @@ def missing_request(payload, worker, live):
     if collection is None:
         declarations.extend(['$parent: UUID!', '$collection: UUID!'])
         write_values.update(parent=values['parent'], collection=values['collection'])
-        fields.append('collection_insert(data: {organizationId: $org, id: $collection, parentId: $parent, name: "Intake E2E"})')
+        fields.append('collection_insert(data: {organizationId: $org, id: $collection, parentId: $parent, name: "Intake E2E", kind: "testing"})')
     for index, identity in enumerate(values['uids']):
         missing_org = identity not in by_kind['organizations']
         missing_member = identity not in by_kind['members']

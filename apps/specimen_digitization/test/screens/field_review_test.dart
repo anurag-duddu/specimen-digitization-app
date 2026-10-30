@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/widgets.dart';
@@ -145,19 +146,23 @@ void main() {
       expect(find.text('Optional'), findsNothing);
       expect(find.text('Elevation from (m)'), findsOneWidget);
       expect(find.text('Elevation to (ft)'), findsOneWidget);
-      expect(
-        find.text('Supported · United States of America · Required'),
-        findsOneWidget,
-      );
-      expect(find.text('Supported · 304.8 · Required'), findsOneWidget);
-      expect(
-        find.text('Needs review · Ambiguous · Chicago, Illinois · Required'),
-        findsOneWidget,
-      );
-      expect(find.text('Needs review · Unknown'), findsOneWidget);
+      expect(find.text('United States of America'), findsOneWidget);
+      expect(find.text('304.8'), findsOneWidget);
+      expect(find.text('Ambiguous · Chicago, Illinois'), findsOneWidget);
+      expect(find.text('Unknown'), findsOneWidget);
       expect(find.text('As written'), findsNothing);
       expect(find.text('U.S.A. · 304.8 m'), findsNothing);
-      expect(find.text('Two locality candidates remain'), findsNothing);
+      expect(
+        tester.widget<UiDisclosure>(uiDisclosure('Country')).semanticsLabel,
+        contains('Country, required. Supported. United States of America'),
+      );
+      expect(
+        tester
+            .widget<UiDisclosure>(uiDisclosure('Elevation to (ft)'))
+            .semanticsLabel,
+        'Elevation to (ft), optional. Unknown. Review needed',
+      );
+      expect(find.text('Required field · Supported'), findsNothing);
       expect(uiIconButton(RegExp('^Edit ')), findsNothing);
       expect(tester.takeException(), isNull);
     },
@@ -170,10 +175,12 @@ void main() {
     await showFields(tester, onFocusRegion: focused.add);
     await expandField(tester, 'Country');
     expect(focused, ['r1']);
+    expect(find.text('Required field · Supported'), findsOneWidget);
     expect(find.text('Current value · Standardized'), findsOneWidget);
     expect(find.text('Sources: Label 1'), findsOneWidget);
     expect(find.text('Evidence for Country'), findsOneWidget);
     expect(find.text('U.S.A. · 304.8 m'), findsOneWidget);
+    expect(uiDisclosure('Evidence details'), findsNothing);
     await expandField(tester, 'Value details');
     expect(find.text('U.S.A.'), findsOneWidget);
     expect(find.text('United States'), findsOneWidget);
@@ -194,6 +201,93 @@ void main() {
     expect(find.text('Evidence for Country'), findsNothing);
     expect(focused, ['r1', 'r1']);
   });
+
+  for (final scale in <double>[1, 2]) {
+    testWidgets(
+      'readings and source summaries disclose separately and remain exact at $scale',
+      (tester) async {
+        const observation = 'E. slope Mt. McKinley';
+        const otherObservation = 'Eastern slope of Mt. McKinley';
+        const sourceSummary = 'E.slope Mt. McKinley';
+        const otherSummary = 'A different source names the western slope.';
+        final record = Specimen({
+          ...specimen.data,
+          'fields': [
+            {
+              'field_key': 'city',
+              'display_name': 'City',
+              'state': 'unresolved',
+              'literal_value': 'Mt. McKinley',
+              'evidence_ids': ['e1', 'e2'],
+              'verbatim_by_observation': {
+                'observation-one': observation,
+                'observation-two': otherObservation,
+              },
+            },
+          ],
+          'evidence': [
+            {'evidence_id': 'e1', 'region_id': 'r1', 'excerpt': sourceSummary},
+            {'evidence_id': 'e2', 'region_id': 'r2', 'excerpt': otherSummary},
+          ],
+        });
+        final original = jsonDecode(jsonEncode(record.data));
+        final focused = <String?>[];
+        await showFields(
+          tester,
+          record: record,
+          size: const Size(390, 844),
+          textScale: scale,
+          onFocusRegion: focused.add,
+          onPendingChanged: (_) => fail('Evidence inspection must not edit'),
+        );
+        await expandField(tester, 'City');
+        expect(find.text(observation), findsNothing);
+        expect(find.text(otherObservation), findsNothing);
+        expect(find.text('2 readings'), findsOneWidget);
+        await expandField(tester, 'Label readings');
+        expect(find.text(observation), findsOneWidget);
+        expect(find.text(otherObservation), findsOneWidget);
+        expect(find.text(sourceSummary), findsNothing);
+        expect(find.text(otherSummary), findsNothing);
+        expect(find.text('Sources: Label 1, Label 2'), findsOneWidget);
+        expect(find.text('2 source summaries'), findsOneWidget);
+
+        await expandField(tester, 'Evidence details');
+        for (final source in [(1, sourceSummary), (2, otherSummary)]) {
+          final block = find
+              .ancestor(
+                of: find.text('Label ${source.$1} · Source summary'),
+                matching: find.byType(Column),
+              )
+              .first;
+          expect(
+            find.descendant(of: block, matching: find.text(source.$2)),
+            findsOneWidget,
+          );
+          expect(
+            find.descendant(
+              of: block,
+              matching: find.text(
+                source.$1 == 1 ? otherSummary : sourceSummary,
+              ),
+            ),
+            findsNothing,
+          );
+        }
+        expect(find.text(sourceSummary), findsOneWidget);
+        expect(find.text(otherSummary), findsOneWidget);
+        expect(find.text(observation), findsOneWidget);
+        expect(find.text(otherObservation), findsOneWidget);
+        await tester.ensureVisible(uiButton('View Label 2'));
+        await tester.pumpAndSettle();
+        await tester.tap(uiButton('View Label 2'));
+        await tester.pumpAndSettle();
+        expect(focused, [null, 'r2']);
+        expect(record.data, original);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('a field citing several labels offers each source explicitly', (
     tester,
@@ -292,14 +386,12 @@ void main() {
     );
     final row = uiDisclosure('Country');
     expect(
-      find.descendant(
-        of: row,
-        matching: find.text('Needs review · Unknown · Required'),
-      ),
+      find.descendant(of: row, matching: find.text('Unknown')),
       findsOneWidget,
     );
     await expandField(tester, 'Country');
     expect(focused, ['r2']);
+    expect(find.text('Required field · Unknown'), findsOneWidget);
     expect(find.text('Sources: Label 2'), findsOneWidget);
     expect(find.text('Chicago, Ills.'), findsOneWidget);
     expect(find.text('Old interpretation'), findsNothing);
@@ -319,9 +411,7 @@ void main() {
     });
     await showFields(tester, record: record);
     expect(
-      find.text(
-        'Needs review · State unknown · United States of America · Required',
-      ),
+      find.text('State unknown · United States of America'),
       findsOneWidget,
     );
     await expandField(tester, 'Country');
@@ -529,10 +619,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Correct Country'), findsNothing);
       expect(uiField('As written'), findsNothing);
-      expect(
-        find.text('Supported · United States of America · Required'),
-        findsOneWidget,
-      );
+      expect(find.text('United States of America'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

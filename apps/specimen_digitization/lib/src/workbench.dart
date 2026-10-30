@@ -146,6 +146,7 @@ class ReviewWorkbench extends StatefulWidget {
     this.onShowQueue,
     this.specimensExpanded = false,
     this.showSidebarToggle = true,
+    this.workspaceContext,
     this.onExitGuardChanged,
     this.onNavigationBlockedChanged,
     this.active = true,
@@ -253,6 +254,10 @@ class ReviewWorkbench extends StatefulWidget {
   final bool specimensExpanded;
   final bool showSidebarToggle;
 
+  /// Collection context and companion control supplied by the application shell.
+  /// It occupies the existing toolbar rather than adding a second header row.
+  final Widget? workspaceContext;
+
   /// Registers the active editor's leave guard with its workspace owner.
   final void Function(Future<bool> Function() guard, bool active)?
   onExitGuardChanged;
@@ -320,6 +325,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// detached and can no longer reach an inherited widget.
   UiScaffoldSlots? _slots;
 
+  final GlobalKey _fieldsKey = GlobalKey(debugLabel: 'specimen-fields');
   final GlobalKey _readingsKey = GlobalKey(debugLabel: 'label-comparison');
   final GlobalKey _historyKey = GlobalKey(
     debugLabel: 'retained-review-history',
@@ -1254,32 +1260,31 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         style: ui.type.mono.identifier.copyWith(color: ui.color.ink),
       );
       return UiTopBar(
-        leading: !widget.showSidebarToggle
+        leading: widget.workspaceContext != null
+            ? SizedBox(
+                width: (constraints.maxWidth * .4).clamp(0.0, 280.0),
+                child: widget.workspaceContext,
+              )
+            : !widget.showSidebarToggle
             ? null
             : widget.onShowQueue != null
-            ? widget.specimensExpanded
-                  ? null
-                  : UiIconButton(
-                      icon: UiIcons.sidebar,
-                      semanticsLabel: widget.specimensExpanded
-                          ? 'Close sidebar'
-                          : 'Open sidebar',
-                      tooltip: widget.specimensExpanded
-                          ? 'Close sidebar'
-                          : 'Open sidebar',
-                      focusNode: _showQueueFocus,
-                      onPressed: () {
-                        _showQueueFocus.requestFocus();
-                        FocusManager.instance.applyFocusChangesIfNeeded();
-                        widget.onShowQueue?.call();
-                      },
-                    )
+            ? UiIconButton(
+                icon: UiIcons.sidebar,
+                semanticsLabel: widget.specimensExpanded
+                    ? 'Hide queue'
+                    : 'Show queue',
+                focusNode: _showQueueFocus,
+                onPressed: () {
+                  _showQueueFocus.requestFocus();
+                  FocusManager.instance.applyFocusChangesIfNeeded();
+                  widget.onShowQueue?.call();
+                },
+              )
             : widget.onBack == null
             ? null
             : UiIconButton(
                 icon: UiIcons.back,
                 semanticsLabel: backToQueueLabel,
-                tooltip: backToQueueLabel,
                 onPressed: () async {
                   if (await _confirmUnsaved() && mounted) widget.onBack?.call();
                 },
@@ -1478,8 +1483,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                 key: ValueKey('record-requirements:$_requirementsReveal'),
                 initiallyExpanded: _requirementsReveal > 0,
                 title: 'Record review requirements',
-                summary:
-                    'Some requirements still need attention before clearance.',
+                summary: recordIssues.first.message,
+                hideSummaryWhenExpanded: true,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisSize: MainAxisSize.min,
@@ -1519,6 +1524,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
             ),
           ),
         WorkbenchFields(
+          key: _fieldsKey,
           specimen: widget.specimen,
           issues: issues,
           researchForField: (fieldKey, onSelectCandidate) => Column(
@@ -1738,8 +1744,9 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
+                        _reviewOverview(context),
                         _contextHeader(context, regime),
-                        SizedBox(height: context.ui.space.s1),
+                        SizedBox(height: context.ui.space.s4),
                         content,
                         const UiHairline(),
                         decision,
@@ -1749,14 +1756,24 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
-                      _contextHeader(context, regime),
-                      const UiHairline(),
                       Expanded(
                         child: SingleChildScrollView(
                           key: evidenceScrollKey,
                           controller: _evidenceScroll,
-                          padding: EdgeInsets.symmetric(vertical: metrics.gap),
-                          child: content,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _reviewOverview(context),
+                              _contextHeader(context, regime),
+                              const UiHairline(),
+                              Padding(
+                                padding: EdgeInsets.symmetric(
+                                  vertical: metrics.gap,
+                                ),
+                                child: content,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       const UiHairline(),
@@ -1766,6 +1783,28 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           ),
         );
       },
+    );
+  }
+
+  /// The review task already names the baseline disposition. A changed or
+  /// exceptional state still matters when opening a record directly.
+  Widget _reviewOverview(BuildContext context) {
+    final record = widget.specimen;
+    final status = SpecimenStatus.ofRecord(
+      disposition: record.disposition,
+      state: record.state,
+    );
+    return Padding(
+      key: const ValueKey<String>('review-overview'),
+      padding: EdgeInsets.only(
+        bottom: status == SpecimenStatus.needsReview ? 0 : context.ui.space.s3,
+      ),
+      child: status == SpecimenStatus.needsReview
+          ? const SizedBox.shrink()
+          : Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: StatusChip(status),
+            ),
     );
   }
 
@@ -2267,9 +2306,19 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         textScaler: MediaQuery.textScalerOf(context),
       );
       final available = metrics.contentWidth - metrics.gap;
-      final inspectorWidth = (available * .45).clamp(
+      final readingSize = context.ui.type.bodySmall.fontSize!;
+      // Forty secondary-text ems bound the field-value reading measure.
+      // Scale the actual text role so nonlinear text scaling stays readable.
+      final inspectorMaxWidth =
+          MediaQuery.textScalerOf(
+            context,
+          ).scale(readingSize).clamp(readingSize, double.infinity) *
+          40;
+      // Keep the photograph dominant. The inspector has its own readable
+      // measure and stops growing once it has enough room for field evidence.
+      final inspectorWidth = (available * .40).clamp(
         metrics.minColumnWidth,
-        metrics.readableMax,
+        inspectorMaxWidth,
       );
       final short =
           constraints.maxHeight <
@@ -2282,11 +2331,29 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            Expanded(child: _sourcePane(context)),
+            Expanded(
+              child: Surface(
+                key: const ValueKey<String>('review-source-surface'),
+                role: SurfaceRole.matte,
+                radius: context.ui.shape.tile,
+                hairline: true,
+                clip: true,
+                child: _sourcePane(context),
+              ),
+            ),
             SizedBox(width: metrics.gap),
             SizedBox(
               width: inspectorWidth,
-              child: _evidencePane(context, regime),
+              child: Surface(
+                key: const ValueKey<String>('review-inspector-surface'),
+                radius: context.ui.shape.tile,
+                hairline: true,
+                padding: EdgeInsets.symmetric(
+                  horizontal: context.ui.space.s3,
+                  vertical: short ? context.ui.space.s1 : context.ui.space.s4,
+                ),
+                child: _evidencePane(context, regime),
+              ),
             ),
           ],
         ),

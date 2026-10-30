@@ -235,10 +235,11 @@
           "ledger_collection": "insects"
         },
         "price_list": {
-          "version": "pilot-prices-2026-10-18",
+          "version": "pilot-prices-2026-10-25",
           "as_of": "2026-09-24",
           "sources": [
             "https://router.huggingface.co/v1/models",
+            "https://deepinfra.com/deepseek-ai/DeepSeek-V4.1-Flash",
             "https://huggingface.co/Qwen/Qwen3-VL-30B-A3B-Instruct/blob/main/preprocessor_config.json",
             "https://huggingface.co/meta-models/Muse-Glimmer-30B/blob/main/processor_config.json",
             "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4/blob/main/preprocessor_config.json",
@@ -276,6 +277,7 @@
             "harness-deepseek": {
               "input_micros_per_million": 200000,
               "output_micros_per_million": 600000,
+              "cached_input_micros_per_million": 6000,
               "context_tokens": 1048576
             },
             "handwriting-nemotron": {

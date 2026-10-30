@@ -431,7 +431,7 @@ void main() {
       expect(repository.draftReads, hidden);
       await render(true);
       expect(repository.draftReads, hidden + 1);
-      await tester.tap(find.text('Your batches'));
+      await tester.tap(find.bySemanticsLabel('Your batches'));
       await tester.pumpAndSettle();
       final covered = repository.draftReads;
       await tester.pump(const Duration(seconds: 60));

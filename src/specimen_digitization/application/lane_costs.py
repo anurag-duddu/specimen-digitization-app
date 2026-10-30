@@ -438,12 +438,15 @@ def record_step(
         # tokens (`usage`) at the price of the route it calls, the profile's
         # first route (lane_reservations.step_reservation sizes it the same
         # way). Without them its whole liability stays held. A refusal of that
-        # call is proof that nothing was billed.
+        # call is proof that nothing was billed. Held or refused, a parse call
+        # names that route too, so the cost meter can match it to its model's
+        # bill (it named its step before 2026-10-25: cost_ledger.LEGACY_ROUTES).
         attempt = run.attempts.get(step, 1)
         if not any(c["step"] == step and c["attempt"] == attempt for c in run.paid_calls):
             route = run.profile.routes[0] if run.profile.routes else None
+            named = route if step == "parse" and route else step
             if refusal:
-                record_refused(run, step, "model", route_id=step, failure_code=refusal)
+                record_refused(run, step, "model", route_id=named, failure_code=refusal)
             elif usage and step == "parse" and route:
                 if failure:
                     outcome = "failed" if outcome == "completed" else outcome
@@ -455,10 +458,10 @@ def record_step(
                 # completes): recorded failed with its code, held in full.
                 outcome = "failed" if outcome == "completed" else outcome
                 record_reserved(
-                    run, step, "model", outcome=outcome, route_id=step, failure_code=failure
+                    run, step, "model", outcome=outcome, route_id=named, failure_code=failure
                 )
             else:
-                record_reserved(run, step, "model", outcome=outcome, route_id=step)
+                record_reserved(run, step, "model", outcome=outcome, route_id=named)
     elif step == "segment":
         if outcome == "completed":
             measured = (run.segmentation or {}).get("elapsed_seconds")

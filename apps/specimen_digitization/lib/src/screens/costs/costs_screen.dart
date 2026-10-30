@@ -60,8 +60,35 @@ abstract final class CostsScreenCopy {
 
   // The organization.
   static const String organizationHeading = 'Organization';
+
+  /// The hero's label when the server sends the known cost: what the work is
+  /// known to have cost, without what is held for calls whose cost is unknown.
+  static String knownCostLabel(String month) => 'Known cost in $month';
+
+  /// The hero's label when the server sends no known cost: the meter's whole
+  /// count, what is held included, which is all such a server reports.
   static String costLabel(String month) => 'Cost in $month';
   static const String costFooter = "After Google's free allowance.";
+
+  /// Said under the meter's whole count, so a reservation is never read as
+  /// money spent.
+  static const String includesHeld = 'Includes what is held.';
+
+  /// How much of the known cost was estimated after the call, from the
+  /// provider's bill for the day or from the usage the call recorded. Short,
+  /// so the hero's spoken label stays within 100 characters (02 section 4.16).
+  static String estimated(int micros) =>
+      '${formatMicros(micros)} of it estimated.';
+
+  /// The line under the hero. [known] is true when the hero is the known
+  /// cost, and false when it is the whole count, what is held included.
+  static String heroFooter({required bool known, int? estimatedMicros}) =>
+      <String>[
+        costFooter,
+        if (!known) includesHeld,
+        if (estimatedMicros != null && estimatedMicros != 0)
+          estimated(estimatedMicros),
+      ].join(' ');
   static const String heldLabel = 'Held, cost unknown';
   static const String heldFooter =
       'The part held for calls whose cost is unknown.';
@@ -97,14 +124,17 @@ abstract final class CostsScreenCopy {
   static String leftLabel(String month) =>
       month.isEmpty ? 'Left this month' : 'Left in ${costMonthLabel(month)}';
 
-  /// The line under it: what was used, of what, and when.
+  /// The line under it: what counts against the limit, of what, and when.
+  ///
+  /// What is held for calls whose cost is unknown counts against a limit, so
+  /// the figure is not called spent: some of it may never be.
   static String limitFooter(CostLimit limit) {
     final String of =
-        '${formatMicros(limit.spentMicros)} spent of '
+        '${formatMicros(limit.spentMicros)} counted against '
         '${formatMicros(limit.monthlyMicros)}';
     return limit.month.isEmpty
-        ? '$of.'
-        : '$of in ${costMonthLabel(limit.month)}.';
+        ? '$of, including what is held.'
+        : '$of in ${costMonthLabel(limit.month)}, including what is held.';
   }
 
   /// A collection's limit on its row.
@@ -133,8 +163,12 @@ abstract final class CostsScreenCopy {
   static String entries(int count) =>
       count == 1 ? '1 entry' : '${formatCount(count)} entries';
 
-  /// What is held, on a row that holds something.
+  /// What is held, on a row that holds something, beside its known cost.
   static String held(int micros) => '${formatMicros(micros)} held';
+
+  /// What is held, on a row from a server that sends no known cost: the
+  /// row's amount is the whole count, and this part of it is held.
+  static String heldWithin(int micros) => '${formatMicros(micros)} of it held';
 
   // How fresh the figures are.
   static const String figuresHeading = 'Figures';
@@ -474,10 +508,8 @@ class _CostsScreenState extends State<CostsScreen> {
     ];
   }
 
-  Widget _heading(UiThemeData ui, String text) => Semantics(
-    header: true,
-    child: Text(text, style: ui.type.title.copyWith(color: ui.color.ink)),
-  );
+  Widget _heading(UiThemeData ui, String text) =>
+      UiSectionHeader(title: text, role: UiSectionHeaderRole.card);
 
   /// A slice the meter recorded nothing for: words, in the place a figure
   /// would be.
@@ -572,6 +604,10 @@ class _CostsScreenState extends State<CostsScreen> {
 
   Widget _organization(UiThemeData ui, CostReport report, String monthName) {
     final CostAmounts totals = report.totals;
+    // The known cost, as the server sent it. A server that sends none gets
+    // its whole count, said to include what is held: the screen never works
+    // a known cost out for itself.
+    final int? known = totals.settledMicros;
     if (!totals.hasCosts) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -594,9 +630,14 @@ class _CostsScreenState extends State<CostsScreen> {
     return _TileGrid(
       tiles: <Widget>[
         _tile(
-          label: CostsScreenCopy.costLabel(monthName),
-          value: formatMicros(totals.costMicros),
-          footer: CostsScreenCopy.costFooter,
+          label: known == null
+              ? CostsScreenCopy.costLabel(monthName)
+              : CostsScreenCopy.knownCostLabel(monthName),
+          value: formatMicros(known ?? totals.costMicros),
+          footer: CostsScreenCopy.heroFooter(
+            known: known != null,
+            estimatedMicros: totals.estimatedMicros,
+          ),
           hero: true,
         ),
         _tile(
@@ -691,8 +732,9 @@ class _CostsScreenState extends State<CostsScreen> {
     final CostCollection collection = row.collection;
     final CostAmounts total = collection.total;
     final String cost = total.hasCosts
-        ? formatMicros(total.costMicros)
+        ? formatMicros(total.shownMicros)
         : CostsScreenCopy.noCosts;
+    final String? held = _held(total);
     // A collection the server does not list has no name to show, and no limit
     // can be set for it: the service refuses an id that is not one of the
     // organization's collections. Its costs are still its costs, in words.
@@ -718,10 +760,10 @@ class _CostsScreenState extends State<CostsScreen> {
       padding: EdgeInsetsDirectional.only(start: row.depth * ui.space.s4),
       child: UiListRow(
         title: name,
-        subtitle: _detail(<String>[cost, ?limit]),
-        semanticsLabel: editable
-            ? '$name, $cost$including, $limit. $action'
-            : <String>['$name, $cost$including', ?limit].join(', '),
+        subtitle: _detail(<String>[cost, ?held, ?limit]),
+        semanticsLabel:
+            '${<String>[name, '$cost$including', ?held, ?limit].join(', ')}'
+            '${editable ? '. $action' : ''}',
         leading: const UiIcon(UiIcons.collection),
         // A limit that cannot be read cannot be changed from here: the form
         // would start from "no monthly limit" and write over one it never saw.
@@ -744,10 +786,10 @@ class _CostsScreenState extends State<CostsScreen> {
   Widget _stageRow(UiThemeData ui, CostStage stage) {
     final CostAmounts amounts = stage.amounts;
     final String name = costStageLabel(stage.stage);
-    final String cost = formatMicros(amounts.costMicros);
+    final String cost = formatMicros(amounts.shownMicros);
     final String detail = _detail(<String>[
       CostsScreenCopy.entries(amounts.entries),
-      if (amounts.heldMicros != 0) CostsScreenCopy.held(amounts.heldMicros),
+      ?_held(amounts),
     ]);
     return UiListRow(
       key: ValueKey<String>('cost-stage-${stage.stage}'),
@@ -760,11 +802,12 @@ class _CostsScreenState extends State<CostsScreen> {
 
   Widget _modelRow(UiThemeData ui, CostModelRow row) {
     final CostAmounts amounts = row.amounts;
-    final String cost = formatMicros(amounts.costMicros);
+    final String cost = formatMicros(amounts.shownMicros);
     final String detail = _detail(<String>[
       if (row.stage.isNotEmpty) costStageLabel(row.stage),
       if (row.provider.isNotEmpty) costProviderLabel(row.provider),
       CostsScreenCopy.entries(amounts.entries),
+      ?_held(amounts),
     ]);
     return UiListRow(
       key: ValueKey<String>(
@@ -779,6 +822,17 @@ class _CostsScreenState extends State<CostsScreen> {
 
   /// Metadata values on one line, separated by the middle dot (02 section 6).
   String _detail(List<String> parts) => parts.join(' · ');
+
+  /// What a row holds for calls whose cost is unknown, or null when it holds
+  /// nothing. A row shows its known cost and this beside it. From a server
+  /// that sends no known cost the row shows the whole count, and this says
+  /// how much of it is held.
+  String? _held(CostAmounts amounts) {
+    if (amounts.heldMicros == 0) return null;
+    return amounts.settledMicros == null
+        ? CostsScreenCopy.heldWithin(amounts.heldMicros)
+        : CostsScreenCopy.held(amounts.heldMicros);
+  }
 
   List<Widget> _freshness(UiThemeData ui, CostReport report) {
     final DateTime? updated = report.updatedAt;

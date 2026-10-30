@@ -121,8 +121,13 @@ Future<void> openWorkspace(
     location: goldenIntakeLocation,
     repository: repo,
   );
-  await tester.ensureVisible(find.widgetWithText(UiButton, source));
-  await tester.tap(find.widgetWithText(UiButton, source));
+  await tester.ensureVisible(find.text('Import from a source'));
+  await tester.tap(find.text('Import from a source'));
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.widgetWithText(UiListRow, source));
+  await tester.pumpAndSettle();
+  expect(find.widgetWithText(UiListRow, source).hitTestable(), findsOneWidget);
+  await tester.tap(find.widgetWithText(UiListRow, source));
   await tester.pumpAndSettle();
   expect(find.byType(IntakeImportWorkspace), findsOneWidget);
 }
@@ -246,7 +251,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(UiButton, 'Dropbox'));
+      final source = find.widgetWithText(UiListRow, 'Dropbox');
+      await tester.ensureVisible(source);
+      await tester.tap(source);
       await tester.pumpAndSettle();
       expect(find.text('Add 2 photos'), findsOneWidget);
       await tester.enterText(filter, '');

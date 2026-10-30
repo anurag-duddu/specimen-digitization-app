@@ -55,4 +55,5 @@ def test_general_principal_requires_collection_match_before_search(member_collec
         assert args[0] == scope
         assert args[2] == response.json()["cutoff"]
         assert args[3:] == (None, "", 50, True)
-        assert repository.mock_calls == [call.search(*args)]
+        assert repository.search.call_args.kwargs == {"hydrate_review": True}
+        assert repository.mock_calls == [call.search(*args, hydrate_review=True)]

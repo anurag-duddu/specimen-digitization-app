@@ -6,6 +6,8 @@
 /// a screen.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 
 import '../../../specimen_ui.dart';
@@ -95,22 +97,34 @@ Widget buildNavigationPage(BuildContext context) {
           spacing: ui.space.s4,
           runSpacing: ui.space.s4,
           children: <Widget>[
-            const GallerySpecimen(
-              label: 'rail, collapsed',
-              note: 'medium windows',
+            GallerySpecimen(
+              label: 'rail, pointer',
+              note: 'hover and focus labels',
               child: _OverFields(
-                width: 88,
+                width:
+                    UiRail.widthOf(
+                      context,
+                      destinations: _three,
+                      extended: false,
+                    ) +
+                    ui.space.s4 * 2,
                 height: 300,
-                child: _Rail(initial: 0),
+                child: const _Rail(initial: 0),
               ),
             ),
-            const GallerySpecimen(
-              label: 'rail, extended',
-              note: 'expanded windows',
+            GallerySpecimen(
+              label: 'rail, touch',
+              note: 'labels below every icon',
               child: _OverFields(
-                width: 104,
+                width:
+                    UiRail.widthOf(
+                      context,
+                      destinations: _three,
+                      extended: true,
+                    ) +
+                    ui.space.s4 * 2,
                 height: 300,
-                child: _Rail(initial: 1, extended: true),
+                child: const _Rail(initial: 1, extended: true),
               ),
             ),
             const GallerySpecimen(
@@ -128,10 +142,10 @@ Widget buildNavigationPage(BuildContext context) {
               note: 'sky.home, a top bar, an action bar and a pill',
               child: Squircle.clip(
                 radius: ui.shape.tile,
-                child: const SizedBox(
+                child: SizedBox(
                   width: 316,
-                  height: 300,
-                  child: _Sample(),
+                  height: 300 * _specimenTextScale(context),
+                  child: const _Sample(),
                 ),
               ),
             ),
@@ -311,6 +325,17 @@ const List<Widget> _commands = <Widget>[
 /// disabled, which is a different specimen.
 void _noop() {}
 
+// The viewport belongs to the specimen, so it grows with the same text scale
+// as its sidebar, header and actions. Fixed sample heights must not clip real
+// components when the host asks to inspect accessibility sizes.
+double _specimenTextScale(BuildContext context) {
+  final double fontSize = context.ui.type.body.fontSize!;
+  return math.max(
+    1,
+    MediaQuery.textScalerOf(context).scale(fontSize) / fontSize,
+  );
+}
+
 /// A specimen box with a sky behind it, so glass has something to blur.
 class _OverFields extends StatelessWidget {
   const _OverFields({
@@ -330,7 +355,7 @@ class _OverFields extends StatelessWidget {
     final UiThemeData ui = context.ui;
     return SizedBox(
       width: width,
-      height: height,
+      height: height * _specimenTextScale(context),
       child: Squircle.clip(
         radius: ui.shape.tile,
         child: Stack(
@@ -377,7 +402,7 @@ class _Tabs extends StatefulWidget {
     required this.destinations,
     required this.initial,
     this.inset = 0,
-    this.textScale = 1,
+    this.textScale,
   });
 
   final List<UiNavDestination> destinations;
@@ -385,7 +410,7 @@ class _Tabs extends StatefulWidget {
 
   /// The system inset the bar is drawn over, as a phone's home indicator.
   final double inset;
-  final double textScale;
+  final double? textScale;
 
   @override
   State<_Tabs> createState() => _TabsState();
@@ -400,7 +425,9 @@ class _TabsState extends State<_Tabs> {
     return MediaQuery(
       data: media.copyWith(
         viewPadding: EdgeInsets.only(bottom: widget.inset),
-        textScaler: TextScaler.linear(widget.textScale),
+        textScaler: widget.textScale == null
+            ? media.textScaler
+            : TextScaler.linear(widget.textScale!),
       ),
       child: UiTabBar(
         destinations: widget.destinations,

@@ -18,6 +18,7 @@ import 'dart:async';
 import '../ui_finders.dart';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
@@ -323,9 +324,7 @@ bool isPinnedChromeWidget(Widget widget) =>
 /// True where [element] is a pinned region: the marker, or a widget the list
 /// above names.
 bool isPinnedRegion(Element element) {
-  if (hasAncestor(element, (widget) => widget is Offstage && widget.offstage)) {
-    return false;
-  }
+  if (!isLaidOut(element)) return false;
   if (element.widget is PinnedChrome) return true;
   return isPinnedChromeWidget(element.widget) &&
       !hasAncestor(
@@ -390,9 +389,9 @@ double? pinnedExtent(Element element) {
       region = parent;
       return true;
     });
-    return rectOf(region)?.height;
+    return layoutRectOf(region)?.height;
   }
-  return rectOf(element)?.height;
+  return layoutRectOf(element)?.height;
 }
 
 /// The height the `PrimaryRegion` marker at [element] has to be shown in.
@@ -413,11 +412,65 @@ String pinnedRegionName(Element element) {
   return widget is PinnedChrome ? widget.region.name : '${widget.runtimeType}';
 }
 
-/// The rectangle [element] occupies in the window, or null where it has none.
+/// Whether the element is painted, including retained visibility branches.
+///
+/// A muted control still paints. Only a fully hidden branch is excluded;
+/// mounted controls inside maintainSize Visibility are otherwise measurable.
+bool isPainted(Element element) {
+  bool hidden(Widget widget) => switch (widget) {
+    Offstage(:final offstage) => offstage,
+    Visibility(:final visible, :final maintainState) =>
+      !visible && maintainState,
+    Opacity(:final opacity) => opacity == 0,
+    FadeTransition(:final opacity) => opacity.value == 0,
+    _ => false,
+  };
+  return !hidden(element.widget) && !hasAncestor(element, hidden);
+}
+
+/// The painted rectangle [element] occupies, or null where it paints nothing.
 Rect? rectOf(Element element) {
+  if (!isPainted(element)) return null;
+  return layoutRectOf(element);
+}
+
+/// Whether the branch takes part in the visible layout. Transparent retained
+/// boxes still reserve space; an offstage branch does not.
+bool isLaidOut(Element element) =>
+    !(element.widget is Offstage && (element.widget as Offstage).offstage) &&
+    !hasAncestor(element, (widget) => widget is Offstage && widget.offstage);
+
+/// The allocated box, even when fully transparent or kept by Visibility.
+/// Reserved chrome is a layout cost regardless of whether it paints content.
+Rect? layoutRectOf(Element element) {
+  if (!isLaidOut(element)) return null;
   final RenderObject? object = element.renderObject;
   if (object is! RenderBox || !object.hasSize || !object.attached) return null;
   return object.localToGlobal(Offset.zero) & object.size;
+}
+
+/// Horizontal coverage of pinned chrome, including declared sliver extents.
+/// Adjacent panes consume separate vertical budgets rather than being stacked.
+({double left, double right})? pinnedHorizontalSpan(Element element) {
+  final rect = layoutRectOf(element);
+  if (rect != null) return (left: rect.left, right: rect.right);
+  if (!isLaidOut(element)) return null;
+  final object = element.renderObject;
+  if (object is RenderSliver &&
+      object.attached &&
+      object.geometry != null &&
+      object.constraints.axis == Axis.vertical) {
+    final transform = object.getTransformTo(null);
+    final start = MatrixUtils.transformPoint(transform, Offset.zero);
+    final end = MatrixUtils.transformPoint(
+      transform,
+      Offset(object.constraints.crossAxisExtent, 0),
+    );
+    return start.dx <= end.dx
+        ? (left: start.dx, right: end.dx)
+        : (left: end.dx, right: start.dx);
+  }
+  return null;
 }
 
 /// The string a `Text` draws, or null where the widget is not one.

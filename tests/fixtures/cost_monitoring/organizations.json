@@ -1,0 +1,47 @@
+{
+  "timeSeries": [
+    {
+      "metric": {"type": "logging.googleapis.com/user/specimen_api_requests_by_organization",
+                 "labels": {"organization_id": "00000000-0000-4000-8000-0000000000A1"}},
+      "resource": {"type": "cloud_run_revision",
+                   "labels": {"project_id": "specimen-digitization", "service_name": "specimen-api",
+                              "revision_name": "specimen-api-00107-z4m", "location": "us-east4",
+                              "configuration_name": "specimen-api"}},
+      "metricKind": "DELTA",
+      "valueType": "INT64",
+      "points": [
+        {"interval": {"startTime": "2026-10-19T09:00:00Z", "endTime": "2026-10-19T10:00:00Z"},
+         "value": {"int64Value": "600"}}
+      ]
+    },
+    {
+      "metric": {"type": "logging.googleapis.com/user/specimen_api_requests_by_organization",
+                 "labels": {"organization_id": "00000000-0000-4000-8000-0000000000a2"}},
+      "resource": {"type": "cloud_run_revision",
+                   "labels": {"project_id": "specimen-digitization", "service_name": "specimen-api",
+                              "revision_name": "specimen-api-00107-z4m", "location": "us-east4",
+                              "configuration_name": "specimen-api"}},
+      "metricKind": "DELTA",
+      "valueType": "INT64",
+      "points": [
+        {"interval": {"startTime": "2026-10-19T09:00:00Z", "endTime": "2026-10-19T10:00:00Z"},
+         "value": {"int64Value": "200"}}
+      ]
+    },
+    {
+      "metric": {"type": "logging.googleapis.com/user/specimen_api_requests_by_organization",
+                 "labels": {"organization_id": ""}},
+      "resource": {"type": "cloud_run_revision",
+                   "labels": {"project_id": "specimen-digitization", "service_name": "specimen-api",
+                              "revision_name": "specimen-api-00107-z4m", "location": "us-east4",
+                              "configuration_name": "specimen-api"}},
+      "metricKind": "DELTA",
+      "valueType": "INT64",
+      "points": [
+        {"interval": {"startTime": "2026-10-19T09:00:00Z", "endTime": "2026-10-19T10:00:00Z"},
+         "value": {"int64Value": "30"}}
+      ]
+    }
+  ],
+  "unit": "1"
+}

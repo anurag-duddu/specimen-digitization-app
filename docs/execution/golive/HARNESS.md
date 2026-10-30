@@ -36,15 +36,52 @@ returned to the harness)". G7 runs it on a Hugging Face model; G19 and G20
 decide what follows. This section is the call; section 4 schedules it and
 records its decision.
 
+**Its pick is advice** (owner, 2026-10-25): "There an LLM opinion that's put
+in front along with actual Raw transcription per model to the harness if
+needed as then harness does its thing per field and settles as written or
+derived and so on", and "Harness can decide as it goes out and learns more
+than what the raw transcriptions are capable of". Each field expert receives,
+per label it compared, the reader it preferred (or none), its rationale, its
+note on each reader and each material difference with its verdict, and the
+harness settles a field on any reader's text that evidence supports: a
+source's match, readers that agree, another label of the specimen that
+writes it; on the preferred reader's text when nothing supports another
+(FIELD_RESEARCH.md step 5). Where its verdict at a difference names the
+reader it preferred, only a source's exact match overrides it; another
+label's agreement or a near spelling there leaves the field for a person
+(`first_pass_conflict`; the coordinator's decision of 2026-10-25 on #414's
+first review).
+
 **Input.** The crop the readers saw, each reading's raw transcript verbatim, and
 the numbered differences between the readings from a deterministic token
 alignment; a difference in whitespace alone is not listed. Readers appear as
 Reader A, B, … in the profile's route order, never by model or route name.
+Two or more readings are taken. The first pass itself letters up to 26
+readers (one letter each; more block as `first_pass_reading_count_unsupported`),
+but a profile may name at most 8 readers, the label risk budget
+(`review_risk.MAX_LABEL_READINGS`, enforced when the profile is validated), so
+a label never has more than 8 readings. With more than two, each later
+reading is aligned with the first as two readings are, and each listed
+difference gives one span per reader, an empty one at the right offset where
+a reader has nothing there (`first_pass.reading_differences_among`; the
+NVIDIA option's reader C, `docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md`).
+For two readings the request is unchanged by that; only its task sentence
+changed since, on 2026-10-25 (below).
 Instructions are the pinned managed prompt
-`transcription-disagreement-adjudication`, unchanged: its "route material
+`transcription-disagreement-adjudication`. Its code default
+(`prompts._DISAGREEMENT_ADJUDICATION_DEFAULT`, served when Logfire serves no
+managed version) has given it biodiversity context since 2026-10-25 (the
+owner: "The LLM system Prompt is to be working with biodiversity data and
+context should be around it"): one natural-history specimen label's
+collecting data, judged against the image, and its pick as advice to a field
+harness that settles each field with lookups against biodiversity sources and
+may overrule it, so its notes say what it saw. It keeps "Never choose a
+candidate merely because it is more fluent", and its "route material
 ambiguity to human review" is expressed by returning no reading and recording
-the unresolved differences, and G19 then decides the route. The request states
-that rule in the model's terms (**G19 in code**, below).
+the unresolved differences, and G19 then decides the route. The request asks
+for the reader whose raw transcript the image supports, as advice to the
+field harness (until 2026-10-25, the one "the lookups should run against").
+The request states that rule in the model's terms (**G19 in code**, below).
 
 **Input binding** (the steward's review of #97, 2026-09-25). The readings must
 be the region's own: each names the region and, when it records an input asset,
@@ -89,9 +126,14 @@ material, so a spelling variant such as "Straße" against "Strasse" stays
 material (the coordinator's ruling at 14:05Z, which reads 12:31Z's "case-folded"
 as lower-cased). The model is not asked. A pick stands only when every material
 difference's verdict supports the picked reader, which is the prompt's "Resolve
-a value only when the visual evidence supports it" with no merging. A material
-difference left `neither` or `uncertain`, or supported by another reader, means
-no reading, and every reading becomes a `raw_reading` handoff (G19). That is
+a value only when the visual evidence supports it" with no merging. A verdict
+supports the picked reader when it names that reader, or, with more than two
+readers, a reader whose span at that difference is the picked reader's text
+once lower-cased (`first_pass.supports`); with two readers a material
+difference's two spans always differ, so only the picked reader's own verdict
+supports it. A material difference left `neither` or `uncertain`, or supported
+by a reader whose text there differs, means no reading, and every reading
+becomes a `raw_reading` handoff (G19). That is
 neither a retry nor a block (the coordinator's confirmation at 12:32Z): the
 model's pick stays in the call's raw response and its rationale.
 
@@ -191,7 +233,7 @@ pass was answered HTTP 429 on all three attempts and dead-lettered the run as
 HTTP 402 included), the ordinary first pass is given up on as a reader
 is: its step completes with no decision and the run goes on through
 `adjudicate`, `parse` and field research. The label's transcript has no text and
-no `decision_kind`, and keeps both readings as its alternatives. A warning
+no `decision_kind`, and keeps its readings as its alternatives. A warning
 finding `first_pass_given_up:{region}:{code}` beside the record names the label
 and the failure. The queue decision sends the record to review with
 `unresolved_transcription:{region}`, which field research gives such a label
@@ -476,11 +518,17 @@ another asset is refused as `external_outcome_unknown`, as a reading's is.
 or none), `first_pass_call` (the call's provenance), `reason` (the rationale),
 `differences` (every verdict with each reading's span), and `handoffs`, one per
 reading: the selected reading as `decided_transcript`, the others as
-`raw_reading` (the harness's fallback); with no selection every reading is a
-`raw_reading` (G19). `resolved` is true exactly when a reading was selected; a
+`raw_reading` (the harness's fallback until 2026-10-25; since then these are
+wire values only: every reading is raw transcription the harness may settle
+on, and the selected one is the first pass's advice); with no selection every
+reading is a `raw_reading` (G19). `resolved` is true exactly when a reading
+was selected; a
 difference left `neither` or `uncertain` stays on the record for the harness and
 the queue decision (G19, G20). The disagreement score and the alignment fields
-of stage 5 are unchanged. The run keeps each region's decision in
+of stage 5 are unchanged for two readings. With more, every pair is aligned in
+route order: the alignment fields report the least-agreeing pair, a pair that
+cannot be measured leaves the region unmeasured, and `comparisons` keeps every
+pair (`reading_evidence.label_comparison`). The run keeps each region's decision in
 `first_pass_decisions`. Synthetic runs use a fixture that selects no reading;
 its call names the input the readers saw.
 
@@ -612,9 +660,9 @@ capabilities it needs.
 from the initial reader set only, as on main, so a profile that names the
 first-pass or the harness route as a reader fails the pin step. A reader call
 blocks as `pinned_model_route_unavailable` unless its route is a
-`handwriting_transcriber` with image input; `transcribe_label_image`, which has
-no caller, raises `ModelGatewayConfigurationError` on any other route. The
-first-pass route is pinned only when it is registered as
+`handwriting_transcriber` with image input. (`transcribe_label_image`, a helper
+with no caller that applied the same refusal to its own route, has been
+removed.) The first-pass route is pinned only when it is registered as
 `transcription_first_pass` with image input, and the first-pass call checks the
 same before its request: any other route, the harness's text-only one or a
 reader's included, blocks the step as `pinned_model_route_unavailable`.

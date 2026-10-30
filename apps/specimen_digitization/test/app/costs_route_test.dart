@@ -212,14 +212,14 @@ void main() {
           await tester.pumpAndSettle();
 
           expect(pageOf(tester), AppRoutes.costs);
-          expect(find.text('Cost in October 2026'), findsOneWidget);
+          expect(find.text('Known cost in October 2026'), findsOneWidget);
           expect(repository.meter.reads.single.organization, costOrganization);
 
           await tester.tap(uiIconButton('Go back'));
           await tester.pumpAndSettle();
 
           expect(locationOf(tester), queueLocation);
-          expect(find.text('Cost in October 2026'), findsNothing);
+          expect(find.text('Known cost in October 2026'), findsNothing);
           await tester.pumpWidget(const SizedBox());
         },
       );
@@ -247,7 +247,7 @@ void main() {
       await pump(tester, repository, location: AppRoutes.costs);
 
       expect(pageOf(tester), AppRoutes.costs);
-      expect(find.text('Cost in October 2026'), findsOneWidget);
+      expect(find.text('Known cost in October 2026'), findsOneWidget);
 
       // Nothing to return to, so the control goes to the queue.
       await tester.tap(uiIconButton('Go back'));

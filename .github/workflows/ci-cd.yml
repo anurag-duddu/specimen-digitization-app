@@ -367,13 +367,18 @@ jobs:
         working-directory: apps/specimen_digitization/packages/specimen_ui
         run: flutter pub get
 
+      - name: Install locked Widgetbook dependencies
+        working-directory: apps/specimen_widgetbook
+        run: flutter pub get --enforce-lockfile
+
       # The cheapest gate, so it runs before the analyzers. It covers the
-      # client and the design system and nothing else: the frozen Dart under
+      # client, design system and Widgetbook: the frozen Dart under
       # docs/execution/qa-evidence is evidence, not source.
       - name: Check Dart formatting
         run: >-
           dart format --output=none --set-exit-if-changed
           lib test packages/specimen_ui/lib packages/specimen_ui/test
+          ../specimen_widgetbook/lib ../specimen_widgetbook/test
 
       - name: Check UI writing
         run: >-
@@ -387,6 +392,18 @@ jobs:
       - name: Run design system tests
         working-directory: apps/specimen_digitization/packages/specimen_ui
         run: flutter test
+
+      - name: Analyze Widgetbook
+        working-directory: apps/specimen_widgetbook
+        run: flutter analyze --fatal-infos
+
+      - name: Run Widgetbook tests
+        working-directory: apps/specimen_widgetbook
+        run: flutter test
+
+      - name: Build Widgetbook web release
+        working-directory: apps/specimen_widgetbook
+        run: flutter build web --release
 
       - name: Analyze Flutter code
         run: flutter analyze --fatal-infos

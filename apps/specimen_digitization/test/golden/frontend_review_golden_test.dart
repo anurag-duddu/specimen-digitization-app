@@ -82,8 +82,22 @@ void main() {
     );
     expect(viewer.transformationController!.value.getMaxScaleOnAxis(), 1);
     expect(find.text('#105526321'), findsWidgets);
-    expect(find.textContaining('Supported · United States'), findsOneWidget);
-    expect(find.text('Needs review · Unknown · Required'), findsOneWidget);
+    expect(find.text('United States'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: uiDisclosure('Collectors'),
+        matching: find.text('Unknown'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<UiDisclosure>(uiDisclosure('Country')).semanticsLabel,
+      'Country, required. Supported. United States',
+    );
+    expect(
+      tester.widget<UiDisclosure>(uiDisclosure('Collectors')).semanticsLabel,
+      'Collectors, required. Unknown. Review needed',
+    );
     expect(find.text('As written'), findsNothing);
     expect(find.byType(ReaderHeading), findsNothing);
     expect(find.bySemanticsLabel(RegExp('Test environment')), findsWidgets);

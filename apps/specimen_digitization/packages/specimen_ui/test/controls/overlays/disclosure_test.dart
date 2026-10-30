@@ -430,7 +430,7 @@ void main() {
       (BuildContext context) => _disclosure(),
       semanticsLabel: _label,
       labelsNeverWrap: true,
-      wrappingContent: <String>{_summary},
+      wrappingContent: <String>{_title, _summary},
       geometryFromType: true,
       fit: FitExpectation(
         check: (WidgetTester tester, double width) async {

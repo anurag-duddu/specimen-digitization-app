@@ -58,13 +58,20 @@ class CostMeter:
         *,
         input_micros_per_million: int,
         output_micros_per_million: int,
+        cached_input_micros_per_million: int | None = None,
     ) -> None:
-        for value in (cap_micros, input_micros_per_million, output_micros_per_million):
+        cached = input_micros_per_million if cached_input_micros_per_million is None \
+            else cached_input_micros_per_million
+        for value in (cap_micros, input_micros_per_million, output_micros_per_million, cached):
             if type(value) is not int or value < 0:
                 raise ValueError("a ceiling and its prices are non-negative integer micros")
+        if cached > input_micros_per_million:
+            raise ValueError("a cached input token cannot cost more than an input token")
         self.cap_micros = cap_micros
         self.input_micros_per_million = input_micros_per_million
         self.output_micros_per_million = output_micros_per_million
+        # Without a published cached rate a cached token costs what any input token does.
+        self.cached_input_micros_per_million = cached
         self._lock = asyncio.Lock()
         self._tickets: dict[int, int] = {}
         self._next_ticket = 0
@@ -72,11 +79,22 @@ class CostMeter:
         self._outstanding = 0
         # Reservations waiting for a held one to settle (reserve).
         self._waiters: list[asyncio.Future[None]] = []
+        # The tokens of the requests settled from their reported usage
+        # (field_research.step.record_cost keeps them on the run's paid call).
+        self.reported = {"requests": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0}
 
-    def cost(self, input_tokens: int, output_tokens: int) -> int:
-        """Micro-dollars for this many tokens, rounded up (as lane_reservations prices)."""
+    def cost(self, input_tokens: int, output_tokens: int, cached_input_tokens: int = 0) -> int:
+        """Micro-dollars for this many tokens, rounded up (as lane_reservations prices).
+
+        ``cached_input_tokens`` are the part of the input the provider reported
+        serving from its prompt cache, at the cached rate; a reservation passes
+        none, so a worst case is always priced as uncached input.
+        """
+        inputs = max(0, input_tokens)
+        cached = min(max(0, cached_input_tokens), inputs)
         total = (
-            max(0, input_tokens) * self.input_micros_per_million
+            (inputs - cached) * self.input_micros_per_million
+            + cached * self.cached_input_micros_per_million
             + max(0, output_tokens) * self.output_micros_per_million
         )
         return -(-total // MILLION)
@@ -104,14 +122,20 @@ class CostMeter:
                 if waiter in self._waiters:
                     self._waiters.remove(waiter)
 
-    def settle(self, ticket: int, input_tokens: int, output_tokens: int) -> int:
+    def settle(self, ticket: int, input_tokens: int, output_tokens: int, cached_input_tokens: int = 0,
+               *, reported: bool = False) -> int:
         """Replace a reservation with the call's actual cost; return that cost.
-        Every waiting reservation is then tried again."""
+        Every waiting reservation is then tried again. ``reported`` says the
+        tokens are the provider's own count, which is then kept."""
         # No await between the lookup and the update, so no lock is needed here.
         reserved = self._tickets.pop(ticket, None)
         if reserved is None:
             raise ValueError("unknown or already settled reservation")
-        actual = self.cost(input_tokens, output_tokens)
+        actual = self.cost(input_tokens, output_tokens, cached_input_tokens)
+        if reported:
+            for key, value in (("requests", 1), ("input_tokens", input_tokens), ("output_tokens", output_tokens),
+                               ("cached_input_tokens", min(max(0, cached_input_tokens), max(0, input_tokens)))):
+                self.reported[key] += max(0, value)
         self._outstanding -= reserved
         self._spent += actual
         waiters, self._waiters = self._waiters, []
@@ -213,9 +237,15 @@ class MeteredModel(WrapperModel):
             raise InputTooLarge("model_input_over_bound")
         return settings, input_bound + TEMPLATE_TOKENS, max_tokens
 
-    def _settle(self, ticket: int, input_tokens: int, output_tokens: int) -> None:
+    def _settle(self, ticket: int, input_tokens: int, output_tokens: int, usage=None) -> None:
+        """Settle one request: at its reported ``usage`` (cached input tokens
+        included) when given, else at the tokens passed (its worst case or zero)."""
         self.model_calls += 1
-        self.cost_micros += self.meter.settle(ticket, input_tokens, output_tokens)
+        if usage is not None:
+            self.cost_micros += self.meter.settle(ticket, usage.input_tokens, usage.output_tokens,
+                                                  usage.cache_read_tokens, reported=True)
+        else:
+            self.cost_micros += self.meter.settle(ticket, input_tokens, output_tokens)
 
     async def request(self, messages, model_settings, model_request_parameters):
         settings, input_bound, output_bound = self._bounds(
@@ -238,7 +268,7 @@ class MeteredModel(WrapperModel):
             raise
         usage = response.usage
         if usage.has_values():
-            self._settle(ticket, usage.input_tokens, usage.output_tokens)
+            self._settle(ticket, 0, 0, usage)
         else:
             self._settle(ticket, input_bound, output_bound)
         return response
@@ -263,6 +293,6 @@ class MeteredModel(WrapperModel):
             # A stream cut short may have been billed for more than it reported.
             usage = stream.usage if completed and stream is not None else None
             if usage is not None and usage.has_values():
-                self._settle(ticket, usage.input_tokens, usage.output_tokens)
+                self._settle(ticket, 0, 0, usage)
             else:
                 self._settle(ticket, input_bound, output_bound)

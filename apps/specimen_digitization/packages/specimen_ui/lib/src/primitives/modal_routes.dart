@@ -18,6 +18,34 @@ import 'frame_safe_notifier.dart';
 import 'glass_surface.dart';
 import 'scrim.dart';
 
+/// An explicit modal destination for an embedded application or preview.
+///
+/// Product screens normally use their root navigator. A host embedding a whole
+/// product in a bounded viewport can publish its own navigator here so dialogs
+/// remain inside that viewport and inherit its appearance and accessibility
+/// settings. The host owns the key and the navigator's lifetime.
+class UiModalNavigator extends InheritedWidget {
+  /// Routes owned modals through [navigatorKey] within [child].
+  const UiModalNavigator({
+    super.key,
+    required this.navigatorKey,
+    required super.child,
+  });
+
+  /// The mounted navigator that owns the embedded application's modal routes.
+  final GlobalKey<NavigatorState> navigatorKey;
+
+  /// The explicit host navigator, if this context belongs to an embedded app.
+  static NavigatorState? maybeOf(BuildContext context) => context
+      .getInheritedWidgetOfExactType<UiModalNavigator>()
+      ?.navigatorKey
+      .currentState;
+
+  @override
+  bool updateShouldNotify(UiModalNavigator oldWidget) =>
+      oldWidget.navigatorKey != navigatorKey;
+}
+
 /// Where the modals of this package say that one of them is open, and what a
 /// frame reads to draw solid beneath it (13 section 2.2; 09 section 3.3).
 ///
@@ -209,6 +237,28 @@ Future<T?> showUiImportWorkspace<T>({
   workspace: true,
 );
 
+/// Shows a side panel at the reading-order end (or start) of the viewport.
+///
+/// The pane fills the available height, uses the same focus restoration and
+/// dismissal contract as a dialog, and becomes full width on compact windows.
+Future<T?> showUiDrawer<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  required String semanticsLabel,
+  String? dismissLabel,
+  bool dismissible = true,
+  bool fromStart = false,
+}) => _show<T>(
+  context: context,
+  builder: builder,
+  semanticsLabel: semanticsLabel,
+  dismissLabel: dismissLabel,
+  dismissible: dismissible,
+  sheet: false,
+  drawer: true,
+  fromStart: fromStart,
+);
+
 Future<T?> _show<T>({
   required BuildContext context,
   required WidgetBuilder builder,
@@ -217,9 +267,14 @@ Future<T?> _show<T>({
   required bool dismissible,
   required bool sheet,
   bool workspace = false,
+  bool drawer = false,
+  bool fromStart = false,
 }) {
   final UiThemeData ui = context.ui;
-  final NavigatorState navigator = Navigator.of(context, rootNavigator: true);
+  final TextDirection direction = Directionality.of(context);
+  final NavigatorState navigator =
+      UiModalNavigator.maybeOf(context) ??
+      Navigator.of(context, rootNavigator: true);
   // The frame this modal is shown from inside, if any. Read from the caller's
   // context, because the route itself is built in the navigator's overlay,
   // above every frame.
@@ -240,13 +295,19 @@ Future<T?> _show<T>({
           BuildContext context,
           Animation<double> animation,
           Animation<double> secondary,
-        ) => _ModalFrame(
-          sheet: sheet,
-          workspace: workspace,
-          semanticsLabel: semanticsLabel,
-          dismissLabel: dismissLabel,
-          dismissible: dismissible,
-          builder: builder,
+        ) => Directionality(
+          textDirection: direction,
+          child: _ModalFrame(
+            animation: animation,
+            sheet: sheet,
+            workspace: workspace,
+            drawer: drawer,
+            fromStart: fromStart,
+            semanticsLabel: semanticsLabel,
+            dismissLabel: dismissLabel,
+            dismissible: dismissible,
+            builder: builder,
+          ),
         ),
     transitionBuilder:
         (
@@ -254,27 +315,7 @@ Future<T?> _show<T>({
           Animation<double> animation,
           Animation<double> secondary,
           Widget child,
-        ) {
-          final CurvedAnimation curved = CurvedAnimation(
-            parent: animation,
-            curve: MotionTokens.emphasizedEnterCurve,
-            reverseCurve: MotionTokens.emphasizedExitCurve,
-          );
-          final Widget faded = FadeTransition(opacity: curved, child: child);
-          // Under reduced motion the pane appears without travel, which is
-          // what 04 section 2.5 collapses a sheet to. The fade stays,
-          // because a fade is not motion.
-          if (context.ui.motion.reduced) return faded;
-          return SlideTransition(
-            position: Tween<Offset>(
-              begin: sheet
-                  ? const Offset(0, MotionTokens.sheetEntranceRise)
-                  : const Offset(0, MotionTokens.dialogEntranceRise),
-              end: Offset.zero,
-            ).animate(curved),
-            child: faded,
-          );
-        },
+        ) => child,
   );
   // `push` returns the future of the pop, which is the moment the exit
   // begins: the frame beneath gets its panes back while the scrim is still
@@ -290,22 +331,69 @@ Future<T?> _show<T>({
 }
 
 /// The chrome around a modal: the scrim, the focus trap and the pane.
-class _ModalFrame extends StatelessWidget {
+class _ModalFrame extends StatefulWidget {
   const _ModalFrame({
+    required this.animation,
     required this.sheet,
     this.workspace = false,
+    this.drawer = false,
+    this.fromStart = false,
     required this.semanticsLabel,
     required this.dismissLabel,
     required this.dismissible,
     required this.builder,
   });
 
+  final Animation<double> animation;
   final bool sheet;
   final bool workspace;
+  final bool drawer;
+  final bool fromStart;
   final String semanticsLabel;
   final String? dismissLabel;
   final bool dismissible;
   final WidgetBuilder builder;
+
+  @override
+  State<_ModalFrame> createState() => _ModalFrameState();
+}
+
+class _ModalFrameState extends State<_ModalFrame> {
+  late final CurvedAnimation _motion = CurvedAnimation(
+    parent: widget.animation,
+    curve: MotionTokens.emphasizedEnterCurve,
+    reverseCurve: MotionTokens.emphasizedExitCurve,
+  );
+
+  @override
+  void dispose() {
+    _motion.dispose();
+    super.dispose();
+  }
+
+  /// Fade the backdrop in place; only the bounded panel travels. Moving the
+  /// whole frame exposes an undimmed strip and displaces the dismiss target.
+  Widget _panelMotion(BuildContext context, Widget child) {
+    final faded = FadeTransition(opacity: _motion, child: child);
+    if (context.ui.motion.reduced) return faded;
+    final direction = Directionality.of(context);
+    return SlideTransition(
+      position: Tween<Offset>(
+        begin: widget.sheet
+            ? const Offset(0, MotionTokens.sheetEntranceRise)
+            : widget.drawer
+            ? Offset(
+                (direction == TextDirection.rtl) != widget.fromStart
+                    ? -MotionTokens.sheetEntranceRise
+                    : MotionTokens.sheetEntranceRise,
+                0,
+              )
+            : const Offset(0, MotionTokens.dialogEntranceRise),
+        end: Offset.zero,
+      ).animate(_motion),
+      child: faded,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -323,7 +411,7 @@ class _ModalFrame extends StatelessWidget {
         actions: <Type, Action<Intent>>{
           DismissIntent: CallbackAction<DismissIntent>(
             onInvoke: (DismissIntent intent) {
-              if (dismissible) close();
+              if (widget.dismissible) close();
               return null;
             },
           ),
@@ -359,21 +447,24 @@ class _ModalFrame extends StatelessWidget {
           radius: ui.shape.sheet,
           // A sheet meets the bottom of the available area, so only its top
           // corners turn (10 section 4.3). A dialog floats, so all four do.
-          corners: sheet
+          corners: widget.sheet
               ? BorderRadius.vertical(top: Radius.circular(ui.shape.sheet))
               : null,
-          child: builder(paneContext),
+          child: widget.builder(paneContext),
         ),
       ),
     );
     return PopScope(
-      canPop: dismissible,
+      canPop: widget.dismissible,
       child: Stack(
         children: <Widget>[
           Positioned.fill(
-            child: Scrim(
-              onDismiss: dismissible ? close : null,
-              dismissLabel: dismissLabel,
+            child: FadeTransition(
+              opacity: _motion,
+              child: Scrim(
+                onDismiss: widget.dismissible ? close : null,
+                dismissLabel: widget.dismissLabel,
+              ),
             ),
           ),
           Positioned.fill(
@@ -386,19 +477,34 @@ class _ModalFrame extends StatelessWidget {
                   viewInsets: EdgeInsets.zero,
                 ),
                 child: Align(
-                  alignment: sheet ? Alignment.bottomCenter : Alignment.center,
+                  alignment: widget.sheet
+                      ? Alignment.bottomCenter
+                      : widget.drawer
+                      ? (widget.fromStart
+                            ? AlignmentDirectional.centerStart
+                            : AlignmentDirectional.centerEnd)
+                      : Alignment.center,
                   child: Padding(
-                    padding: EdgeInsets.all(sheet ? 0 : ui.space.s4),
+                    padding: EdgeInsets.all(
+                      widget.sheet || widget.drawer ? 0 : ui.space.s4,
+                    ),
                     child: ConstrainedBox(
                       // A sheet fills the window's width; a dialog shrink wraps
                       // up to 560. `minWidth: infinity` is the idiom for "as
                       // wide as the parent allows", because `ConstrainedBox`
                       // enforces against the incoming constraints.
                       constraints: BoxConstraints(
-                        minWidth: sheet ? double.infinity : 0,
-                        maxWidth: sheet
+                        minWidth:
+                            widget.sheet ||
+                                widget.drawer && isCompactWindow(context)
                             ? double.infinity
-                            : workspace
+                            : 0,
+                        minHeight: widget.drawer ? double.infinity : 0,
+                        maxWidth:
+                            widget.sheet ||
+                                widget.drawer && isCompactWindow(context)
+                            ? double.infinity
+                            : widget.workspace
                             ? ui.space.importWorkspaceMax
                             : ui.space.dialogMax,
                       ),
@@ -409,8 +515,8 @@ class _ModalFrame extends StatelessWidget {
                           scopesRoute: true,
                           explicitChildNodes: true,
                           namesRoute: true,
-                          label: semanticsLabel,
-                          child: pane,
+                          label: widget.semanticsLabel,
+                          child: _panelMotion(context, pane),
                         ),
                       ),
                     ),

@@ -21,12 +21,14 @@ from .domain import (
     Observation,
     OPERATIONAL,
     Principal,
+    ReadingPairComparison,
     Region,
     Run,
     Specimen,
     Transcript,
     ValueState,
 )
+from .reading_units import ReadingUnits
 from .collection_runtime import (
     application_registry,
     SyntheticClassifier,
@@ -395,6 +397,9 @@ class PipelineAdapters(Protocol):
     def first_pass(
         self, specimen: Specimen, region: Region, readings: list[Observation]
     ) -> FirstPassDecision: ...
+    def first_pass_units(
+        self, specimen: Specimen, region: Region, readings: list[Observation]
+    ) -> tuple[FirstPassDecision, ReadingUnits]: ...
     def lookup(self, name: str) -> Lookup: ...
 
 
@@ -962,14 +967,22 @@ class Workflow:
                 region = next(r for r in run.regions if r.id == step.split(":", 1)[1])
                 readings = [o for o in run.observations if o.region_id == region.id]
                 from .first_pass import (
+                    UNITS,
                     UNRESOLVED_VERDICTS,
                     g19_pick,
                     give_up,
                     is_material,
                 )
+                from .reading_units import problems as unit_problems
 
+                units_path, units = run.first_pass_path == UNITS, None
                 try:
-                    decision = self.adapters.first_pass(specimen, region, readings)
+                    if units_path:
+                        decision, units = self.adapters.first_pass_units(
+                            specimen, region, readings
+                        )
+                    else:
+                        decision = self.adapters.first_pass(specimen, region, readings)
                 except AdapterFailure as failure:
                     if not self.first_pass_has_no_attempt_left(run, step, failure):
                         raise  # Retried, or a block that names its cause (below).
@@ -1007,38 +1020,78 @@ class Workflow:
                             for d in decision.differences
                         )
                         or g19_pick(selected, decision.differences) != selected
+                        # Units path: no selected reading, `uncertain` verdicts, and units of
+                        # this region that pass `problems`.
+                        or units_path
+                        and (
+                            selected is not None
+                            or any(d.verdict != "uncertain" for d in decision.differences)
+                            or units is None
+                            or units.label != region.id
+                            or unit_problems(units, {o.id: o.literal_text for o in readings})
+                        )
                     ):
                         raise OperationalBlock("first_pass_contract_invalid")
                     run.first_pass_decisions = [
                         d for d in run.first_pass_decisions if d.region_id != region.id
                     ] + [decision]
+                    if units is not None:
+                        store_reading_units(run, [units])
                     call = decision.call
                     run.usage.tokens += call.input_tokens + call.output_tokens
             elif step == "adjudicate":
                 run.transcripts = []
                 decisions = {d.region_id: d for d in run.first_pass_decisions}
+                if run.first_pass_path == "units":
+                    # A region with no units entry gets alignment_units.
+                    from .first_pass import alignment_units
+
+                    held = {entry.label for entry in run.reading_units}
+                    store_reading_units(
+                        run,
+                        [
+                            units
+                            for region in run.regions
+                            if region.id not in held
+                            and (
+                                units := alignment_units(
+                                    region.id,
+                                    [o for o in run.observations if o.region_id == region.id],
+                                )
+                            )
+                            is not None
+                        ],
+                    )
                 for region in run.regions:
                     readings = [o for o in run.observations if o.region_id == region.id]
                     texts = list(dict.fromkeys(o.literal_text for o in readings))
                     from .first_pass import adjudication_record
-                    from .reading_evidence import ReadingEvidenceInput, align_readings
+                    from .reading_evidence import (
+                        ReadingEvidenceInput,
+                        disagreement_ratio,
+                        label_comparison,
+                        pairwise_alignments,
+                    )
 
-                    alignment = None
-                    if len(readings) == 2:
-                        alignment = align_readings(
-                            *(
-                                ReadingEvidenceInput(
-                                    observation_id=o.id,
-                                    region_id=region.id,
-                                    source_ref=o.raw_ref,
-                                    source_sha256=o.raw_sha256,
-                                    text=o.literal_text,
-                                )
-                                for o in readings
+                    # Every pair of the label's readings, in route order; two
+                    # readings are one pair, as before. A label is measured
+                    # when every pair is, and reports its least-agreeing pair
+                    # (reading_evidence.label_comparison).
+                    alignments = pairwise_alignments(
+                        [
+                            ReadingEvidenceInput(
+                                observation_id=o.id,
+                                region_id=region.id,
+                                source_ref=o.raw_ref,
+                                source_sha256=o.raw_sha256,
+                                text=o.literal_text,
                             )
-                        )
+                            for o in readings
+                        ]
+                    )
+                    comparison = label_comparison(alignments)
                     measured = (
-                        alignment is not None and alignment.status != "policy_blocked"
+                        comparison is not None and comparison.status != "policy_blocked"
                     )
                     resolved = (
                         measured
@@ -1047,7 +1100,11 @@ class Workflow:
                         and not any(o.unreadable_spans for o in readings)
                     )
                     text, resolved, record = adjudication_record(
-                        readings, texts, resolved, decisions.get(region.id)
+                        readings,
+                        texts,
+                        resolved,
+                        decisions.get(region.id),
+                        keep_call=run.first_pass_path == "units",
                     )
                     run.transcripts.append(
                         Transcript(
@@ -1056,19 +1113,28 @@ class Workflow:
                             observation_ids=[o.id for o in readings],
                             alternatives=texts,
                             resolved=resolved,
-                            disagreement_ratio=(
-                                alignment.edit_distance
-                                / max(1, *(len(o.literal_text) for o in readings))
-                            )
+                            disagreement_ratio=disagreement_ratio(comparison.alignment)
                             if measured
                             else None,
-                            alignment_status=alignment.status
-                            if alignment
+                            alignment_status=comparison.status
+                            if comparison
                             else "policy_blocked",
                             alignment_algorithm="bounded-levenshtein-fraction-v1",
-                            alignment_reasons=list(alignment.reasons)
-                            if alignment
+                            alignment_reasons=list(comparison.reasons)
+                            if comparison
                             else ["independent_pair_incomplete"],
+                            comparisons=[
+                                ReadingPairComparison(
+                                    left_observation_id=a.left.observation_id,
+                                    right_observation_id=a.right.observation_id,
+                                    status=a.status,
+                                    reasons=list(a.reasons),
+                                    disagreement_ratio=disagreement_ratio(a),
+                                )
+                                for a in alignments
+                            ]
+                            if len(alignments) > 1
+                            else [],
                             **record,
                         )
                     )
@@ -1910,7 +1976,7 @@ class Workflow:
         reserved in none, or they do not all hold one settled amount.
         """
         from .domain import Scope
-        from .lane_allowance import ProgramLedger
+        from .lane_allowance import ORDINARY, ProgramLedger
         from .lane_worker import stored_integer
         from .tenant_budget import settled_micros
 
@@ -1933,7 +1999,7 @@ class Workflow:
             key = ProgramLedger._ordinary_key(
                 specimen.id, run.id, step, run.attempts.get(step, 0)
             )
-            entry = ledger.read().get("ordinary_effects", {}).get(key)
+            entry = ledger.effect(ORDINARY, key)  # The head's, else its archive's.
             if not isinstance(entry, dict) or entry.get("settled_micros") is None:
                 return None
             if (
@@ -2048,13 +2114,18 @@ class Workflow:
                 if key not in run.completed_steps:
                     return key
         if "adjudicate" not in run.completed_steps:
-            # Differing readings get the LLM first pass (HARNESS.md section 3).
+            # Differing readings get the LLM first pass (HARNESS.md section 3). Units path:
+            # two readings or more, and some text.
             for region in run.regions:
-                texts = {
-                    o.literal_text for o in run.observations if o.region_id == region.id
-                }
+                readings = [o for o in run.observations if o.region_id == region.id]
+                texts = {o.literal_text for o in readings}
                 key = f"first_pass:{region.id}"
-                if len(texts) > 1 and key not in run.completed_steps:
+                due = (
+                    len(readings) > 1 and any(text.strip() for text in texts)
+                    if run.first_pass_path == "units"
+                    else len(texts) > 1
+                )
+                if due and key not in run.completed_steps:
                     return key
         for step in (
             "adjudicate",
@@ -2214,7 +2285,15 @@ def reconcilable_step(run: Run) -> str | None:
 class SyntheticAdapters:
     """Explicit fixture generator. Never represents SAM 3 or live inference."""
 
-    def __init__(self, blobs: BlobStore, text: str, alternate_text: str | None = None):
+    def __init__(
+        self,
+        blobs: BlobStore,
+        text: str,
+        alternate_text: str | tuple[str, ...] | list[str] | None = None,
+    ):
+        """Reader A reads ``text``. ``alternate_text`` is what the readers after
+        it read instead: one text, for reader B, or one text each for readers B,
+        C and so on. A reader with no alternate reads ``text``."""
         self.blobs, self.text, self.alternate = blobs, text, alternate_text
 
     def segment(self, specimen):
@@ -2234,11 +2313,16 @@ class SyntheticAdapters:
         ]
 
     def transcribe(self, specimen, region, route):
-        text = (
-            self.alternate
-            if route == specimen.run.profile.routes[1] and self.alternate is not None
-            else self.text
+        routes = specimen.run.profile.routes
+        reader = routes.index(route) if route in routes else 0
+        alternates = (
+            ()
+            if self.alternate is None
+            else (self.alternate,)
+            if isinstance(self.alternate, str)
+            else tuple(self.alternate)
         )
+        text = alternates[reader - 1] if 0 < reader <= len(alternates) else self.text
         raw = ("SYNTHETIC FIXTURE\n" + text).encode()
         ref = self.blobs.put(raw)
         return Observation(
@@ -2260,6 +2344,13 @@ class SyntheticAdapters:
 
         return synthetic_decision(self.blobs, region, readings)
 
+    def first_pass_units(self, specimen, region, readings):
+        if not specimen.run.profile.synthetic:
+            raise OperationalBlock("synthetic_adapter_forbidden")
+        from .first_pass import synthetic_units
+
+        return synthetic_units(self.blobs, region, readings)
+
     def lookup(self, name):
         raw = (
             '{"synthetic":true,"name":' + __import__("json").dumps(name) + "}"
@@ -2273,6 +2364,18 @@ class SyntheticAdapters:
             raw_ref=self.blobs.put(raw),
             digest=hashlib.sha256(raw).hexdigest(),
         )
+
+
+def store_reading_units(run: Run, entries: list[ReadingUnits]) -> None:
+    """The run's reading units with these labels' entries replaced, sorted by region order,
+    set through the run's validate_assignment (its one-entry-per-label check)."""
+    labels = {entry.label for entry in entries}
+    order = {region.id: index for index, region in enumerate(run.regions)}
+    value = sorted(
+        [*(entry for entry in run.reading_units if entry.label not in labels), *entries],
+        key=lambda entry: order.get(entry.label, len(order)),
+    )
+    run.__pydantic_validator__.validate_assignment(run, "reading_units", value)
 
 
 def crop_bytes(blobs: BlobStore, specimen: Specimen, region: Region) -> bytes:

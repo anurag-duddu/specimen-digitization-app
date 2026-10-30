@@ -311,19 +311,20 @@ Future<void> enterSpecimenSelection(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// Chooses a core specimen view by its accessible radio control.
+/// Chooses a queue view by its accessible name, including an inactive icon tab.
 Future<void> pickSpecimenQueue(WidgetTester tester, String option) async {
-  final value = switch (option) {
-    'Needs review' || 'Needs a human' => 'needs_human_review',
-    'Deferred' => 'deferred',
-    'Completed' || 'Cleared' => 'cleared',
-    _ => throw ArgumentError.value(
-      option,
-      'option',
-      'Not a core specimen view',
-    ),
+  final label = switch (option) {
+    'Needs a human' => 'Needs review',
+    'Completed' => 'Cleared',
+    _ => option,
   };
-  final filter = find.byKey(ValueKey<String>('queue-filter-$value'));
+  final filter = find.descendant(
+    of: find.byKey(const ValueKey<String>('queue-view')),
+    matching: find.byWidgetPredicate(
+      (widget) => widget is Pressable && widget.semanticsLabel == label,
+    ),
+  );
+  expect(filter, findsOneWidget);
   await tester.ensureVisible(filter);
   await tester.tap(filter);
   await tester.pumpAndSettle();

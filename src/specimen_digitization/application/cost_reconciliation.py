@@ -27,6 +27,7 @@ NANO_PER_MICRO = 1_000
 NANO = 1_000_000_000
 HELD = "reserved"
 REFUSED = "refused"
+TRUED_UP = "trued_up"  # cost_ledger.TRUED_UP: re-valued after the call, from its usage or its provider's bill
 
 DEFAULT_BILLING_ZONE = "America/Los_Angeles"
 CANDIDATE_ZONES = ("UTC", "America/Los_Angeles", "UTC-5")
@@ -228,10 +229,19 @@ class MeterRow:
     month: str
     method: str | None
     price_list: str | None
+    # The provider requests the row stands for: usage.model_calls when it recorded
+    # them (a field research call is dozens), else one.
+    requests: int = 1
 
     @property
     def is_allocation(self) -> bool:
-        return self.source == "allocation" or self.kind == "allocation" or self.method is not None
+        # A paid call the ledger trued up carries a method too; it is still a paid call.
+        return self.source == "allocation" or self.kind == "allocation" or (
+            self.method is not None and self.source != "paid_call")
+
+    @property
+    def is_estimated(self) -> bool:
+        return self.basis == TRUED_UP
 
     @property
     def is_credit(self) -> bool:
@@ -296,20 +306,35 @@ def parse_meter_rows(rows, month: str) -> tuple[list[MeterRow], dict]:
         source = _first(raw, "source") or ("allocation" if method else "paid_call")
         version = _first(raw, "priceListVersion", "price_list_version")
         as_of = _first(raw, "priceListAsOf", "price_list_as_of")
+        usage = _first(raw, "usage")
+        calls = usage.get("model_calls") if isinstance(usage, dict) else None
+        if type(calls) is float and calls.is_integer():
+            calls = int(calls)
         kept.append(MeterRow(
             source=str(source), kind=str(_first(raw, "kind") or ""), stage=str(_first(raw, "stage") or ""),
             provider=provider, resource=resource, cost=cost,
             list_cost=cost if listed is None else _whole(listed, where + " listCostMicros"),
             basis=str(_first(raw, "costBasis", "cost_basis") or ""), occurred=moment, month=row_month,
             method=None if method is None else str(method),
-            price_list=None if version is None else f"{version} as of {as_of}" if as_of else str(version)))
+            price_list=None if version is None else f"{version} as of {as_of}" if as_of else str(version),
+            requests=calls if type(calls) is int and calls > 0 else 1))
     return kept, {"rows_supplied": len(supplied), "rows_other_month": other_month, "duplicates_dropped": duplicates}
 
 
 def default_route_models() -> dict[str, str]:
-    """Route id -> Hugging Face model id, from the application's route registry."""
+    """Route id -> Hugging Face model id, from the application's route registry.
+
+    A route name the meter's legacy rows carry (cost_ledger.LEGACY_ROUTES: a held
+    parse call named its step before 2026-10-25) maps to the model of the route
+    it stood for, so rows the sweep has not rewritten yet still match their bill.
+    """
     from ..model_gateway import HUGGINGFACE_ROUTES
-    return {route_id: route.model_id for route_id, route in HUGGINGFACE_ROUTES.items()}
+    from .cost_ledger import LEGACY_ROUTES
+
+    models = {route_id: route.model_id for route_id, route in HUGGINGFACE_ROUTES.items()}
+    for (_, legacy), route_id in LEGACY_ROUTES.items():
+        models.setdefault(legacy, models[route_id])
+    return models
 
 
 # ---- the Hugging Face bill --------------------------------------------------
@@ -660,6 +685,33 @@ def google_family(service: str, sku: str) -> str | None:
     return None
 
 
+# What a Google line outside every family is (COST_RECONCILIATION.md, "Lines the
+# meter does not split"): a fixed cost of running the platform, which no tenant's
+# use drives and the meter states apart; or a cost tenants' use drives that the
+# meter does not split yet. Read from the October 2026 bill and Cloud Monitoring.
+FIXED_PLATFORM = "fixed_platform"
+SHARED_NOT_SPLIT = "shared_not_yet_split"
+NOT_METERED = "not_metered"
+
+
+def line_treatment(service: str, sku: str) -> tuple[str, str]:
+    """(treatment, why) for a Google line no meter family holds."""
+    svc, name = service.strip().lower(), sku.strip().lower()
+    if svc == "cloud run" and ("data transfer out" in name or "egress" in name):
+        return SHARED_NOT_SPLIT, ("data the services send over the internet, nearly all of it the API's answers to "
+                                  "people's browsers: driven by use, to be split with the API by organization")
+    if "connect" in svc and "operation" in name:
+        return SHARED_NOT_SPLIT, ("database operations, most of them the API's reads for each request: driven by use, "
+                                  "to be split with the API")
+    if svc == "artifact registry":
+        return FIXED_PLATFORM, "the stored container images of the releases"
+    if svc == "cloud build":
+        return FIXED_PLATFORM, "the release builds"
+    if svc == "secret manager":
+        return FIXED_PLATFORM, "the stored secrets"
+    return NOT_METERED, "not metered"
+
+
 def meter_family(row: MeterRow) -> str | None:
     """The Google family a meter row belongs to (a paid SAM 3 call, or an allocation row)."""
     if row.provider != "google_cloud":
@@ -751,7 +803,10 @@ def _hf_section(rows: list[MeterRow], bill: HfBill | None, month: str, route_mod
               "metered_micros": sum(e["metered_micros"] for e in entries),
               "metered_settled_micros": sum(e["metered_settled_micros"] for e in entries),
               "metered_held_micros": sum(e["metered_held_micros"] for e in entries),
-              "meter_calls": sum(e["meter_calls"] for e in entries)}
+              "metered_estimated_micros": sum(e["metered_estimated_micros"] for e in entries),
+              "billed_outside_meter_micros": sum(e["billed_outside_meter_micros"] for e in entries),
+              "meter_calls": sum(e["meter_calls"] for e in entries),
+              "meter_requests": sum(e["meter_requests"] for e in entries)}
     totals["gap_micros"] = totals["metered_micros"] - totals["billed_micros"]
     totals["gap_percent"] = _percent(totals["gap_micros"], totals["billed_micros"])
     section = {"supplied": bill is not None, "models": entries, "totals": totals,
@@ -767,9 +822,13 @@ def _hf_entry(key, label, calls: list[MeterRow], month_days: dict, in_registry: 
     billed = _micros(billed_nano)
     settled = sum(r.cost for r in calls if r.basis != HELD)
     held = sum(r.cost for r in calls if r.basis == HELD)
+    estimated = sum(r.cost for r in calls if r.is_estimated)
     held_calls = sum(1 for r in calls if r.basis == HELD)
     refused_calls = sum(1 for r in calls if r.basis == REFUSED)
     settled_calls = len(calls) - held_calls - refused_calls
+    # Requests, not rows: one field research call is dozens of requests (usage.model_calls).
+    meter_requests = sum(r.requests for r in calls)
+    settled_requests = sum(r.requests for r in calls if r.basis not in (HELD, REFUSED))
     metered = settled + held
     gap = metered - billed
     routes: dict[str, dict] = {}
@@ -788,9 +847,13 @@ def _hf_entry(key, label, calls: list[MeterRow], month_days: dict, in_registry: 
             cell = by_day.setdefault(r.occurred.date(), {"billed": 0, "requests": 0, "metered": 0, "calls": 0})
             cell["metered"] += r.cost
             cell["calls"] += 1
+            cell["meter_requests"] = cell.get("meter_requests", 0) + r.requests
     days = [{"day": day.isoformat(), "billed_micros": _micros(c["billed"]), "billed_requests": c["requests"],
-             "metered_micros": c["metered"], "meter_calls": c["calls"],
+             "metered_micros": c["metered"], "meter_calls": c["calls"], "meter_requests": c.get("meter_requests", 0),
              "gap_micros": c["metered"] - _micros(c["billed"])} for day, c in sorted(by_day.items())]
+    # The bill's requests the meter's calls did not make, day by day, at that day's billed mean per request.
+    outside_nano = sum(c["billed"] * (c["requests"] - c.get("meter_requests", 0)) // c["requests"]
+                       for c in by_day.values() if c["requests"] > c.get("meter_requests", 0))
     flagged = supplied and limits.exceeded(gap, billed)
     entry = {
         "model_id": label if key else None,
@@ -799,8 +862,12 @@ def _hf_entry(key, label, calls: list[MeterRow], month_days: dict, in_registry: 
         "in_registry": in_registry,
         "billed_micros": billed, "billed_requests": billed_requests,
         "metered_micros": metered, "metered_settled_micros": settled, "metered_held_micros": held,
+        "metered_estimated_micros": estimated, "meter_estimated_calls": sum(1 for r in calls if r.is_estimated),
         "meter_calls": len(calls), "meter_settled_calls": settled_calls,
         "meter_held_calls": held_calls, "meter_refused_calls": refused_calls,
+        "meter_requests": meter_requests, "meter_settled_requests": settled_requests,
+        "meter_held_requests": sum(r.requests for r in calls if r.basis == HELD),
+        "billed_outside_meter_micros": _micros(outside_nano),
         "gap_micros": gap, "gap_percent": _percent(gap, billed), "gap_settled_micros": settled - billed,
         "threshold_micros": limits.limit(billed), "flagged": flagged,
         "billed_over_settled": round(billed / settled, 4) if settled > 0 and billed > 0 else None,
@@ -832,23 +899,30 @@ def _hf_explanations(e: dict, days: list[dict], month: str, unmapped_route: str 
         else:
             out.append(_explain("held_calls", f"{usd(e['metered_held_micros'])} of the meter's figure is held: "
                                 f"{e['meter_held_calls']} calls with unknown spend counted at their full reservation."))
-    requests, settled_calls = e["billed_requests"], e["meter_settled_calls"]
+    if e["metered_estimated_micros"]:
+        out.append(_explain("trued_up", f"{usd(e['metered_estimated_micros'])} of the meter's figure "
+                            f"({e['meter_estimated_calls']} calls) was estimated after the call: a call whose cost the "
+                            "run could not know, or one priced at list without its cached input, counted at the "
+                            "provider's billed mean per request for that model and day (cost basis trued_up)."))
+    # Requests, not rows: a field research row records the requests it made (usage.model_calls).
+    requests, settled_requests = e["billed_requests"], e["meter_settled_requests"]
     if billed > 0 and e["meter_calls"] > 0:
-        if requests > e["meter_calls"]:
-            out.append(_explain("requests_outside_meter", f"Hugging Face counted {requests - e['meter_calls']} more requests "
-                                f"({requests}) than the meter has calls ({e['meter_calls']}, refused ones included): calls "
-                                "made outside the app on the same account (lab runs, experiments), or meter rows the sweep "
-                                "has not written yet."))
-        elif requests < settled_calls:
-            out.append(_explain("calls_not_billed", f"The meter settled {settled_calls} calls but the bill counted "
-                                f"{requests} requests: some settled calls were not billed."))
-        elif e["meter_settled_calls"] and abs(requests - settled_calls) <= e["meter_held_calls"]:
+        if requests > e["meter_requests"]:
+            out.append(_explain("requests_outside_meter", f"Hugging Face counted {requests - e['meter_requests']} more "
+                                f"requests ({requests}) than the meter's calls made ({e['meter_requests']}, refused ones "
+                                f"included), about {usd(e['billed_outside_meter_micros'])} of the bill at each day's "
+                                "billed mean per request: calls made outside the app on the same account (lab runs, "
+                                "experiments), or meter rows the sweep has not written yet."))
+        elif requests < settled_requests:
+            out.append(_explain("calls_not_billed", f"The meter's settled calls made {settled_requests} requests but the "
+                                f"bill counted {requests}: some settled calls were not billed."))
+        elif settled_requests and requests - settled_requests <= e["meter_held_requests"]:
             ratio = e["billed_over_settled"]
             if ratio is not None and ratio < 0.97:
                 out.append(_explain("provider_discount", f"The request counts agree ({requests} billed, "
-                                    f"{settled_calls} settled in the meter), but the bill is {ratio * 100:.1f}% of the "
-                                    "meter's settled figure: the provider charged less than the list price the meter uses, "
-                                    "for example cached input at a lower rate."))
+                                    f"{settled_requests} made by settled calls in the meter), but the bill is "
+                                    f"{ratio * 100:.1f}% of the meter's settled figure: the provider charged less than the "
+                                    "list price the meter uses, for example cached input at a lower rate."))
             elif ratio is not None and ratio > 1.03:
                 lists = "; ".join(e["price_lists"]) or "unknown"
                 out.append(_explain("billed_above_list", f"The request counts agree but the bill is {ratio * 100:.1f}% of the "
@@ -1007,14 +1081,19 @@ def _google_section(rows: list[MeterRow], bill: GoogleBill | None, month: str, z
     for (service, sku), c in sorted(unmetered.items(), key=lambda item: (-item[1]["cost"], item[0])):
         types = _rounded_types(c["other"])
         cost, free = _micros(c["cost"]), _micros(c["free"])
+        treatment, why = line_treatment(service, sku)
         unmetered_lines.append({
             "service": service, "sku": sku, "cost_micros": cost, "credits_micros": free,
             "other_credits_micros": sum(types.values()), "other_credits_by_type": types,
-            "after_allowance_micros": cost + free, "net_micros": cost + free + sum(types.values())})
+            "after_allowance_micros": cost + free, "net_micros": cost + free + sum(types.values()),
+            "treatment": treatment, "treatment_reason": why})
     unmetered_types = _sum_types([l["other_credits_by_type"] for l in unmetered_lines])
     google = {
         "supplied": bill is not None, "source": source, "families": result_families,
         "unmetered": {"lines": unmetered_lines,
+                      "by_treatment": {kind: sum(l["after_allowance_micros"] for l in unmetered_lines
+                                                 if l["treatment"] == kind)
+                                       for kind in (FIXED_PLATFORM, SHARED_NOT_SPLIT, NOT_METERED)},
                       "cost_micros": sum(l["cost_micros"] for l in unmetered_lines),
                       "credits_micros": sum(l["credits_micros"] for l in unmetered_lines),
                       "other_credits_micros": sum(l["other_credits_micros"] for l in unmetered_lines),
@@ -1173,14 +1252,45 @@ def check_billing_day(bill: GoogleBill | None, assumed: BillingZone, project_id:
             "days_compared": [d.isoformat() for d in comparable], "candidates": results, "message": message}
 
 
+# ---- the committed provider bills -------------------------------------------
+
+def bills_with_month(committed: dict, huggingface, month: str, as_of: str,
+                     route_models: dict[str, str] | None = None) -> dict:
+    """``profiles/provider_bills.json`` with ``month``'s Hugging Face days replaced by this bill's.
+
+    Only the models the route registry names are kept, and only days with
+    requests; other months stay as they were. The version becomes
+    ``provider-bills-<as_of>``, so the next sweep rewrites the rows
+    (cost_ledger.rules_version). Days, model ids, counts and nano-USD only: no
+    tenant id is ever in the file.
+    """
+    month_of(month)
+    date.fromisoformat(as_of)
+    bill = parse_huggingface(huggingface)
+    models = {_model_key(model): model for model in (route_models or default_route_models()).values()}
+    days = {day: cells for day, cells in committed["huggingface"]["days"].items() if not day.startswith(month + "-")}
+    for day, cells in sorted(bill.days.items()):
+        if day.strftime("%Y-%m") != month:
+            continue
+        kept = {models[key]: {"requests": requests, "nano_usd": nano}
+                for key, (requests, nano) in sorted(cells.items()) if key in models and requests > 0}
+        if kept:
+            days[day.isoformat()] = dict(sorted(kept.items()))
+    return {**committed, "version": f"provider-bills-{as_of}", "as_of": as_of,
+            "huggingface": {**committed["huggingface"], "days": dict(sorted(days.items()))}}
+
+
 # ---- the report -------------------------------------------------------------
 
 STRUCTURAL_GAPS = (
     "The Jobs SKUs bill every Cloud Run job of the project, including the intake jobs, which the meter does not allocate.",
-    "Google services other than Cloud Run, Cloud Storage and Cloud SQL (Artifact Registry, Logging, Secret Manager, Hosting, "
-    "Monitoring, BigQuery, SQL Connect, and so on) are not metered.",
+    "Google services other than Cloud Run, Cloud Storage and Cloud SQL are not split by tenant: the registry, builds and "
+    "secrets are fixed platform costs; internet egress and SQL Connect operations are driven by use and not split yet; "
+    "the rest (Logging, Hosting, Monitoring, BigQuery, and so on) is not metered.",
     "Google's free tier is shared by every project on the billing account.",
-    "Held calls are counted at their full reservation because their spend is unknown; the bill charges only what finished.",
+    "Held calls are counted at their full reservation because their spend is unknown; the bill charges only what finished. "
+    "Once a month's provider bill is committed (profiles/provider_bills.json), the meter trues them up to the bill's mean "
+    "per request (cost basis trued_up).",
     "A provider may charge less than the list price the meter uses (for example cached input).",
     "Tool calls carry no provider in the meter, so they are listed beside the comparison but never compared with a bill.",
     "Google reports late usage on the next invoice month; the latest days of a bill can still change.",
@@ -1302,6 +1412,16 @@ def _other_cell(micros: int, by_type: dict) -> str:
     return f"{usd(micros)} ({', '.join(by_type)})" if by_type else usd(micros)
 
 
+TREATMENT_LABELS = {FIXED_PLATFORM: "fixed platform", SHARED_NOT_SPLIT: "shared, not split yet",
+                    NOT_METERED: "not metered"}
+
+
+def _treatments_text(by_treatment: dict) -> str:
+    """``$1.85 fixed platform, $3.24 shared, not split yet`` (nonzero parts only)."""
+    parts = [f"{usd(amount)} {TREATMENT_LABELS[kind]}" for kind, amount in by_treatment.items() if amount]
+    return ", ".join(parts) or "none"
+
+
 def _gap_text(gap: int, percent) -> str:
     if gap == 0:
         return "no difference"
@@ -1328,7 +1448,11 @@ def render_markdown(report: dict) -> str:
                    "The overall comparison is partial; the like-for-like line below is the one to read.")
     out.append("")
     if hf["supplied"]:
-        out.append(f"- Hugging Face: billed {usd(t['billed_huggingface_micros'])}, metered {usd(t['metered_huggingface_micros'])}.")
+        outside = hf["totals"]["billed_outside_meter_micros"]
+        tail = (f"; about {usd(outside)} of the bill is requests the meter's calls did not make (calls outside the app "
+                "on the same account)" if outside else "")
+        out.append(f"- Hugging Face: billed {usd(t['billed_huggingface_micros'])}, metered "
+                   f"{usd(t['metered_huggingface_micros'])}{tail}.")
     else:
         out.append("- Hugging Face: no bill supplied.")
     if gg["supplied"]:
@@ -1337,7 +1461,8 @@ def render_markdown(report: dict) -> str:
         out.append(f"- Google Cloud: cost {usd(t['billed_google_cost_micros'])}, free-tier credits "
                    f"{usd(t['billed_google_credits_micros'])}, {others}; net charge {usd(t['billed_google_net_micros'])}. "
                    f"Compared after the free tier: billed {usd(t['billed_google_micros'])}, of which "
-                   f"{usd(t['billed_google_unmetered_micros'])} is for services the meter does not cover; "
+                   f"{usd(t['billed_google_unmetered_micros'])} is for services the meter does not split "
+                   f"({_treatments_text(gg['unmetered']['by_treatment'])}); "
                    f"metered {usd(t['metered_google_micros'])}.")
         if other_credits:
             out.append("- The meter holds no counterpart to the other credits, so the comparison does not subtract them. "
@@ -1368,15 +1493,17 @@ def render_markdown(report: dict) -> str:
     if hf["supplied"] or hf["models"]:
         out += ["", "## Hugging Face, by model", ""]
         body = [[e["label"], usd(e["billed_micros"]), str(e["billed_requests"]), usd(e["metered_settled_micros"]),
-                 usd(e["metered_held_micros"]), str(e["meter_calls"]), usd(e["gap_micros"]),
+                 usd(e["metered_estimated_micros"]), usd(e["metered_held_micros"]), str(e["meter_calls"]),
+                 str(e["meter_requests"]), usd(e["gap_micros"]),
                  "n/a" if e["gap_percent"] is None else f"{e['gap_percent']:.1f}%", "yes" if e["flagged"] else ""]
                 for e in hf["models"]]
         body.append(["Total", usd(hf["totals"]["billed_micros"]), str(hf["totals"]["billed_requests"]),
-                     usd(hf["totals"]["metered_settled_micros"]), usd(hf["totals"]["metered_held_micros"]),
-                     str(hf["totals"]["meter_calls"]), usd(hf["totals"]["gap_micros"]),
+                     usd(hf["totals"]["metered_settled_micros"]), usd(hf["totals"]["metered_estimated_micros"]),
+                     usd(hf["totals"]["metered_held_micros"]), str(hf["totals"]["meter_calls"]),
+                     str(hf["totals"]["meter_requests"]), usd(hf["totals"]["gap_micros"]),
                      "n/a" if hf["totals"]["gap_percent"] is None else f"{hf['totals']['gap_percent']:.1f}%", ""])
-        out += _table(["Model", "Billed", "Requests billed", "Metered settled", "Metered held", "Meter calls", "Gap",
-                       "Gap %", "Flagged"], body)
+        out += _table(["Model", "Billed", "Requests billed", "Metered settled", "of it estimated", "Metered held",
+                       "Meter calls", "Requests they made", "Gap", "Gap %", "Flagged"], body)
     if gg["supplied"] or any(f["meter_rows"] for f in gg["families"]):
         out += ["", "## Google Cloud, by cost family", ""]
         body = [[f["label"], usd(f["billed_cost_micros"]), usd(f["billed_credits_micros"]),
@@ -1388,11 +1515,12 @@ def render_markdown(report: dict) -> str:
         out += _table(["Family", "Cost", "Free-tier credits", "Other credits", "Net charge", "Billed after free tier",
                        "Meter before free tier", "Meter after free tier", "Gap", "Gap %", "Flagged"], body)
         if gg["unmetered"]["lines"]:
-            out += ["", "### Google lines the meter does not cover", ""]
+            out += ["", "### Google lines the meter does not split", ""]
             shown = gg["unmetered"]["lines"][:15]
-            out += _table(["Service", "SKU", "Cost", "Free-tier credits", "Other credits", "Net charge"],
+            out += _table(["Service", "SKU", "Cost", "Free-tier credits", "Other credits", "Net charge", "Treatment"],
                           [[l["service"], l["sku"], usd(l["cost_micros"]), usd(l["credits_micros"]),
-                            _other_cell(l["other_credits_micros"], l["other_credits_by_type"]), usd(l["net_micros"])]
+                            _other_cell(l["other_credits_micros"], l["other_credits_by_type"]), usd(l["net_micros"]),
+                            f"{TREATMENT_LABELS[l['treatment']]}: {l['treatment_reason']}"]
                            for l in shown])
             if len(gg["unmetered"]["lines"]) > len(shown):
                 out.append(f"\n{len(gg['unmetered']['lines']) - len(shown)} smaller lines are in the JSON report.")

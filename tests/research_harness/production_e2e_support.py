@@ -187,6 +187,9 @@ class FakeDataConnect:
         # cost_entry rows by id (dataconnect/connector/cost_meter.gql).
         self.cost_entries = {}
         self.tenant_budget_caps = {}
+        # When each ordinary receipt and specimen was written (cost_allocation.gql's inputs).
+        self.receipt_times = {}
+        self.created_times = {}
         # Test hooks: an operation name -> callable(variables) raised before it runs.
         self.fail_before = {}
 
@@ -270,6 +273,7 @@ class FakeDataConnect:
         key = (variables["actorUid"], variables["operation"], variables["idempotencyKey"])
         if key in self.request_receipts:
             raise _AlreadyExists("request_receipt")
+        self.receipt_times[key] = iso_now()
         self.request_receipts[key] = {"specimen_id": specimen_id, "revision": revision,
             "request_sha256": variables["requestSha256"]}
 
@@ -288,6 +292,7 @@ class FakeDataConnect:
         self._receipt(variables, specimen_id, 1)
         self._snapshot_row(specimen_id, 1, variables["snapshot"], variables["snapshotSha256"],
             variables["contractVersion"])
+        self.created_times[specimen_id] = iso_now()
         self.specimens[specimen_id] = {"revision": 1, "state": variables["state"],
             "sensitive": variables["sensitive"], "disposition": None, "active_run_id": None,
             "source_checksum": variables["sourceChecksum"], "work_available_at": variables.get("workAvailableAt"),
@@ -988,7 +993,11 @@ class FakeDataConnect:
         return (isinstance(row, dict) and row.get("organization_id") == ORG and row.get("collection_id") == COLLECTION
             and row.get("specimen_id") == variables["specimenId"] and row.get("source") == "paid_call"
             and row.get("kind") in ("model", "service", "tool")
-            and row.get("cost_basis") in ("computed", "billed", "reserved", "refused")
+            and row.get("cost_basis") in ("computed", "billed", "reserved", "refused", "trued_up")
+            and ((row.get("allocation_method_id") in ("provider-day-mean", "sam-request-seconds")
+                  and isinstance(row.get("allocation_method_details"), dict) and whole(row.get("reserved_micros")))
+                 if row["cost_basis"] == "trued_up" else
+                 (row.get("allocation_method_id") is None and row.get("allocation_method_details") is None))
             and whole(row.get("cost_micros")) and whole(row.get("list_cost_micros"))
             and (row.get("reserved_micros") is None or whole(row["reserved_micros"]))
             and type(row.get("attempt")) is int and row["attempt"] >= 1
@@ -1057,6 +1066,105 @@ class FakeDataConnect:
             for key, group in sorted(groups.items())]
         return {"collections": [{"id": COLLECTION.replace("-", ""), "name": "Insects", "parentId": None}],
             "totals": {"totals_json": json.dumps({"admitted": True, "groups": result})}}
+
+    # ---- the cost meter's allocation (cost_allocation.gql) ---------------
+    # The fake holds one organization and collection. A receipt counts as a save
+    # at the time `_receipt` recorded it in `receipt_times`; a specimen is held
+    # from its create; every source asset counts at its `createdAt`.
+    def op_CostAllocationInputsV1(self, variables):
+        self.require_member(variables)
+        start, end, first = (datetime.fromisoformat(variables[name].replace("Z", "+00:00"))
+            for name in ("dayStart", "dayEnd", "monthStart"))
+        cap = variables["gapSeconds"]
+        if not (start < end and first <= start and 1 <= cap <= 3600):
+            raise ConnectorRefusal("invalid window")
+        at = lambda value: datetime.fromisoformat(value.replace("Z", "+00:00"))  # noqa: E731
+        saves = [(at(stamp), key) for key, stamp in self.receipt_times.items() if first <= at(stamp) < end]
+        mine = sorted((at(stamp), key) for key, stamp in self.receipt_times.items()
+            if key[0] == variables["actorUid"] and at(stamp) < end)
+        worker = {"day": 0.0, "month": 0.0}
+        for index, (moment, _) in enumerate(mine):
+            if moment < first:
+                continue
+            gap = cap if index == 0 else min((moment - mine[index - 1][0]).total_seconds(), cap)
+            worker["month"] += gap
+            worker["day"] += gap if moment >= start else 0
+        sam = {"day": 0.0, "month": 0.0, "micros": 0}
+        for entry in self.cost_entries.values():
+            row = entry["row"]
+            if row["source"] != "paid_call" or row["kind"] != "service" or row["resource"] != "sam3":
+                continue
+            moment = at(row["occurred_at"])
+            if not first <= moment < end:
+                continue
+            usage = row.get("usage") or {}
+            seconds = (usage.get("instance") or {}).get("request_seconds", usage.get("seconds", 0))
+            sam["month"] += seconds
+            if moment >= start:
+                sam["day"] += seconds
+                sam["micros"] += row["cost_micros"]
+        assets = sum(int(row["byteSize"] or 0) for row in self.tables["source_asset"].values()
+            if at(row["createdAt"]) < end)
+        held = sum(1 for stamp in self.created_times.values() if at(stamp) < end)
+        text = lambda value: str(int(value)) if float(value).is_integer() else repr(float(value))  # noqa: E731
+        collection = {"organization_id": ORG, "collection_id": COLLECTION,
+            "saves": str(sum(1 for moment, _ in saves if moment >= start)), "month_saves": str(len(saves)),
+            "worker_seconds": text(worker["day"]), "month_worker_seconds": text(worker["month"]),
+            "sam_seconds": text(sam["day"]), "month_sam_seconds": text(sam["month"]),
+            "sam_direct_micros": str(sam["micros"]), "asset_bytes": str(assets), "specimens": str(held)}
+        return {"inputs": {"inputs_json": json.dumps({"admitted": True, "collections": [collection]})}}
+
+    def _allocation_row_ok(self, row):
+        """The connector SQL's checks on one allocation row, its derived id and day start included."""
+        from specimen_digitization.application.cost_allocation import METHODS, day_bounds
+        from specimen_digitization.application.projection import derived_id
+        from datetime import date
+        signed = lambda value: type(value) is int and abs(value) < 10**15  # noqa: E731
+        if not (isinstance(row, dict) and row.get("organization_id") == ORG and row.get("collection_id") == COLLECTION
+                and row.get("source") == "allocation" and row.get("kind") == "allocation"
+                and row.get("specimen_id") is None and row.get("run_id") is None
+                and row.get("step") == "allocation:" + str(row.get("resource"))
+                and row.get("stage") in ("label_finding", "worker", "api", "storage", "database")
+                and row.get("attempt") == 1 and row.get("ordinal") == 0 and row.get("provider") == "google_cloud"
+                and row.get("cost_basis") == "allocated" and row.get("reserved_micros") is None
+                and signed(row.get("cost_micros")) and signed(row.get("list_cost_micros"))
+                and row.get("allocation_method_id") in METHODS
+                and isinstance(row.get("allocation_method_details"), dict)):
+            return False
+        try:
+            start, _ = day_bounds(date.fromisoformat(row["billing_day"]))
+        except (KeyError, TypeError, ValueError):
+            return False
+        method, cost, listed = row["allocation_method_id"], row["cost_micros"], row["list_cost_micros"]
+        amounts = (listed == 0 and cost <= 0) if method == "free-allowance" else (
+            cost == listed and (cost >= 0 or method == "sam-residual"))
+        return (amounts and datetime.fromisoformat(row["occurred_at"]) == start
+            and row["month"] == start.strftime("%Y-%m")
+            and row["id"] == derived_id("cost-allocation", row["billing_day"], row["resource"], COLLECTION, method))
+
+    def op_UpsertCostAllocationsV1(self, variables):
+        self.require_member(variables)
+        rows = json.loads(variables["rowsJson"])
+        if (variables["collectionId"] != COLLECTION or not isinstance(rows, list) or not 1 <= len(rows) <= 500
+                or len({row.get("id") for row in rows if isinstance(row, dict)}) != len(rows)
+                or not all(self._allocation_row_ok(row) for row in rows)):
+            raise ConnectorRefusal("cost allocations refused")
+        for row in rows:
+            existing = self.cost_entries.get(row["id"])
+            stamp = iso_now() if existing is None or existing["row"] != row else existing["updated_at"]
+            self.cost_entries[row["id"]] = {"row": row, "updated_at": stamp}
+        return {"upserted": len(rows)}
+
+    def op_CostAllocationStatusV1(self, variables):
+        rows = [row for row in self.members.get(variables["actorUid"], ())
+            if row["organization_id"] == variables["organizationId"] and row["role"] == "admin"]
+        if not rows:
+            raise ConnectorRefusal("cost allocation status refused")
+        times = [datetime.fromisoformat(entry["row"]["occurred_at"]) for entry in self.cost_entries.values()
+            if entry["row"]["source"] == "allocation" and entry["row"]["organization_id"] == variables["organizationId"]]
+        latest = max(times).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if times else None
+        return {"status": {"status_json": json.dumps({"admitted": True, "latest_occurred_at": latest,
+            "entries": str(len(times))})}}
 
 
 class _AlreadyExists(Exception):

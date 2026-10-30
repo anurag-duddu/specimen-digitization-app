@@ -108,6 +108,21 @@ class ApiFailure implements Exception {
   String toString() => message;
 }
 
+/// Collection names and parent relationships, without an access grant.
+class CollectionCatalogNode {
+  const CollectionCatalogNode({
+    required this.collectionId,
+    required this.name,
+    this.parentCollectionId,
+    this.testing = false,
+  });
+
+  final String collectionId;
+  final String name;
+  final String? parentCollectionId;
+  final bool testing;
+}
+
 class CollectionScope {
   const CollectionScope({
     required this.organizationId,
@@ -115,13 +130,39 @@ class CollectionScope {
     required this.name,
     this.permissions = const [],
     this.configuration = const {},
+    this.catalogNodes = const [],
+    this.defaultSelection = false,
   });
   final String organizationId;
   final String collectionId;
   final String name;
   final List<String> permissions;
   final Json configuration;
+
+  /// Organization catalog context. Only [CollectionScope] values grant access.
+  final List<CollectionCatalogNode> catalogNodes;
+  final bool defaultSelection;
   String get key => '$organizationId/$collectionId';
+}
+
+/// Server-computed unique field counts for the current record snapshot.
+/// A missing field can also need review, so these counts must not be added.
+class SpecimenReviewSummary {
+  const SpecimenReviewSummary({required this.review, required this.missing});
+
+  final int review;
+  final int missing;
+
+  /// Absent, incomplete or malformed summaries are unknown, never zero.
+  static SpecimenReviewSummary? fromJson(Object? value) {
+    if (value is! Map) return null;
+    final review = value['review'];
+    final missing = value['missing'];
+    if (review is! int || missing is! int || review < 0 || missing < 0) {
+      return null;
+    }
+    return SpecimenReviewSummary(review: review, missing: missing);
+  }
 }
 
 class Specimen {
@@ -179,6 +220,10 @@ class Specimen {
   List<Json> get findings => objects(data['validation_findings']);
   List<Json> get evidence => objects(data['evidence']);
   List<Json> get audit => objects(data['audit_events']);
+
+  /// Unknown when this response has not supplied the current field summary.
+  SpecimenReviewSummary? get reviewSummary =>
+      SpecimenReviewSummary.fromJson(data['review_summary']);
 }
 
 class IntakeFile {

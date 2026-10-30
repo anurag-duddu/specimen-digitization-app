@@ -1451,7 +1451,7 @@ class _CornerHandle extends StatelessWidget {
                   shape: Squircle.border(
                     ui.shape.inner,
                     side: BorderSide(
-                      color: ui.color.ink,
+                      color: ui.color.onAccent,
                       width: ui.shape.stroke.hairline,
                     ),
                   ),

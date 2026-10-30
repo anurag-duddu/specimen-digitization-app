@@ -58,6 +58,15 @@ REQUIRED_CASES = set(JOURNEY_CASES + LIVE_CASES)
 ROUTES = {
     "handwriting-qwen": ("Qwen/Qwen3-VL-30B-A3B-Instruct", "novita"),
     "handwriting-muse": ("meta-models/Muse-Glimmer-30B", "deepinfra"),
+    # Reader C when the NVIDIA option's readers stage is on
+    # (docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md).
+    "handwriting-nemotron": ("nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4", "baseten"),
+}
+# The readers a retained region may carry: the pair, or the pair with Nemotron.
+# A run reads every region with the same one of them.
+READER_SETS = {
+    tuple(sorted(("handwriting-qwen", "handwriting-muse"))),
+    tuple(sorted(("handwriting-qwen", "handwriting-muse", "handwriting-nemotron"))),
 }
 
 
@@ -268,14 +277,21 @@ def human_records(rows, manifest, manifest_sha, root, deployment):
                     and mask.get("encoding") == "binary-png-original-pixels",
                     "SAM mask binding mismatch")
         observations = before["run"].get("observations")
-        require(isinstance(observations, list) and len(observations) == 2 * len(regions),
-                "Two readers required for every retained region")
+        require(isinstance(observations, list) and all(isinstance(o, dict) for o in observations),
+                "Invalid observation")
+        routes_by_region = {region_id: [] for region_id in region_ids}
+        for observation in observations:
+            if isinstance(observation.get("region_id"), str) and observation["region_id"] in routes_by_region:
+                routes_by_region[observation["region_id"]].append(observation.get("route_id"))
+        reader_sets = {tuple(sorted(map(str, routes))) for routes in routes_by_region.values()}
+        require(len(reader_sets) == 1 and reader_sets <= READER_SETS
+                and sum(map(len, routes_by_region.values())) == len(observations),
+                "Every retained region needs the same readers: Qwen and Muse, or Qwen, Muse and Nemotron")
         raw_entries = row["raw_observations"]
         require(isinstance(raw_entries, dict), "Raw observation artifacts missing")
         require(isinstance(row["crops"], dict), "Reader crop evidence missing")
         pairs, observation_ids = set(), set()
         for observation in observations:
-            require(isinstance(observation, dict), "Invalid observation")
             obs_id, route = observation.get("id"), observation.get("route_id")
             require(nonempty(obs_id) and obs_id not in observation_ids and obs_id in raw_entries,
                     "Observation identity missing/duplicate")

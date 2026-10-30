@@ -18,8 +18,8 @@ import '../../app/shell.dart';
 import '../../models.dart';
 import '../../reason_codes.dart';
 import '../../blocker_words.dart';
+import '../workbench/blockers.dart' show reviewIssueSummary;
 import '../../selection.dart';
-import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import '../../workspace.dart';
 
@@ -51,8 +51,15 @@ String queueReason(Specimen specimen) {
     'risk_not_calibrated',
   };
   final Object? blocker = data['blocker'];
+  final findings = [...specimen.findings]
+    ..sort(
+      (a, b) => (a['severity'] == 'hard' ? 0 : 1).compareTo(
+        b['severity'] == 'hard' ? 0 : 1,
+      ),
+    );
   for (final Object? value in <Object?>[
-    for (final Json finding in specimen.findings) finding['message'],
+    for (final Json finding in findings)
+      finding['message'] ?? finding['reason_code'] ?? finding['code'],
     blocker,
     ...data['reason_codes'] as List? ?? const <Object?>[],
   ]) {
@@ -65,7 +72,7 @@ String queueReason(Specimen specimen) {
     // client has no words for it, as a generic line. Never as the code.
     return value == blocker
         ? blockerLabel(value.trim())
-        : vocabularyLabel(value.trim());
+        : reviewIssueSummary(value.trim());
   }
   return '';
 }
@@ -81,9 +88,8 @@ DateTime? queueUpdatedAt(Specimen specimen) {
 
 /// The queue route.
 ///
-/// At large and above the list is already beside this pane, drawn by the
-/// shell, so this is the placeholder half of the list detail layout. Below
-/// that it is the queue itself.
+/// The shell lends its retained queue pane to this route. Opening a record
+/// may move the same pane beside the record without losing its scroll state.
 class QueueScreen extends StatelessWidget {
   const QueueScreen({super.key});
 
@@ -94,24 +100,8 @@ class QueueScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shell = AppSidebarScope.maybeOf(context);
-    return shell?.mobileSpecimens ?? const _NoRecordSelected();
+    return shell?.mobileSpecimens ?? const SizedBox.shrink();
   }
-}
-
-class _NoRecordSelected extends StatelessWidget {
-  const _NoRecordSelected();
-
-  @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: context.ui.color.ground,
-    child: const Center(
-      child: UiEmptyState(
-        icon: UiIcons.record,
-        title: 'No record open',
-        body: 'Choose a specimen to review.',
-      ),
-    ),
-  );
 }
 
 /// Commands routed from the common workspace shortcut scope to the queue.
@@ -187,7 +177,10 @@ class QueuePane extends StatefulWidget {
   final FocusNode? searchFocusNode;
   final QueueKeyboardController? controller;
 
-  /// Dismisses a summoned queue on Escape. An ordinary queue clears selection.
+  /// Dismisses a summoned queue on Escape, preserving its search query.
+  ///
+  /// Without this callback, Escape in the search field clears the query,
+  /// then unfocuses on the next press. Escape from a row clears selection.
   final VoidCallback? onDismiss;
 
   @override
@@ -504,109 +497,119 @@ class _QueuePaneState extends State<QueuePane> {
 
   @override
   Widget build(BuildContext context) {
-    final WorkspaceController controller = WorkspaceScope.of(context);
-    if (_search.text != controller.query && !_searchFocus.hasFocus) {
-      _search.text = controller.query;
-    }
+    // Quiet polls notify [WorkspaceController.listChanges] only; avoid
+    // depending on InheritedNotifier so the shell is not pulled along.
+    final WorkspaceController controller = WorkspaceScope.read(context);
+    return ListenableBuilder(
+      listenable: controller.listChanges,
+      builder: (BuildContext context, Widget? _) {
+        if (_search.text != controller.query && !_searchFocus.hasFocus) {
+          _search.text = controller.query;
+        }
 
-    return Shortcuts(
-      shortcuts: const <ShortcutActivator, Intent>{
-        SingleActivator(LogicalKeyboardKey.keyJ): _MoveSelectionIntent(1),
-        SingleActivator(LogicalKeyboardKey.arrowDown): _MoveSelectionIntent(1),
-        SingleActivator(LogicalKeyboardKey.keyK): _MoveSelectionIntent(-1),
-        SingleActivator(LogicalKeyboardKey.arrowUp): _MoveSelectionIntent(-1),
-        SingleActivator(LogicalKeyboardKey.enter): _OpenSelectionIntent(),
-        SingleActivator(LogicalKeyboardKey.keyS, shift: true):
-            _ToggleFocusedRowIntent(),
-        SingleActivator(LogicalKeyboardKey.slash): _FocusSearchIntent(),
-        SingleActivator(LogicalKeyboardKey.escape): _ClearSelectionIntent(),
-      },
-      child: Actions(
-        actions: <Type, Action<Intent>>{
-          _MoveSelectionIntent: CallbackAction<_MoveSelectionIntent>(
-            onInvoke: (_MoveSelectionIntent intent) {
-              if (_searchFocus.hasFocus) return null;
-              _move(intent.delta);
-              return null;
+        return Shortcuts(
+          shortcuts: const <ShortcutActivator, Intent>{
+            SingleActivator(LogicalKeyboardKey.keyJ): _MoveSelectionIntent(1),
+            SingleActivator(LogicalKeyboardKey.arrowDown): _MoveSelectionIntent(
+              1,
+            ),
+            SingleActivator(LogicalKeyboardKey.keyK): _MoveSelectionIntent(-1),
+            SingleActivator(LogicalKeyboardKey.arrowUp): _MoveSelectionIntent(
+              -1,
+            ),
+            SingleActivator(LogicalKeyboardKey.enter): _OpenSelectionIntent(),
+            SingleActivator(LogicalKeyboardKey.keyS, shift: true):
+                _ToggleFocusedRowIntent(),
+            SingleActivator(LogicalKeyboardKey.slash): _FocusSearchIntent(),
+            SingleActivator(LogicalKeyboardKey.escape): _ClearSelectionIntent(),
+          },
+          child: Actions(
+            actions: <Type, Action<Intent>>{
+              _MoveSelectionIntent: CallbackAction<_MoveSelectionIntent>(
+                onInvoke: (_MoveSelectionIntent intent) {
+                  if (_searchFocus.hasFocus) return null;
+                  _move(intent.delta);
+                  return null;
+                },
+              ),
+              _OpenSelectionIntent: CallbackAction<_OpenSelectionIntent>(
+                onInvoke: (_) {
+                  if (_searchFocus.hasFocus) return null;
+                  _openSelected();
+                  return null;
+                },
+              ),
+              _ToggleFocusedRowIntent: CallbackAction<_ToggleFocusedRowIntent>(
+                onInvoke: (_) {
+                  if (controller.mutating || _checkingDecision) return null;
+                  final focused = controller.items
+                      .where((item) => _rowFocus[item.id]?.hasFocus ?? false)
+                      .firstOrNull;
+                  if (focused != null) _selection.toggle(focused);
+                  return null;
+                },
+              ),
+              _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(
+                onInvoke: (_) {
+                  if (_searchFocus.hasFocus) return null;
+                  _searchFocus.requestFocus();
+                  return null;
+                },
+              ),
+              // Escape from the list dismisses a summoned queue or clears an
+              // ordinary queue's selection. Search owns Escape while focused:
+              // it invokes onDismiss when supplied, otherwise clears then unfocuses.
+              // Descendant menus and dialogs retain their own Escape handling.
+              _ClearSelectionIntent: CallbackAction<_ClearSelectionIntent>(
+                onInvoke: (_) {
+                  final dismiss = widget.onDismiss;
+                  if (dismiss != null) {
+                    dismiss();
+                  } else {
+                    _selection.clear();
+                  }
+                  return null;
+                },
+              ),
             },
-          ),
-          _OpenSelectionIntent: CallbackAction<_OpenSelectionIntent>(
-            onInvoke: (_) {
-              if (_searchFocus.hasFocus) return null;
-              _openSelected();
-              return null;
-            },
-          ),
-          _ToggleFocusedRowIntent: CallbackAction<_ToggleFocusedRowIntent>(
-            onInvoke: (_) {
-              if (controller.mutating || _checkingDecision) return null;
-              final focused = controller.items
-                  .where((item) => _rowFocus[item.id]?.hasFocus ?? false)
-                  .firstOrNull;
-              if (focused != null) _selection.toggle(focused);
-              return null;
-            },
-          ),
-          _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(
-            onInvoke: (_) {
-              if (_searchFocus.hasFocus) return null;
-              _searchFocus.requestFocus();
-              return null;
-            },
-          ),
-          // Escape dismisses a summoned queue or clears an ordinary queue's
-          // selection, including while search owns the caret. Descendant
-          // menus and dialogs retain their own Escape handling first.
-          _ClearSelectionIntent: CallbackAction<_ClearSelectionIntent>(
-            onInvoke: (_) {
-              final dismiss = widget.onDismiss;
-              if (dismiss != null) {
-                dismiss();
-              } else {
-                _selection.clear();
-              }
-              return null;
-            },
-          ),
-        },
-        // One node so the queue receives key events before anything inside it
-        // has been focused. The list's own hold node sits lower, around the
-        // rows, so this node holding focus never freezes the poll.
-        child: Focus(
-          autofocus: true,
-          skipTraversal: true,
-          child: _ToastLayer(
-            child: KeyedSubtree(
-              key: _toastScope,
-              child: ColoredBox(
-                color: context.ui.color.paper,
-                child: Column(
-                  children: [
-                    Expanded(flex: 3, child: _body(context, controller)),
-                    if (_selection.isNotEmpty)
-                      Flexible(
-                        flex: 2,
-                        fit: FlexFit.loose,
-                        child: SingleChildScrollView(
-                          child: _QueueSelectionBar(
-                            selection: _selection,
-                            eligibility: _eligibility,
-                            checking: _checkingDecision,
-                            onRetry: () => setState(
-                              () => _refreshEligibility(force: true),
+            // One node so the queue receives key events before anything inside it
+            // has been focused. The list's own hold node sits lower, around the
+            // rows, so this node holding focus never freezes the poll.
+            child: Focus(
+              autofocus: true,
+              skipTraversal: true,
+              child: _ToastLayer(
+                child: KeyedSubtree(
+                  key: _toastScope,
+                  child: ColoredBox(
+                    color: context.ui.color.paper,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: _body(context, controller)),
+                          if (_selection.isNotEmpty)
+                            _QueueSelectionBar(
+                              key: const ValueKey('queue-selection-footer'),
+                              selection: _selection,
+                              eligibility: _eligibility,
+                              checking: _checkingDecision,
+                              onRetry: () => setState(
+                                () => _refreshEligibility(force: true),
+                              ),
+                              onDecide: (kind) =>
+                                  unawaited(_decideOnSelection(kind)),
                             ),
-                            onDecide: (kind) =>
-                                unawaited(_decideOnSelection(kind)),
-                          ),
-                        ),
+                        ],
                       ),
-                  ],
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -635,7 +638,8 @@ class _QueuePaneState extends State<QueuePane> {
     // records (finding V-5); a list that has never been answered says only
     // that it is loading.
     final bool first = items.isEmpty && !controller.listAnswered;
-    final double gutter = layout.gutter;
+    final bool companion = widget.onDismiss != null;
+    final double gutter = companion ? layout.gutter : ui.space.s6;
     final EdgeInsetsGeometry sides = EdgeInsetsDirectional.symmetric(
       horizontal: gutter,
     );
@@ -653,23 +657,52 @@ class _QueuePaneState extends State<QueuePane> {
         SliverPadding(
           padding: EdgeInsetsDirectional.fromSTEB(
             gutter,
-            ui.space.s2,
+            companion ? ui.space.s2 : ui.space.s6,
             gutter,
-            ui.space.s2,
+            ui.space.s3,
           ),
           sliver: SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                _SearchRow(
-                  controller: _search,
-                  focusNode: _searchFocus,
-                  onChanged: controller.search,
-                  onEscape: widget.onDismiss,
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: ui.space.readingMax),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _SearchRow(
+                            controller: _search,
+                            focusNode: _searchFocus,
+                            onChanged: controller.search,
+                            onEscape: widget.onDismiss,
+                          ),
+                        ),
+                        if (items.isNotEmpty && _selection.isEmpty) ...[
+                          SizedBox(width: ui.space.s2),
+                          UiButton(
+                            key: const ValueKey<String>('queue-select-records'),
+                            label: _selection.active ? 'Done' : 'Select',
+                            semanticsLabel: _selection.active
+                                ? 'Done selecting'
+                                : 'Select specimens',
+                            variant: UiButtonVariant.ghost,
+                            onPressed: _selection.active
+                                ? _selection.clear
+                                : _selection.begin,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
                 SizedBox(height: ui.space.s2),
-                _StatusControls(controller: controller),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: _StatusControls(controller: controller),
+                ),
               ],
             ),
           ),
@@ -859,6 +892,9 @@ class _QueuePaneState extends State<QueuePane> {
               key: ValueKey<String>('queue-row-${items[index].id}'),
               child: _QueueListRow(
                 specimen: items[index],
+                showStatus:
+                    controller.disposition.isEmpty ||
+                    items[index].disposition != controller.disposition,
                 selected: _selection.isSelected(items[index]),
                 disabledReason: controller.mutating || _checkingDecision
                     ? 'Wait for the current selection check or decision to finish.'
@@ -893,6 +929,7 @@ class _QueuePaneState extends State<QueuePane> {
 class _QueueListRow extends StatelessWidget {
   const _QueueListRow({
     required this.specimen,
+    required this.showStatus,
     required this.selected,
     required this.disabledReason,
     required this.showCheckbox,
@@ -905,6 +942,7 @@ class _QueueListRow extends StatelessWidget {
   });
 
   final Specimen specimen;
+  final bool showStatus;
   final bool selected;
   final String? disabledReason;
   final bool showCheckbox;
@@ -929,7 +967,9 @@ class _QueueListRow extends StatelessWidget {
       id: specimen.id,
       title: specimen.displayReference,
       concise: true,
-      showStatus: false,
+      showStatus: showStatus,
+      reviewCount: specimen.reviewSummary?.review,
+      missingCount: specimen.reviewSummary?.missing,
       reason: queueReason(specimen),
       status: SpecimenStatus.ofRecord(
         disposition: specimen.disposition,
@@ -938,10 +978,9 @@ class _QueueListRow extends StatelessWidget {
       riskComposite: specimen.data['risk'] is num
           ? specimen.data['risk'] as num
           : null,
-      // The search endpoint answers a bare composite and leaves the
-      // contributing signals on the record. The compact meter never draws
-      // them, so the row says nothing rather than naming a signal the list
-      // response did not carry.
+      // The list leaves contributing signals on the record. A bare score
+      // cannot explain itself, so concise rows omit it until those signals
+      // are available instead of inventing a justification.
       riskComponents: const <String>[],
       riskCalibrated: specimen.data['risk_calibrated'] == true,
       updatedAt: queueUpdatedAt(specimen),
@@ -955,6 +994,7 @@ class _QueueListRow extends StatelessWidget {
 /// Bulk actions belong to the visible queue, including in list-detail layouts.
 class _QueueSelectionBar extends StatelessWidget {
   const _QueueSelectionBar({
+    super.key,
     required this.selection,
     required this.eligibility,
     required this.checking,
@@ -967,15 +1007,94 @@ class _QueueSelectionBar extends StatelessWidget {
   final void Function(BulkDecisionKind kind) onDecide;
   final VoidCallback onRetry;
 
+  Map<String, List<String>> _actionReasons(Specimen specimen) {
+    final reasons = <String, List<String>>{};
+    for (final kind in BulkDecisionKind.values) {
+      final reason = eligibility?.reasonFor(specimen.id, kind);
+      if (reason != null) (reasons[reason] ??= []).add(kind.label);
+    }
+    return reasons;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final controller = WorkspaceScope.of(context);
+    final controller = WorkspaceScope.read(context);
     final ui = context.ui;
     final pending = eligibility == null || checking;
     final counts = {
       for (final kind in BulkDecisionKind.values)
         kind: eligibility?.eligibleFor(kind).length ?? 0,
     };
+    final noneEligible = !pending && counts.values.every((count) => count == 0);
+    final unverified =
+        !pending &&
+        selection.items.any(
+          (specimen) =>
+              eligibility!.unavailable.containsKey(specimen.id) ||
+              eligibility!.records[specimen.id] == null ||
+              eligibility!.records[specimen.id]!.recordVersionId.isEmpty,
+        );
+    final knownNone = noneEligible && !unverified;
+    void showDetails() => unawaited(
+      showProductModal<void>(
+        context: context,
+        title: 'Selection details',
+        body: (_) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${selection.count} selected from ${selection.loadedCount} loaded ${selection.loadedCount == 1 ? 'record' : 'records'}.',
+              style: ui.type.body,
+            ),
+            if (selection.moreToLoad) ...[
+              SizedBox(height: ui.space.s2),
+              Text(SelectionBar.recordsMoreMatch, style: ui.type.body),
+            ],
+            SizedBox(height: ui.space.s4),
+            Text(
+              pending
+                  ? 'Checking current permissions…'
+                  : noneEligible && unverified
+                  ? 'Current permissions could not be verified for this selection.'
+                  : '${counts[BulkDecisionKind.approve]} eligible for approval. ${counts[BulkDecisionKind.confirmCoverage]} eligible for label coverage.',
+              style: ui.type.body,
+            ),
+            if (selection.atLimit) ...[
+              SizedBox(height: ui.space.s4),
+              Text(
+                'Limit of $bulkDecisionLimit records reached. Clear some selections to choose others.',
+                style: ui.type.body,
+              ),
+            ],
+            for (final specimen in selection.items)
+              if (!pending && _actionReasons(specimen).isNotEmpty) ...[
+                SizedBox(height: ui.space.s3),
+                Text(specimen.displayReference, style: ui.type.label),
+                for (final entry in _actionReasons(specimen).entries) ...[
+                  SizedBox(height: ui.space.s1),
+                  Text(entry.value.join(' · '), style: ui.type.labelSmall),
+                  Text(entry.key, style: ui.type.body),
+                ],
+              ],
+          ],
+        ),
+        primaryAction: (dialogContext) => UiButton(
+          label: 'Back to selection',
+          onPressed: () => Navigator.of(dialogContext).pop(),
+        ),
+        secondaryAction: !pending && !controller.mutating
+            ? (dialogContext) => UiButton(
+                label: 'Check permissions again',
+                variant: UiButtonVariant.ghost,
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  onRetry();
+                },
+              )
+            : null,
+      ),
+    );
     return DecoratedBox(
       decoration: BoxDecoration(
         color: ui.color.paper,
@@ -983,55 +1102,60 @@ class _QueueSelectionBar extends StatelessWidget {
       ),
       child: Padding(
         padding: EdgeInsets.all(ui.space.s4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              pending
-                  ? 'Checking current permissions...'
-                  : '${counts[BulkDecisionKind.approve]} eligible for approval, ${counts[BulkDecisionKind.confirmCoverage]} for coverage.',
-              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-            ),
-            SizedBox(height: ui.space.s2),
-            SelectionBar(
-              pane: false,
-              count: selection.count,
-              loadedCount: selection.loadedCount,
-              moreToLoad: selection.moreToLoad,
-              allLoadedSelected: selection.allLoadedSelected,
-              selectionLimit: bulkDecisionLimit,
-              onSelectAllLoaded: selection.selectAllLoaded,
-              onClear: selection.clear,
-              busy: controller.mutating || checking,
-              actionReasons: {
-                for (final kind in BulkDecisionKind.values)
-                  kind.label: pending
-                      ? 'Wait for current permissions to be checked.'
-                      : 'None of the selected records currently permit this action. Check permissions again or review each record.',
-              },
-              actions: [
-                for (final kind in BulkDecisionKind.values)
-                  (
-                    label: kind.label,
-                    icon: kind.icon,
-                    onPressed: pending || counts[kind] == 0
-                        ? null
-                        : () => onDecide(kind),
-                  ),
-              ],
-            ),
-            if (selection.atLimit)
-              Text(
-                'Limit of $bulkDecisionLimit records reached. Clear some selections to choose others.',
-                style: ui.type.bodySmall,
-              ),
-            if (!pending &&
-                counts.values.any((count) => count < selection.count))
-              UiButton(
-                label: 'Check permissions again',
-                variant: UiButtonVariant.ghost,
-                onPressed: controller.mutating ? null : onRetry,
+        child: SelectionBar(
+          pane: false,
+          compact: true,
+          count: selection.count,
+          loadedCount: selection.loadedCount,
+          moreToLoad: selection.moreToLoad,
+          allLoadedSelected: selection.allLoadedSelected,
+          selectionLimit: bulkDecisionLimit,
+          onSelectAllLoaded: selection.selectAllLoaded,
+          onClear: selection.clear,
+          busy: controller.mutating || checking,
+          status: noneEligible
+              ? unverified
+                    ? 'Permissions could not be verified'
+                    : 'No eligible bulk actions'
+              : null,
+          primaryAction: pending
+              ? const UiButton(
+                  label: 'Checking',
+                  loading: true,
+                  busyLabel: 'Checking',
+                  semanticsLabel: 'Checking current permissions',
+                )
+              : noneEligible
+              ? UiButton(
+                  label: knownNone ? 'Selection details' : 'Check permissions',
+                  variant: UiButtonVariant.secondary,
+                  onPressed: controller.mutating
+                      ? null
+                      : knownNone
+                      ? showDetails
+                      : onRetry,
+                  disabledReason: controller.mutating
+                      ? 'A decision on this selection is in flight.'
+                      : null,
+                )
+              : null,
+          onDetails: knownNone ? null : showDetails,
+          actionReasons: {
+            for (final kind in BulkDecisionKind.values)
+              kind.label: pending
+                  ? 'Wait for current permissions to be checked.'
+                  : unverified
+                  ? 'Current permission could not be verified. Check permissions or view selection details.'
+                  : 'None of the selected records currently permit this action. View selection details or review each record.',
+          },
+          actions: [
+            for (final kind in BulkDecisionKind.values)
+              (
+                label: kind.label,
+                icon: kind.icon,
+                onPressed: pending || counts[kind] == 0
+                    ? null
+                    : () => onDecide(kind),
               ),
           ],
         ),
@@ -1056,157 +1180,39 @@ class _ToastLayer extends StatelessWidget {
       UiToastHost.maybeOf(context) == null ? UiToastHost(child: child) : child;
 }
 
-/// Three review views, with the active name and an icon for each view.
-class _StatusControls extends StatefulWidget {
+/// The current queue view carries its name; other views keep named icons.
+class _StatusControls extends StatelessWidget {
   const _StatusControls({required this.controller});
   final WorkspaceController controller;
 
   @override
-  State<_StatusControls> createState() => _StatusControlsState();
-}
-
-class _StatusControlsState extends State<_StatusControls> {
-  static const views = <({String value, String label, IconSpec icon})>[
-    (
-      value: 'needs_human_review',
-      label: 'Needs a human',
-      icon: UiIcons.needsReview,
-    ),
-    (value: 'deferred', label: 'Deferred', icon: UiIcons.deferred),
-    (value: 'cleared', label: 'Cleared', icon: UiIcons.cleared),
-  ];
-  final _focusNodes = <FocusNode>[
-    for (final view in views) FocusNode(debugLabel: view.label),
-  ];
-
-  @override
-  void dispose() {
-    for (final node in _focusNodes) {
-      node.dispose();
-    }
-    super.dispose();
-  }
-
-  void _select(int index) {
-    _focusNodes[index].requestFocus();
-    unawaited(widget.controller.selectDisposition(views[index].value));
-  }
-
-  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
-    final index = _focusNodes.indexWhere((node) => node.hasFocus);
-    if (index < 0) return KeyEventResult.ignored;
-    final key = event.logicalKey;
-    final rtl = Directionality.of(context) == TextDirection.rtl;
-    final int next;
-    if (key == LogicalKeyboardKey.arrowRight) {
-      next = (index + (rtl ? -1 : 1)) % views.length;
-    } else if (key == LogicalKeyboardKey.arrowLeft) {
-      next = (index + (rtl ? 1 : -1)) % views.length;
-    } else if (key == LogicalKeyboardKey.arrowDown) {
-      next = (index + 1) % views.length;
-    } else if (key == LogicalKeyboardKey.arrowUp) {
-      next = (index - 1) % views.length;
-    } else if (key == LogicalKeyboardKey.home) {
-      next = 0;
-    } else if (key == LogicalKeyboardKey.end) {
-      next = views.length - 1;
-    } else {
-      return KeyEventResult.ignored;
-    }
-    _select(next);
-    return KeyEventResult.handled;
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final ui = context.ui;
-    final active = views.indexWhere(
-      (view) => view.value == widget.controller.disposition,
-    );
-    return Focus(
-      canRequestFocus: false,
-      skipTraversal: true,
-      onKeyEvent: _handleKey,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (active < 0) ...[
-            Expanded(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: UiDensity.hitBox),
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  heightFactor: 1,
-                  child: Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      widget.controller.disposition.isEmpty
-                          ? 'All specimens'
-                          : queueDispositions[widget.controller.disposition] ??
-                                'Specimens',
-                      style: ui.type.label,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(width: ui.space.s2),
-          ],
-          for (var index = 0; index < views.length; index++) ...[
-            if (index > 0) SizedBox(width: ui.space.s2),
-            if (active == index)
-              Expanded(child: _filter(context, index))
-            else
-              SizedBox(width: UiDensity.hitBox, child: _filter(context, index)),
-          ],
-        ],
+    const views = <UiViewTab<String>>[
+      UiViewTab(
+        value: 'needs_human_review',
+        label: 'Needs review',
+        icon: UiIcons.needsReview,
       ),
-    );
-  }
-
-  Widget _filter(BuildContext context, int index) {
-    final ui = context.ui;
-    final view = views[index];
-    final selected = view.value == widget.controller.disposition;
-    return UiTooltip(
-      message: view.label,
-      child: Pressable(
-        key: ValueKey<String>('queue-filter-${view.value}'),
-        semanticsLabel: view.label,
-        role: PressableRole.radio,
-        selected: selected,
-        focusNode: _focusNodes[index],
-        onPressed: () => _select(index),
-        builder: (context, states) => DecoratedBox(
-          decoration: ShapeDecoration(
-            shape: Squircle.border(ui.shape.inner),
-            color: selected
-                ? ui.color.ground
-                : ui.color.paper.withValues(alpha: 0),
+      UiViewTab(value: 'deferred', label: 'Deferred', icon: UiIcons.deferred),
+      UiViewTab(value: 'cleared', label: 'Cleared', icon: UiIcons.cleared),
+    ];
+    final value = controller.disposition;
+    return UiViewTabs<String>(
+      key: const ValueKey<String>('queue-view'),
+      semanticsLabel: 'Queue view',
+      value: value,
+      views: <UiViewTab<String>>[
+        if (!views.any((view) => view.value == value))
+          UiViewTab(
+            value: value,
+            label: value.isEmpty
+                ? 'All specimens'
+                : queueDispositions[value] ?? 'Other specimens',
+            icon: UiIcons.queue,
           ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: UiDensity.hitBox),
-            child: Padding(
-              padding: EdgeInsets.all(ui.space.s2),
-              child: Row(
-                mainAxisAlignment: selected
-                    ? MainAxisAlignment.start
-                    : MainAxisAlignment.center,
-                children: [
-                  UiIcon(view.icon, size: UiIconSize.inline),
-                  if (selected) ...[
-                    SizedBox(width: ui.space.s2),
-                    Expanded(child: Text(view.label, style: ui.type.label)),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
+        ...views,
+      ],
+      onChanged: (value) => unawaited(controller.selectDisposition(value)),
     );
   }
 }

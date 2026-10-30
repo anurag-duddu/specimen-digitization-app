@@ -10,13 +10,22 @@ is [`design/09-brand-direction.md`](../../design/09-brand-direction.md); the
 library is specified in
 [`design/10-component-library.md`](../../design/10-component-library.md).
 
+The current brand and coverage contract is
+[`design/15-design-system-standard.md`](../../design/15-design-system-standard.md).
+The component management surface is
+[`specimen_widgetbook`](../../../specimen_widgetbook/README.md), with individually
+registered stories and environment controls. The in-app `/gallery` remains a
+reference-sheet view. Native selection infrastructure (`UiSelectableText` and
+`UiSelectionArea`) also lives in the existing Material infrastructure adapter;
+it supplies platform handles and menus while preserving product typography.
+
 ## What is in it
 
 | Layer | Directory | What it holds |
 | --- | --- | --- |
 | Foundation | `lib/src/foundation/` | Colour, fields, glass, type, shape, space, density, motion, icons, window classes, the theme |
 | Primitives | `lib/src/primitives/` | Geometry and state with no styling opinions: `Pressable`, `StateLayer`, `Surface`, `GlassSurface`, `FieldLayer`, `FocusRing`, `Squircle`, `Popover`, `ModalRoutes`, `FieldCore`, `UiLabel`, `FitBuilder`, `EdgeFadedRow`, `Announcer`, `Scrim` |
-| Controls | `lib/src/controls/<family>/` | The thirty components a screen composes, one barrel per family: actions, inputs, overlays, navigation, data |
+| Controls | `lib/src/controls/<family>/` | Owned components and compositions, one barrel per family: actions, inputs, overlays, navigation, data |
 | Gallery | `lib/src/gallery/` | Every token and component in every state, both modes, both densities |
 
 At 0.3.0 all five families are built, every control in them declares what it

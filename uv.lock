@@ -2011,6 +2011,7 @@ dependencies = [
     { name = "pydantic-monty" },
     { name = "pydantic-monty-client" },
     { name = "pydantic-monty-runtime" },
+    { name = "pyyaml" },
     { name = "uvicorn" },
 ]
 
@@ -2042,6 +2043,7 @@ requires-dist = [
     { name = "pydantic-monty", specifier = "==1.1.0" },
     { name = "pydantic-monty-client", specifier = "==1.1.0" },
     { name = "pydantic-monty-runtime", specifier = "==1.1.0" },
+    { name = "pyyaml", specifier = ">=6,<7" },
     { name = "rawpy", marker = "extra == 'raw'", specifier = "==0.27.1" },
     { name = "uvicorn", specifier = ">=0.30,<1" },
 ]

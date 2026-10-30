@@ -10,6 +10,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .reading_declarations import LanguageHandling
+from .reading_units import ReadingUnits
 
 
 def uid() -> str:
@@ -202,6 +203,19 @@ class ReaderHandoff(Record):
     note: str | None = None
 
 
+class ReadingPairComparison(Record):
+    """One pair of a label's readings, compared as a two-reading label's
+    transcript records its one pair (status, reasons, disagreement ratio)."""
+
+    left_observation_id: str
+    right_observation_id: str
+    status: str
+    reasons: list[str] = Field(default_factory=list)
+    disagreement_ratio: float | None = Field(
+        default=None, ge=0, le=1, allow_inf_nan=False
+    )
+
+
 class Transcript(Record):
     value_state: ValueState | None = None
     region_id: str
@@ -222,6 +236,12 @@ class Transcript(Record):
     first_pass_call: Observation | None = None
     differences: list[FirstPassDifference] = Field(default_factory=list)
     handoffs: list[ReaderHandoff] = Field(default_factory=list)
+    # A label with more than two readings: every pair, in reading order (the
+    # fields above report the least-agreeing pair). Omitted when empty, so a
+    # two-reading label's transcript keeps its bytes.
+    comparisons: list[ReadingPairComparison] = Field(
+        default_factory=list, exclude_if=lambda value: not value
+    )
 
 
 class Evidence(Record):
@@ -449,7 +469,11 @@ class Profile(Record):
     schema_version: str = "insects-v1"
     policy_version: str = "insects-clearance-v1"
     mandatory_fields: tuple[str, ...] = MANDATORY
-    routes: tuple[str, str] = ("handwriting-qwen", "handwriting-muse")
+    # The readers, in order: reader A first (parse runs on its route). Two or
+    # more; the published profile's validation requires two distinct ones.
+    routes: tuple[str, ...] = Field(
+        default=("handwriting-qwen", "handwriting-muse"), min_length=2
+    )
     first_pass_route: str | None = None
     synthetic: bool = False
     institutional_policy_approved: bool = False
@@ -529,6 +553,22 @@ class Run(Record):
     )
     # One entry per paid call, with its usage and cost (LANE.md T2c).
     paid_calls: list[dict] = Field(default_factory=list, exclude_if=lambda value: not value)
+    # Omitted from the stored record when "old".
+    first_pass_path: Literal["old", "units"] = Field(
+        default="old", exclude_if=lambda value: value == "old"
+    )
+    # Each label's reading units (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 3), one entry
+    # per label. Omitted while empty, so a run without units keeps its stored bytes.
+    reading_units: list[ReadingUnits] = Field(
+        default_factory=list, exclude_if=lambda value: not value
+    )
+
+    @field_validator("reading_units")
+    @classmethod
+    def one_entry_per_label(cls, value):
+        if len({entry.label for entry in value}) != len(value):
+            raise ValueError("A run holds one entry of reading units per label")
+        return value
 
 
 class AuditEvent(Record):

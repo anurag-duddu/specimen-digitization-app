@@ -67,6 +67,48 @@ Future<void> _pumpShell(WidgetTester tester, {required double width}) async {
 Finder get _pageSelect => find.byType(UiSelect<int>);
 
 void main() {
+  testWidgets('native system insets keep gallery controls and content clear', (
+    WidgetTester tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    for (final (Size window, EdgeInsets insets) in <(Size, EdgeInsets)>[
+      (const Size(390, 844), const EdgeInsets.only(top: 59, bottom: 34)),
+      (const Size(844, 390), const EdgeInsets.fromLTRB(59, 0, 59, 24)),
+    ]) {
+      tester.view.physicalSize = window;
+      double? withoutExternalSafeArea;
+      for (final bool alreadyInset in <bool>[false, true]) {
+        final Widget gallery = UiGallery(pages: _pages());
+        await tester.pumpWidget(
+          uiHarness(
+            size: window,
+            child: MediaQuery(
+              data: MediaQueryData(size: window, padding: insets),
+              child: alreadyInset ? SafeArea(child: gallery) : gallery,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final Rect title = tester.getRect(find.text('specimen_ui'));
+        expect(title.top, greaterThanOrEqualTo(insets.top));
+        if (alreadyInset) {
+          expect(title.top, withoutExternalSafeArea);
+        } else {
+          withoutExternalSafeArea = title.top;
+        }
+        expect(title.left, greaterThanOrEqualTo(insets.left));
+        for (final Element surface in find.byType(Surface).evaluate()) {
+          final RenderBox box = surface.renderObject! as RenderBox;
+          final Rect rect = box.localToGlobal(Offset.zero) & box.size;
+          expect(rect.bottom, lessThanOrEqualTo(window.height - insets.bottom));
+          expect(rect.right, lessThanOrEqualTo(window.width - insets.right));
+        }
+        expect(tester.takeException(), isNull);
+      }
+    }
+  });
+
   testWidgets('below medium the page list is a select above the content', (
     WidgetTester tester,
   ) async {

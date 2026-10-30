@@ -26,20 +26,31 @@ String exactUtf16Span(String source, int start, int end) {
   return source.substring(start, end);
 }
 
+/// One comparison between two retained readings of a label.
+///
+/// A label read by three models has a comparison for each pair, so the two
+/// sides carry the readers' names when the caller knows them and fall back to
+/// "Left" and "Right" only when it does not.
 class ReadingAlignmentView extends StatelessWidget {
   const ReadingAlignmentView({
     super.key,
     required this.alignment,
     this.leftText,
     this.rightText,
+    this.leftName,
+    this.rightName,
   });
   final Json alignment;
   final String? leftText, rightText;
+
+  /// The readers behind the left and right sides.
+  final String? leftName, rightName;
   Widget _span(BuildContext context, String side, Json span) {
     final UiThemeData ui = context.ui;
     final start = objectOf(span['start']);
     final end = objectOf(span['end']);
     final source = side == 'Left' ? leftText : rightText;
+    final String who = (side == 'Left' ? leftName : rightName) ?? side;
     var text = textOf(span['text'], '');
     if (source != null) {
       try {
@@ -58,7 +69,7 @@ class ReadingAlignmentView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            '$side · Line ${start['line']} · UTF-16 [${start['utf16_codeunit']}, ${end['utf16_codeunit']})',
+            '$who · Line ${start['line']} · UTF-16 [${start['utf16_codeunit']}, ${end['utf16_codeunit']})',
             style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
           SelectableEvidence(
@@ -86,6 +97,11 @@ class ReadingAlignmentView extends StatelessWidget {
               : 'Comparison state not recognized',
           style: ui.type.label,
         ),
+        if (leftName != null && rightName != null)
+          Text(
+            'Compared: $leftName and $rightName',
+            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          ),
         for (final reason in alignment['reasons'] as List? ?? [])
           Text(vocabularyLabel(reason.toString())),
         if (status == 'disagreement')
