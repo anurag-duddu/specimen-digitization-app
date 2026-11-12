@@ -1764,21 +1764,13 @@ def _span(reading: Reading, cover: list) -> tuple[int, int]:
     return cover[0].readers[key].start, cover[-1].readers[key].end
 
 
-def _on_segments(text: str, start: int, end: int) -> bool:
-    """Whether a span of the text starts and ends where literal_places lets a place: on its
-    NFC segments' boundaries (_normal), at no combining mark except at the text's ends."""
-    _, offsets = _normal(text)
-    bounds = None if offsets is None else frozenset(offsets.values())
-    return all((bounds is None or at in bounds) and (at in (0, len(text)) or not unicodedata.combining(text[at]))
-        for at in (start, end))
-
-
 def _key_mapped(reading: Reading, other: Reading, cover: list, start: int, end: int) -> tuple[int, int] | None:
     """The reading's place (start, end) over the units `cover` as offsets of `other`'s text:
     through the agreement key's offsets (_key_offset), where the two readers' texts over
-    those units are the same, letter case and spacing aside, and the span starts and ends
-    on `other`'s NFC segments (_on_segments); else None ("\u03b1" of "\u03b1 \u03b9" maps to no
-    place of "\u03b1" with a combining ypogegrammeni)."""
+    those units are the same, letter case and spacing aside, and the span, its white space
+    at either end left out, is a place literal_places finds for `other`'s own text there;
+    else None ("\u03b1" of "\u03b1 \u03b9" maps to no place of "\u03b1" with a combining
+    ypogegrammeni, nor "\u03b9" of "x \u03b9" to one of "x" and a combining ypogegrammeni)."""
     if other.observation_id not in cover[0].readers:
         return None
     low, high = _span(reading, cover)
@@ -1788,10 +1780,17 @@ def _key_mapped(reading: Reading, other: Reading, cover: list, start: int, end: 
         return None
     first = _key_offset(theirs, agreement_key(reading.text[low:start]))
     last = _key_offset(theirs, agreement_key(reading.text[low:end]))
-    if first is None or last is None or first >= last or not _on_segments(other.text, their_low + first,
-            their_low + last):
+    if first is None or last is None or first >= last:
         return None
-    return their_low + first, their_low + last
+    low, high = their_low + first, their_low + last
+    while low < high and other.text[low].isspace():
+        low += 1
+    while high > low and other.text[high - 1].isspace():
+        high -= 1
+    text = collapse(other.text[low:high])
+    if not text or (low, high) not in literal_places(other.text, text):
+        return None
+    return low, high
 
 
 def _label_texts(group: Sequence[Reading], offered: Iterable[str]
@@ -1865,12 +1864,10 @@ def _nested(group: Sequence[Reading], each: Sequence[frozenset[str]], inner: fro
     """Whether a candidate (`inner`, its texts) lies inside another (`outer`) at every place a
     reader writes it: inside a place of the other's in the same reader (an organiser's line
     inside the expert's two-line locality), or inside a place of the other's in another
-    reader as mapped into this one: through the agreement key's offsets (_key_mapped), or,
-    where that place is all the other reader wrote over its units and its text holds this
-    one's (agreement_key), as this reader's text over those units (1B's "Mt. McKinley"
-    under 1A's "E Slope Mt. McKinley"; not 1C's "Indiana" in 1A's "Illinois"). One place of
-    it outside every such place ("forest" after "dry forest; " in one unit, or on a line of
-    its own) keeps it a rival."""
+    reader as mapped into this one through the agreement key's offsets (_key_mapped). One
+    place of it outside every such place ("forest" after "dry forest; " in one unit, or on
+    a line of its own; 1B's "Mt. McKinley" where 1A writes "E Slope Mt. McKinley" over
+    more units) keeps it a rival."""
     found = False
     for reading, own in zip(group, each):
         spans = []
@@ -1882,16 +1879,11 @@ def _nested(group: Sequence[Reading], each: Sequence[frozenset[str]], inner: fro
                 for (low, high), cover in _covered(other, one):
                     mapped = _key_mapped(other, reading, cover, low, high)
                     if mapped is not None:
-                        spans.append((*mapped, None))
-                    elif (low, high) == _span(other, cover) and reading.observation_id in cover[0].readers:
-                        spans.append((*_span(reading, cover), agreement_key(one)))
+                        spans.append((*mapped, False))
         for text in own & inner:
-            key = agreement_key(text)
             for start, end in literal_places(reading.text, text):
-                if not any(low <= start and end <= high and (
-                        (low, high) != (start, end) if holds is True
-                        else holds is None or (key != holds and key in holds))
-                        for low, high, holds in spans):
+                if not any(low <= start and end <= high and (not same or (low, high) != (start, end))
+                        for low, high, same in spans):
                     return False
                 found = True
     return found

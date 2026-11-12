@@ -10,6 +10,7 @@ as no run is built."""
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 
 import pytest
 
@@ -97,13 +98,29 @@ def test_the_units_paths_instructions_name_no_first_pass_preference(key):
     assert "- units, when present:" in text
 
 
+# prompts/units.txt as PR #425's sixth round leaves it, as the sha256 of its bytes.
+UNITS_TXT = "sha256:78e10b3ff494ab6c095920832152b05fee86c73f6c31c5abf3451ed9218ef55d"
+# Rule 4 on the units path: what the code decides, said once to every expert.
+RULE = ("The code decides from the image judgements, the source answers you cite and the readers' agreement "
+    "whether a value is cleared, marked for a person to check, or left open, and it refuses an answer it cannot "
+    "settle, saying why.")
+
+
+def test_units_txt_is_pinned():
+    """Codex round 6 (V3): units.txt says what an expert needs, no definitions of the backings."""
+    from specimen_digitization.field_research import prompts
+
+    path = Path(prompts.__file__).with_name("units.txt")
+    assert "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest() == UNITS_TXT
+
+
 @pytest.mark.parametrize("key", FIELD_TOOLS)
-def test_the_units_paths_instructions_state_the_rule_for_several_labels(key):
-    """Codex round 5, U3: a label none of whose texts has backing is no evidence against
-    another label's text (agreement._unbacked), not "every label settles to the same value"."""
+def test_the_units_paths_instructions_state_the_rule_and_define_no_backing(key):
     text = instructions(key, units=True)
-    assert ("a label none of whose texts has backing is no evidence against a text another label backs" in text
-        and "A field on several labels settles only when every label settles to the same value." not in text)
+    assert text.count(RULE) == 1
+    for definition in ("Image: the unit holding it", "Source: you asked your sources", "Text: two or more readers",
+            "where 2A writes"):
+        assert definition not in text
 
 
 @pytest.mark.parametrize(("text", "found"), [

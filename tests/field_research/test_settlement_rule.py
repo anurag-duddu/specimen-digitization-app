@@ -766,8 +766,9 @@ def test_sources_cannot_resolve_on_a_label_nothing_backs_is_ambiguous_with_the_r
 def test_a_text_beside_a_unit_its_reader_left_out_on_the_left_is_not_image_backed():
     """Claude C2 (c): A writes "E Slope Mt. McKinley", B "Mt. McKinley", the image names A's
     text at each unit. B's text has no IMAGE backing (the unit before it, where B wrote nothing
-    and A wrote text, is not "not visible"); "Mt. McKinley" lies inside A's text there (no
-    rival of it, agreement._nested), and A's text settles cleared."""
+    and A wrote text, is not "not visible"). B's "Mt. McKinley" lies inside no place of A's
+    text in B's reading (agreement._nested), so it stays a rival: A's text, with IMAGE above
+    its TEXT, settles marked conflict."""
     units = units_of("L", [{"a": "E Slope", "b": ""}, {"a": "Mt.", "b": "Mt."}, {"a": "McKinley", "b": "McKinley"}],
         ["E Slope", "Mt.", "McKinley"])
     a, b = reading_of("a", units), reading_of("b", units)
@@ -776,7 +777,7 @@ def test_a_text_beside_a_unit_its_reader_left_out_on_the_left_is_not_image_backe
         Candidate("1A", "E Slope Mt. McKinley", "E Slope Mt. McKinley", "ev-a"),
         Candidate("1B", "Mt. McKinley", "Mt. McKinley", "ev-b")), FIELD_TOOLS["precise_location"])
     label = agreement.labels(task, (a, b), [])["L"]
-    assert (label.settled, label.cleared) == (frozenset({"E Slope Mt. McKinley"}), True)
+    assert (label.settled, label.why) == (frozenset({"E Slope Mt. McKinley"}), agreement.CONTESTED)
 
 
 @pytest.mark.parametrize(("second", "named"), [(UNCERTAIN, False), ("la", True)], ids=["one-uncertain", "both-named"])
@@ -1192,6 +1193,17 @@ TABLE = [
     ("claude5-u4-neighbour-spaced-otherwise", lambda: dict(labels=[[unit("Shrubs", "Shrubs"),
         unit("6-Sept-1946", "6-Sept- 1946")]], candidates=filed("habitat", ("1B", "Shrubs")), key="habitat",
         script=says("Shrubs", "1B")), "Claude round 5, U4"),
+    ("codex6-v1-container-fills-1A-unit", lambda: dict(labels=[[unit("dry forest", "dry forest; forest",
+        "dry forest; forest", image=0)]], candidates=filed("habitat", ("1A", "dry forest"), ("1B", "forest")),
+        key="habitat", script=says("dry forest", "1A")), "Codex round 6, 1"),
+    ("claude6-v1-other-text-at-e-slope-answer-1A", lambda: dict(labels=[[unit("E Slope", "X"), unit("Mt.", "Mt."),
+        unit("McKinley", "McKinley")]], candidates=filed("precise_location", ("1A", "E Slope Mt. McKinley"),
+        ("1B", "Mt. McKinley")), key="precise_location", script=says("E Slope Mt. McKinley", "1A")), "Claude round 6"),
+    ("claude6-v1-other-text-at-e-slope-answer-1B", lambda: dict(labels=[[unit("E Slope", "X"), unit("Mt.", "Mt."),
+        unit("McKinley", "McKinley")]], candidates=filed("precise_location", ("1A", "E Slope Mt. McKinley"),
+        ("1B", "Mt. McKinley")), key="precise_location", script=says("Mt. McKinley", "1B")), "Claude round 6"),
+    ("codex6-v2-space-then-ypogegrammeni", lambda: dict(labels=[[unit("x \u03b9", "x \u0345", image=UNCERTAIN)]],
+        candidates=filed("habitat", ("1A", "\u03b9")), key="habitat", script=says("\u03b9", "1A")), "Codex round 6, 2"),
     ("mechanics-units-txt-example", lambda: dict(labels=[[unit("light", "", image=0), unit("trap", "trap")]],
         candidates=[], key="collection_method", script=says("light trap", "1A")), "mechanics: prompts/units.txt's example"),
 ]
@@ -1243,7 +1255,8 @@ EXPECTED: dict[str, tuple] = {
     "codex1-5-transcript": kept("Shrubs", "cleared"),
     "codex1-6-nothing-backed": refused("Shrubs", "Shurbs"),
     "claude1-c1-1B-only": kept("Danaus plexippus", "text_only"),
-    "claude1-c1-trinomial-answered": kept("Danaus plexippus megalippe", "cleared"),
+    # 1B's binomial lies inside no place of 1A's trinomial in 1B's reading: a rival, below IMAGE.
+    "claude1-c1-trinomial-answered": kept("Danaus plexippus megalippe", "conflict"),
     "claude1-c1-both-filed": refused(),
     "claude1-c1-megalippe-not-visible": kept("Danaus plexippus", "cleared"),
     # The province with no source: the place check refuses it, whatever the rule gives.
@@ -1253,7 +1266,7 @@ EXPECTED: dict[str, tuple] = {
     # The city with no source: the place check refuses it.
     "claude1-c2b-yepocapa": UNRESOLVED_PLACE,
     "mechanics-c2b-yepocapa-on-habitat": kept("Yepocapa", "text_only"),
-    "claude1-c2c-mckinley-both-filed": kept("E Slope Mt. McKinley", "cleared"),
+    "claude1-c2c-mckinley-both-filed": kept("E Slope Mt. McKinley", "conflict"),
     "claude1-c2c-mckinley-1B-only": kept("Mt. McKinley", "text_only"),
     "claude1-c2d-one-place-uncertain": kept("la", "text_only"),
     "claude1-c2d-both-named": kept("la", "cleared"),
@@ -1299,6 +1312,13 @@ EXPECTED: dict[str, tuple] = {
     # A neighbour written alike, letter case and spacing aside, bounds nothing.
     "claude5-u4-neighbour-in-another-case": kept("Shrubs", "cleared"),
     "claude5-u4-neighbour-spaced-otherwise": kept("Shrubs", "cleared"),
+    # 1B's and 1C's "forest" after "dry forest; " lies inside no place of "dry forest" there: a rival, tied.
+    "codex6-v1-container-fills-1A-unit": refused("dry forest", "forest"),
+    # 1B wrote "X" where 1A wrote "E Slope": 1B's "Mt. McKinley" is no part of 1A's text there, a rival.
+    "claude6-v1-other-text-at-e-slope-answer-1A": kept("E Slope Mt. McKinley", "conflict"),
+    "claude6-v1-other-text-at-e-slope-answer-1B": refused(),
+    # 1B's text at the mapped span starts at a combining mark: no place of it, 1A's text alone.
+    "codex6-v2-space-then-ypogegrammeni": refused(),
     # L2 holds 2A's "Shrubs" too: its two texts each backed only by another label, the field ambiguous.
     "mechanics-s1-refusal-offers-every-label": refused("Shrubs", "Shurbs"),
     **{f"mechanics-s1-second-label-agrees-names-{names}": (ValueState.SUPPORTED, "Shrubs", None, None, (),
