@@ -3,10 +3,16 @@
 /// The workspace response carries them at `run.reading_units`, one entry per
 /// label (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 3). This file only
 /// reads the record. Offsets stay in code points, as the server writes them;
-/// nothing here converts them to the UTF-16 offsets a Dart `String` slices by.
+/// nothing here converts them to the UTF-16 offsets a Dart `String` slices by
+/// (`exactCodePointSpan` in `reading_alignment.dart` does).
 library;
 
 import 'models.dart';
+
+/// The two values of a unit's `image` that name no reader's text
+/// (`application/reading_units.py`, `UNCERTAIN` and `NOT_VISIBLE`).
+const String imageUncertain = 'uncertain';
+const String imageNotVisible = 'not visible';
 
 /// What one reader wrote at a unit, and where in that reader's own text.
 class UnitReading {

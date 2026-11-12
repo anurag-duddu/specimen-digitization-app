@@ -16,6 +16,85 @@ void main() {
       expect(() => exactUtf16Span(text, 0, 99), throwsFormatException);
     },
   );
+
+  // A reading unit's offsets are Python string indices: code points
+  // (WP 1.6, docs/execution/units/PLAN.md).
+  test('a unit after an emoji converts its code points to UTF-16', () {
+    for (final (
+          String reading,
+          int start,
+          int end,
+          String unit,
+          int from,
+          int to,
+        )
+        in <(String, int, int, String, int, int)>[
+          // Nothing above U+FFFF: the two offsets agree.
+          ('Elev.6400', 0, 9, 'Elev.6400', 0, 9),
+          // One emoji before the unit moves both offsets by one.
+          ('🦋 Chicago 1912', 2, 9, 'Chicago', 3, 10),
+          // Two emoji before it move them by two.
+          ('🦋🐞 Chicago', 3, 10, 'Chicago', 5, 12),
+          // An emoji before the unit and one inside it.
+          ('🐞Sp.30 🐞 x', 1, 8, 'Sp.30 🐞', 2, 10),
+          // The unit is the emoji.
+          ('Sp.30 ♀ 🐞', 8, 9, '🐞', 8, 10),
+          // A combining accent is a code point of its own, and in the BMP.
+          ('Me\u0301xico 🦋', 0, 7, 'Me\u0301xico', 0, 7),
+          // An empty unit at the end of the reading.
+          ('🦋 x', 3, 3, '', 4, 4),
+        ]) {
+      expect(utf16OffsetOfCodePoint(reading, start), from, reason: reading);
+      expect(utf16OffsetOfCodePoint(reading, end), to, reason: reading);
+      expect(exactCodePointSpan(reading, start, end), unit, reason: reading);
+      if (from != start && unit.isNotEmpty) {
+        // Sliced as UTF-16 without the conversion, the offsets miss the unit.
+        expect(
+          reading.substring(start, end.clamp(start, reading.length)),
+          isNot(unit),
+          reason: reading,
+        );
+      }
+    }
+    for (final (int start, int end) in <(int, int)>[(-1, 2), (2, 5), (3, 2)]) {
+      expect(
+        () => exactCodePointSpan('🦋 x', start, end),
+        throwsFormatException,
+        reason: '[$start, $end)',
+      );
+    }
+  });
+
+  test('every code-point span of a mixed reading is its runes', () {
+    for (final String reading in <String>[
+      '',
+      'Elev.6400',
+      '😀a\r\nb',
+      'a\u0301\r\n٢ 🦋🐞 Sp.30 ♀',
+      // A lone surrogate is one code point, as `runes` counts it.
+      'x\uD800y\uDC00z🐞',
+    ]) {
+      final List<int> runes = reading.runes.toList();
+      for (int start = 0; start <= runes.length; start++) {
+        expect(
+          utf16OffsetOfCodePoint(reading, start),
+          String.fromCharCodes(runes.take(start)).length,
+          reason: '$reading at $start',
+        );
+        for (int end = start; end <= runes.length; end++) {
+          expect(
+            exactCodePointSpan(reading, start, end),
+            String.fromCharCodes(runes.sublist(start, end)),
+            reason: '$reading [$start, $end)',
+          );
+        }
+      }
+      expect(
+        () => utf16OffsetOfCodePoint(reading, runes.length + 1),
+        throwsFormatException,
+      );
+    }
+  });
   testWidgets(
     'blocked long or truncated comparisons never display agreement or invented differences',
     (tester) async {
