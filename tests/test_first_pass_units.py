@@ -4,7 +4,9 @@ and its switch, reading_units.first_pass_path."""
 from __future__ import annotations
 
 import json
+import random
 import re
+import unicodedata
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -33,10 +35,13 @@ from specimen_digitization.application.first_pass import (
     alignment_units,
     build_units_request,
     first_pass_path,
+    first_readers_spelling,
     reading_segments,
     units_from_output,
     units_output_problems,
 )
+from specimen_digitization.application.collection_profiles import published_registry
+from specimen_digitization.application.domain import ExecutionPolicy
 from specimen_digitization.application.production import ProductionAdapters
 from specimen_digitization.application.reading_units import (
     NOT_VISIBLE,
@@ -52,7 +57,9 @@ from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.application.workflow import OperationalBlock, store_reading_units
 from specimen_digitization.prompts import PromptName, ResolvedPrompt
 
-from test_first_pass import ASSET, REGION, ROUTE, reading
+from test_first_pass import ASSET, INCOMPLETE, MUSE, QWEN, REGION, ROUTE, VALID, pinned_route, reading
+from test_first_pass_reasoning_bound import ROUTE as GLM_ROUTE
+from test_first_pass_reasoning_bound import offline_provider, png
 
 # The last lines of pilot label e98a924c-L2 as three readers wrote them (the design's section 3).
 PILOT = (
@@ -138,6 +145,50 @@ def test_the_units_prompt_is_pinned_on_the_units_path_and_only_there(tmp_path):
     assert ontology.render(brief=True) in pinned.text
     assert "Specimen ontology, version 1.0." in pinned.text
     assert {k: v for k, v in units["prompts"].items() if k != "first-pass-units"} == old["prompts"]
+
+
+# The units prompt's image line, with the wording measured in the WP 1.5 gap analysis (off-repo:
+# ~/specimen-golive/runs/units-wp15-gap-20261112/wording_w1.json), and its note line, as pinned on
+# a units-path run.
+IMAGE_LINE = """- image: the letter of the reader whose text the image shows there, even when
+  that reader alone wrote it; where all readers wrote the same and the image
+  shows it, the first reader's letter. Where the readers' texts differ only in
+  capital letters or in spaces and the image shows that text, the letter of the
+  first reader who wrote it, unless the image plainly shows another reader's
+  capitals or spaces. Where they differ in a character, compare that
+  character's strokes in the image with each reader's text and give the reader
+  they fit; "uncertain" only where the strokes fit two differing texts equally
+  or fit none; "not visible" where nothing is legible.
+  Never prefer a text because it reads more fluently: labels abbreviate,
+  misspell and use old or foreign place names.
+"""
+NOTE_LINE = """- note: a remark for the experts, one short sentence, only for what the other
+  keys do not say, such as a mark one reader alone saw; never to restate the
+  image or the meaning, and never to argue against a name every reader wrote.
+"""
+
+
+def pinned_units_prompt(tmp_path) -> str:
+    adapters = ProductionAdapters(LocalBlobs(tmp_path))
+    units = adapters.pin_dependencies(
+        Run(profile=Profile(first_pass_route="first-pass-glm"), first_pass_path="units")
+    )
+    return ResolvedPrompt.model_validate(units["prompts"]["first-pass-units"]).text
+
+
+def test_the_pinned_units_prompt_gives_the_image_line_the_measured_wording(tmp_path):
+    text = pinned_units_prompt(tmp_path)
+
+    assert IMAGE_LINE in text
+    # The sentence this wording replaces is gone.
+    assert '"uncertain" only where the image does\n  not decide between differing texts' not in text
+
+
+def test_the_pinned_units_prompt_tells_the_first_pass_what_a_note_is_for(tmp_path):
+    text = pinned_units_prompt(tmp_path)
+
+    assert NOTE_LINE in text
+    assert "never to restate the image or the meaning.\n" not in text
 
 
 # --------------------------------------------------------------------------- the range grammar
@@ -526,6 +577,350 @@ def test_a_call_stopped_at_its_caps_gets_the_alignments_units(monkeypatch, tmp_p
     assert decision.rationale == CAP_RATIONALE and decision.selected_observation_id is None
     assert decision.call.completion_state == "usage_limit"
     assert units == alignment_units(REGION.id, readings)
+
+
+def stored_image(texts, named, *, readers=None):
+    """The unit the answer "one unit over every segment, the image naming reader `named`" makes
+    from these readers' texts, with the answer's checks and the units' tiling checks made."""
+    readings = [reading(route, text) for route, text in zip(ROUTES, texts)]
+    segments = reading_segments(texts)
+    answer = UnitsOutput.model_validate(
+        {"units": [{"first": 1, "last": len(segments), "image": named}]}
+    )
+    letters = dict(zip("ABC", readings))
+    assert units_output_problems(answer, letters, segments) == []
+    units = units_from_output(REGION.id, answer, letters, segments)
+    assert problems(units, texts_of(readings)) == []
+    return units.units[0], readings
+
+
+# A reader's text replaces the named text only where it has the named text's agreement key
+# (field_research/agreement.py: NFC, casefold, white space removed) and the two are also equal after
+# NFC, removing white space and str.lower(): capitals and spacing alone. casefold alone also folds
+# "\u00df" to "ss", "\u017f" to "s" and "\u03c2" to "\u03c3", which differ in a character; a letter or a
+# punctuation mark more is another text.
+NFD = unicodedata.normalize("NFD", "Caf\u00e9")
+NFC = unicodedata.normalize("NFC", "Caf\u00e9")
+
+
+@pytest.mark.parametrize("texts,named,stored", [
+    pytest.param(["Sept.", "sept.", "SEPT."], "B", "Sept.", id="case: B named, A first"),
+    pytest.param(["Sept.", "sept.", "SEPT."], "C", "Sept.", id="case: C named, A first"),
+    pytest.param(["sept.", "Sept."], "B", "sept.", id="case: A wrote lower case, B named"),
+    pytest.param(["Sept.1", "SEPT.2", "sept.2"], "C", "SEPT.2", id="case: first with the key is B"),
+    pytest.param(["Davao Prov. Mindanao", "DavaoProv. Mindanao"], "B", "Davao Prov. Mindanao",
+                 id="spacing: A spaced, B named"),
+    pytest.param(["DavaoProv. Mindanao", "Davao Prov. Mindanao"], "B", "DavaoProv. Mindanao",
+                 id="spacing: A unspaced, B named"),
+    pytest.param(["Davao Prov. Mindanao", "davaoprov. MINDANAO"], "B", "Davao Prov. Mindanao",
+                 id="case and spacing"),
+    pytest.param([NFD, NFC], "B", NFD, id="NFD then NFC"),
+])
+def test_the_image_stores_the_first_readers_spelling_of_a_text_that_differs_only_in_case_or_spacing(
+    texts, named, stored
+):
+    from specimen_digitization.field_research.agreement import agreement_key
+
+    unit, readings = stored_image(texts, named)
+
+    assert unit.image == stored
+    # The text stored is one reader's text here, and its key is the named reader's.
+    assert unit.image in [unit.readers[r.id].text for r in readings]
+    assert agreement_key(unit.image) == agreement_key(unit.readers[readings["ABC".index(named)].id].text)
+    # Each reader's own text stays as that reader wrote it.
+    assert [unit.readers[r.id].text for r in readings] == texts
+
+
+@pytest.mark.parametrize("named,stored", [("A", "Elev.6400"), ("B", "Elev.6400'"), ("C", "Elev.6400")])
+def test_a_text_that_differs_in_a_character_keeps_the_named_readers_spelling(named, stored):
+    unit, _ = stored_image(["Elev.6400", "Elev.6400'", "Elev.6400"], named)
+    assert unit.image == stored
+
+
+def test_a_text_no_reader_wrote_comes_back_as_it_was_named():
+    spans = reading_segments(["Sept.", "sept."])[0]
+
+    assert first_readers_spelling("Oct.", spans) == "Oct."
+    assert first_readers_spelling("", spans) == ""
+    assert first_readers_spelling("sept.", spans) == "Sept."
+
+
+def test_the_first_pass_compares_texts_by_the_settlements_own_key(monkeypatch):
+    """The key is the settlement's, not a copy: texts equal in capitals and spacing are substituted
+    only while the settlement's key also holds them equal."""
+    from specimen_digitization.field_research import agreement
+
+    assert stored_image(["Sept.", "sept."], "B")[0].image == "Sept."
+    # With a stricter key in the settlement's module, the first pass follows it.
+    monkeypatch.setattr(agreement, "agreement_key", lambda text: text)
+    assert stored_image(["Sept.", "sept."], "B")[0].image == "sept."
+
+
+def units_of(texts, *answers):
+    """The readers and the units these unit answers make from the readers' texts, with the answer's
+    checks and the units' tiling checks made, and the units as the run stores them (JSON)."""
+    readings = [reading(route, text) for route, text in zip(ROUTES, texts)]
+    segments = reading_segments(texts)
+    answer = UnitsOutput.model_validate({"units": list(answers)})
+    letters = dict(zip("ABC", readings))
+    assert units_output_problems(answer, letters, segments) == []
+    made = units_from_output(REGION.id, answer, letters, segments)
+    assert problems(made, texts_of(readings)) == []
+    return readings, ReadingUnits.model_validate_json(made.model_dump_json())
+
+
+def settled_label(readings, units, field, literals):
+    """The label the settlement's rule makes of these readers' units for `field` with `literals` as
+    each reader's candidate texts, no source answer; and the settlement's readings."""
+    from specimen_digitization.field_research import agreement
+    from specimen_digitization.field_research.contracts import FieldTask, Reading
+
+    names = [f"1{letter}" for letter in "ABC"[: len(readings)]]
+    found = [
+        Reading(name, REGION.id, one.id, "raw_reading", one.literal_text, units=units)
+        for name, one in zip(names, readings)
+    ]
+    task = FieldTask(key=field, mandatory=True, current=None, candidates=(), tools=())
+    labels = agreement.labels_by_rule(
+        task, {REGION.id: found}, {name: list(literals) for name in names}, {}, [], sourced=False
+    )
+    return labels[REGION.id], found
+
+
+def test_a_reader_s_not_visible_is_never_stored_for_another_readers_spelling_of_it():
+    """Main's result: the first pass named B's "Not Visible" beside the name, so nothing backs the name
+    by the image and the label settles on its readers (marked), not cleared."""
+    from specimen_digitization.field_research.agreement import image_names
+
+    texts = ["Danaus plexippus not visible", "Danaus plexippus Not Visible", "Danaus plexippus megalippe"]
+    readings, units = units_of(texts, {"first": 1, "last": 2, "image": "A"}, {"first": 3, "last": 4, "image": "B"})
+    label, found = settled_label(readings, units, "scientific_name", ["Danaus plexippus"])
+
+    assert [unit.image for unit in units.units] == ["Danaus plexippus", "Not Visible"]
+    assert [image_names(one, "Danaus plexippus") for one in found] == [False, False, False]
+    assert (set(label.settled), label.basis, label.cleared, label.why) == (
+        {"Danaus plexippus"}, "readers_agree", False, "text_only"
+    )
+
+
+def test_a_reader_s_uncertain_is_never_stored_for_another_readers_spelling_of_it():
+    from specimen_digitization.field_research.agreement import image_names
+
+    texts = ["Locality uncertain", "Locality Uncertain"]
+    readings, units = units_of(texts, {"first": 1, "image": "A"}, {"first": 2, "image": "B"})
+    _, found = settled_label(readings, units, "locality", ["Locality uncertain"])
+
+    assert [unit.image for unit in units.units] == ["Locality", "Uncertain"]
+    assert [image_names(one, one.text) for one in found] == [True, True]
+
+
+def test_a_prefix_one_reader_wrote_as_not_visible_is_not_stored_as_the_marker_for_a_spelling_of_it():
+    """Codex's input: B's "NOTVISIBLE" has the key of A's "not visible", and the habitat "forest" beside
+    it is not cleared on an image that judged the prefix absent."""
+    texts = ["not visible forest", "NOTVISIBLE forest", "rain forest"]
+    segments = reading_segments(texts)
+    assert [[span.text for span in spans] for spans in segments] == [
+        ["not", "", "rain"], ["visible", "NOTVISIBLE", ""], ["forest", "forest", "forest"]
+    ]
+    readings, units = units_of(texts, {"first": 1, "last": 2, "image": "B"}, {"first": 3, "image": "A"})
+    label, _ = settled_label(readings, units, "habitat", ["forest"])
+
+    assert [unit.image for unit in units.units] == ["NOTVISIBLE", "forest"]
+    assert (set(label.settled), label.basis, label.cleared, label.why) == (
+        {"forest"}, "readers_agree", False, "text_only"
+    )
+
+
+@pytest.mark.parametrize("marker", [UNCERTAIN, NOT_VISIBLE])
+def test_a_text_that_is_exactly_a_marker_takes_no_part_in_the_substitution(marker):
+    """The first reader's text, or the named one, is the marker itself: the named text stays."""
+    from types import SimpleNamespace
+
+    spelled = marker.upper()
+    assert first_readers_spelling(spelled, [SimpleNamespace(text=marker), SimpleNamespace(text=spelled)]) == spelled
+    assert first_readers_spelling(marker, [SimpleNamespace(text=spelled), SimpleNamespace(text=marker)]) == marker
+    # A reader that wrote the marker with other capitals is an ordinary text.
+    capitalised = marker.capitalize()
+    assert first_readers_spelling(spelled, [SimpleNamespace(text=capitalised), SimpleNamespace(text=spelled)]) == capitalised
+    # Where the first reader's text is the marker, the named text stays: no later reader's text replaces it.
+    texts = [SimpleNamespace(text=text) for text in (marker, capitalised, spelled)]
+    assert first_readers_spelling(spelled, texts) == spelled
+
+
+@pytest.mark.parametrize("texts,named", [
+    pytest.param(["Weissenburg", "Wei\u00dfenburg"], "B", id="sharp s named, A wrote ss"),
+    pytest.param(["Wei\u00dfenburg", "Weissenburg"], "B", id="ss named, A wrote sharp s"),
+    pytest.param(["Preussen", "Preu\u017f\u017fen"], "B", id="long s named, A wrote ss"),
+    pytest.param(["Preu\u017f\u017fen", "Preussen"], "B", id="ss named, A wrote long s"),
+    pytest.param(["Preuss", "Preu\u017fs", "PREUSS"], "B", id="long s named between two that have the key"),
+    pytest.param(["\u03bf\u03b4\u03bf\u03c3", "\u03bf\u03b4\u03bf\u03c2"], "B", id="final sigma named, A wrote sigma"),
+    pytest.param(["\u03bf\u03b4\u03bf\u03c2", "\u03bf\u03b4\u03bf\u03c3"], "B", id="sigma named, A wrote final sigma"),
+])
+def test_texts_that_differ_in_a_character_the_key_folds_keep_the_named_readers_text(texts, named):
+    """casefold folds the sharp s to ss, the long s to s and the final sigma to sigma; the first pass's
+    answer for the character is kept."""
+    from specimen_digitization.field_research.agreement import agreement_key
+
+    unit, readings = stored_image(texts, named)
+    named_text = unit.readers[readings["ABC".index(named)].id].text
+
+    assert unit.image == named_text
+    assert len({agreement_key(text) for text in texts}) == 1 and len(set(texts)) == len(texts)
+
+
+@pytest.mark.parametrize("texts,stored", [
+    pytest.param(["Weissenburg", "Wei\u00dfenburg"], "Wei\u00dfenburg", id="sharp s"),
+    pytest.param(["Preussen", "Preu\u017f\u017fen"], "Preu\u017f\u017fen", id="long s"),
+])
+def test_a_value_the_image_settles_keeps_the_letters_the_first_pass_named(texts, stored):
+    """Main's result: the label settles on the text the image names, cleared."""
+    readings, units = units_of(texts, {"first": 1, "image": "B"})
+    label, _ = settled_label(readings, units, "city", texts)
+
+    assert units.units[0].image == stored
+    assert (set(label.settled), label.basis, label.cleared) == ({stored}, "image", True)
+
+
+def spelling_pairs(rng):
+    """Readers' texts built from one base text by capitals, spacing, NFD, the sharp s and long s, the
+    sigmas, and a letter more or less: each text of a set is a variant of the first."""
+    bases = ["Wei\u00dfenburg", "Preussen", "Preu\u017f\u017fen", "\u03bf\u03b4\u03bf\u03c2", "Sept. 1946",
+             "Caf\u00e9 Mos Sy", "I\u0130 Stra\u00dfe", "\ufb01sh Elev. 6400"]
+
+    def variant(text):
+        out = []
+        for character in text:
+            roll = rng.random()
+            if roll < 0.2:
+                out.append(character.swapcase())
+            elif roll < 0.3:
+                out.append(character + " ")
+            elif roll < 0.35 and character == " ":
+                out.append("\n")
+            elif roll < 0.45:
+                out.append({"\u00df": "ss", "s": "\u017f", "\u03c2": "\u03c3", "\u03c3": "\u03c2"}.get(character, character))
+            elif roll < 0.5:
+                out.append(character + "'")
+            else:
+                out.append(character)
+        text = "".join(out)
+        return unicodedata.normalize(rng.choice(["NFC", "NFD"]), text)
+
+    for _ in range(4000):
+        base = rng.choice(bases)
+        yield [variant(base) for _ in range(rng.randint(2, 3))]
+
+
+def test_every_text_the_first_pass_substitutes_has_the_named_texts_key_and_differs_in_capitals_and_spacing_alone():
+    """Over 4,000 seeded sets of readers' texts: the stored text is one of the texts, the named one unless
+    a reader's text has its agreement key and equals it after NFC, removing white space and lower();
+    where it is another, it is the first such reader's text."""
+    from types import SimpleNamespace
+
+    from specimen_digitization.field_research.agreement import agreement_key
+
+    def plain(text):
+        return "".join(unicodedata.normalize("NFC", text).split()).lower()
+
+    substituted = kept_apart = 0
+    for texts in spelling_pairs(random.Random(20261113)):
+        spans = [SimpleNamespace(text=text) for text in texts]
+        for named in texts:
+            stored = first_readers_spelling(named, spans)
+            assert stored in texts
+            first = next((t for t in texts if agreement_key(t) == agreement_key(named) and plain(t) == plain(named)), named)
+            assert stored == first
+            if stored != named:
+                substituted += 1
+                assert agreement_key(stored) == agreement_key(named) and plain(stored) == plain(named)
+            elif any(agreement_key(t) == agreement_key(named) and plain(t) != plain(named) for t in texts):
+                kept_apart += 1
+    # The property is not vacuous: both kinds of set occur.
+    assert substituted > 500 and kept_apart > 100
+
+
+def test_the_call_stores_the_first_readers_spelling_of_the_text_the_image_names(monkeypatch, tmp_path):
+    readings = [reading(ROUTES[0], "Sept. 5"), reading(ROUTES[1], "sept. 5")]
+    answer = {"units": [{"first": 1, "last": 2, "image": "B", "fields": ["date_visited_from"]}]}
+
+    decision, units, _ = direct_units(monkeypatch, tmp_path, [], answer, readings=readings)
+
+    assert [unit.image for unit in units.units] == ["Sept. 5"]
+    assert [units.units[0].readers[r.id].text for r in readings] == ["Sept. 5", "sept. 5"]
+    assert problems(units, texts_of(readings)) == []
+
+
+def pinned_glm_run(readings, **changes):
+    """A units-path run on the real first-pass route, for requests over an offline transport."""
+    prices = published_registry().resolve("insects").profile.processing.price_list
+    return Run(
+        profile=Profile(
+            first_pass_route=GLM_ROUTE.route_id,
+            routes=tuple(r.route_id for r in readings),
+            execution=ExecutionPolicy(price_list=prices.model_dump(mode="json")),
+        ),
+        dependencies={
+            "routes": {GLM_ROUTE.route_id: {"model_id": GLM_ROUTE.model_id, "provider": GLM_ROUTE.provider}},
+            "prompts": {UNITS_PROMPT.name.value: UNITS_PROMPT.model_dump(mode="json")},
+        },
+        first_pass_path="units",
+        **changes,
+    )
+
+
+def test_every_units_request_sends_temperature_zero_and_low_reasoning_and_the_call_records_them(
+    monkeypatch, tmp_path
+):
+    # The first answer fails a check, so the output retry is a second request: both carry them.
+    gap = {"units": [{"first": 1, "image": "A"}, {"first": 3, "last": 8, "image": "A"}]}
+    sent = offline_provider(monkeypatch, GLM_ROUTE, [gap, ANSWER])
+    monkeypatch.setenv("HF_TOKEN", "synthetic-test-credential")
+    monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
+    monkeypatch.setattr(workflow_module, "crop_bytes", lambda *args: png(60, 40))
+    readings = pilot_readings()
+
+    decision, units = first_pass_module.first_pass_units_direct(
+        SimpleNamespace(blobs=LocalBlobs(tmp_path)),
+        SimpleNamespace(asset=SimpleNamespace(id="asset-1"), run=pinned_glm_run(readings)),
+        REGION,
+        readings,
+    )
+
+    assert len(sent) == 2 and len(units.units) == 6
+    assert [body["temperature"] for body in sent] == [0, 0]
+    assert [body["reasoning_effort"] for body in sent] == ["low", "low"]
+    assert decision.call.parameters == {
+        "extra_body": {"reasoning_effort": "low", "temperature": 0},
+        "max_tokens": 4_096,
+    }
+
+
+def test_the_old_path_s_requests_carry_no_temperature(monkeypatch, tmp_path):
+    sent = offline_provider(monkeypatch, GLM_ROUTE, [INCOMPLETE, VALID])
+    monkeypatch.setenv("HF_TOKEN", "synthetic-test-credential")
+    monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
+    monkeypatch.setattr(workflow_module, "crop_bytes", lambda *args: png(60, 40))
+    prices = published_registry().resolve("insects").profile.processing.price_list
+    run = Run(
+        profile=Profile(
+            first_pass_route=GLM_ROUTE.route_id,
+            execution=ExecutionPolicy(price_list=prices.model_dump(mode="json")),
+        ),
+        dependencies=pinned_route(GLM_ROUTE.route_id),
+    )
+    readings = [reading("handwriting-qwen", QWEN), reading("handwriting-muse", MUSE)]
+
+    decision = first_pass_module.first_pass_direct(
+        SimpleNamespace(blobs=LocalBlobs(tmp_path)),
+        SimpleNamespace(asset=SimpleNamespace(id="asset-1"), run=run),
+        REGION,
+        readings,
+    )
+
+    assert len(sent) == 2
+    assert all("temperature" not in body for body in sent)
+    assert [body["reasoning_effort"] for body in sent] == ["medium", "medium"]
+    assert decision.call.parameters == {"extra_body": {"reasoning_effort": "medium"}, "max_tokens": 4_096}
 
 
 # ------------------------------------------------------------- the workflow, synthetic adapters
