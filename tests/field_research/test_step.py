@@ -81,12 +81,16 @@ RESEARCHED = {key for key, tools in FIELD_TOOLS.items() if tools}
 # Every field gets its expert but the identified-by IRN, which no source supplies.
 EXPERTS = NO_TOOLS | RESEARCHED
 TODAY = date(2026, 10, 8)
+# The first-pass path of the runs make_specimen builds; conftest.py sets it for each run of
+# the suite.
+PATH = "old"
 
 
 def make_specimen(blobs, text=TEXT, other=None, *, first_pass=True):
     """A non-sensitive specimen at adjudicate: one label, two readers, which agree
-    unless `other` is the second reader's text. Without `first_pass` a label
-    whose readers differ is still at its first pass."""
+    unless `other` is the second reader's text, on the first-pass path PATH. On
+    the old path, without `first_pass` a label whose readers differ is still at
+    its first pass; on the units path every label with two readers is."""
     published = published_registry().profiles[0]
     output = io.BytesIO()
     Image.new("RGB", (100, 100), "white").save(output, format="JPEG", quality=95)
@@ -99,7 +103,7 @@ def make_specimen(blobs, text=TEXT, other=None, *, first_pass=True):
         method="synthetic_fixture_region", version="1")
     crop_png = region_png(Image.open(io.BytesIO(image)), region)
     region.crop_ref = blobs.put(crop_png)
-    specimen = Specimen(scope=worker_principal().scope, asset=asset, run=Run(regions=[region]))
+    specimen = Specimen(scope=worker_principal().scope, asset=asset, run=Run(regions=[region], first_pass_path=PATH))
     run = specimen.run
     language = bind_profile_rules(specimen, published, published_risk_registry())
     run.profile_snapshot = published.model_dump(mode="json")
@@ -129,7 +133,7 @@ def make_specimen(blobs, text=TEXT, other=None, *, first_pass=True):
             raw_sha256=hashlib.sha256(raw).hexdigest()))
     run.completed_steps = ["pin_dependencies", "classify", "quality_check", "segment"] + [
         f"transcribe:{region.id}:{route}" for route in run.profile.routes]
-    if len(set(texts)) > 1 and first_pass:
+    if len(set(texts)) > 1 and first_pass and PATH == "old":
         # The first pass picked no reading (its synthetic fixture never does).
         run.completed_steps.append(f"first_pass:{region.id}")
     run.stage = "running"
@@ -151,11 +155,35 @@ def every_field(*candidates):
     return [*keyed, *(COLLECTORS if "collectors" not in given else ()), *candidates]
 
 
+def seen_units(units):
+    """A label's units whose image names the text at each unit where every reader wrote the
+    same text and some text; uncertain elsewhere."""
+    return units.model_copy(update={"units": [
+        unit.model_copy(update={"image": next(iter(texts))})
+        if len(texts := {span.text for span in unit.readers.values()}) == 1 and "" not in texts else unit
+        for unit in units.units]})
+
+
+class SeeingFirstPass(SyntheticAdapters):
+    """The synthetic adapters, whose units-path first pass is the synthetic one
+    (first_pass.synthetic_units) with the image naming the text at each unit where every
+    reader wrote the same text (seen_units). The old path's first pass is the synthetic
+    one."""
+
+    def first_pass_units(self, specimen, region, readings):
+        from specimen_digitization.application.first_pass import synthetic_units
+
+        decision, units = synthetic_units(self.blobs, region, readings)
+        return decision, seen_units(units)
+
+
 class RefusedFirstPass(SyntheticAdapters):
-    """A first pass the provider refuses with HTTP 429 on every attempt."""
+    """A first pass the provider refuses with HTTP 429 on every attempt, on either path."""
 
     def first_pass(self, specimen, region, readings):
         raise AdapterFailure("model_rate_limited", LookupStatus.RATE_LIMITED, refused=True)
+
+    first_pass_units = first_pass
 
 
 def build_rig(tmp_path, text=TEXT, other=None, *, decided=False, candidates=COLLECTORS,
@@ -166,18 +194,26 @@ def build_rig(tmp_path, text=TEXT, other=None, *, decided=False, candidates=COLL
     text becomes the label's transcript (G19); otherwise no reading is picked.
     With `refused` the workflow runs the first pass, which is refused on every
     attempt (each retry at its scheduled time) and given up on."""
+    if decided and other is not None and other != text and PATH == "units":
+        pytest.skip("`decided` has the old first pass pick reader 1A of readers that differ; the units path's "
+            "first pass picks no reader")
     blobs = LocalBlobs(tmp_path / "blobs")
     repository = SQLiteRepository(tmp_path / "records.sqlite")
     clock = SimpleNamespace(now=datetime(2026, 10, 8, 12, tzinfo=timezone.utc))
-    adapters = (RefusedFirstPass if refused else SyntheticAdapters)(blobs, TEXT)
+    adapters = (RefusedFirstPass if refused else SeeingFirstPass)(blobs, TEXT)
     workflow = Workflow(repository, blobs, adapters, clock=lambda: clock.now)
     principal = worker_principal()
     specimen = make_specimen(blobs, text, other, first_pass=False) if refused else make_specimen(blobs, text, other)
-    if refused:
+    if refused or PATH == "units":
         # The published stage reservations, so the paid first pass can reserve.
         execution = specimen.run.profile.execution
         specimen.run.profile.execution = execution.model_copy(update={
             "stage_cost_reservations": published_registry().profiles[0].processing.stage_cost_micros})
+    if PATH == "units":
+        # The synthetic first pass's call (first_pass.synthetic_decision) at the price of the
+        # profile's first-pass route.
+        prices = specimen.run.profile.execution.price_list
+        prices["models"]["synthetic-first-pass"] = prices["models"][specimen.run.profile.first_pass_route]
     created = repository.create(principal, specimen, "intake", "intake")
     while workflow.next_step(repository.get(principal.scope, created.id).run).startswith("first_pass:"):
         attempted = workflow.step(principal, created.id).run
@@ -348,6 +384,12 @@ def answering(answer):
     async def script(task, readings, tools):
         return FieldOutcome(task.key, answer, model_calls=1)
     return script
+
+
+def research_paid(run):
+    """The run's paid calls of field research: on the units path the first pass is paid too
+    (make_specimen)."""
+    return [call for call in run.paid_calls if call["step"] == FIELD_RESEARCH]
 
 
 def research(rig, resolver, **kwargs):
@@ -1345,12 +1387,21 @@ def test_readers_that_differ_settle_only_when_every_readers_text_was_looked_up(t
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:city" in run.reasons
 
 
-def test_a_label_whose_first_pass_was_given_up_goes_to_review_however_its_fields_settle(tmp_path):
+# The fields the given-up label settles on its readers agreeing alone, on the units path: no
+# source backs them, and the alignment's units name nothing in the image.
+AGREEING_ALONE = ("fmnh_ins_number", "collection_code", "precise_location", "elevation_from_ft", "habitat",
+    "collection_method", "date_visited_from", "collectors", "verbatim_dts", "date_identified")
+
+
+def test_a_label_whose_first_pass_was_given_up_goes_to_review_however_its_fields_settle(tmp_path, first_pass_path):
     """Specimen 105526323 (2026-10-11): the first pass was refused on every
     attempt. The workflow gives it up and goes on to field research, which
     settles every field, as the test above does for the same readers with a
     first pass that picked no reading, where the record clears. Here the label
-    still goes to a person: no first pass compared its readings."""
+    still goes to a person: no first pass compared its readings. On the units
+    path the label gets the alignment's units, each image uncertain, so each
+    field its readers' agreement alone backs is marked too (docs/execution/
+    units/PLAN.md, WP 1.3)."""
     rig = build_rig(tmp_path, SAN_PEDRO, SAN_PABLO, candidates=every_field(*CITIES), refused=True)
     region = rig.specimen.run.regions[0].id
     step = f"first_pass:{region}"
@@ -1365,7 +1416,8 @@ def test_a_label_whose_first_pass_was_given_up_goes_to_review_however_its_fields
     city = run.fields["city"]
     assert (city.state, city.literal) == (ValueState.SUPPORTED, "San Pedro")
     assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
-    assert run.reasons == [f"unresolved_transcription:{region}"]
+    marked = [f"marked:{key}:{region}:text_only" for key in AGREEING_ALONE] if first_pass_path == "units" else []
+    assert run.reasons == [f"unresolved_transcription:{region}", *marked]
     assert [(f.severity, f.reason_code) for f in run.findings if f.rule_id == "first_pass_given_up"] == [
         ("warning", f"first_pass_given_up:{region}:model_rate_limited")]
 
@@ -1410,7 +1462,10 @@ def test_readers_whose_texts_name_two_places_never_settle(tmp_path):
 
 def test_a_taxon_the_readers_write_differently_needs_every_readers_name_looked_up(tmp_path):
     """The second review's B1: 1A writes the trinomial, 1B the binomial, and
-    GBIF was asked only the binomial, whose answer names 1B's text."""
+    GBIF was asked only the binomial, whose answer names 1B's text. On the
+    units path 1A writes the binomial over its units too (TEXT), no source
+    rules out the trinomial, and the image does not judge 1A's further unit
+    not visible: the binomial settles marked, and the record goes to review."""
     trinomial = TEXT.replace("taxon: Danaus plexippus", "taxon: " + TRINOMIAL)
     rig = build_rig(tmp_path, trinomial, TEXT, candidates=every_field(
         ("taxon", "1A", TRINOMIAL, "taxon: " + TRINOMIAL),
@@ -1424,6 +1479,11 @@ def test_a_taxon_the_readers_write_differently_needs_every_readers_name_looked_u
             lookups=[answer.taxonomy_lookup], model_calls=1)
     settle(rig, Scripted({"taxon": binomial_only}), tools=Subspecies(rig.blobs))
     taxon = run.fields["taxon"]
+    if PATH == "units":
+        assert (taxon.state, taxon.literal) == (ValueState.SUPPORTED, "Danaus plexippus")
+        assert run.disposition == Disposition.REVIEW
+        assert f"marked:taxon:{run.regions[0].id}:text_only" in run.reasons
+        return
     assert (taxon.state, taxon.literal) == (ValueState.AMBIGUOUS, None)
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
 
@@ -1518,7 +1578,9 @@ def guatemalan(**scripts):
 
 
 def reasons_for(run, key):
-    return [reason for reason in run.reasons if reason.endswith(":" + key)]
+    """The run's reasons that name the field: "<code>:<field>", or a marked finding's
+    "marked:<field>:<label>:<why>" (step.marked_code)."""
+    return [reason for reason in run.reasons if reason.endswith(":" + key) or reason.startswith(f"marked:{key}:")]
 
 
 @pytest.mark.parametrize(("key", "written", "query", "value", "authority_id", "settles"), [
@@ -1675,7 +1737,7 @@ def test_a_near_spelling_settles_when_every_other_place_field_is_among_its_paren
     assert (city.state, city.literal, city.normalized, city.authority_id) == (
         ValueState.SUPPORTED, "Chicag", "Chicago", "tgn:Chicago")
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
-    assert [f.reason_code for f in run.findings] == ["near_spelling:city"]
+    assert [f.reason_code for f in run.findings if f.rule_id != "field_settlement"] == ["near_spelling:city"]
 
 
 @pytest.mark.parametrize(("written", "query", "value", "authority_id", "fit"), [
@@ -1914,7 +1976,8 @@ def test_a_name_with_letters_dropped_and_a_period_after_is_no_abbreviation(
         # A near spelling (its warning finding), never an abbreviation (no rule row).
         assert (field.state, field.literal, field.normalized, field.authority_id) == (
             ValueState.SUPPORTED, written, query, authority_id)
-        assert [f.reason_code for f in run.findings if f.field_key == key] == [f"near_spelling:{key}"]
+        assert [f.reason_code for f in run.findings if f.field_key == key
+            and f.rule_id != "field_settlement"] == [f"near_spelling:{key}"]
         return
     assert (field.state, field.reason) == (ValueState.UNRESOLVED, reason + " Settled.")
     assert not [f for f in run.findings if f.reason_code == f"near_spelling:{key}"]
@@ -2201,7 +2264,7 @@ def test_a_blocked_run_retries_only_its_unsettled_fields_and_settles_its_cost(ri
     assert run.next_retry_at and run.attempts[FIELD_RESEARCH] == 1 and FIELD_RESEARCH not in run.completed_steps
     assert run.fields["taxon"].layer == "settled" and run.fields["country"].state == ValueState.UNRESOLVED
     # One reservation of the whole headroom, settled to what the meter spent.
-    [paid] = run.paid_calls
+    [paid] = research_paid(run)
     spent = state.meters[0].spent_micros
     assert spent == 50 * len(EXPERTS) and paid["reserved_micros"] == 1_000_000
     assert (paid["cost_micros"], paid["cost_basis"], paid["outcome"]) == (spent, "computed", "failed")
@@ -2216,8 +2279,8 @@ def test_a_blocked_run_retries_only_its_unsettled_fields_and_settles_its_cost(ri
     run = done.run
     assert (run.stage, run.disposition, run.blocker, run.reasons) == ("finalized", Disposition.CLEARED, None, [])
     assert run.completed_steps[-1] == FIELD_RESEARCH and run.attempts[FIELD_RESEARCH] == 2
-    assert [call["attempt"] for call in run.paid_calls] == [1, 2]
-    assert run.paid_calls[1]["reserved_micros"] == 1_000_000 - spent
+    assert [call["attempt"] for call in research_paid(run)] == [1, 2]
+    assert research_paid(run)[1]["reserved_micros"] == 1_000_000 - spent
     assert run.usage.reserved_cost_micros == spent + 50 * 4 <= run.profile.execution.approved_cost_limit_micros
     verify_evidence(done, rig.blobs)
 
@@ -2563,7 +2626,7 @@ def test_a_setup_error_before_any_request_settles_to_nothing_and_blocks_with_its
     run = rig.workflow.step(rig.principal, rig.specimen.id).run
     assert (run.stage, run.blocker, run.disposition) == ("processing_blocked", blocker, None)
     assert resolver.calls == [] and state.tools == []
-    [paid] = run.paid_calls
+    [paid] = research_paid(run)
     assert (paid["reserved_micros"], paid["cost_micros"], paid["cost_basis"], paid["outcome"]) == (
         1_000_000, 0, "computed", "failed")
     assert run.usage.reserved_cost_micros == 0
@@ -2582,7 +2645,7 @@ def test_a_crash_after_research_settles_to_the_meters_exact_spend(rig):
     run = rig.workflow.step(rig.principal, rig.specimen.id).run
     spent = state.meters[0].spent_micros
     assert spent == 50 * len(EXPERTS) and run.blocker == "external_outcome_unknown"
-    [paid] = run.paid_calls
+    [paid] = research_paid(run)
     assert (paid["cost_micros"], paid["cost_basis"], paid["outcome"]) == (spent, "computed", "failed")
     assert run.usage.reserved_cost_micros == spent
 
@@ -2595,7 +2658,7 @@ def test_an_overrun_step_keeps_its_settled_spend(rig):
     assert (run.blocker, run.reasons) == ("external_outcome_unknown", ["external_stage_deadline_exceeded"])
     assert run.fields["taxon"].layer is None
     spent = state.meters[0].spent_micros
-    [paid] = run.paid_calls
+    [paid] = research_paid(run)
     assert (paid["cost_micros"], paid["cost_basis"]) == (spent, "computed")
     assert run.usage.reserved_cost_micros == spent
 
@@ -2627,7 +2690,7 @@ def test_a_low_program_allowance_caps_the_step_and_sends_what_does_not_fit_to_re
     run = rig.workflow.step(rig.principal, rig.specimen.id).run
     [meter] = state.meters
     assert meter.cap_micros == 25_000 and ONE_REQUEST < 25_000
-    [paid] = run.paid_calls
+    [paid] = research_paid(run)
     assert paid["reserved_micros"] == 25_000 and paid["cost_micros"] == meter.spent_micros <= 25_000
     assert (run.stage, run.disposition, run.blocker) == ("finalized", Disposition.REVIEW, None)
     exhausted = [key for key, value in run.fields.items()

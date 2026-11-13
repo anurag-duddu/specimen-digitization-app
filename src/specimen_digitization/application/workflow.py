@@ -2366,10 +2366,11 @@ class SyntheticAdapters:
         )
 
 
-def store_reading_units(run: Run, entries: list[ReadingUnits]) -> None:
-    """The run's reading units with these labels' entries replaced, sorted by region order,
-    set through the run's validate_assignment (its one-entry-per-label check)."""
-    labels = {entry.label for entry in entries}
+def store_reading_units(run: Run, entries: list[ReadingUnits], *, dropped=()) -> None:
+    """The run's reading units with these labels' entries replaced and the `dropped`
+    labels' entries removed, sorted by region order, set through the run's
+    validate_assignment (its one-entry-per-label check)."""
+    labels = {entry.label for entry in entries} | set(dropped)
     order = {region.id: index for index, region in enumerate(run.regions)}
     value = sorted(
         [*(entry for entry in run.reading_units if entry.label not in labels), *entries],

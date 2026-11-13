@@ -383,6 +383,9 @@ def two_label_rig(tmp_path, *, first, second, candidates):
     texts; the first pass decided 1A's), label 2's write `second` (two
     texts, whose first pass chose no reading, as one reaching its token cap
     does: no decided transcript)."""
+    if test_step.PATH == "units":
+        pytest.skip("label 1's first pass picks reader 1A of readers that differ; the units path's first pass "
+            "picks no reader")
     original = test_step.make_specimen
 
     def make(blobs, text=TEXT, other=None, *, first_pass=True):

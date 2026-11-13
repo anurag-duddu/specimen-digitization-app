@@ -187,6 +187,37 @@ class _Call:
 OUTAGE_STATUSES = frozenset(str(status) for status in SOURCE_OUTAGES)
 
 
+def units_document(readings: Sequence[Reading]) -> dict[str, list[dict[str, Any]]]:
+    """Each label's reading units as the experts' request carries them, by label number:
+    each unit's lines, each reader's text there by reading name (a person's transcript
+    under the name of the reading that holds it), what the image shows there (one
+    reader's text, uncertain or not visible), and its meaning, role, fields and note
+    where it has them. A reader that is not among the readings (it wrote no text) is
+    left out."""
+    from specimen_digitization.application.reading_units import PERSON
+
+    document: dict[str, list[dict[str, Any]]] = {}
+    for reading in readings:
+        number = reading.name[:-1]
+        if reading.units is None or number in document:
+            continue
+        group = [r for r in readings if r.region_id == reading.region_id]
+        names: dict[str, str] = {}
+        for item in group:
+            if item.input_source == "decided_transcript" and item.first_pass is not None and item.first_pass.person_decided:
+                names[PERSON] = item.name
+            names.setdefault(item.observation_id, item.name)
+        units = []
+        for unit in reading.units.units:
+            entry: dict[str, Any] = {"lines": list(unit.lines), "readers": {
+                names[key]: span.text for key, span in unit.readers.items() if key in names}, "image": unit.image}
+            entry.update({key: value for key, value in (("means", unit.means), ("role", unit.role),
+                ("fields", list(unit.fields)), ("note", unit.note)) if value})
+            units.append(entry)
+        document[number] = units
+    return document
+
+
 class _Expert:
     """One field's expert for one record: its tools, its memory and its checks."""
 
@@ -202,6 +233,9 @@ class _Expert:
     ) -> None:
         self.task = task
         self.readings = tuple(readings)
+        # The units path (step.run_readings): the request carries the units and the
+        # instructions are the units path's.
+        self.units = any(r.units is not None for r in self.readings)
         self.by_label = {_label(r.name): r for r in self.readings}
         self.texts = [r.text for r in self.readings]
         self.tools = tools
@@ -231,7 +265,7 @@ class _Expert:
                 f"Expert for {FIELD_LABELS[key]}. Settles it from the label readings "
                 "and its approved sources."
             ),
-            instructions=instructions(key),
+            instructions=instructions(key, units=self.units),
             output_type=FieldAnswer,
             retries={"tools": 1, "output": 2},
             model_settings=ModelSettings(**MODEL_SETTINGS),
@@ -324,6 +358,8 @@ class _Expert:
             if r.first_pass is not None and r.first_pass.person_decided and r.input_source == "decided_transcript"}
         if persons:
             document["person_decided"] = persons
+        if self.units:
+            document["units"] = units_document(self.readings)
         return INPUT_PREFIX + json.dumps(document, ensure_ascii=False, separators=(",", ":"))
 
     # Tools -------------------------------------------------------------------
@@ -819,7 +855,9 @@ def make_resolver(
     failure of the model fails it as a model_error.
     """
     for key in FIELD_TOOLS:
-        instructions(key)  # Every brief loads before the first record, not mid-run.
+        # Every brief loads before the first record, not mid-run, on either path.
+        instructions(key)
+        instructions(key, units=True)
     limits = UsageLimits(request_limit=request_limit, tool_calls_limit=tool_calls_limit)
 
     async def resolve(
