@@ -61,6 +61,7 @@ async def locate(task, readings, tools):
             evidence=[answer.evidence] if answer.evidence else [], model_calls=1)
     if task.key == "precise_location":
         return FieldOutcome(task.key, FieldAnswer(outcome="several_possibilities",
+            options=["Bloomington", "Clark County"],
             explanation="The readings and sources do not settle the town."), model_calls=1)
     return FieldOutcome(task.key, FieldAnswer(outcome="label_lacks_value",
         explanation="No value is written for this field."), model_calls=1)
@@ -87,7 +88,7 @@ def execute(rig, monkeypatch, *, outage=False, sources=Places, script=locate):
     return before, done, resolver, state, contexts
 
 
-def test_same_run_reassessment_moves_wrong_city_and_rederives_country(tmp_path, monkeypatch, first_pass_path):
+def test_same_run_reassessment_moves_wrong_city_and_rederives_country(tmp_path, monkeypatch):
     rig = old_location_run(tmp_path)
     before, done, resolver, state, contexts = execute(rig, monkeypatch)
     run = done.run
@@ -100,15 +101,7 @@ def test_same_run_reassessment_moves_wrong_city_and_rederives_country(tmp_path, 
     assert run.fields["country"].parsed == "United States"
     assert run.fields["country"].layer == "derived"
     assert run.fields["city"].state == ValueState.NOT_PRESENT
-    if first_pass_path == "units":
-        # The units path puts the precise location expert's several_possibilities to the rule
-        # (step._by_rule): both readers write "Bloomington" and the image names it, so it clears.
-        assert (run.fields["precise_location"].state, run.fields["precise_location"].literal) == (
-            ValueState.SUPPORTED, "Bloomington")
-        assert [f.reason_code for f in run.findings if f.rule_id == "field_settlement"
-            and f.field_key == "precise_location"] == [f"cleared:precise_location:{run.regions[0].id}"]
-    else:
-        assert run.fields["precise_location"].state == ValueState.AMBIGUOUS
+    assert run.fields["precise_location"].state == ValueState.AMBIGUOUS
     assert run.id == before.id and run.observations == before.observations
     assert run.transcripts == before.transcripts and run.profile_snapshot == before.profile_snapshot
     assert run.attempts[FIELD_RESEARCH] == 3

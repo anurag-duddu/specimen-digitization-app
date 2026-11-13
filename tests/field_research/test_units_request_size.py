@@ -1,11 +1,13 @@
-"""WP 1.3's rework, gap report item 3: the units path's expert request stays under the input bound
-(budget.DEFAULT_MAX_INPUT_TOKENS, 48,000 bytes) on the largest request shape WP 1.5 met, which it
-refused as input_too_large: a province expert of slide 105526325 (tests/fixtures/
-units_province_request.json, from WP 1.5's stored run). The run keeps the expert's lookups, not its
-messages, so the conversation here is rebuilt: its lookups, grouped by query (the first with the
-NGA lookup that timed out), two answers the checks refuse, each with as long an explanation as an
-answer may give, then the request for its answer once its turns are used up. Every test here runs once: this module's first_pass_path fixture replaces
-conftest.py's, as no run is built."""
+"""WP 1.3's rework, gap report item 3: the units path's expert request against the input bound
+(budget.DEFAULT_MAX_INPUT_TOKENS, 48,000 bytes), on the two province experts WP 1.5 refused as
+input_too_large (r1/pair 105526325 and r2/pair 105526324; tests/fixtures/
+units_province_request_<slide>.json, from WP 1.5's stored runs). A stored run keeps the expert's
+lookups, not its messages, so each conversation here is rebuilt: its lookups, grouped by query (the
+first with the NGA lookup that timed out), two answers the checks refuse, each with as long an
+explanation as an answer may give, then the request for its answer once its turns are used up.
+That the rebuilt conversation fits shows nothing about the refused production request, which was
+larger. Every test here runs once: this module's first_pass_path fixture replaces conftest.py's,
+as no run is built."""
 
 from __future__ import annotations
 
@@ -29,7 +31,8 @@ from specimen_digitization.field_research.contracts import (
     SourceCandidate,
 )
 
-FIXTURE = Path(__file__).parents[1] / "fixtures" / "units_province_request.json"
+FIXTURES = Path(__file__).parents[1] / "fixtures"
+SLIDES = ("105526325", "105526324")
 
 
 @pytest.fixture(autouse=True)
@@ -37,10 +40,10 @@ def first_pass_path():
     return "units"
 
 
-def loaded():
+def loaded(slide):
     """The fixture's readings (with their units), the province task, the other fields' values and
     the lookups, by source and query."""
-    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    data = json.loads((FIXTURES / f"units_province_request_{slide}.json").read_text(encoding="utf-8"))
     readings = tuple(Reading(r["name"], r["region_id"], r["observation_id"], r["input_source"], r["text"],
         units=ReadingUnits.model_validate(r["units"]) if r["units"] is not None else None) for r in data["readings"])
     given = data["task"]
@@ -96,12 +99,19 @@ def conversation(lookups):
     return respond, len(turns) + len(refused) + 1
 
 
-def test_the_largest_units_path_request_wp15_met_stays_under_the_input_bound(monkeypatch):
-    """Every request of the rebuilt conversation is sent, the largest under the bound: the
-    request carries each reading's name and text, an agreed unit's text once, and the
+def test_the_input_bound_is_48000_bytes():
+    """The bound the size test below measures against (budget.DEFAULT_MAX_INPUT_TOKENS): raising
+    it is a change this test makes visible."""
+    assert budget.DEFAULT_MAX_INPUT_TOKENS == 48_000
+
+
+@pytest.mark.parametrize("slide", SLIDES)
+def test_the_rebuilt_conversation_of_a_refused_province_request_fits_the_input_bound(monkeypatch, slide):
+    """Every request of the rebuilt conversation (module docstring) is sent, the largest under the
+    bound: the request carries each reading's name and text, an agreed unit's text once, and the
     instructions leave out the label notations the ontology's text gives (experts.units_document,
-    prompts/units.txt)."""
-    readings, task, context, lookups = loaded()
+    prompts/units.txt). It shows the rebuilt conversation fits, not the refused one."""
+    readings, task, context, lookups = loaded(slide)
     assert all(reading.units is not None for reading in readings)
     bounds = []
     measure = budget.input_token_bound

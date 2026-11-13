@@ -3,8 +3,10 @@ units path an expert's several_possibilities answer is put to the rule of
 docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4 with its options
 offered to every label (step._by_rule). One backed candidate settles as rules 4 and 5 say,
 cleared or marked; with none the field stays ambiguous with rule 6's options, the readers' texts
-and the answer's (P7, step._unsettled_options). Every test runs on both paths (conftest.py): on
-the old path the answer leaves the field ambiguous with the answer's own options, as on main."""
+and the answer's (P7, step._unsettled_options). Every test runs on both arms (conftest.py). A
+test built on test_step.build_rig asserts on the old arm what main stores, the field ambiguous
+with the answer's own options; a test that builds its readings itself and calls step._by_rule
+runs the same on both arms."""
 
 from __future__ import annotations
 
@@ -51,12 +53,6 @@ SHRUBS = every_field(("habitat", "1A", "Shrubs", "habitat: Shrubs"), ("habitat",
 
 def several(*options, explanation="The readers' texts differ."):
     return answering(FieldAnswer(outcome="several_possibilities", options=list(options), explanation=explanation))
-
-
-def once(first_pass_path):
-    """A test that calls step._by_rule itself runs on the units arm only."""
-    if first_pass_path == "old":
-        pytest.skip("calls step._by_rule itself: once, on the units arm")
 
 
 def old_path_unchanged(run, key, options):
@@ -149,6 +145,22 @@ def test_no_backed_candidate_leaves_the_field_ambiguous_with_the_readers_and_the
     assert findings(run, "habitat") == []
 
 
+def test_the_union_keeps_an_option_only_the_answer_gives(tmp_path, first_pass_path):
+    """1A writes the city "Logan", 1B "Lagan", the image uncertain there and nothing looked up;
+    the expert lists "Logan" and "Springfield", a name only a source answer gives. Nothing backs
+    either reader's text (rule 6): the options are the readers' texts in reading order, then the
+    answer's not among them (P7, step._unsettled_options), "Logan; Lagan; Springfield"."""
+    rig = build_rig(tmp_path, label_with(city="Logan"), label_with(city="Lagan"), candidates=every_field(
+        ("city", "1A", "Logan", "city: Logan"), ("city", "1B", "Lagan", "city: Lagan")))
+    run = rig.specimen.run
+    settle(rig, Scripted({"city": several("Logan", "Springfield")}))
+    if first_pass_path == "old":
+        return old_path_unchanged(run, "city", ("Logan", "Springfield"))
+    city = run.fields["city"]
+    assert (city.state, city.literal) == (ValueState.AMBIGUOUS, None)
+    assert city.reason == "The readers' texts differ. Options: Logan; Lagan; Springfield."
+
+
 def test_an_elevation_settles_with_the_value_its_check_gives(tmp_path, first_pass_path):
     """Both readers write "1500 ft" and the image names it; the expert answers
     several_possibilities. The rule clears it, with the number the elevation check reads as its
@@ -165,6 +177,29 @@ def test_an_elevation_settles_with_the_value_its_check_gives(tmp_path, first_pas
     elevation = run.fields["elevation_from_ft"]
     assert (elevation.state, elevation.literal, elevation.parsed) == (ValueState.SUPPORTED, "1500 ft", "1500")
     assert findings(run, "elevation_from_ft") == [(f"cleared:elevation_from_ft:{run.regions[0].id}", "info")]
+
+
+RANGE = TEXT + "\nalt. 1200-1500 m"
+RANGES = every_field(*((key, name, "1200-1500 m", "alt. 1200-1500 m") for key in ("elevation_from_m", "elevation_to_m")
+    for name in ("1A", "1B")))
+
+
+def test_an_elevation_range_settles_each_field_on_its_end_of_the_range(tmp_path, first_pass_path):
+    """Both readers write "alt. 1200-1500 m" and the image names it; each metres field's expert
+    answers several_possibilities. The elevation check's one successful result reads the range as
+    1200 to 1500: the lower field settles on 1200 and the upper on 1500, as their briefs take
+    them (step.UPPER_ELEVATION), cleared."""
+    rig = build_rig(tmp_path, RANGE, candidates=RANGES)
+    run = rig.specimen.run
+    options = ("1200-1500 m", "1200-1500")
+    settle(rig, Scripted({key: several(*options) for key in ("elevation_from_m", "elevation_to_m")}))
+    for key, value in (("elevation_from_m", "1200"), ("elevation_to_m", "1500")):
+        if first_pass_path == "old":
+            old_path_unchanged(run, key, options)
+            continue
+        elevation = run.fields[key]
+        assert (elevation.state, elevation.literal, elevation.parsed) == (ValueState.SUPPORTED, "1200-1500 m", value)
+        assert findings(run, key) == [(f"cleared:{key}:{run.regions[0].id}", "info")]
 
 
 def chimaltenango(cited, *, images=None):
@@ -187,13 +222,13 @@ def chimaltenango(cited, *, images=None):
     return task, readings, answers, outcome
 
 
-def test_a_place_is_put_to_the_rule_on_the_source_answers_the_expert_cites(first_pass_path):
+def test_a_place_is_put_to_the_rule_on_the_source_answers_the_expert_cites():
     """Getty TGN confirms "Chimaltenango", one letter from 1A's text, and finds nothing for 1A's
     "Chimaltenago": one candidate with a SOURCE backing (rule 1). The answer put to the rule is
     the confirmed text resolved from 1B, with the department's record from the answer the expert
     cites (agreement.place_settling); citing nothing, a place has no lookup to settle on
-    (common.txt's place line), so it is not put to the rule."""
-    once(first_pass_path)
+    (common.txt's place line), so it is not put to the rule. Built here, the readings carry
+    units on both arms."""
     task, readings, answers, outcome = chimaltenango(cited=True)
     ruled = field_step._by_rule(task, outcome, readings, answers)
     assert (ruled.answer.outcome, ruled.answer.literal, ruled.answer.reading_names, ruled.answer.value,
@@ -206,19 +241,23 @@ def test_a_place_is_put_to_the_rule_on_the_source_answers_the_expert_cites(first
 
 
 @pytest.mark.parametrize("key", ["taxon", "identified_by_irn"])
-def test_a_taxon_and_a_field_no_source_supplies_are_not_put_to_the_rule(tmp_path, key, first_pass_path):
-    """A taxon's GBIF decision is its expert's check (experts._Expert._validate_taxon), and its
-    parts on different labels are several_possibilities (spec section 4); the identified-by IRN
-    has no approved source. Both readers write the field's text and the image names it: the
-    several_possibilities answer is not put to the rule."""
-    once(first_pass_path)
+def test_a_taxon_and_the_identified_by_irn_are_not_put_to_the_rule(tmp_path, key, first_pass_path):
+    """Spec section 4: when a field's parts are on different labels, the expert answers
+    several_possibilities with the parts named per label, the owner's words there naming taxa;
+    and the identified-by IRN gets no model call. Both readers write the field's text and the
+    image names it: a several_possibilities answer is not put to the rule (step._by_rule), on
+    either arm, and the taxon's stays ambiguous with its options."""
     rig = build_rig(tmp_path)
     run = rig.specimen.run
     readings = field_step.run_readings(run)
     [task] = [task for task in field_step.build_tasks(run)[1] if task.key == key]
-    outcome = FieldOutcome(key, FieldAnswer(outcome="several_possibilities", options=[LABEL[key], LABEL[key][:6]],
+    options = (LABEL[key], LABEL[key][:6])
+    outcome = FieldOutcome(key, FieldAnswer(outcome="several_possibilities", options=list(options),
         explanation="x"), model_calls=1)
     assert field_step._by_rule(task, outcome, readings, []) is None
+    if key == "taxon":
+        settle(rig, Scripted({"taxon": several(*options)}))
+        old_path_unchanged(run, "taxon", options)
 
 
 def test_the_rules_answer_refused_when_applied_leaves_the_experts_own(tmp_path, first_pass_path):
@@ -264,12 +303,12 @@ def test_the_rules_text_that_another_kind_of_field_settles_leaves_the_experts_ow
     assert decisions["habitat"].get("refusal") == ("taken" if first_pass_path == "units" else None)
 
 
-def test_an_option_that_backs_a_rival_leaves_the_field_ambiguous(tmp_path, first_pass_path):
+def test_an_option_that_backs_a_rival_marks_the_rules_pick_and_lists_the_rival(tmp_path, first_pass_path):
     """1A writes "Shrubs, forest", 1B "Shurbs, forest"; the image names 1A's "Shrubs," and is
     uncertain at "forest". The expert lists "Shrubs" and "forest". Offered, "forest" is a rival
-    both readers back (rule 5: "Shrubs" marked as a conflict), but the rule given "Shrubs" alone, as
-    a resolved answer is put to it, clears "Shrubs": the answer is not put to the rule
-    (step._by_rule), and the field stays ambiguous with the answer's options."""
+    both readers back, so rule 5 settles "Shrubs" (IMAGE above TEXT), marked as a conflict with
+    "forest" listed, though the rule given "Shrubs" alone would clear it: the settlement is
+    recorded with the answer's options offered (step._settlement)."""
     rig = build_rig(tmp_path, TEXT.replace("Synthetic grassland", "Shrubs, forest"),
         TEXT.replace("Synthetic grassland", "Shurbs, forest"), candidates=SHRUBS)
     run = rig.specimen.run
@@ -291,7 +330,12 @@ def test_an_option_that_backs_a_rival_leaves_the_field_ambiguous(tmp_path, first
         assert (offered.settled, offered.why, alone.settled, alone.cleared) == (
             frozenset({"Shrubs"}), "conflict", frozenset({"Shrubs"}), True)
     settle(rig, Scripted({"habitat": several("Shrubs", "forest")}))
-    old_path_unchanged(run, "habitat", ("Shrubs", "forest"))
+    if first_pass_path == "old":
+        return old_path_unchanged(run, "habitat", ("Shrubs", "forest"))
+    habitat = run.fields["habitat"]
+    assert (habitat.state, habitat.literal) == (ValueState.SUPPORTED, "Shrubs")
+    assert habitat.reason.endswith("Marked for a person: another text has backing too: 'forest'.")
+    assert findings(run, "habitat") == [(f"marked:habitat:{run.regions[0].id}:conflict", "warning")]
 
 
 def test_a_slide_code_is_never_put_to_the_rule_as_a_habitat(tmp_path, first_pass_path):
@@ -309,21 +353,23 @@ def test_a_persons_label_is_put_to_the_rule_on_the_persons_text(tmp_path, monkey
     "Synthetic grassland", and a person transcribed label 2. Both labels settle that text, letter
     case and spacing aside; put to the rule, the literal is as the person's reading writes it
     (rule 2), from label 2's readings, not label 1's spacing, which comes first in reading order."""
-    once(first_pass_path)
     a_second_label(monkeypatch, "habitat: Synthetic grassland")
     rig = build_rig(tmp_path, TEXT.replace("Synthetic grassland", "Synthetic  grassland"))
     run = rig.specimen.run
-    second = next(o for o in run.observations if o.region_id == run.regions[1].id)
+    second = [o for o in run.observations if o.region_id == run.regions[1].id]
     [at] = [index for index, item in enumerate(run.transcripts) if item.region_id == run.regions[1].id]
-    run.transcripts[at] = run.transcripts[at].model_copy(update={"text": second.literal_text, "resolved": True,
-        "selected_observation_id": second.id, "actor": "reviewer@example.org"})
-    store_reading_units(run, [source_units(run, run.regions[1].id)])
-    readings = field_step.run_readings(run)
-    [task] = [task for task in field_step.build_tasks(run)[1] if task.key == "habitat"]
-    outcome = FieldOutcome("habitat", FieldAnswer(outcome="several_possibilities",
-        options=["Synthetic grassland", "grassland"], explanation="x"), model_calls=1)
-    ruled = field_step._by_rule(task, outcome, readings, [])
-    assert (ruled.answer.literal, ruled.answer.reading_names) == ("Synthetic grassland", ["2A", "2B"])
+    run.transcripts[at] = run.transcripts[at].model_copy(update={"text": second[0].literal_text,
+        "resolved": True, "selected_observation_id": second[0].id, "actor": "reviewer@example.org"})
+    if first_pass_path == "units":
+        store_reading_units(run, [source_units(run, run.regions[1].id)])
+    options = ("Synthetic grassland", "grassland")
+    settle(rig, Scripted({"habitat": several(*options)}))
+    if first_pass_path == "old":
+        return old_path_unchanged(run, "habitat", options)
+    habitat = run.fields["habitat"]
+    assert (habitat.state, habitat.literal) == (ValueState.SUPPORTED, "Synthetic grassland")
+    # The person's reading is the value's source (step._lineage).
+    assert (habitat.input_source, habitat.source_region_id) == ("decided_transcript", run.regions[1].id)
 
 
 def test_a_numeric_date_the_check_reads_two_ways_is_not_put_to_the_rule(tmp_path, first_pass_path):
@@ -336,28 +382,56 @@ def test_a_numeric_date_the_check_reads_two_ways_is_not_put_to_the_rule(tmp_path
     old_path_unchanged(run, "date_visited_from", ("4-5-48", "5-4-48"))
 
 
-def test_a_place_cited_answers_settle_as_two_places_is_not_put_to_the_rule(first_pass_path):
-    """Both readers write "P.I." and the image names it. Cited alone, Getty TGN's answer for
-    "Philippine Islands" settles it as the Philippines; cited with its answer for "Pacific
-    Islands", another nation "P.I." abbreviates (test_step.Gazetteer), the answer is not put to
-    the rule (agreement.another_place)."""
-    once(first_pass_path)
-    readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading", "country: P.I.")
-        for letter in "AB"))
-    task = FieldTask("country", True, FieldValue(state=ValueState.AMBIGUOUS),
-        tuple(Candidate(r.name, r.text, "P.I.", "ev-" + r.name) for r in readings), FIELD_TOOLS["country"])
+def test_two_texts_cited_as_two_places_settle_on_the_rules_ranked_pick():
+    """1A writes "Escuintla", 1B and 1C "Chimaltenango", and the image names 1A's text; the
+    expert cites Getty TGN's answers, which confirm each as a department of its own, and lists
+    both. Neither text has a SOURCE backing (rule 1): IMAGE backs "Escuintla", TEXT
+    "Chimaltenango", and rule 5 takes "Escuintla", marked as a conflict with "Chimaltenango"
+    listed, its record from the cited answer that settles it. Built here, the readings carry units
+    on both arms; the organiser gave a candidate to 1A alone."""
+    readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading",
+        f"province_state: {name}") for letter, name in zip("ABC", ("Escuintla", "Chimaltenango", "Chimaltenango"))),
+        {"r1": "o1a"})
+    task = FieldTask("province_state", True, FieldValue(state=ValueState.AMBIGUOUS),
+        (Candidate("1A", readings[0].text, "Escuintla", "ev-1A"),), FIELD_TOOLS["province_state"])
     with tempfile.TemporaryDirectory() as folder:
         gazetteer = Gazetteer(LocalBlobs(Path(folder)))
-        answers = [asyncio.run(gazetteer.lookup("tgn", query, field_key="country"))
+        answers = [asyncio.run(gazetteer.lookup("tgn", query, field_key="province_state"))
+            for query in ("Escuintla", "Chimaltenango")]
+    options = ["Escuintla", "Chimaltenango"]
+    outcome = FieldOutcome("province_state", FieldAnswer(outcome="several_possibilities", options=options,
+        source_evidence_ids=[a.evidence.id for a in answers], explanation="x"), model_calls=1)
+    ruled = field_step._by_rule(task, outcome, readings, answers)
+    assert (ruled.answer.literal, ruled.answer.reading_names, ruled.answer.authority_id) == (
+        "Escuintla", ["1A"], "tgn:1000566")
+    [label] = agreement.labels(task, readings, answers, transcript="Escuintla", named=[readings[0]],
+        offered=options).values()
+    assert (label.settled, label.why, label.others) == (frozenset({"Escuintla"}), "conflict", ("Chimaltenango",))
+
+
+def test_one_text_two_cited_answers_place_apart_is_put_to_the_rule_and_the_place_check_decides(
+        tmp_path, first_pass_path):
+    """Both readers write the country "P.I." and the image names it; the expert cites Getty TGN's
+    answers for "Philippine Islands" and "Pacific Islands", two nations "P.I." abbreviates
+    (test_step.Gazetteer), and lists "P.I." and "Philippines". Put to the rule, "P.I." is resolved
+    on the first cited answer that settles it; applied, the place check refuses an abbreviation two
+    answers expand to different places (agreement.refusal, EXPANSIONS_DIFFER), so the field is as
+    the expert's own answer leaves it, and its decision names that refusal."""
+    rig = build_rig(tmp_path, label_with(country="P.I."))
+    run = rig.specimen.run
+
+    async def script(task, readings, tools):
+        answers = [await tools.lookup("tgn", query, field_key=task.key)
             for query in ("Philippine Islands", "Pacific Islands")]
+        return FieldOutcome(task.key, FieldAnswer(outcome="several_possibilities", options=["P.I.", "Philippines"],
+            source_evidence_ids=[a.evidence.id for a in answers], explanation="Two nations fit."),
+            evidence=[a.evidence for a in answers], model_calls=1)
 
-    def several_citing(*cited):
-        return FieldOutcome("country", FieldAnswer(outcome="several_possibilities", options=["P.I.", "Philippines"],
-            source_evidence_ids=[a.evidence.id for a in cited], explanation="x"), model_calls=1)
-
-    ruled = field_step._by_rule(task, several_citing(answers[0]), readings, answers)
-    assert (ruled.answer.literal, ruled.answer.value, ruled.answer.authority_id) == ("P.I.", "Philippines", "tgn:1000135")
-    assert field_step._by_rule(task, several_citing(*answers), readings, answers) is None
+    decisions = {}
+    prepared, outcomes, calls = research(rig, Scripted({"country": script}), tools=Gazetteer(rig.blobs))
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    old_path_unchanged(run, "country", ("P.I.", "Philippines"))
+    assert decisions["country"].get("refusal") == ("expansions_differ" if first_pass_path == "units" else None)
 
 
 def test_a_label_with_no_backed_candidate_takes_no_part_beside_one_that_settles(

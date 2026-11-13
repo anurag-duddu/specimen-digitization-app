@@ -1411,44 +1411,51 @@ def _unsettled_options(task, readings, sources: Sequence[SourceAnswer], *, answe
     return list(options.values())
 
 
+# The elevation fields whose value is the upper number of a range (prompts/elevation_to_m.txt and
+# elevation_to_ft.txt: "value is the upper number parse_elevation returned"); every other
+# elevation field takes the lower or only number (elevation_from_m.txt, elevation_from_ft.txt).
+UPPER_ELEVATION = frozenset({"elevation_to_m", "elevation_to_ft"})
+
+
 def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: Sequence[SourceAnswer], *,
         date_rules=None) -> FieldOutcome | None:
     """On the units path (rules 4 and 5; the coordinator's ruling C2 of 2026-11-13): an expert's
     several_possibilities answer put to the rule, its literal and options offered to every
     label, as _unsettled_options offers them. Where the labels settle one text (a label none of
-    whose candidates has a backing takes no part beside one that has, P1), and settle it as
-    they do with that text alone offered (as _settlement and agreement.refusal offer a
-    resolved answer's literal), the outcome with that text as a resolved answer: the literal as
-    the first reading that holds it writes it (a person's reading first), naming each reading
-    that writes it as whole words or as its organiser candidate, citing the source answers
-    the expert cited, its value the place a cited answer settles it as
-    (agreement.place_settling) or the one value its deterministic check gives (CHECKS), the
-    explanation the expert's with its options. apply_outcomes applies it as any resolved
-    answer. None otherwise, the field then as the expert's answer leaves it (rule 6): also
-    where no reading writes the text so, where no cited answer settles a place or cited
-    answers settle it as different places (agreement.another_place), where the check gives
-    no one value, where a written rule refuses the literal (extraction_refusal), for a taxon
-    (GBIF's decision is the expert's check, experts._Expert._validate_taxon, and parts of a
-    field on different labels are several_possibilities, spec section 4) and for a field no
-    approved source supplies."""
+    whose candidates has a backing takes no part beside one that has, P1), cleared or marked as
+    rules 4 and 5 say, the outcome with that text as a resolved answer: the literal as the first
+    reading that holds it writes it (a person's reading first), naming each reading that writes
+    it as whole words or as its organiser candidate, citing the source answers the expert
+    cited, its value the place the first of them that settles it gives
+    (agreement.place_settling), or its deterministic check's one successful result (CHECKS: an
+    elevation's lower or upper number as the field's brief takes it, UPPER_ELEVATION), and
+    the expert's explanation and options. apply_outcomes applies it as any resolved answer and
+    records the settlement with the options offered (_settlement). None otherwise, the field
+    then as the expert's answer leaves it (rule 6): also where no reading writes the text so,
+    where no cited answer settles a place, where the check gives no one successful result or
+    no value for the field, where a written rule refuses the literal (extraction_refusal), for
+    a taxon and for the identified-by IRN (below)."""
     from specimen_digitization.application.extraction_guard import extraction_refusal
 
+    from . import checks
     from .agreement import (
         PLACE_ANSWERED,
         PLACE_VALUE_FIELDS,
         SOURCE_IDS,
         _as_written,
         _unbacked,
-        another_place,
         candidates_by_reading,
         labels,
         place_settling,
         placed,
         written_runs,
     )
-    from .checks import collapse
 
     answer = outcome.answer
+    # Spec section 4, "Parts on different labels": "when a field's parts are on different labels,
+    # the expert answers `several_possibilities` with the parts named per label ("label 1 writes
+    # genus Aus; label 2 writes species bus"), marked for a person", the owner's words there
+    # naming taxa. And section 4: "`identified_by_irn` gets no model call".
     if (outcome.failure is not None or answer is None or answer.outcome != "several_possibilities"
             or task.key == "taxon" or task.key in NO_APPROVED_AUTHORITY):
         return None
@@ -1456,16 +1463,11 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     answers = [item for item in sources if item.source_id in tools]
     given = [option for option in dict.fromkeys(answer.options) if option and option.strip()]
     offered = [answer.literal] if answer.literal and answer.literal.strip() else []
-
-    def settling(found) -> dict[str, tuple]:
-        if any(not _unbacked(label) for label in found.values()):
-            found = {region: label for region, label in found.items() if not _unbacked(label)}
-        return {region: (label.settled, label.cleared, label.why) for region, label in found.items()}
-
     found = labels(task, readings, answers, offered=offered + given)
-    put = settling(found)
-    settled = frozenset().union(*(each[0] for each in put.values())) if put else frozenset()
-    if not put or not all(each[0] for each in put.values()) or len(settled) != 1:
+    if any(not _unbacked(label) for label in found.values()):
+        found = {region: label for region, label in found.items() if not _unbacked(label)}
+    settled = frozenset().union(*(label.settled for label in found.values())) if found else frozenset()
+    if not found or not all(label.settled for label in found.values()) or len(settled) != 1:
         return None
     [one] = settled
     persons = {label.person for label in found.values() if label.person}
@@ -1475,27 +1477,33 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     allowed = candidates_by_reading(task, readings)
     named = [reading for reading in readings if literal in reading.text and (
         written_runs(task.key, reading.text, literal) or literal in allowed.get(reading.name, {}).values())]
-    if not named or settling(labels(task, readings, answers, transcript=literal, named=named)) != put or any(
-            extraction_refusal(task.key, literal, reading.text) is not None for reading in named):
+    if not named or any(extraction_refusal(task.key, literal, reading.text) is not None for reading in named):
         return None
     by_id = {item.evidence.id: item for item in sources if item.evidence is not None}
     cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
     value = authority_id = None
     if task.key in PLACE_VALUE_FIELDS:
-        places = [settles for item in cited if item.status in PLACE_ANSWERED
-            and (place := placed(task.key, item)) is not None
-            and (settles := place_settling(task, literal, place.name, place.authority_id, [item])) is not None]
-        if not places or any(another_place(other.candidate, places[0].candidate) for other in places[1:]):
+        place = next((settles for item in cited if item.status in PLACE_ANSWERED
+            and (candidate := placed(task.key, item)) is not None
+            and (settles := place_settling(task, literal, candidate.name, candidate.authority_id, [item]))
+            is not None), None)
+        if place is None:
             return None
-        authority_id = places[0].candidate.authority_id
-        value = places[0].candidate.name if collapse(places[0].candidate.name) != collapse(literal) else None
+        authority_id = place.candidate.authority_id
+        value = place.candidate.name if checks.collapse(place.candidate.name) != checks.collapse(literal) else None
     elif set(task.tools) & CHECKS:
-        values = {result.values for _, result in _check_results(task.key, task.tools, literal,
+        results = [result for _, result in _check_results(task.key, task.tools, literal,
             texts=[reading.text for reading in readings], date_rules=date_rules)
-            if result.status == LookupStatus.SUCCESS}
-        if len(values) != 1 or len(next(iter(values))) != 1:
+            if result.status == LookupStatus.SUCCESS]
+        if len(results) != 1:
             return None
-        [[value]] = values
+        [result] = results
+        if isinstance(result, checks.ElevationCheck):
+            value = result.high if task.key in UPPER_ELEVATION else result.low
+        elif len(result.values) == 1:
+            [value] = result.values
+        if value is None:
+            return None
         value = value if value != literal else None
     explanation = answer.explanation + (" Options: " + "; ".join(given) + "." if given else "")
     return replace(outcome, answer=FieldAnswer(outcome="resolved", literal=literal,
@@ -2554,11 +2562,14 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
                 and outcome.key not in human and value is not None and value.layer != "derived"):
             value.reason = " ".join(part for part in (value.reason, _unreachable_note(outcome, value, rows))
                 if part)
-    record = _settlement if units_path(run) else _first_pass_preference
     for outcome in outcomes:
         if outcome.key in tasks_by_key and outcome.key not in human:
-            record(run, tasks_by_key[outcome.key], outcome, readings=readings, by_name=by_name,
-                sources=received.get(outcome.key, ()), decision=decisions.get(outcome.key, {}))
+            # The rule's settlement is recorded as the rule was given it (_by_rule).
+            given = dict(offered=[text for text in (put[outcome.key].answer.literal, *put[outcome.key].answer.options)
+                if text]) if outcome.key in put else {}
+            (_settlement if units_path(run) else _first_pass_preference)(run, tasks_by_key[outcome.key], outcome,
+                readings=readings, by_name=by_name, sources=received.get(outcome.key, ()),
+                decision=decisions.get(outcome.key, {}), **given)
     return derived
 
 
@@ -2663,7 +2674,7 @@ def marked_reasons(run) -> list[str]:
 
 
 def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
-        decision: Mapping[str, str]) -> None:
+        decision: Mapping[str, str], offered: Sequence[str] = ()) -> None:
     """On the units path, record how each label settled a value its expert's resolved
     answer supports (agreement.labels_by_rule): a warning finding
     marked_code gives (rule field_settlement) for a label that settled it marked,
@@ -2674,7 +2685,9 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
     confirms (Label.matched), the confirmed text's rows. The field's earlier such
     findings go first, so a field researched again keeps only its latest; a value
     settled otherwise (location reconciliation, derivation) or left unsettled gets
-    none, and apply_outcomes calls this for no field a person decided (human_keys)."""
+    none, and apply_outcomes calls this for no field a person decided (human_keys).
+    `offered`: the literal and options of the expert's several_possibilities answer the
+    rule settled (_by_rule), offered to every label beside the resolved literal."""
     from .agreement import CONTESTED, SOURCE_IDS, labels
 
     run.findings[:] = [finding for finding in run.findings
@@ -2689,8 +2702,10 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
     tools = frozenset(task.tools) & SOURCE_IDS
     answers = [item for item in sources if item.source_id in tools]
     named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and literal in by_name[n].text]
-    # The answer's literal is offered to every label, whatever readings it names (agreement.refusal).
-    found = labels(task, readings, answers, transcript=literal, named=named)
+    # The answer's literal is offered to every label, whatever readings it names (agreement.refusal),
+    # and, for an answer the rule settled from an expert's several_possibilities (_by_rule), its
+    # options (`offered`), as the rule was given them.
+    found = labels(task, readings, answers, transcript=literal, named=named, offered=offered)
     rows = {item.id: item for item in run.evidence}
     for region, label in found.items():
         if not label.settled or not (label.cleared or label.why):
