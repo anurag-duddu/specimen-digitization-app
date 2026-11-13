@@ -1452,11 +1452,11 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     # the expert answers `several_possibilities` with the parts named per label ("label 1 writes
     # genus Aus; label 2 writes species bus"), marked for a person", the owner's words there
     # naming taxa. And section 4: "`identified_by_irn` gets no model call". Nor is a place value
-    # field (PLACE_VALUE_FIELDS: the fields the place check, place_settling and location
-    # reconciliation take): a place value settles only on a lookup asked (prompts/common.txt),
-    # and lookups that give one place are settled by location reconciliation before this
-    # (_reconcile_location_outcomes); the coordinator's ruling R5-1 of 2026-11-13 reads what is
-    # left as having no one SOURCE backing, which rule 6 leaves ambiguous.
+    # field (PLACE_VALUE_FIELDS), by the coordinator's scope ruling R5-1 of 2026-11-13 on rework
+    # item 2(b): putting it here means taking a place's record and parents from several cited
+    # lookups, which gave a new wrong result in each of review rounds 2 to 4. Such a field keeps
+    # main's result, `ambiguous` with its options. The rule itself is unchanged and still settles
+    # a place on the image (tests/field_research/test_settlement_rule.py:333).
     if (outcome.failure is not None or answer is None or answer.outcome != "several_possibilities"
             or task.key == "taxon" or task.key in NO_APPROVED_AUTHORITY or task.key in PLACE_VALUE_FIELDS):
         return None
