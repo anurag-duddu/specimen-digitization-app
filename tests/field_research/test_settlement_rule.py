@@ -545,25 +545,50 @@ def test_the_units_paths_retries_say_what_to_answer_never_how_the_code_decides(c
     assert not [word for word in DEFINITIONS if word in refused.retry]
 
 
-@pytest.mark.parametrize(("case", "retry", "follows"), [(row[1], row[3], row[4]) for row in RETRIES],
-    ids=[row[0] for row in RETRIES])
-def test_the_answer_each_units_path_retry_asks_for_passes_the_experts_checks(case, retry, follows):
-    """Codex round 8 (X2): each text a retry prints is one a reading writes, and the answer that
-    follows the retry, its literal or options copied from it, passes experts.py's checks
-    (_Expert.validate, with the source answers the case's lookups returned)."""
+# A text as a retry prints it (repr), and where a retry names the literal to give, or the texts
+# to give as options (its own list, else the readers' or labels' texts it names).
+STRING = r"'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\""
+ASKED = {
+    "literal": (rf"Copy the literal ({STRING})", rf"Give ({STRING}) as the literal",
+        rf"which writes ({STRING}) for this field", rf"the reader's text ({STRING}):", rf"that confirms ({STRING})\."),
+    "options": (rf"Answer several_possibilities with ((?:{STRING})(?:, (?:{STRING}))+)\.",
+        rf"The readers write ((?:{STRING})(?:; (?:{STRING}))*)", rf"for this field \(((?:{STRING})(?:; (?:{STRING}))*)\)"),
+}
+
+
+def asked(retry, kind):
+    """The texts the retry asks for, read back from it as it prints them."""
+    import ast
+    import re
+
+    for pattern in ASKED[kind]:
+        if (found := re.search(pattern, retry)) is not None:
+            return [ast.literal_eval(text) for text in re.findall(STRING, found.group(1))]
+    raise AssertionError(f"the retry names no {kind}: {retry!r}")
+
+
+@pytest.mark.parametrize(("case", "follows"), [(row[1], row[4]) for row in RETRIES], ids=[row[0] for row in RETRIES])
+def test_the_answer_each_units_path_retry_asks_for_passes_the_experts_checks(case, follows):
+    """Codex round 8 (X2): the literal or options a retry asks for, read back from the retry
+    the units path sends, are texts a reading writes (two spaces where it writes two), and the
+    answer that gives them passes experts.py's checks (_Expert.validate, with the source
+    answers the case's lookups returned)."""
     from specimen_digitization.field_research import experts
 
     made = case()
+    retry = refused_by(made).retry
     if follows is None:
-        assert "'P-95'" in retry and any("P-95" in reading.text for reading in made.readings)
+        [text] = asked(retry, "options")
+        assert any(text in reading.text for reading in made.readings)
         return
-    for text in follows.get("options") or [follows["literal"]]:
-        assert repr(text) in retry and any(text in reading.text for reading in made.readings)
+    kind = "options" if "options" in follows else "literal"
+    texts = asked(retry, kind)
+    assert texts == (follows["options"] if kind == "options" else [follows["literal"]])
     expert = experts._Expert(made.task, made.readings, FakeTools(), PILOT_DATES)
     for found in made.received:
         expert.calls.append(experts._Call(found.source_id, found.query, found.status, found))
-    outcome = "several_possibilities" if "options" in follows else "resolved"
-    expert.validate(expert_answer(outcome=outcome, **follows))
+    given = dict(follows, **({"options": texts} if kind == "options" else {"literal": texts[0]}))
+    expert.validate(expert_answer(outcome="several_possibilities" if kind == "options" else "resolved", **given))
 
 
 # ---- rule 2: a person's text --------------------------------------------------------------------
