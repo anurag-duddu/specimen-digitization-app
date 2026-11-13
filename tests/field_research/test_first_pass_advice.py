@@ -563,11 +563,12 @@ def test_each_expert_receives_each_labels_first_pass_opinion_beside_the_raw_read
     if first_pass_path == "units":
         assert "first_pass" not in document
         assert document["units"] == {"1": experts.units_document(readings)["1"]}
-        [unit] = [unit for unit in document["units"]["1"] if unit["readers"] == {"1A": "la", "1B": "1a"}]
+        [unit] = [unit for unit in document["units"]["1"] if unit.get("readers") == {"1A": "la", "1B": "1a"}]
         assert unit["image"] == "la"
         assert len(document["units"]["1"]) == len(run.reading_units[0].units)
-        assert [(r["name"], r["input_source"]) for r in document["readings"]] == [
-            ("1A", "raw_reading"), ("1B", "raw_reading")]
+        # Each reading's name and text only (the request's bound, budget.DEFAULT_MAX_INPUT_TOKENS).
+        assert [sorted(r) for r in document["readings"]] == [["name", "text"]] * 2
+        assert [r["name"] for r in document["readings"]] == ["1A", "1B"]
         return
     assert document["first_pass"] == {"1": {"preferred": "1A", "rationale": RATIONALE,
         "reader_notes": {"1A": NOTES[0], "1B": NOTES[1]},
@@ -588,7 +589,7 @@ def test_a_first_pass_that_preferred_no_reader_still_reaches_the_experts(tmp_pat
     if first_pass_path == "units":
         # The units path: the units, the image uncertain at the difference.
         assert "first_pass" not in document
-        [unit] = [unit for unit in document["units"]["1"] if unit["readers"] == {"1A": "la", "1B": "1a"}]
+        [unit] = [unit for unit in document["units"]["1"] if unit.get("readers") == {"1A": "la", "1B": "1a"}]
         assert unit["image"] == UNCERTAIN
         return
     assert document["first_pass"]["1"]["preferred"] is None

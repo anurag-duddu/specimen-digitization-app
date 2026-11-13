@@ -1,0 +1,1332 @@
+{
+ "source": "WP 1.5's stored run r1/pair of slide 105526325 (the units-program measurement of 2026-11-12, on main c7bdf2269), whose province expert's request was refused as input_too_large: the readings with their label's units, the province field's task, the other fields' values the request shows, and the province expert's lookups that answered, as the run stores their evidence (its NGA lookup timed out). The run keeps the lookups' evidence, not the expert's messages.",
+ "readings": [
+  {
+   "name": "1A",
+   "region_id": "67fcd4e4-db31-5658-a785-bb65584bdce1",
+   "observation_id": "9b9b748b-6153-49fb-8880-6a413a6bce69",
+   "input_source": "decided_transcript",
+   "text": "FMNHINS\n4486780",
+   "units": {
+    "label": "67fcd4e4-db31-5658-a785-bb65584bdce1",
+    "units": [
+     {
+      "id": "67fcd4e4-db31-5658-a785-bb65584bdce1:1",
+      "label": "67fcd4e4-db31-5658-a785-bb65584bdce1",
+      "lines": [
+       1,
+       2
+      ],
+      "readers": {
+       "9b9b748b-6153-49fb-8880-6a413a6bce69": {
+        "text": "FMNHINS\n4486780",
+        "start": 0,
+        "end": 15
+       },
+       "f569a9f6-b92e-40a3-aed9-28fe67780cb0": {
+        "text": "FMNHINS\n4486780",
+        "start": 0,
+        "end": 15
+       }
+      },
+      "image": "FMNHINS\n4486780",
+      "means": "FMNH-INS number 4486780",
+      "role": "",
+      "fields": [
+       "fmnh_ins_number"
+      ],
+      "note": "Reader B alone rendered the number with the correct leading 4; a QR code is printed above the text on the label."
+     }
+    ]
+   }
+  },
+  {
+   "name": "1B",
+   "region_id": "67fcd4e4-db31-5658-a785-bb65584bdce1",
+   "observation_id": "f569a9f6-b92e-40a3-aed9-28fe67780cb0",
+   "input_source": "raw_reading",
+   "text": "FMNHINS\n4486780",
+   "units": {
+    "label": "67fcd4e4-db31-5658-a785-bb65584bdce1",
+    "units": [
+     {
+      "id": "67fcd4e4-db31-5658-a785-bb65584bdce1:1",
+      "label": "67fcd4e4-db31-5658-a785-bb65584bdce1",
+      "lines": [
+       1,
+       2
+      ],
+      "readers": {
+       "9b9b748b-6153-49fb-8880-6a413a6bce69": {
+        "text": "FMNHINS\n4486780",
+        "start": 0,
+        "end": 15
+       },
+       "f569a9f6-b92e-40a3-aed9-28fe67780cb0": {
+        "text": "FMNHINS\n4486780",
+        "start": 0,
+        "end": 15
+       }
+      },
+      "image": "FMNHINS\n4486780",
+      "means": "FMNH-INS number 4486780",
+      "role": "",
+      "fields": [
+       "fmnh_ins_number"
+      ],
+      "note": "Reader B alone rendered the number with the correct leading 4; a QR code is printed above the text on the label."
+     }
+    ]
+   }
+  },
+  {
+   "name": "2A",
+   "region_id": "9695a340-87ac-5868-8558-be570de0298d",
+   "observation_id": "b417c501-71db-4abd-85ce-c58942b8115a",
+   "input_source": "raw_reading",
+   "text": "1X-17-66-1\nE. Slope Mt.\nMckinley, Davao\nProv., Mindanao,\nPhilippine Islands\nH. Hoogstraal\n1X-14-46 3300'\nCNHM",
+   "units": {
+    "label": "9695a340-87ac-5868-8558-be570de0298d",
+    "units": [
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:1",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       1,
+       1
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "1X-17-66-1",
+        "start": 0,
+        "end": 10
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "1X-17-66-1",
+        "start": 0,
+        "end": 10
+       }
+      },
+      "image": "1X-17-66-1",
+      "means": "slide or preparation code: month IX, day 17, year 1966, slide 1",
+      "role": "",
+      "fields": [],
+      "note": "Handwritten; fits the slide-code pattern, not a collection date."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:2",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       2,
+       2
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "E. Slope Mt.",
+        "start": 11,
+        "end": 23
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "E. Slope Mt.",
+        "start": 11,
+        "end": 23
+       }
+      },
+      "image": "E. Slope Mt.",
+      "means": "east slope of Mount McKinley",
+      "role": "",
+      "fields": [
+       "precise_location"
+      ],
+      "note": "Direction qualifier attached to the mountain name on the next line."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:3",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       3,
+       3
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "Mckinley,",
+        "start": 24,
+        "end": 33
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "McKimley,",
+        "start": 24,
+        "end": 33
+       }
+      },
+      "image": "uncertain",
+      "means": "",
+      "role": "",
+      "fields": [
+       "precise_location"
+      ],
+      "note": "A reads 'Mckinley,' and B reads 'McKimley,'; the image shows the mountain name, not Mt. McKinley, Alaska."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:4",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       3,
+       3
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "Davao",
+        "start": 34,
+        "end": 39
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "Davao",
+        "start": 34,
+        "end": 39
+       }
+      },
+      "image": "Davao",
+      "means": "",
+      "role": "",
+      "fields": [
+       "province_state",
+       "precise_location"
+      ],
+      "note": "Davao; likely the province whose name 'Prov.' on the next line confirms."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:5",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       4,
+       4
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "Prov.,",
+        "start": 40,
+        "end": 46
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "Prov.,",
+        "start": 40,
+        "end": 46
+       }
+      },
+      "image": "Prov.,",
+      "means": "Davao Province",
+      "role": "",
+      "fields": [
+       "province_state"
+      ],
+      "note": "Abbreviated word 'province', qualifies 'Davao' on the previous line."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:6",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       4,
+       4
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "Mindanao,",
+        "start": 47,
+        "end": 56
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "Mindanao,",
+        "start": 47,
+        "end": 56
+       }
+      },
+      "image": "Mindanao,",
+      "means": "",
+      "role": "",
+      "fields": [
+       "province_state",
+       "county",
+       "precise_location"
+      ],
+      "note": "Mindanao, the island; the sources decide which field it fills."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:7",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       5,
+       5
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "Philippine Islands",
+        "start": 57,
+        "end": 75
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "Philippine Islands",
+        "start": 57,
+        "end": 75
+       }
+      },
+      "image": "Philippine Islands",
+      "means": "the Philippines",
+      "role": "",
+      "fields": [
+       "country"
+      ],
+      "note": ""
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:8",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       6,
+       6
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "H. Hoogstraal",
+        "start": 76,
+        "end": 89
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "H. Hoogstraal",
+        "start": 76,
+        "end": 89
+       }
+      },
+      "image": "H. Hoogstraal",
+      "means": "",
+      "role": "",
+      "fields": [
+       "collectors"
+      ],
+      "note": "Person's name with no role marker; the collector is presumed from context."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:9",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       7,
+       7
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "1X-14-46",
+        "start": 90,
+        "end": 98
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "1X-14-46",
+        "start": 90,
+        "end": 98
+       }
+      },
+      "image": "1X-14-46",
+      "means": "1946-09-14",
+      "role": "day",
+      "fields": [
+       "date_visited_from"
+      ],
+      "note": ""
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:10",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       7,
+       7
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "3300'",
+        "start": 99,
+        "end": 104
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "3300'",
+        "start": 99,
+        "end": 104
+       }
+      },
+      "image": "3300'",
+      "means": "3300 feet",
+      "role": "",
+      "fields": [
+       "elevation_from_ft"
+      ],
+      "note": ""
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:11",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       8,
+       8
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "CNHM",
+        "start": 105,
+        "end": 109
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "CNHM",
+        "start": 105,
+        "end": 109
+       }
+      },
+      "image": "CNHM",
+      "means": "",
+      "role": "",
+      "fields": [],
+      "note": "Open question: what 'CNHM' is on these labels and whether it fills a field (likely Chicago Natural History Museum)."
+     }
+    ]
+   }
+  },
+  {
+   "name": "2B",
+   "region_id": "9695a340-87ac-5868-8558-be570de0298d",
+   "observation_id": "31872ae5-e42f-487f-b3ab-d5eb332b3a87",
+   "input_source": "raw_reading",
+   "text": "1X-17-66-1\nE. Slope Mt.\nMcKimley, Davao\nProv., Mindanao,\nPhilippine Islands\nH. Hoogstraal\n1X-14-46 3300'\nCNHM",
+   "units": {
+    "label": "9695a340-87ac-5868-8558-be570de0298d",
+    "units": [
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:1",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       1,
+       1
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "1X-17-66-1",
+        "start": 0,
+        "end": 10
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "1X-17-66-1",
+        "start": 0,
+        "end": 10
+       }
+      },
+      "image": "1X-17-66-1",
+      "means": "slide or preparation code: month IX, day 17, year 1966, slide 1",
+      "role": "",
+      "fields": [],
+      "note": "Handwritten; fits the slide-code pattern, not a collection date."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:2",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       2,
+       2
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "E. Slope Mt.",
+        "start": 11,
+        "end": 23
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "E. Slope Mt.",
+        "start": 11,
+        "end": 23
+       }
+      },
+      "image": "E. Slope Mt.",
+      "means": "east slope of Mount McKinley",
+      "role": "",
+      "fields": [
+       "precise_location"
+      ],
+      "note": "Direction qualifier attached to the mountain name on the next line."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:3",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       3,
+       3
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "Mckinley,",
+        "start": 24,
+        "end": 33
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "McKimley,",
+        "start": 24,
+        "end": 33
+       }
+      },
+      "image": "uncertain",
+      "means": "",
+      "role": "",
+      "fields": [
+       "precise_location"
+      ],
+      "note": "A reads 'Mckinley,' and B reads 'McKimley,'; the image shows the mountain name, not Mt. McKinley, Alaska."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:4",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       3,
+       3
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "Davao",
+        "start": 34,
+        "end": 39
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "Davao",
+        "start": 34,
+        "end": 39
+       }
+      },
+      "image": "Davao",
+      "means": "",
+      "role": "",
+      "fields": [
+       "province_state",
+       "precise_location"
+      ],
+      "note": "Davao; likely the province whose name 'Prov.' on the next line confirms."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:5",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       4,
+       4
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "Prov.,",
+        "start": 40,
+        "end": 46
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "Prov.,",
+        "start": 40,
+        "end": 46
+       }
+      },
+      "image": "Prov.,",
+      "means": "Davao Province",
+      "role": "",
+      "fields": [
+       "province_state"
+      ],
+      "note": "Abbreviated word 'province', qualifies 'Davao' on the previous line."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:6",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       4,
+       4
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "Mindanao,",
+        "start": 47,
+        "end": 56
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "Mindanao,",
+        "start": 47,
+        "end": 56
+       }
+      },
+      "image": "Mindanao,",
+      "means": "",
+      "role": "",
+      "fields": [
+       "province_state",
+       "county",
+       "precise_location"
+      ],
+      "note": "Mindanao, the island; the sources decide which field it fills."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:7",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       5,
+       5
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "Philippine Islands",
+        "start": 57,
+        "end": 75
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "Philippine Islands",
+        "start": 57,
+        "end": 75
+       }
+      },
+      "image": "Philippine Islands",
+      "means": "the Philippines",
+      "role": "",
+      "fields": [
+       "country"
+      ],
+      "note": ""
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:8",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       6,
+       6
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "H. Hoogstraal",
+        "start": 76,
+        "end": 89
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "H. Hoogstraal",
+        "start": 76,
+        "end": 89
+       }
+      },
+      "image": "H. Hoogstraal",
+      "means": "",
+      "role": "",
+      "fields": [
+       "collectors"
+      ],
+      "note": "Person's name with no role marker; the collector is presumed from context."
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:9",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       7,
+       7
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "1X-14-46",
+        "start": 90,
+        "end": 98
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "1X-14-46",
+        "start": 90,
+        "end": 98
+       }
+      },
+      "image": "1X-14-46",
+      "means": "1946-09-14",
+      "role": "day",
+      "fields": [
+       "date_visited_from"
+      ],
+      "note": ""
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:10",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       7,
+       7
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "3300'",
+        "start": 99,
+        "end": 104
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "3300'",
+        "start": 99,
+        "end": 104
+       }
+      },
+      "image": "3300'",
+      "means": "3300 feet",
+      "role": "",
+      "fields": [
+       "elevation_from_ft"
+      ],
+      "note": ""
+     },
+     {
+      "id": "9695a340-87ac-5868-8558-be570de0298d:11",
+      "label": "9695a340-87ac-5868-8558-be570de0298d",
+      "lines": [
+       8,
+       8
+      ],
+      "readers": {
+       "b417c501-71db-4abd-85ce-c58942b8115a": {
+        "text": "CNHM",
+        "start": 105,
+        "end": 109
+       },
+       "31872ae5-e42f-487f-b3ab-d5eb332b3a87": {
+        "text": "CNHM",
+        "start": 105,
+        "end": 109
+       }
+      },
+      "image": "CNHM",
+      "means": "",
+      "role": "",
+      "fields": [],
+      "note": "Open question: what 'CNHM' is on these labels and whether it fills a field (likely Chicago Natural History Museum)."
+     }
+    ]
+   }
+  },
+  {
+   "name": "3A",
+   "region_id": "c2f7ed6c-a690-5d1d-925b-79ab46eed1eb",
+   "observation_id": "2105d9f0-91e6-45c2-ac35-4cf5a4366c4d",
+   "input_source": "decided_transcript",
+   "text": "sp aa\n♀ genitalia",
+   "units": {
+    "label": "c2f7ed6c-a690-5d1d-925b-79ab46eed1eb",
+    "units": [
+     {
+      "id": "c2f7ed6c-a690-5d1d-925b-79ab46eed1eb:1",
+      "label": "c2f7ed6c-a690-5d1d-925b-79ab46eed1eb",
+      "lines": [
+       1,
+       1
+      ],
+      "readers": {
+       "2105d9f0-91e6-45c2-ac35-4cf5a4366c4d": {
+        "text": "sp aa",
+        "start": 0,
+        "end": 5
+       },
+       "44e5c217-a566-425f-8363-ecaa6e86fc1d": {
+        "text": "sp aa",
+        "start": 0,
+        "end": 5
+       }
+      },
+      "image": "sp aa",
+      "means": "",
+      "role": "",
+      "fields": [],
+      "note": "A slide or preparation label, handwritten; 'aa' may be a serial or slide number."
+     },
+     {
+      "id": "c2f7ed6c-a690-5d1d-925b-79ab46eed1eb:2",
+      "label": "c2f7ed6c-a690-5d1d-925b-79ab46eed1eb",
+      "lines": [
+       2,
+       2
+      ],
+      "readers": {
+       "2105d9f0-91e6-45c2-ac35-4cf5a4366c4d": {
+        "text": "♀ genitalia",
+        "start": 6,
+        "end": 17
+       },
+       "44e5c217-a566-425f-8363-ecaa6e86fc1d": {
+        "text": "♀ genitalia",
+        "start": 6,
+        "end": 17
+       }
+      },
+      "image": "♀ genitalia",
+      "means": "female genitalia",
+      "role": "",
+      "fields": [],
+      "note": "♀ is the female sign; the line indicates the slide shows female genitalia."
+     }
+    ]
+   }
+  },
+  {
+   "name": "3B",
+   "region_id": "c2f7ed6c-a690-5d1d-925b-79ab46eed1eb",
+   "observation_id": "44e5c217-a566-425f-8363-ecaa6e86fc1d",
+   "input_source": "raw_reading",
+   "text": "sp aa\n♀ genitalia",
+   "units": {
+    "label": "c2f7ed6c-a690-5d1d-925b-79ab46eed1eb",
+    "units": [
+     {
+      "id": "c2f7ed6c-a690-5d1d-925b-79ab46eed1eb:1",
+      "label": "c2f7ed6c-a690-5d1d-925b-79ab46eed1eb",
+      "lines": [
+       1,
+       1
+      ],
+      "readers": {
+       "2105d9f0-91e6-45c2-ac35-4cf5a4366c4d": {
+        "text": "sp aa",
+        "start": 0,
+        "end": 5
+       },
+       "44e5c217-a566-425f-8363-ecaa6e86fc1d": {
+        "text": "sp aa",
+        "start": 0,
+        "end": 5
+       }
+      },
+      "image": "sp aa",
+      "means": "",
+      "role": "",
+      "fields": [],
+      "note": "A slide or preparation label, handwritten; 'aa' may be a serial or slide number."
+     },
+     {
+      "id": "c2f7ed6c-a690-5d1d-925b-79ab46eed1eb:2",
+      "label": "c2f7ed6c-a690-5d1d-925b-79ab46eed1eb",
+      "lines": [
+       2,
+       2
+      ],
+      "readers": {
+       "2105d9f0-91e6-45c2-ac35-4cf5a4366c4d": {
+        "text": "♀ genitalia",
+        "start": 6,
+        "end": 17
+       },
+       "44e5c217-a566-425f-8363-ecaa6e86fc1d": {
+        "text": "♀ genitalia",
+        "start": 6,
+        "end": 17
+       }
+      },
+      "image": "♀ genitalia",
+      "means": "female genitalia",
+      "role": "",
+      "fields": [],
+      "note": "♀ is the female sign; the line indicates the slide shows female genitalia."
+     }
+    ]
+   }
+  }
+ ],
+ "task": {
+  "key": "province_state",
+  "mandatory": true,
+  "current": {
+   "state": "unresolved",
+   "literal": "Mindanao",
+   "parsed": null,
+   "normalized": null,
+   "authority_id": null,
+   "authority_identity": null,
+   "evidence_ids": [
+    "4086f9eb-0f92-4e57-81dd-c745ccb95267",
+    "d02e8e6f-5b55-44ed-901f-7cdf3b0cdb8c"
+   ],
+   "reason": "The readings and sources for this field were too long to send for checking.",
+   "input_source": null,
+   "source_region_id": null,
+   "source_observation_id": null,
+   "verbatim_by_observation": {},
+   "input_source_by_observation": {},
+   "settled_observation_ids": [],
+   "layer": null,
+   "derived_from": [],
+   "evidence_relations": {},
+   "precision": null,
+   "century_rule": null
+  },
+  "candidates": [
+   {
+    "reading": "2A",
+    "quote": "Mindanao,",
+    "literal": "Mindanao",
+    "evidence_id": "4086f9eb-0f92-4e57-81dd-c745ccb95267"
+   },
+   {
+    "reading": "2B",
+    "quote": "Mindanao,",
+    "literal": "Mindanao",
+    "evidence_id": "d02e8e6f-5b55-44ed-901f-7cdf3b0cdb8c"
+   }
+  ],
+  "tools": [
+   "geolocate",
+   "tgn",
+   "wikidata",
+   "nga"
+  ]
+ },
+ "context": {
+  "fmnh_ins_number": {
+   "literal": "4486780",
+   "verbatim_by_observation": {}
+  },
+  "collection_code": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "country": {
+   "literal": "Philippine Islands",
+   "verbatim_by_observation": {
+    "b417c501-71db-4abd-85ce-c58942b8115a": "Philippine Islands",
+    "31872ae5-e42f-487f-b3ab-d5eb332b3a87": "Philippine Islands"
+   }
+  },
+  "county": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "city": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "precise_location": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "elevation_from_m": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "elevation_to_m": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "elevation_from_ft": {
+   "literal": "3300",
+   "verbatim_by_observation": {
+    "b417c501-71db-4abd-85ce-c58942b8115a": "3300",
+    "31872ae5-e42f-487f-b3ab-d5eb332b3a87": "3300"
+   }
+  },
+  "elevation_to_ft": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "habitat": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "collection_method": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "date_visited_from": {
+   "literal": "1X-14-46",
+   "verbatim_by_observation": {}
+  },
+  "date_visited_to": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "collectors": {
+   "literal": "H. Hoogstraal",
+   "verbatim_by_observation": {
+    "b417c501-71db-4abd-85ce-c58942b8115a": "H. Hoogstraal",
+    "31872ae5-e42f-487f-b3ab-d5eb332b3a87": "H. Hoogstraal"
+   }
+  },
+  "verbatim_dts": {
+   "literal": "1X-14-46",
+   "verbatim_by_observation": {
+    "b417c501-71db-4abd-85ce-c58942b8115a": "1X-14-46",
+    "31872ae5-e42f-487f-b3ab-d5eb332b3a87": "1X-14-46"
+   }
+  },
+  "taxon": {
+   "literal": "sp aa",
+   "verbatim_by_observation": {}
+  },
+  "date_identified": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "identified_by_irn": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  }
+ },
+ "lookups": [
+  {
+   "source": "tgn",
+   "query": "Davao Province, Philippines",
+   "status": "ambiguous",
+   "note": "Getty TGN has 10 places for 'Davao Province'",
+   "candidates": [
+    {
+     "name": "Davao",
+     "authority_id": "tgn:7668798",
+     "kind": "special cities, first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Davao",
+     "authority_id": "tgn:1084177",
+     "kind": "inhabited places, administrative centers, cities",
+     "detail": "in Davao, Pilipinas"
+    },
+    {
+     "name": "Davao River",
+     "authority_id": "tgn:1123320",
+     "kind": "rivers",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Davao Occidental",
+     "authority_id": "tgn:8712605",
+     "kind": "provinces, first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Davao Oriental",
+     "authority_id": "tgn:1001217",
+     "kind": "provinces, first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Davao Gulf",
+     "authority_id": "tgn:1112372",
+     "kind": "gulfs (bodies of water)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Davao del Norte",
+     "authority_id": "tgn:1001216",
+     "kind": "provinces, first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Davao del Sur",
+     "authority_id": "tgn:1001218",
+     "kind": "provinces, first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Compostela Valley",
+     "authority_id": "tgn:7668800",
+     "kind": "provinces, first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Ash Sharqīyah",
+     "authority_id": "tgn:7000684",
+     "kind": "provinces, first level subdivisions (political entities)",
+     "detail": "in As Suʻūdīyyah"
+    }
+   ],
+   "evidence": {
+    "id": "fb12e9cd-165b-4d3b-9845-b7c19467d994",
+    "kind": "authority",
+    "source": "tgn",
+    "locator": null,
+    "excerpt": "Getty TGN has 10 places for 'Davao Province'\nDavao | tgn:7668798 | special cities, first level subdivisions (political entities) | in Pilipinas\nDavao | tgn:1084177 | inhabited places, administrative centers, cities | in Davao, Pilipinas\nDavao River | tgn:1123320 | rivers | in Pilipinas\nDavao Occidental | tgn:8712605 | provinces, first level subdivisions (political entities) | in Pilipinas\nDavao Oriental | tgn:1001217 | provinces, first level subdivisions (political entities) | in Pilipinas\nDavao Gulf | tgn:1112372 | gulfs (bodies of water) | in Pilipinas\nDavao del Norte | tgn:1001216 | provinces, first level subdivisions (political entities) | in Pilipinas\nDavao del Sur | tgn:1001218 | provinces, first level subdivisions (political entities) | in Pilipinas\nCompostela Valley | tgn:7668800 | provinces, first level subdivisions (political entities) | in Pilipinas\nAsh Sharqīyah | tgn:7000684 | provinces, first level subdivisions (political entities) | in As Suʻūdīyyah"
+   }
+  },
+  {
+   "source": "wikidata",
+   "query": "Davao Province, Philippines",
+   "status": "success",
+   "note": "Wikidata has one place for 'Davao Province': Davao",
+   "candidates": [
+    {
+     "name": "Davao",
+     "authority_id": "wikidata:Q15095071",
+     "kind": "former province of the Philippines, province of the Philippines, first-level administrative division",
+     "detail": "in Philippines; valid from 1914-09-01 until 1967-05-08"
+    }
+   ],
+   "evidence": {
+    "id": "8d634255-f67f-426e-b750-5d6a37cda813",
+    "kind": "authority",
+    "source": "wikidata",
+    "locator": "wikidata:Q15095071",
+    "excerpt": "Wikidata has one place for 'Davao Province': Davao\nDavao | wikidata:Q15095071 | former province of the Philippines, province of the Philippines, first-level administrative division | in Philippines; valid from 1914-09-01 until 1967-05-08"
+   }
+  },
+  {
+   "source": "geolocate",
+   "query": "Davao, Davao, Philippines",
+   "status": "ambiguous",
+   "note": "GEOLocate is ambiguous for 'Davao': agreeing matches lie up to 31 km apart",
+   "candidates": [
+    {
+     "name": "Davao",
+     "authority_id": "geolocate:85eef45fee9939ce",
+     "kind": null,
+     "detail": "GEOLocate matched DAVAO in DAVAO, Philippines; precision High, score 80; 7.133333, 125.650000"
+    },
+    {
+     "name": "Davao",
+     "authority_id": "geolocate:8a43254d7fe1f4af",
+     "kind": null,
+     "detail": "GEOLocate matched DAVAO in DAVAO, Philippines; precision High, score 80; 7.316667, 125.433333"
+    },
+    {
+     "name": "Davao",
+     "authority_id": "geolocate:4da704942f7661cb",
+     "kind": null,
+     "detail": "GEOLocate matched DAVAO in DAVAO, Philippines; precision High, score 80; 7.073056, 125.612778"
+    }
+   ],
+   "evidence": {
+    "id": "176bbbfb-63c2-4803-9a81-c8123019c81f",
+    "kind": "authority",
+    "source": "geolocate",
+    "locator": null,
+    "excerpt": "GEOLocate is ambiguous for 'Davao': agreeing matches lie up to 31 km apart\nDavao | geolocate:85eef45fee9939ce | - | GEOLocate matched DAVAO in DAVAO, Philippines; precision High, score 80; 7.133333, 125.650000\nDavao | geolocate:8a43254d7fe1f4af | - | GEOLocate matched DAVAO in DAVAO, Philippines; precision High, score 80; 7.316667, 125.433333\nDavao | geolocate:4da704942f7661cb | - | GEOLocate matched DAVAO in DAVAO, Philippines; precision High, score 80; 7.073056, 125.612778"
+   }
+  },
+  {
+   "source": "tgn",
+   "query": "Davao, Philippines",
+   "status": "ambiguous",
+   "note": "Getty TGN has 9 places for 'Davao'",
+   "candidates": [
+    {
+     "name": "Davao",
+     "authority_id": "tgn:1084177",
+     "kind": "inhabited places, administrative centers, cities",
+     "detail": "in Davao, Pilipinas"
+    },
+    {
+     "name": "Davao River",
+     "authority_id": "tgn:1123320",
+     "kind": "rivers",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Davao del Norte",
+     "authority_id": "tgn:1001216",
+     "kind": "provinces, first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Davao",
+     "authority_id": "tgn:7668798",
+     "kind": "special cities, first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Davao Gulf",
+     "authority_id": "tgn:1112372",
+     "kind": "gulfs (bodies of water)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Davao Oriental",
+     "authority_id": "tgn:1001217",
+     "kind": "provinces, first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Davao Occidental",
+     "authority_id": "tgn:8712605",
+     "kind": "provinces, first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Davao del Sur",
+     "authority_id": "tgn:1001218",
+     "kind": "provinces, first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Compostela Valley",
+     "authority_id": "tgn:7668800",
+     "kind": "provinces, first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    }
+   ],
+   "evidence": {
+    "id": "86ee3a34-ca5a-4151-8d58-68930babc0a9",
+    "kind": "authority",
+    "source": "tgn",
+    "locator": null,
+    "excerpt": "Getty TGN has 9 places for 'Davao'\nDavao | tgn:1084177 | inhabited places, administrative centers, cities | in Davao, Pilipinas\nDavao River | tgn:1123320 | rivers | in Pilipinas\nDavao del Norte | tgn:1001216 | provinces, first level subdivisions (political entities) | in Pilipinas\nDavao | tgn:7668798 | special cities, first level subdivisions (political entities) | in Pilipinas\nDavao Gulf | tgn:1112372 | gulfs (bodies of water) | in Pilipinas\nDavao Oriental | tgn:1001217 | provinces, first level subdivisions (political entities) | in Pilipinas\nDavao Occidental | tgn:8712605 | provinces, first level subdivisions (political entities) | in Pilipinas\nDavao del Sur | tgn:1001218 | provinces, first level subdivisions (political entities) | in Pilipinas\nCompostela Valley | tgn:7668800 | provinces, first level subdivisions (political entities) | in Pilipinas"
+   }
+  },
+  {
+   "source": "wikidata",
+   "query": "Davao, Philippines",
+   "status": "ambiguous",
+   "note": "Wikidata has 7 places for 'Davao'",
+   "candidates": [
+    {
+     "name": "Davao City",
+     "authority_id": "wikidata:Q1473",
+     "kind": "highly urbanized city",
+     "detail": "in Davao Region, Philippines; valid from 1848-06-29"
+    },
+    {
+     "name": "Davao",
+     "authority_id": "wikidata:Q107393235",
+     "kind": "Spanish family name",
+     "detail": null
+    },
+    {
+     "name": "Davao del Norte",
+     "authority_id": "wikidata:Q13792",
+     "kind": "province of the Philippines, first-level administrative division",
+     "detail": "in Davao Region, Philippines; valid from 1967-05-08"
+    },
+    {
+     "name": "Davao Region",
+     "authority_id": "wikidata:Q13694",
+     "kind": "region of the Philippines, first-level administrative division",
+     "detail": "in Philippines"
+    },
+    {
+     "name": "Davao",
+     "authority_id": "wikidata:Q15095071",
+     "kind": "former province of the Philippines, province of the Philippines, first-level administrative division",
+     "detail": "in Philippines; valid from 1914-09-01 until 1967-05-08"
+    },
+    {
+     "name": "Davao del Sur",
+     "authority_id": "wikidata:Q13794",
+     "kind": "province of the Philippines, first-level administrative division",
+     "detail": "in Davao Region, Philippines; valid from 1967-05-08"
+    },
+    {
+     "name": "Davao Oriental",
+     "authority_id": "wikidata:Q13806",
+     "kind": "province of the Philippines, first-level administrative division",
+     "detail": "in Davao Region, Philippines; valid from 1967-05-08"
+    }
+   ],
+   "evidence": {
+    "id": "810b0230-b708-47ff-b732-0e42a3a226ef",
+    "kind": "authority",
+    "source": "wikidata",
+    "locator": null,
+    "excerpt": "Wikidata has 7 places for 'Davao'\nDavao City | wikidata:Q1473 | highly urbanized city | in Davao Region, Philippines; valid from 1848-06-29\nDavao | wikidata:Q107393235 | Spanish family name | \nDavao del Norte | wikidata:Q13792 | province of the Philippines, first-level administrative division | in Davao Region, Philippines; valid from 1967-05-08\nDavao Region | wikidata:Q13694 | region of the Philippines, first-level administrative division | in Philippines\nDavao | wikidata:Q15095071 | former province of the Philippines, province of the Philippines, first-level administrative division | in Philippines; valid from 1914-09-01 until 1967-05-08\nDavao del Sur | wikidata:Q13794 | province of the Philippines, first-level administrative division | in Davao Region, Philippines; valid from 1967-05-08\nDavao Oriental | wikidata:Q13806 | province of the Philippines, first-level administrative division | in Davao Region, Philippines; valid from 1967-05-08"
+   }
+  },
+  {
+   "source": "tgn",
+   "query": "Mindanao, Philippines",
+   "status": "ambiguous",
+   "note": "Getty TGN has 7 places for 'Mindanao'",
+   "candidates": [
+    {
+     "name": "Mindanao",
+     "authority_id": "tgn:7016744",
+     "kind": "islands (landforms), inhabited places",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Pulangi River",
+     "authority_id": "tgn:1127181",
+     "kind": "rivers",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Celebes Sea",
+     "authority_id": "tgn:1112260",
+     "kind": "seas",
+     "detail": "in Oceans, World"
+    },
+    {
+     "name": "Bohol Sea",
+     "authority_id": "tgn:1112295",
+     "kind": "seas",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Northern Mindanao",
+     "authority_id": "tgn:8729053",
+     "kind": "regions (administrative divisions), first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Autonomous Region in Muslim Mindanao",
+     "authority_id": "tgn:8728925",
+     "kind": "former administrative divisions, first level subdivisions (political entities), regions (administrative divisions)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Bangsamoro Autonomous Region of Muslim Mindanao",
+     "authority_id": "tgn:8730096",
+     "kind": "regions (administrative divisions), first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    }
+   ],
+   "evidence": {
+    "id": "8e8fa1a0-b2f3-4c3b-b9f0-956eab0ab325",
+    "kind": "authority",
+    "source": "tgn",
+    "locator": null,
+    "excerpt": "Getty TGN has 7 places for 'Mindanao'\nMindanao | tgn:7016744 | islands (landforms), inhabited places | in Pilipinas\nPulangi River | tgn:1127181 | rivers | in Pilipinas\nCelebes Sea | tgn:1112260 | seas | in Oceans, World\nBohol Sea | tgn:1112295 | seas | in Pilipinas\nNorthern Mindanao | tgn:8729053 | regions (administrative divisions), first level subdivisions (political entities) | in Pilipinas\nAutonomous Region in Muslim Mindanao | tgn:8728925 | former administrative divisions, first level subdivisions (political entities), regions (administrative divisions) | in Pilipinas\nBangsamoro Autonomous Region of Muslim Mindanao | tgn:8730096 | regions (administrative divisions), first level subdivisions (political entities) | in Pilipinas"
+   }
+  },
+  {
+   "source": "wikidata",
+   "query": "Mindanao, Philippines",
+   "status": "ambiguous",
+   "note": "Wikidata has 7 places for 'Mindanao'",
+   "candidates": [
+    {
+     "name": "Mindanao",
+     "authority_id": "wikidata:Q4294079",
+     "kind": "island group of the Philippines",
+     "detail": "in Philippines"
+    },
+    {
+     "name": "Mindanao",
+     "authority_id": "wikidata:Q124873",
+     "kind": "island",
+     "detail": "in Philippines"
+    },
+    {
+     "name": "Mindanao",
+     "authority_id": "wikidata:Q77580575",
+     "kind": "painting",
+     "detail": null
+    },
+    {
+     "name": "Rio Grande de Mindanao",
+     "authority_id": "wikidata:Q2095415",
+     "kind": "river",
+     "detail": "in Philippines"
+    },
+    {
+     "name": "Mindanaona",
+     "authority_id": "wikidata:Q15870487",
+     "kind": "taxon",
+     "detail": null
+    },
+    {
+     "name": "Mindanao",
+     "authority_id": "wikidata:Q6863640",
+     "kind": "language family",
+     "detail": null
+    },
+    {
+     "name": "Mindanao",
+     "authority_id": "wikidata:Q85785617",
+     "kind": "film",
+     "detail": null
+    }
+   ],
+   "evidence": {
+    "id": "756bf17c-194e-460a-b92d-746054725ce3",
+    "kind": "authority",
+    "source": "wikidata",
+    "locator": null,
+    "excerpt": "Wikidata has 7 places for 'Mindanao'\nMindanao | wikidata:Q4294079 | island group of the Philippines | in Philippines\nMindanao | wikidata:Q124873 | island | in Philippines\nMindanao | wikidata:Q77580575 | painting | \nRio Grande de Mindanao | wikidata:Q2095415 | river | in Philippines\nMindanaona | wikidata:Q15870487 | taxon | \nMindanao | wikidata:Q6863640 | language family | \nMindanao | wikidata:Q85785617 | film | "
+   }
+  }
+ ]
+}

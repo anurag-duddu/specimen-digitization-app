@@ -61,6 +61,7 @@ async def locate(task, readings, tools):
             evidence=[answer.evidence] if answer.evidence else [], model_calls=1)
     if task.key == "precise_location":
         return FieldOutcome(task.key, FieldAnswer(outcome="several_possibilities",
+            options=["Bloomington", "Clark County"],
             explanation="The readings and sources do not settle the town."), model_calls=1)
     return FieldOutcome(task.key, FieldAnswer(outcome="label_lacks_value",
         explanation="No value is written for this field."), model_calls=1)
