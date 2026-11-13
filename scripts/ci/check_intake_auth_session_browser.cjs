@@ -29,12 +29,13 @@ async function until(action, label, milliseconds = 20000) {
   throw new Error(`Timed out: ${label}`);
 }
 
-// The first Chrome launch on a fresh CI machine reads the browser from a cold
-// disk. On the ubuntu-26.04 image 20261111 (Chrome 157) that launch took up to
-// 10 s on idle machines and more than 20 s in six CI jobs on 2026-11-13, while
-// a second launch on the same machine took about 0.15 s. So each launch gets a
-// minute, a failed launch is retried once with a new profile, and Chrome's own
-// output is kept, bounded, so a launch that still fails explains itself.
+// The first Chrome launch on a fresh CI machine can be slow. On the ubuntu-26.04
+// image 20261111 (Chrome 157) it passed the old 20 s limit in six CI jobs on
+// 2026-11-13 and took up to 22 s in probes on fresh machines, where cold disk
+// reads slowed the whole startup; a second launch on the same machine took
+// about 0.15 s. So each launch gets a minute, a failed launch is retried once
+// with a new profile, and Chrome's own output is kept, bounded, so a launch
+// that still fails explains itself.
 const chromeLaunchAttempts = 2;
 const chromeEndpointMilliseconds = 60000;
 const chromeOutputCharacters = 16384;
@@ -56,15 +57,19 @@ async function launchChrome(profile) {
     '--disable-popup-blocking', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
     'about:blank',
   ], {stdio: ['ignore', 'pipe', 'pipe']});
+  // Listen before anything can throw: a failed spawn reports 'error' on the
+  // next tick, and an unheard 'error' would end the process.
+  let chromeFailure;
+  chrome.on('error', error => { chromeFailure ??= error; });
+  const exited = new Promise(resolve => chrome.once('exit', resolve));
+  const closed = new Promise(resolve => chrome.once('close', resolve));
+  // Node creates no pipes when a spawn fails for lack of file descriptors.
+  const streams = [chrome.stdout, chrome.stderr].filter(Boolean);
   let output = '';
-  for (const stream of [chrome.stdout, chrome.stderr]) {
+  for (const stream of streams) {
     stream.setEncoding('utf8');
     stream.on('data', chunk => { output = (output + chunk).slice(-chromeOutputCharacters); });
   }
-  let chromeFailure;
-  chrome.once('error', error => { chromeFailure = error; });
-  const exited = new Promise(resolve => chrome.once('exit', resolve));
-  const closed = new Promise(resolve => chrome.once('close', resolve));
   const ended = () => chrome.exitCode !== null || chrome.signalCode !== null;
   // A failed spawn has no pid and never exits; Node reports it as 'error'.
   const running = () => chrome.pid !== undefined && !ended();
@@ -77,8 +82,7 @@ async function launchChrome(profile) {
     // Output still in the pipes arrives before 'close'. Chrome's helper
     // processes inherit the pipes and can hold them open, so the wait is short.
     await waitAtMost(closed, 1000);
-    chrome.stdout.destroy();
-    chrome.stderr.destroy();
+    for (const stream of streams) stream.destroy();
   }
   const started = Date.now();
   try {
