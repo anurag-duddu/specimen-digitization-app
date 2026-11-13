@@ -190,10 +190,11 @@ OUTAGE_STATUSES = frozenset(str(status) for status in SOURCE_OUTAGES)
 def units_document(readings: Sequence[Reading]) -> dict[str, list[dict[str, Any]]]:
     """Each label's reading units as the experts' request carries them, by label number:
     each unit's lines, each reader's text there by reading name (a person's transcript
-    under the name of the reading that holds it), what the image shows there (one
-    reader's text, uncertain or not visible), and its meaning, role, fields and note
-    where it has them. A reader that is not among the readings (it wrote no text) is
-    left out."""
+    under the name of the reading that holds it), or, where two or more readers write it
+    and each writes the same text there, that text once (`text`: the request is bounded,
+    budget.DEFAULT_MAX_INPUT_TOKENS), what the image shows there (one reader's text,
+    uncertain or not visible), and its meaning, role, fields and note where it has them.
+    A reader that is not among the readings (it wrote no text) is left out."""
     from specimen_digitization.application.reading_units import PERSON
 
     document: dict[str, list[dict[str, Any]]] = {}
@@ -209,8 +210,13 @@ def units_document(readings: Sequence[Reading]) -> dict[str, list[dict[str, Any]
             names.setdefault(item.observation_id, item.name)
         units = []
         for unit in reading.units.units:
-            entry: dict[str, Any] = {"lines": list(unit.lines), "readers": {
-                names[key]: span.text for key, span in unit.readers.items() if key in names}, "image": unit.image}
+            texts = {names[key]: span.text for key, span in unit.readers.items() if key in names}
+            entry: dict[str, Any] = {"lines": list(unit.lines)}
+            if len(texts) > 1 and len(set(texts.values())) == 1:
+                entry["text"] = next(iter(texts.values()))
+            else:
+                entry["readers"] = texts
+            entry["image"] = unit.image
             entry.update({key: value for key, value in (("means", unit.means), ("role", unit.role),
                 ("fields", list(unit.fields)), ("note", unit.note)) if value})
             units.append(entry)
@@ -325,8 +331,10 @@ class _Expert:
                 {"reading": c.reading, "quote": c.quote, "literal": c.literal}
                 for c in task.candidates
             ],
+            # On the units path each reading's name and text only: its instructions name
+            # neither region_id nor input_source (a person's reading is in person_decided).
             "readings": [
-                {
+                {"name": r.name, "text": r.text} if self.units else {
                     "name": r.name,
                     "region_id": r.region_id,
                     "input_source": r.input_source,
