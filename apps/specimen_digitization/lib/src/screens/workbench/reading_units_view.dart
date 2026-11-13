@@ -104,8 +104,10 @@ class ReadingUnitsView extends StatelessWidget {
   /// The label's units, in reading order.
   final LabelReadingUnits units;
 
-  /// Every reader the units name, in the order each unit lists them
-  /// ([unitReaders]).
+  /// Every reader the units name, in the order [unitReaders] gives them: the
+  /// readers that are observations in observation order, then the other keys
+  /// in the order the units first name them. Each unit lists its readers in
+  /// this order.
   final Map<String, UnitReader> readers;
 
   /// Tighter spacing for a short, scrollable inspector.
@@ -205,7 +207,8 @@ class ReadingUnitsView extends StatelessWidget {
     final TextStyle detail = ui.type.bodySmall.copyWith(color: ui.color.ink);
     final bool named =
         unit.image != imageUncertain && unit.image != imageNotVisible;
-    // Readers that wrote the same text share one line, every name kept.
+    // Readers that wrote the same text share one entry, each name on its own
+    // line: a name can hold the separator `·` (`readerModelName`).
     final Map<String, List<String>> byText = <String, List<String>>{};
     for (final String reader in _keysOf(unit)) {
       byText
@@ -264,7 +267,8 @@ class ReadingUnitsView extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    Text(group.value.map(_nameOf).join(' · '), style: key),
+                    for (final String reader in group.value)
+                      Text(_nameOf(reader), style: key),
                     if (group.key.isEmpty)
                       Text(nothingWritten, style: detail)
                     else

@@ -9,6 +9,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/reason_codes.dart';
 import 'package:specimen_digitization/src/screens/workbench/blockers.dart';
 import 'package:specimen_digitization/src/screens/workbench/fields_panel.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -170,48 +171,181 @@ void main() {
     }
   });
 
+  // The run's own settlement findings: a warning for marked, info for
+  // cleared, each with its field key.
   test('the settlement findings read as field notes, never as blockers', () {
-    Json note(String severity, String code) => <String, dynamic>{
-      'rule_id': 'field_settlement',
-      'severity': severity,
-      'field_key': 'habitat',
-      'reason_code': code,
-    };
-    for (final (Json finding, String text) in <(Json, String)>[
-      (
-        note('warning', 'marked:habitat:L1:text_only'),
-        'Marked on Label 1: only the readings back this value',
-      ),
-      (
-        note('warning', 'marked:habitat:L1:conflict'),
-        'Marked on Label 1: another backed text competes with this value',
-      ),
-      (
-        note('warning', 'marked:habitat:L9:text_only'),
-        'Marked: only the readings back this value',
-      ),
-      (
-        note('warning', 'marked:habitat:L1:other'),
-        'Marked on Label 1 for review',
-      ),
-      (
-        note('info', 'cleared:habitat:L1'),
-        'Confirmed on Label 1 by the image, a source or a person',
-      ),
-      (
-        note('info', 'cleared:habitat:L9'),
-        'Confirmed by the image, a source or a person',
-      ),
-    ]) {
+    for (final (String severity, String code, String text)
+        in <(String, String, String)>[
+          (
+            'warning',
+            'marked:habitat:L1:text_only',
+            'Marked on Label 1: only the readings back this value.',
+          ),
+          (
+            'warning',
+            'marked:habitat:L1:conflict',
+            'Marked on Label 1: another backed text competes with this value.',
+          ),
+          (
+            'warning',
+            'marked:habitat:L9:text_only',
+            'Marked: only the readings back this value.',
+          ),
+          (
+            'warning',
+            'marked:habitat:L1:other',
+            'Marked on Label 1 for review.',
+          ),
+          (
+            'info',
+            'cleared:habitat:L1',
+            'Confirmed on Label 1 by the image, a source or a person.',
+          ),
+          (
+            'info',
+            'cleared:habitat:L9',
+            'Confirmed by the image, a source or a person.',
+          ),
+        ]) {
       final Specimen specimen = record(
         const <String>[],
-        notes: <Json>[finding],
+        notes: <Json>[
+          <String, dynamic>{
+            'rule_id': 'field_settlement',
+            'severity': severity,
+            'field_key': 'habitat',
+            'reason_code': code,
+          },
+        ],
       );
-      expect(blockersFor(specimen), isEmpty, reason: finding['reason_code']);
+      expect(blockersFor(specimen), isEmpty, reason: code);
       final ClearanceBlocker found = fieldNotesFor(specimen).single;
       expect(found.message, text);
       expect(found.fieldKey, 'habitat');
       expect(found.isBlocking, isFalse);
+    }
+  });
+
+  // A finding may carry no field key (`RunFinding.field_key` is optional):
+  // the note's field then comes from the code.
+  test('a settlement note with no field key takes the code\'s field', () {
+    for (final (String severity, String code) in <(String, String)>[
+      ('info', 'cleared:habitat:L1'),
+      ('warning', 'marked:habitat:L1:text_only'),
+      ('info', 'cleared:collectors:L1'),
+      ('warning', 'marked:collectors:L1:conflict'),
+    ]) {
+      final Specimen specimen = record(
+        const <String>[],
+        notes: <Json>[
+          <String, dynamic>{
+            'rule_id': 'field_settlement',
+            'severity': severity,
+            'field_key': null,
+            'reason_code': code,
+          },
+        ],
+      );
+      final List<ClearanceBlocker> found = fieldNotesFor(specimen);
+      expect(found, hasLength(1), reason: code);
+      expect(found.single.fieldKey, code.split(':')[1], reason: code);
+      expect(found.single.isBlocking, isFalse);
+    }
+  });
+
+  test('a settlement note naming another field than its key has none', () {
+    final Specimen specimen = record(
+      const <String>[],
+      notes: <Json>[
+        for (final (String severity, String code) in <(String, String)>[
+          ('info', 'cleared:habitat:L1'),
+          ('warning', 'marked:habitat:L1:text_only'),
+        ])
+          <String, dynamic>{
+            'rule_id': 'field_settlement',
+            'severity': severity,
+            'field_key': 'collectors',
+            'reason_code': code,
+          },
+      ],
+    );
+    expect(fieldNotesFor(specimen), isEmpty);
+  });
+
+  // The record's reasons offered as chips in the decision sheet
+  // (reason_codes.dart): a settlement code in words, never with an id.
+  test('a settlement code reads as words among the record\'s reasons', () {
+    const String uuid = '00000000-0000-4000-8000-0000000000e2';
+    for (final (List<String> regions, String code, String words)
+        in <(List<String>, String, String)>[
+          (
+            <String>['L1'],
+            'marked:habitat:L1:text_only',
+            'Habitat is marked for review on Label 1: only the readings back '
+                'this value',
+          ),
+          (
+            <String>['L1'],
+            'marked:habitat:L1:conflict',
+            'Habitat is marked for review on Label 1: another backed text '
+                'competes with this value',
+          ),
+          (
+            <String>['L1'],
+            'marked:habitat:L1:other',
+            'Habitat is marked for review on Label 1',
+          ),
+          (
+            <String>['L1'],
+            'marked:collectors:L1:text_only',
+            'Collectors are marked for review on Label 1: only the readings '
+                'back this value',
+          ),
+          (
+            <String>['L1'],
+            'cleared:habitat:L1',
+            'Habitat is confirmed on Label 1 by the image, a source or a person',
+          ),
+          // A field the app has no name for.
+          (
+            <String>['L1'],
+            'marked:no_such_field:L1:text_only',
+            'A field is marked for review on Label 1: only the readings back '
+                'this value',
+          ),
+          (<String>['L1'], 'marked:', 'A field is marked for review'),
+          // A label id the record does not hold is left out, a UUID included.
+          (
+            <String>['L1'],
+            'marked:habitat:$uuid:text_only',
+            'Habitat is marked for review: only the readings back this value',
+          ),
+          (
+            <String>[uuid],
+            'marked:habitat:$uuid:text_only',
+            'Habitat is marked for review on Label 1: only the readings back '
+                'this value',
+          ),
+          (
+            <String>['L1'],
+            'cleared:habitat:$uuid',
+            'Habitat is confirmed by the image, a source or a person',
+          ),
+          // Another code reads as before.
+          (
+            <String>['L1'],
+            'mandatory_unresolved:habitat',
+            'Mandatory unresolved: habitat',
+          ),
+        ]) {
+      final Specimen specimen = Specimen(<String, dynamic>{
+        ...record(<String>[code], asFindings: false).data,
+        'regions': <Json>[
+          for (final String region in regions)
+            <String, dynamic>{'region_id': region},
+        ],
+      });
+      expect(recordReasonCodes(specimen), <String>[words], reason: code);
     }
   });
 

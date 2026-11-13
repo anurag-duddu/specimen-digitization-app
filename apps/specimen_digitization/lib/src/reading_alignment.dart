@@ -31,25 +31,19 @@ String exactUtf16Span(String source, int start, int end) {
 /// A reading unit's `start` and `end` are Python string indices, which count
 /// code points (`application/reading_units.py`, `UnitText`); a Dart `String`
 /// is indexed by UTF-16 code units, so each character above U+FFFF (an emoji)
-/// before the offset moves it by one. A surrogate pair counts as one code
-/// point and a lone surrogate as one, as `String.runes` counts them.
+/// before the offset moves it by one. The code points are `String.runes`'s:
+/// a surrogate pair is one and a lone surrogate is one.
 int utf16OffsetOfCodePoint(String source, int codePoint) {
   if (codePoint < 0) {
     throw const FormatException('Span outside retained reading');
   }
+  final RuneIterator runes = source.runes.iterator;
   int offset = 0;
   for (int seen = 0; seen < codePoint; seen++) {
-    if (offset >= source.length) {
+    if (!runes.moveNext()) {
       throw const FormatException('Span outside retained reading');
     }
-    final int unit = source.codeUnitAt(offset);
-    final bool pair =
-        unit >= 0xd800 &&
-        unit <= 0xdbff &&
-        offset + 1 < source.length &&
-        source.codeUnitAt(offset + 1) >= 0xdc00 &&
-        source.codeUnitAt(offset + 1) <= 0xdfff;
-    offset += pair ? 2 : 1;
+    offset += runes.currentSize;
   }
   return offset;
 }

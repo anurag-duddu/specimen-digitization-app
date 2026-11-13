@@ -26,6 +26,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models.dart';
+import 'screens/workbench/blockers.dart' show settlementPhrase;
 import 'vocabulary.dart';
 
 /// The keys a collection document or a profile may publish a reviewer's
@@ -75,12 +76,14 @@ List<String> configuredReasonCodes(List<Json?> documents) {
 /// Read from the `reason_codes` the specimen payload publishes. A qualified
 /// code such as `mandatory_unresolved:country` keeps its subject, so the chip
 /// reads "Mandatory unresolved: country" rather than losing which field it
-/// was about.
+/// was about. A `cleared:` or `marked:` code reads as `settlementPhrase`
+/// words it, never with the label's id.
 List<String> recordReasonCodes(Specimen specimen) {
   final List<String> codes = _stringsOf(specimen.data['reason_codes']);
   return <String>[
     for (final String code in codes)
-      if (_readable(code) case final String phrase when phrase.isNotEmpty)
+      if (settlementPhrase(specimen, code) ?? _readable(code)
+          case final String phrase when phrase.isNotEmpty)
         phrase,
   ];
 }

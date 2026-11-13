@@ -98,7 +98,11 @@ Specimen record({
   });
 }
 
-Future<void> pumpLabel(WidgetTester tester, Specimen specimen) => pumpComponent(
+Future<void> pumpLabel(
+  WidgetTester tester,
+  Specimen specimen, {
+  Size size = const Size(1000, 3200),
+}) => pumpComponent(
   tester,
   SingleChildScrollView(
     child: WorkbenchReadings(
@@ -111,7 +115,7 @@ Future<void> pumpLabel(WidgetTester tester, Specimen specimen) => pumpComponent(
       declarationsBlocked: true,
     ),
   ),
-  size: const Size(1000, 3200),
+  size: size,
 );
 
 /// The card of part [number] of the label.
@@ -139,94 +143,102 @@ List<String> namesIn(WidgetTester tester, int number) => <String>[
 
 void main() {
   // One row per state the acceptance names. Each row: the record, then what
-  // the part shows for the image, the reader lines (names, then text) and
-  // whether a line is marked as matching the image.
-  final List<(String, Specimen, int, String, List<(String, String)>, String?)>
-  states = <(String, Specimen, int, String, List<(String, String)>, String?)>[
-    (
-      "names a reader's text",
-      record(),
-      3,
-      'Image: Sp.30 ♀',
-      <(String, String)>[('$qwen · $muse', 'Sp.30 ♀'), (nemotron, 'Sp.30 ♂')],
-      'Sp.30 ♀',
-    ),
-    (
-      'is uncertain',
-      record(),
-      2,
-      'Image: Uncertain',
-      <(String, String)>[
-        ('$qwen · $nemotron', 'Elev.6400'),
-        (muse, "Elev.6400'"),
-      ],
-      null,
-    ),
-    (
-      'is not visible',
-      record(
-        units: (List<Json> units) => <Json>[
-          units[0],
-          <String, dynamic>{...units[1], 'image': 'not visible'},
-          units[2],
-        ],
-      ),
-      2,
-      'Image: Not visible',
-      <(String, String)>[
-        ('$qwen · $nemotron', 'Elev.6400'),
-        (muse, "Elev.6400'"),
-      ],
-      null,
-    ),
-    (
-      'is uncertain on a person-decided label with one reader',
-      record(
-        transcription: <String, dynamic>{
-          'region_id': label,
-          'resolved': true,
-          'actor': 'reviewer-1',
-          'verbatim_text': '6-Sept-1946, Elev.6400 ft',
-        },
-        units: (List<Json> units) => <Json>[
-          <String, dynamic>{
-            ...units[0],
-            'readers': <String, dynamic>{
-              'person': <String, dynamic>{
-                'text': '6-Sept-1946,',
-                'start': 0,
-                'end': 12,
-              },
+  // the part shows for the image, its entries (the readers' names, each on a
+  // line of its own, then their text) and the text the image names, if any.
+  final List<
+    (String, Specimen, int, String, List<(List<String>, String)>, String?)
+  >
+  states =
+      <(String, Specimen, int, String, List<(List<String>, String)>, String?)>[
+        (
+          "names a reader's text",
+          record(),
+          3,
+          'Image: Sp.30 ♀',
+          <(List<String>, String)>[
+            (<String>[qwen, muse], 'Sp.30 ♀'),
+            (<String>[nemotron], 'Sp.30 ♂'),
+          ],
+          'Sp.30 ♀',
+        ),
+        (
+          'is uncertain',
+          record(),
+          2,
+          'Image: Uncertain',
+          <(List<String>, String)>[
+            (<String>[qwen, nemotron], 'Elev.6400'),
+            (<String>[muse], "Elev.6400'"),
+          ],
+          null,
+        ),
+        (
+          'is not visible',
+          record(
+            units: (List<Json> units) => <Json>[
+              units[0],
+              <String, dynamic>{...units[1], 'image': 'not visible'},
+              units[2],
+            ],
+          ),
+          2,
+          'Image: Not visible',
+          <(List<String>, String)>[
+            (<String>[qwen, nemotron], 'Elev.6400'),
+            (<String>[muse], "Elev.6400'"),
+          ],
+          null,
+        ),
+        (
+          'is uncertain on a person-decided label with one reader',
+          record(
+            transcription: <String, dynamic>{
+              'region_id': label,
+              'resolved': true,
+              'actor': 'reviewer-1',
+              'verbatim_text': '6-Sept-1946, Elev.6400 ft',
             },
-            'image': 'uncertain',
-          },
-          <String, dynamic>{
-            ...units[1],
-            'readers': <String, dynamic>{
-              'person': <String, dynamic>{
-                'text': 'Elev.6400 ft',
-                'start': 13,
-                'end': 25,
+            units: (List<Json> units) => <Json>[
+              <String, dynamic>{
+                ...units[0],
+                'readers': <String, dynamic>{
+                  'person': <String, dynamic>{
+                    'text': '6-Sept-1946,',
+                    'start': 0,
+                    'end': 12,
+                  },
+                },
+                'image': 'uncertain',
               },
-            },
-            'image': 'uncertain',
-            'note': '',
-          },
-        ],
-      ),
-      2,
-      'Image: Uncertain',
-      <(String, String)>[(personReaderName, 'Elev.6400 ft')],
-      null,
-    ),
-  ];
+              <String, dynamic>{
+                ...units[1],
+                'readers': <String, dynamic>{
+                  'person': <String, dynamic>{
+                    'text': 'Elev.6400 ft',
+                    'start': 13,
+                    'end': 25,
+                  },
+                },
+                'image': 'uncertain',
+                'note': '',
+              },
+            ],
+          ),
+          2,
+          'Image: Uncertain',
+          <(List<String>, String)>[
+            (<String>[personReaderName], 'Elev.6400 ft'),
+          ],
+          null,
+        ),
+      ];
 
   for (final (
         String state,
         Specimen specimen,
         int number,
         String image,
-        List<(String, String)> lines,
+        List<(List<String>, String)> lines,
         String? matching,
       )
       in states) {
@@ -234,13 +246,35 @@ void main() {
       await pumpLabel(tester, specimen);
       expect(find.text(ReadingUnitsView.title), findsOneWidget);
       expect(inPart(number, rich(image)), findsOneWidget);
-      for (final (String names, String text) in lines) {
-        expect(inPart(number, find.text(names)), findsOneWidget, reason: names);
+      for (final (List<String> names, String text) in lines) {
         expect(inPart(number, find.text(text)), findsOneWidget, reason: text);
+        // Each name is a line of its own in the entry that holds the text.
+        expect(
+          find.ancestor(
+            of: inPart(number, find.text(text)),
+            matching: find.byWidgetPredicate(
+              (Widget w) =>
+                  w is Column &&
+                  w.children.length ==
+                      names.length + 1 + (text == matching ? 1 : 0) &&
+                  <String?>[
+                        for (final Widget child in w.children.take(
+                          names.length + 1,
+                        ))
+                          child is Text ? child.data : null,
+                      ].join('|') ==
+                      <String>[...names, text].join('|'),
+            ),
+          ),
+          findsOneWidget,
+          reason: '$names $text',
+        );
       }
       // A model the part does not list is named nowhere in it.
       for (final String model in models.values) {
-        if (lines.any(((String, String) line) => line.$1.contains(model))) {
+        if (lines.any(
+          ((List<String>, String) line) => line.$1.contains(model),
+        )) {
           continue;
         }
         expect(inPart(number, find.textContaining(model)), findsNothing);
@@ -379,59 +413,82 @@ void main() {
         ('UTF-16 offsets', 3, 10, true),
         ('an offset past the reading', 8, 15, true),
       ]) {
-    testWidgets('a unit at $why ${mismatch ? 'shows' : 'shows no'} '
-        'mismatch', (WidgetTester tester) async {
-      final Specimen specimen = Specimen(<String, dynamic>{
-        'specimen_id': 'emoji',
-        'regions': <Json>[
-          <String, dynamic>{'region_id': label},
-        ],
-        'observations': <Json>[
-          <String, dynamic>{
-            'id': a,
-            'region_id': label,
-            'model_id': qwen,
-            'literal_text': '🦋 Chicago 1912',
-          },
-        ],
-        'run': <String, dynamic>{
-          'reading_units': <Json>[
+    for (final Size size in <Size>[
+      const Size(390, 3200),
+      const Size(1180, 3200),
+    ]) {
+      testWidgets('a unit at $why ${mismatch ? 'shows' : 'shows no'} '
+          'mismatch at ${size.width.toInt()} wide', (
+        WidgetTester tester,
+      ) async {
+        final Specimen specimen = Specimen(<String, dynamic>{
+          'specimen_id': 'emoji',
+          'regions': <Json>[
+            <String, dynamic>{'region_id': label},
+          ],
+          'observations': <Json>[
             <String, dynamic>{
-              'label': label,
-              'units': <Json>[
-                <String, dynamic>{
-                  'id': '$label:1',
-                  'label': label,
-                  'lines': <int>[1, 1],
-                  'readers': <String, dynamic>{
-                    a: <String, dynamic>{
-                      'text': 'Chicago',
-                      'start': start,
-                      'end': end,
-                    },
-                  },
-                  'image': 'Chicago',
-                  'means': '',
-                  'role': '',
-                  'fields': <String>[],
-                  'note': '',
-                },
-              ],
+              'id': a,
+              'region_id': label,
+              'model_id': qwen,
+              'literal_text': '🦋 Chicago 1912',
             },
           ],
-        },
+          'run': <String, dynamic>{
+            'reading_units': <Json>[
+              <String, dynamic>{
+                'label': label,
+                'units': <Json>[
+                  <String, dynamic>{
+                    'id': '$label:1',
+                    'label': label,
+                    'lines': <int>[1, 1],
+                    'readers': <String, dynamic>{
+                      a: <String, dynamic>{
+                        'text': 'Chicago',
+                        'start': start,
+                        'end': end,
+                      },
+                    },
+                    'image': 'Chicago',
+                    'means': '',
+                    'role': '',
+                    'fields': <String>[],
+                    'note': '',
+                  },
+                ],
+              },
+            ],
+          },
+        });
+        await pumpLabel(tester, specimen, size: size);
+        final String text = tester
+            .widgetList<Text>(inPart(1, find.byType(Text)))
+            .map((Text t) => t.data ?? t.textSpan!.toPlainText())
+            .join('\n');
+        expect(text, contains('Chicago'));
+        expect(
+          find.text(ReadingUnitsView.mismatch),
+          mismatch ? findsOneWidget : findsNothing,
+        );
+        // The caveat's "Why" is the one control a part can hold: labelled and
+        // 48 dp, closed and open.
+        await expectAccessible(tester);
+        final Finder whyButton = inPart(1, find.text(CaveatText.affordance));
+        expect(whyButton, mismatch ? findsOneWidget : findsNothing);
+        if (mismatch) {
+          await tester.ensureVisible(whyButton);
+          await tester.tap(whyButton);
+          await tester.pumpAndSettle();
+          expect(
+            inPart(1, find.text(ReadingUnitsView.mismatchWhy(qwen))),
+            findsOneWidget,
+          );
+          await expectAccessible(tester);
+        }
+        expect(tester.takeException(), isNull);
       });
-      await pumpLabel(tester, specimen);
-      final String text = tester
-          .widgetList<Text>(inPart(1, find.byType(Text)))
-          .map((Text t) => t.data ?? t.textSpan!.toPlainText())
-          .join('\n');
-      expect(text, contains('Chicago'));
-      expect(
-        find.text(ReadingUnitsView.mismatch),
-        mismatch ? findsOneWidget : findsNothing,
-      );
-    });
+    }
   }
 
   test('readers are named by model, then a person, then not recorded', () {

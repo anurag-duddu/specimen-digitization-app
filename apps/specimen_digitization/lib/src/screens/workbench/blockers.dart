@@ -227,10 +227,28 @@ const Map<String, String> _fieldReasons = <String, String>{
 const String _cleared = 'cleared';
 const String _marked = 'marked';
 
-/// The field a field reason names: its whole suffix, except a `marked:` code,
-/// whose field is the first part after `marked:`.
+/// The field a code names: its whole suffix, except a `cleared:` or
+/// `marked:` code, whose field is the first part after the colon.
 String _reasonField(String base, String suffix) =>
-    base == _marked ? suffix.split(':').first : suffix;
+    base == _cleared || base == _marked ? suffix.split(':').first : suffix;
+
+/// The second part of a `cleared:` or `marked:` code's suffix when [specimen]
+/// holds that label, else null.
+String? _settlementLabel(Specimen specimen, String suffix) {
+  final List<String> parts = suffix.split(':');
+  return parts.length > 1 ? _matchingRegion(specimen, parts[1]) : null;
+}
+
+/// The words for a `marked:` code's `why` (its third part), or null for a why
+/// the app has no words for.
+String? _markedReason(String suffix) {
+  final List<String> parts = suffix.split(':');
+  return switch (parts.length > 2 ? parts[2] : '') {
+    'text_only' => 'only the readings back this value',
+    'conflict' => 'another backed text competes with this value',
+    _ => null,
+  };
+}
 
 /// Why a `marked:` code's label left its field for a person, by its `why`.
 String _markedWhy(String why) => switch (why) {
@@ -246,21 +264,41 @@ String _markedWhy(String why) => switch (why) {
 /// The field note a `cleared:` or `marked:` finding reads as, naming the
 /// label (its second part) when the record holds that label.
 String _settlementNote(Specimen specimen, String base, String suffix) {
-  final List<String> parts = suffix.split(':');
-  final String? region = parts.length > 1
-      ? _matchingRegion(specimen, parts[1])
-      : null;
+  final String? region = _settlementLabel(specimen, suffix);
   final String where = region == null
       ? ''
       : ' on ${_regionName(specimen, region)}';
   if (base == _cleared) {
-    return 'Confirmed$where by the image, a source or a person';
+    return 'Confirmed$where by the image, a source or a person.';
   }
-  return switch (parts.length > 2 ? parts[2] : '') {
-    'text_only' => 'Marked$where: only the readings back this value',
-    'conflict' => 'Marked$where: another backed text competes with this value',
-    _ => 'Marked$where for review',
-  };
+  final String? why = _markedReason(suffix);
+  return why == null ? 'Marked$where for review.' : 'Marked$where: $why.';
+}
+
+/// A `cleared:` or `marked:` code in words, for a list of the record's
+/// reasons: the field's name ("A field" when the app has none for it), the
+/// label's name when [specimen] holds that label, and why. Null for any other
+/// code. It never repeats a part of the code it has no words for.
+String? settlementPhrase(Specimen specimen, String code) {
+  final int separator = code.indexOf(':');
+  if (separator < 0) return null;
+  final String base = code.substring(0, separator);
+  if (base != _cleared && base != _marked) return null;
+  final String suffix = code.substring(separator + 1);
+  final String field = _reasonField(base, suffix);
+  final String? name = field.isEmpty ? null : _knownFieldName(specimen, field);
+  final String? region = _settlementLabel(specimen, suffix);
+  final String where = region == null
+      ? ''
+      : ' on ${_regionName(specimen, region)}';
+  final String subject = name == null
+      ? 'A field is'
+      : _fieldReasonMessage(specimen, field, 'is');
+  if (base == _cleared) {
+    return '$subject confirmed$where by the image, a source or a person';
+  }
+  final String? why = _markedReason(suffix);
+  return '$subject marked for review$where${why == null ? '' : ': $why'}';
 }
 
 /// Reasons about one label region (`<code>:<region id>`), worded after the
@@ -458,6 +496,15 @@ ClearanceBlocker _issueFor(
       kind = ClearanceBlockerKind.field;
       message = _fieldReasonMessage(specimen, field, _fieldReasons[base]!);
       detail = 'Review the value and its supporting sources.';
+    }
+  } else if (base == _cleared) {
+    // cleared:<field>:<label>, a note: its field from the code when the
+    // finding names none, as for marked:.
+    final String target = _reasonField(base, suffix);
+    if (target.isNotEmpty && explicitField != null && target != explicitField) {
+      field = null;
+    } else {
+      field ??= _matchingField(specimen, target);
     }
   } else if (base == 'unresolved_transcription') {
     region ??= _matchingRegion(specimen, suffix);

@@ -37,6 +37,15 @@ void main() {
           ('🦋🐞 Chicago', 3, 10, 'Chicago', 5, 12),
           // An emoji before the unit and one inside it.
           ('🐞Sp.30 🐞 x', 1, 8, 'Sp.30 🐞', 2, 10),
+          // The first and last characters above U+FFFF: U+10000 is the pair
+          // D800 DC00 and U+10FFFF the pair DBFF DFFF, each one code point.
+          ('\u{10000} x', 2, 3, 'x', 3, 4),
+          ('\u{10000} x', 0, 1, '\u{10000}', 0, 2),
+          ('\u{10FFFF} x', 2, 3, 'x', 3, 4),
+          ('\u{10FFFF} x', 0, 1, '\u{10FFFF}', 0, 2),
+          // Next to the surrogates, U+D7FF and U+E000 are one code unit each,
+          // as is U+FFFF.
+          ('\u{D7FF}\u{E000}\u{FFFF} x', 4, 5, 'x', 4, 5),
           // The unit is the emoji.
           ('Sp.30 ♀ 🐞', 8, 9, '🐞', 8, 10),
           // A combining accent is a code point of its own, and in the BMP.
@@ -71,8 +80,10 @@ void main() {
       'Elev.6400',
       '😀a\r\nb',
       'a\u0301\r\n٢ 🦋🐞 Sp.30 ♀',
+      '\u{10000}a\u{10FFFF}b\u{D7FF}\u{E000}\u{FFFF}',
       // A lone surrogate is one code point, as `runes` counts it.
       'x\uD800y\uDC00z🐞',
+      'z\uD800',
     ]) {
       final List<int> runes = reading.runes.toList();
       for (int start = 0; start <= runes.length; start++) {
