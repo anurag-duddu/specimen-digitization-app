@@ -321,6 +321,8 @@ its only importer, and its docstring's claim that it is rendered into the harnes
 is, where "Sp.30 ♀" goes and what "P-95-81-16" is are open questions for the owner's single reading
 in WP 2.1; until then those units carry no field.
 
+2026-11-13, the owner, in the coordinator's session. Asked 'Should a printed "LEWIS COLLECTION" heading be stored as the Collection Code?', the owner answered with the button "Yes, store it". The answer covers this heading only; no other printed heading is ruled. `ontology/specimen.yaml` carries it as the notation `lewis_collection_heading`, on the units path only.
+
 Version 2.0 (WP 2.1) adds the relations and the checks of section 4: one collecting event per
 specimen (two labels with different localities or dates for it are a conflict); the place chain; the
 date order; the elevation unit, with the highest-point table; codes are never dates nor any part of
