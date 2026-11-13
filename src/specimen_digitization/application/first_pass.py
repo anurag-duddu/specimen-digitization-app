@@ -886,8 +886,8 @@ def first_readers_spelling(named: str, spans) -> str:
 def units_from_output(region_id: str, output: UnitsOutput, letters, segments) -> ReadingUnits:
     """The label's units from an answer units_output_problems accepted. Where a unit's
     image names a reader, the unit's image is first_readers_spelling of that reader's text:
-    the first reader's text where the two differ in capitals and spacing alone, else the
-    named reader's."""
+    the first reader's text where the two differ in capitals and spacing alone and neither
+    is exactly UNCERTAIN or NOT_VISIBLE, else the named reader's."""
     readings = list(letters.values())
     units = []
     for number, answer in enumerate(output.units, 1):
