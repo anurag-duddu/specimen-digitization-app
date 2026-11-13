@@ -1,10 +1,12 @@
 /// The readings segment (screen blueprints, 6.3).
 ///
-/// Readings share one label chooser and a quiet document flow. Each literal
-/// carries a `DiffText` against the first reading for its region, so the
-/// difference is quantified in a sentence and marked with an underline and
-/// a symbol, never with colour alone. Provenance remains available through
-/// an explicit disclosure. Resolving keeps both readings beside the field.
+/// Readings share one label chooser and a quiet document flow. On a label
+/// without reading units, each literal carries a `DiffText` against the first
+/// reading for its region, so the difference is quantified in a sentence and
+/// marked with an underline and a symbol, never with colour alone. A label
+/// with units shows them first (`ReadingUnitsView`), and its readings without
+/// that comparison. Provenance remains available through an explicit
+/// disclosure. Resolving keeps both readings beside the field.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -16,6 +18,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../../models.dart';
 import '../../reading_alignment.dart';
 import '../../reading_declarations.dart';
+import '../../reading_units.dart';
 import '../../review_context.dart';
 import '../../risk_assessment.dart';
 import '../../evidence_panel.dart';
@@ -23,6 +26,7 @@ import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import 'reader_identity.dart';
 import 'reader_heading.dart';
+import 'reading_units_view.dart';
 
 const List<String> _transcriptionStates = <String>[
   'supported',
@@ -488,6 +492,7 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
     final String name = _regionName(regionId);
     final _LabelTextDraft draft = _draftFor(regionId);
     final Json run = objectOf(specimen.data['run']);
+    final LabelReadingUnits? units = specimen.readingUnits[regionId];
     return KeyedSubtree(
       key: anchors[regionId],
       child: Column(
@@ -495,6 +500,22 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
+          // A label with units shows them first, and its readings below
+          // without a comparison against the first: the units carry where the
+          // readings differ. A label without units keeps the readings view.
+          if (units != null) ...<Widget>[
+            ReadingUnitsView(
+              units: units,
+              compact: widget.compact,
+              readers: unitReaders(
+                units: units,
+                observations: <Json>[...readings, ...specimen.observations],
+                transcription: _accepted(regionId),
+                nameOf: _nameOf,
+              ),
+            ),
+            SizedBox(height: ui.space.s2),
+          ],
           if (readings.isEmpty)
             Text('No model result for this label.', style: ui.type.body)
           else
@@ -522,7 +543,9 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
                         child: _reading(
                           context,
                           observation,
-                          index == 0 ? null : _literalOf(readings.first),
+                          index == 0 || units != null
+                              ? null
+                              : _literalOf(readings.first),
                           name,
                           index,
                           draft,
