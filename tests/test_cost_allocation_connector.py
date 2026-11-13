@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from specimen_digitization.application.cost_allocation import (
-    Usage, allocate_day, day_bounds, day_hours, tenants, zone,
+    Usage, allocate_day, billing_day_of, day_bounds, day_hours, tenants,
 )
 from specimen_digitization.application.cost_ledger import cost_report
 from specimen_digitization.application.domain import Asset, Principal, Scope, Specimen
@@ -59,7 +59,7 @@ def specimen(n):
 
 def window(now):
     """The billing day holding ``now`` and its month's start."""
-    day = now.astimezone(zone()).date()
+    day = billing_day_of(now)
     start, end = day_bounds(day)
     return day, start, end, day_bounds(day.replace(day=1))[0]
 
