@@ -2250,9 +2250,10 @@ def _disagreement_by_rule(task: FieldTask, found: Mapping[str, Label], *, litera
         authority_id: str | None, cited: Sequence[SourceAnswer], answers: Sequence[SourceAnswer],
         sources: frozenset[str]) -> Refusal | None:
     """_disagreement on the units path: the labels as labels_by_rule settles them, with
-    retries that name the rule's backings. A label none of whose candidates has a backing
-    is no evidence against a text another label backs: while another label settles or has
-    a backed candidate, it takes no part."""
+    retries that say what to answer, never how the rule decides (PR #425's seventh round);
+    a field with no approved source (`sources` empty) is not told to ask one. A label none
+    of whose candidates has a backing is no evidence against a text another label backs:
+    while another label settles or has a backed candidate, it takes no part."""
     if any(not _unbacked(label) for label in found.values()):
         found = {region: label for region, label in found.items() if not _unbacked(label)}
     settled = frozenset().union(*(label.settled for label in found.values()))
@@ -2261,63 +2262,53 @@ def _disagreement_by_rule(task: FieldTask, found: Mapping[str, Label], *, litera
     persons = [label for label in found.values() if label.person and collapse(literal) not in label.settled]
     if persons:
         [label, *_] = persons
-        theirs = (f"its text for this field, {', '.join(repr(text) for text in sorted(label.settled))}, "
-            if label.settled else "no single text for this field that settles, ")
+        theirs = (f", which writes {', '.join(repr(text) for text in sorted(label.settled))} for this field"
+            if label.settled else "")
         return Refusal(PERSON_DECIDED, (
-            f"A person transcribed this label: reading {label.person} holds their transcription, and it writes "
-            f"{theirs}which is the label's text whatever your sources found for another reader. Answer with "
-            f"the literal from reading {label.person}, naming that reading; your sources may still settle its "
-            "value (a candidate whose name is one letter from it, or its expansion), cited with its "
-            "authority_id. Or answer several_possibilities or sources_cannot_resolve."), differ=True)
+            f"A person transcribed this label: reading {label.person} holds their transcription{theirs}. Answer "
+            f"with the literal from reading {label.person}, naming that reading (a source answer you cite may "
+            "give its value, with its authority_id), or answer several_possibilities or sources_cannot_resolve."),
+            differ=True)
     tied = [label for label in found.values() if label.tied]
-    if tied:
-        options = tuple(dict.fromkeys(option for label in tied for option in label.options))
-        return Refusal(TIED, (
-            f"The readers write {shown}: {', '.join(repr(option) for option in options)} each have the same "
-            "backing, as many readers and the same first reader, so nothing ranks one above the others. That is "
-            f"for a person to choose: answer several_possibilities with {', '.join(repr(option) for option in options)}."),
-            differ=True, options=options)
-    contested = [label for label in found.values() if label.options]
+    contested = tied or [label for label in found.values() if label.options]
     if contested:
         options = tuple(dict.fromkeys(option for label in contested for option in label.options))
-        return Refusal(TEXTS_CONTESTED, (
-            f"The readers write {shown}: {', '.join(repr(option) for option in options)} each have the backing "
-            "of readers that agree or of another label of this specimen, and neither the image nor an approved "
-            "source backs one. That is for a person to choose: answer several_possibilities with "
-            f"{', '.join(repr(option) for option in options)}."), differ=True, options=options)
+        listed = ", ".join(repr(option) for option in options)
+        retry = (f"The readers write {shown}, and the evidence does not settle one of {listed}: a person "
+            f"chooses. Answer several_possibilities with {listed}.")
+        if tied:
+            return Refusal(TIED, retry, differ=True, options=options)
+        return Refusal(TEXTS_CONTESTED, retry, differ=True, options=options)
     if all(label.settled for label in found.values()) and len(settled) == 1 and not any(
             label.by_source for label in found.values()):
         [one] = settled
         if collapse(literal) == one:
             return None
         return Refusal(DIFFER, (
-            f"The readers write {shown}, and the labels settle on {one!r}: the text the image names, else the "
-            "first reader's spelling of the text that readers who agree or another label of this specimen "
-            f"write (letter case and spacing aside, they are one text). Copy the literal {one!r} exactly from "
-            "a reading that writes it, and name only readings that write it so; to settle on another reader's "
-            "text, ask your approved sources about each reader's text, or answer several_possibilities."),
-            differ=True)
+            f"The readers write {shown}, and the evidence settles on {one!r}. Copy the literal {one!r} exactly "
+            "from a reading that writes it, and name only readings that write it so; or "
+            + ("ask your approved sources about each reader's text, or " if sources else "")
+            + "answer several_possibilities."), differ=True)
     unsettled = [label for label in found.values() if not label.settled]
     if unsettled:
         retry = (
-            f"The readers write {shown} for this field, and nothing backs one reader's text. A label settles on "
-            "a reader's text that has backing: the image names it at its unit (units: image); your approved "
-            "sources were asked about each reader's text, a success answer confirms exactly that one by its own "
-            "name (for a place written as an abbreviation, by its expansion; for a place none of whose readers' "
-            "texts is found by its own name, an answer asked the candidate's own name one letter from it), and "
-            "every other found none (a no_match answer, and no success or ambiguous one)"
-            + (", or found only as another kind of place than this field's; or, for a place, each reader's "
-               "text confirmed as the same place (one candidate at this field's level, with one authority_id)"
-               if task.key in PLACE_VALUE_FIELDS else "" if sources else " (this field has no such source)")
-            + "; two or more readers of the label write it; or another label of this specimen, read by two or "
-            "more readers who agree, writes it. Ask about each reader's text, or answer several_possibilities "
-            "with each reader's text, or sources_cannot_resolve.")
+            f"The readers write {shown} for this field, and the evidence does not settle one reader's text. "
+            + ("Look each reader's text up in your approved sources, or answer " if sources else "Answer ")
+            + "several_possibilities with each reader's text as its options, or sources_cannot_resolve.")
         if any(len({agreement_key(text) for text in label.literals}) > 1 or label.blocked or label.writing > 1
                 for label in unsettled):
             return Refusal(DIFFER, retry, differ=True)
         return Refusal(ONE_READER, retry, differ=True)
-    return _sourced_refusal(task, found, settled, shown, literal=literal, authority_id=authority_id, cited=cited,
+    refused = _sourced_refusal(task, found, settled, shown, literal=literal, authority_id=authority_id, cited=cited,
         answers=answers, sources=sources, seen="which the image names on the label")
+    if refused is not None and refused.reason == LABELS_DIFFER:
+        # The old path's retry here says when such labels settle; this one says what to answer.
+        return Refusal(LABELS_DIFFER, (
+            f"The labels write different text for this field ({shown}). "
+            + ("Ask your approved sources about each label's text, give the authority_id of the place or name "
+               "they confirm and cite the answer for your literal, or answer " if sources else "Answer ")
+            + "several_possibilities with each label's text."), differ=True)
+    return refused
 
 
 def _source_members(task: FieldTask, readings: Sequence[Reading], received: Sequence[SourceAnswer], literal: str,

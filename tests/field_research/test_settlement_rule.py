@@ -377,6 +377,95 @@ def test_candidates_that_tie_on_the_rank_do_not_settle():
     assert refused.reason == agreement.TIED
 
 
+def tied_case():
+    readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading",
+        "Mindanao,\nDavao Prov.") for letter in "AB"))
+    task = FieldTask("province_state", True, FieldValue(), tuple(Candidate(f"1{letter}", text, text, f"ev{letter}{n}")
+        for letter in "AB" for n, text in enumerate(("Davao Prov.", "Mindanao"))), FIELD_TOOLS["province_state"])
+    return task, readings, "Davao Prov.", list(readings)
+
+
+def contested_case():
+    label_2 = tuple(Reading(f"2{letter}", "r2", f"o2{letter.lower()}", "raw_reading", "code 1a") for letter in "AB")
+    readings = with_units((*three_readers(["code la", "code la", "code 1a"]), *label_2), {"r1": None})
+    return task_of("collection_code", readings, lambda text: text.split(" ")[1]), readings, "la", list(readings[:2])
+
+
+def habitat_case():
+    readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading",
+        f"habitat: {text}") for letter, text in (("A", "shrubs"), ("B", "Shrubs"))), {"r1": "o1a"})
+    task = FieldTask("habitat", True, FieldValue(), (Candidate("1B", "habitat: Shrubs", "Shrubs", "ev-b"),),
+        FIELD_TOOLS["habitat"])
+    return task, readings, "Shrubs", [readings[1]]
+
+
+def place_case(names, literal, named):
+    readings = with_units(province_readings(*names), {"r1": None})
+    return task_of("province_state", readings, lambda text: text.split(": ")[1]), readings, literal, [readings[named]]
+
+
+def code_case(texts):
+    readings = with_units(three_readers([f"code {text}" for text in texts]), {"r1": None})
+    return task_of("collection_code", readings, lambda text: text.split(" ")[1]), readings, texts[0], [readings[0]]
+
+
+def two_labels_case(key, first, second):
+    """Both readers of label 1 write `first`, both of label 2 `second`: each label settles on its own text."""
+    readings = with_units(tuple(Reading(f"{number}{letter}", f"r{number}", f"o{number}{letter.lower()}", "raw_reading",
+        f"{key}: {text}") for number, text in ((1, first), (2, second)) for letter in "AB"))
+    return task_of(key, readings, lambda text: text.split(": ")[1]), readings, first, list(readings[:2])
+
+
+# The units path's retries (agreement._disagreement_by_rule), each for a field with approved
+# sources (province_state) or none (collection_code, habitat).
+UNSETTLED = (", and the evidence does not settle one reader's text. {}several_possibilities with each "
+    "reader's text as its options, or sources_cannot_resolve.")
+ASK = "Look each reader's text up in your approved sources, or answer "
+SETTLED = ("Copy the literal {0!r} exactly from a reading that writes it, and name only readings that write it so; "
+    "or {1}answer several_possibilities.")
+RETRIES = [
+    (tied_case, agreement.TIED, "The readers write 'Davao Prov.'; 'Mindanao', and the evidence does not settle one "
+        "of 'Davao Prov.', 'Mindanao': a person chooses. Answer several_possibilities with 'Davao Prov.', 'Mindanao'."),
+    (contested_case, agreement.TEXTS_CONTESTED, "The readers write '1a'; 'la', and the evidence does not settle one "
+        "of 'la', '1a': a person chooses. Answer several_possibilities with 'la', '1a'."),
+    (habitat_case, agreement.DIFFER, "The readers write 'Shrubs'; 'shrubs', and the evidence settles on 'shrubs'. "
+        + SETTLED.format("shrubs", "")),
+    (lambda: place_case(("Illinois", "Illinois", "Indiana"), "Indiana", 2), agreement.DIFFER,
+        "The readers write 'Illinois'; 'Indiana', and the evidence settles on 'Illinois'. "
+        + SETTLED.format("Illinois", "ask your approved sources about each reader's text, or ")),
+    (lambda: place_case(("Illinois", "Indiana"), "Illinois", 0), agreement.DIFFER,
+        "The readers write 'Illinois'; 'Indiana' for this field" + UNSETTLED.format(ASK)),
+    (lambda: code_case(("P-95", "P-93")), agreement.DIFFER,
+        "The readers write 'P-93'; 'P-95' for this field" + UNSETTLED.format("Answer ")),
+    (lambda: code_case(("P-95",)), agreement.ONE_READER,
+        "The readers write 'P-95' for this field" + UNSETTLED.format("Answer ")),
+    (lambda: two_labels_case("habitat", "shrubs", "forest"), agreement.LABELS_DIFFER,
+        "The labels write different text for this field ('forest'; 'shrubs'). Answer several_possibilities with each "
+        "label's text."),
+    (lambda: two_labels_case("province_state", "Illinois", "Indiana"), agreement.LABELS_DIFFER,
+        "The labels write different text for this field ('Illinois'; 'Indiana'). Ask your approved sources about each "
+        "label's text, give the authority_id of the place or name they confirm and cite the answer for your literal, "
+        "or answer several_possibilities with each label's text."),
+]
+# What the code decides by, which a retry does not say (Codex round 7, W4).
+DEFINITIONS = ("backing", "backs", "one letter", "first reader", "two or more", "as many readers", "success answer",
+    "no_match", "agree", "found none", "units: image", "settles on a reader's text", "another label", "settle only",
+    "settles when")
+
+
+@pytest.mark.parametrize(("case", "reason", "retry"), RETRIES, ids=["tied", "contested", "settled-no-source",
+    "settled-with-source", "unsettled-with-source", "unsettled-no-source", "one-reader-no-source",
+    "labels-differ-no-source", "labels-differ-with-source"])
+def test_the_units_paths_retries_say_what_to_answer_never_how_the_code_decides(case, reason, retry):
+    """Codex round 7 (W4): each retry the units path sends the expert names the readers' texts
+    and what to answer; a field with no approved source is not told to ask one."""
+    task, readings, literal, named = case()
+    refused = agreement.refusal(task, readings, literal=literal, named=named, value=None, authority_id=None,
+        cited=[], received=[])
+    assert (refused.reason, refused.retry) == (reason, retry)
+    assert not [word for word in DEFINITIONS if word in refused.retry]
+
+
 # ---- rule 2: a person's text --------------------------------------------------------------------
 
 def test_a_persons_text_binds_against_an_exact_source_match(tmp_path):

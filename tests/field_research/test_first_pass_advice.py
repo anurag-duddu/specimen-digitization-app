@@ -669,14 +669,17 @@ def test_a_person_decided_transcript_binds_its_label_against_an_exact_source_mat
     assert place.reason == agreement.PERSON_DECIDED + " Settled."
 
 
-def test_an_expert_naming_another_reader_of_a_person_decided_label_is_told_to_answer_with_the_persons(tmp_path):
+def test_an_expert_naming_another_reader_of_a_person_decided_label_is_told_to_answer_with_the_persons(
+        tmp_path, first_pass_path):
     """Round 2 of #414's review: the real resolver's expert first answers
     with 1B's "Chimaltenango", which TGN confirms exactly, on a label a
     reviewer transcribed as 1A's "Chimaltenago". Its check sends it back
     naming the person's reading 1A (PERSON_DECIDED); it answers again with
     1A's text, the department as the value, and the field settles on the
     person's literal with the value normalised through the near spelling.
-    The request names the label and its reading under person_decided."""
+    The request names the label and its reading under person_decided. On the
+    units path the retry says what to answer, never how the code decides
+    (PR #425's seventh round)."""
     from pydantic_ai.messages import ModelRequest, ModelResponse, RetryPromptPart, ToolCallPart, ToolReturnPart
     from pydantic_ai.models.function import FunctionModel
 
@@ -717,6 +720,12 @@ def test_an_expert_naming_another_reader_of_a_person_decided_label_is_told_to_an
     settle(rig, guatemalan(province_state=province), tools=Gazetteer(rig.blobs))
     assert retries and "A person transcribed this label: reading 1A holds their transcription" in retries[0]
     assert "'Chimaltenago'" in retries[0]
+    if first_pass_path == "units":
+        assert ("A person transcribed this label: reading 1A holds their transcription, which writes "
+            "'Chimaltenago' for this field. Answer with the literal from reading 1A, naming that reading (a "
+            "source answer you cite may give its value, with its authority_id), or answer "
+            "several_possibilities or sources_cannot_resolve.") in retries[0]
+        assert "one letter" not in retries[0]
     assert json.loads(prompts[0].removeprefix(INPUT_PREFIX))["person_decided"] == {"1": "1A"}
     place = run.fields["province_state"]
     assert (place.state, place.literal, place.normalized, place.authority_id) == (
