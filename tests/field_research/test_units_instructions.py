@@ -89,6 +89,21 @@ def test_the_units_paths_instructions_are_the_old_ones_with_units_txt_s_texts_an
     assert undone == old
 
 
+# The owner's reading of 2026-11-13 (spec section 5): a printed "LEWIS COLLECTION" heading is the
+# Collection Code, as the ontology's brief text states it.
+LEWIS_LINE = (
+    '- "LEWIS COLLECTION": the printed heading of the Lewis Collection\'s label templates; it is the Collection '
+    "Code, copied as written [collection_code].")
+
+
+@pytest.mark.parametrize("key", FIELD_TOOLS)
+def test_the_lewis_heading_ruling_is_in_every_units_path_instruction_once_and_in_no_old_path_one(key):
+    """The shared briefs (common.txt, collection_code.txt) stay main's: the old path's text names no Lewis."""
+    assert instructions(key, units=True).count(LEWIS_LINE) == 1
+    assert "lewis" not in instructions(key).lower()
+    assert "lewis" not in instructions(key, units=True).lower().replace(LEWIS_LINE.lower(), "")
+
+
 @pytest.mark.parametrize("key", FIELD_TOOLS)
 def test_the_units_paths_instructions_name_no_first_pass_preference(key):
     """The units path's request carries the units and no first pass opinion

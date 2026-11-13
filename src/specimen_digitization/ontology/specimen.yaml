@@ -10,10 +10,12 @@
 # label notations moved from the Insects harness knowledge (its NOTATIONS,
 # PLACE_ALIASES and RULES; the module and its test are deleted with this
 # version) and from the label notations of field_research/prompts/common.txt,
-# the fields a unit could belong to, and the units whose meaning waits for the
-# owner's reading in WP 2.1. Every entry names its source. A source
-# "<path>:<lines>" is a file of this repository at the commit that adds this
-# file, its path from the repository's root; "insects.py:<lines> at 7a09445a2"
+# the fields a unit could belong to, the units whose meaning waits for the
+# owner's reading in WP 2.1, and, added on 2026-11-13, the owner's reading of
+# one printed heading (the notation lewis_collection_heading). Every entry
+# names its source. A source "<path>:<lines>" is a file of this repository at
+# the commit that adds the entry, its path from the repository's root;
+# "insects.py:<lines> at 7a09445a2"
 # is the deleted module, at main 7a09445a2, where the plan's WP 1.0 row gives
 # its path (docs/execution/units/PLAN.md:98).
 #
@@ -542,6 +544,14 @@ notations:
       - src/specimen_digitization/field_research/prompts/habitat.txt:4
       - src/specimen_digitization/field_research/prompts/collection_method.txt:4
       - tests/fixtures/field_model_pilot_rows.json:134
+  # The owner's reading of 2026-11-13 (the spec's section 5, its dated line). The
+  # source line is that line of the spec at the commit that adds this entry.
+  - id: lewis_collection_heading
+    written: ["LEWIS COLLECTION"]
+    readings: ["the printed heading of the Lewis Collection's label templates; it is the Collection Code, copied as written"]
+    fields: [collection_code]
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:324
 
 # Questions for the owner's single reading in WP 2.1 (plan section 6). A
 # question with `written` forms is about units: until the reading a unit
