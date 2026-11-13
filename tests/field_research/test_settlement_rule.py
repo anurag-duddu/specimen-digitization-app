@@ -22,6 +22,8 @@ from types import SimpleNamespace
 import pytest
 import test_step as rig_module
 from PIL import Image
+from test_experts import CHIMALTENANGO, FIRST, PILOT_DATES, FakeTools, nothing, tgn
+from test_experts import answer as expert_answer
 from test_first_pass_advice import (
     LA,
     LABEL_2_LA,
@@ -377,94 +379,191 @@ def test_candidates_that_tie_on_the_rank_do_not_settle():
     assert refused.reason == agreement.TIED
 
 
-def tied_case():
-    readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading",
-        "Mindanao,\nDavao Prov.") for letter in "AB"))
-    task = FieldTask("province_state", True, FieldValue(), tuple(Candidate(f"1{letter}", text, text, f"ev{letter}{n}")
-        for letter in "AB" for n, text in enumerate(("Davao Prov.", "Mindanao"))), FIELD_TOOLS["province_state"])
-    return task, readings, "Davao Prov.", list(readings)
+def retry_case(task, readings, literal, named, *, received=(), cited=(), authority_id=None):
+    """An answer the units path refuses, as agreement.refusal takes it; `received` is every
+    source answer the expert's lookups returned."""
+    return SimpleNamespace(task=task, readings=readings, literal=literal, named=named, received=list(received),
+        cited=list(cited), authority_id=authority_id)
+
+
+def refused_by(case):
+    return agreement.refusal(case.task, case.readings, literal=case.literal, named=case.named, value=None,
+        authority_id=case.authority_id, cited=case.cited, received=case.received)
+
+
+def tied_case(text="Mindanao,\nDavao Prov.", key="province_state"):
+    """Both readers write the same two lines, each named by the image: two candidates that tie."""
+    lines = tuple(line.rstrip(",") for line in text.split("\n"))
+    readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading", text)
+        for letter in "AB"))
+    task = FieldTask(key, True, FieldValue(), tuple(Candidate(f"1{letter}", text, line, f"ev{letter}{n}")
+        for letter in "AB" for n, line in enumerate(sorted(lines))), FIELD_TOOLS[key])
+    return retry_case(task, readings, sorted(lines)[0], list(readings))
 
 
 def contested_case():
     label_2 = tuple(Reading(f"2{letter}", "r2", f"o2{letter.lower()}", "raw_reading", "code 1a") for letter in "AB")
     readings = with_units((*three_readers(["code la", "code la", "code 1a"]), *label_2), {"r1": None})
-    return task_of("collection_code", readings, lambda text: text.split(" ")[1]), readings, "la", list(readings[:2])
+    return retry_case(task_of("collection_code", readings, lambda text: text.split(" ")[1]), readings, "la",
+        list(readings[:2]))
 
 
-def habitat_case():
+def habitat_case(first="shrubs", second="Shrubs", *, both=False):
+    """A writes `first`, B `second`, the image naming A's text; the answer is B's."""
     readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading",
-        f"habitat: {text}") for letter, text in (("A", "shrubs"), ("B", "Shrubs"))), {"r1": "o1a"})
-    task = FieldTask("habitat", True, FieldValue(), (Candidate("1B", "habitat: Shrubs", "Shrubs", "ev-b"),),
-        FIELD_TOOLS["habitat"])
-    return task, readings, "Shrubs", [readings[1]]
+        f"habitat: {text}") for letter, text in (("A", first), ("B", second))), {"r1": "o1a"})
+    filed = (("1A", first), ("1B", second)) if both else (("1B", second),)
+    task = FieldTask("habitat", True, FieldValue(), tuple(Candidate(name, f"habitat: {text}", text, f"ev-{name}")
+        for name, text in filed), FIELD_TOOLS["habitat"])
+    return retry_case(task, readings, second, [readings[1]])
 
 
-def place_case(names, literal, named):
+# Getty TGN's answers (test_experts.tgn and nothing): Illinois and New Mexico first-level units,
+# Arizona none.
+IN_US = (("United States", "tgn:7012149"),)
+ILLINOIS_TGN = tgn("Illinois", "ev-illinois", ("Illinois", "tgn:7007617", FIRST, IN_US))
+NEW_MEXICO_TGN = tgn("New Mexico", "ev-new-mexico", ("New Mexico", "tgn:7007519", FIRST, IN_US))
+ARIZONA_NONE = nothing("Arizona", "ev-arizona")
+
+
+def place_case(names, literal, named, **answers):
     readings = with_units(province_readings(*names), {"r1": None})
-    return task_of("province_state", readings, lambda text: text.split(": ")[1]), readings, literal, [readings[named]]
+    return retry_case(task_of("province_state", readings, lambda text: text.split(": ")[1]), readings, literal,
+        [readings[named]], **answers)
 
 
 def code_case(texts):
     readings = with_units(three_readers([f"code {text}" for text in texts]), {"r1": None})
-    return task_of("collection_code", readings, lambda text: text.split(" ")[1]), readings, texts[0], [readings[0]]
+    return retry_case(task_of("collection_code", readings, lambda text: text.split(" ")[1]), readings, texts[0],
+        [readings[0]])
 
 
 def two_labels_case(key, first, second):
     """Both readers of label 1 write `first`, both of label 2 `second`: each label settles on its own text."""
     readings = with_units(tuple(Reading(f"{number}{letter}", f"r{number}", f"o{number}{letter.lower()}", "raw_reading",
         f"{key}: {text}") for number, text in ((1, first), (2, second)) for letter in "AB"))
-    return task_of(key, readings, lambda text: text.split(": ")[1]), readings, first, list(readings[:2])
+    return retry_case(task_of(key, readings, lambda text: text.split(": ")[1]), readings, first, list(readings[:2]))
 
 
-# The units path's retries (agreement._disagreement_by_rule), each for a field with approved
-# sources (province_state) or none (collection_code, habitat).
+def person_case():
+    """A person transcribed label 1 as 1A's "dry  shrubs" (two spaces); the answer is 1B's text."""
+    from specimen_digitization.field_research.contracts import FirstPassAdvice
+
+    advice = FirstPassAdvice(preferred="1A", rationale="", reader_notes={}, differences=(), person_decided=True)
+    readings = with_units((Reading("1A", "r1", "o1a", "decided_transcript", "habitat: dry  shrubs", first_pass=advice),
+        Reading("1B", "r1", "o1b", "raw_reading", "habitat: dry  shurbs", first_pass=advice)))
+    task = task_of("habitat", readings, lambda text: text.split(": ")[1])
+    return retry_case(task, readings, "dry  shurbs", [readings[1]])
+
+
+def near_spelling_case():
+    """A writes "Chimaltenago", B "Chimaltenango", the image naming A's; Getty TGN confirms B's
+    and finds nothing for A's; the answer is B's text."""
+    readings = with_units(province_readings("Chimaltenago", "Chimaltenango"), {"r1": "o1a"})
+    task = task_of("province_state", readings, lambda text: text.split(": ")[1])
+    return retry_case(task, readings, "Chimaltenango", [readings[1]], authority_id="tgn:1000565",
+        cited=[CHIMALTENANGO], received=[CHIMALTENANGO, nothing("Chimaltenago", "ev-none")])
+
+
+# The units path's retries (agreement._disagreement_by_rule and _sourced_refusal), each for a
+# field with approved sources (province_state) or none (collection_code, habitat), with each
+# text as a reading writes it (two spaces in the two-space rows; Codex round 8, X2).
 # Each reason by its name in agreement, which main's src lacks for some (collection must not fail there).
 UNSETTLED = (", and the evidence does not settle one reader's text. {}several_possibilities with each "
     "reader's text as its options, or sources_cannot_resolve.")
 ASK = "Look each reader's text up in your approved sources, or answer "
 SETTLED = ("Copy the literal {0!r} exactly from a reading that writes it, and name only readings that write it so; "
     "or {1}answer several_possibilities.")
+ILLINOIS_CITED = dict(literal="Illinois", authority_id="tgn:7007617", source_evidence_ids=["ev-illinois"])
+NEW_MEXICO_CITED = dict(literal="New  Mexico", authority_id="tgn:7007519", source_evidence_ids=["ev-new-mexico"])
+# (id, the case, its reason, its retry, the answer that follows it: several_possibilities with
+# options, or a resolved literal and the readings and source answer it names; None where the
+# retry asks for nothing a reading writes)
 RETRIES = [
-    (tied_case, "TIED", "The readers write 'Davao Prov.'; 'Mindanao', and the evidence does not settle one "
-        "of 'Davao Prov.', 'Mindanao': a person chooses. Answer several_possibilities with 'Davao Prov.', 'Mindanao'."),
-    (contested_case, "TEXTS_CONTESTED", "The readers write '1a'; 'la', and the evidence does not settle one "
-        "of 'la', '1a': a person chooses. Answer several_possibilities with 'la', '1a'."),
-    (habitat_case, "DIFFER", "The readers write 'Shrubs'; 'shrubs', and the evidence settles on 'shrubs'. "
-        + SETTLED.format("shrubs", "")),
-    (lambda: place_case(("Illinois", "Illinois", "Indiana"), "Indiana", 2), "DIFFER",
-        "The readers write 'Illinois'; 'Indiana', and the evidence settles on 'Illinois'. "
-        + SETTLED.format("Illinois", "ask your approved sources about each reader's text, or ")),
-    (lambda: place_case(("Illinois", "Indiana"), "Illinois", 0), "DIFFER",
-        "The readers write 'Illinois'; 'Indiana' for this field" + UNSETTLED.format(ASK)),
-    (lambda: code_case(("P-95", "P-93")), "DIFFER",
-        "The readers write 'P-93'; 'P-95' for this field" + UNSETTLED.format("Answer ")),
-    (lambda: code_case(("P-95",)), "ONE_READER",
-        "The readers write 'P-95' for this field" + UNSETTLED.format("Answer ")),
-    (lambda: two_labels_case("habitat", "shrubs", "forest"), "LABELS_DIFFER",
+    ("tied", tied_case, "TIED", "The readers write 'Davao Prov.'; 'Mindanao', and the evidence does not settle one "
+        "of 'Davao Prov.', 'Mindanao': a person chooses. Answer several_possibilities with 'Davao Prov.', 'Mindanao'.",
+        dict(options=["Davao Prov.", "Mindanao"])),
+    ("contested", contested_case, "TEXTS_CONTESTED", "The readers write '1a'; 'la', and the evidence does not settle "
+        "one of 'la', '1a': a person chooses. Answer several_possibilities with 'la', '1a'.",
+        dict(options=["la", "1a"])),
+    ("settled-no-source", habitat_case, "DIFFER", "The readers write 'Shrubs'; 'shrubs', and the evidence settles on "
+        "'shrubs'. " + SETTLED.format("shrubs", ""), dict(literal="shrubs", reading_names=["1A"])),
+    ("settled-with-source", lambda: place_case(("Illinois", "Illinois", "Indiana"), "Indiana", 2,
+        received=[ILLINOIS_TGN]), "DIFFER", "The readers write 'Illinois'; 'Indiana', and the evidence settles on "
+        "'Illinois'. " + SETTLED.format("Illinois", "ask your approved sources about each reader's text, or "),
+        dict(ILLINOIS_CITED, reading_names=["1A", "1B"])),
+    ("unsettled-with-source", lambda: place_case(("Illinois", "Indiana"), "Illinois", 0), "DIFFER",
+        "The readers write 'Illinois'; 'Indiana' for this field" + UNSETTLED.format(ASK),
+        dict(options=["Illinois", "Indiana"])),
+    ("unsettled-no-source", lambda: code_case(("P-95", "P-93")), "DIFFER",
+        "The readers write 'P-93'; 'P-95' for this field" + UNSETTLED.format("Answer "), dict(options=["P-93", "P-95"])),
+    ("one-reader-no-source", lambda: code_case(("P-95",)), "ONE_READER",
+        "The readers write 'P-95' for this field" + UNSETTLED.format("Answer "), None),
+    ("labels-differ-no-source", lambda: two_labels_case("habitat", "shrubs", "forest"), "LABELS_DIFFER",
         "The labels write different text for this field ('forest'; 'shrubs'). Answer several_possibilities with each "
-        "label's text."),
-    (lambda: two_labels_case("province_state", "Illinois", "Indiana"), "LABELS_DIFFER",
+        "label's text.", dict(options=["forest", "shrubs"])),
+    ("labels-differ-with-source", lambda: two_labels_case("province_state", "Illinois", "Indiana"), "LABELS_DIFFER",
         "The labels write different text for this field ('Illinois'; 'Indiana'). Ask your approved sources about each "
         "label's text, give the authority_id of the place or name they confirm and cite the answer for your literal, "
-        "or answer several_possibilities with each label's text."),
+        "or answer several_possibilities with each label's text.", dict(options=["Illinois", "Indiana"])),
+    ("two-space-settled", lambda: habitat_case("dry  forest", "Dry  forest", both=True), "DIFFER",
+        "The readers write 'Dry  forest'; 'dry  forest', and the evidence settles on 'dry  forest'. "
+        + SETTLED.format("dry  forest", ""), dict(literal="dry  forest", reading_names=["1A"])),
+    ("two-space-tied", lambda: tied_case("dry  forest\nwet  meadow", "habitat"), "TIED",
+        "The readers write 'dry  forest'; 'wet  meadow', and the evidence does not settle one of 'dry  forest', "
+        "'wet  meadow': a person chooses. Answer several_possibilities with 'dry  forest', 'wet  meadow'.",
+        dict(options=["dry  forest", "wet  meadow"])),
+    ("person", person_case, "PERSON_DECIDED", "A person transcribed this label: reading 1A holds their "
+        "transcription, which writes 'dry  shrubs' for this field. Answer with the literal from reading 1A, naming "
+        "that reading (a source answer you cite may give its value, with its authority_id), or answer "
+        "several_possibilities or sources_cannot_resolve.", dict(literal="dry  shrubs", reading_names=["1A"])),
+    ("near-spelling", near_spelling_case, "DIFFER", "Give 'Chimaltenago' as the literal, naming the reading that "
+        "writes it, and the source's candidate as the value with its authority_id.",
+        dict(literal="Chimaltenago", reading_names=["1A"], value="Chimaltenango", authority_id="tgn:1000565",
+            source_evidence_ids=["ev-chim"])),
+    ("source-settled-other-answered", lambda: place_case(("New  Mexico", "Arizona"), "Arizona", 1,
+        received=[NEW_MEXICO_TGN, ARIZONA_NONE]), "DIFFER", "The labels settle on the reader's text 'New  Mexico': "
+        "copy the literal from a reading that writes it, or answer several_possibilities.",
+        dict(NEW_MEXICO_CITED, reading_names=["1A"])),
+    ("source-settled-uncited", lambda: place_case(("New  Mexico", "Arizona"), "New  Mexico", 0,
+        received=[NEW_MEXICO_TGN, ARIZONA_NONE]), "DIFFER", "Cite the evidence_id of the source answer that confirms "
+        "'New  Mexico'.", dict(NEW_MEXICO_CITED, reading_names=["1A"])),
 ]
-# What the code decides by, which a retry does not say (Codex round 7, W4).
+# What the code decides by, which a retry does not say (Codex rounds 7 and 8, W4 and X1).
 DEFINITIONS = ("backing", "backs", "one letter", "first reader", "two or more", "as many readers", "success answer",
     "no_match", "agree", "found none", "units: image", "settles on a reader's text", "another label", "settle only",
-    "settles when")
+    "settles when", "which the image names", "confirms reader")
 
 
-@pytest.mark.parametrize(("case", "reason", "retry"), RETRIES, ids=["tied", "contested", "settled-no-source",
-    "settled-with-source", "unsettled-with-source", "unsettled-no-source", "one-reader-no-source",
-    "labels-differ-no-source", "labels-differ-with-source"])
+@pytest.mark.parametrize(("case", "reason", "retry"), [row[1:4] for row in RETRIES], ids=[row[0] for row in RETRIES])
 def test_the_units_paths_retries_say_what_to_answer_never_how_the_code_decides(case, reason, retry):
-    """Codex round 7 (W4): each retry the units path sends the expert names the readers' texts
-    and what to answer; a field with no approved source is not told to ask one."""
-    task, readings, literal, named = case()
-    refused = agreement.refusal(task, readings, literal=literal, named=named, value=None, authority_id=None,
-        cited=[], received=[])
+    """Codex rounds 7 and 8 (W4, X1, X2): each retry the units path sends the expert, reached
+    through an answer it refuses, names the readers' texts as a reading writes them and what
+    to answer; a field with no approved source is not told to ask one."""
+    refused = refused_by(case())
     assert (refused.reason, refused.retry) == (getattr(agreement, reason), retry)
     assert not [word for word in DEFINITIONS if word in refused.retry]
+
+
+@pytest.mark.parametrize(("case", "retry", "follows"), [(row[1], row[3], row[4]) for row in RETRIES],
+    ids=[row[0] for row in RETRIES])
+def test_the_answer_each_units_path_retry_asks_for_passes_the_experts_checks(case, retry, follows):
+    """Codex round 8 (X2): each text a retry prints is one a reading writes, and the answer that
+    follows the retry, its literal or options copied from it, passes experts.py's checks
+    (_Expert.validate, with the source answers the case's lookups returned)."""
+    from specimen_digitization.field_research import experts
+
+    made = case()
+    if follows is None:
+        assert "'P-95'" in retry and any("P-95" in reading.text for reading in made.readings)
+        return
+    for text in follows.get("options") or [follows["literal"]]:
+        assert repr(text) in retry and any(text in reading.text for reading in made.readings)
+    expert = experts._Expert(made.task, made.readings, FakeTools(), PILOT_DATES)
+    for found in made.received:
+        expert.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    outcome = "several_possibilities" if "options" in follows else "resolved"
+    expert.validate(expert_answer(outcome=outcome, **follows))
 
 
 # ---- rule 2: a person's text --------------------------------------------------------------------

@@ -225,7 +225,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from functools import lru_cache
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -2161,7 +2161,7 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
     if not found:
         return None
     if any(reading.units is not None for reading in readings):
-        return _disagreement_by_rule(task, found, literal=literal, authority_id=authority_id, cited=cited,
+        return _disagreement_by_rule(task, readings, found, literal=literal, authority_id=authority_id, cited=cited,
             answers=answers, sources=sources)
     unread = sorted(frozenset().union(*(label.unread for label in found.values())))
     if unread:
@@ -2237,7 +2237,7 @@ def _disagreement(task: FieldTask, readings: Sequence[Reading], *, literal: str,
             "Ask about each reader's text, or answer several_possibilities with each reader's "
             "text, or sources_cannot_resolve."), differ=True)
     return _sourced_refusal(task, found, settled, shown, literal=literal, authority_id=authority_id, cited=cited,
-        answers=answers, sources=sources, seen="which the first pass confirmed against the image")
+        answers=answers, sources=sources)
 
 
 def _unbacked(label: Label) -> bool:
@@ -2246,23 +2246,38 @@ def _unbacked(label: Label) -> bool:
         or any(candidate.backings for candidate in label.candidates))
 
 
-def _disagreement_by_rule(task: FieldTask, found: Mapping[str, Label], *, literal: str,
-        authority_id: str | None, cited: Sequence[SourceAnswer], answers: Sequence[SourceAnswer],
+def _as_written(readings: Sequence[Reading], text: str) -> str:
+    """A label's text (collapsed: one space for each run of white space) as the first reading
+    that holds it writes it: that reading's own characters at its first place there
+    (literal_places), which an answer can copy; the text itself when no reading holds it."""
+    for reading in readings:
+        for start, end in literal_places(reading.text, text)[:1]:
+            return reading.text[start:end]
+    return text
+
+
+def _disagreement_by_rule(task: FieldTask, readings: Sequence[Reading], found: Mapping[str, Label], *,
+        literal: str, authority_id: str | None, cited: Sequence[SourceAnswer], answers: Sequence[SourceAnswer],
         sources: frozenset[str]) -> Refusal | None:
     """_disagreement on the units path: the labels as labels_by_rule settles them, with
-    retries that say what to answer, never how the rule decides (PR #425's seventh round);
-    a field with no approved source (`sources` empty) is not told to ask one. A label none
-    of whose candidates has a backing is no evidence against a text another label backs:
-    while another label settles or has a backed candidate, it takes no part."""
+    retries that say what to answer, never how the rule decides (PR #425's seventh and
+    eighth rounds), each text in them as a reading writes it (_as_written); a field with no
+    approved source (`sources` empty) is not told to ask one. A label none of whose
+    candidates has a backing is no evidence against a text another label backs: while
+    another label settles or has a backed candidate, it takes no part."""
+
+    def written(text: str) -> str:
+        return _as_written(readings, text)
+
     if any(not _unbacked(label) for label in found.values()):
         found = {region: label for region, label in found.items() if not _unbacked(label)}
     settled = frozenset().union(*(label.settled for label in found.values()))
-    shown = "; ".join(repr(text) for text in sorted(frozenset().union(*(label.literals | frozenset(label.blocked)
-        for label in found.values()))))
+    shown = "; ".join(repr(written(text)) for text in sorted(frozenset().union(*(
+        label.literals | frozenset(label.blocked) for label in found.values()))))
     persons = [label for label in found.values() if label.person and collapse(literal) not in label.settled]
     if persons:
         [label, *_] = persons
-        theirs = (f", which writes {', '.join(repr(text) for text in sorted(label.settled))} for this field"
+        theirs = (f", which writes {', '.join(repr(written(text)) for text in sorted(label.settled))} for this field"
             if label.settled else "")
         return Refusal(PERSON_DECIDED, (
             f"A person transcribed this label: reading {label.person} holds their transcription{theirs}. Answer "
@@ -2273,7 +2288,7 @@ def _disagreement_by_rule(task: FieldTask, found: Mapping[str, Label], *, litera
     contested = tied or [label for label in found.values() if label.options]
     if contested:
         options = tuple(dict.fromkeys(option for label in contested for option in label.options))
-        listed = ", ".join(repr(option) for option in options)
+        listed = ", ".join(repr(written(option)) for option in options)
         retry = (f"The readers write {shown}, and the evidence does not settle one of {listed}: a person "
             f"chooses. Answer several_possibilities with {listed}.")
         if tied:
@@ -2285,8 +2300,8 @@ def _disagreement_by_rule(task: FieldTask, found: Mapping[str, Label], *, litera
         if collapse(literal) == one:
             return None
         return Refusal(DIFFER, (
-            f"The readers write {shown}, and the evidence settles on {one!r}. Copy the literal {one!r} exactly "
-            "from a reading that writes it, and name only readings that write it so; or "
+            f"The readers write {shown}, and the evidence settles on {written(one)!r}. Copy the literal "
+            f"{written(one)!r} exactly from a reading that writes it, and name only readings that write it so; or "
             + ("ask your approved sources about each reader's text, or " if sources else "")
             + "answer several_possibilities."), differ=True)
     unsettled = [label for label in found.values() if not label.settled]
@@ -2300,7 +2315,7 @@ def _disagreement_by_rule(task: FieldTask, found: Mapping[str, Label], *, litera
             return Refusal(DIFFER, retry, differ=True)
         return Refusal(ONE_READER, retry, differ=True)
     refused = _sourced_refusal(task, found, settled, shown, literal=literal, authority_id=authority_id, cited=cited,
-        answers=answers, sources=sources, seen="which the image names on the label")
+        answers=answers, sources=sources, written=written)
     if refused is not None and refused.reason == LABELS_DIFFER:
         # The old path's retry here says when such labels settle; this one says what to answer.
         return Refusal(LABELS_DIFFER, (
@@ -2325,10 +2340,13 @@ def _source_members(task: FieldTask, readings: Sequence[Reading], received: Sequ
 
 def _sourced_refusal(task: FieldTask, found: Mapping[str, Label], settled: frozenset[str], shown: str, *,
         literal: str, authority_id: str | None, cited: Sequence[SourceAnswer], answers: Sequence[SourceAnswer],
-        sources: frozenset[str], seen: str) -> Refusal | None:
+        sources: frozenset[str], written: Callable[[str], str] | None = None) -> Refusal | None:
     """_disagreement's last checks, for labels that all settle and a source settled one
     of them, or for labels that settle on different texts: the answer's literal is the
-    labels' text and cites the answer confirming it, or one authority confirms each."""
+    labels' text and cites the answer confirming it, or one authority confirms each. On the
+    units path (`written`, _as_written) each text a retry names is as a reading writes it,
+    and the near spelling's retry says only what to answer."""
+    say = written or (lambda text: text)
     cited = [a for a in cited if a.source_id in sources]
     want = collapse(literal)
     if len(settled) == 1:
@@ -2340,18 +2358,22 @@ def _sourced_refusal(task: FieldTask, found: Mapping[str, Label], settled: froze
             if agreement_key(text) == agreement_key(one)) or frozenset({one})
         if want not in members:
             spelled = next((label for label in found.values() if label.matched and label.settled == {one}), None)
+            if spelled is not None and written is not None:
+                return Refusal(DIFFER, (
+                    f"Give {say(one)!r} as the literal, naming the reading that writes it, and the source's "
+                    "candidate as the value with its authority_id."), differ=True)
             if spelled is not None:
                 return Refusal(DIFFER, (
                     f"Your source confirms reader {', '.join(spelled.matched_by)}'s {spelled.matched!r}, one "
-                    f"letter from {one!r}, {seen}: the label writes "
+                    f"letter from {one!r}, which the first pass confirmed against the image: the label writes "
                     f"{one!r}. Give {one!r} as the literal, naming the reading that writes it, and the source's "
                     "candidate as the value with its authority_id (a near spelling)."), differ=True)
             return Refusal(DIFFER, (
-                f"The labels settle on the reader's text {one!r}: copy the literal from a reading "
+                f"The labels settle on the reader's text {say(one)!r}: copy the literal from a reading "
                 "that writes it, or answer several_possibilities."), differ=True)
         if not any(identities(cited, member, task.key, near=True) for member in members):
             return Refusal(DIFFER, (
-                f"Cite the evidence_id of the source answer that confirms {one!r}"
+                f"Cite the evidence_id of the source answer that confirms {say(one)!r}"
                 + (" (for an abbreviation, the answer asked its expansion, whose one candidate at this "
                    "field's level is your value)" if task.key in PLACE_VALUE_FIELDS and abbreviated(one)
                    else "") + "."), differ=True)

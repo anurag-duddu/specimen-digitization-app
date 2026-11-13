@@ -798,7 +798,8 @@ def test_a_source_confirming_the_other_readers_one_letter_correction_keeps_the_p
     literal with first_pass_overridden, as did this branch before the fix.
     On the units path, the image naming 1A's text: rule 1's merge, one
     candidate, 1A's literal, the department its value, cleared; only the
-    finding is another (cleared in place of first_pass_followed)."""
+    finding is another (cleared in place of first_pass_followed); an answer with
+    1B's text is sent back with what to answer alone."""
     rig = t1_329_rig(tmp_path)
     run = rig.specimen.run
     settle(rig, guatemalan(province_state=province_on(literal, reading, value)), tools=Gazetteer(rig.blobs))
@@ -813,6 +814,11 @@ def test_a_source_confirming_the_other_readers_one_letter_correction_keeps_the_p
             for query in ("Chimaltenango", "Chimaltenago")]
         refused = agreement.refusal(task, readings, literal="Chimaltenango", named=[readings[1]], value=None,
             authority_id="tgn:1000565", cited=answers[:1], received=answers)
+        if first_pass_path == "units":
+            # Codex round 8 (X1): what to answer, not why the image's spelling stands.
+            assert refused.retry == ("Give 'Chimaltenago' as the literal, naming the reading that writes it, and "
+                "the source's candidate as the value with its authority_id.")
+            return
         assert "Your source confirms reader 1B's 'Chimaltenango'" in refused.retry
         assert "the label writes 'Chimaltenago'" in refused.retry
         return
