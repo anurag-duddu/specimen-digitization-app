@@ -4,6 +4,7 @@ and its switch, reading_units.first_pass_path."""
 from __future__ import annotations
 
 import json
+import random
 import re
 import unicodedata
 from pathlib import Path
@@ -593,8 +594,11 @@ def stored_image(texts, named, *, readers=None):
     return units.units[0], readings
 
 
-# The settlement's own key (field_research/agreement.py, agreement_key) folds capitals, spaces and
-# NFC/NFD; a letter or a punctuation mark more is another text.
+# A reader's text replaces the named text only where it has the named text's agreement key
+# (field_research/agreement.py: NFC, casefold, white space removed) and the two are also equal after
+# NFC, removing white space and str.lower(): capitals and spacing alone. casefold alone also folds
+# "\u00df" to "ss", "\u017f" to "s" and "\u03c2" to "\u03c3", which differ in a character; a letter or a
+# punctuation mark more is another text.
 NFD = unicodedata.normalize("NFD", "Caf\u00e9")
 NFC = unicodedata.normalize("NFC", "Caf\u00e9")
 
@@ -642,12 +646,197 @@ def test_a_text_no_reader_wrote_comes_back_as_it_was_named():
 
 
 def test_the_first_pass_compares_texts_by_the_settlements_own_key(monkeypatch):
+    """The key is the settlement's, not a copy: texts equal in capitals and spacing are substituted
+    only while the settlement's key also holds them equal."""
     from specimen_digitization.field_research import agreement
 
-    assert stored_image(["Sept.1", "Sxyz"], "B")[0].image == "Sxyz"
-    # With another key in the settlement's module, the first pass follows it.
-    monkeypatch.setattr(agreement, "agreement_key", lambda text: text[:1].casefold())
-    assert stored_image(["Sept.1", "Sxyz"], "B")[0].image == "Sept.1"
+    assert stored_image(["Sept.", "sept."], "B")[0].image == "Sept."
+    # With a stricter key in the settlement's module, the first pass follows it.
+    monkeypatch.setattr(agreement, "agreement_key", lambda text: text)
+    assert stored_image(["Sept.", "sept."], "B")[0].image == "sept."
+
+
+def units_of(texts, *answers):
+    """The readers and the units these unit answers make from the readers' texts, with the answer's
+    checks and the units' tiling checks made, and the units as the run stores them (JSON)."""
+    readings = [reading(route, text) for route, text in zip(ROUTES, texts)]
+    segments = reading_segments(texts)
+    answer = UnitsOutput.model_validate({"units": list(answers)})
+    letters = dict(zip("ABC", readings))
+    assert units_output_problems(answer, letters, segments) == []
+    made = units_from_output(REGION.id, answer, letters, segments)
+    assert problems(made, texts_of(readings)) == []
+    return readings, ReadingUnits.model_validate_json(made.model_dump_json())
+
+
+def settled_label(readings, units, field, literals):
+    """The label the settlement's rule makes of these readers' units for `field` with `literals` as
+    each reader's candidate texts, no source answer; and the settlement's readings."""
+    from specimen_digitization.field_research import agreement
+    from specimen_digitization.field_research.contracts import FieldTask, Reading
+
+    names = [f"1{letter}" for letter in "ABC"[: len(readings)]]
+    found = [
+        Reading(name, REGION.id, one.id, "raw_reading", one.literal_text, units=units)
+        for name, one in zip(names, readings)
+    ]
+    task = FieldTask(key=field, mandatory=True, current=None, candidates=(), tools=())
+    labels = agreement.labels_by_rule(
+        task, {REGION.id: found}, {name: list(literals) for name in names}, {}, [], sourced=False
+    )
+    return labels[REGION.id], found
+
+
+def test_a_reader_s_not_visible_is_never_stored_for_another_readers_spelling_of_it():
+    """Main's result: the first pass named B's "Not Visible" beside the name, so nothing backs the name
+    by the image and the label settles on its readers (marked), not cleared."""
+    from specimen_digitization.field_research.agreement import image_names
+
+    texts = ["Danaus plexippus not visible", "Danaus plexippus Not Visible", "Danaus plexippus megalippe"]
+    readings, units = units_of(texts, {"first": 1, "last": 2, "image": "A"}, {"first": 3, "last": 4, "image": "B"})
+    label, found = settled_label(readings, units, "scientific_name", ["Danaus plexippus"])
+
+    assert [unit.image for unit in units.units] == ["Danaus plexippus", "Not Visible"]
+    assert [image_names(one, "Danaus plexippus") for one in found] == [False, False, False]
+    assert (set(label.settled), label.basis, label.cleared, label.why) == (
+        {"Danaus plexippus"}, "readers_agree", False, "text_only"
+    )
+
+
+def test_a_reader_s_uncertain_is_never_stored_for_another_readers_spelling_of_it():
+    from specimen_digitization.field_research.agreement import image_names
+
+    texts = ["Locality uncertain", "Locality Uncertain"]
+    readings, units = units_of(texts, {"first": 1, "image": "A"}, {"first": 2, "image": "B"})
+    _, found = settled_label(readings, units, "locality", ["Locality uncertain"])
+
+    assert [unit.image for unit in units.units] == ["Locality", "Uncertain"]
+    assert [image_names(one, one.text) for one in found] == [True, True]
+
+
+def test_a_prefix_one_reader_wrote_as_not_visible_is_not_stored_as_the_marker_for_a_spelling_of_it():
+    """Codex's input: B's "NOTVISIBLE" has the key of A's "not visible", and the habitat "forest" beside
+    it is not cleared on an image that judged the prefix absent."""
+    texts = ["not visible forest", "NOTVISIBLE forest", "rain forest"]
+    segments = reading_segments(texts)
+    assert [[span.text for span in spans] for spans in segments] == [
+        ["not", "", "rain"], ["visible", "NOTVISIBLE", ""], ["forest", "forest", "forest"]
+    ]
+    readings, units = units_of(texts, {"first": 1, "last": 2, "image": "B"}, {"first": 3, "image": "A"})
+    label, _ = settled_label(readings, units, "habitat", ["forest"])
+
+    assert [unit.image for unit in units.units] == ["NOTVISIBLE", "forest"]
+    assert (set(label.settled), label.basis, label.cleared, label.why) == (
+        {"forest"}, "readers_agree", False, "text_only"
+    )
+
+
+@pytest.mark.parametrize("marker", [UNCERTAIN, NOT_VISIBLE])
+def test_a_text_that_is_exactly_a_marker_takes_no_part_in_the_substitution(marker):
+    """The first reader's text, or the named one, is the marker itself: the named text stays."""
+    from types import SimpleNamespace
+
+    spelled = marker.upper()
+    assert first_readers_spelling(spelled, [SimpleNamespace(text=marker), SimpleNamespace(text=spelled)]) == spelled
+    assert first_readers_spelling(marker, [SimpleNamespace(text=spelled), SimpleNamespace(text=marker)]) == marker
+    # A reader that wrote the marker with other capitals is an ordinary text.
+    capitalised = marker.capitalize()
+    assert first_readers_spelling(spelled, [SimpleNamespace(text=capitalised), SimpleNamespace(text=spelled)]) == capitalised
+    # Where the first reader's text is the marker, the named text stays: no later reader's text replaces it.
+    texts = [SimpleNamespace(text=text) for text in (marker, capitalised, spelled)]
+    assert first_readers_spelling(spelled, texts) == spelled
+
+
+@pytest.mark.parametrize("texts,named", [
+    pytest.param(["Weissenburg", "Wei\u00dfenburg"], "B", id="sharp s named, A wrote ss"),
+    pytest.param(["Wei\u00dfenburg", "Weissenburg"], "B", id="ss named, A wrote sharp s"),
+    pytest.param(["Preussen", "Preu\u017f\u017fen"], "B", id="long s named, A wrote ss"),
+    pytest.param(["Preu\u017f\u017fen", "Preussen"], "B", id="ss named, A wrote long s"),
+    pytest.param(["Preuss", "Preu\u017fs", "PREUSS"], "B", id="long s named between two that have the key"),
+    pytest.param(["\u03bf\u03b4\u03bf\u03c3", "\u03bf\u03b4\u03bf\u03c2"], "B", id="final sigma named, A wrote sigma"),
+    pytest.param(["\u03bf\u03b4\u03bf\u03c2", "\u03bf\u03b4\u03bf\u03c3"], "B", id="sigma named, A wrote final sigma"),
+])
+def test_texts_that_differ_in_a_character_the_key_folds_keep_the_named_readers_text(texts, named):
+    """casefold folds the sharp s to ss, the long s to s and the final sigma to sigma; the first pass's
+    answer for the character is kept."""
+    from specimen_digitization.field_research.agreement import agreement_key
+
+    unit, readings = stored_image(texts, named)
+    named_text = unit.readers[readings["ABC".index(named)].id].text
+
+    assert unit.image == named_text
+    assert len({agreement_key(text) for text in texts}) == 1 and len(set(texts)) == len(texts)
+
+
+@pytest.mark.parametrize("texts,stored", [
+    pytest.param(["Weissenburg", "Wei\u00dfenburg"], "Wei\u00dfenburg", id="sharp s"),
+    pytest.param(["Preussen", "Preu\u017f\u017fen"], "Preu\u017f\u017fen", id="long s"),
+])
+def test_a_value_the_image_settles_keeps_the_letters_the_first_pass_named(texts, stored):
+    """Main's result: the label settles on the text the image names, cleared."""
+    readings, units = units_of(texts, {"first": 1, "image": "B"})
+    label, _ = settled_label(readings, units, "city", texts)
+
+    assert units.units[0].image == stored
+    assert (set(label.settled), label.basis, label.cleared) == ({stored}, "image", True)
+
+
+def spelling_pairs(rng):
+    """Readers' texts built from one base text by capitals, spacing, NFD, the sharp s and long s, the
+    sigmas, and a letter more or less: each text of a set is a variant of the first."""
+    bases = ["Wei\u00dfenburg", "Preussen", "Preu\u017f\u017fen", "\u03bf\u03b4\u03bf\u03c2", "Sept. 1946",
+             "Caf\u00e9 Mos Sy", "I\u0130 Stra\u00dfe", "\ufb01sh Elev. 6400"]
+
+    def variant(text):
+        out = []
+        for character in text:
+            roll = rng.random()
+            if roll < 0.2:
+                out.append(character.swapcase())
+            elif roll < 0.3:
+                out.append(character + " ")
+            elif roll < 0.35 and character == " ":
+                out.append("\n")
+            elif roll < 0.45:
+                out.append({"\u00df": "ss", "s": "\u017f", "\u03c2": "\u03c3", "\u03c3": "\u03c2"}.get(character, character))
+            elif roll < 0.5:
+                out.append(character + "'")
+            else:
+                out.append(character)
+        text = "".join(out)
+        return unicodedata.normalize(rng.choice(["NFC", "NFD"]), text)
+
+    for _ in range(4000):
+        base = rng.choice(bases)
+        yield [variant(base) for _ in range(rng.randint(2, 3))]
+
+
+def test_every_text_the_first_pass_substitutes_has_the_named_texts_key_and_differs_in_capitals_and_spacing_alone():
+    """Over 4,000 seeded sets of readers' texts: the stored text is one of the texts, the named one unless
+    a reader's text has its agreement key and equals it after NFC, removing white space and lower();
+    where it is another, it is the first such reader's text."""
+    from types import SimpleNamespace
+
+    from specimen_digitization.field_research.agreement import agreement_key
+
+    def plain(text):
+        return "".join(unicodedata.normalize("NFC", text).split()).lower()
+
+    substituted = kept_apart = 0
+    for texts in spelling_pairs(random.Random(20261113)):
+        spans = [SimpleNamespace(text=text) for text in texts]
+        for named in texts:
+            stored = first_readers_spelling(named, spans)
+            assert stored in texts
+            first = next((t for t in texts if agreement_key(t) == agreement_key(named) and plain(t) == plain(named)), named)
+            assert stored == first
+            if stored != named:
+                substituted += 1
+                assert agreement_key(stored) == agreement_key(named) and plain(stored) == plain(named)
+            elif any(agreement_key(t) == agreement_key(named) and plain(t) != plain(named) for t in texts):
+                kept_apart += 1
+    # The property is not vacuous: both kinds of set occur.
+    assert substituted > 500 and kept_apart > 100
 
 
 def test_the_call_stores_the_first_readers_spelling_of_the_text_the_image_names(monkeypatch, tmp_path):
