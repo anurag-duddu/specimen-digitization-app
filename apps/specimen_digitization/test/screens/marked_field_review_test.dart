@@ -377,9 +377,9 @@ void main() {
     'date_identified': 'Identification date',
   };
 
-  // Segmentation refuses more than 1,000 label regions (`check_regions`,
-  // application/image_quality.py). Every field's four kinds of code on the
-  // 1,000th, read off the chips the decision sheet draws.
+  // `check_regions` in `application/image_quality.py` refuses more than 1,000
+  // regions. Every field's four kinds of code on the 1,000th, read off the
+  // chips the decision sheet draws.
   testWidgets('every settlement chip on Label 1000 names its field and fits '
       '100 characters', (WidgetTester tester) async {
     expect(names.keys.toSet(), contractFieldNames.keys.toSet());
