@@ -10,6 +10,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/reason_codes.dart';
+import 'package:specimen_digitization/src/settlement_codes.dart';
+import 'package:specimen_digitization/src/widgets/reason_sheet.dart';
 import 'package:specimen_digitization/src/screens/workbench/blockers.dart';
 import 'package:specimen_digitization/src/screens/workbench/fields_panel.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -21,7 +23,7 @@ const String textOnly =
     'Only the readings back this value. The image and sources do not confirm '
     'it.';
 const String conflict =
-    'Another backed text competes with this value. Check it against the image.';
+    'Another reading competes with this value. Check it against the image.';
 const String generic = 'Review the value and its supporting sources.';
 
 /// A record with label L1, a supported habitat and collectors, and [reasons]
@@ -70,36 +72,36 @@ void main() {
         (
           'marked:habitat:L1:text_only',
           'habitat',
-          'Habitat is marked for review on Label 1',
+          'Habitat is marked for review on Label 1.',
           textOnly,
         ),
         (
           'marked:habitat:L1:conflict',
           'habitat',
-          'Habitat is marked for review on Label 1',
+          'Habitat is marked for review on Label 1.',
           conflict,
         ),
         (
           'marked:collectors:L1:text_only',
           'collectors',
-          'Collectors are marked for review on Label 1',
+          'Collectors are marked for review on Label 1.',
           textOnly,
         ),
         // A label the record does not hold is not named.
         (
           'marked:habitat:L9:text_only',
           'habitat',
-          'Habitat is marked for review',
+          'Habitat is marked for review.',
           textOnly,
         ),
         // A why the app has no words for falls back to the general step.
         (
           'marked:habitat:L1:other',
           'habitat',
-          'Habitat is marked for review on Label 1',
+          'Habitat is marked for review on Label 1.',
           generic,
         ),
-        ('marked:habitat', 'habitat', 'Habitat is marked for review', generic),
+        ('marked:habitat', 'habitat', 'Habitat is marked for review.', generic),
         // A field the record does not hold, and no field: no field target.
         (
           'marked:county:L1:text_only',
@@ -155,8 +157,8 @@ void main() {
         ]),
       ).map((ClearanceBlocker b) => (b.fieldKey, b.message, b.detail)),
       <(String?, String, String?)>[
-        ('habitat', 'Habitat is marked for review on Label 1', textOnly),
-        ('habitat', 'Habitat is marked for review', conflict),
+        ('habitat', 'Habitat is marked for review on Label 1.', textOnly),
+        ('habitat', 'Habitat is marked for review.', conflict),
       ],
     );
   });
@@ -179,17 +181,17 @@ void main() {
           (
             'warning',
             'marked:habitat:L1:text_only',
-            'Marked on Label 1: only the readings back this value.',
+            'Marked on Label 1: only the readings back it.',
           ),
           (
             'warning',
             'marked:habitat:L1:conflict',
-            'Marked on Label 1: another backed text competes with this value.',
+            'Marked on Label 1: another reading competes.',
           ),
           (
             'warning',
             'marked:habitat:L9:text_only',
-            'Marked: only the readings back this value.',
+            'Marked: only the readings back it.',
           ),
           (
             'warning',
@@ -282,13 +284,12 @@ void main() {
             <String>['L1'],
             'marked:habitat:L1:text_only',
             'Habitat is marked for review on Label 1: only the readings back '
-                'this value',
+                'it',
           ),
           (
             <String>['L1'],
             'marked:habitat:L1:conflict',
-            'Habitat is marked for review on Label 1: another backed text '
-                'competes with this value',
+            'Habitat is marked for review on Label 1: another reading competes',
           ),
           (
             <String>['L1'],
@@ -299,7 +300,7 @@ void main() {
             <String>['L1'],
             'marked:collectors:L1:text_only',
             'Collectors are marked for review on Label 1: only the readings '
-                'back this value',
+                'back it',
           ),
           (
             <String>['L1'],
@@ -311,20 +312,20 @@ void main() {
             <String>['L1'],
             'marked:no_such_field:L1:text_only',
             'A field is marked for review on Label 1: only the readings back '
-                'this value',
+                'it',
           ),
           (<String>['L1'], 'marked:', 'A field is marked for review'),
           // A label id the record does not hold is left out, a UUID included.
           (
             <String>['L1'],
             'marked:habitat:$uuid:text_only',
-            'Habitat is marked for review: only the readings back this value',
+            'Habitat is marked for review: only the readings back it',
           ),
           (
             <String>[uuid],
             'marked:habitat:$uuid:text_only',
             'Habitat is marked for review on Label 1: only the readings back '
-                'this value',
+                'it',
           ),
           (
             <String>['L1'],
@@ -346,6 +347,38 @@ void main() {
         ],
       });
       expect(recordReasonCodes(specimen), <String>[words], reason: code);
+      // The chip's semantic label (reason_sheet.dart) within the budget for
+      // an accessibility label (design/02 section 7: 100 characters).
+      expect(
+        '${ReasonForm.useReasonLabel}: $words'.length,
+        lessThanOrEqualTo(100),
+        reason: words,
+      );
+    }
+  });
+
+  test('every settlement chip\'s label is within 100 characters', () {
+    // Every contract field, each why and cleared, on the tenth label.
+    final Specimen specimen = Specimen(<String, dynamic>{
+      'regions': <Json>[
+        for (int i = 1; i <= 10; i++) <String, dynamic>{'region_id': 'L$i'},
+      ],
+    });
+    for (final String field in contractFieldNames.keys) {
+      for (final String code in <String>[
+        'marked:$field:L10:text_only',
+        'marked:$field:L10:conflict',
+        'marked:$field:L10:other',
+        'cleared:$field:L10',
+      ]) {
+        final String words = settlementPhrase(specimen, code)!;
+        expect(words, contains('on Label 10'), reason: code);
+        expect(
+          '${ReasonForm.useReasonLabel}: $words'.length,
+          lessThanOrEqualTo(100),
+          reason: words,
+        );
+      }
     }
   });
 
@@ -433,7 +466,7 @@ void main() {
             find.descendant(
               of: uiDisclosure(name),
               matching: find.textContaining(
-                RegExp('^$name (is|are) marked for review on Label 1\$'),
+                RegExp('^$name (is|are) marked for review on Label 1\\.\$'),
               ),
             ),
             marked ? findsOneWidget : findsNothing,

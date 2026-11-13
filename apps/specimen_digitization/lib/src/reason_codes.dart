@@ -26,7 +26,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models.dart';
-import 'screens/workbench/blockers.dart' show settlementPhrase;
+import 'settlement_codes.dart';
 import 'vocabulary.dart';
 
 /// The keys a collection document or a profile may publish a reviewer's

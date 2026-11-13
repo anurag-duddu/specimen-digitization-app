@@ -471,7 +471,7 @@ void main() {
           find.text(ReadingUnitsView.mismatch),
           mismatch ? findsOneWidget : findsNothing,
         );
-        // The caveat's "Why" is the one control a part can hold: labelled and
+        // A mismatching reader's caveat holds a "Why" button: labelled and
         // 48 dp, closed and open.
         await expectAccessible(tester);
         final Finder whyButton = inPart(1, find.text(CaveatText.affordance));

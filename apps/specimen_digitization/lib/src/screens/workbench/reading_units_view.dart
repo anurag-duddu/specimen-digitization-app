@@ -106,8 +106,7 @@ class ReadingUnitsView extends StatelessWidget {
 
   /// Every reader the units name, in the order [unitReaders] gives them: the
   /// readers that are observations in observation order, then the other keys
-  /// in the order the units first name them. Each unit lists its readers in
-  /// this order.
+  /// in the order the units first name them.
   final Map<String, UnitReader> readers;
 
   /// Tighter spacing for a short, scrollable inspector.
