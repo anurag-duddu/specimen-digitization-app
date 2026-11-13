@@ -456,6 +456,38 @@ def person_case():
     return retry_case(task, readings, "dry  shurbs", [readings[1]])
 
 
+def person_two_labels_case():
+    """Codex round 9 (Y1): label 1's one reading 1A writes "dry  forest" (two spaces); a person
+    transcribed label 2 as 2A's "dry   forest" (three spaces), and 2B writes "bog"; each is a
+    whole-field candidate, and the answer is 2B's."""
+    from specimen_digitization.field_research.contracts import FirstPassAdvice
+
+    advice = FirstPassAdvice(preferred="2A", rationale="", reader_notes={}, differences=(), person_decided=True)
+    readings = with_units((Reading("1A", "r1", "o1a", "raw_reading", "dry  forest"),
+        Reading("2A", "r2", "o2a", "decided_transcript", "dry   forest", first_pass=advice),
+        Reading("2B", "r2", "o2b", "raw_reading", "bog", first_pass=advice)))
+    task = FieldTask("habitat", True, FieldValue(), tuple(Candidate(reading.name, reading.text, reading.text,
+        f"ev-{reading.name}") for reading in readings), FIELD_TOOLS["habitat"])
+    return retry_case(task, readings, "bog", [readings[2]])
+
+
+def split_mark_case():
+    """Codex round 9 (Y2): A writes "dry forest", B "e\u0301\u0323", B's units cut inside the
+    combining sequence ("e\u0301" over A's text, "\u0323" over A's empty unit), each image
+    uncertain; only A's whole-field candidate is filed, and the answer is A's. B's text at A's
+    place collapses to "\u00e9", which no reading writes whole."""
+    units = ReadingUnits(label="r1", units=[
+        ReadingUnit(id="r1:1", label="r1", lines=(1, 1), image=UNCERTAIN, readers={
+            "o1a": UnitText(text="dry forest", start=0, end=10), "o1b": UnitText(text="e\u0301", start=0, end=2)}),
+        ReadingUnit(id="r1:2", label="r1", lines=(1, 1), image=UNCERTAIN, readers={
+            "o1a": UnitText(text="", start=10, end=10), "o1b": UnitText(text="\u0323", start=2, end=3)})])
+    readings = (Reading("1A", "r1", "o1a", "raw_reading", "dry forest", units=units),
+        Reading("1B", "r1", "o1b", "raw_reading", "e\u0301\u0323", units=units))
+    task = FieldTask("habitat", True, FieldValue(), (Candidate("1A", "dry forest", "dry forest", "ev-1A"),),
+        FIELD_TOOLS["habitat"])
+    return retry_case(task, readings, "dry forest", [readings[0]])
+
+
 def near_spelling_case():
     """A writes "Chimaltenago", B "Chimaltenango", the image naming A's; Getty TGN confirms B's
     and finds nothing for A's; the answer is B's text."""
@@ -477,8 +509,9 @@ SETTLED = ("Copy the literal {0!r} exactly from a reading that writes it, and na
 ILLINOIS_CITED = dict(literal="Illinois", authority_id="tgn:7007617", source_evidence_ids=["ev-illinois"])
 NEW_MEXICO_CITED = dict(literal="New  Mexico", authority_id="tgn:7007519", source_evidence_ids=["ev-new-mexico"])
 # (id, the case, its reason, its retry, the answer that follows it: several_possibilities with
-# options, or a resolved literal and the readings and source answer it names; None where the
-# retry asks for nothing a reading writes)
+# options, a resolved literal and the readings and source answer it names, or NO_TEXT where the
+# retry asks for sources_cannot_resolve)
+NO_TEXT = "sources_cannot_resolve"
 RETRIES = [
     ("tied", tied_case, "TIED", "The readers write 'Davao Prov.'; 'Mindanao', and the evidence does not settle one "
         "of 'Davao Prov.', 'Mindanao': a person chooses. Answer several_possibilities with 'Davao Prov.', 'Mindanao'.",
@@ -498,7 +531,8 @@ RETRIES = [
     ("unsettled-no-source", lambda: code_case(("P-95", "P-93")), "DIFFER",
         "The readers write 'P-93'; 'P-95' for this field" + UNSETTLED.format("Answer "), dict(options=["P-93", "P-95"])),
     ("one-reader-no-source", lambda: code_case(("P-95",)), "ONE_READER",
-        "The readers write 'P-95' for this field" + UNSETTLED.format("Answer "), None),
+        "The readers write 'P-95' for this field, and the evidence does not settle one reader's text. Answer "
+        "sources_cannot_resolve.", NO_TEXT),
     ("labels-differ-no-source", lambda: two_labels_case("habitat", "shrubs", "forest"), "LABELS_DIFFER",
         "The labels write different text for this field ('forest'; 'shrubs'). Answer several_possibilities with each "
         "label's text.", dict(options=["forest", "shrubs"])),
@@ -528,6 +562,12 @@ RETRIES = [
     ("source-settled-uncited", lambda: place_case(("New  Mexico", "Arizona"), "New  Mexico", 0,
         received=[NEW_MEXICO_TGN, ARIZONA_NONE]), "DIFFER", "Cite the evidence_id of the source answer that confirms "
         "'New  Mexico'.", dict(NEW_MEXICO_CITED, reading_names=["1A"])),
+    ("person-two-labels", person_two_labels_case, "PERSON_DECIDED", "A person transcribed this label: reading 2A "
+        "holds their transcription, which writes 'dry   forest' for this field. Answer with the literal from reading "
+        "2A, naming that reading (a source answer you cite may give its value, with its authority_id), or answer "
+        "several_possibilities or sources_cannot_resolve.", dict(literal="dry   forest", reading_names=["2A"])),
+    ("split-combining-mark", split_mark_case, "DIFFER", "The readers write 'dry forest' for this field, and the "
+        "evidence does not settle one reader's text. Answer sources_cannot_resolve.", NO_TEXT),
 ]
 # What the code decides by, which a retry does not say (Codex rounds 7 and 8, W4 and X1).
 DEFINITIONS = ("backing", "backs", "one letter", "first reader", "two or more", "as many readers", "success answer",
@@ -569,24 +609,28 @@ def asked(retry, kind):
 
 @pytest.mark.parametrize(("case", "follows"), [(row[1], row[4]) for row in RETRIES], ids=[row[0] for row in RETRIES])
 def test_the_answer_each_units_path_retry_asks_for_passes_the_experts_checks(case, follows):
-    """Codex round 8 (X2): the literal or options a retry asks for, read back from the retry
-    the units path sends, are texts a reading writes (two spaces where it writes two), and the
-    answer that gives them passes experts.py's checks (_Expert.validate, with the source
-    answers the case's lookups returned)."""
+    """Codex rounds 8 and 9 (X2, Y3): every row's answer goes through experts.py's checks
+    (_Expert.validate, with the source answers the case's lookups returned). The literal or
+    options a retry asks for, read back from the retry the units path sends, are texts a
+    reading writes (two spaces where it writes two); a retry that asks for
+    sources_cannot_resolve gets that answer, and the readers' texts it prints are texts a
+    reading writes."""
     from specimen_digitization.field_research import experts
 
     made = case()
     retry = refused_by(made).retry
-    if follows is None:
-        [text] = asked(retry, "options")
-        assert any(text in reading.text for reading in made.readings)
+    expert = experts._Expert(made.task, made.readings, FakeTools(), PILOT_DATES)
+    for found in made.received:
+        expert.calls.append(experts._Call(found.source_id, found.query, found.status, found))
+    if follows == NO_TEXT:
+        assert retry.endswith("Answer sources_cannot_resolve.")
+        for text in asked(retry, "options"):
+            assert any(text in reading.text for reading in made.readings)
+        expert.validate(expert_answer(outcome="sources_cannot_resolve"))
         return
     kind = "options" if "options" in follows else "literal"
     texts = asked(retry, kind)
     assert texts == (follows["options"] if kind == "options" else [follows["literal"]])
-    expert = experts._Expert(made.task, made.readings, FakeTools(), PILOT_DATES)
-    for found in made.received:
-        expert.calls.append(experts._Call(found.source_id, found.query, found.status, found))
     given = dict(follows, **({"options": texts} if kind == "options" else {"literal": texts[0]}))
     expert.validate(expert_answer(outcome="several_possibilities" if kind == "options" else "resolved", **given))
 
