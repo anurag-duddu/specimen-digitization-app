@@ -1427,14 +1427,15 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     reading that holds it writes it (a person's reading first), naming each reading that writes
     it as whole words or as its organiser candidate, citing the source answers the expert
     cited, its value the place the first of them that settles it gives
-    (agreement.place_settling), or its deterministic check's one successful result (CHECKS: an
-    elevation's lower or upper number as the field's brief takes it, UPPER_ELEVATION), and
-    the expert's explanation and options. apply_outcomes applies it as any resolved answer and
-    records the settlement with the options offered (_settlement). None otherwise, the field
-    then as the expert's answer leaves it (rule 6): also where no reading writes the text so,
-    where no cited answer settles a place, where the check gives no one successful result or
-    no value for the field, where a written rule refuses the literal (extraction_refusal), for
-    a taxon and for the identified-by IRN (below)."""
+    (agreement.place_settling) where all that settle it give one place, or its deterministic
+    check's one successful result (CHECKS: an elevation's lower or upper number as the field's
+    brief takes it, UPPER_ELEVATION), and the expert's explanation and options. apply_outcomes
+    applies it as any resolved answer and records the settlement with the answer's literal and
+    options offered (_settlement). None otherwise, the field then as the expert's answer leaves
+    it (rule 6): also where no reading writes the text so, where no cited answer settles a
+    place or they settle it as two places, where the check gives no one successful result or no
+    value for the field, where a written rule refuses the literal (extraction_refusal), for a
+    taxon and for the identified-by IRN (below)."""
     from specimen_digitization.application.extraction_guard import extraction_refusal
 
     from . import checks
@@ -1446,6 +1447,7 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
         _unbacked,
         candidates_by_reading,
         labels,
+        place_name,
         place_settling,
         placed,
         written_runs,
@@ -1483,12 +1485,17 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
     value = authority_id = None
     if task.key in PLACE_VALUE_FIELDS:
-        place = next((settles for item in cited if item.status in PLACE_ANSWERED
+        places = [settles for item in cited if item.status in PLACE_ANSWERED
             and (candidate := placed(task.key, item)) is not None
             and (settles := place_settling(task, literal, candidate.name, candidate.authority_id, [item]))
-            is not None), None)
-        if place is None:
+            is not None]
+        # One text the cited answers place apart, as two places by the identity location
+        # reconciliation compares (_proposal_identity: the name and its parents' names), has no
+        # one place to settle on (the coordinator's ruling Y1 of 2026-11-13).
+        if len({(place_name(place.candidate.name), tuple(place_name(parent.name) for parent in place.candidate.parents))
+                for place in places}) != 1:
             return None
+        [place, *_] = places
         authority_id = place.candidate.authority_id
         value = place.candidate.name if checks.collapse(place.candidate.name) != checks.collapse(literal) else None
     elif set(task.tools) & CHECKS:

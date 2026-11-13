@@ -1,0 +1,1441 @@
+{
+ "source": "Two several_possibilities outcomes of WP 1.5's stored runs (the units-program measurement of 2026-11-12), each with the readings and their units, the field's task, the field's lookups as the run stores their evidence and the expert's answer, its options read back from the field's stored reason.",
+ "cases": [
+  {
+   "source": "WP 1.5's stored run r1/pair, slide 105526647, field precise_location",
+   "readings": [
+    {
+     "name": "1A",
+     "region_id": "64b59345-aa37-5f94-883e-c7dffaba81da",
+     "observation_id": "18b11e85-cc62-4c7f-ab0c-5fd7e9c0be5b",
+     "input_source": "raw_reading",
+     "text": "FMNHINS\n4486458",
+     "units": {
+      "label": "64b59345-aa37-5f94-883e-c7dffaba81da",
+      "units": [
+       {
+        "id": "64b59345-aa37-5f94-883e-c7dffaba81da:1",
+        "label": "64b59345-aa37-5f94-883e-c7dffaba81da",
+        "lines": [
+         1,
+         1
+        ],
+        "readers": {
+         "18b11e85-cc62-4c7f-ab0c-5fd7e9c0be5b": {
+          "text": "FMNHINS",
+          "start": 0,
+          "end": 7
+         },
+         "3215eed9-94a0-408d-a79c-e5c214816083": {
+          "text": "FMNHNS",
+          "start": 0,
+          "end": 6
+         }
+        },
+        "image": "FMNHINS",
+        "means": "",
+        "role": "",
+        "fields": [
+         "fmnh_ins_number"
+        ],
+        "note": "Reader B misread the I as N; the image clearly shows FMNHINS."
+       },
+       {
+        "id": "64b59345-aa37-5f94-883e-c7dffaba81da:2",
+        "label": "64b59345-aa37-5f94-883e-c7dffaba81da",
+        "lines": [
+         2,
+         2
+        ],
+        "readers": {
+         "18b11e85-cc62-4c7f-ab0c-5fd7e9c0be5b": {
+          "text": "4486458",
+          "start": 8,
+          "end": 15
+         },
+         "3215eed9-94a0-408d-a79c-e5c214816083": {
+          "text": "4486458",
+          "start": 7,
+          "end": 14
+         }
+        },
+        "image": "4486458",
+        "means": "catalogue number 4486458",
+        "role": "",
+        "fields": [
+         "fmnh_ins_number"
+        ],
+        "note": "Barcode and printed number beneath FMNHINS heading."
+       }
+      ]
+     }
+    },
+    {
+     "name": "1B",
+     "region_id": "64b59345-aa37-5f94-883e-c7dffaba81da",
+     "observation_id": "3215eed9-94a0-408d-a79c-e5c214816083",
+     "input_source": "raw_reading",
+     "text": "FMNHNS\n4486458",
+     "units": {
+      "label": "64b59345-aa37-5f94-883e-c7dffaba81da",
+      "units": [
+       {
+        "id": "64b59345-aa37-5f94-883e-c7dffaba81da:1",
+        "label": "64b59345-aa37-5f94-883e-c7dffaba81da",
+        "lines": [
+         1,
+         1
+        ],
+        "readers": {
+         "18b11e85-cc62-4c7f-ab0c-5fd7e9c0be5b": {
+          "text": "FMNHINS",
+          "start": 0,
+          "end": 7
+         },
+         "3215eed9-94a0-408d-a79c-e5c214816083": {
+          "text": "FMNHNS",
+          "start": 0,
+          "end": 6
+         }
+        },
+        "image": "FMNHINS",
+        "means": "",
+        "role": "",
+        "fields": [
+         "fmnh_ins_number"
+        ],
+        "note": "Reader B misread the I as N; the image clearly shows FMNHINS."
+       },
+       {
+        "id": "64b59345-aa37-5f94-883e-c7dffaba81da:2",
+        "label": "64b59345-aa37-5f94-883e-c7dffaba81da",
+        "lines": [
+         2,
+         2
+        ],
+        "readers": {
+         "18b11e85-cc62-4c7f-ab0c-5fd7e9c0be5b": {
+          "text": "4486458",
+          "start": 8,
+          "end": 15
+         },
+         "3215eed9-94a0-408d-a79c-e5c214816083": {
+          "text": "4486458",
+          "start": 7,
+          "end": 14
+         }
+        },
+        "image": "4486458",
+        "means": "catalogue number 4486458",
+        "role": "",
+        "fields": [
+         "fmnh_ins_number"
+        ],
+        "note": "Barcode and printed number beneath FMNHINS heading."
+       }
+      ]
+     }
+    },
+    {
+     "name": "2A",
+     "region_id": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+     "observation_id": "789e507c-294e-4677-85f8-531c34ab37b1",
+     "input_source": "raw_reading",
+     "text": "LEWIS COLLECTION\nVULPES\nVULPES S\nIRAN;\nAZARBAITAN\nXII - 1970\nI - 1971\ncol M. BOSCH",
+     "units": {
+      "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+      "units": [
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:1",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         1,
+         1
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "LEWIS COLLECTION",
+          "start": 0,
+          "end": 16
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "LEWIS COLLECTION",
+          "start": 0,
+          "end": 16
+         }
+        },
+        "image": "LEWIS COLLECTION",
+        "means": "the Lewis Collection",
+        "role": "",
+        "fields": [],
+        "note": "collection holding the specimen; no field in the profile"
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:2",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         2,
+         2
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "VULPES",
+          "start": 17,
+          "end": 23
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "VULPES",
+          "start": 17,
+          "end": 23
+         }
+        },
+        "image": "VULPES",
+        "means": "",
+        "role": "genus",
+        "fields": [
+         "taxon"
+        ],
+        "note": ""
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:3",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         3,
+         3
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "VULPES S",
+          "start": 24,
+          "end": 32
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "VULPES",
+          "start": 24,
+          "end": 30
+         }
+        },
+        "image": "VULPES S",
+        "means": "",
+        "role": "species",
+        "fields": [
+         "taxon"
+        ],
+        "note": "reader A saw a trailing S, likely only a pen stroke or underline"
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:4",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         4,
+         4
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "IRAN;",
+          "start": 33,
+          "end": 38
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "IRAN;",
+          "start": 31,
+          "end": 36
+         }
+        },
+        "image": "IRAN;",
+        "means": "",
+        "role": "",
+        "fields": [
+         "country"
+        ],
+        "note": ""
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:5",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         5,
+         5
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "AZARBAITAN",
+          "start": 39,
+          "end": 49
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "AZARBAIJAN",
+          "start": 37,
+          "end": 47
+         }
+        },
+        "image": "AZARBAITAN",
+        "means": "Azerbaijan (Iranian province)",
+        "role": "",
+        "fields": [
+         "province_state",
+         "precise_location"
+        ],
+        "note": "spelling differs between readers; the image does not clearly decide"
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:6",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         6,
+         6
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "XII - 1970",
+          "start": 50,
+          "end": 60
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "XII -1970",
+          "start": 48,
+          "end": 57
+         }
+        },
+        "image": "uncertain",
+        "means": "December 1970",
+        "role": "month",
+        "fields": [
+         "date_visited_from"
+        ],
+        "note": "XII appears crossed out in the image, with I-1971 below as the replacement"
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:7",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         7,
+         7
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "I - 1971",
+          "start": 61,
+          "end": 69
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "I -1971",
+          "start": 58,
+          "end": 65
+         }
+        },
+        "image": "I - 1971",
+        "means": "January 1971",
+        "role": "month",
+        "fields": [
+         "date_visited_to"
+        ],
+        "note": ""
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:8",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         8,
+         8
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "col M. BOSCH",
+          "start": 70,
+          "end": 82
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "col M. BOSCH",
+          "start": 66,
+          "end": 78
+         }
+        },
+        "image": "col M. BOSCH",
+        "means": "col. = collected by M. Bosch",
+        "role": "",
+        "fields": [
+         "collectors"
+        ],
+        "note": ""
+       }
+      ]
+     }
+    },
+    {
+     "name": "2B",
+     "region_id": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+     "observation_id": "c0779787-cf8e-4594-bc7e-3e434aa09452",
+     "input_source": "raw_reading",
+     "text": "LEWIS COLLECTION\nVULPES\nVULPES\nIRAN;\nAZARBAIJAN\nXII -1970\nI -1971\ncol M. BOSCH",
+     "units": {
+      "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+      "units": [
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:1",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         1,
+         1
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "LEWIS COLLECTION",
+          "start": 0,
+          "end": 16
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "LEWIS COLLECTION",
+          "start": 0,
+          "end": 16
+         }
+        },
+        "image": "LEWIS COLLECTION",
+        "means": "the Lewis Collection",
+        "role": "",
+        "fields": [],
+        "note": "collection holding the specimen; no field in the profile"
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:2",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         2,
+         2
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "VULPES",
+          "start": 17,
+          "end": 23
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "VULPES",
+          "start": 17,
+          "end": 23
+         }
+        },
+        "image": "VULPES",
+        "means": "",
+        "role": "genus",
+        "fields": [
+         "taxon"
+        ],
+        "note": ""
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:3",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         3,
+         3
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "VULPES S",
+          "start": 24,
+          "end": 32
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "VULPES",
+          "start": 24,
+          "end": 30
+         }
+        },
+        "image": "VULPES S",
+        "means": "",
+        "role": "species",
+        "fields": [
+         "taxon"
+        ],
+        "note": "reader A saw a trailing S, likely only a pen stroke or underline"
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:4",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         4,
+         4
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "IRAN;",
+          "start": 33,
+          "end": 38
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "IRAN;",
+          "start": 31,
+          "end": 36
+         }
+        },
+        "image": "IRAN;",
+        "means": "",
+        "role": "",
+        "fields": [
+         "country"
+        ],
+        "note": ""
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:5",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         5,
+         5
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "AZARBAITAN",
+          "start": 39,
+          "end": 49
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "AZARBAIJAN",
+          "start": 37,
+          "end": 47
+         }
+        },
+        "image": "AZARBAITAN",
+        "means": "Azerbaijan (Iranian province)",
+        "role": "",
+        "fields": [
+         "province_state",
+         "precise_location"
+        ],
+        "note": "spelling differs between readers; the image does not clearly decide"
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:6",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         6,
+         6
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "XII - 1970",
+          "start": 50,
+          "end": 60
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "XII -1970",
+          "start": 48,
+          "end": 57
+         }
+        },
+        "image": "uncertain",
+        "means": "December 1970",
+        "role": "month",
+        "fields": [
+         "date_visited_from"
+        ],
+        "note": "XII appears crossed out in the image, with I-1971 below as the replacement"
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:7",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         7,
+         7
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "I - 1971",
+          "start": 61,
+          "end": 69
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "I -1971",
+          "start": 58,
+          "end": 65
+         }
+        },
+        "image": "I - 1971",
+        "means": "January 1971",
+        "role": "month",
+        "fields": [
+         "date_visited_to"
+        ],
+        "note": ""
+       },
+       {
+        "id": "a1c6c717-706c-5a07-8013-b73841c04d8b:8",
+        "label": "a1c6c717-706c-5a07-8013-b73841c04d8b",
+        "lines": [
+         8,
+         8
+        ],
+        "readers": {
+         "789e507c-294e-4677-85f8-531c34ab37b1": {
+          "text": "col M. BOSCH",
+          "start": 70,
+          "end": 82
+         },
+         "c0779787-cf8e-4594-bc7e-3e434aa09452": {
+          "text": "col M. BOSCH",
+          "start": 66,
+          "end": 78
+         }
+        },
+        "image": "col M. BOSCH",
+        "means": "col. = collected by M. Bosch",
+        "role": "",
+        "fields": [
+         "collectors"
+        ],
+        "note": ""
+       }
+      ]
+     }
+    }
+   ],
+   "task": {
+    "key": "precise_location",
+    "mandatory": true,
+    "current": {
+     "state": "ambiguous",
+     "literal": null,
+     "parsed": null,
+     "normalized": null,
+     "authority_id": null,
+     "authority_identity": null,
+     "evidence_ids": [
+      "8c47101b-9b96-44fa-b518-8ea19031d405",
+      "bd9d3c8f-8f3f-4764-94d9-8fe286d287f5",
+      "87cfd0a5-f3d1-4a3f-a124-6eac3fce66a4"
+     ],
+     "reason": "The only locality text on the labels is the province line: reader 2A writes \"AZARBAITAN\", reader 2B \"AZARBAIJAN\" (the image does not decide). Lookups of \"Azarbaijan, Iran\" (GEOLocate, Wikidata, TGN) return the historical region/provinces of Iranian Azerbaijan, so the word is a real place, but they cannot choose between the two spellings; \"Azarbaitan\" itself matched nothing. No more precise locality is written, so the two readers' texts stand as options. Options: AZARBAITAN; AZARBAIJAN.",
+     "input_source": null,
+     "source_region_id": null,
+     "source_observation_id": null,
+     "verbatim_by_observation": {},
+     "input_source_by_observation": {},
+     "settled_observation_ids": [],
+     "layer": null,
+     "derived_from": [],
+     "evidence_relations": {
+      "8c47101b-9b96-44fa-b518-8ea19031d405": "supports",
+      "bd9d3c8f-8f3f-4764-94d9-8fe286d287f5": "supports",
+      "87cfd0a5-f3d1-4a3f-a124-6eac3fce66a4": "supports"
+     },
+     "precision": null,
+     "century_rule": null
+    },
+    "candidates": [],
+    "tools": [
+     "geolocate",
+     "tgn",
+     "wikidata",
+     "nga"
+    ]
+   },
+   "lookups": [
+    {
+     "source": "tgn",
+     "query": "Azarbaijan, Iran",
+     "status": "ambiguous",
+     "note": "Getty TGN has 5 places for 'Azarbaijan'",
+     "candidates": [
+      {
+       "name": "Azarbaijan",
+       "authority_id": "tgn:7006683",
+       "kind": "general regions",
+       "detail": "in Asia, World"
+      },
+      {
+       "name": "Azerbaijan",
+       "authority_id": "tgn:7006646",
+       "kind": "nations, independent political entities, primary political entities",
+       "detail": "in Azerbaijan"
+      },
+      {
+       "name": "Azerbaijan",
+       "authority_id": "tgn:8883247",
+       "kind": "general regions",
+       "detail": "in Āz̄arbāyjān-e Gharbī, Īrān"
+      },
+      {
+       "name": "East Azerbaijan",
+       "authority_id": "tgn:7002108",
+       "kind": "provinces, capitals (seats of government), first level subdivisions (political entities)",
+       "detail": "in Īrān"
+      },
+      {
+       "name": "West Azerbaijan",
+       "authority_id": "tgn:1001048",
+       "kind": "provinces, first level subdivisions (political entities)",
+       "detail": "in Īrān"
+      }
+     ],
+     "evidence": {
+      "id": "87cfd0a5-f3d1-4a3f-a124-6eac3fce66a4",
+      "kind": "authority",
+      "source": "tgn",
+      "locator": null,
+      "excerpt": "Getty TGN has 5 places for 'Azarbaijan'\nAzarbaijan | tgn:7006683 | general regions | in Asia, World\nAzerbaijan | tgn:7006646 | nations, independent political entities, primary political entities | in Azerbaijan\nAzerbaijan | tgn:8883247 | general regions | in Āz̄arbāyjān-e Gharbī, Īrān\nEast Azerbaijan | tgn:7002108 | provinces, capitals (seats of government), first level subdivisions (political entities) | in Īrān\nWest Azerbaijan | tgn:1001048 | provinces, first level subdivisions (political entities) | in Īrān"
+     }
+    },
+    {
+     "source": "wikidata",
+     "query": "Azarbaijan, Iran",
+     "status": "ambiguous",
+     "note": "Wikidata has 7 places for 'Azarbaijan'",
+     "candidates": [
+      {
+       "name": "Azerbaijan (Iran)",
+       "authority_id": "wikidata:Q274536",
+       "kind": "region, historical region",
+       "detail": "in Iran"
+      },
+      {
+       "name": "Azerbaijan",
+       "authority_id": "wikidata:Q227",
+       "kind": "sovereign state, country, landlocked country",
+       "detail": "in Azerbaijan; valid from 1991"
+      },
+      {
+       "name": "Azarbaijan Shahid Madani University",
+       "authority_id": "wikidata:Q4832261",
+       "kind": "university, building",
+       "detail": "in Tabriz, Iran; valid from 1987"
+      },
+      {
+       "name": "Azarbaijan Shahide Madani University",
+       "authority_id": "wikidata:Q52618956",
+       "kind": "open-access publisher",
+       "detail": "in Iran"
+      },
+      {
+       "name": "Azarbaijan Shahid Madani University Faculty of Engineering",
+       "authority_id": "wikidata:Q99290346",
+       "kind": "engineering school",
+       "detail": "in Iran"
+      },
+      {
+       "name": "Azarbaijan Shahid Madani University Faculty of Basic Sciences",
+       "authority_id": "wikidata:Q101002373",
+       "kind": "faculty",
+       "detail": "in Iran"
+      },
+      {
+       "name": "East Azerbaijan Province",
+       "authority_id": "wikidata:Q176081",
+       "kind": "province of Iran",
+       "detail": "in Iran"
+      }
+     ],
+     "evidence": {
+      "id": "bd9d3c8f-8f3f-4764-94d9-8fe286d287f5",
+      "kind": "authority",
+      "source": "wikidata",
+      "locator": null,
+      "excerpt": "Wikidata has 7 places for 'Azarbaijan'\nAzerbaijan (Iran) | wikidata:Q274536 | region, historical region | in Iran\nAzerbaijan | wikidata:Q227 | sovereign state, country, landlocked country | in Azerbaijan; valid from 1991\nAzarbaijan Shahid Madani University | wikidata:Q4832261 | university, building | in Tabriz, Iran; valid from 1987\nAzarbaijan Shahide Madani University | wikidata:Q52618956 | open-access publisher | in Iran\nAzarbaijan Shahid Madani University Faculty of Engineering | wikidata:Q99290346 | engineering school | in Iran\nAzarbaijan Shahid Madani University Faculty of Basic Sciences | wikidata:Q101002373 | faculty | in Iran\nEast Azerbaijan Province | wikidata:Q176081 | province of Iran | in Iran"
+     }
+    },
+    {
+     "source": "geolocate",
+     "query": "Azarbaijan, Iran",
+     "status": "ambiguous",
+     "note": "GEOLocate is ambiguous for 'Azarbaijan': agreeing matches lie up to 505 km apart",
+     "candidates": [
+      {
+       "name": "Azarbaijan",
+       "authority_id": "geolocate:f6f2b9966ba1717c",
+       "kind": null,
+       "detail": "GEOLocate matched AZARBAIJAN in ĀZ̄ARBĀYJĀN-E GHARBĪ, Iran; precision High, score 85; 37.000000, 46.000000"
+      },
+      {
+       "name": "Azarbaijan",
+       "authority_id": "geolocate:aee904becc810e3b",
+       "kind": null,
+       "detail": "GEOLocate matched AZARBAIJAN in TEHRĀN, Iran; precision High, score 85; 35.691878, 51.397956"
+      }
+     ],
+     "evidence": {
+      "id": "8c47101b-9b96-44fa-b518-8ea19031d405",
+      "kind": "authority",
+      "source": "geolocate",
+      "locator": null,
+      "excerpt": "GEOLocate is ambiguous for 'Azarbaijan': agreeing matches lie up to 505 km apart\nAzarbaijan | geolocate:f6f2b9966ba1717c | - | GEOLocate matched AZARBAIJAN in ĀZ̄ARBĀYJĀN-E GHARBĪ, Iran; precision High, score 85; 37.000000, 46.000000\nAzarbaijan | geolocate:aee904becc810e3b | - | GEOLocate matched AZARBAIJAN in TEHRĀN, Iran; precision High, score 85; 35.691878, 51.397956"
+     }
+    },
+    {
+     "source": "geolocate",
+     "query": "Azarbaitan, Iran",
+     "status": "no_match",
+     "note": "GEOLocate found no match (it answered no results)",
+     "candidates": [],
+     "evidence": {
+      "id": "1c9071f1-0c26-4666-a081-3e04ac3f425d",
+      "kind": "lookup",
+      "source": "geolocate",
+      "locator": null,
+      "excerpt": "GEOLocate found no match (it answered no results)"
+     }
+    }
+   ],
+   "answer": {
+    "outcome": "several_possibilities",
+    "literal": "AZARBAITAN",
+    "reading_names": [
+     "2A"
+    ],
+    "options": [],
+    "source_evidence_ids": [],
+    "explanation": "The only locality text on the labels is the province line: reader 2A writes \"AZARBAITAN\", reader 2B \"AZARBAIJAN\" (the image does not decide). Lookups of \"Azarbaijan, Iran\" (GEOLocate, Wikidata, TGN) return the historical region/provinces of Iranian Azerbaijan, so the word is a real place, but they cannot choose between the two spellings; \"Azarbaitan\" itself matched nothing. No more precise localit"
+   }
+  },
+  {
+   "source": "WP 1.5's stored run r1/pair, slide 105526617, field fmnh_ins_number",
+   "readings": [
+    {
+     "name": "1A",
+     "region_id": "3b6df3cb-3636-55aa-8c17-af876b835108",
+     "observation_id": "98bfb176-1ac4-44a7-943f-db3a6b3fffc3",
+     "input_source": "raw_reading",
+     "text": "FMNHINS\n4456488",
+     "units": {
+      "label": "3b6df3cb-3636-55aa-8c17-af876b835108",
+      "units": [
+       {
+        "id": "3b6df3cb-3636-55aa-8c17-af876b835108:1",
+        "label": "3b6df3cb-3636-55aa-8c17-af876b835108",
+        "lines": [
+         1,
+         1
+        ],
+        "readers": {
+         "98bfb176-1ac4-44a7-943f-db3a6b3fffc3": {
+          "text": "FMNHINS",
+          "start": 0,
+          "end": 7
+         },
+         "2fd3f7ac-9b81-4926-abb4-08d14bc606ac": {
+          "text": "FMNHINS",
+          "start": 0,
+          "end": 7
+         }
+        },
+        "image": "FMNHINS",
+        "means": "",
+        "role": "",
+        "fields": [
+         "fmnh_ins_number"
+        ],
+        "note": ""
+       },
+       {
+        "id": "3b6df3cb-3636-55aa-8c17-af876b835108:2",
+        "label": "3b6df3cb-3636-55aa-8c17-af876b835108",
+        "lines": [
+         2,
+         2
+        ],
+        "readers": {
+         "98bfb176-1ac4-44a7-943f-db3a6b3fffc3": {
+          "text": "4456488",
+          "start": 8,
+          "end": 15
+         },
+         "2fd3f7ac-9b81-4926-abb4-08d14bc606ac": {
+          "text": "4486488",
+          "start": 8,
+          "end": 15
+         }
+        },
+        "image": "4486488",
+        "means": "",
+        "role": "",
+        "fields": [
+         "fmnh_ins_number"
+        ],
+        "note": "Reader B's 4486488 matches the image; reader A misread the second digit."
+       }
+      ]
+     }
+    },
+    {
+     "name": "1B",
+     "region_id": "3b6df3cb-3636-55aa-8c17-af876b835108",
+     "observation_id": "2fd3f7ac-9b81-4926-abb4-08d14bc606ac",
+     "input_source": "raw_reading",
+     "text": "FMNHINS\n4486488",
+     "units": {
+      "label": "3b6df3cb-3636-55aa-8c17-af876b835108",
+      "units": [
+       {
+        "id": "3b6df3cb-3636-55aa-8c17-af876b835108:1",
+        "label": "3b6df3cb-3636-55aa-8c17-af876b835108",
+        "lines": [
+         1,
+         1
+        ],
+        "readers": {
+         "98bfb176-1ac4-44a7-943f-db3a6b3fffc3": {
+          "text": "FMNHINS",
+          "start": 0,
+          "end": 7
+         },
+         "2fd3f7ac-9b81-4926-abb4-08d14bc606ac": {
+          "text": "FMNHINS",
+          "start": 0,
+          "end": 7
+         }
+        },
+        "image": "FMNHINS",
+        "means": "",
+        "role": "",
+        "fields": [
+         "fmnh_ins_number"
+        ],
+        "note": ""
+       },
+       {
+        "id": "3b6df3cb-3636-55aa-8c17-af876b835108:2",
+        "label": "3b6df3cb-3636-55aa-8c17-af876b835108",
+        "lines": [
+         2,
+         2
+        ],
+        "readers": {
+         "98bfb176-1ac4-44a7-943f-db3a6b3fffc3": {
+          "text": "4456488",
+          "start": 8,
+          "end": 15
+         },
+         "2fd3f7ac-9b81-4926-abb4-08d14bc606ac": {
+          "text": "4486488",
+          "start": 8,
+          "end": 15
+         }
+        },
+        "image": "4486488",
+        "means": "",
+        "role": "",
+        "fields": [
+         "fmnh_ins_number"
+        ],
+        "note": "Reader B's 4486488 matches the image; reader A misread the second digit."
+       }
+      ]
+     }
+    },
+    {
+     "name": "2A",
+     "region_id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+     "observation_id": "15021c60-4416-44d5-a42b-e50251de2e00",
+     "input_source": "raw_reading",
+     "text": "RMT 1149\nOziteyn\nYucatan, 2.5km\nn.w. 24 Apr 1973\nex Peromyscus\nleucopus",
+     "units": {
+      "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+      "units": [
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:1",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         1,
+         1
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "RMT 1149",
+          "start": 0,
+          "end": 8
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "RMT 1149",
+          "start": 0,
+          "end": 8
+         }
+        },
+        "image": "RMT 1149",
+        "means": "",
+        "role": "",
+        "fields": [
+         "collection_code",
+         "fmnh_ins_number"
+        ],
+        "note": "RMT 1149 reads as one catalogue or collection code written together."
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:2",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         2,
+         2
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "Oziteyn",
+          "start": 9,
+          "end": 16
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "Oriteyn",
+          "start": 9,
+          "end": 16
+         }
+        },
+        "image": "uncertain",
+        "means": "",
+        "role": "",
+        "fields": [
+         "precise_location",
+         "county",
+         "city",
+         "province_state"
+        ],
+        "note": "Readers differ on the third letter, z (A) vs r (B); the handwriting does not clearly decide between Oziteyn and Oriteyn."
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:3",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         3,
+         4
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "Yucatan, 2.5km\nn.w.",
+          "start": 17,
+          "end": 36
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "Yucatan,2.5Km\nn.w.",
+          "start": 17,
+          "end": 35
+         }
+        },
+        "image": "Yucatan, 2.5km\nn.w.",
+        "means": "2.5 km northwest of Yucatan",
+        "role": "",
+        "fields": [
+         "precise_location",
+         "province_state"
+        ],
+        "note": "n.w. qualifies the distance from Yucatan; B wrote 2.5Km joined without a space."
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:4",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         4,
+         4
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "24",
+          "start": 37,
+          "end": 39
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "24",
+          "start": 36,
+          "end": 38
+         }
+        },
+        "image": "24",
+        "means": "",
+        "role": "day",
+        "fields": [
+         "date_visited_from"
+        ],
+        "note": ""
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:5",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         4,
+         4
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "Apr",
+          "start": 40,
+          "end": 43
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "Apr",
+          "start": 39,
+          "end": 42
+         }
+        },
+        "image": "Apr",
+        "means": "April",
+        "role": "month",
+        "fields": [
+         "date_visited_from"
+        ],
+        "note": ""
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:6",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         4,
+         4
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "1973",
+          "start": 44,
+          "end": 48
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "1973",
+          "start": 43,
+          "end": 47
+         }
+        },
+        "image": "1973",
+        "means": "",
+        "role": "year",
+        "fields": [
+         "date_visited_from"
+        ],
+        "note": ""
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:7",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         5,
+         5
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "ex",
+          "start": 49,
+          "end": 51
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "ex",
+          "start": 48,
+          "end": 50
+         }
+        },
+        "image": "ex",
+        "means": "taken from / reared from",
+        "role": "",
+        "fields": [
+         "collection_method",
+         "habitat"
+        ],
+        "note": "ex introduces the host the insect was collected from."
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:8",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         5,
+         6
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "Peromyscus\nleucopus",
+          "start": 52,
+          "end": 71
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "Peromyscus\nleucopus",
+          "start": 51,
+          "end": 70
+         }
+        },
+        "image": "Peromyscus\nleucopus",
+        "means": "",
+        "role": "",
+        "fields": [
+         "collection_method",
+         "habitat"
+        ],
+        "note": "Peromyscus leucopus (the white-footed mouse) is the host animal, not the insect's own taxon."
+       }
+      ]
+     }
+    },
+    {
+     "name": "2B",
+     "region_id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+     "observation_id": "20842c39-8da1-4500-8917-a58303def983",
+     "input_source": "raw_reading",
+     "text": "RMT 1149\nOriteyn\nYucatan,2.5Km\nn.w. 24 Apr 1973\nex Peromyscus\nleucopus",
+     "units": {
+      "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+      "units": [
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:1",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         1,
+         1
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "RMT 1149",
+          "start": 0,
+          "end": 8
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "RMT 1149",
+          "start": 0,
+          "end": 8
+         }
+        },
+        "image": "RMT 1149",
+        "means": "",
+        "role": "",
+        "fields": [
+         "collection_code",
+         "fmnh_ins_number"
+        ],
+        "note": "RMT 1149 reads as one catalogue or collection code written together."
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:2",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         2,
+         2
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "Oziteyn",
+          "start": 9,
+          "end": 16
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "Oriteyn",
+          "start": 9,
+          "end": 16
+         }
+        },
+        "image": "uncertain",
+        "means": "",
+        "role": "",
+        "fields": [
+         "precise_location",
+         "county",
+         "city",
+         "province_state"
+        ],
+        "note": "Readers differ on the third letter, z (A) vs r (B); the handwriting does not clearly decide between Oziteyn and Oriteyn."
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:3",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         3,
+         4
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "Yucatan, 2.5km\nn.w.",
+          "start": 17,
+          "end": 36
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "Yucatan,2.5Km\nn.w.",
+          "start": 17,
+          "end": 35
+         }
+        },
+        "image": "Yucatan, 2.5km\nn.w.",
+        "means": "2.5 km northwest of Yucatan",
+        "role": "",
+        "fields": [
+         "precise_location",
+         "province_state"
+        ],
+        "note": "n.w. qualifies the distance from Yucatan; B wrote 2.5Km joined without a space."
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:4",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         4,
+         4
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "24",
+          "start": 37,
+          "end": 39
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "24",
+          "start": 36,
+          "end": 38
+         }
+        },
+        "image": "24",
+        "means": "",
+        "role": "day",
+        "fields": [
+         "date_visited_from"
+        ],
+        "note": ""
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:5",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         4,
+         4
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "Apr",
+          "start": 40,
+          "end": 43
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "Apr",
+          "start": 39,
+          "end": 42
+         }
+        },
+        "image": "Apr",
+        "means": "April",
+        "role": "month",
+        "fields": [
+         "date_visited_from"
+        ],
+        "note": ""
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:6",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         4,
+         4
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "1973",
+          "start": 44,
+          "end": 48
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "1973",
+          "start": 43,
+          "end": 47
+         }
+        },
+        "image": "1973",
+        "means": "",
+        "role": "year",
+        "fields": [
+         "date_visited_from"
+        ],
+        "note": ""
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:7",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         5,
+         5
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "ex",
+          "start": 49,
+          "end": 51
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "ex",
+          "start": 48,
+          "end": 50
+         }
+        },
+        "image": "ex",
+        "means": "taken from / reared from",
+        "role": "",
+        "fields": [
+         "collection_method",
+         "habitat"
+        ],
+        "note": "ex introduces the host the insect was collected from."
+       },
+       {
+        "id": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2:8",
+        "label": "f0b0d31c-01a0-50ad-82cb-d4e7a32d85e2",
+        "lines": [
+         5,
+         6
+        ],
+        "readers": {
+         "15021c60-4416-44d5-a42b-e50251de2e00": {
+          "text": "Peromyscus\nleucopus",
+          "start": 52,
+          "end": 71
+         },
+         "20842c39-8da1-4500-8917-a58303def983": {
+          "text": "Peromyscus\nleucopus",
+          "start": 51,
+          "end": 70
+         }
+        },
+        "image": "Peromyscus\nleucopus",
+        "means": "",
+        "role": "",
+        "fields": [
+         "collection_method",
+         "habitat"
+        ],
+        "note": "Peromyscus leucopus (the white-footed mouse) is the host animal, not the insect's own taxon."
+       }
+      ]
+     }
+    }
+   ],
+   "task": {
+    "key": "fmnh_ins_number",
+    "mandatory": true,
+    "current": {
+     "state": "ambiguous",
+     "literal": null,
+     "parsed": null,
+     "normalized": null,
+     "authority_id": null,
+     "authority_identity": null,
+     "evidence_ids": [],
+     "reason": "Label 1 prints \"FMNHINS\" with a seven-digit number: reader 1A reads 4456488, reader 1B reads 4486488 (the unit's image judgement also favours 4486488, but the readers disagree on the second digit). check_catalog_number accepts both as catalog numbers, so the digits are not settled. \"RMT 1149\" on label 2 is a collection code, refused by the check. Options: 4456488; 4486488.",
+     "input_source": null,
+     "source_region_id": null,
+     "source_observation_id": null,
+     "verbatim_by_observation": {},
+     "input_source_by_observation": {},
+     "settled_observation_ids": [],
+     "layer": null,
+     "derived_from": [],
+     "evidence_relations": {},
+     "precision": null,
+     "century_rule": null
+    },
+    "candidates": [],
+    "tools": [
+     "catalog_number_validator"
+    ]
+   },
+   "lookups": [],
+   "answer": {
+    "outcome": "several_possibilities",
+    "literal": "FMNHINS\n4486488",
+    "reading_names": [
+     "1B"
+    ],
+    "options": [
+     "4456488",
+     "4486488"
+    ],
+    "source_evidence_ids": [],
+    "explanation": "Label 1 prints \"FMNHINS\" with a seven-digit number: reader 1A reads 4456488, reader 1B reads 4486488 (the unit's image judgement also favours 4486488, but the readers disagree on the second digit). check_catalog_number accepts both as catalog numbers, so the digits are not settled. \"RMT 1149\" on label 2 is a collection code, refused by the check."
+   }
+  }
+ ]
+}

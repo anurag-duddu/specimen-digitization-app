@@ -12,6 +12,7 @@ step._by_rule runs the same on both arms."""
 from __future__ import annotations
 
 import asyncio
+import json
 import tempfile
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from test_step import (
     Scripted,
     a_second_label,
     answering,
+    from_tgn,
     build_rig,
     every_field,
     label_with,
@@ -33,9 +35,9 @@ from test_step import (
     settle,
 )
 
-from specimen_digitization.application.domain import Disposition, FieldValue, ValueState
+from specimen_digitization.application.domain import Disposition, Evidence, FieldValue, LookupStatus, ValueState
 from specimen_digitization.application.first_pass import source_units
-from specimen_digitization.application.reading_units import UNCERTAIN
+from specimen_digitization.application.reading_units import UNCERTAIN, ReadingUnits
 from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.application.workflow import store_reading_units
 from specimen_digitization.field_research import agreement
@@ -47,6 +49,8 @@ from specimen_digitization.field_research.contracts import (
     FieldOutcome,
     FieldTask,
     Reading,
+    SourceAnswer,
+    SourceCandidate,
 )
 
 SHRUBS = every_field(("habitat", "1A", "Shrubs", "habitat: Shrubs"), ("habitat", "1B", "Shurbs", "habitat: Shurbs"))
@@ -147,14 +151,23 @@ def test_no_backed_candidate_leaves_the_field_ambiguous_with_the_readers_and_the
 
 
 def test_the_union_keeps_an_option_only_the_answer_gives(tmp_path, first_pass_path):
-    """1A writes the city "Logan", 1B "Lagan", the image uncertain there and nothing looked up;
-    the expert lists "Logan" and "Springfield", a name only a source answer gives. Nothing backs
-    either reader's text (rule 6): the options are the readers' texts in reading order, then the
-    answer's not among them (P7, step._unsettled_options), "Logan; Lagan; Springfield"."""
+    """1A writes the city "Logan", 1B "Lagan", the image uncertain there; the expert asks GEOLocate
+    about "Springfield", whose answer gives that name (test_step.FakeSources), and lists "Logan"
+    and "Springfield", a name only that answer gives (experts._Expert._validate_options accepts
+    a candidate name it received). Nothing backs either reader's text (rule 6): the options are
+    the readers' texts in reading order, then the answer's not among them (P7,
+    step._unsettled_options), "Logan; Lagan; Springfield"."""
     rig = build_rig(tmp_path, label_with(city="Logan"), label_with(city="Lagan"), candidates=every_field(
         ("city", "1A", "Logan", "city: Logan"), ("city", "1B", "Lagan", "city: Lagan")))
     run = rig.specimen.run
-    settle(rig, Scripted({"city": several("Logan", "Springfield")}))
+
+    async def script(task, readings, tools):
+        answer = await tools.lookup("geolocate", "Springfield, Cook, Illinois, United States", field_key=task.key)
+        assert [candidate.name for candidate in answer.candidates] == ["Springfield"]
+        return FieldOutcome(task.key, FieldAnswer(outcome="several_possibilities", options=["Logan", "Springfield"],
+            explanation="The readers' texts differ."), evidence=[answer.evidence], model_calls=1)
+
+    settle(rig, Scripted({"city": script}))
     if first_pass_path == "old":
         return old_path_unchanged(run, "city", ("Logan", "Springfield"))
     city = run.fields["city"]
@@ -200,6 +213,28 @@ def test_an_elevation_range_settles_each_field_on_its_end_of_the_range(tmp_path,
             continue
         elevation = run.fields[key]
         assert (elevation.state, elevation.literal, elevation.parsed) == (ValueState.SUPPORTED, "1200-1500 m", value)
+        assert findings(run, key) == [(f"cleared:{key}:{run.regions[0].id}", "info")]
+
+
+FEET = TEXT.replace("elevation_from_ft: 1500 ft", "alt. 1200-1500 ft")
+FEET_RANGES = every_field(*((key, name, "1200-1500 ft", "alt. 1200-1500 ft") for key in ("elevation_from_ft", "elevation_to_ft")
+    for name in ("1A", "1B")))
+
+
+def test_a_feet_range_settles_each_field_on_its_end_of_the_range(tmp_path, first_pass_path):
+    """As the metres range above, in feet: both readers write "alt. 1200-1500 ft", the image names
+    it, each feet field's expert answers several_possibilities, and the lower field settles on
+    1200 and the upper on 1500 (step.UPPER_ELEVATION), cleared."""
+    rig = build_rig(tmp_path, FEET, candidates=FEET_RANGES)
+    run = rig.specimen.run
+    options = ("1200-1500 ft", "1200-1500")
+    settle(rig, Scripted({key: several(*options) for key in ("elevation_from_ft", "elevation_to_ft")}))
+    for key, value in (("elevation_from_ft", "1200"), ("elevation_to_ft", "1500")):
+        if first_pass_path == "old":
+            old_path_unchanged(run, key, options)
+            continue
+        elevation = run.fields[key]
+        assert (elevation.state, elevation.literal, elevation.parsed) == (ValueState.SUPPORTED, "1200-1500 ft", value)
         assert findings(run, key) == [(f"cleared:{key}:{run.regions[0].id}", "info")]
 
 
@@ -320,17 +355,13 @@ def test_the_rules_text_that_another_kind_of_field_settles_leaves_the_experts_ow
     assert decisions["habitat"].get("refusal") == ("taken" if first_pass_path == "units" else None)
 
 
-def test_an_option_that_backs_a_rival_marks_the_rules_pick_and_lists_the_rival(tmp_path, first_pass_path):
-    """1A writes "Shrubs, forest", 1B "Shurbs, forest"; the image names 1A's "Shrubs," and is
-    uncertain at "forest". The expert lists "Shrubs" and "forest". Offered, "forest" is a rival
-    both readers back, so rule 5 settles "Shrubs" (IMAGE above TEXT), marked as a conflict with
-    "forest" listed, though the rule given "Shrubs" alone would clear it: the settlement is
-    recorded with the answer's options offered (step._settlement)."""
+def rival_rig(tmp_path, first_pass_path):
+    """1A writes "Shrubs, forest", 1B "Shurbs, forest"; on the units arm the image names 1A's
+    "Shrubs," and is uncertain at "forest"."""
     rig = build_rig(tmp_path, TEXT.replace("Synthetic grassland", "Shrubs, forest"),
         TEXT.replace("Synthetic grassland", "Shurbs, forest"), candidates=SHRUBS)
-    run = rig.specimen.run
     if first_pass_path == "units":
-        first = run.observations[0].id
+        first = rig.specimen.run.observations[0].id
 
         def image(unit):
             texts = {span.text for span in unit.readers.values()}
@@ -339,6 +370,18 @@ def test_an_option_that_backs_a_rival_marks_the_rules_pick_and_lists_the_rival(t
             return UNCERTAIN if any("forest" in text for text in texts) else unit.image
 
         images(rig, image)
+    return rig
+
+
+def test_an_option_that_backs_a_rival_marks_the_rules_pick_and_lists_the_rival(tmp_path, first_pass_path):
+    """1A writes "Shrubs, forest", 1B "Shurbs, forest"; the image names 1A's "Shrubs," and is
+    uncertain at "forest". The expert lists "Shrubs" and "forest". Offered, "forest" is a rival
+    both readers back, so rule 5 settles "Shrubs" (IMAGE above TEXT), marked as a conflict with
+    "forest" listed, though the rule given "Shrubs" alone would clear it: the settlement is
+    recorded with the answer's options offered (step._settlement)."""
+    rig = rival_rig(tmp_path, first_pass_path)
+    run = rig.specimen.run
+    if first_pass_path == "units":
         readings = field_step.run_readings(run)
         [task] = [task for task in field_step.build_tasks(run)[1] if task.key == "habitat"]
         [offered] = agreement.labels(task, readings, [], offered=["Shrubs", "forest"]).values()
@@ -353,6 +396,60 @@ def test_an_option_that_backs_a_rival_marks_the_rules_pick_and_lists_the_rival(t
     assert (habitat.state, habitat.literal) == (ValueState.SUPPORTED, "Shrubs")
     assert habitat.reason.endswith("Marked for a person: another text has backing too: 'forest'.")
     assert findings(run, "habitat") == [(f"marked:habitat:{run.regions[0].id}:conflict", "warning")]
+
+
+def test_the_answers_literal_is_offered_when_the_rules_settlement_is_recorded(tmp_path, first_pass_path):
+    """The rival's label above, the answer giving "forest" as its literal (1A, 1B) and "Shrubs" and
+    "Shurbs" as its options, as stored answers carry a literal beside their options. Offered with
+    the literal, "forest" is the rival both readers back: "Shrubs" settles marked as a conflict,
+    "forest" listed (step._settlement offers the answer's literal and options)."""
+    rig = rival_rig(tmp_path, first_pass_path)
+    run = rig.specimen.run
+    settle(rig, Scripted({"habitat": answering(FieldAnswer(outcome="several_possibilities", literal="forest",
+        reading_names=["1A", "1B"], options=["Shrubs", "Shurbs"], explanation="The readers' texts differ."))}))
+    if first_pass_path == "old":
+        return old_path_unchanged(run, "habitat", ("Shrubs", "Shurbs"))
+    habitat = run.fields["habitat"]
+    assert (habitat.state, habitat.literal) == (ValueState.SUPPORTED, "Shrubs")
+    assert habitat.reason.endswith("Marked for a person: another text has backing too: 'forest'.")
+    assert findings(run, "habitat") == [(f"marked:habitat:{run.regions[0].id}:conflict", "warning")]
+
+
+OUTCOMES = Path(__file__).parents[1] / "fixtures" / "units_several_possibilities_outcomes.json"
+
+
+def stored_outcome(index):
+    """A stored several_possibilities outcome of WP 1.5 (tests/fixtures/
+    units_several_possibilities_outcomes.json): the field's task, the readings with their units,
+    the field's lookups and the outcome."""
+    case = json.loads(OUTCOMES.read_text(encoding="utf-8"))["cases"][index]
+    readings = tuple(Reading(r["name"], r["region_id"], r["observation_id"], r["input_source"], r["text"],
+        units=ReadingUnits.model_validate(r["units"]) if r["units"] is not None else None) for r in case["readings"])
+    given = case["task"]
+    task = FieldTask(given["key"], given["mandatory"], FieldValue.model_validate(given["current"]),
+        tuple(Candidate(**candidate) for candidate in given["candidates"]), tuple(given["tools"]))
+    lookups = [SourceAnswer(item["source"], item["query"], LookupStatus(item["status"]),
+        tuple(SourceCandidate(**candidate) for candidate in item["candidates"]),
+        Evidence(**item["evidence"]) if item["evidence"] else None, note=item["note"]) for item in case["lookups"]]
+    return task, readings, lookups, FieldOutcome(task.key, FieldAnswer(**case["answer"]), model_calls=1)
+
+
+@pytest.mark.parametrize(("index", "literal", "names"), [(0, "AZARBAITAN", ["2A"]), (1, None, None)],
+    ids=["r1-pair-105526647-precise-location", "r1-pair-105526617-catalogue-number"])
+def test_a_stored_answers_literal_is_offered_to_the_rule(index, literal, names):
+    """Two stored answers whose literal the rule is offered beside their options (step._by_rule).
+    105526647's precise location: the literal "AZARBAITAN" (2A), no options; the image names 2A's
+    text there, so it is put to the rule on that text. 105526617's catalogue number: the literal
+    "FMNHINS\n4486488" (1B), options "4456488" and "4486488"; offered, the literal is a backed text
+    that holds the option "4486488" (P5), and it runs over two lines, which a catalogue number's
+    literal may not (agreement.written_runs), so the answer is not put to the rule. Built here,
+    the readings carry units on both arms."""
+    task, readings, lookups, outcome = stored_outcome(index)
+    ruled = field_step._by_rule(task, outcome, readings, lookups)
+    if literal is None:
+        assert ruled is None
+    else:
+        assert (ruled.answer.literal, ruled.answer.reading_names) == (literal, names)
 
 
 def test_a_slide_code_is_never_put_to_the_rule_as_a_habitat(tmp_path, first_pass_path):
@@ -426,14 +523,12 @@ def test_two_texts_cited_as_two_places_settle_on_the_rules_ranked_pick():
     assert (label.settled, label.why, label.others) == (frozenset({"Escuintla"}), "conflict", ("Chimaltenango",))
 
 
-def test_one_text_two_cited_answers_place_apart_is_put_to_the_rule_and_the_place_check_decides(
-        tmp_path, first_pass_path):
+def test_an_abbreviation_two_cited_answers_expand_apart_is_not_put_to_the_rule(tmp_path, first_pass_path):
     """Both readers write the country "P.I." and the image names it; the expert cites Getty TGN's
     answers for "Philippine Islands" and "Pacific Islands", two nations "P.I." abbreviates
-    (test_step.Gazetteer), and lists "P.I." and "Philippines". Put to the rule, "P.I." is resolved
-    on the first cited answer that settles it; applied, the place check refuses an abbreviation two
-    answers expand to different places (agreement.refusal, EXPANSIONS_DIFFER), so the field is as
-    the expert's own answer leaves it, and its decision names that refusal."""
+    (test_step.Gazetteer), and lists "P.I." and "Philippines". The cited answers settle "P.I." as
+    two places, so it is not put to the rule (step._by_rule; the coordinator's ruling Y1): the
+    field is as the expert's own answer leaves it, and no check refused a rule's answer."""
     rig = build_rig(tmp_path, label_with(country="P.I."))
     run = rig.specimen.run
 
@@ -448,7 +543,48 @@ def test_one_text_two_cited_answers_place_apart_is_put_to_the_rule_and_the_place
     prepared, outcomes, calls = research(rig, Scripted({"country": script}), tools=Gazetteer(rig.blobs))
     field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
     old_path_unchanged(run, "country", ("P.I.", "Philippines"))
-    assert decisions["country"].get("refusal") == ("expansions_differ" if first_pass_path == "units" else None)
+    assert decisions["country"].get("refusal") is None
+
+
+class Amazonas(Gazetteer):
+    """Getty TGN with two first-level units named "Amazonas", one in Brazil, one in Peru (made-up
+    records)."""
+
+    PLACES = {**Gazetteer.PLACES,
+        "Amazonas, Brazil": [("Amazonas", "tgn:am-br", Gazetteer.FIRST, (("Brazil", "tgn:brazil"),))],
+        "Amazonas, Peru": [("Amazonas", "tgn:am-pe", Gazetteer.FIRST, (("Peru", "tgn:peru"),))]}
+
+
+@pytest.mark.parametrize("order", [("Amazonas, Brazil", "Amazonas, Peru"), ("Amazonas, Peru", "Amazonas, Brazil")],
+    ids=["brazil-first", "peru-first"])
+def test_one_text_two_cited_answers_place_apart_stays_ambiguous_with_no_derived_country(
+        tmp_path, first_pass_path, order):
+    """Both readers write the province "Amazonas", the image names it, and the label writes no
+    country; the expert cites Getty TGN's answers for "Amazonas, Brazil" and "Amazonas, Peru", one
+    first-level unit each, and lists "Amazonas" and "Amazona". The cited answers settle the one
+    text as two places (the coordinator's ruling Y1): it is not put to the rule, whichever answer
+    is cited first, so the province stays ambiguous with the answer's options and no country is
+    derived from it."""
+    rig = build_rig(tmp_path, label_with(country=None, province_state="Amazonas", county=None, city=None),
+        candidates=[candidate for candidate in every_field(
+            ("province_state", "1A", "Amazonas", "province_state: Amazonas"),
+            ("province_state", "1B", "Amazonas", "province_state: Amazonas"))
+            if candidate[0] not in ("country", "county", "city")])
+    run = rig.specimen.run
+
+    async def script(task, readings, tools):
+        answers = [await tools.lookup("tgn", query, field_key=task.key) for query in order]
+        return FieldOutcome(task.key, FieldAnswer(outcome="several_possibilities", options=["Amazonas", "Amazona"],
+            source_evidence_ids=[a.evidence.id for a in answers], explanation="Two units of this name."),
+            evidence=[a.evidence for a in answers], model_calls=1)
+
+    lacks = answering(FieldAnswer(outcome="label_lacks_value", explanation="Not on the label."))
+    prepared, outcomes, calls = research(rig, Scripted({"province_state": script, "country": lacks, "county": lacks,
+        "city": lacks}), tools=Amazonas(rig.blobs))
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls)
+    old_path_unchanged(run, "province_state", ("Amazonas", "Amazona"))
+    country = run.fields["country"]
+    assert country.state != ValueState.SUPPORTED and country.layer != "derived"
 
 
 def test_a_label_with_no_backed_candidate_takes_no_part_beside_one_that_settles(
