@@ -23,6 +23,7 @@ import os
 import re
 import string
 import time
+import unicodedata
 from types import SimpleNamespace
 
 from typing import Literal
@@ -842,8 +843,51 @@ def _plain(text: str) -> str:
     return "".join(character for character in text.casefold() if character.isalnum())
 
 
+def _capitals_and_spacing(text: str) -> str:
+    """A text without its capital letters and spacing: NFC, every space and line break
+    removed, str.lower(). Unlike casefold, str.lower() leaves "\u00df", "\u017f" and "\u03c2" as
+    they are, so two texts equal here differ in capital letters and spacing alone."""
+    return "".join(unicodedata.normalize("NFC", text).split()).lower()
+
+
+# What a unit's image says when it names no reader's text; never a text to substitute.
+_MARKERS = frozenset({UNCERTAIN, NOT_VISIBLE})
+
+
+def first_readers_spelling(named: str, spans) -> str:
+    """The text a unit's image stores where the model names the text `named`.
+
+    The first reader's text here, in reader order, replaces it when both hold: its
+    agreement key equals the named text's (field_research/agreement.py: NFC, casefolded,
+    white space removed, the key the settlement compares texts by), and the two are equal
+    after NFC, removing white space and str.lower() (_capitals_and_spacing), that is, they
+    differ in capital letters and spacing alone. The stored text's capitals and spaces are
+    then the first reader's, not the named reader's. Texts that differ in a character stay
+    apart although casefold folds them to one key: "Weissenburg" and "Wei\u00dfenburg"
+    ("\u00df" casefolds to "ss"), "Preussen" and "Preu\u017f\u017fen". A text that is exactly
+    UNCERTAIN or NOT_VISIBLE takes no part, as the named text or as the first reader's.
+    In every other case the named text is returned as it is."""
+    # Imported where used, as application/api.py and location_reassessment_authorization.py
+    # import field_research.
+    from ..field_research.agreement import agreement_key
+
+    key, plain = agreement_key(named), _capitals_and_spacing(named)
+    first = next(
+        (
+            span.text
+            for span in spans
+            if agreement_key(span.text) == key and _capitals_and_spacing(span.text) == plain
+        ),
+        named,
+    )
+    return named if named in _MARKERS or first in _MARKERS else first
+
+
 def units_from_output(region_id: str, output: UnitsOutput, letters, segments) -> ReadingUnits:
-    """The label's units from an answer units_output_problems accepted."""
+    """The label's units from an answer units_output_problems accepted. Where a unit's
+    image names a reader, the unit's image is first_readers_spelling of that reader's text:
+    the first reader's text where the two differ in capitals and spacing alone and neither
+    is exactly UNCERTAIN or NOT_VISIBLE, else the named reader's."""
     readings = list(letters.values())
     units = []
     for number, answer in enumerate(output.units, 1):
@@ -854,7 +898,7 @@ def units_from_output(region_id: str, output: UnitsOutput, letters, segments) ->
         ]
         image = answer.image
         if image in letters:
-            image = spans[list(letters).index(image)].text
+            image = first_readers_spelling(spans[list(letters).index(image)].text, spans)
         means = answer.means.strip()
         if _plain(means) in {_plain(span.text) for span in spans}:
             # A meaning equal to a reader's text here (_plain) is left empty.
@@ -869,8 +913,11 @@ def units_from_output(region_id: str, output: UnitsOutput, letters, segments) ->
     return ReadingUnits(label=region_id, units=units)
 
 
-# Request options first_pass_units_direct's agent sends over the route's own (_agent).
-UNITS_REQUEST_OPTIONS = {"reasoning_effort": "low"}
+# Request options first_pass_units_direct's agent sends over the route's own (_agent):
+# reasoning_effort low, and temperature 0, which the field experts' model settings send too
+# (field_research/experts.py, MODEL_SETTINGS; they send no reasoning effort).
+# first_pass_direct, the old path, passes none (its request carries the route's own).
+UNITS_REQUEST_OPTIONS = {"reasoning_effort": "low", "temperature": 0}
 
 
 # _unpicked's decision selects no reading and gives each difference the verdict uncertain.
