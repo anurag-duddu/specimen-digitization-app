@@ -13,6 +13,7 @@ import '../../blocker_words.dart';
 import '../../models.dart';
 import '../../processing_wait.dart';
 import '../../review_context.dart';
+import '../../settlement_codes.dart';
 import 'workbench_layout.dart';
 
 /// Whether an issue belongs to a field, a label, or an operator's work.
@@ -177,31 +178,6 @@ List<ClearanceBlocker> fieldNotesFor(Specimen specimen) => [
       ),
 ].where((note) => note.fieldKey != null).toList();
 
-/// The exact fields named by the specimen contract. A reason suffix is a
-/// routing hint only when it names a real field in this response.
-const Map<String, String> _fieldNames = <String, String>{
-  'fmnh_ins_number': 'Catalog number',
-  'collection_code': 'Collection code',
-  'country': 'Country',
-  'province_state': 'State or province',
-  'county': 'County',
-  'city': 'City',
-  'precise_location': 'Locality',
-  'elevation_from_m': 'Minimum elevation (m)',
-  'elevation_to_m': 'Maximum elevation (m)',
-  'elevation_from_ft': 'Minimum elevation (ft)',
-  'elevation_to_ft': 'Maximum elevation (ft)',
-  'habitat': 'Habitat',
-  'collection_method': 'Collection method',
-  'date_visited_from': 'Collection start date',
-  'date_visited_to': 'Collection end date',
-  'collectors': 'Collectors',
-  'verbatim_dts': 'Verbatim D/T/S',
-  'taxon': 'Taxon',
-  'identified_by_irn': 'Identifier',
-  'date_identified': 'Identification date',
-};
-
 const Map<String, String> _fieldReasons = <String, String>{
   'mandatory_unresolved': 'needs a supported value',
   'mandatory_evidence_unresolved': 'needs supporting evidence',
@@ -218,7 +194,39 @@ const Map<String, String> _fieldReasons = <String, String>{
   'competing_mandatory_candidates': 'has conflicting proposed values',
   'raw_reading_grounding_unproved': 'cannot be traced to the label readings',
   'preserved_human_decision': 'has an earlier review decision to confirm',
+  markedCode: 'is marked for review',
 };
+
+/// The field a code names: its whole suffix, except a `cleared:` or
+/// `marked:` code, whose field is the first part after the colon.
+String _reasonField(String base, String suffix) =>
+    base == clearedCode || base == markedCode
+    ? settlementField(suffix)
+    : suffix;
+
+/// Why a `marked:` code's label left its field for a person, by its `why`.
+String _markedWhy(String why) => switch (why) {
+  'text_only' =>
+    'Only the readings back this value. The image and sources do not '
+        'confirm it.',
+  'conflict' =>
+    'Another reading competes with this value. Check it against the image.',
+  _ => 'Review the value and its supporting sources.',
+};
+
+/// The field note a `cleared:` or `marked:` finding reads as, naming the
+/// label (its second part) when the record holds that label.
+String _settlementNote(Specimen specimen, String base, String suffix) {
+  final String? region = settlementLabel(specimen, suffix);
+  final String where = region == null
+      ? ''
+      : ' on ${settlementLabelName(specimen, region)}';
+  if (base == clearedCode) {
+    return 'Confirmed$where by the image, a source or a person.';
+  }
+  final String? why = markedReasonWords(suffix);
+  return why == null ? 'Marked$where for review.' : 'Marked$where: $why.';
+}
 
 /// Reasons about one label region (`<code>:<region id>`), worded after the
 /// label's name.
@@ -295,10 +303,11 @@ String reviewIssueSummary(String raw) {
   final separator = code.indexOf(':');
   final base = separator < 0 ? code : code.substring(0, separator);
   final suffix = separator < 0 ? '' : code.substring(separator + 1);
-  final fieldName = _fieldNames[suffix];
+  final target = _reasonField(base, suffix);
+  final fieldName = contractFieldNames[target];
   final fieldReason = _fieldReasons[base];
   if (fieldName != null && fieldReason != null) {
-    return _fieldReasonMessage(const Specimen({}), suffix, fieldReason);
+    return _fieldReasonMessage(const Specimen({}), target, fieldReason);
   }
   if (_labelReasons[base] case final reason?) return 'A label $reason';
   if (base == 'unresolved_transcription') {
@@ -385,18 +394,40 @@ ClearanceBlocker _issueFor(
     field = null;
     region = null;
   } else if (_fieldReasons.containsKey(base)) {
-    final String? matched = _matchingField(specimen, suffix);
+    final String target = _reasonField(base, suffix);
+    final String? matched = _matchingField(specimen, target);
     // Explicit structured targets remain supported for older collections.
     // Conflicting structured and encoded targets are not safe to guess.
-    if (suffix.isNotEmpty && explicitField != null && suffix != explicitField) {
+    if (target.isNotEmpty && explicitField != null && target != explicitField) {
       field = null;
     } else {
       field ??= matched;
     }
-    if (field != null) {
+    if (field != null && base == markedCode) {
+      // marked:<field>:<label>:<why>. A code naming another label or why
+      // stays its own item: the identity in blockersFor keeps the full code.
+      final List<String> parts = suffix.split(':');
+      final String? label = parts.length > 1
+          ? _matchingRegion(specimen, parts[1])
+          : null;
+      kind = ClearanceBlockerKind.field;
+      // A sentence: the field row shows it as body text.
+      message =
+          '${_fieldReasonMessage(specimen, field, label == null ? _fieldReasons[base]! : '${_fieldReasons[base]!} on ${_regionName(specimen, label)}')}.';
+      detail = _markedWhy(parts.length > 2 ? parts[2] : '');
+    } else if (field != null) {
       kind = ClearanceBlockerKind.field;
       message = _fieldReasonMessage(specimen, field, _fieldReasons[base]!);
       detail = 'Review the value and its supporting sources.';
+    }
+  } else if (base == clearedCode) {
+    // cleared:<field>:<label>, a note: its field from the code when the
+    // finding names none, as for marked:.
+    final String target = _reasonField(base, suffix);
+    if (target.isNotEmpty && explicitField != null && target != explicitField) {
+      field = null;
+    } else {
+      field ??= _matchingField(specimen, target);
     }
   } else if (base == 'unresolved_transcription') {
     region ??= _matchingRegion(specimen, suffix);
@@ -466,6 +497,8 @@ ClearanceBlocker _issueFor(
               switch (base) {
                 'transcript_literal' => 'Read from the label transcript',
                 'near_spelling' => 'Matched using a close spelling',
+                clearedCode ||
+                markedCode => _settlementNote(specimen, base, suffix),
                 _ => 'Recorded field note',
               }
         : message ?? 'A specimen check needs review before approval',
@@ -486,7 +519,7 @@ String? _nonempty(Object? value) =>
     value is String && value.trim().isNotEmpty ? value : null;
 
 String? _matchingField(Specimen specimen, String key) =>
-    _fieldNames.containsKey(key) &&
+    contractFieldNames.containsKey(key) &&
         specimen.fields.any((Json field) => field['field_key'] == key)
     ? key
     : null;
@@ -501,7 +534,7 @@ String _fieldName(Specimen specimen, String key) =>
     _knownFieldName(specimen, key) ?? 'This field';
 
 String? _knownFieldName(Specimen specimen, String key) {
-  final String? known = _fieldNames[key];
+  final String? known = contractFieldNames[key];
   if (known != null) return known;
   for (final Json field in specimen.fields) {
     if (field['field_key'] != key) continue;
@@ -521,6 +554,7 @@ String _fieldReasonMessage(Specimen specimen, String field, String reason) {
             .replaceFirst(RegExp(r'^needs\b'), 'need')
             .replaceFirst(RegExp(r'^does\b'), 'do')
             .replaceFirst(RegExp(r'^has\b'), 'have')
+            .replaceFirst(RegExp(r'^is\b'), 'are')
             .replaceFirst(RegExp(r'^was\b'), 'were')
       : reason;
   return '${_fieldName(specimen, field)} $verb';
