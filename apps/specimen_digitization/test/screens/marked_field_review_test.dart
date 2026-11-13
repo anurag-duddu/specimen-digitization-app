@@ -181,7 +181,7 @@ void main() {
           (
             'warning',
             'marked:habitat:L1:text_only',
-            'Marked on Label 1: only the readings back it.',
+            'Marked on Label 1: only readings back it.',
           ),
           (
             'warning',
@@ -191,7 +191,7 @@ void main() {
           (
             'warning',
             'marked:habitat:L9:text_only',
-            'Marked: only the readings back it.',
+            'Marked: only readings back it.',
           ),
           (
             'warning',
@@ -283,8 +283,7 @@ void main() {
           (
             <String>['L1'],
             'marked:habitat:L1:text_only',
-            'Habitat is marked for review on Label 1: only the readings back '
-                'it',
+            'Habitat is marked for review on Label 1: only readings back it',
           ),
           (
             <String>['L1'],
@@ -299,38 +298,35 @@ void main() {
           (
             <String>['L1'],
             'marked:collectors:L1:text_only',
-            'Collectors are marked for review on Label 1: only the readings '
-                'back it',
+            'Collectors are marked for review on Label 1: only readings back it',
           ),
           (
             <String>['L1'],
             'cleared:habitat:L1',
-            'Habitat is confirmed on Label 1 by the image, a source or a person',
+            'Habitat is confirmed on Label 1 by image, source or person',
           ),
           // A field the app has no name for.
           (
             <String>['L1'],
             'marked:no_such_field:L1:text_only',
-            'A field is marked for review on Label 1: only the readings back '
-                'it',
+            'A field is marked for review on Label 1: only readings back it',
           ),
           (<String>['L1'], 'marked:', 'A field is marked for review'),
           // A label id the record does not hold is left out, a UUID included.
           (
             <String>['L1'],
             'marked:habitat:$uuid:text_only',
-            'Habitat is marked for review: only the readings back it',
+            'Habitat is marked for review: only readings back it',
           ),
           (
             <String>[uuid],
             'marked:habitat:$uuid:text_only',
-            'Habitat is marked for review on Label 1: only the readings back '
-                'it',
+            'Habitat is marked for review on Label 1: only readings back it',
           ),
           (
             <String>['L1'],
             'cleared:habitat:$uuid',
-            'Habitat is confirmed by the image, a source or a person',
+            'Habitat is confirmed by image, source or person',
           ),
           // Another code reads as before.
           (
@@ -357,29 +353,126 @@ void main() {
     }
   });
 
-  test('every settlement chip\'s label is within 100 characters', () {
-    // Every contract field, each why and cleared, on the tenth label.
+  // The specimen contract's 20 fields by the name a reviewer reads.
+  const Map<String, String> names = <String, String>{
+    'fmnh_ins_number': 'Catalog number',
+    'collection_code': 'Collection code',
+    'country': 'Country',
+    'province_state': 'State or province',
+    'county': 'County',
+    'city': 'City',
+    'precise_location': 'Locality',
+    'elevation_from_m': 'Minimum elevation (m)',
+    'elevation_to_m': 'Maximum elevation (m)',
+    'elevation_from_ft': 'Minimum elevation (ft)',
+    'elevation_to_ft': 'Maximum elevation (ft)',
+    'habitat': 'Habitat',
+    'collection_method': 'Collection method',
+    'date_visited_from': 'Collection start date',
+    'date_visited_to': 'Collection end date',
+    'collectors': 'Collectors',
+    'verbatim_dts': 'Verbatim D/T/S',
+    'taxon': 'Taxon',
+    'identified_by_irn': 'Identifier',
+    'date_identified': 'Identification date',
+  };
+
+  // A record holds at most 1,000 label regions (`check_regions`,
+  // application/image_quality.py). Every field's four kinds of code on the
+  // last of them, read off the chips the decision sheet draws.
+  testWidgets('every settlement chip on Label 1000 names its field and fits '
+      '100 characters', (WidgetTester tester) async {
+    expect(names.keys.toSet(), contractFieldNames.keys.toSet());
+    final List<(String, String)> expected = <(String, String)>[
+      for (final MapEntry<String, String> field
+          in names.entries) ...<(String, String)>[
+        (
+          'marked:${field.key}:L1000:text_only',
+          '${field.value} ${field.key == 'collectors' ? 'are' : 'is'} marked '
+              'for review on Label 1000: only readings back it',
+        ),
+        (
+          'marked:${field.key}:L1000:conflict',
+          '${field.value} ${field.key == 'collectors' ? 'are' : 'is'} marked '
+              'for review on Label 1000: another reading competes',
+        ),
+        (
+          'marked:${field.key}:L1000:other',
+          '${field.value} ${field.key == 'collectors' ? 'are' : 'is'} marked '
+              'for review on Label 1000',
+        ),
+        (
+          'cleared:${field.key}:L1000',
+          '${field.value} ${field.key == 'collectors' ? 'are' : 'is'} '
+              'confirmed on Label 1000 by image, source or person',
+        ),
+      ],
+    ];
     final Specimen specimen = Specimen(<String, dynamic>{
       'regions': <Json>[
-        for (int i = 1; i <= 10; i++) <String, dynamic>{'region_id': 'L$i'},
+        for (int i = 1; i <= 1000; i++) <String, dynamic>{'region_id': 'L$i'},
+      ],
+      'reason_codes': <String>[for (final (String code, _) in expected) code],
+    });
+    await pumpComponent(
+      tester,
+      SingleChildScrollView(
+        child: ReasonForm(
+          title: 'Approve record?',
+          action: 'Approve record',
+          consequence: 'This is recorded on this version with your name.',
+          recordReasons: recordReasonCodes(specimen),
+        ),
+      ),
+      size: const Size(800, 12000),
+    );
+    final List<String> labels = <String>[
+      for (final UiChip chip in tester.widgetList<UiChip>(find.byType(UiChip)))
+        chip.semanticsLabel!,
+    ];
+    expect(labels, hasLength(expected.length));
+    for (final String label in labels) {
+      expect(label.length, lessThanOrEqualTo(100), reason: label);
+    }
+    expect(labels, <String>[
+      for (final (_, String words) in expected)
+        '${ReasonForm.useReasonLabel}: $words',
+    ]);
+  });
+
+  // The label is named by its place among the record's regions.
+  test('a code naming the first of two labels names Label 1', () {
+    const String first = '00000000-0000-4000-8000-0000000000e1';
+    const String second = '00000000-0000-4000-8000-0000000000e2';
+    final Specimen specimen = Specimen(<String, dynamic>{
+      ...record(
+        <String>[
+          'marked:habitat:$first:text_only',
+          'cleared:collectors:$second',
+        ],
+        asFindings: false,
+        notes: <Json>[
+          <String, dynamic>{
+            'rule_id': 'field_settlement',
+            'severity': 'warning',
+            'field_key': 'habitat',
+            'reason_code': 'marked:habitat:$first:text_only',
+          },
+        ],
+      ).data,
+      'regions': <Json>[
+        <String, dynamic>{'region_id': first},
+        <String, dynamic>{'region_id': second},
       ],
     });
-    for (final String field in contractFieldNames.keys) {
-      for (final String code in <String>[
-        'marked:$field:L10:text_only',
-        'marked:$field:L10:conflict',
-        'marked:$field:L10:other',
-        'cleared:$field:L10',
-      ]) {
-        final String words = settlementPhrase(specimen, code)!;
-        expect(words, contains('on Label 10'), reason: code);
-        expect(
-          '${ReasonForm.useReasonLabel}: $words'.length,
-          lessThanOrEqualTo(100),
-          reason: words,
-        );
-      }
-    }
+    expect(recordReasonCodes(specimen), <String>[
+      'Habitat is marked for review on Label 1: only readings back it',
+      'Collectors are confirmed on Label 2 by image, source or person',
+    ]);
+    expect(
+      fieldNotesFor(specimen).map((ClearanceBlocker n) => n.message),
+      <String>['Marked on Label 1: only readings back it.'],
+    );
   });
 
   Future<void> showFields(WidgetTester tester, Specimen specimen) =>

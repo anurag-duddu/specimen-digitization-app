@@ -58,7 +58,7 @@ String settlementLabelName(Specimen specimen, String regionId) =>
 String? markedReasonWords(String suffix) {
   final List<String> parts = suffix.split(':');
   return switch (parts.length > 2 ? parts[2] : '') {
-    'text_only' => 'only the readings back it',
+    'text_only' => 'only readings back it',
     'conflict' => 'another reading competes',
     _ => null,
   };
@@ -67,7 +67,10 @@ String? markedReasonWords(String suffix) {
 /// A `cleared:` or `marked:` code in words, for a list of the record's
 /// reasons: the field's contract name ("A field" when it has none), the
 /// label's name when [specimen] holds that label, and why. Null for any other
-/// code.
+/// code. Kept short: the decision sheet's chip reads "Use this reason: " and
+/// this phrase, at most 100 characters for every contract field up to
+/// Label 1000 (`check_regions` in `application/image_quality.py` refuses
+/// more than 1,000 regions).
 String? settlementPhrase(Specimen specimen, String code) {
   final int separator = code.indexOf(':');
   if (separator < 0) return null;
@@ -84,7 +87,7 @@ String? settlementPhrase(Specimen specimen, String code) {
       ? 'A field is'
       : '$name ${field == 'collectors' ? 'are' : 'is'}';
   if (base == clearedCode) {
-    return '$subject confirmed$where by the image, a source or a person';
+    return '$subject confirmed$where by image, source or person';
   }
   final String? why = markedReasonWords(suffix);
   return '$subject marked for review$where${why == null ? '' : ': $why'}';
