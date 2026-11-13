@@ -102,7 +102,6 @@ from .contracts import (
     FirstPassAdvice,
     Reading,
     SourceAnswer,
-    SourceCandidate,
     SourceTools,
     not_on_label_fields,
 )
@@ -1427,30 +1426,24 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     rules 4 and 5 say, the outcome with that text as a resolved answer: the literal as the first
     reading that holds it writes it (a person's reading first), naming each reading that writes
     it as whole words or as its organiser candidate, citing the source answers the expert
-    cited, its value the place the first of them that settles it gives
-    (agreement.place_settling), cited first, where all that settle it name one record
-    (_record), or its deterministic
-    check's one successful result (CHECKS: an elevation's lower or upper number as the field's
-    brief takes it, UPPER_ELEVATION), and the expert's explanation and options. apply_outcomes
-    applies it as any resolved answer and records the settlement with the answer's literal and
-    options offered (_settlement). None otherwise, the field then as the expert's answer leaves
-    it (rule 6): also where no reading writes the text so, where no cited answer settles a
-    place or they settle it as two records, where the check gives no one successful result or no
-    value for the field, where a written rule refuses the literal (extraction_refusal), for a
-    taxon and for the identified-by IRN (below)."""
+    cited, its value its deterministic check's one successful result (CHECKS: an elevation's
+    lower or upper number as the field's brief takes it, UPPER_ELEVATION), and the expert's
+    explanation and options. apply_outcomes applies it as any resolved answer and records the
+    settlement with the answer's literal and options offered (_settlement). None otherwise, the
+    field then as the expert's answer leaves it (rule 6): also where no reading writes the text
+    so, where the check gives no one successful result or no value for the field, where a written
+    rule refuses the literal (extraction_refusal), for a place value field, a taxon and the
+    identified-by IRN (below)."""
     from specimen_digitization.application.extraction_guard import extraction_refusal
 
     from . import checks
     from .agreement import (
-        PLACE_ANSWERED,
         PLACE_VALUE_FIELDS,
         SOURCE_IDS,
         _as_written,
         _unbacked,
         candidates_by_reading,
         labels,
-        place_settling,
-        placed,
         written_runs,
     )
 
@@ -1458,9 +1451,14 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     # Spec section 4, "Parts on different labels": "when a field's parts are on different labels,
     # the expert answers `several_possibilities` with the parts named per label ("label 1 writes
     # genus Aus; label 2 writes species bus"), marked for a person", the owner's words there
-    # naming taxa. And section 4: "`identified_by_irn` gets no model call".
+    # naming taxa. And section 4: "`identified_by_irn` gets no model call". Nor is a place value
+    # field (PLACE_VALUE_FIELDS: the fields the place check, place_settling and location
+    # reconciliation take): a place value settles only on a lookup asked (prompts/common.txt),
+    # and lookups that give one place are settled by location reconciliation before this
+    # (_reconcile_location_outcomes); the coordinator's ruling R5-1 of 2026-11-13 reads what is
+    # left as having no one SOURCE backing, which rule 6 leaves ambiguous.
     if (outcome.failure is not None or answer is None or answer.outcome != "several_possibilities"
-            or task.key == "taxon" or task.key in NO_APPROVED_AUTHORITY):
+            or task.key == "taxon" or task.key in NO_APPROVED_AUTHORITY or task.key in PLACE_VALUE_FIELDS):
         return None
     tools = frozenset(task.tools) & SOURCE_IDS
     answers = [item for item in sources if item.source_id in tools]
@@ -1484,24 +1482,8 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
         return None
     by_id = {item.evidence.id: item for item in sources if item.evidence is not None}
     cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
-    value = authority_id = None
-    if task.key in PLACE_VALUE_FIELDS:
-        places = [settles for item in cited if item.status in PLACE_ANSWERED
-            and (candidate := placed(task.key, item)) is not None
-            and (settles := place_settling(task, literal, candidate.name, candidate.authority_id, [item]))
-            is not None]
-        # One text the cited answers place apart, as two authority records (_record), has no one
-        # place to settle on (the coordinator's rulings Y1 and Z1 of 2026-11-13).
-        if len({_record(place.candidate) for place in places}) != 1:
-            return None
-        # One record: its name, value and parents are the first cited answer's that settles the
-        # text, which the rule's answer cites first; derive reads a ruled field's answers in the
-        # order the field cites them (apply_outcomes; the coordinator's ruling Z2 of 2026-11-13).
-        [place, *_] = places
-        cited = [place.answer, *(item for item in cited if item is not place.answer)]
-        authority_id = place.candidate.authority_id
-        value = place.candidate.name if checks.collapse(place.candidate.name) != checks.collapse(literal) else None
-    elif set(task.tools) & CHECKS:
+    value = None
+    if set(task.tools) & CHECKS:
         results = [result for _, result in _check_results(task.key, task.tools, literal,
             texts=[reading.text for reading in readings], date_rules=date_rules)
             if result.status == LookupStatus.SUCCESS]
@@ -1517,24 +1499,8 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
         value = value if value != literal else None
     explanation = answer.explanation + (" Options: " + "; ".join(given) + "." if given else "")
     return replace(outcome, answer=FieldAnswer(outcome="resolved", literal=literal,
-        reading_names=[reading.name for reading in named], value=value, authority_id=authority_id,
+        reading_names=[reading.name for reading in named], value=value,
         source_evidence_ids=[item.evidence.id for item in cited], explanation=explanation))
-
-
-def _record(candidate: SourceCandidate) -> tuple:
-    """The authority record a cited place candidate names, for _by_rule's one place (the
-    coordinator's ruling Z1 of 2026-11-13): its authority_id, the source's namespace and record id
-    as its candidates carry it ("tgn:1000135"), however an answer describes the place. For a
-    candidate with none (SourceCandidate.authority_id may be None), what the contract stores of it
-    besides: its name (agreement.place_name), its own ISO code and each parent's name, record and
-    code, so it is one place only with a candidate described so alike, and never with one that
-    names a record."""
-    from .agreement import place_name
-
-    if candidate.authority_id is not None:
-        return ("record", candidate.authority_id)
-    return ("described", place_name(candidate.name), candidate.iso_code,
-        tuple((place_name(parent.name), parent.authority_id, parent.iso_code) for parent in candidate.parents))
 
 
 # Owner decision B, 2026-10-09: a taxon whose label names no genus clears as
@@ -2562,20 +2528,12 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
         and (not reassessing or key in reassessing)]
     ambiguous_country = None
     if "country" in eligible and _country_alternatives_are_lower_places(run, tasks_by_key.get("country"),
-            next((put.get(outcome.key, outcome) for outcome in outcomes if outcome.key == "country"), None),
+            next((outcome for outcome in outcomes if outcome.key == "country"), None),
             readings=readings, received=received, fresh=fresh,
             claimed=_claimed_texts(run, tasks_by_key, readings, "country")):
         ambiguous_country = run.fields["country"]
         run.fields["country"] = ambiguous_country.model_copy(update={"state": ValueState.UNRESOLVED})
-    # A field the rule settled hands derive its answers in the order it cites them, so a place's
-    # parents come from the answer its name and value came from, which it cites first (_by_rule;
-    # derive._settling_candidate takes the first cited answer that holds the place's record).
-    for_derive = dict(received)
-    for key in put.keys() & run.fields.keys():
-        order = {evidence_id: index for index, evidence_id in enumerate(run.fields[key].evidence_ids)}
-        for_derive[key] = sorted(received.get(key, ()), key=lambda answer: order.get(
-            answer.evidence.id if answer.evidence is not None else None, len(order)))
-    derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs, received=for_derive)
+    derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs, received=received)
     if ambiguous_country is not None and "country" not in derived:
         run.fields["country"] = ambiguous_country
     for key in derived:

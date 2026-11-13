@@ -11,13 +11,10 @@ step._by_rule runs the same on both arms."""
 
 from __future__ import annotations
 
-import asyncio
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
-from test_first_pass_advice import with_units
 from test_settlement_rule import findings, images, naming
 from test_step import (
     LABEL,
@@ -26,7 +23,6 @@ from test_step import (
     Scripted,
     a_second_label,
     answering,
-    from_tgn,
     build_rig,
     every_field,
     label_with,
@@ -38,12 +34,11 @@ from test_step import (
 from specimen_digitization.application.domain import Disposition, Evidence, FieldValue, LookupStatus, ValueState
 from specimen_digitization.application.first_pass import source_units
 from specimen_digitization.application.reading_units import UNCERTAIN, ReadingUnits
-from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.application.workflow import store_reading_units
 from specimen_digitization.field_research import agreement
 from specimen_digitization.field_research import step as field_step
+from specimen_digitization.field_research.agreement import PLACE_ORDER
 from specimen_digitization.field_research.contracts import (
-    FIELD_TOOLS,
     Candidate,
     FieldAnswer,
     FieldOutcome,
@@ -255,44 +250,6 @@ def test_an_elevation_the_check_reads_as_ambiguous_is_not_put_to_the_rule(tmp_pa
     assert decisions["elevation_from_m"] == {}
 
 
-def chimaltenango(cited, *, images=None):
-    """Label 1: 1A writes "province_state: Chimaltenago", 1B "province_state: Chimaltenango"
-    (105526328's province); Getty TGN as the pilot's recordings answer each text (test_step.Gazetteer:
-    "Chimaltenango" the department and its town, nothing for "Chimaltenago"); the expert's
-    several_possibilities with both texts, citing those answers when `cited`."""
-    readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading",
-        f"province_state: {name}") for letter, name in zip("AB", ("Chimaltenago", "Chimaltenango"))), images)
-    task = FieldTask("province_state", True, FieldValue(state=ValueState.AMBIGUOUS), tuple(
-        Candidate(r.name, r.text, r.text.split(": ")[1], "ev-" + r.name) for r in readings),
-        FIELD_TOOLS["province_state"])
-    with tempfile.TemporaryDirectory() as folder:
-        gazetteer = Gazetteer(LocalBlobs(Path(folder)))
-        answers = [asyncio.run(gazetteer.lookup("tgn", query, field_key="province_state"))
-            for query in ("Chimaltenango", "Chimaltenago")]
-    outcome = FieldOutcome("province_state", FieldAnswer(outcome="several_possibilities",
-        options=["Chimaltenago", "Chimaltenango"], source_evidence_ids=[a.evidence.id for a in answers] if cited
-        else [], explanation="The readers spell the department two ways."), model_calls=1)
-    return task, readings, answers, outcome
-
-
-def test_a_place_is_put_to_the_rule_on_the_source_answers_the_expert_cites():
-    """Getty TGN confirms "Chimaltenango", one letter from 1A's text, and finds nothing for 1A's
-    "Chimaltenago": one candidate with a SOURCE backing (rule 1). The answer put to the rule is
-    the confirmed text resolved from 1B, with the department's record from the answer the expert
-    cites (agreement.place_settling); citing nothing, a place has no lookup to settle on
-    (common.txt's place line), so it is not put to the rule. Built here, the readings carry
-    units on both arms."""
-    task, readings, answers, outcome = chimaltenango(cited=True)
-    ruled = field_step._by_rule(task, outcome, readings, answers)
-    assert (ruled.answer.outcome, ruled.answer.literal, ruled.answer.reading_names, ruled.answer.value,
-        ruled.answer.authority_id, ruled.answer.source_evidence_ids) == ("resolved", "Chimaltenango", ["1B"], None,
-        "tgn:1000565", [a.evidence.id for a in answers])
-    assert ruled.answer.explanation == ("The readers spell the department two ways. "
-        "Options: Chimaltenago; Chimaltenango.")
-    task, readings, answers, outcome = chimaltenango(cited=False)
-    assert field_step._by_rule(task, outcome, readings, answers) is None
-
-
 @pytest.mark.parametrize("key", ["taxon", "identified_by_irn"])
 def test_a_taxon_and_the_identified_by_irn_are_not_put_to_the_rule(tmp_path, key, first_pass_path):
     """Spec section 4: when a field's parts are on different labels, the expert answers
@@ -314,30 +271,23 @@ def test_a_taxon_and_the_identified_by_irn_are_not_put_to_the_rule(tmp_path, key
 
 
 def test_the_rules_answer_refused_when_applied_leaves_the_experts_own(tmp_path, first_pass_path):
-    """The label's province line reads "Chimaltenago" (1A) and "Chimaltenango" (1B), its country
-    "United States". Put to the rule, the several_possibilities answer settles the department of
-    Guatemala, which the settled country does not hold (step._misfit refuses it when applied):
-    the field is then as the expert's own answer leaves it, ambiguous with its options, and its
-    decision names the refusal."""
-    rig = build_rig(tmp_path, label_with(province_state="Chimaltenago"), label_with(province_state="Chimaltenango"),
-        candidates=every_field(("province_state", "1A", "Chimaltenago", "province_state: Chimaltenago"),
-            ("province_state", "1B", "Chimaltenango", "province_state: Chimaltenango")))
+    """Both readers write "Elev. 4800 ft.", the organiser's candidate is "4800 ft" and the image
+    names the text; the expert answers several_possibilities with the literal "Elev. 4800 ft."
+    and its options, as r1/three 105526328's expert did. Put to the rule, the literal, offered,
+    settles; applied, agreement.literal_refusal refuses it, as it extends the candidate
+    (NOT_CANDIDATE): the field is then as the expert's own answer leaves it, ambiguous with its
+    options, and its decision names the refusal."""
+    rig = build_rig(tmp_path, TEXT.replace("elevation_from_ft: 1500 ft", "Elev. 4800 ft."), candidates=every_field(
+        *(("elevation_from_ft", name, "4800 ft", "Elev. 4800 ft.") for name in ("1A", "1B"))))
     run = rig.specimen.run
-
-    async def script(task, readings, tools):
-        answers = [await tools.lookup("tgn", query, field_key=task.key) for query in ("Chimaltenango", "Chimaltenago")]
-        return FieldOutcome(task.key, FieldAnswer(outcome="several_possibilities",
-            options=["Chimaltenago", "Chimaltenango"], source_evidence_ids=[a.evidence.id for a in answers],
-            explanation="The readers spell the department two ways."), evidence=[a.evidence for a in answers],
-            model_calls=1)
-
+    options = ("Elev. 4800 ft.", "Elev. +800 ft.")
     decisions = {}
-    prepared, outcomes, calls = research(rig, Scripted({"province_state": script}), tools=Gazetteer(rig.blobs))
+    prepared, outcomes, calls = research(rig, Scripted({"elevation_from_ft": answering(FieldAnswer(
+        outcome="several_possibilities", literal="Elev. 4800 ft.", reading_names=["1A"], options=list(options),
+        explanation="The readers' texts differ."))}))
     field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
-    old_path_unchanged(run, "province_state", ("Chimaltenago", "Chimaltenango"))
-    if first_pass_path == "units":
-        assert decisions["province_state"] == {"refusal": decisions["province_state"]["refusal"]}
-        assert decisions["province_state"]["refusal"] not in (None, "")
+    old_path_unchanged(run, "elevation_from_ft", options)
+    assert decisions["elevation_from_ft"] == ({"refusal": "not_candidate"} if first_pass_path == "units" else {})
 
 
 def test_the_rules_text_that_another_kind_of_field_settles_leaves_the_experts_own(tmp_path, first_pass_path):
@@ -446,8 +396,9 @@ def test_a_stored_answers_literal_is_offered_to_the_rule(index, literal, names):
     "4486488" (P5), and it runs over two lines, which a catalogue number's literal may not
     (agreement.written_runs), so the answer is not put to the rule. 105526330's date visited to:
     the literal "Guatemala, IV-25" (2A, 2B), options "1948-04-25" and "1948-04-26"; offered, the
-    literal is a candidate beside the organiser's "1948", each backed by the readers' text alone,
-    so the label settles neither (rule 6) and the answer is not put to the rule. Offered only
+    literal is a candidate beside the organiser's "1948", each backed by the readers' text alone:
+    rule 5's text against text, which leaves the field ambiguous with both as options, as rule 6
+    stores it, so the label settles neither and the answer is not put to the rule. Offered only
     their options, the rule would settle the last two on "4486488" and "1948". Built here, the
     readings carry units on both arms."""
     task, readings, lookups, outcome = stored_outcome(index)
@@ -502,72 +453,17 @@ def test_a_numeric_date_the_check_reads_two_ways_is_not_put_to_the_rule(tmp_path
     old_path_unchanged(run, "date_visited_from", ("4-5-48", "5-4-48"))
 
 
-def test_two_texts_cited_as_two_places_settle_on_the_rules_ranked_pick():
-    """1A writes "Escuintla", 1B and 1C "Chimaltenango", and the image names 1A's text; the
-    expert cites Getty TGN's answers, which confirm each as a department of its own, and lists
-    both. Neither text has a SOURCE backing (rule 1): IMAGE backs "Escuintla", TEXT
-    "Chimaltenango", and rule 5 takes "Escuintla", marked as a conflict with "Chimaltenango"
-    listed, its record from the cited answer that settles it. Built here, the readings carry units
-    on both arms; the organiser gave a candidate to 1A alone."""
-    readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading",
-        f"province_state: {name}") for letter, name in zip("ABC", ("Escuintla", "Chimaltenango", "Chimaltenango"))),
-        {"r1": "o1a"})
-    task = FieldTask("province_state", True, FieldValue(state=ValueState.AMBIGUOUS),
-        (Candidate("1A", readings[0].text, "Escuintla", "ev-1A"),), FIELD_TOOLS["province_state"])
-    with tempfile.TemporaryDirectory() as folder:
-        gazetteer = Gazetteer(LocalBlobs(Path(folder)))
-        answers = [asyncio.run(gazetteer.lookup("tgn", query, field_key="province_state"))
-            for query in ("Escuintla", "Chimaltenango")]
-    options = ["Escuintla", "Chimaltenango"]
-    outcome = FieldOutcome("province_state", FieldAnswer(outcome="several_possibilities", options=options,
-        source_evidence_ids=[a.evidence.id for a in answers], explanation="x"), model_calls=1)
-    ruled = field_step._by_rule(task, outcome, readings, answers)
-    assert (ruled.answer.literal, ruled.answer.reading_names, ruled.answer.authority_id) == (
-        "Escuintla", ["1A"], "tgn:1000566")
-    [label] = agreement.labels(task, readings, answers, transcript="Escuintla", named=[readings[0]],
-        offered=options).values()
-    assert (label.settled, label.why, label.others) == (frozenset({"Escuintla"}), "conflict", ("Chimaltenango",))
-
-
-def test_an_abbreviation_two_cited_answers_expand_apart_is_not_put_to_the_rule(tmp_path, first_pass_path):
-    """Both readers write the country "P.I." and the image names it; the expert cites Getty TGN's
-    answers for "Philippine Islands" and "Pacific Islands", two nations "P.I." abbreviates
-    (test_step.Gazetteer), and lists "P.I." and "Philippines". The cited answers settle "P.I." as
-    two places, so it is not put to the rule (step._by_rule; the coordinator's ruling Y1): the
-    field is as the expert's own answer leaves it, and no check refused a rule's answer."""
-    rig = build_rig(tmp_path, label_with(country="P.I."))
-    run = rig.specimen.run
-
-    async def script(task, readings, tools):
-        answers = [await tools.lookup("tgn", query, field_key=task.key)
-            for query in ("Philippine Islands", "Pacific Islands")]
-        return FieldOutcome(task.key, FieldAnswer(outcome="several_possibilities", options=["P.I.", "Philippines"],
-            source_evidence_ids=[a.evidence.id for a in answers], explanation="Two nations fit."),
-            evidence=[a.evidence for a in answers], model_calls=1)
-
-    decisions = {}
-    prepared, outcomes, calls = research(rig, Scripted({"country": script}), tools=Gazetteer(rig.blobs))
-    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
-    old_path_unchanged(run, "country", ("P.I.", "Philippines"))
-    assert decisions["country"].get("refusal") is None
-
-
 class Records(Gazetteer):
-    """Getty TGN and Wikidata answering these queries with these made-up records: two first-level
-    units named "Amazonas", one in Brazil and one in Peru; Brazil's as TGN describes it with its
-    parent, without it, and in capitals (alone, or beside Peru's when asked "Amazonas"), and as
-    Wikidata's own record; and two nations named "Congo" with no parents."""
+    """Getty TGN and Wikidata answering these queries with these made-up records, one candidate
+    each: two first-level units named "Amazonas", one in Brazil and one in Peru; Brazil's as TGN
+    describes it with its parent and without it, and as Wikidata's own record; and two nations
+    named "Congo" with no parents. Every other query as test_step.Gazetteer answers it."""
 
     BRAZIL, PERU = PlaceRef("Brazil", "tgn:brazil"), PlaceRef("Peru", "tgn:peru")
     RECORDS = {
         ("tgn", "Amazonas, Brazil"): SourceCandidate("Amazonas", "tgn:am-br", Gazetteer.FIRST, parents=(BRAZIL,)),
         ("tgn", "Amazonas, Peru"): SourceCandidate("Amazonas", "tgn:am-pe", Gazetteer.FIRST, parents=(PERU,)),
         ("tgn", "Amazonas, state"): SourceCandidate("Amazonas", "tgn:am-br", Gazetteer.FIRST),
-        ("tgn", "AMAZONAS, BRAZIL"): SourceCandidate("AMAZONAS", "tgn:am-br", Gazetteer.FIRST,
-            parents=(PlaceRef("BRAZIL", "tgn:brazil"),)),
-        ("tgn", "Amazonas"): (SourceCandidate("AMAZONAS", "tgn:am-br", Gazetteer.FIRST,
-            parents=(PlaceRef("BRAZIL", "tgn:brazil"),)), SourceCandidate("Amazonas", "tgn:am-pe", Gazetteer.FIRST,
-            parents=(PERU,))),
         ("wikidata", "Amazonas, Brazil"): SourceCandidate("Amazonas", "wikidata:am-br", "state",
             parents=(PlaceRef("Brazil", "wikidata:brazil"),)),
         ("tgn", "Congo, Brazzaville"): SourceCandidate("Congo", "tgn:cg", Gazetteer.NATION, iso_code="CG"),
@@ -578,170 +474,61 @@ class Records(Gazetteer):
         answer = super()._answer(source_id, query)
         if (source_id, query) not in self.RECORDS:
             return answer
-        found = self.RECORDS[source_id, query]
-        candidates = found if isinstance(found, tuple) else (found,)
-        evidence = answer.evidence.model_copy(update={"kind": "authority", "locator": candidates[0].authority_id,
-            "excerpt": "match\n" + "\n".join(f"{c.name} | {c.authority_id} | {c.kind} | " for c in candidates)})
-        status = LookupStatus.SUCCESS if len(candidates) == 1 else LookupStatus.AMBIGUOUS
-        return SourceAnswer(source_id, query, status, candidates, evidence, note=status.value)
+        candidate = self.RECORDS[source_id, query]
+        evidence = answer.evidence.model_copy(update={"kind": "authority", "locator": candidate.authority_id,
+            "excerpt": f"match\n{candidate.name} | {candidate.authority_id} | {candidate.kind} | "})
+        return SourceAnswer(source_id, query, LookupStatus.SUCCESS, (candidate,), evidence, note="match")
 
 
-def amazonas_rig(tmp_path, cited, *, asked=None, decisions=None):
-    """Both readers write the province "Amazonas", the image names it, and the label writes no
-    country, county or city; the expert asks Records the `asked` lookups in that order (`cited`
-    when None), cites the `cited` ones in that order and lists "Amazonas" and "Amazona"."""
-    rig = build_rig(tmp_path, label_with(country=None, province_state="Amazonas", county=None, city=None),
-        candidates=[candidate for candidate in every_field(
-            ("province_state", "1A", "Amazonas", "province_state: Amazonas"),
-            ("province_state", "1B", "Amazonas", "province_state: Amazonas"))
-            if candidate[0] not in ("country", "county", "city")])
+AMAZONAS = ("Amazonas", "Amazona")
 
-    async def script(task, readings, tools):
-        answers = {lookup: await tools.lookup(*lookup, field_key=task.key) for lookup in asked or cited}
-        return FieldOutcome(task.key, FieldAnswer(outcome="several_possibilities", options=["Amazonas", "Amazona"],
-            source_evidence_ids=[answers[lookup].evidence.id for lookup in cited], explanation="Amazonas."),
-            evidence=[answer.evidence for answer in answers.values()], model_calls=1)
 
+@pytest.mark.parametrize(("key", "written", "cited", "also", "options"), [
+    pytest.param("province_state", "Amazonas", (("tgn", "Amazonas, Brazil"), ("tgn", "Amazonas, Peru")), (), AMAZONAS,
+        id="amazonas-brazil-and-peru"),
+    pytest.param("country", "Congo", (("tgn", "Congo, Brazzaville"), ("tgn", "Congo, Kinshasa")), (), ("Congo", "Cong"),
+        id="congo-two-records"),
+    pytest.param("country", "P.I.", (("tgn", "Philippine Islands"), ("tgn", "Pacific Islands")), (),
+        ("P.I.", "Philippines"), id="p-i-two-expansions"),
+    pytest.param("province_state", "Amazonas", (("tgn", "Amazonas, Brazil"), ("tgn", "Amazonas, state")), (), AMAZONAS,
+        id="one-record-described-twice"),
+    pytest.param("province_state", "Amazonas", (("tgn", "Amazonas, Brazil"), ("wikidata", "Amazonas, Brazil")),
+        (("tgn", "Amazonas, Peru"),), AMAZONAS, id="two-gazetteers"),
+])
+def test_a_place_fields_several_possibilities_is_not_put_to_the_rule(
+        tmp_path, first_pass_path, key, written, cited, also, options):
+    """Both readers write the place, the image names it, and the expert cites two answers and
+    lists the options: "Amazonas" as Brazil's and Peru's units; "Congo" as two nations, "tgn:cg"
+    and "tgn:cd", with no parents; "P.I." as "Philippine Islands" and "Pacific Islands", two
+    nations it abbreviates (test_step.Gazetteer); "Amazonas" as one record described with its
+    parent and without; "Amazonas" as Brazil's unit in Getty TGN and in Wikidata, Peru's asked
+    too and not cited. Location reconciliation settles none of them, and a place value field's
+    several_possibilities is not put to the rule (step._by_rule; the coordinator's ruling R5-1 of
+    2026-11-13): on both arms the field stays ambiguous with the answer's options, no check
+    refused a rule's answer, and no place above it is derived."""
     lacks = answering(FieldAnswer(outcome="label_lacks_value", explanation="Not on the label."))
-    prepared, outcomes, calls = research(rig, Scripted({"province_state": script, "country": lacks, "county": lacks,
-        "city": lacks}), tools=Records(rig.blobs))
-    field_step.apply_outcomes(rig.specimen.run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls,
-        decisions=decisions)
-    return rig.specimen.run
-
-
-IN_PERU = ("tgn", "Amazonas, Peru")
-
-
-@pytest.mark.parametrize(("cited", "asked"), [
-    ((("tgn", "Amazonas, Brazil"), IN_PERU), None),
-    ((IN_PERU, ("tgn", "Amazonas, Brazil")), None),
-    ((("tgn", "Amazonas, Brazil"), ("wikidata", "Amazonas, Brazil")),
-        (("tgn", "Amazonas, Brazil"), ("wikidata", "Amazonas, Brazil"), IN_PERU)),
-], ids=["brazil-first", "peru-first", "two-gazetteers"])
-def test_one_text_two_cited_answers_place_apart_stays_ambiguous_with_no_derived_country(
-        tmp_path, first_pass_path, cited, asked):
-    """The expert cites two answers that settle the province "Amazonas" as two records
-    (step._record; the coordinator's rulings Y1 and Z1 of 2026-11-13): Getty TGN's units in Brazil
-    and in Peru, in either order, or Brazil's unit as TGN's record and as Wikidata's, with Peru's
-    asked too and not cited. Location reconciliation, which compares every answer the field
-    received, finds two places and settles nothing (step._reconcile_location_outcomes); the
-    text is not put to the rule, so the province stays ambiguous with the answer's options, as
-    main leaves it, and no country is derived from it."""
-    run = amazonas_rig(tmp_path, cited, asked=asked)
-    old_path_unchanged(run, "province_state", ("Amazonas", "Amazona"))
-    country = run.fields["country"]
-    assert country.state != ValueState.SUPPORTED and country.layer != "derived"
-
-
-def test_one_record_cited_twice_is_one_place_put_to_the_rule(tmp_path, first_pass_path):
-    """The expert cites two Getty TGN answers that settle the province "Amazonas" on one record,
-    "tgn:am-br", first with its parent Brazil and then with none: one place (step._record; the
-    coordinator's ruling Z1 of 2026-11-13), so the text is put to the rule, which clears it on the
-    image with that record."""
-    run = amazonas_rig(tmp_path, (("tgn", "Amazonas, Brazil"), ("tgn", "Amazonas, state")))
-    if first_pass_path == "old":
-        return old_path_unchanged(run, "province_state", ("Amazonas", "Amazona"))
-    province = run.fields["province_state"]
-    assert (province.state, province.literal, province.authority_id) == (
-        ValueState.SUPPORTED, "Amazonas", "tgn:am-br")
-    assert findings(run, "province_state") == [(f"cleared:province_state:{run.regions[0].id}", "info")]
-
-
-def test_one_record_whose_first_cited_answer_names_no_parent_is_refused_as_any_such_place(
-        tmp_path, first_pass_path):
-    """The same two answers cited the other way round: one record, so the text is put to the
-    rule, and the place it settles on is the first cited answer's, which names no parent. Applied,
-    the place check refuses it as it refuses any place below the country with no parents
-    (agreement.parents_refusal, NO_PARENTS), and the province is as the expert's own answer
-    leaves it."""
-    decisions = {}
-    run = amazonas_rig(tmp_path, (("tgn", "Amazonas, state"), ("tgn", "Amazonas, Brazil")), decisions=decisions)
-    old_path_unchanged(run, "province_state", ("Amazonas", "Amazona"))
-    assert decisions["province_state"].get("refusal") == ("no_parents" if first_pass_path == "units" else None)
-
-
-def test_one_record_stores_the_first_cited_answers_name_and_parents(tmp_path, first_pass_path):
-    """The expert asks Getty TGN "AMAZONAS, BRAZIL", "Amazonas, Brazil" and "Amazonas, Peru", and
-    cites the second and then the first, which describe one record, "tgn:am-br", as "Amazonas" in
-    "Brazil" and as "AMAZONAS" in "BRAZIL". Peru's answer, received and not cited, keeps location
-    reconciliation from settling the text first. Put to the rule, the province stores the first
-    cited answer's name, the readers' own text, so no value of its own, and the country is
-    derived from that answer's parent, "Brazil" (step._by_rule and apply_outcomes; the
-    coordinator's ruling Z2 of 2026-11-13)."""
-    run = amazonas_rig(tmp_path, (("tgn", "Amazonas, Brazil"), ("tgn", "AMAZONAS, BRAZIL")),
-        asked=(("tgn", "AMAZONAS, BRAZIL"), ("tgn", "Amazonas, Brazil"), IN_PERU))
-    if first_pass_path == "old":
-        return old_path_unchanged(run, "province_state", ("Amazonas", "Amazona"))
-    province, country = run.fields["province_state"], run.fields["country"]
-    assert (province.state, province.literal, province.normalized, province.authority_id) == (
-        ValueState.SUPPORTED, "Amazonas", None, "tgn:am-br")
-    assert (country.state, country.layer, country.parsed, country.authority_id) == (
-        ValueState.SUPPORTED, "derived", "Brazil", "tgn:brazil")
-
-
-def test_a_place_takes_its_parents_from_the_answer_it_settles_on(tmp_path, first_pass_path):
-    """The expert asks Getty TGN "Amazonas", which names two units, "AMAZONAS" in "BRAZIL"
-    ("tgn:am-br") and Peru's, and then "Amazonas, Brazil", which names the first as "Amazonas" in
-    "Brazil", and cites both in that order. Only the second settles the province on a place
-    (agreement.placed: one unit at its level), so the rule's answer cites it first, and the
-    country is derived from its parent, "Brazil", not from the first answer's description of the
-    same record (step._by_rule and apply_outcomes; the coordinator's ruling Z2 of 2026-11-13)."""
-    asked = (("tgn", "Amazonas"), ("tgn", "Amazonas, Brazil"))
-    run = amazonas_rig(tmp_path, asked)
-    if first_pass_path == "old":
-        return old_path_unchanged(run, "province_state", ("Amazonas", "Amazona"))
-    province, country = run.fields["province_state"], run.fields["country"]
-    assert (province.state, province.normalized, province.authority_id) == (ValueState.SUPPORTED, None, "tgn:am-br")
-    assert (country.state, country.layer, country.parsed) == (ValueState.SUPPORTED, "derived", "Brazil")
-
-
-@pytest.mark.parametrize("queries", [("Congo, Brazzaville", "Congo, Kinshasa"), ("Congo, Kinshasa", "Congo, Brazzaville")],
-    ids=["brazzaville-first", "kinshasa-first"])
-def test_one_name_cited_as_two_records_stays_ambiguous(tmp_path, first_pass_path, queries):
-    """Both readers write the country "Congo" and the image names it; the expert cites Getty TGN's
-    answers for "Congo, Brazzaville" and "Congo, Kinshasa", two nations named "Congo" with no
-    parents, records "tgn:cg" and "tgn:cd", and lists "Congo" and "Cong". Two records (step._record;
-    the coordinator's ruling Z1 of 2026-11-13), in either order: the text is not put to the rule,
-    and the country stays ambiguous with the answer's options."""
-    rig = build_rig(tmp_path, label_with(country="Congo"))
+    if key == "country":
+        rig, others = build_rig(tmp_path, label_with(country=written)), {}
+    else:
+        rig = build_rig(tmp_path, label_with(country=None, province_state=written, county=None, city=None),
+            candidates=[candidate for candidate in every_field(
+                (key, "1A", written, f"{key}: {written}"), (key, "1B", written, f"{key}: {written}"))
+                if candidate[0] not in ("country", "county", "city")])
+        others = dict.fromkeys(("country", "county", "city"), lacks)
     run = rig.specimen.run
 
     async def script(task, readings, tools):
-        answers = [await tools.lookup("tgn", query, field_key=task.key) for query in queries]
-        return FieldOutcome(task.key, FieldAnswer(outcome="several_possibilities", options=["Congo", "Cong"],
-            source_evidence_ids=[a.evidence.id for a in answers], explanation="Two nations of this name."),
-            evidence=[a.evidence for a in answers], model_calls=1)
+        answers = {lookup: await tools.lookup(*lookup, field_key=task.key) for lookup in (*cited, *also)}
+        return FieldOutcome(task.key, FieldAnswer(outcome="several_possibilities", options=list(options),
+            source_evidence_ids=[answers[lookup].evidence.id for lookup in cited], explanation="Two places fit."),
+            evidence=[answer.evidence for answer in answers.values()], model_calls=1)
 
-    prepared, outcomes, calls = research(rig, Scripted({"country": script}), tools=Records(rig.blobs))
-    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls)
-    old_path_unchanged(run, "country", ("Congo", "Cong"))
-
-
-@pytest.mark.parametrize(("codes", "settles"), [(("CG", "CG"), True), (("CG", "CD"), False)],
-    ids=["one-description", "two-codes"])
-def test_a_place_with_no_record_is_identified_by_its_description(codes, settles):
-    """Two cited answers settle the country "Congo" on candidates that carry no record
-    (SourceCandidate.authority_id None), with no parents and these ISO codes: described alike,
-    they are one place and the text is put to the rule; with two codes, two places, and it is not
-    (step._record). Built here, the readings carry units on both arms; the image names 1A's
-    text."""
-    readings = with_units(tuple(Reading(f"1{letter}", "r1", f"o1{letter.lower()}", "raw_reading", "country: Congo")
-        for letter in "AB"), {"r1": "o1a"})
-    task = FieldTask("country", True, FieldValue(state=ValueState.AMBIGUOUS),
-        (Candidate("1A", readings[0].text, "Congo", "ev-1A"),), FIELD_TOOLS["country"])
-    answers = [SourceAnswer("tgn", f"Congo, {code}", LookupStatus.SUCCESS,
-        (SourceCandidate("Congo", None, Gazetteer.NATION, iso_code=code),),
-        Evidence(kind="authority", source="tgn", locator=None, excerpt=f"match\nCongo | - | nations | ({code})"))
-        for code in codes]
-    outcome = FieldOutcome("country", FieldAnswer(outcome="several_possibilities", options=["Congo", "Cong"],
-        source_evidence_ids=[a.evidence.id for a in answers], explanation="x"), model_calls=1)
-    ruled = field_step._by_rule(task, outcome, readings, answers)
-    if not settles:
-        assert ruled is None
-    else:
-        assert (ruled.answer.literal, ruled.answer.authority_id, ruled.answer.source_evidence_ids) == (
-            "Congo", None, [a.evidence.id for a in answers])
+    decisions = {}
+    prepared, outcomes, calls = research(rig, Scripted({key: script, **others}), tools=Records(rig.blobs))
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    old_path_unchanged(run, key, options)
+    assert decisions[key].get("refusal") is None and decisions[key].get("rule") != "rule_settled"
+    assert not [above for above in PLACE_ORDER[:PLACE_ORDER.index(key)] if run.fields[above].layer == "derived"]
 
 
 def test_a_label_with_no_backed_candidate_takes_no_part_beside_one_that_settles(
