@@ -43,9 +43,10 @@ _ROOT = Path(__file__).parent
 
 def parse_replacements(text: str) -> dict[str, tuple[tuple[str, str], ...]]:
     """units.txt's form: for each file named on a "== <file>" line, each "<<< " line's text
-    with the ">>> " line's text after it, in order. Empty lines and "#" lines are skipped;
-    any other line, a "<<< " line before a file or after another "<<< " line, a ">>> " line
-    with no "<<< " line before it, or a "<<< " line last, is refused."""
+    with the ">>> " line's text after it, in order; a ">>>" line alone is the empty text
+    (the line is left out, _read). Empty lines and "#" lines are skipped; any other line, a
+    "<<< " line before a file or after another "<<< " line, a ">>> " or ">>>" line with no
+    "<<< " line before it, or a "<<< " line last, is refused."""
     found: dict[str, list[tuple[str, str]]] = {}
     name, old = None, None
     for line in text.splitlines():
@@ -55,7 +56,7 @@ def parse_replacements(text: str) -> dict[str, tuple[tuple[str, str], ...]]:
             name = line[3:]
         elif line.startswith("<<< ") and name is not None and old is None:
             old = line[4:]
-        elif line.startswith(">>> ") and old is not None:
+        elif (line.startswith(">>> ") or line == ">>>") and old is not None:
             found.setdefault(name, []).append((old, line[4:]))
             old = None
         else:
@@ -74,12 +75,13 @@ def units_replacements() -> dict[str, tuple[tuple[str, str], ...]]:
 
 def _read(name: str, units: bool) -> str:
     """A file of this folder, stripped; on the units path with its replacements made, each
-    text found in it exactly once (units_replacements)."""
+    text found in it exactly once (units_replacements). A text replaced by the empty text is
+    a whole line of the file, left out with its line break."""
     text = (_ROOT / name).read_text(encoding="utf-8").strip()
     for old, new in units_replacements().get(name, ()) if units else ():
-        if text.count(old) != 1:
-            raise ValueError(f"{name} must hold each text units.txt replaces once")
-        text = text.replace(old, new)
+        if text.count(old) != 1 or (not new and f"\n{old}\n" not in f"\n{text}\n"):
+            raise ValueError(f"{name} must hold each text units.txt replaces once, a text it leaves out as a line")
+        text = text.replace(old, new) if new else f"\n{text}\n".replace(f"\n{old}\n", "\n")[1:-1]
     return text
 
 
