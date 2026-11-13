@@ -1455,7 +1455,8 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     # field (PLACE_VALUE_FIELDS), by the coordinator's scope ruling R5-1 of 2026-11-13 on rework
     # item 2(b): putting it here means taking a place's record and parents from several cited
     # lookups, which gave a new wrong result in each of review rounds 2 to 4. Such a field keeps
-    # main's result, `ambiguous` with its options. The rule itself is unchanged and still settles
+    # main's state, `ambiguous`, with rule 6's options (P7's union: the readers' texts, then the
+    # answer's). The rule itself is unchanged and still settles
     # a place on the image (tests/field_research/test_settlement_rule.py:333).
     if (outcome.failure is not None or answer is None or answer.outcome != "several_possibilities"
             or task.key == "taxon" or task.key in NO_APPROVED_AUTHORITY or task.key in PLACE_VALUE_FIELDS):
