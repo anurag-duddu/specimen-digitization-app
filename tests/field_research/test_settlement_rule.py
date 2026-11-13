@@ -418,31 +418,32 @@ def two_labels_case(key, first, second):
 
 # The units path's retries (agreement._disagreement_by_rule), each for a field with approved
 # sources (province_state) or none (collection_code, habitat).
+# Each reason by its name in agreement, which main's src lacks for some (collection must not fail there).
 UNSETTLED = (", and the evidence does not settle one reader's text. {}several_possibilities with each "
     "reader's text as its options, or sources_cannot_resolve.")
 ASK = "Look each reader's text up in your approved sources, or answer "
 SETTLED = ("Copy the literal {0!r} exactly from a reading that writes it, and name only readings that write it so; "
     "or {1}answer several_possibilities.")
 RETRIES = [
-    (tied_case, agreement.TIED, "The readers write 'Davao Prov.'; 'Mindanao', and the evidence does not settle one "
+    (tied_case, "TIED", "The readers write 'Davao Prov.'; 'Mindanao', and the evidence does not settle one "
         "of 'Davao Prov.', 'Mindanao': a person chooses. Answer several_possibilities with 'Davao Prov.', 'Mindanao'."),
-    (contested_case, agreement.TEXTS_CONTESTED, "The readers write '1a'; 'la', and the evidence does not settle one "
+    (contested_case, "TEXTS_CONTESTED", "The readers write '1a'; 'la', and the evidence does not settle one "
         "of 'la', '1a': a person chooses. Answer several_possibilities with 'la', '1a'."),
-    (habitat_case, agreement.DIFFER, "The readers write 'Shrubs'; 'shrubs', and the evidence settles on 'shrubs'. "
+    (habitat_case, "DIFFER", "The readers write 'Shrubs'; 'shrubs', and the evidence settles on 'shrubs'. "
         + SETTLED.format("shrubs", "")),
-    (lambda: place_case(("Illinois", "Illinois", "Indiana"), "Indiana", 2), agreement.DIFFER,
+    (lambda: place_case(("Illinois", "Illinois", "Indiana"), "Indiana", 2), "DIFFER",
         "The readers write 'Illinois'; 'Indiana', and the evidence settles on 'Illinois'. "
         + SETTLED.format("Illinois", "ask your approved sources about each reader's text, or ")),
-    (lambda: place_case(("Illinois", "Indiana"), "Illinois", 0), agreement.DIFFER,
+    (lambda: place_case(("Illinois", "Indiana"), "Illinois", 0), "DIFFER",
         "The readers write 'Illinois'; 'Indiana' for this field" + UNSETTLED.format(ASK)),
-    (lambda: code_case(("P-95", "P-93")), agreement.DIFFER,
+    (lambda: code_case(("P-95", "P-93")), "DIFFER",
         "The readers write 'P-93'; 'P-95' for this field" + UNSETTLED.format("Answer ")),
-    (lambda: code_case(("P-95",)), agreement.ONE_READER,
+    (lambda: code_case(("P-95",)), "ONE_READER",
         "The readers write 'P-95' for this field" + UNSETTLED.format("Answer ")),
-    (lambda: two_labels_case("habitat", "shrubs", "forest"), agreement.LABELS_DIFFER,
+    (lambda: two_labels_case("habitat", "shrubs", "forest"), "LABELS_DIFFER",
         "The labels write different text for this field ('forest'; 'shrubs'). Answer several_possibilities with each "
         "label's text."),
-    (lambda: two_labels_case("province_state", "Illinois", "Indiana"), agreement.LABELS_DIFFER,
+    (lambda: two_labels_case("province_state", "Illinois", "Indiana"), "LABELS_DIFFER",
         "The labels write different text for this field ('Illinois'; 'Indiana'). Ask your approved sources about each "
         "label's text, give the authority_id of the place or name they confirm and cite the answer for your literal, "
         "or answer several_possibilities with each label's text."),
@@ -462,7 +463,7 @@ def test_the_units_paths_retries_say_what_to_answer_never_how_the_code_decides(c
     task, readings, literal, named = case()
     refused = agreement.refusal(task, readings, literal=literal, named=named, value=None, authority_id=None,
         cited=[], received=[])
-    assert (refused.reason, refused.retry) == (reason, retry)
+    assert (refused.reason, refused.retry) == (getattr(agreement, reason), retry)
     assert not [word for word in DEFINITIONS if word in refused.retry]
 
 
