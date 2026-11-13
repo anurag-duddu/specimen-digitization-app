@@ -1,5 +1,5 @@
 {
- "source": "Two several_possibilities outcomes of WP 1.5's stored runs (the units-program measurement of 2026-11-12), each with the readings and their units, the field's task, the field's lookups as the run stores their evidence and the expert's answer, its options read back from the field's stored reason.",
+ "source": "Three several_possibilities outcomes of WP 1.5's stored runs (the units-program measurement of 2026-11-12), each with the readings and their units, the field's task, the field's lookups as the run stores their evidence and the expert's answer: its explanation and options as the stored field's reason gives them, its cited evidence the stored field's lookup evidence, and its literal and reading names, which the stored field does not keep (it is ambiguous, with no literal), as the measurement's outcome rows give them.",
  "cases": [
   {
    "source": "WP 1.5's stored run r1/pair, slide 105526647, field precise_location",
@@ -782,9 +782,16 @@
     "reading_names": [
      "2A"
     ],
-    "options": [],
-    "source_evidence_ids": [],
-    "explanation": "The only locality text on the labels is the province line: reader 2A writes \"AZARBAITAN\", reader 2B \"AZARBAIJAN\" (the image does not decide). Lookups of \"Azarbaijan, Iran\" (GEOLocate, Wikidata, TGN) return the historical region/provinces of Iranian Azerbaijan, so the word is a real place, but they cannot choose between the two spellings; \"Azarbaitan\" itself matched nothing. No more precise localit"
+    "options": [
+     "AZARBAITAN",
+     "AZARBAIJAN"
+    ],
+    "source_evidence_ids": [
+     "8c47101b-9b96-44fa-b518-8ea19031d405",
+     "bd9d3c8f-8f3f-4764-94d9-8fe286d287f5",
+     "87cfd0a5-f3d1-4a3f-a124-6eac3fce66a4"
+    ],
+    "explanation": "The only locality text on the labels is the province line: reader 2A writes \"AZARBAITAN\", reader 2B \"AZARBAIJAN\" (the image does not decide). Lookups of \"Azarbaijan, Iran\" (GEOLocate, Wikidata, TGN) return the historical region/provinces of Iranian Azerbaijan, so the word is a real place, but they cannot choose between the two spellings; \"Azarbaitan\" itself matched nothing. No more precise locality is written, so the two readers' texts stand as options."
    }
   },
   {
@@ -1435,6 +1442,1011 @@
     ],
     "source_evidence_ids": [],
     "explanation": "Label 1 prints \"FMNHINS\" with a seven-digit number: reader 1A reads 4456488, reader 1B reads 4486488 (the unit's image judgement also favours 4486488, but the readers disagree on the second digit). check_catalog_number accepts both as catalog numbers, so the digits are not settled. \"RMT 1149\" on label 2 is a collection code, refused by the check."
+   }
+  },
+  {
+   "source": "WP 1.5's stored run r1/three, slide 105526330, field date_visited_to",
+   "readings": [
+    {
+     "name": "1A",
+     "region_id": "38accc68-a49e-5074-b691-6ab16fe3432e",
+     "observation_id": "87cd3bb6-fd02-4453-84ec-f14c90338f09",
+     "input_source": "raw_reading",
+     "text": "FMNHINS\n4486775",
+     "units": {
+      "label": "38accc68-a49e-5074-b691-6ab16fe3432e",
+      "units": [
+       {
+        "id": "38accc68-a49e-5074-b691-6ab16fe3432e:1",
+        "label": "38accc68-a49e-5074-b691-6ab16fe3432e",
+        "lines": [
+         1,
+         2
+        ],
+        "readers": {
+         "87cd3bb6-fd02-4453-84ec-f14c90338f09": {
+          "text": "FMNHINS\n4486775",
+          "start": 0,
+          "end": 15
+         },
+         "dcfa40dd-d6bf-47de-af03-184fc60df53f": {
+          "text": "FWNHNS\n4488775",
+          "start": 0,
+          "end": 14
+         },
+         "f0fa48de-70f5-4454-8f04-8b9d6afa7078": {
+          "text": "FMNHINS\n4486775",
+          "start": 0,
+          "end": 15
+         }
+        },
+        "image": "FMNHINS\n4486775",
+        "means": "",
+        "role": "",
+        "fields": [
+         "fmnh_ins_number"
+        ],
+        "note": "Segments 1–2 form one catalogue number; B misread both lines. The label also bears a QR code."
+       }
+      ]
+     }
+    },
+    {
+     "name": "1B",
+     "region_id": "38accc68-a49e-5074-b691-6ab16fe3432e",
+     "observation_id": "dcfa40dd-d6bf-47de-af03-184fc60df53f",
+     "input_source": "raw_reading",
+     "text": "FWNHNS\n4488775",
+     "units": {
+      "label": "38accc68-a49e-5074-b691-6ab16fe3432e",
+      "units": [
+       {
+        "id": "38accc68-a49e-5074-b691-6ab16fe3432e:1",
+        "label": "38accc68-a49e-5074-b691-6ab16fe3432e",
+        "lines": [
+         1,
+         2
+        ],
+        "readers": {
+         "87cd3bb6-fd02-4453-84ec-f14c90338f09": {
+          "text": "FMNHINS\n4486775",
+          "start": 0,
+          "end": 15
+         },
+         "dcfa40dd-d6bf-47de-af03-184fc60df53f": {
+          "text": "FWNHNS\n4488775",
+          "start": 0,
+          "end": 14
+         },
+         "f0fa48de-70f5-4454-8f04-8b9d6afa7078": {
+          "text": "FMNHINS\n4486775",
+          "start": 0,
+          "end": 15
+         }
+        },
+        "image": "FMNHINS\n4486775",
+        "means": "",
+        "role": "",
+        "fields": [
+         "fmnh_ins_number"
+        ],
+        "note": "Segments 1–2 form one catalogue number; B misread both lines. The label also bears a QR code."
+       }
+      ]
+     }
+    },
+    {
+     "name": "1C",
+     "region_id": "38accc68-a49e-5074-b691-6ab16fe3432e",
+     "observation_id": "f0fa48de-70f5-4454-8f04-8b9d6afa7078",
+     "input_source": "raw_reading",
+     "text": "FMNHINS\n4486775",
+     "units": {
+      "label": "38accc68-a49e-5074-b691-6ab16fe3432e",
+      "units": [
+       {
+        "id": "38accc68-a49e-5074-b691-6ab16fe3432e:1",
+        "label": "38accc68-a49e-5074-b691-6ab16fe3432e",
+        "lines": [
+         1,
+         2
+        ],
+        "readers": {
+         "87cd3bb6-fd02-4453-84ec-f14c90338f09": {
+          "text": "FMNHINS\n4486775",
+          "start": 0,
+          "end": 15
+         },
+         "dcfa40dd-d6bf-47de-af03-184fc60df53f": {
+          "text": "FWNHNS\n4488775",
+          "start": 0,
+          "end": 14
+         },
+         "f0fa48de-70f5-4454-8f04-8b9d6afa7078": {
+          "text": "FMNHINS\n4486775",
+          "start": 0,
+          "end": 15
+         }
+        },
+        "image": "FMNHINS\n4486775",
+        "means": "",
+        "role": "",
+        "fields": [
+         "fmnh_ins_number"
+        ],
+        "note": "Segments 1–2 form one catalogue number; B misread both lines. The label also bears a QR code."
+       }
+      ]
+     }
+    },
+    {
+     "name": "2A",
+     "region_id": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+     "observation_id": "ec19c841-31a9-4525-a94e-4266934069eb",
+     "input_source": "raw_reading",
+     "text": "IV-29-68-a\nYepocapa, 4800 ft.\nChimaltenango\nGuatemala, IV-25\n1948, R.D. Mitchell\n♀ legs Sp.#1",
+     "units": {
+      "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+      "units": [
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:1",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         1,
+         1
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "IV-29-68-a",
+          "start": 0,
+          "end": 10
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "IV-29-68-2",
+          "start": 0,
+          "end": 10
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "IV-29-68-2",
+          "start": 0,
+          "end": 10
+         }
+        },
+        "image": "IV-29-68-a",
+        "means": "slide code: month 4, day 29, year 1968, slide a",
+        "role": "",
+        "fields": [],
+        "note": "B and C read the trailing character as 2, A as a; the cursive mark favours 'a'."
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:2",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         2,
+         2
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "Yepocapa, 4800 ft.",
+          "start": 11,
+          "end": 29
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "Yepocapa,4800 ft.",
+          "start": 11,
+          "end": 28
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "Yepocapa,4800ft.",
+          "start": 11,
+          "end": 27
+         }
+        },
+        "image": "Yepocapa, 4800 ft.",
+        "means": "Yepocapa, elevation 4800 feet",
+        "role": "",
+        "fields": [
+         "precise_location",
+         "elevation_from_ft"
+        ],
+        "note": ""
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:3",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         3,
+         3
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "Chimaltenango",
+          "start": 30,
+          "end": 43
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "Chimaltenago",
+          "start": 29,
+          "end": 41
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "Chimaltenango",
+          "start": 28,
+          "end": 41
+         }
+        },
+        "image": "Chimaltenango",
+        "means": "",
+        "role": "",
+        "fields": [
+         "county",
+         "province_state",
+         "precise_location"
+        ],
+        "note": "B omitted the second 'n'; the image shows 'Chimaltenango'."
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:4",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         4,
+         4
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "Guatemala, IV-25",
+          "start": 44,
+          "end": 60
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "Guatemala,IV-25",
+          "start": 42,
+          "end": 57
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "Guatemala,IV-26",
+          "start": 42,
+          "end": 57
+         }
+        },
+        "image": "Guatemala, IV-25",
+        "means": "",
+        "role": "",
+        "fields": [
+         "country",
+         "date_visited_from"
+        ],
+        "note": "Smudge over the day: A and B read 25, C reads 26; the image does not clearly decide."
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:5",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         5,
+         5
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "1948, R.D. Mitchell",
+          "start": 61,
+          "end": 80
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "1948, R.D. Mitchell",
+          "start": 58,
+          "end": 77
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "1948, R.O. Mitchell",
+          "start": 58,
+          "end": 77
+         }
+        },
+        "image": "1948, R.D. Mitchell",
+        "means": "year 1948; collected by R.D. Mitchell",
+        "role": "",
+        "fields": [
+         "date_visited_from",
+         "collectors"
+        ],
+        "note": ""
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:6",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         6,
+         6
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "♀",
+          "start": 81,
+          "end": 82
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "♀",
+          "start": 78,
+          "end": 79
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "♀",
+          "start": 78,
+          "end": 79
+         }
+        },
+        "image": "♀",
+        "means": "female",
+        "role": "",
+        "fields": [],
+        "note": ""
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:7",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         6,
+         6
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "legs",
+          "start": 83,
+          "end": 87
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "legs",
+          "start": 80,
+          "end": 84
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "legs",
+          "start": 80,
+          "end": 84
+         }
+        },
+        "image": "legs",
+        "means": "",
+        "role": "",
+        "fields": [
+         "collection_method"
+        ],
+        "note": "Likely records body part taken rather than how collected."
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:8",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         6,
+         6
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "Sp.#1",
+          "start": 88,
+          "end": 93
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "Sp.#1",
+          "start": 85,
+          "end": 90
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "Sp.#1",
+          "start": 85,
+          "end": 90
+         }
+        },
+        "image": "Sp.#1",
+        "means": "specimen/slide series number 1",
+        "role": "",
+        "fields": [],
+        "note": "Series or specimen notation; belongs with the slide code rather than a profile field."
+       }
+      ]
+     }
+    },
+    {
+     "name": "2B",
+     "region_id": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+     "observation_id": "245fca1d-0409-4086-a90a-0c2786722a16",
+     "input_source": "raw_reading",
+     "text": "IV-29-68-2\nYepocapa,4800 ft.\nChimaltenago\nGuatemala,IV-25\n1948, R.D. Mitchell\n♀ legs Sp.#1",
+     "units": {
+      "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+      "units": [
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:1",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         1,
+         1
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "IV-29-68-a",
+          "start": 0,
+          "end": 10
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "IV-29-68-2",
+          "start": 0,
+          "end": 10
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "IV-29-68-2",
+          "start": 0,
+          "end": 10
+         }
+        },
+        "image": "IV-29-68-a",
+        "means": "slide code: month 4, day 29, year 1968, slide a",
+        "role": "",
+        "fields": [],
+        "note": "B and C read the trailing character as 2, A as a; the cursive mark favours 'a'."
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:2",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         2,
+         2
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "Yepocapa, 4800 ft.",
+          "start": 11,
+          "end": 29
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "Yepocapa,4800 ft.",
+          "start": 11,
+          "end": 28
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "Yepocapa,4800ft.",
+          "start": 11,
+          "end": 27
+         }
+        },
+        "image": "Yepocapa, 4800 ft.",
+        "means": "Yepocapa, elevation 4800 feet",
+        "role": "",
+        "fields": [
+         "precise_location",
+         "elevation_from_ft"
+        ],
+        "note": ""
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:3",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         3,
+         3
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "Chimaltenango",
+          "start": 30,
+          "end": 43
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "Chimaltenago",
+          "start": 29,
+          "end": 41
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "Chimaltenango",
+          "start": 28,
+          "end": 41
+         }
+        },
+        "image": "Chimaltenango",
+        "means": "",
+        "role": "",
+        "fields": [
+         "county",
+         "province_state",
+         "precise_location"
+        ],
+        "note": "B omitted the second 'n'; the image shows 'Chimaltenango'."
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:4",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         4,
+         4
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "Guatemala, IV-25",
+          "start": 44,
+          "end": 60
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "Guatemala,IV-25",
+          "start": 42,
+          "end": 57
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "Guatemala,IV-26",
+          "start": 42,
+          "end": 57
+         }
+        },
+        "image": "Guatemala, IV-25",
+        "means": "",
+        "role": "",
+        "fields": [
+         "country",
+         "date_visited_from"
+        ],
+        "note": "Smudge over the day: A and B read 25, C reads 26; the image does not clearly decide."
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:5",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         5,
+         5
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "1948, R.D. Mitchell",
+          "start": 61,
+          "end": 80
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "1948, R.D. Mitchell",
+          "start": 58,
+          "end": 77
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "1948, R.O. Mitchell",
+          "start": 58,
+          "end": 77
+         }
+        },
+        "image": "1948, R.D. Mitchell",
+        "means": "year 1948; collected by R.D. Mitchell",
+        "role": "",
+        "fields": [
+         "date_visited_from",
+         "collectors"
+        ],
+        "note": ""
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:6",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         6,
+         6
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "♀",
+          "start": 81,
+          "end": 82
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "♀",
+          "start": 78,
+          "end": 79
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "♀",
+          "start": 78,
+          "end": 79
+         }
+        },
+        "image": "♀",
+        "means": "female",
+        "role": "",
+        "fields": [],
+        "note": ""
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:7",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         6,
+         6
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "legs",
+          "start": 83,
+          "end": 87
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "legs",
+          "start": 80,
+          "end": 84
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "legs",
+          "start": 80,
+          "end": 84
+         }
+        },
+        "image": "legs",
+        "means": "",
+        "role": "",
+        "fields": [
+         "collection_method"
+        ],
+        "note": "Likely records body part taken rather than how collected."
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:8",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         6,
+         6
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "Sp.#1",
+          "start": 88,
+          "end": 93
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "Sp.#1",
+          "start": 85,
+          "end": 90
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "Sp.#1",
+          "start": 85,
+          "end": 90
+         }
+        },
+        "image": "Sp.#1",
+        "means": "specimen/slide series number 1",
+        "role": "",
+        "fields": [],
+        "note": "Series or specimen notation; belongs with the slide code rather than a profile field."
+       }
+      ]
+     }
+    },
+    {
+     "name": "2C",
+     "region_id": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+     "observation_id": "9b713521-0145-418b-8373-d7ed23bd0c97",
+     "input_source": "raw_reading",
+     "text": "IV-29-68-2\nYepocapa,4800ft.\nChimaltenango\nGuatemala,IV-26\n1948, R.O. Mitchell\n♀ legs Sp.#1",
+     "units": {
+      "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+      "units": [
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:1",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         1,
+         1
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "IV-29-68-a",
+          "start": 0,
+          "end": 10
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "IV-29-68-2",
+          "start": 0,
+          "end": 10
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "IV-29-68-2",
+          "start": 0,
+          "end": 10
+         }
+        },
+        "image": "IV-29-68-a",
+        "means": "slide code: month 4, day 29, year 1968, slide a",
+        "role": "",
+        "fields": [],
+        "note": "B and C read the trailing character as 2, A as a; the cursive mark favours 'a'."
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:2",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         2,
+         2
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "Yepocapa, 4800 ft.",
+          "start": 11,
+          "end": 29
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "Yepocapa,4800 ft.",
+          "start": 11,
+          "end": 28
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "Yepocapa,4800ft.",
+          "start": 11,
+          "end": 27
+         }
+        },
+        "image": "Yepocapa, 4800 ft.",
+        "means": "Yepocapa, elevation 4800 feet",
+        "role": "",
+        "fields": [
+         "precise_location",
+         "elevation_from_ft"
+        ],
+        "note": ""
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:3",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         3,
+         3
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "Chimaltenango",
+          "start": 30,
+          "end": 43
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "Chimaltenago",
+          "start": 29,
+          "end": 41
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "Chimaltenango",
+          "start": 28,
+          "end": 41
+         }
+        },
+        "image": "Chimaltenango",
+        "means": "",
+        "role": "",
+        "fields": [
+         "county",
+         "province_state",
+         "precise_location"
+        ],
+        "note": "B omitted the second 'n'; the image shows 'Chimaltenango'."
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:4",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         4,
+         4
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "Guatemala, IV-25",
+          "start": 44,
+          "end": 60
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "Guatemala,IV-25",
+          "start": 42,
+          "end": 57
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "Guatemala,IV-26",
+          "start": 42,
+          "end": 57
+         }
+        },
+        "image": "Guatemala, IV-25",
+        "means": "",
+        "role": "",
+        "fields": [
+         "country",
+         "date_visited_from"
+        ],
+        "note": "Smudge over the day: A and B read 25, C reads 26; the image does not clearly decide."
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:5",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         5,
+         5
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "1948, R.D. Mitchell",
+          "start": 61,
+          "end": 80
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "1948, R.D. Mitchell",
+          "start": 58,
+          "end": 77
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "1948, R.O. Mitchell",
+          "start": 58,
+          "end": 77
+         }
+        },
+        "image": "1948, R.D. Mitchell",
+        "means": "year 1948; collected by R.D. Mitchell",
+        "role": "",
+        "fields": [
+         "date_visited_from",
+         "collectors"
+        ],
+        "note": ""
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:6",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         6,
+         6
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "♀",
+          "start": 81,
+          "end": 82
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "♀",
+          "start": 78,
+          "end": 79
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "♀",
+          "start": 78,
+          "end": 79
+         }
+        },
+        "image": "♀",
+        "means": "female",
+        "role": "",
+        "fields": [],
+        "note": ""
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:7",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         6,
+         6
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "legs",
+          "start": 83,
+          "end": 87
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "legs",
+          "start": 80,
+          "end": 84
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "legs",
+          "start": 80,
+          "end": 84
+         }
+        },
+        "image": "legs",
+        "means": "",
+        "role": "",
+        "fields": [
+         "collection_method"
+        ],
+        "note": "Likely records body part taken rather than how collected."
+       },
+       {
+        "id": "15788d9b-9ad2-59d9-90c6-93014382a29d:8",
+        "label": "15788d9b-9ad2-59d9-90c6-93014382a29d",
+        "lines": [
+         6,
+         6
+        ],
+        "readers": {
+         "ec19c841-31a9-4525-a94e-4266934069eb": {
+          "text": "Sp.#1",
+          "start": 88,
+          "end": 93
+         },
+         "245fca1d-0409-4086-a90a-0c2786722a16": {
+          "text": "Sp.#1",
+          "start": 85,
+          "end": 90
+         },
+         "9b713521-0145-418b-8373-d7ed23bd0c97": {
+          "text": "Sp.#1",
+          "start": 85,
+          "end": 90
+         }
+        },
+        "image": "Sp.#1",
+        "means": "specimen/slide series number 1",
+        "role": "",
+        "fields": [],
+        "note": "Series or specimen notation; belongs with the slide code rather than a profile field."
+       }
+      ]
+     }
+    }
+   ],
+   "task": {
+    "key": "date_visited_to",
+    "mandatory": true,
+    "current": {
+     "state": "ambiguous",
+     "literal": null,
+     "parsed": null,
+     "normalized": null,
+     "authority_id": null,
+     "authority_identity": null,
+     "evidence_ids": [
+      "213304f4-e9e2-4bd6-90a1-8d7d867489a2",
+      "86f3a303-5b9c-4201-a5c0-616d6053f60a",
+      "0e39dcad-cafa-4417-80ec-5564c3081d22"
+     ],
+     "reason": "The label's only date is the single collecting date \"Guatemala, IV-25\" (readers 2A/2B; 2C reads IV-26, the image smudged), with the year 1948 on the line below. No range is written, so no To date is written; the day itself is undecided between 25 and 26, giving 1948-04-25 or 1948-04-26. G44's copy of a single date is not mine to make. Options: 1948-04-25; 1948-04-26.",
+     "input_source": null,
+     "source_region_id": null,
+     "source_observation_id": null,
+     "verbatim_by_observation": {},
+     "input_source_by_observation": {},
+     "settled_observation_ids": [],
+     "layer": null,
+     "derived_from": [],
+     "evidence_relations": {},
+     "precision": null,
+     "century_rule": null
+    },
+    "candidates": [
+     {
+      "reading": "2A",
+      "quote": "1948, R.D. Mitchell",
+      "literal": "1948",
+      "evidence_id": "213304f4-e9e2-4bd6-90a1-8d7d867489a2"
+     },
+     {
+      "reading": "2B",
+      "quote": "1948, R.D. Mitchell",
+      "literal": "1948",
+      "evidence_id": "86f3a303-5b9c-4201-a5c0-616d6053f60a"
+     },
+     {
+      "reading": "2C",
+      "quote": "1948, R.O. Mitchell",
+      "literal": "1948",
+      "evidence_id": "0e39dcad-cafa-4417-80ec-5564c3081d22"
+     }
+    ],
+    "tools": [
+     "date_parser"
+    ]
+   },
+   "lookups": [],
+   "answer": {
+    "outcome": "several_possibilities",
+    "literal": "Guatemala, IV-25",
+    "reading_names": [
+     "2A",
+     "2B"
+    ],
+    "options": [
+     "1948-04-25",
+     "1948-04-26"
+    ],
+    "source_evidence_ids": [],
+    "explanation": "The label's only date is the single collecting date \"Guatemala, IV-25\" (readers 2A/2B; 2C reads IV-26, the image smudged), with the year 1948 on the line below. No range is written, so no To date is written; the day itself is undecided between 25 and 26, giving 1948-04-25 or 1948-04-26. G44's copy of a single date is not mine to make."
    }
   }
  ]

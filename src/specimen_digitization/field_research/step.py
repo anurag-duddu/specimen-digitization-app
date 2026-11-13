@@ -102,6 +102,7 @@ from .contracts import (
     FirstPassAdvice,
     Reading,
     SourceAnswer,
+    SourceCandidate,
     SourceTools,
     not_on_label_fields,
 )
@@ -1427,13 +1428,14 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     reading that holds it writes it (a person's reading first), naming each reading that writes
     it as whole words or as its organiser candidate, citing the source answers the expert
     cited, its value the place the first of them that settles it gives
-    (agreement.place_settling) where all that settle it give one place, or its deterministic
+    (agreement.place_settling), cited first, where all that settle it name one record
+    (_record), or its deterministic
     check's one successful result (CHECKS: an elevation's lower or upper number as the field's
     brief takes it, UPPER_ELEVATION), and the expert's explanation and options. apply_outcomes
     applies it as any resolved answer and records the settlement with the answer's literal and
     options offered (_settlement). None otherwise, the field then as the expert's answer leaves
     it (rule 6): also where no reading writes the text so, where no cited answer settles a
-    place or they settle it as two places, where the check gives no one successful result or no
+    place or they settle it as two records, where the check gives no one successful result or no
     value for the field, where a written rule refuses the literal (extraction_refusal), for a
     taxon and for the identified-by IRN (below)."""
     from specimen_digitization.application.extraction_guard import extraction_refusal
@@ -1447,7 +1449,6 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
         _unbacked,
         candidates_by_reading,
         labels,
-        place_name,
         place_settling,
         placed,
         written_runs,
@@ -1489,13 +1490,15 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
             and (candidate := placed(task.key, item)) is not None
             and (settles := place_settling(task, literal, candidate.name, candidate.authority_id, [item]))
             is not None]
-        # One text the cited answers place apart, as two places by the identity location
-        # reconciliation compares (_proposal_identity: the name and its parents' names), has no
-        # one place to settle on (the coordinator's ruling Y1 of 2026-11-13).
-        if len({(place_name(place.candidate.name), tuple(place_name(parent.name) for parent in place.candidate.parents))
-                for place in places}) != 1:
+        # One text the cited answers place apart, as two authority records (_record), has no one
+        # place to settle on (the coordinator's rulings Y1 and Z1 of 2026-11-13).
+        if len({_record(place.candidate) for place in places}) != 1:
             return None
+        # One record: its name, value and parents are the first cited answer's that settles the
+        # text, which the rule's answer cites first; derive reads a ruled field's answers in the
+        # order the field cites them (apply_outcomes; the coordinator's ruling Z2 of 2026-11-13).
         [place, *_] = places
+        cited = [place.answer, *(item for item in cited if item is not place.answer)]
         authority_id = place.candidate.authority_id
         value = place.candidate.name if checks.collapse(place.candidate.name) != checks.collapse(literal) else None
     elif set(task.tools) & CHECKS:
@@ -1516,6 +1519,22 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     return replace(outcome, answer=FieldAnswer(outcome="resolved", literal=literal,
         reading_names=[reading.name for reading in named], value=value, authority_id=authority_id,
         source_evidence_ids=[item.evidence.id for item in cited], explanation=explanation))
+
+
+def _record(candidate: SourceCandidate) -> tuple:
+    """The authority record a cited place candidate names, for _by_rule's one place (the
+    coordinator's ruling Z1 of 2026-11-13): its authority_id, the source's namespace and record id
+    as its candidates carry it ("tgn:1000135"), however an answer describes the place. For a
+    candidate with none (SourceCandidate.authority_id may be None), what the contract stores of it
+    besides: its name (agreement.place_name), its own ISO code and each parent's name, record and
+    code, so it is one place only with a candidate described so alike, and never with one that
+    names a record."""
+    from .agreement import place_name
+
+    if candidate.authority_id is not None:
+        return ("record", candidate.authority_id)
+    return ("described", place_name(candidate.name), candidate.iso_code,
+        tuple((place_name(parent.name), parent.authority_id, parent.iso_code) for parent in candidate.parents))
 
 
 # Owner decision B, 2026-10-09: a taxon whose label names no genus clears as
@@ -2548,7 +2567,15 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             claimed=_claimed_texts(run, tasks_by_key, readings, "country")):
         ambiguous_country = run.fields["country"]
         run.fields["country"] = ambiguous_country.model_copy(update={"state": ValueState.UNRESOLVED})
-    derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs, received=received)
+    # A field the rule settled hands derive its answers in the order it cites them, so a place's
+    # parents come from the answer its name and value came from, which it cites first (_by_rule;
+    # derive._settling_candidate takes the first cited answer that holds the place's record).
+    for_derive = dict(received)
+    for key in put.keys() & run.fields.keys():
+        order = {evidence_id: index for index, evidence_id in enumerate(run.fields[key].evidence_ids)}
+        for_derive[key] = sorted(received.get(key, ()), key=lambda answer: order.get(
+            answer.evidence.id if answer.evidence is not None else None, len(order)))
+    derived = derive.fill(run, eligible=eligible, asset_id=asset_id, blobs=blobs, received=for_derive)
     if ambiguous_country is not None and "country" not in derived:
         run.fields["country"] = ambiguous_country
     for key in derived:
