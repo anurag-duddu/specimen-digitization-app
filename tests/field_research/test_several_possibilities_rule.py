@@ -5,8 +5,9 @@ offered to every label (step._by_rule). One backed candidate settles as rules 4 
 cleared or marked; with none the field stays ambiguous with rule 6's options, the readers' texts
 and the answer's (P7, step._unsettled_options). Every test runs on both arms (conftest.py). A
 test built on test_step.build_rig asserts on the old arm what main stores, the field ambiguous
-with the answer's own options; a test that builds its readings itself and calls step._by_rule
-runs the same on both arms."""
+with the answer's own options; the taxon and IRN test also asserts on both arms that
+step._by_rule puts neither to the rule, and a test that builds its readings itself and calls
+step._by_rule runs the same on both arms."""
 
 from __future__ import annotations
 
@@ -200,6 +201,22 @@ def test_an_elevation_range_settles_each_field_on_its_end_of_the_range(tmp_path,
         elevation = run.fields[key]
         assert (elevation.state, elevation.literal, elevation.parsed) == (ValueState.SUPPORTED, "1200-1500 m", value)
         assert findings(run, key) == [(f"cleared:{key}:{run.regions[0].id}", "info")]
+
+
+def test_an_elevation_the_check_reads_as_ambiguous_is_not_put_to_the_rule(tmp_path, first_pass_path):
+    """Both readers write "alt. 1200 m-4000 ft", a range in two units, and the image names it; the
+    metres field's expert lists it. The elevation check reads it as ambiguous (mixed_units), no
+    successful result, so the answer is not put to the rule (step._by_rule): the field stays
+    ambiguous, and no check of the step refused a rule's answer (its decision is empty)."""
+    rig = build_rig(tmp_path, TEXT + "\nalt. 1200 m-4000 ft", candidates=every_field(*(
+        ("elevation_from_m", name, "1200 m-4000 ft", "alt. 1200 m-4000 ft") for name in ("1A", "1B"))))
+    run = rig.specimen.run
+    options = ("1200 m-4000 ft", "1200 m")
+    decisions = {}
+    prepared, outcomes, calls = research(rig, Scripted({"elevation_from_m": several(*options)}))
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    old_path_unchanged(run, "elevation_from_m", options)
+    assert decisions["elevation_from_m"] == {}
 
 
 def chimaltenango(cited, *, images=None):
