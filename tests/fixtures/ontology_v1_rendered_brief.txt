@@ -52,6 +52,7 @@ Label notations and every reading each allows. A word in angle brackets stands f
 - "'<yy>", "-<yy>": the year 19<yy>, under the profile's century rule [date_visited_from, date_visited_to, date_identified].
 - "?": the value before it is uncertain as written [no field].
 - "<Roman month>-<dd>-<yy>-<n>", "<mm>-<dd>-<yy>-<n><letter>": a slide or preparation code: a month, a day, a two-digit year and a slide number joined by hyphens; never a date, nor is any part of it [no field]. No field takes a slide code.
+- "LEWIS COLLECTION": the printed heading of the Lewis Collection's label templates; it is the Collection Code, copied as written [collection_code].
 
 Open questions that wait for the owner's reading; until then a unit holding one carries no field.
 - "CNHM.": What is "CNHM." on these labels, and does it fill a field?

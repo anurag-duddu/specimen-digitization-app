@@ -542,6 +542,14 @@ notations:
       - src/specimen_digitization/field_research/prompts/habitat.txt:4
       - src/specimen_digitization/field_research/prompts/collection_method.txt:4
       - tests/fixtures/field_model_pilot_rows.json:134
+  # The owner's reading of 2026-11-13 (the spec's section 5, its dated line). The
+  # source line is that line of the spec at the commit that adds this entry.
+  - id: lewis_collection_heading
+    written: ["LEWIS COLLECTION"]
+    readings: ["the printed heading of the Lewis Collection's label templates; it is the Collection Code, copied as written"]
+    fields: [collection_code]
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:324
 
 # Questions for the owner's single reading in WP 2.1 (plan section 6). A
 # question with `written` forms is about units: until the reading a unit

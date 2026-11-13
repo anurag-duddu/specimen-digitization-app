@@ -180,6 +180,44 @@ def test_the_eleven_pilot_units_get_the_fields_and_meaning_the_file_gives_them(t
     assert advice.means == means
 
 
+# The owner's reading of 2026-11-13, the spec's dated line (section 5): a printed "LEWIS COLLECTION" heading
+# is the Collection Code. The units path only; the shared briefs stay main's.
+LEWIS = "the printed heading of the Lewis Collection's label templates; it is the Collection Code, copied as written"
+
+
+@pytest.mark.parametrize("text", ["LEWIS COLLECTION", "LEWIS\nCOLLECTION"], ids=["one line", "two lines"])
+def test_a_unit_whose_text_is_the_printed_lewis_collection_heading_gets_the_collection_code(text):
+    """As the eleven pilot units do: the field and the reading come from the file."""
+    assert ontology.ontology().advice(text) == ontology.Advice(
+        fields=("collection_code",), means=(LEWIS,), notations=("lewis_collection_heading",))
+
+
+@pytest.mark.parametrize("text", ["Siphonaptera of Utah", "LEWIS", "COLLECTION", "LEWIS COLLECTIONS"])
+def test_no_other_printed_heading_is_ruled(text):
+    """A guard, not a fail-first test (it passes on main too): the ruling names one heading."""
+    assert ontology.ontology().advice(text) == ontology.Advice()
+
+
+def test_the_lewis_notation_names_the_specs_dated_line_as_its_source_and_the_loader_needs_it():
+    loaded = ontology.ontology()
+    notation = next(item for item in loaded.notations if item.id == "lewis_collection_heading")
+
+    assert (notation.written, notation.readings, notation.fields) == (("LEWIS COLLECTION",), (LEWIS,), ("collection_code",))
+    assert len(notation.source) == 1
+    path, lines = _cited(notation.source[0])
+    assert path == ROOT / "docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md"
+    assert re.fullmatch(r"\d+", lines)
+    line = path.read_text(encoding="utf-8").splitlines()[int(lines) - 1]
+    assert line.startswith("2026-11-13, the owner")
+    assert "Asked 'Should a printed \"LEWIS COLLECTION\" heading be stored as the Collection Code?'," in line
+    assert 'the owner answered with the button "Yes, store it".' in line
+
+    data = shipped()
+    del entry(data, "notations", "lewis_collection_heading")["source"]
+    with pytest.raises(ontology.OntologyError, match=r"^notations\[\d+\] has no source$"):
+        ontology.parse(data)
+
+
 def test_the_three_open_units_are_the_files_questions_and_carry_nothing_else():
     loaded = ontology.ontology()
 
