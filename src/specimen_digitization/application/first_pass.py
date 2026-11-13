@@ -842,8 +842,24 @@ def _plain(text: str) -> str:
     return "".join(character for character in text.casefold() if character.isalnum())
 
 
+def first_readers_spelling(named: str, spans) -> str:
+    """The text a unit's image stores where the model names the text `named`: the first
+    reader's text here, in reader order, whose agreement key equals the named text's key
+    (field_research/agreement.py: NFC, casefolded, white space removed, the key the
+    settlement compares texts by). The stored text's capitals and spaces are that first
+    reader's, not the named reader's. A named text whose key no reader's text has is
+    returned as it is."""
+    # Imported where used, as application/api.py and location_reassessment_authorization.py
+    # import field_research.
+    from ..field_research.agreement import agreement_key
+
+    key = agreement_key(named)
+    return next((span.text for span in spans if agreement_key(span.text) == key), named)
+
+
 def units_from_output(region_id: str, output: UnitsOutput, letters, segments) -> ReadingUnits:
-    """The label's units from an answer units_output_problems accepted."""
+    """The label's units from an answer units_output_problems accepted. Where a unit's
+    image names a reader, the unit's image is first_readers_spelling of that reader's text."""
     readings = list(letters.values())
     units = []
     for number, answer in enumerate(output.units, 1):
@@ -854,7 +870,7 @@ def units_from_output(region_id: str, output: UnitsOutput, letters, segments) ->
         ]
         image = answer.image
         if image in letters:
-            image = spans[list(letters).index(image)].text
+            image = first_readers_spelling(spans[list(letters).index(image)].text, spans)
         means = answer.means.strip()
         if _plain(means) in {_plain(span.text) for span in spans}:
             # A meaning equal to a reader's text here (_plain) is left empty.
@@ -869,8 +885,11 @@ def units_from_output(region_id: str, output: UnitsOutput, letters, segments) ->
     return ReadingUnits(label=region_id, units=units)
 
 
-# Request options first_pass_units_direct's agent sends over the route's own (_agent).
-UNITS_REQUEST_OPTIONS = {"reasoning_effort": "low"}
+# Request options first_pass_units_direct's agent sends over the route's own (_agent): low
+# reasoning, and temperature 0, as the field experts send (field_research/experts.py,
+# MODEL_SETTINGS). first_pass_direct, the old path, passes none (its request carries the
+# route's own).
+UNITS_REQUEST_OPTIONS = {"reasoning_effort": "low", "temperature": 0}
 
 
 # _unpicked's decision selects no reading and gives each difference the verdict uncertain.

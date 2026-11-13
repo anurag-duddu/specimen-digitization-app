@@ -172,8 +172,13 @@ what it qualifies. A unit may cross a line, but never joins pieces of two
 fields' values. For each unit:
 - image: the letter of the reader whose text the image shows there, even when
   that reader alone wrote it; where all readers wrote the same and the image
-  shows it, the first reader's letter. "uncertain" only where the image does
-  not decide between differing texts; "not visible" where nothing is legible.
+  shows it, the first reader's letter. Where the readers' texts differ only in
+  capital letters or in spaces and the image shows that text, the letter of the
+  first reader who wrote it, unless the image plainly shows another reader's
+  capitals or spaces. Where they differ in a character, compare that
+  character's strokes in the image with each reader's text and give the reader
+  they fit; "uncertain" only where the strokes fit two differing texts equally
+  or fit none; "not visible" where nothing is legible.
   Never prefer a text because it reads more fluently: labels abbreviate,
   misspell and use old or foreign place names.
 - means: your interpretation, if any: an expansion ("P.I.": Philippine
@@ -183,8 +188,9 @@ fields' values. For each unit:
   that part of a value alone.
 - fields: the field keys the unit could belong to, most likely first; none
   for a unit that holds an open question below.
-- note: one short sentence, only for what the other keys do not say, such as
-  a mark one reader alone saw; never to restate the image or the meaning.
+- note: a remark for the experts, one short sentence, only for what the other
+  keys do not say, such as a mark one reader alone saw; never to restate the
+  image or the meaning, and never to argue against a name every reader wrote.
 
 You settle nothing: each field's expert decides with lookups. Return the
 requested structured output.
