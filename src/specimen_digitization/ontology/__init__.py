@@ -190,8 +190,9 @@ class HighestPoints:
 class Tables:
     """The code's own notation tables, as the file holds them: the unit words
     application/geography_tool.NOTATIONS drops, field_research/written's
-    ELEVATION_UNITS, RANGE_WORDS and RANGE_SIGNS, and application/
-    date_notations.NOTATIONS' orders, each with an example it reads first.
+    ELEVATION_UNITS, RANGE_WORDS and RANGE_SIGNS, and the names of application/
+    date_notations.NOTATIONS' notations (selectors of how a literal is read),
+    each with an example it reads first.
     tests/test_ontology.py pins each equal to the code's."""
 
     place_unit_words: tuple[str, ...]

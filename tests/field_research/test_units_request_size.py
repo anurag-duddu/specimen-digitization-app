@@ -35,9 +35,9 @@ FIXTURES = Path(__file__).parents[1] / "fixtures"
 SLIDES = ("105526325", "105526324")
 # The largest request of each rebuilt conversation, in bytes (budget.input_token_bound), with WP 2.2's
 # instructions: the province expert's rules (ontology.render_instructions("expert", "province_state"),
-# 523 bytes with the blank line before them) in, common.txt's two date notation lines replaced (587
+# 523 bytes with the blank line before them) in, common.txt's two date notation lines replaced (573
 # bytes out; test_units_instructions.py). On main 530b2cf18 they were 47,867 and 47,495.
-LARGEST = {"105526325": 47_803, "105526324": 47_431}
+LARGEST = {"105526325": 47_817, "105526324": 47_445}
 
 
 @pytest.fixture(autouse=True)

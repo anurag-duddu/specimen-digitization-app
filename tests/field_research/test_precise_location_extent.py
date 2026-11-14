@@ -175,3 +175,49 @@ def test_a_municipio_line_beside_the_settled_town_stands_on_the_units_path(tmp_p
     else:
         assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
         assert decisions["precise_location"]["refusal"] == "admin_marker_only"
+
+
+# ---- round 1 of PR #435's review (Codex, finding 1): an elevation alone is no locality ----------------
+
+@pytest.mark.parametrize("literal", ["4800 ft.", "Elev. 6400'"])
+def test_an_elevation_alone_is_still_refused_as_a_precise_location_on_both_paths(first_pass_path, literal):
+    """The units path's exception takes an elevation written among a locality's lines, never a literal
+    that is only an elevation (and the words beside it): it is refused as on the old path."""
+    readings = label_readings(literal + "\nIV-24-48", first_pass_path == "units")
+    task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
+
+    refused = agreement.literal_refusal(task, readings, literal=literal, named=readings)
+
+    assert refused is not None and refused.reason == agreement.HOLDS_AN_ELEVATION
+    assert not agreement.locality_beyond_elevations(literal)
+    assert agreement.locality_beyond_elevations("Yepocapa, " + literal)
+
+
+def test_a_label_writing_only_an_elevation_gets_no_precise_location_on_either_path(tmp_path, first_pass_path):
+    """Codex's input: a label that writes only "4800 ft.", read alike by both readers, and the precise
+    location's expert resolving "4800 ft." from the transcript: refused on both paths, never stored."""
+    rig, run, decisions = settled_run(tmp_path, "4800 ft.", {"precise_location": whole("4800 ft.")})
+    place = run.fields["precise_location"]
+    assert place.state != ValueState.SUPPORTED and place.literal is None
+    assert place.reason.startswith(agreement.HOLDS_AN_ELEVATION)
+
+
+def test_an_elevation_read_from_the_transcript_beside_an_elevation_only_precise_location_goes_to_review(
+        tmp_path, first_pass_path):
+    """The organiser offers "4800 ft." as the precise location, which its expert settles on that candidate,
+    and the foot elevation's expert reads "4800 ft." from the transcript: the precise location's literal holds
+    no locality text, so on the units path too the elevation is text another kind of field claims
+    (step._taken), as on the old path."""
+    from test_step import Scripted
+
+    rig = build_rig(tmp_path, "4800 ft.\nIV-24-48", candidates=[
+        ("precise_location", name, "4800 ft.", "4800 ft.") for name in ("1A", "1B")])
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({**{key: answering(LACKS) for key in FIELDS},
+        "precise_location": whole("4800 ft."),
+        "elevation_from_ft": answering(FieldAnswer(outcome="resolved", literal="4800 ft.", value="4800",
+            reading_names=["1A", "1B"], explanation="Both readers write it."))}), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    assert run.fields["elevation_from_ft"].state == ValueState.UNRESOLVED
+    assert decisions["elevation_from_ft"]["refusal"] == "taken"

@@ -130,7 +130,7 @@ def test_the_units_paths_instructions_name_no_first_pass_preference(key):
 
 # prompts/units.txt as WP 1.3's rework (gap report items 2(a), 3 and 4) and WP 2.2 (the two date
 # notation lines; the precise location brief's three lines) leave it, as the sha256 of its bytes.
-UNITS_TXT = "sha256:4e2fc4bde94376e81821182085021444746d31c6846b8e87a11b48d7e34aeace"
+UNITS_TXT = "sha256:124433bde6472fa1f51a06a685ab9ad23f192dcf43461edf6b307a4f5b4e151d"
 # Rule 4 on the units path: what the code decides, said once to every expert.
 RULE = ("The code decides from the image judgements, the source answers your lookups returned and the readers' "
     "agreement whether a value is cleared, marked for a person to check, or left open, and it refuses an answer it cannot "
@@ -294,7 +294,7 @@ DATE_LINES = {
         "decides"),
 }
 DATE_SAYS = ("- parse_date reads each date notation of the specimen ontology below.",
-    "- parse_date names a numeric date that either order reads (day_month_order_ambiguous).")
+    "- parse_date names a numeric date whose two orders give different dates (day_month_order_ambiguous).")
 
 
 @pytest.mark.parametrize("key", FIELD_TOOLS)

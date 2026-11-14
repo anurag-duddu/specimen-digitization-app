@@ -29,7 +29,7 @@
 <<< - A Roman numeral I to XII in a date is the month, in any position: "<d>.VI.<yyyy>" is day <d> of June <yyyy>, as are "IX-<d>-<yy>" and "<yyyy>.IX.<d>" for day <d> of September. A month may be written by name in English, Spanish, French, German, Portuguese, Italian or Latin, abbreviated or not, with or without periods ("Sept.", "ene.", "janv.", "Mai", "Okt.", "agosto"), and a day may carry an ordinal ("3rd", "1er"): parse_date reads them all.
 >>> - parse_date reads each date notation of the specimen ontology below.
 <<< - A numeric date ("<a>-<b>-<yy>", "<a>.<b>.<yy>", "<a>/<b>/<yy>") is settled only when a part over 12 fixes day against month; otherwise it can be month <a>, day <b> or day <a>, month <b>: both readings stand until evidence decides, and parse_date names the ambiguity (day_month_order_ambiguous).
->>> - parse_date names a numeric date that either order reads (day_month_order_ambiguous).
+>>> - parse_date names a numeric date whose two orders give different dates (day_month_order_ambiguous).
 == collectors.txt
 <<< - Collectors usually follow "leg.", "coll.", "Coll.", "Collected by" or "Collector(s):". The literal is the names as written, in the written order, with their initials, spelling and joiners ("<Initials> <Surname>", "<Surname> & <Surname>"), without the marker itself.
 >>> - Collectors usually follow "leg.", "coll.", "Coll.", "Collected by" or "Collector(s):". The literal is the names as written, in the written order, with their initials, spelling and joiners ("<Initials> <Surname>", "<Surname> & <Surname>"), without the marker itself, also where one unit holds the names and the marker ("<Initials> <Surname> leg."): the literal is then the names inside it.

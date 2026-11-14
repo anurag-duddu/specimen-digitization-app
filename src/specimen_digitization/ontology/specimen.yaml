@@ -1276,8 +1276,10 @@ tables:
   date_notations:
     means: >-
       the notations a date literal is read by, in the order they are tried,
-      each by the name the date parser records as the reading's order and an
-      example the notation reads first
+      each by its name in the code's table and an example the notation reads
+      first; a name selects how the literal is read, not always the order
+      recorded on a reading: "numeric" gives readings ordered month-day-year
+      and day-month-year, and "year-numeric" year-month-day and year-day-month
     notations:
       - {order: month-day-year, example: "IX-6-46"}
       - {order: month-day, example: "IX-6"}
@@ -1302,3 +1304,4 @@ tables:
       - {order: year, example: "'46"}
     source:
       - src/specimen_digitization/application/date_notations.py:62-85
+      - src/specimen_digitization/application/field_validators.py:274-281

@@ -1024,8 +1024,9 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     goes to review. A place inside the precise location, or an elevation
     copied to the other unit, is one kind; a date inside the precise
     location is not, nor, on the old path, an elevation (on the units path
-    the precise location holds an elevation written among its lines:
-    may_share_text's `units`). Two fields that both settle the same text
+    the precise location holds an elevation written among its lines, when
+    its literal holds locality text beyond its elevations: may_share_text's
+    `units`, agreement.locality_beyond_elevations). Two fields that both settle the same text
     from the transcript both go to review.
 
     One overlap is the other way round: a place read from the transcript
@@ -1040,7 +1041,9 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     629f91eb on 616ae010). A place that holds another field's whole text,
     or lies wholly inside it, still yields, as does one beside a value
     settled before this attempt or by a person."""
-    from .agreement import FIELD_KINDS, TRANSCRIPT, literal_basis, may_share_text, written_runs
+    from .agreement import (
+        FIELD_KINDS, TRANSCRIPT, literal_basis, locality_beyond_elevations, may_share_text, written_runs,
+    )
 
     evidence = {item.id: item for item in run.evidence}
     by_name = {reading.name: reading for reading in readings}
@@ -1075,6 +1078,12 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             mine[outcome.key] = frozenset((r.name, start, end) for r in readings if r.region_id in regions
                 for start, end in written_runs(outcome.key, r.text, literal))
             mine_texts[outcome.key] = (literal, regions)
+    # The precise location's literal, this attempt's answer's or a settled value's: on the units path it may share an
+    # elevation field's text only when it holds locality text beyond its elevations.
+    precise = next((text for text in (mine_texts.get("precise_location", (None,))[0],
+        getattr(settled.get("precise_location"), "literal", None),
+        getattr(run.fields.get("precise_location"), "literal", None)) if text), None)
+    units = units and precise is not None and locality_beyond_elevations(precise)
     for key, value in run.fields.items():
         if key not in researched and _claims_text(key, value, human):
             claims.append((key, _value_spans(value, readings, evidence)))
