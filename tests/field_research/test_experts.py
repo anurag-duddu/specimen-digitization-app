@@ -1800,6 +1800,36 @@ def test_labels_that_write_one_name_differently_settle_on_one_gbif_usage():
     assert agreement.refusal(field, readings, authority_id="5133099", **settles).differ
 
 
+
+@pytest.mark.parametrize(("key", "first", "second", "settles"), [
+    # Two labels write different collecting dates: a conflict.
+    ("date_visited_from", "3 Sept. 1946", "4 Sept. 1946", False),
+    # Two labels write different countries: a conflict.
+    ("country", "Mexico", "Guat.", False),
+    # Two labels write one country differently, and the source confirms both texts as it.
+    ("country", "Guatemala", "Guat.", True),
+])
+def test_two_labels_writing_one_field_differently_settle_only_through_a_source_confirming_both(
+        key, first, second, settles):
+    """WP 2.1's rule one_collecting_event (ontology/specimen.yaml), G32: an answer that settles the
+    field on label 1's text is refused (LABELS_DIFFER) unless a source confirms each label's text as
+    the same place or name. Getty TGN knows Guatemala and Mexico, each a nation."""
+    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", first),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", first),
+                Reading("2A", "region-2", "obs-2a", "raw_reading", second),
+                Reading("2B", "region-2", "obs-2b", "raw_reading", second))
+    field = task(key, current=FieldValue(state=ValueState.AMBIGUOUS), candidates=offered(
+        ("1A", first), ("1B", first), ("2A", second), ("2B", second)))
+    guatemala = tgn("Guatemala", "ev-gt", ("Guatemala", "tgn:7005493", NATION))
+    mexico = tgn("Mexico", "ev-mx", ("Mexico", "tgn:7005560", NATION))
+    cited = {"Guatemala": [guatemala], "Mexico": [mexico]}.get(first, [])
+    refused = agreement.refusal(field, readings, literal=first, named=readings[:2], value=None,
+        authority_id=cited[0].candidates[0].authority_id if cited else None, cited=cited,
+        received=[guatemala, mexico] if cited else [])
+    assert (refused is None) is settles
+    if not settles:
+        assert refused.reason == agreement.LABELS_DIFFER
+
 # A place value settles on the one candidate at its field's level (P1). The
 # kinds are as the recorded pilot answers give them.
 

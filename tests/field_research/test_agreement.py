@@ -2227,6 +2227,36 @@ def test_a_county_on_the_settled_provinces_record_or_text_is_refused_as_the_prov
     assert refused("Tagum", "nga:tagum-second", "Tagum") is None
 
 
+
+# WP 2.1's rule place_within_settled_places (ontology/specimen.yaml): with no larger place settled, an
+# exact match still settles when that place can be derived from it later (_can_derive_ancestor), and
+# only then.
+US = agreement.PlaceField(("United States",), "tgn:us")
+
+
+@pytest.mark.parametrize(("key", "parents", "written", "settled", "unsettled", "literal", "reason"), [
+    # The reading writes the state's own text under country (misfiled): the country is derived later.
+    ("province_state", (("United States", "tgn:us"),), {"country": field("Illinois")}, {}, frozenset(),
+     "Illinois", None),
+    # The reading writes another country, which nothing settled: no country, no place.
+    ("province_state", (("United States", "tgn:us"),), {"country": field("Canada")}, {}, frozenset(),
+     "Illinois", "NO_COUNTRY"),
+    # A county whose own text the reading writes under province: derivable when its source names two parents.
+    ("county", (("Illinois", "tgn:il"), ("United States", "tgn:us")),
+     {"country": US, "province_state": field("Cook County")}, {"country": US}, frozenset({"province_state"}),
+     "Cook County", None),
+    ("county", (("United States", "tgn:us"),),
+     {"country": US, "province_state": field("Cook County")}, {"country": US}, frozenset({"province_state"}),
+     "Cook County", "NO_PROVINCE"),
+], ids=["misfiled-country-text", "another-country", "misfiled-province-two-parents", "misfiled-province-one-parent"])
+def test_a_place_with_no_settled_larger_place_settles_only_when_that_place_can_be_derived_from_it(
+        key, parents, written, settled, unsettled, literal, reason):
+    candidate = place(literal, f"tgn:{literal}", *parents)
+    refused = agreement.parents_refusal(key, candidate, agreement.ASKED, written=written, settled=settled,
+        literal=literal, unsettled=unsettled)
+    assert (refused.reason if refused else None) == (getattr(agreement, reason) if reason else None)
+
+
 # A Philippine province written with its unit word stays the province.
 PHILIPPINE_PROVINCE = label_with(country="Philippines", province_state="Davao Prov.", county=None, city=None)
 DAVAO_SECOND = ("Davao", "nga:davao-second", "A.ADM2", (("Davao", None), ("PH", None, "PH")))

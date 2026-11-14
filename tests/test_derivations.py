@@ -342,6 +342,17 @@ def test_a_single_metre_value_is_both_ends_and_fills_the_feet_fields():
     assert {v.derived_from[0] for v in filled.values()} == {"elevation_from_m"}
 
 
+
+def test_a_feet_value_converts_to_metres_rounded_to_the_hundredth():
+    """WP 2.1's rule elevation_conversion: 1501 ft is 457.5048 m, rounded to the hundredth, 457.5."""
+    filled, _, _ = derive(EMPTY | {"elevation_from_ft": stated("1501 ft")})
+
+    assert {k: v.parsed for k, v in filled.items()} == {
+        "elevation_to_ft": "1501",
+        "elevation_from_m": "457.5",
+        "elevation_to_m": "457.5",
+    }
+
 def test_stated_elevations_are_never_replaced():
     fields = EMPTY | {
         "elevation_from_m": stated("1200"),

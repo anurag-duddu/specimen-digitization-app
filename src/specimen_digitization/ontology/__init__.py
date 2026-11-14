@@ -5,14 +5,20 @@ people and by code (docs/product-requirements/
 FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 5). Version 1.0 (plan WP 1.0)
 holds the things, the profile's 20 fields with their Darwin Core terms, the
 label notations with every reading each allows, the fields a kind of unit
-could belong to, and the questions waiting for the owner's reading.
+could belong to, and the questions no source settles. Version 2.0 (plan WP 2.1)
+adds the rules, each with its Darwin Core term and how it is checked (code, a
+model, or not yet), the statements that are not rules, and the highest-point
+table from Wikidata.
 
 The loader refuses a key it does not know, a field that is not one of the
-profile's 20 (application/domain.py MANDATORY), and an entry with no source.
-`render` gives the text a model's instructions carry; `render(brief=True)`
-is the units path's first-pass prompt input (prompts.py). `advice`
-gives what the file says about one unit's text: the fields it could belong to
-and the readings of its notations, or the open question it holds.
+profile's 20 (application/domain.py MANDATORY), an entry with no source, and a
+rule or a table row missing any part. `render` gives the text a model's
+instructions carry; `render(brief=True)` is the units path's first-pass prompt
+input (prompts.py). `render_rules` gives the rules' own text, which no model's
+instructions carry in version 2.0. `advice` gives what the file says about one
+unit's text: the fields it could belong to and the readings of its notations,
+or the open question it holds. `highest_point` gives a country's row of the
+table.
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from decimal import Decimal
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -100,19 +107,73 @@ class Notation:
 
 @dataclass(frozen=True)
 class Question:
-    """A question for the owner's reading: about units (`written`, matched in
-    a unit's text; the unit then carries no field) or about one notation's
-    entry (`notation`, never matched; the entry stands until the reading)."""
+    """A meaning no source settles: about units (`written`, matched in a unit's
+    text; the unit then carries no field) or about one notation's entry
+    (`notation`, never matched; the entry stands as it is). `status` says why
+    it stays open."""
 
     id: str
     written: tuple[str, ...]
     question: str
     context: str
-    answered_in: str
+    status: str
     source: tuple[str, ...]
     notation: str = ""
     periods_optional: bool = False
     patterns: tuple[re.Pattern[str], ...] = field(default=(), compare=False, repr=False)
+
+
+# How a rule is checked today (the file's `rules` comment).
+CHECKS = ("code", "model", "not yet")
+
+
+@dataclass(frozen=True)
+class Rule:
+    """A relation or check: `check` is how it is checked today; a rule not yet
+    checked names in `when` the work package that builds it."""
+
+    id: str
+    statement: str
+    check: str
+    darwin_core: str
+    source: tuple[str, ...]
+    when: str = ""
+    note: str = ""
+
+
+@dataclass(frozen=True)
+class NotRule:
+    """A statement the spec records as not a rule: no check uses it."""
+
+    id: str
+    statement: str
+    darwin_core: str
+    source: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class HighestPoint:
+    """One row of the highest-point table: a country, its highest point, and
+    the point's elevation in metres, by their Wikidata items."""
+
+    country: str
+    country_name: str
+    point: str
+    point_name: str
+    elevation_m: Decimal
+
+
+@dataclass(frozen=True)
+class HighestPoints:
+    """The highest-point table and the one citation of its rows: the query,
+    where and when it ran, and how one row per country was chosen."""
+
+    source: str
+    endpoint: str
+    retrieved: str
+    query: str
+    selection: str
+    rows: tuple[HighestPoint, ...]
 
 
 @dataclass(frozen=True)
@@ -135,6 +196,29 @@ class Ontology:
     notation_rule: str
     notations: tuple[Notation, ...]
     questions: tuple[Question, ...]
+    rules: tuple[Rule, ...]
+    not_rules: tuple[NotRule, ...]
+    highest_points: HighestPoints
+
+    def highest_point(self, country: str) -> HighestPoint | None:
+        """The table's row for a country's Wikidata item, or None."""
+        return next((row for row in self.highest_points.rows if row.country == country), None)
+
+    def render_rules(self) -> str:
+        """The rules as one text: each rule's statement, its Darwin Core term
+        and how it is checked; then the statements that are not rules. No
+        model's instructions carry it in version 2.0 (plan WP 2.2 adds it)."""
+        how = {"code": "checked by code", "model": "checked by a model", "not yet": "not yet checked"}
+        lines = [
+            f"Specimen ontology rules, version {self.version}. Each rule names its Darwin Core term "
+            "and how it is checked.",
+        ]
+        lines += [f"- {rule.id}: {_sentence(rule.statement)} (Darwin Core: {rule.darwin_core}; {how[rule.check]}.)"
+                  for rule in self.rules]
+        lines += ["", "Not rules:"]
+        lines += [f"- {entry.id}: {_sentence(entry.statement)} (Darwin Core: {entry.darwin_core}.)"
+                  for entry in self.not_rules]
+        return "\n".join(lines) + "\n"
 
     def advice(self, text: str, kind: str | None = None) -> Advice:
         """The fields and readings the file gives a unit's text.
@@ -225,14 +309,14 @@ class Ontology:
             where = f" [{', '.join(notation.fields)}]" if notation.fields else " [no field]"
             note = f" {_sentence(notation.note)}" if notation.note else ""
             lines.append(f"- {written}: {readings}{where}.{note}")
-        lines += ["", "Open questions that wait for the owner's reading; until then a unit holding one carries no field."]
+        lines += ["", "Meanings no source settles yet; a unit holding one carries no field."]
         for question in self.questions:
             if question.written:
                 written = ", ".join(f'"{form}"' for form in question.written)
                 lines.append(f"- {written}: {question.question}")
         about = [question for question in self.questions if question.notation]
         if about:
-            lines.append("Open questions about a notation above, whose entry stands until the owner's reading:")
+            lines.append("Meanings about a notation above that no source settles yet; its entry stands as it is:")
             notations = {notation.id: notation for notation in self.notations}
             for question in about:
                 written = ", ".join(f'"{form}"' for form in notations[question.notation].written)
@@ -356,7 +440,9 @@ def _unique_ids(entries, where: str) -> None:
         raise OntologyError(f"{where}: an id is written twice")
 
 
-TOP = {"version", "frame", "things", "fields", "routing", "notation_rule", "notations", "questions"}
+TOP = {"version", "frame", "things", "fields", "routing", "notation_rule", "notations", "questions", "rules",
+       "not_rules", "highest_points"}
+QID = re.compile(r"Q[1-9]\d*")
 
 
 def parse(data: Any) -> Ontology:
@@ -438,7 +524,7 @@ def parse(data: Any) -> Ontology:
     questions = []
     for index, value in enumerate(_list(top["questions"], "questions")):
         where = f"questions[{index}]"
-        entry = _entry(value, where, {"id", "question", "context", "answered_in", "source"},
+        entry = _entry(value, where, {"id", "question", "context", "status", "source"},
                        frozenset({"written", "notation", "periods_optional"}))
         if ("written" in entry) == ("notation" in entry):
             raise OntologyError(f"{where} needs written forms or a notation, not both")
@@ -453,12 +539,43 @@ def parse(data: Any) -> Ontology:
             notation=notation,
             question=_text(entry["question"], f"{where}.question"),
             context=_text(entry["context"], f"{where}.context"),
-            answered_in=_text(entry["answered_in"], f"{where}.answered_in"),
+            status=_text(entry["status"], f"{where}.status"),
             source=_source(entry, where),
             periods_optional=optional,
             patterns=_patterns(written, optional, where),
         ))
     _unique_ids(questions, "questions")
+
+    rules = []
+    for index, value in enumerate(_list(top["rules"], "rules")):
+        where = f"rules[{index}]"
+        entry = _entry(value, where, {"id", "statement", "check", "darwin_core", "source"},
+                       frozenset({"when", "note"}))
+        check = _text(entry["check"], f"{where}.check")
+        if check not in CHECKS:
+            raise OntologyError(f"{where}.check must be one of {', '.join(CHECKS)}, not {check!r}")
+        if (check == "not yet") != ("when" in entry):
+            raise OntologyError(f"{where}: a rule names `when` if and only if it is not yet checked")
+        rules.append(Rule(
+            id=_text(entry["id"], f"{where}.id"),
+            statement=_text(entry["statement"], f"{where}.statement"),
+            check=check,
+            darwin_core=_text(entry["darwin_core"], f"{where}.darwin_core"),
+            source=_source(entry, where),
+            when=_text(entry["when"], f"{where}.when") if "when" in entry else "",
+            note=_text(entry["note"], f"{where}.note") if "note" in entry else "",
+        ))
+    not_rules = []
+    for index, value in enumerate(_list(top["not_rules"], "not_rules")):
+        where = f"not_rules[{index}]"
+        entry = _entry(value, where, {"id", "statement", "darwin_core", "source"})
+        not_rules.append(NotRule(
+            id=_text(entry["id"], f"{where}.id"),
+            statement=_text(entry["statement"], f"{where}.statement"),
+            darwin_core=_text(entry["darwin_core"], f"{where}.darwin_core"),
+            source=_source(entry, where),
+        ))
+    _unique_ids([*rules, *not_rules], "rules and not_rules")
 
     return Ontology(
         version=_text(top["version"], "version"),
@@ -469,6 +586,44 @@ def parse(data: Any) -> Ontology:
         notation_rule=_text(rule["text"], "notation_rule.text"),
         notations=tuple(notations),
         questions=tuple(questions),
+        rules=tuple(rules),
+        not_rules=tuple(not_rules),
+        highest_points=_highest_points(top["highest_points"]),
+    )
+
+
+def _highest_points(value: Any) -> HighestPoints:
+    """The table, refused when its citation or a row misses a part, a Q-id is
+    malformed, an elevation is not a positive number, or a country is written
+    twice."""
+    table = _entry(value, "highest_points", {"source", "endpoint", "retrieved", "query", "selection", "rows"})
+    rows = []
+    for index, row in enumerate(_list(table["rows"], "highest_points.rows")):
+        where = f"highest_points.rows[{index}]"
+        _entry(row, where, {"country", "country_name", "point", "point_name", "elevation_m"})
+        for key in ("country", "point"):
+            if not isinstance(row[key], str) or not QID.fullmatch(row[key]):
+                raise OntologyError(f"{where}.{key} must be a Wikidata Q-id")
+        elevation = row["elevation_m"]
+        if isinstance(elevation, bool) or not isinstance(elevation, (int, float)) or not elevation > 0:
+            raise OntologyError(f"{where}.elevation_m must be a positive number")
+        rows.append(HighestPoint(
+            country=row["country"],
+            country_name=_text(row["country_name"], f"{where}.country_name"),
+            point=row["point"],
+            point_name=_text(row["point_name"], f"{where}.point_name"),
+            elevation_m=Decimal(str(elevation)),
+        ))
+    countries = [row.country for row in rows]
+    if len(set(countries)) != len(countries):
+        raise OntologyError("highest_points.rows: a country is written twice")
+    return HighestPoints(
+        source=_text(table["source"], "highest_points.source"),
+        endpoint=_text(table["endpoint"], "highest_points.endpoint"),
+        retrieved=_text(table["retrieved"], "highest_points.retrieved"),
+        query=_text(table["query"], "highest_points.query"),
+        selection=_text(table["selection"], "highest_points.selection"),
+        rows=tuple(rows),
     )
 
 
@@ -496,3 +651,8 @@ def ontology() -> Ontology:
 def render(brief: bool = False) -> str:
     """The shipped ontology as a model's instructions carry it (`brief`: the first pass's)."""
     return ontology().render(brief)
+
+
+def render_rules() -> str:
+    """The shipped ontology's rules as one text (Ontology.render_rules)."""
+    return ontology().render_rules()
