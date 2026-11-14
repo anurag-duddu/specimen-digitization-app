@@ -798,10 +798,20 @@ rules:
       Upward derivation: a derived country, province or state, or county is
       the parent that the source of a settled place below it names at that
       level; it never replaces a value settled from the label; no parent is
-      derived where settled places below name different ones there; and a
-      county is never derived from a city whose source names fewer than three
-      larger places, nor a province from a county whose source names fewer
-      than two.
+      derived where the settled places below whose proposals derivation takes
+      name different ones there; and a county is never derived from a city
+      whose source names fewer than three larger places, nor a province from a
+      county whose source names fewer than two.
+    note: >-
+      Derivation takes a place's proposal only where the field it fills is
+      open, or holds that place's own misfiled text (derive.py:118,
+      _can_derive_place). So with the province's text "Cook" unresolved, a
+      settled county Cook in Illinois and a settled city Gary in Indiana, the
+      province is derived as Illinois from the county alone
+      (test_a_misfiled_province_text_leaves_the_city_out_of_the_parent_agreement).
+      A derived chain that fails the place chain is marked by WP 2.3's check
+      stage (the rule place_chain; the plan's WP 2.3 row names the place chains
+      that derivation fills).
     check: code
     darwin_core: country, stateProvince, county
     source:

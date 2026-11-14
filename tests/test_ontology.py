@@ -582,6 +582,8 @@ CODE_RULE_TESTS = {
         "::test_a_parent_is_derived_only_when_every_settled_place_below_names_the_same_one",
         "tests/field_research/test_step.py::test_a_county_or_a_province_is_derived_only_from_enough_parents",
         "tests/field_research/test_step.py::test_a_derived_parent_never_replaces_a_place_settled_from_the_label",
+        "tests/field_research/test_step.py"
+        "::test_a_misfiled_province_text_leaves_the_city_out_of_the_parent_agreement",
     ),
     "elevation_conversion": (
         "tests/field_research/test_step.py::test_derived_values_fill_what_the_label_leaves_out",
