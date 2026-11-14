@@ -2571,7 +2571,8 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     if units_path(run):
         from .ontology_checks import stage
 
-        stage(run, readings=readings, received=received, researched=tasks_by_key, derived=derived, human=human)
+        stage(run, readings=readings, received=received, researched=tasks_by_key, derived=derived, human=human,
+            blobs=blobs)
     return derived
 
 

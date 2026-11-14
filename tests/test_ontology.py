@@ -607,7 +607,8 @@ CODE_RULE_TESTS = {
     ),
     "code_is_no_date": (
         f"{STAGE}::test_a_date_one_reader_writes_inside_a_slide_code_is_no_date_on_the_units_path",
-        f"{STAGE}::test_a_literal_is_in_a_code_only_inside_a_longer_token_the_ontology_reads_as_a_slide_code",
+        f"{STAGE}::test_a_literal_is_in_a_code_only_inside_a_match_of_the_ontology_s_slide_code",
+        f"{STAGE}::test_a_date_punctuation_separates_from_a_slide_code_is_a_date_on_both_paths",
         f"{STAGE}::test_the_date_experts_check_gives_no_date_inside_a_code_and_its_value_is_refused_on_the_units_path",
         "tests/field_research/test_checks.py::test_a_date_inside_a_code_in_any_reading_is_no_date",
     ),

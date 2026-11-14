@@ -48,8 +48,6 @@ COLLECTOR_OR_COLLECTION = "coll_may_name_a_collector_or_a_collection"
 # The date parser's notes for a literal that is (part of) a hyphen-joined code.
 _CODE_NOTES = frozenset({"slide_code", "part_of_hyphenated_token"})
 SLIDE_CODE = "slide_code"
-# What may stand around a token on a line: punctuation a sentence or a list leaves.
-_TOKEN_EDGES = " \t.,;:()[]{}\"'"
 # The part of a date literal a field takes: Date Visited To takes a range's end
 # (a single date is its own end); every other date field takes the start.
 DATE_PART: dict[str, Literal["start", "end"]] = {"date_visited_to": "end"}
@@ -226,7 +224,7 @@ def parse_date(
     literal stands as a token of its own
     (`date_lines.places`); a literal found only inside longer tokens is no date
     (`literal_inside_a_longer_token`). On the units path (`units`), a literal that any
-    reading writes inside a longer token the ontology reads as a slide code is no date
+    reading writes inside a slide code, as the ontology's notation reads one, is no date
     (`in_a_code`, the rule code_is_no_date), even where that reading glues a letter or a
     digit to its edge: reading B's "VI-23-48-4" beside reading A's "I-23-48".
     """
@@ -259,22 +257,16 @@ def parse_date(
 
 
 def in_a_code(literal: str, text: str) -> bool:
-    """Whether the text writes the literal inside a longer token that the ontology reads as a
-    slide code (ontology.Advice.notations names `slide_code`): the run of non-space characters
-    around one of the literal's occurrences, less the punctuation at its edges (_TOKEN_EDGES).
-    "I-23-48" in "Guatemala VI-23-48-4" is; "IV-23-48" beside "IV-29-68-4" is not."""
+    """Whether the text writes the literal inside a slide code: a match of one of the written
+    forms of the ontology's notation `slide_code` contains one of the literal's occurrences.
+    "I-23-48" in "Guatemala VI-23-48-4" is; "IV-23-48" in "IV-23-48;IV-29-68-4", where the
+    code is the text after the semicolon, is not, nor beside "IV-29-68-4" on a line."""
     from specimen_digitization.ontology import ontology
 
-    for hit in re.finditer(re.escape(literal), text):
-        start, end = hit.start(), hit.end()
-        while start and not text[start - 1].isspace():
-            start -= 1
-        while end < len(text) and not text[end].isspace():
-            end += 1
-        token = text[start:end].strip(_TOKEN_EDGES)
-        if token != literal.strip(_TOKEN_EDGES) and SLIDE_CODE in ontology().advice(token).notations:
-            return True
-    return False
+    [code] = [notation for notation in ontology().notations if notation.id == SLIDE_CODE]
+    spans = [match.span() for pattern in code.patterns for match in pattern.finditer(text)]
+    return any(start <= hit.start() and hit.end() <= end
+        for hit in re.finditer(re.escape(literal), text) for start, end in spans)
 
 
 def _run(name: str, result: Any, via: tuple[str, ...]) -> _Run:

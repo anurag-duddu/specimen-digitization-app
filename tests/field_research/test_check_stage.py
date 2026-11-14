@@ -38,7 +38,13 @@ from specimen_digitization.application.domain import Evidence, FieldValue, Looku
 from specimen_digitization.application.workflow import store_reading_units
 from specimen_digitization.field_research import agreement, checks, experts
 from specimen_digitization.field_research import step as field_step
-from specimen_digitization.field_research.contracts import FieldAnswer, PlaceRef, SourceAnswer, SourceCandidate
+from specimen_digitization.field_research.contracts import (
+    FieldAnswer,
+    FieldOutcome,
+    PlaceRef,
+    SourceAnswer,
+    SourceCandidate,
+)
 from specimen_digitization.field_research.step import apply_outcomes, build_tasks
 
 # The check stage's findings (ontology_checks.CHECK_STAGE); the derived rules by field
@@ -205,9 +211,13 @@ def test_a_derived_province_that_fails_the_place_chain_is_marked(tmp_path, first
     if first_pass_path == "units":
         assert marks(run) == sorted([code(run, "province_state", "place_parents_derived"),
             code(run, "city", "place_chain")])
-        assert ("Marked for a person, rule place_parents_derived: this province or state was derived, and the city "
+        reason = run.fields["province_state"].reason
+        mark = ("Marked for a person, rule place_parents_derived: this province or state was derived, and the city "
             "settled below it, 'Gary', lies in Lake, Indiana, United States by its source's record (tgn:Gary), "
-            "not in it.") in run.fields["province_state"].reason
+            "not in it.")
+        # A marked derived value names its rule too: the basis, then the mark (round 1, finding 4).
+        assert reason.endswith(f"Basis: derived, rule place_parents_derived. {mark}")
+        assert reason.startswith("Derived: ")
     else:
         assert marks(run) == []
         assert "Basis:" not in run.fields["province_state"].reason
@@ -346,9 +356,25 @@ def test_a_date_one_reader_writes_inside_a_slide_code_is_no_date_on_the_units_pa
     ("I-23-48", "Guatemala VI-23-48-4", True), ("IV-29-68", "slide IV-29-68-4,", True),
     ("6-78-1", "(10-6-78-1a)", True), ("I-23-48", "Guatemala I-23-48", False),
     ("IV-23-48", "IV-29-68-4 IV-23-48", False), ("I-23-48", "XVI-23-48-4", False),
-    ("III-25", "VIII-25 1948", False)])
-def test_a_literal_is_in_a_code_only_inside_a_longer_token_the_ontology_reads_as_a_slide_code(literal, text, inside):
+    ("III-25", "VIII-25 1948", False),
+    # A date that punctuation separates from the code beside it (round 1, finding 3).
+    ("IV-23-48", "IV-23-48;IV-29-68-4", False), ("IV-23-48", "IV-23-48,IV-29-68-4", False),
+    ("IV-23-48", "IV-23-48/IV-29-68-4", False), ("IV-23-48", "IV-29-68-4;IV-23-48", False)])
+def test_a_literal_is_in_a_code_only_inside_a_match_of_the_ontology_s_slide_code(literal, text, inside):
     assert checks.in_a_code(literal, text) is inside
+
+
+@pytest.mark.parametrize("separator", [";", ",", "/"])
+def test_a_date_punctuation_separates_from_a_slide_code_is_a_date_on_both_paths(first_pass_path, separator):
+    """Round 1 of #436, finding 3: "IV-23-48;IV-29-68-4" writes a collecting date, then a slide code. The
+    date settles on both paths; on the units path the veto names only a literal inside the code."""
+    text = f"Guatemala IV-23-48{separator}IV-29-68-4"
+    result = checks.parse_date("IV-23-48", reading_texts=[text, text], date_rules=PILOT_DATES,
+        units=first_pass_path == "units")
+    assert (result.status, result.values) == (LookupStatus.SUCCESS, ("1948-04-23",))
+    inside = checks.parse_date("IV-29-68", reading_texts=[text, text], date_rules=PILOT_DATES,
+        units=first_pass_path == "units")
+    assert (inside.status, inside.values) == (LookupStatus.NO_MATCH, ())
 
 
 def test_the_date_experts_check_gives_no_date_inside_a_code_and_its_value_is_refused_on_the_units_path(
@@ -445,3 +471,112 @@ def test_the_stage_revises_no_value_marks_once_and_never_marks_a_persons_value(t
         human={"city", "date_identified"})
     assert marks(run) == [code(run, "date_visited_from", "date_order")]
     assert {key: value.model_dump(exclude={"reason"}) for key, value in run.fields.items()} == before
+
+
+# ---- round 1 of #436's review --------------------------------------------------------------
+
+def test_a_persons_derived_place_is_never_marked_the_place_below_it_is(tmp_path, first_pass_path):
+    """Round 1, finding 2: a person kept a derived country Georgia (a field review accepts a
+    derived value, application/api.py, and human_field_carry carries it), and a county Fulton then
+    settles on the record of the US state Georgia. The person's country is not marked, whatever its
+    layer; on the units path the county is (place_within_settled_places). On the old path nothing
+    is marked."""
+    from specimen_digitization.application.human_field_carry import KEY
+
+    rig = build_rig(tmp_path, label_with(country="Georgia", province_state=None, county="Fulton", city=None))
+    run = rig.specimen.run
+    kept = FieldValue(state=ValueState.SUPPORTED, parsed="Georgia", authority_id="tgn:georgia-nation",
+        layer="derived", derived_from=["province_state"], reason="A person kept this country.")
+    run.fields["country"] = kept
+    run.dependencies[KEY] = {"country": {"reviewed": True}}
+    assert field_step.human_keys(run) == {"country"}
+    prepared, outcomes, calls = research(rig, Scripted({"province_state": answering(LACKS),
+        "county": tgn("Fulton"), "city": answering(LACKS)}), tools=Places(rig.blobs))
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls)
+
+    assert run.fields["country"] == kept
+    assert value_of(run, "county")[:2] == (ValueState.SUPPORTED, "Fulton")
+    assert marks(run) == ([code(run, "county", "place_within_settled_places")] if first_pass_path == "units" else [])
+
+
+COLES_ATTEMPT = label_with(county="Coles")
+
+
+def two_attempts(rig, tools, county, city, **scripts):
+    """Attempt 1 settles the country, the province and the city `city` while the county stays
+    unresolved; attempt 2 researches what is left and settles the county `county`. The city is not
+    researched again (step.build_tasks leaves a settled field out), so attempt 2 receives no answer
+    for it."""
+    run = rig.specimen.run
+    first = Scripted({"county": answering(CANNOT), "city": city, **scripts})
+    prepared, outcomes, calls = research(rig, first, tools=tools())
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls)
+    assert run.fields["city"].state == ValueState.SUPPORTED and run.fields["county"].state != ValueState.SUPPORTED
+    prepared, outcomes, calls = research(rig, Scripted({"county": county}), tools=tools())
+    assert "city" not in {task.key for task in prepared[1]} and "city" not in {call.field_key for call in calls}
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls)
+    assert run.fields["county"].state == ValueState.SUPPORTED
+    return run
+
+
+def test_a_retry_checks_a_place_an_earlier_attempt_settled_on_its_stored_record(tmp_path, monkeypatch,
+        first_pass_path):
+    """Round 1, finding 1, on responses as the sources store them (test_agreement.Recorded):
+    attempt 1 settles the county Yepocapa on Wikidata's municipio (wikidata:Q1523937, recorded:
+    Chimaltenango, Guatemala), while the country "Honduras", which only a second label writes, stays
+    unresolved; attempt 2 settles only that country, on a made-up Getty TGN nation. The county is not
+    researched again. Its record, read again from the record's blob store
+    (ontology_checks.stored_answers), has Guatemala as its country: on the units path the county is
+    marked (place_within_settled_places), its sentence naming that record's parents. On the old path
+    nothing is marked."""
+    from test_agreement import Recorded
+
+    a_second_label(monkeypatch, "Honduras")
+    nation = ("tgn", "Honduras", [("Honduras", "tgn:honduras-nation", "nations", ())])
+    rig = build_rig(tmp_path, label_with(country=None, province_state=None, county="Yepocapa", city=None),
+        candidates=[*COLLECTORS, *(("country", name, "Honduras", "Honduras") for name in ("2A", "2B"))])
+    run = rig.specimen.run
+    tools = lambda: Recorded(rig.blobs, made=[nation])  # noqa: E731
+    prepared, outcomes, calls = research(rig, Scripted({"country": answering(CANNOT),
+        "province_state": answering(LACKS), "city": answering(LACKS),
+        "county": from_tgn("Yepocapa", "Yepocapa", None, "wikidata:Q1523937", source="wikidata")}), tools=tools())
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls)
+    assert value_of(run, "county")[:2] == (ValueState.SUPPORTED, "Yepocapa")
+    assert run.fields["country"].state != ValueState.SUPPORTED and marks(run) == []
+    async def honduras(task, readings, tools):
+        answer = await tools.lookup("tgn", "Honduras", field_key=task.key)
+        return FieldOutcome(task.key, resolved("Honduras", authority_id="tgn:honduras-nation",
+            cited=[answer.evidence.id], reading="2A"), evidence=[answer.evidence], model_calls=1)
+
+    prepared, outcomes, calls = research(rig, Scripted({"country": honduras}), tools=tools())
+    assert "county" not in {task.key for task in prepared[1]} | {call.field_key for call in calls}
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls)
+
+    assert value_of(run, "country")[:2] == (ValueState.SUPPORTED, "Honduras")
+    if first_pass_path == "units":
+        assert marks(run) == [code(run, "county", "place_within_settled_places")]
+        assert run.fields["county"].reason.endswith(
+            "Marked for a person, rule place_within_settled_places: the source's record for 'Yepocapa' "
+            "(wikidata:Q1523937) places it in Chimaltenango, Guatemala, not in the country settled above it, "
+            "'Honduras'.")
+    else:
+        assert marks(run) == []
+
+
+def test_a_retry_marks_a_place_whose_earlier_record_cannot_be_read_again(tmp_path, first_pass_path):
+    """Round 1, finding 1, the coordinator's input: attempt 1 settles the United States, Illinois and
+    Chicago, the county unresolved; attempt 2 settles only Coles County. test_step's sources store no
+    response a lookup could be asked again from, so Chicago's record cannot be read again: on the
+    units path the stage does not take the chain as consistent and marks the city (place_chain),
+    saying so. On the old path nothing is marked."""
+    rig = build_rig(tmp_path, COLES_ATTEMPT)
+    run = two_attempts(rig, lambda: Places(rig.blobs), county=tgn("Coles"), city=tgn("Chicago"))
+
+    if first_pass_path == "units":
+        assert marks(run) == [code(run, "city", "place_chain")]
+        assert "Marked for a person, rule place_chain: the source's record 'Chicago' settled on (evidence " in (
+            run.fields["city"].reason)
+        assert run.fields["city"].reason.endswith(
+            ") could not be read again, so its place in the chain is not checked.")
+    else:
+        assert marks(run) == []

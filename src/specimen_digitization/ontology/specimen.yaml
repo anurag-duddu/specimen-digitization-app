@@ -731,8 +731,8 @@ rules:
       - docs/execution/units/PLAN.md:127
       - src/specimen_digitization/field_research/agreement.py:2637-2641
       - src/specimen_digitization/field_research/agreement.py:2772-2796
-      - src/specimen_digitization/field_research/ontology_checks.py:129-161
-      - src/specimen_digitization/field_research/ontology_checks.py:190-220
+      - src/specimen_digitization/field_research/ontology_checks.py:140-172
+      - src/specimen_digitization/field_research/ontology_checks.py:282-323
   - id: place_chain
     statement: >-
       The places form one chain, country > province or state > county > city.
@@ -747,7 +747,10 @@ rules:
       County, then an exact "Chicago" whose record names Cook County, Illinois,
       is marked. A record that names no parent there says nothing of a county
       and marks nothing: NGA names a town's first-level unit and its country
-      only.
+      only. A place settled in an earlier attempt is checked on its record read
+      again from the record's stored responses; one whose record cannot be
+      read again, below a place this attempt settled, is marked, as its place
+      in that chain is not checked. A person's value is never marked.
     instruction: >-
       The places form one chain, country > province or state > county > city, each
       inside the one above it.
@@ -757,8 +760,9 @@ rules:
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:242-246
       - docs/execution/units/PLAN.md:127
-      - src/specimen_digitization/field_research/ontology_checks.py:129-161
-      - src/specimen_digitization/field_research/ontology_checks.py:190-220
+      - src/specimen_digitization/field_research/ontology_checks.py:140-172
+      - src/specimen_digitization/field_research/ontology_checks.py:282-323
+      - src/specimen_digitization/field_research/ontology_checks.py:203-261
   - id: date_order
     statement: >-
       The collecting date is on or before the determination date; the same day
@@ -776,9 +780,9 @@ rules:
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:247-249
       - docs/execution/units/PLAN.md:127
-      - src/specimen_digitization/field_research/ontology_checks.py:99-103
-      - src/specimen_digitization/field_research/ontology_checks.py:110-124
-      - src/specimen_digitization/field_research/step.py:4157-4168
+      - src/specimen_digitization/field_research/ontology_checks.py:110-114
+      - src/specimen_digitization/field_research/ontology_checks.py:121-135
+      - src/specimen_digitization/field_research/step.py:4158-4169
   - id: day_month_order
     statement: >-
       A numeric date whose two orders, day-month and month-day, give two
@@ -798,9 +802,11 @@ rules:
       Codes are never dates nor any part of them: a slide code such as
       "IV-29-68-4" beside the collecting date "IV-23-48" is no date. On the
       units path the date check gives no date for a literal that any reading
-      writes inside a longer token the file reads as a slide code, even where
-      that reading glues a letter to the literal: the literal "I-23-48",
-      reading A "Guatemala I-23-48", reading B "Guatemala VI-23-48-4".
+      writes inside a slide code, a match of the file's slide-code forms that
+      holds the literal, even where that reading glues a letter to it: the
+      literal "I-23-48", reading A "Guatemala I-23-48", reading B "Guatemala
+      VI-23-48-4". A date that punctuation separates from a code beside it
+      ("IV-23-48;IV-29-68-4") is still a date.
     instruction: >-
       A code is never a date nor part of one: a slide code such as "IV-29-68-4" beside
       the collecting date "IV-23-48" is no date.
@@ -819,8 +825,8 @@ rules:
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:338-339
       - docs/execution/units/PLAN.md:127
-      - src/specimen_digitization/field_research/checks.py:238-239
-      - src/specimen_digitization/field_research/checks.py:261-277
+      - src/specimen_digitization/field_research/checks.py:236-237
+      - src/specimen_digitization/field_research/checks.py:259-269
       - src/specimen_digitization/field_research/prompts/common.txt:48
   - id: label_type_routing
     statement: >-
@@ -904,9 +910,10 @@ rules:
       against the place chain on the units path: a place derivation filled is
       marked for a person when a place settled below it, on a source record
       that names its parents, does not lie in it by those parents (the test of
-      the rules place_within_settled_places and place_chain). A province "Cook" unresolved, a
-      settled county Cook in Illinois and a settled city Gary in Indiana: the
-      province derived as Illinois is marked.
+      the rules place_within_settled_places and place_chain), unless a person
+      kept it, when the place below it is marked instead. A province "Cook"
+      unresolved, a settled county Cook in Illinois and a settled city Gary in
+      Indiana: the province derived as Illinois is marked.
     instruction: >-
       Leave a larger place the label does not write empty: never take it from a
       smaller place's parents.
@@ -928,7 +935,7 @@ rules:
       - docs/execution/units/PLAN.md:127
       - src/specimen_digitization/field_research/derive.py:43-50
       - src/specimen_digitization/field_research/derive.py:95-146
-      - src/specimen_digitization/field_research/ontology_checks.py:190-220
+      - src/specimen_digitization/field_research/ontology_checks.py:282-323
   - id: elevation_conversion
     statement: >-
       A derived elevation is a stated one copied to the other end of its unit,

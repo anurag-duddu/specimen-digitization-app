@@ -23,27 +23,38 @@ The checks:
   place_within_settled_places, which the refusal at apply time checks too
   (agreement.parents_refusal); a city outside the county settled above it fails place_chain,
   which that refusal checks only for a near spelling: a settled Coles County, then an exact
-  "Chicago" whose record names Cook County, Illinois.
+  "Chicago" whose record names Cook County, Illinois. A place settled in an earlier attempt is
+  checked on its record read again from the store (`stored_answers`); one whose cited record
+  cannot be read again, below a place settled in this attempt, is marked (place_chain), as its
+  place in that chain is not checked.
 - place_parents_derived (`_place_marks`): a place derivation filled (layer "derived") that a
-  place settled below it does not lie in, by the same test, is marked itself.
+  place settled below it does not lie in, by the same test, is marked itself; a person's
+  derived place is not, and the place below it is marked instead.
 - date_order (`_date_marks`): a determination date before the collecting date, compared on the
   parts both have (`determined_before`), marks the determination, both dates listed.
 
-The stage also ends the reason of each value derive.fill derived in this attempt with its basis,
-"Basis: derived, rule <id>." (DERIVED_RULES), so that every derived value names its rule (the
-plan's WP 2.3 acceptance).
+The stage also adds the sentence "Basis: derived, rule <id>." (DERIVED_RULES) to the reason of
+each value derive.fill derived in this attempt, after the derivation's own text and before any
+mark's sentence, so that every derived value names its rule, marked or not (the plan's WP 2.3
+acceptance).
 """
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import dataclasses
+import hashlib
+import json
 import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from typing import NamedTuple
 
+import httpx
+
 from specimen_digitization.application.domain import Evidence, FieldValue, RunFinding, ValueState
 
-from .contracts import Reading, SourceAnswer, SourceCandidate
+from .contracts import GAZETTEERS, Reading, SourceAnswer, SourceCandidate
 
 # The stage's findings (RunFinding.rule_id) and their version.
 CHECK_STAGE = "check_stage"
@@ -169,6 +180,87 @@ def settling_candidate(value: FieldValue, answers: Iterable[SourceAnswer]) -> So
     return _settling_candidate(value, [answer for answer in answers if answer.evidence is not None])
 
 
+class _Scratch:
+    """A blob store that keeps what it is given in memory: what a rebuilt lookup stores is
+    never written to the record's store."""
+
+    def __init__(self):
+        self.blobs: dict[str, bytes] = {}
+
+    def put(self, data: bytes) -> str:
+        ref = hashlib.sha256(data).hexdigest()
+        self.blobs[ref] = data
+        return ref
+
+    def get(self, ref: str) -> bytes:
+        return self.blobs[ref]
+
+
+async def _no_wait(_seconds: float) -> None:
+    await asyncio.sleep(0)
+
+
+def stored_answers(run, blobs, evidence_ids: Iterable[str]) -> tuple[list[SourceAnswer], set[str]]:
+    """The gazetteer answers behind these evidence rows, read again from the record's blob store:
+    each row a Getty TGN, Wikidata or NGA lookup stored (kind "authority"), with the call that
+    made it (Run.tool_calls). The lookup is asked again of sources.ApprovedSources through a
+    transport that serves only the responses the row's stored record lists (its `exchanges`), so
+    nothing is sent; the rebuilt answer counts only when its evidence excerpt is the row's, and
+    it then carries the row itself. Returns the answers, and the ids of the rows that could not
+    be read again (no blob store, no call, a response missing, or another excerpt)."""
+    from .sources import ApprovedSources, SourceSlots
+
+    rows = {item.id: item for item in run.evidence}
+    calls = {call.evidence_id: call for call in run.tool_calls if call.evidence_id}
+    wanted = [i for i in dict.fromkeys(evidence_ids)
+        if (row := rows.get(i)) is not None and row.source in GAZETTEERS and row.kind == "authority"]
+    missing: set[str] = set()
+    jobs, bodies = [], {}
+    for i in wanted:
+        row, call = rows[i], calls.get(i)
+        try:
+            record = json.loads(blobs.get(row.raw_ref))
+            for exchange in record["exchanges"]:
+                bodies[exchange["url"]] = (exchange.get("http_status", 200), blobs.get(exchange["raw_ref"]))
+        except Exception:  # noqa: BLE001 - any failure to read a stored record is a record not read
+            missing.add(i)
+            continue
+        if call is None or call.source != row.source or not call.field_keys:
+            missing.add(i)
+            continue
+        jobs.append((row, call))
+    if not jobs:
+        return [], missing
+
+    def serve(request: httpx.Request) -> httpx.Response:
+        found = bodies.get(str(request.url))
+        return httpx.Response(404) if found is None else httpx.Response(found[0], content=found[1])
+
+    async def ask() -> list[SourceAnswer]:
+        found = []
+        async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as client:
+            sources = ApprovedSources(blobs=_Scratch(), client=client, sleep=_no_wait, clock=lambda: 0.0,
+                slots=SourceSlots({}, wait_seconds=None))
+            try:
+                for row, call in jobs:
+                    answer = await sources.lookup(call.source, str(call.arguments.get("query", "")),
+                        field_key=call.field_keys[0])
+                    if answer.evidence is None or answer.evidence.excerpt != row.excerpt:
+                        missing.add(row.id)
+                        continue
+                    found.append(dataclasses.replace(answer, evidence=row))
+            finally:
+                sources.close()
+        return found
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(ask()), missing
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, ask()).result(), missing
+
+
 def _place_field(key: str, value: FieldValue, rows: Mapping[str, Evidence], answers: Sequence[SourceAnswer]):
     """A settled place value as agreement.lies_in compares it: its literal, value and expansions
     (step._expansions), the name of the record it settled on, its record, and for the country the
@@ -188,7 +280,7 @@ def _named(value: FieldValue) -> str:
 
 
 def _place_marks(fields: Mapping[str, FieldValue], rows: Mapping[str, Evidence], answers: Sequence[SourceAnswer],
-        human: Collection[str]) -> list[Mark]:
+        human: Collection[str], unread: Collection[str] = (), again: Collection[str] = ()) -> list[Mark]:
     from .agreement import PLACE_ORDER
 
     places = {key: _place_field(key, fields[key], rows, answers) for key in PLACE_ORDER if settled(fields.get(key))}
@@ -198,6 +290,17 @@ def _place_marks(fields: Mapping[str, FieldValue], rows: Mapping[str, Evidence],
         if lower not in places or value.layer == "derived":
             continue
         candidate = settling_candidate(value, answers)
+        lost = [i for i in value.evidence_ids if i in unread]
+        if candidate is None and lost and lower not in human and any(
+                upper in places and upper in again for upper in PLACE_ORDER[:PLACE_ORDER.index(lower)]):
+            # The record it settled on in an earlier attempt cannot be read again, and a place above
+            # it settled in this attempt: its place in that chain is not checked, so it is never
+            # taken as consistent.
+            marks.append(Mark(lower, PLACE_CHAIN,
+                f"Marked for a person, rule {PLACE_CHAIN}: the source's record {_named(value)!r} settled on "
+                f"(evidence {', '.join(lost)}) could not be read again, so its place in the chain is not checked.",
+                tuple(value.evidence_ids)))
+            continue
         if candidate is None or not candidate.parents:
             continue
         record = ", ".join(parent.name for parent in candidate.parents)
@@ -206,7 +309,7 @@ def _place_marks(fields: Mapping[str, FieldValue], rows: Mapping[str, Evidence],
                 continue
             above = fields[upper]
             cited = tuple(dict.fromkeys([*value.evidence_ids, *above.evidence_ids]))
-            if above.layer == "derived":
+            if above.layer == "derived" and upper not in human:
                 marks.append(Mark(upper, PLACE_PARENTS_DERIVED,
                     f"Marked for a person, rule {PLACE_PARENTS_DERIVED}: this {LEVEL_NAMES[upper]} was derived, and "
                     f"the {LEVEL_NAMES[lower]} settled below it, {_named(value)!r}, lies in {record} by its source's "
@@ -240,25 +343,32 @@ def _with_sentence(value: FieldValue, sentence: str) -> None:
 
 
 def basis(key: str) -> str | None:
-    """The basis sentence a value derive.fill derived for the field `key` ends with, or None."""
+    """The basis sentence the reason of a value derive.fill derived for the field `key` holds, or None."""
     rule = DERIVED_RULES.get(key)
     return f"Basis: derived, rule {rule}." if rule else None
 
 
 def stage(run, *, readings: Sequence[Reading], received: Mapping[str, Sequence[SourceAnswer]],
-        researched: Collection[str], derived: Collection[str], human: Collection[str]) -> list[str]:
+        researched: Collection[str], derived: Collection[str], human: Collection[str], blobs=None) -> list[str]:
     """Run the checks over the run's settled values, in memory; the codes of the marks made.
 
-    `received` is every source answer of this attempt, by field: a place is checked against
-    the places above it only on a record one of them holds. The fields this attempt
-    `researched` or `derived`, and both dates, are checked again: their earlier marks of this
-    stage are dropped first; a field another attempt settled keeps its marks. A person's field
-    (`human`) is never marked. Each value this attempt derived ends its reason with its basis
-    (`basis`)."""
+    `received` is every source answer of this attempt, by field. A settled place cites, as its
+    evidence, the gazetteer answers it settled on; those this attempt did not receive (an
+    earlier attempt's) are read again from `blobs`, the record's blob store (`stored_answers`).
+    The fields this attempt `researched` or `derived`, and both dates, are checked again: their
+    earlier marks of this stage are dropped first; a field another attempt settled keeps its
+    marks, and gets no mark twice. A person's field (`human`) is never marked, whatever its
+    layer. Each value this attempt derived gets its basis sentence (`basis`), before any mark's."""
+    from .agreement import PLACE_ORDER
     from .step import marked_code
 
     rows = {item.id: item for item in run.evidence}
     answers = [answer for found in received.values() for answer in found]
+    have = {answer.evidence.id for answer in answers if answer.evidence is not None}
+    cited = [i for key in PLACE_ORDER if settled(value := run.fields.get(key)) for i in value.evidence_ids
+        if i not in have and (row := rows.get(i)) is not None and row.source in GAZETTEERS and row.kind == "authority"]
+    stored, unread = stored_answers(run, blobs, cited) if cited and blobs is not None else ([], set(cited))
+    answers += stored
     again = {*researched, *derived, "date_visited_from", "date_identified"}
     run.findings[:] = [finding for finding in run.findings
         if not (finding.rule_id == CHECK_STAGE and finding.field_key in again)]
@@ -268,7 +378,7 @@ def stage(run, *, readings: Sequence[Reading], received: Mapping[str, Sequence[S
             _with_sentence(value, sentence)
     made: list[str] = []
     present = {(finding.field_key, finding.reason_code) for finding in run.findings if finding.rule_id == CHECK_STAGE}
-    for mark in [*_place_marks(run.fields, rows, answers, human), *_date_marks(run.fields, human)]:
+    for mark in [*_place_marks(run.fields, rows, answers, human, unread, again), *_date_marks(run.fields, human)]:
         _with_sentence(run.fields[mark.field], mark.sentence)
         for label in _labels(run, mark.field, readings, rows):
             code = marked_code(mark.field, label, mark.check)
