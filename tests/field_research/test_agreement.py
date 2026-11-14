@@ -605,14 +605,12 @@ def test_the_trace_names_the_field_read_from_the_transcript_never_its_text(tmp_p
 SPANISH_LABEL = "Yepocapa, 4800ft.\nIV-23-48\nR.D. Mitchell"
 
 
-def test_text_from_the_transcript_that_another_kind_of_field_settles_goes_to_review(tmp_path, first_pass_path):
+def test_text_from_the_transcript_that_another_kind_of_field_settles_goes_to_review(tmp_path):
     """105526329's locality: both readers write "Yepocapa, 4800ft.", whose
     "4800ft." the organiser gave as the elevation. The precise location read
     from the transcript whole would hold that elevation: the step sends it to
     review, naming the field. On origin/main it is unresolved as no
-    candidate. On the units path the precise location holds the elevation
-    written on its line (the ontology's rule precise_location_extent, WP 2.2):
-    both settle."""
+    candidate."""
     rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"),
         [("elevation_from_ft", name, "4800ft.", "Yepocapa, 4800ft.") for name in ("1A", "1B")])
     run = rig.specimen.run
@@ -621,20 +619,16 @@ def test_text_from_the_transcript_that_another_kind_of_field_settles_goes_to_rev
         "precise_location": answering(FieldAnswer(outcome="resolved", literal="Yepocapa, 4800ft.",
             reading_names=["1A", "1B"], explanation="Both readers write it."))}))
     place = run.fields["precise_location"]
-    assert run.fields["elevation_from_ft"].state == ValueState.SUPPORTED
-    if first_pass_path == "units":
-        assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa, 4800ft.")
-        return
     assert place.state == ValueState.UNRESOLVED
     assert place.reason == field_step.TAKEN.format(other="Elevation From (ft)") + " Both readers write it."
+    assert run.fields["elevation_from_ft"].state == ValueState.SUPPORTED
     assert "transcript_literal:precise_location" not in [f.reason_code for f in run.findings]
 
 
-def test_text_another_kind_of_field_claims_names_that_check_in_the_fields_trace(tmp_path, first_pass_path):
+def test_text_another_kind_of_field_claims_names_that_check_in_the_fields_trace(tmp_path):
     """The field's trace (step.trace_fields) names the check that refused a
     resolved answer: for text read from the transcript that another kind of
-    field claims (_taken), "taken". On the units path an elevation is no other
-    kind's text in the precise location (WP 2.2): nothing refuses it."""
+    field claims (_taken), "taken"."""
     from test_step import research
 
     rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"),
@@ -646,10 +640,6 @@ def test_text_another_kind_of_field_claims_names_that_check_in_the_fields_trace(
             reading_names=["1A", "1B"], explanation="Both readers write it."))}))
     decisions: dict[str, dict] = {}
     field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
-    if first_pass_path == "units":
-        assert run.fields["precise_location"].state == ValueState.SUPPORTED
-        assert "refusal" not in decisions.get("precise_location", {})
-        return
     assert run.fields["precise_location"].state == ValueState.UNRESOLVED
     assert decisions["precise_location"] == {"refusal": "taken"}
 
@@ -1272,10 +1262,9 @@ def test_the_review_probe_p13_trap_and_light_trap_naming_both_readers(tmp_path, 
 # (agreement._holds_another_kind).
 
 @pytest.mark.parametrize("elevation", ["fails", "lacks"])
-def test_a_locality_holding_an_elevation_no_field_settles_still_goes_to_review(tmp_path, elevation, first_pass_path):
+def test_a_locality_holding_an_elevation_no_field_settles_still_goes_to_review(tmp_path, elevation):
     """On 61c193e93 the locality is supported; on 5332ce4e3 it went to review
-    as text the elevation's candidate claimed. On the units path it is
-    supported: the precise location holds the elevation its line writes (WP 2.2)."""
+    as text the elevation's candidate claimed."""
     rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"),
         [("elevation_from_ft", name, "4800ft.", "Yepocapa, 4800ft.") for name in ("1A", "1B")])
     run = rig.specimen.run
@@ -1284,9 +1273,6 @@ def test_a_locality_holding_an_elevation_no_field_settles_still_goes_to_review(t
         "precise_location": answering(FieldAnswer(outcome="resolved", literal="Yepocapa, 4800ft.",
             reading_names=["1A", "1B"], explanation="Both readers write it."))}))
     place = run.fields["precise_location"]
-    if first_pass_path == "units":
-        assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa, 4800ft.")
-        return
     assert place.state == ValueState.UNRESOLVED
     assert place.reason.startswith(agreement.HOLDS_AN_ELEVATION)
 
@@ -1635,10 +1621,9 @@ def test_a_place_or_code_with_no_date_or_elevation_in_it_settles(key, literal):
 
 
 @pytest.mark.parametrize("elevation", ["fails", "lacks"])
-def test_a_locality_holding_an_elevation_no_one_claims_goes_to_review(tmp_path, elevation, first_pass_path):
+def test_a_locality_holding_an_elevation_no_one_claims_goes_to_review(tmp_path, elevation):
     """The review's probe: no elevation candidate, and the elevation's
-    expert fails or finds none. On 6fd595b3b the locality is supported. On the units path it is
-    supported: the precise location holds the elevation its line writes (WP 2.2)."""
+    expert fails or finds none. On 6fd595b3b the locality is supported."""
     rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"), [])
     run = rig.specimen.run
     settle(rig, Scripted({
@@ -1646,9 +1631,6 @@ def test_a_locality_holding_an_elevation_no_one_claims_goes_to_review(tmp_path, 
         "precise_location": answering(FieldAnswer(outcome="resolved", literal="Yepocapa, 4800ft.",
             reading_names=["1A", "1B"], explanation="Both readers write it."))}))
     place = run.fields["precise_location"]
-    if first_pass_path == "units":
-        assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa, 4800ft.")
-        return
     assert place.state == ValueState.UNRESOLVED
     assert place.reason == agreement.HOLDS_AN_ELEVATION + " Both readers write it."
 

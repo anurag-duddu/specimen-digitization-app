@@ -698,8 +698,8 @@ rules:
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:336-337
       - src/specimen_digitization/field_research/agreement.py:289
-      - src/specimen_digitization/field_research/agreement.py:977-984
-      - src/specimen_digitization/field_research/agreement.py:2430-2448
+      - src/specimen_digitization/field_research/agreement.py:952-959
+      - src/specimen_digitization/field_research/agreement.py:2405-2423
   - id: place_within_settled_places
     statement: >-
       The apply-time refusal stays as today: it checks a candidate against the
@@ -712,7 +712,7 @@ rules:
       Moved to `not yet` in review round 4 (the coordinator's ruling): today's
       check breaks this on one input, a WP 2.3 fail-first case. The country
       Georgia settled, a county Fulton whose source names the US state Georgia
-      passes, because lies_in matches a parent by name (agreement.py:2666-2670);
+      passes, because lies_in matches a parent by name (agreement.py:2637-2641);
       WP 2.3's check stage marks it. WP 2.3 also names a case today's check
       already meets: the country United States settled, a province written
       "Cook" and unsettled, a settled county Cook and an exact city Gary in
@@ -723,8 +723,8 @@ rules:
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:242-246
       - docs/execution/units/PLAN.md:127
-      - src/specimen_digitization/field_research/agreement.py:2666-2670
-      - src/specimen_digitization/field_research/agreement.py:2801-2825
+      - src/specimen_digitization/field_research/agreement.py:2637-2641
+      - src/specimen_digitization/field_research/agreement.py:2772-2796
   - id: place_chain
     statement: >-
       The places form one chain, country > province or state > county > city.
@@ -853,7 +853,7 @@ rules:
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:255-256
       - src/specimen_digitization/field_research/agreement.py:310
-      - src/specimen_digitization/field_research/agreement.py:834-838
+      - src/specimen_digitization/field_research/agreement.py:832-836
   - id: elevation_unit_decides_field
     statement: >-
       An answer that settles an elevation field on a number that one of its
@@ -866,7 +866,7 @@ rules:
     darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
     source:
       - src/specimen_digitization/field_research/agreement.py:309
-      - src/specimen_digitization/field_research/agreement.py:826-833
+      - src/specimen_digitization/field_research/agreement.py:824-831
       - docs/execution/units/PLAN.md:127
   - id: place_parents_derived
     statement: >-
@@ -943,9 +943,9 @@ rules:
       Precise Location: those lines as written.
     instruction: >-
       Precise Location is the label's locality as written: every line of its locality
-      text, with its line breaks and every word on those lines (the higher places, an
-      elevation); never only its first line, and a locality naming nothing finer than
-      its town has one too.
+      text, with its line breaks, the higher places and an elevation written on those
+      lines, never a collector or a date; never only its first line, and a locality
+      naming nothing finer than its town has one too.
     fields: [precise_location]
     reading: true
     note: >-
@@ -953,21 +953,24 @@ rules:
       re-plan of 2026-11-14), on the units path only: the instruction above is
       in the readers', the first pass's, the organiser's and the precise
       location expert's instructions, and that expert's brief takes the whole
-      locality (prompts/units.txt, its precise_location.txt texts). The code
-      follows the rule there in the three places that disagreed with it, which
-      the old path keeps: a precise location read from the transcript that
-      holds a definite elevation (a number with its unit) among its locality
-      text settles (agreement._holds_another_kind), and so does one beside an
-      elevation field's settled text (agreement.may_share_text, step._taken);
-      an elevation alone, a doubtful one ("1948 M." before a name) and a date
-      are still refused; and a town-only locality is
-      never cleared as not on the label (step._no_finer_place,
-      step._repeats_a_place, step.mark_not_on_label, step.not_on_label).
+      locality (prompts/units.txt, its precise_location.txt texts). Of the
+      three places that disagreed with it, the brief and the step follow it
+      there, and the old path keeps them: a town-only locality is never
+      cleared as not on the label (step._no_finer_place, step._repeats_a_place,
+      step.mark_not_on_label, step.not_on_label);
       tests/field_research/test_precise_location_extent.py pins each on both
-      paths. It is not `code`: no check refuses a precise location cut short
-      ("E. slope Mt. McKinley" alone, where the label goes on with "Davao
-      Prov." and "Mindanao, P.I."), so code does not guarantee that the value
-      is never cut to the first line.
+      paths. A precise location read from the transcript that holds an
+      elevation ("Yepocapa, 4800 ft." over "Chimaltenango, Guatemala") is still
+      refused, on both paths (agreement._holds_another_kind, :323-324,
+      :840-861), and so is one whose elevation text another field settled
+      (step._taken): the field is left for a person. The coordinator's ruling
+      of 2026-11-14 took the elevation out of WP 2.2 after two review rounds
+      found inputs that passed a date or no locality through; WP 2.3 decides
+      when an elevation inside a locality is accepted (the plan's WP 2.3 row).
+      It is not `code`: besides that refusal, no check refuses a precise
+      location cut short ("E. slope Mt. McKinley" alone, where the label goes
+      on with "Davao Prov." and "Mindanao, P.I."), so code does not guarantee
+      that the value is the label's whole locality.
     check: model
     darwin_core: verbatimLocality
     source:

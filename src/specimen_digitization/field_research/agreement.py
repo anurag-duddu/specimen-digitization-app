@@ -746,16 +746,14 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     the reading writes it in (_unit_refusal). Text read from the transcript
     is never one end of a range for a date or an elevation (_part_of_range),
     and never holds a date, an elevation or a range of them for a place or
-    the collection code (_holds_another_kind; on the units path a precise
-    location may hold an elevation, the rule precise_location_extent)."""
+    the collection code (_holds_another_kind)."""
     basis = literal_basis(task, readings, literal, named)
     if basis == CANDIDATE:
         return (_unit_refusal(task, readings, literal, named) or _part_of_name(task, readings, literal, named)
             or _genus_in_doubt(task, readings, literal, named))
     if basis == TRANSCRIPT:
         return (_part_of_range(task, readings, literal, named) or _unit_refusal(task, readings, literal, named)
-            or _holds_another_kind(task, literal, units=any(reading.units is not None for reading in readings))
-            or _longer_written(task, readings, literal, named)
+            or _holds_another_kind(task, literal) or _longer_written(task, readings, literal, named)
             or _genus_in_doubt(task, readings, literal, named))
     allowed = candidates_by_reading(task, readings)
     offered = [f"{source.name}: {text!r}" for source in dict.fromkeys(named)
@@ -839,7 +837,7 @@ def _unit_refusal(task: FieldTask, readings: Sequence[Reading], literal: str,
     return None
 
 
-def _holds_another_kind(task: FieldTask, literal: str, *, units: bool = False) -> Refusal | None:
+def _holds_another_kind(task: FieldTask, literal: str) -> Refusal | None:
     """For a place field or the collection code read from the transcript
     (TRANSCRIPT), why it cannot settle: the literal holds text that is plainly
     another kind of field's (written.other_kind; PR #300's review, finding
@@ -850,21 +848,10 @@ def _holds_another_kind(task: FieldTask, literal: str, *, units: bool = False) -
     elevation, and in a place, a number right after a road, km, hill, farm
     or estate word is part of the place, no date ("Hill <yyyy>", "km
     <yyyy>"; written.PLACE_WORDS); in the collection code it is still a date.
-    On the units path (`units`: the readings carry their labels' units, as
-    step.run_readings gives them only on a units-path run) a precise location
-    is the label's locality as written, an elevation written among its lines
-    included (the ontology's rule precise_location_extent): its elevations
-    are passed over (_past_elevations), and only a date or a range left
-    refuses it ("Yepocapa, 4800 ft." settles; "Yepocapa, IV-24-48" does not),
-    or no locality text beside its elevations ("4800 ft.", "Elev. 6400'": an
-    elevation, as on the old path).
     None otherwise, and for any other field."""
     if task.key not in NO_DATES_OR_ELEVATIONS:
         return None
-    if units and task.key == "precise_location":
-        found = _past_elevations(literal)
-    else:
-        found = written.other_kind(literal, place=task.key != "collection_code")
+    found = written.other_kind(literal, place=task.key != "collection_code")
     if found is None:
         return None
     kind, text = found
@@ -872,57 +859,6 @@ def _holds_another_kind(task: FieldTask, literal: str, *, units: bool = False) -
         f"{literal!r} holds {text!r}, which is {('an ' if kind == written.ELEVATION else 'a ') + kind}: "
         "another field's text, never this one's. Copy only this field's own text, leaving that out, or "
         "answer several_possibilities or sources_cannot_resolve."))
-
-
-# Words that stand beside an elevation and name no place: a heading ("Elev.",
-# "alt."), a sea-level word, an approximate marker ("ca.") or a unit's
-# spelling, folded as written.fold folds them, their punctuation aside
-# (_past_elevations).
-NOT_LOCALITY = written.ELEVATION_WORDS | written.HEADINGS | written.APPROXIMATE | frozenset(written.UNIT_OF) | {"el"}
-
-
-def _past_elevations(literal: str) -> tuple[str, str] | None:
-    """What written.other_kind finds in a precise location's literal once its
-    definite elevations are passed over (_definite_elevations_blanked): a
-    date, a range, a doubtful elevation ("1948 M." before a name, which may
-    be a person's initial: written.Number.sign) or nothing
-    (_holds_another_kind, units path). A literal that holds a definite
-    elevation and no locality text beside it ("4800 ft.", "Elev. 6400'") is
-    still an elevation: the first one is returned for it."""
-    text, first = _definite_elevations_blanked(literal)
-    found = written.other_kind(text, place=True)
-    if found is None and first is not None and not _has_locality(text):
-        return written.ELEVATION, first
-    return found
-
-
-def _definite_elevations_blanked(literal: str) -> tuple[str, str | None]:
-    """The literal with each definite elevation blanked (its characters made
-    spaces, so no word joins across it), and the first one's text, or None: a
-    number with an elevation unit the reading writes with it, no distance
-    (written.numbers: Number.unit and Number.whole). A number whose only sign
-    of an elevation is a heading or a capital "M" is not passed over."""
-    found = [number.whole for number in written.numbers(literal, written.pieces(literal, written.words(literal)))
-             if number.unit is not None and number.whole is not None and not number.distance]
-    text = literal
-    for start, end in found:
-        text = text[:start] + " " * (end - start) + text[end:]
-    return text, (literal[found[0][0]:found[0][1]] if found else None)
-
-
-def _has_locality(text: str) -> bool:
-    """Whether a text holds a word that names something besides an elevation:
-    one with a letter or a digit that is not in NOT_LOCALITY."""
-    words = (re.sub(r"[^\w']", "", written.fold(word)).strip("'") for word in text.split())
-    return any(word and word not in NOT_LOCALITY for word in words)
-
-
-def locality_beyond_elevations(literal: str) -> bool:
-    """Whether a precise location's literal holds locality text beyond its
-    definite elevations and the words beside them
-    (_definite_elevations_blanked): "Yepocapa, 4800 ft." does, "4800 ft." and
-    "Elev. 6400'" do not."""
-    return _has_locality(_definite_elevations_blanked(literal)[0])
 
 
 def _longer_written(task: FieldTask, readings: Sequence[Reading], literal: str,
@@ -2504,17 +2440,11 @@ FIELD_KINDS = {
 SHARES_ANY_TEXT = frozenset({"verbatim_dts"})
 
 
-def may_share_text(key: str, other: str, *, units: bool = False) -> bool:
+def may_share_text(key: str, other: str) -> bool:
     """Whether two fields' values may be the same text of a reading: fields of
-    one kind (FIELD_KINDS), or either of them verbatim D/T/S; with `units`
-    (a units-path run whose precise location's literal holds locality text
-    beyond its elevations: step._taken, locality_beyond_elevations), also the
-    precise location and an elevation field, as the precise location holds an
-    elevation written among its lines (the ontology's rule
-    precise_location_extent)."""
-    kinds = {FIELD_KINDS.get(key, key), FIELD_KINDS.get(other, other)}
-    return (key in SHARES_ANY_TEXT or other in SHARES_ANY_TEXT or len(kinds) == 1
-        or (units and "precise_location" in (key, other) and kinds == {"place", "elevation"}))
+    one kind (FIELD_KINDS), or either of them verbatim D/T/S."""
+    return (key in SHARES_ANY_TEXT or other in SHARES_ANY_TEXT
+        or FIELD_KINDS.get(key, key) == FIELD_KINDS.get(other, other))
 
 
 ASKED, ABBREVIATION, NEAR_SPELLING = "asked", "abbreviation", "near_spelling"

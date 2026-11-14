@@ -1,12 +1,14 @@
 """WP 2.2: Precise Location is the label's locality as written (the ontology's rule
 precise_location_extent), on the units path; the old path is unchanged.
 
-The cases are the two pilot labels the plan names, from tests/fixtures/field_model_pilot_rows.json:
+The cases are the pilot labels the plan names, from tests/fixtures/field_model_pilot_rows.json:
 105526329's town-only locality, "Yepocapa, 4800 ft." over "Chimaltenango, Guatemala" (its truth
-row's precise location is the locality's lines as written, :325), and 105526321's whole locality
-block, "E. slope Mt. McKinley" over "Davao Prov." over "Mindanao, P.I." (:30). Each test runs on
-both paths (conftest.py): on the units path the whole locality settles, is not cleared as not on
-the label and is not refused for its elevation; on the old path each keeps origin/main's result.
+row's precise location is the locality's lines as written, :325), 105526321's whole locality
+block, "E. slope Mt. McKinley" over "Davao Prov." over "Mindanao, P.I." (:30), and 105526328's
+municipio line (:268-289). Each test runs on both paths (conftest.py): on the units path a
+town-only locality is not cleared as not on the label, and on the old path each keeps
+origin/main's result. A precise location that holds an elevation is refused on both paths, as on
+origin/main: the coordinator's ruling of 2026-11-14 left that to WP 2.3.
 """
 
 from __future__ import annotations
@@ -46,37 +48,41 @@ def label_readings(text, units):
 
 
 @pytest.mark.parametrize("literal", [YEPOCAPA, "Yepocapa, 4800 ft.", MCKINLEY_3300])
-def test_a_precise_location_holding_an_elevation_among_its_lines_is_refused_on_the_old_path_only(
-        first_pass_path, literal):
-    """agreement.literal_refusal on the precise location read from the transcript: on the units
-    path (readings that carry their units) an elevation written among the locality's lines is part
-    of it; on the old path it is another field's text (HOLDS_AN_ELEVATION), as on origin/main."""
+def test_a_precise_location_holding_an_elevation_is_refused_on_both_paths_until_wp_2_3(first_pass_path, literal):
+    """agreement.literal_refusal on the precise location read from the transcript: a locality that writes an
+    elevation among its lines is refused for it (HOLDS_AN_ELEVATION) on both paths, as on origin/main, so a
+    person decides. The units path's brief asks for the whole locality, the elevation included; WP 2.3 decides
+    when the code accepts it (the coordinator's ruling of 2026-11-14, the plan's WP 2.3 row)."""
     text = YEPOCAPA if literal.startswith("Yepocapa") else MCKINLEY_3300
     readings = label_readings(text, first_pass_path == "units")
     task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
 
     refused = agreement.literal_refusal(task, readings, literal=literal, named=readings)
 
-    if first_pass_path == "units":
-        assert refused is None
-    else:
-        assert refused is not None and refused.reason == agreement.HOLDS_AN_ELEVATION
+    assert refused is not None and refused.reason == agreement.HOLDS_AN_ELEVATION
 
 
-@pytest.mark.parametrize("literal", ["Yepocapa, IV-24-48", "Yepocapa, 4800 ft. IV-24-48 to V-2-48"])
-def test_a_precise_location_holding_a_date_is_still_refused_on_both_paths(first_pass_path, literal):
-    """The rule names the higher places and an elevation, never a date: a date or a range of dates
-    the precise location writes beside its locality (not as a number with an elevation unit) is
-    refused on both paths."""
+# The inputs PR #435's review rounds 1 and 2 (Codex and G51) found an elevation pass-over admitting: a date and
+# a collector, an elevation with no locality, a spelled-out sea-level phrase. The coordinator's ruling of
+# 2026-11-14 took the pass-over out of WP 2.2; WP 2.3's row names these cases.
+ELEVATION_REVIEW_CASES = [
+    "4800 ft.", "Elev. 6400'", "4800 ft. above sea level", "1200 m above sea level", "1200 m sobre el nivel del mar",
+    "1500 m de altitud", "Yepocapa, 1948 M. Smith", "Yepocapa, May 1948 M. A. Smith", "Yepocapa, 1948 M. O'Brien",
+    "Yepocapa, 1948 M. Smith-Jones", "Yepocapa, Sept. 46'",
+]
+
+
+@pytest.mark.parametrize("literal", ELEVATION_REVIEW_CASES)
+def test_the_review_rounds_elevation_inputs_are_refused_as_a_precise_location_on_both_paths(first_pass_path,
+        literal):
+    """Each is refused for an elevation it holds (agreement._holds_another_kind), on both paths, as on
+    origin/main, so no date, collector or elevation-only text settles as the precise location."""
     readings = label_readings(literal + "\nChimaltenango, Guatemala", first_pass_path == "units")
     task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
 
     refused = agreement.literal_refusal(task, readings, literal=literal, named=readings)
 
-    assert refused is not None and refused.reason in (agreement.HOLDS_A_DATE, agreement.HOLDS_A_RANGE,
-        agreement.HOLDS_AN_ELEVATION)
-    if first_pass_path == "units":
-        assert refused.reason != agreement.HOLDS_AN_ELEVATION
+    assert refused is not None and refused.reason == agreement.HOLDS_AN_ELEVATION
 
 
 def whole(text):
@@ -99,10 +105,11 @@ def settled_run(tmp_path, text, scripts):
     return rig, run, decisions
 
 
-def test_105526329s_whole_locality_with_its_elevation_settles_on_the_units_path(tmp_path, first_pass_path):
-    """The town-only locality with its elevation, the elevation settled from its own text: on the
-    units path the precise location is the two lines as written; on the old path it goes to review
-    as text the elevation field claims (step._taken), as on origin/main."""
+def test_105526329s_whole_locality_with_its_settled_elevation_waits_for_a_person_on_both_paths(tmp_path,
+        first_pass_path):
+    """105526329's two locality lines answered whole, its elevation settled from "4800 ft.": the precise
+    location goes to review as text the elevation field claims (step._taken), on both paths, as on
+    origin/main's old path, until WP 2.3 decides."""
     from test_step import resolved
 
     rig, run, decisions = settled_run(tmp_path, YEPOCAPA, {**IN_YEPOCAPA,
@@ -110,13 +117,8 @@ def test_105526329s_whole_locality_with_its_elevation_settles_on_the_units_path(
         "precise_location": whole(YEPOCAPA)})
     place = run.fields["precise_location"]
     assert run.fields["elevation_from_ft"].state == ValueState.SUPPORTED
-    if first_pass_path == "units":
-        assert (place.state, place.literal) == (ValueState.SUPPORTED, YEPOCAPA)
-        assert "refusal" not in decisions.get("precise_location", {})
-    else:
-        assert (place.state, place.literal) == (ValueState.UNRESOLVED, None)
-        assert place.reason == (field_step.TAKEN.format(other="Elevation From (ft)")
-            + " Both readers write the locality.")
+    assert (place.state, place.literal) == (ValueState.UNRESOLVED, None)
+    assert place.reason == field_step.TAKEN.format(other="Elevation From (ft)") + " Both readers write the locality."
 
 
 def test_105526321s_whole_locality_block_settles_as_written_on_both_paths(tmp_path, first_pass_path):
@@ -178,111 +180,7 @@ def test_a_municipio_line_beside_the_settled_town_stands_on_the_units_path(tmp_p
         assert decisions["precise_location"]["refusal"] == "admin_marker_only"
 
 
-# ---- round 1 of PR #435's review (Codex, finding 1): an elevation alone is no locality ----------------
-
-@pytest.mark.parametrize("literal", ["4800 ft.", "Elev. 6400'"])
-def test_an_elevation_alone_is_still_refused_as_a_precise_location_on_both_paths(first_pass_path, literal):
-    """The units path's exception takes an elevation written among a locality's lines, never a literal
-    that is only an elevation (and the words beside it): it is refused as on the old path."""
-    readings = label_readings(literal + "\nIV-24-48", first_pass_path == "units")
-    task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
-
-    refused = agreement.literal_refusal(task, readings, literal=literal, named=readings)
-
-    assert refused is not None and refused.reason == agreement.HOLDS_AN_ELEVATION
-    assert not agreement.locality_beyond_elevations(literal)
-    assert agreement.locality_beyond_elevations("Yepocapa, " + literal)
-
-
-def test_a_label_writing_only_an_elevation_gets_no_precise_location_on_either_path(tmp_path, first_pass_path):
-    """Codex's input: a label that writes only "4800 ft.", read alike by both readers, and the precise
-    location's expert resolving "4800 ft." from the transcript: refused on both paths, never stored."""
-    rig, run, decisions = settled_run(tmp_path, "4800 ft.", {"precise_location": whole("4800 ft.")})
-    place = run.fields["precise_location"]
-    assert place.state != ValueState.SUPPORTED and place.literal is None
-    assert place.reason.startswith(agreement.HOLDS_AN_ELEVATION)
-
-
-def test_an_elevation_read_from_the_transcript_beside_an_elevation_only_precise_location_goes_to_review(
-        tmp_path, first_pass_path):
-    """The organiser offers "4800 ft." as the precise location, which its expert settles on that candidate,
-    and the foot elevation's expert reads "4800 ft." from the transcript: the precise location's literal holds
-    no locality text, so on the units path too the elevation is text another kind of field claims
-    (step._taken), as on the old path."""
-    from test_step import Scripted
-
-    rig = build_rig(tmp_path, "4800 ft.\nIV-24-48", candidates=[
-        ("precise_location", name, "4800 ft.", "4800 ft.") for name in ("1A", "1B")])
-    run = rig.specimen.run
-    prepared, outcomes, calls = research(rig, Scripted({**{key: answering(LACKS) for key in FIELDS},
-        "precise_location": whole("4800 ft."),
-        "elevation_from_ft": answering(FieldAnswer(outcome="resolved", literal="4800 ft.", value="4800",
-            reading_names=["1A", "1B"], explanation="Both readers write it."))}), tools=Gazetteer(rig.blobs))
-    decisions: dict[str, dict] = {}
-    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
-    assert run.fields["elevation_from_ft"].state == ValueState.UNRESOLVED
-    assert decisions["elevation_from_ft"]["refusal"] == "taken"
-
-
-# ---- round 1 of PR #435's review (G51, B1 and B3) ---------------------------------------------------
-
-@pytest.mark.parametrize("literal", ["Yepocapa, May 1948 M. Smith\nChimaltenango, Guatemala", "Yepocapa, 1948 M. Smith"])
-def test_a_doubtful_elevation_is_never_passed_over_so_a_date_and_a_collector_stay_out(first_pass_path, literal):
-    """G51's B1: "1948 M." before a name may be a year and a person's initial (written.Number.sign), not an
-    elevation the reading writes with a unit. Only a definite elevation is passed over on the units path, so
-    this literal is refused on both paths, as on main."""
-    readings = label_readings(literal if "\n" in literal else literal + "\nChimaltenango, Guatemala",
-        first_pass_path == "units")
-    task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
-
-    refused = agreement.literal_refusal(task, readings, literal=literal, named=readings)
-
-    assert refused is not None and refused.reason == agreement.HOLDS_AN_ELEVATION
-
-
-def test_a_label_writing_a_year_and_a_collector_on_its_locality_line_gets_no_precise_location(tmp_path,
-        first_pass_path):
-    """G51's B1 input end to end: "Yepocapa, May 1948 M. Smith" over "Chimaltenango, Guatemala", the precise
-    location's expert answering both lines from the transcript: never stored, on either path."""
-    text = "Yepocapa, May 1948 M. Smith\nChimaltenango, Guatemala"
-    rig, run, decisions = settled_run(tmp_path, text, {**IN_YEPOCAPA, "precise_location": whole(text)})
-    place = run.fields["precise_location"]
-    assert place.state != ValueState.SUPPORTED and place.literal is None
-    assert decisions["precise_location"]["refusal"] == "holds_an_elevation"
-
-
-@pytest.mark.parametrize("key", ["collection_code", "city"])
-def test_only_the_precise_location_passes_over_an_elevation(first_pass_path, key):
-    """G51's B3 (c): the units path's pass-over is the precise location's alone; a collection code or a city
-    read from the transcript as "Yepocapa, 4800 ft." is refused for its elevation on both paths."""
-    readings = label_readings(YEPOCAPA, first_pass_path == "units")
-    task = FieldTask(key, True, FieldValue(), (), FIELD_TOOLS[key])
-
-    refused = agreement.literal_refusal(task, readings, literal="Yepocapa, 4800 ft.", named=readings)
-
-    assert refused is not None and refused.reason == agreement.HOLDS_AN_ELEVATION
-
-
-def test_an_elevation_spelled_alike_by_another_reader_is_taken_on_the_old_path(tmp_path, first_pass_path):
-    """G51's B3 (a): 1A writes "4800 ft.", 1B "4800 Ft."; the elevation settles on 1A's, and the precise
-    location's expert answers 1B's "4800 Ft." from the transcript. step._taken's spelled-alike check finds the
-    elevation's text: the precise location goes to review as text another kind of field claims ("taken"), on
-    the old path and, as its literal holds no locality text, on the units path too."""
-    from test_step import Scripted, resolved
-
-    rig = build_rig(tmp_path, YEPOCAPA, YEPOCAPA.replace("4800 ft.", "4800 Ft."))
-    run = rig.specimen.run
-    prepared, outcomes, calls = research(rig, Scripted({**{key: answering(LACKS) for key in FIELDS}, **IN_YEPOCAPA,
-        "elevation_from_ft": answering(resolved("4800 ft.", value="4800", reading="1A")),
-        "precise_location": answering(FieldAnswer(outcome="resolved", literal="4800 Ft.", reading_names=["1B"],
-            explanation="Read."))}), tools=Gazetteer(rig.blobs))
-    decisions: dict[str, dict] = {}
-    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
-    place = run.fields["precise_location"]
-    assert place.state != ValueState.SUPPORTED
-    assert decisions["precise_location"] == {"refusal": "taken"}
-    assert place.reason.startswith(field_step.TAKEN.format(other="Elevation From (ft)"))
-
+# ---- PR #435's review, round 1 (G51, B3 (b)): the units gate of step.not_on_label -------------------
 
 def test_a_units_path_run_cleared_as_not_on_the_label_by_older_code_goes_to_a_person_on_refinalize(tmp_path,
         first_pass_path):

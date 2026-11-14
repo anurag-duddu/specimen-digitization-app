@@ -157,9 +157,9 @@ def test_a_unit_whose_readers_write_one_text_carries_it_once():
 # one literal no reading writes ("Mindanaq", refused as no candidate), measured in bytes at its largest request.
 PLACE_EXPERTS = ("province_state", "precise_location", "city", "county", "country")
 LARGEST_BY_EXPERT = {
-    ("105526325", "province_state"): 46_179, ("105526325", "precise_location"): 46_632, ("105526325", "city"): 45_513,
+    ("105526325", "province_state"): 46_179, ("105526325", "precise_location"): 46_690, ("105526325", "city"): 45_513,
     ("105526325", "county"): 46_065, ("105526325", "country"): 44_803,
-    ("105526324", "province_state"): 45_807, ("105526324", "precise_location"): 46_213, ("105526324", "city"): 45_141,
+    ("105526324", "province_state"): 45_807, ("105526324", "precise_location"): 46_271, ("105526324", "city"): 45_141,
     ("105526324", "county"): 45_693, ("105526324", "country"): 44_431,
 }
 

@@ -130,7 +130,7 @@ def test_the_units_paths_instructions_name_no_first_pass_preference(key):
 
 # prompts/units.txt as WP 1.3's rework (gap report items 2(a), 3 and 4) and WP 2.2 (the two date
 # notation lines; the precise location brief's three lines) leave it, as the sha256 of its bytes.
-UNITS_TXT = "sha256:124433bde6472fa1f51a06a685ab9ad23f192dcf43461edf6b307a4f5b4e151d"
+UNITS_TXT = "sha256:55275609d5e505dd83d0b4e8238a70a573b94a80aceb9ba541059abdab958b96"
 # Rule 4 on the units path: what the code decides, said once to every expert.
 RULE = ("The code decides from the image judgements, the source answers your lookups returned and the readers' "
     "agreement whether a value is cleared, marked for a person to check, or left open, and it refuses an answer it cannot "
@@ -335,8 +335,9 @@ WHOLE_LOCALITY = (
     'text, such as "E. slope Mt. <Mountain>, nr. <Town>" over "<Province>, <Country>".',
     "the higher places those lines write (the town, the province, the country, notations included), an elevation "
     'written on them ("<Town>, <n> ft.") and "CNHM." where a locality line writes it.',
-    "The shared rules that a place holds no elevation and never takes another field's text do not apply to these "
-    "lines.",
+    'On those lines it may hold the higher places, an elevation and "CNHM." as written; it never holds a collector, '
+    "a date or any other field's text, even on a locality line: leave that text out, and leave out the lines that "
+    "hold only other fields (collectors, dates, codes, the taxon).",
     "- A locality that names nothing finer than its town is still this field: its lines as written. Answer "
     "label_lacks_value only when no reading writes a locality.",
 )
