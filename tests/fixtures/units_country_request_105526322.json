@@ -1,0 +1,1916 @@
+{
+ "source": "WP 2.2's paid run (~/specimen-golive/runs/units-wp22-20261114, head 1a654ca86), r1, three-reader arm, specimen 105526322: the country expert's second attempt, refused as input_too_large after 5 model calls. Readings with their units, the country task and the other fields are the stored run's; the 9 lookups are that attempt's (the rig's results row, field country, in order), each answer's candidates parsed from the stored evidence row's excerpt for that source and asked name (a timeout has none). Each evidence row keeps its id, kind, source, locator and excerpt, as the province fixtures do.",
+ "readings": [
+  {
+   "name": "1A",
+   "region_id": "556328f9-88a3-5d26-8192-d49b5a492aa0",
+   "observation_id": "77023ede-34c5-4f8a-ab70-75479d86007c",
+   "input_source": "decided_transcript",
+   "text": "FMNHINS\n4486783",
+   "units": {
+    "label": "556328f9-88a3-5d26-8192-d49b5a492aa0",
+    "units": [
+     {
+      "id": "556328f9-88a3-5d26-8192-d49b5a492aa0:1",
+      "label": "556328f9-88a3-5d26-8192-d49b5a492aa0",
+      "lines": [
+       1,
+       2
+      ],
+      "readers": {
+       "77023ede-34c5-4f8a-ab70-75479d86007c": {
+        "text": "FMNHINS\n4486783",
+        "start": 0,
+        "end": 15
+       },
+       "4baeda26-a99c-4505-96ca-78e55ef8c8f5": {
+        "text": "FMNHINS\n4486783",
+        "start": 0,
+        "end": 15
+       },
+       "51d09a39-aae7-4b11-abde-e2d9ff17fedd": {
+        "text": "FMNHINS\n4486783",
+        "start": 0,
+        "end": 15
+       }
+      },
+      "image": "FMNHINS\n4486783",
+      "means": "",
+      "role": "",
+      "fields": [
+       "fmnh_ins_number"
+      ],
+      "note": "Readers likely transcribed the separator as a space; printed text shows 'FMNHINS' with a thin gap before the number."
+     }
+    ]
+   }
+  },
+  {
+   "name": "1B",
+   "region_id": "556328f9-88a3-5d26-8192-d49b5a492aa0",
+   "observation_id": "4baeda26-a99c-4505-96ca-78e55ef8c8f5",
+   "input_source": "raw_reading",
+   "text": "FMNHINS\n4486783",
+   "units": {
+    "label": "556328f9-88a3-5d26-8192-d49b5a492aa0",
+    "units": [
+     {
+      "id": "556328f9-88a3-5d26-8192-d49b5a492aa0:1",
+      "label": "556328f9-88a3-5d26-8192-d49b5a492aa0",
+      "lines": [
+       1,
+       2
+      ],
+      "readers": {
+       "77023ede-34c5-4f8a-ab70-75479d86007c": {
+        "text": "FMNHINS\n4486783",
+        "start": 0,
+        "end": 15
+       },
+       "4baeda26-a99c-4505-96ca-78e55ef8c8f5": {
+        "text": "FMNHINS\n4486783",
+        "start": 0,
+        "end": 15
+       },
+       "51d09a39-aae7-4b11-abde-e2d9ff17fedd": {
+        "text": "FMNHINS\n4486783",
+        "start": 0,
+        "end": 15
+       }
+      },
+      "image": "FMNHINS\n4486783",
+      "means": "",
+      "role": "",
+      "fields": [
+       "fmnh_ins_number"
+      ],
+      "note": "Readers likely transcribed the separator as a space; printed text shows 'FMNHINS' with a thin gap before the number."
+     }
+    ]
+   }
+  },
+  {
+   "name": "1C",
+   "region_id": "556328f9-88a3-5d26-8192-d49b5a492aa0",
+   "observation_id": "51d09a39-aae7-4b11-abde-e2d9ff17fedd",
+   "input_source": "raw_reading",
+   "text": "FMNHINS\n4486783",
+   "units": {
+    "label": "556328f9-88a3-5d26-8192-d49b5a492aa0",
+    "units": [
+     {
+      "id": "556328f9-88a3-5d26-8192-d49b5a492aa0:1",
+      "label": "556328f9-88a3-5d26-8192-d49b5a492aa0",
+      "lines": [
+       1,
+       2
+      ],
+      "readers": {
+       "77023ede-34c5-4f8a-ab70-75479d86007c": {
+        "text": "FMNHINS\n4486783",
+        "start": 0,
+        "end": 15
+       },
+       "4baeda26-a99c-4505-96ca-78e55ef8c8f5": {
+        "text": "FMNHINS\n4486783",
+        "start": 0,
+        "end": 15
+       },
+       "51d09a39-aae7-4b11-abde-e2d9ff17fedd": {
+        "text": "FMNHINS\n4486783",
+        "start": 0,
+        "end": 15
+       }
+      },
+      "image": "FMNHINS\n4486783",
+      "means": "",
+      "role": "",
+      "fields": [
+       "fmnh_ins_number"
+      ],
+      "note": "Readers likely transcribed the separator as a space; printed text shows 'FMNHINS' with a thin gap before the number."
+     }
+    ]
+   }
+  },
+  {
+   "name": "2A",
+   "region_id": "3d08003c-1c42-5537-88f0-fe555638bd17",
+   "observation_id": "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9",
+   "input_source": "raw_reading",
+   "text": "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.\n6-Sept-1946, Elev.6400\nH. Hoogstraal leg.\nShrubs, mostly forest\nwings 4 head\nSp.30 ♀",
+   "units": {
+    "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+    "units": [
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:1",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       1,
+       1
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "CNHM.",
+        "start": 0,
+        "end": 5
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "CNHM.",
+        "start": 0,
+        "end": 5
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "CNHM.",
+        "start": 0,
+        "end": 5
+       }
+      },
+      "image": "CNHM.",
+      "means": "Chicago Natural History Museum",
+      "role": "",
+      "fields": [
+       "precise_location"
+      ],
+      "note": "Written on the locality line, so it belongs to the precise location as written."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:2",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       1,
+       1
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "E Slope Mt.",
+        "start": 6,
+        "end": 17
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "E Slope Mt.",
+        "start": 6,
+        "end": 17
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "E Slope Mt.",
+        "start": 6,
+        "end": 17
+       }
+      },
+      "image": "E Slope Mt.",
+      "means": "east slope of Mount",
+      "role": "",
+      "fields": [
+       "precise_location"
+      ],
+      "note": "\"E Slope\" is a direction qualifying Mt. McKinley that follows."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:3",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       2,
+       2
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "McKinley, Davao Prov.",
+        "start": 18,
+        "end": 39
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "McKinley, Davao Prov.",
+        "start": 18,
+        "end": 39
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "McKinley, DavaoProv.",
+        "start": 18,
+        "end": 38
+       }
+      },
+      "image": "McKinley, Davao Prov.",
+      "means": "Mount McKinley, Davao Province",
+      "role": "",
+      "fields": [
+       "precise_location",
+       "province_state"
+      ],
+      "note": "C reads \"DavaoProv.\" without the space; the image shows a space between Davao and Prov."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:4",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       3,
+       3
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "Mindanao, P.I.",
+        "start": 40,
+        "end": 54
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Mindanao, P.I.",
+        "start": 40,
+        "end": 54
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Mindanao, P.I.",
+        "start": 39,
+        "end": 53
+       }
+      },
+      "image": "Mindanao, P.I.",
+      "means": "Mindanao, Philippine Islands",
+      "role": "",
+      "fields": [
+       "precise_location",
+       "country"
+      ],
+      "note": "Mindanao is an island; P.I. expands to the Philippines."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:5",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       4,
+       4
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "6-Sept-1946,",
+        "start": 55,
+        "end": 67
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "6-Sept-1946,",
+        "start": 55,
+        "end": 67
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "6-Sept-1946,",
+        "start": 54,
+        "end": 66
+       }
+      },
+      "image": "6-Sept-1946,",
+      "means": "1946-09-06",
+      "role": "day",
+      "fields": [
+       "date_visited_from"
+      ],
+      "note": ""
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:6",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       4,
+       4
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "Elev.6400",
+        "start": 68,
+        "end": 77
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Elev.6400'",
+        "start": 68,
+        "end": 78
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Elev.6400",
+        "start": 67,
+        "end": 76
+       }
+      },
+      "image": "Elev.6400'",
+      "means": "elevation 6400 feet",
+      "role": "",
+      "fields": [
+       "elevation_from_ft",
+       "elevation_to_ft"
+      ],
+      "note": "A and C omit the foot mark; the image shows a raised mark after 6400, read as the foot apostrophe (')."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:7",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       5,
+       5
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "H. Hoogstraal leg.",
+        "start": 78,
+        "end": 96
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "H. Hoogstraal leg.",
+        "start": 79,
+        "end": 97
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "H. Hoogstraal leg.",
+        "start": 77,
+        "end": 95
+       }
+      },
+      "image": "H. Hoogstraal leg.",
+      "means": "H. Hoogstraal, collected by",
+      "role": "",
+      "fields": [
+       "collectors"
+      ],
+      "note": ""
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:8",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       6,
+       6
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "Shrubs,",
+        "start": 97,
+        "end": 104
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Shrubs,",
+        "start": 98,
+        "end": 105
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Shrubs,",
+        "start": 96,
+        "end": 103
+       }
+      },
+      "image": "Shrubs,",
+      "means": "",
+      "role": "",
+      "fields": [
+       "habitat"
+      ],
+      "note": ""
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:9",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       6,
+       6
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "mostly forest",
+        "start": 105,
+        "end": 118
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "mostly Forest",
+        "start": 106,
+        "end": 119
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Mostly forst",
+        "start": 104,
+        "end": 116
+       }
+      },
+      "image": "mostly forest",
+      "means": "",
+      "role": "",
+      "fields": [
+       "habitat"
+      ],
+      "note": "C reads \"forst\"; the image fits \"forest\"; all readers agree the word is lowercase."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:10",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       7,
+       7
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "wings 4 head",
+        "start": 119,
+        "end": 131
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Wings 4 head",
+        "start": 120,
+        "end": 132
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Wings & head",
+        "start": 117,
+        "end": 129
+       }
+      },
+      "image": "wings 4 head",
+      "means": "",
+      "role": "",
+      "fields": [
+       "habitat"
+      ],
+      "note": "C reads \"&\" for segment 18; the strokes fit the \"4\" that A and B wrote."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:11",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       8,
+       8
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "Sp.30 ♀",
+        "start": 132,
+        "end": 139
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Sp.30 ♀",
+        "start": 133,
+        "end": 140
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Sp.30 ♂",
+        "start": 131,
+        "end": 138
+       }
+      },
+      "image": "Sp.30 ♀",
+      "means": "species number 30, morphocode",
+      "role": "",
+      "fields": [
+       "taxon"
+      ],
+      "note": "\"Sp. 30\" follows no genus on the label; the image shows the female sign ♀ that A and B read."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:12",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       9,
+       9
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "",
+        "start": 139,
+        "end": 139
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "P-95-81-16",
+        "start": 141,
+        "end": 151
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "",
+        "start": 138,
+        "end": 138
+       }
+      },
+      "image": "uncertain",
+      "means": "",
+      "role": "",
+      "fields": [],
+      "note": "Only B read \"P-95-81-16\"; the right margin shows faint vertical scribbles whose strokes do not settle the text."
+     }
+    ]
+   }
+  },
+  {
+   "name": "2B",
+   "region_id": "3d08003c-1c42-5537-88f0-fe555638bd17",
+   "observation_id": "a9c55b04-3191-4a3e-8c55-6e50f46b4737",
+   "input_source": "raw_reading",
+   "text": "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.\n6-Sept-1946, Elev.6400'\nH. Hoogstraal leg.\nShrubs, mostly Forest\nWings 4 head\nSp.30 ♀\nP-95-81-16",
+   "units": {
+    "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+    "units": [
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:1",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       1,
+       1
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "CNHM.",
+        "start": 0,
+        "end": 5
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "CNHM.",
+        "start": 0,
+        "end": 5
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "CNHM.",
+        "start": 0,
+        "end": 5
+       }
+      },
+      "image": "CNHM.",
+      "means": "Chicago Natural History Museum",
+      "role": "",
+      "fields": [
+       "precise_location"
+      ],
+      "note": "Written on the locality line, so it belongs to the precise location as written."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:2",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       1,
+       1
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "E Slope Mt.",
+        "start": 6,
+        "end": 17
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "E Slope Mt.",
+        "start": 6,
+        "end": 17
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "E Slope Mt.",
+        "start": 6,
+        "end": 17
+       }
+      },
+      "image": "E Slope Mt.",
+      "means": "east slope of Mount",
+      "role": "",
+      "fields": [
+       "precise_location"
+      ],
+      "note": "\"E Slope\" is a direction qualifying Mt. McKinley that follows."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:3",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       2,
+       2
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "McKinley, Davao Prov.",
+        "start": 18,
+        "end": 39
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "McKinley, Davao Prov.",
+        "start": 18,
+        "end": 39
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "McKinley, DavaoProv.",
+        "start": 18,
+        "end": 38
+       }
+      },
+      "image": "McKinley, Davao Prov.",
+      "means": "Mount McKinley, Davao Province",
+      "role": "",
+      "fields": [
+       "precise_location",
+       "province_state"
+      ],
+      "note": "C reads \"DavaoProv.\" without the space; the image shows a space between Davao and Prov."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:4",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       3,
+       3
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "Mindanao, P.I.",
+        "start": 40,
+        "end": 54
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Mindanao, P.I.",
+        "start": 40,
+        "end": 54
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Mindanao, P.I.",
+        "start": 39,
+        "end": 53
+       }
+      },
+      "image": "Mindanao, P.I.",
+      "means": "Mindanao, Philippine Islands",
+      "role": "",
+      "fields": [
+       "precise_location",
+       "country"
+      ],
+      "note": "Mindanao is an island; P.I. expands to the Philippines."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:5",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       4,
+       4
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "6-Sept-1946,",
+        "start": 55,
+        "end": 67
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "6-Sept-1946,",
+        "start": 55,
+        "end": 67
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "6-Sept-1946,",
+        "start": 54,
+        "end": 66
+       }
+      },
+      "image": "6-Sept-1946,",
+      "means": "1946-09-06",
+      "role": "day",
+      "fields": [
+       "date_visited_from"
+      ],
+      "note": ""
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:6",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       4,
+       4
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "Elev.6400",
+        "start": 68,
+        "end": 77
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Elev.6400'",
+        "start": 68,
+        "end": 78
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Elev.6400",
+        "start": 67,
+        "end": 76
+       }
+      },
+      "image": "Elev.6400'",
+      "means": "elevation 6400 feet",
+      "role": "",
+      "fields": [
+       "elevation_from_ft",
+       "elevation_to_ft"
+      ],
+      "note": "A and C omit the foot mark; the image shows a raised mark after 6400, read as the foot apostrophe (')."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:7",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       5,
+       5
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "H. Hoogstraal leg.",
+        "start": 78,
+        "end": 96
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "H. Hoogstraal leg.",
+        "start": 79,
+        "end": 97
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "H. Hoogstraal leg.",
+        "start": 77,
+        "end": 95
+       }
+      },
+      "image": "H. Hoogstraal leg.",
+      "means": "H. Hoogstraal, collected by",
+      "role": "",
+      "fields": [
+       "collectors"
+      ],
+      "note": ""
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:8",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       6,
+       6
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "Shrubs,",
+        "start": 97,
+        "end": 104
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Shrubs,",
+        "start": 98,
+        "end": 105
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Shrubs,",
+        "start": 96,
+        "end": 103
+       }
+      },
+      "image": "Shrubs,",
+      "means": "",
+      "role": "",
+      "fields": [
+       "habitat"
+      ],
+      "note": ""
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:9",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       6,
+       6
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "mostly forest",
+        "start": 105,
+        "end": 118
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "mostly Forest",
+        "start": 106,
+        "end": 119
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Mostly forst",
+        "start": 104,
+        "end": 116
+       }
+      },
+      "image": "mostly forest",
+      "means": "",
+      "role": "",
+      "fields": [
+       "habitat"
+      ],
+      "note": "C reads \"forst\"; the image fits \"forest\"; all readers agree the word is lowercase."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:10",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       7,
+       7
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "wings 4 head",
+        "start": 119,
+        "end": 131
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Wings 4 head",
+        "start": 120,
+        "end": 132
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Wings & head",
+        "start": 117,
+        "end": 129
+       }
+      },
+      "image": "wings 4 head",
+      "means": "",
+      "role": "",
+      "fields": [
+       "habitat"
+      ],
+      "note": "C reads \"&\" for segment 18; the strokes fit the \"4\" that A and B wrote."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:11",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       8,
+       8
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "Sp.30 ♀",
+        "start": 132,
+        "end": 139
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Sp.30 ♀",
+        "start": 133,
+        "end": 140
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Sp.30 ♂",
+        "start": 131,
+        "end": 138
+       }
+      },
+      "image": "Sp.30 ♀",
+      "means": "species number 30, morphocode",
+      "role": "",
+      "fields": [
+       "taxon"
+      ],
+      "note": "\"Sp. 30\" follows no genus on the label; the image shows the female sign ♀ that A and B read."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:12",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       9,
+       9
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "",
+        "start": 139,
+        "end": 139
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "P-95-81-16",
+        "start": 141,
+        "end": 151
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "",
+        "start": 138,
+        "end": 138
+       }
+      },
+      "image": "uncertain",
+      "means": "",
+      "role": "",
+      "fields": [],
+      "note": "Only B read \"P-95-81-16\"; the right margin shows faint vertical scribbles whose strokes do not settle the text."
+     }
+    ]
+   }
+  },
+  {
+   "name": "2C",
+   "region_id": "3d08003c-1c42-5537-88f0-fe555638bd17",
+   "observation_id": "cc07950a-2310-4832-8db4-1c331d375e2b",
+   "input_source": "raw_reading",
+   "text": "CNHM. E Slope Mt.\nMcKinley, DavaoProv.\nMindanao, P.I.\n6-Sept-1946, Elev.6400\nH. Hoogstraal leg.\nShrubs, Mostly forst\nWings & head\n\nSp.30 ♂",
+   "units": {
+    "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+    "units": [
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:1",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       1,
+       1
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "CNHM.",
+        "start": 0,
+        "end": 5
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "CNHM.",
+        "start": 0,
+        "end": 5
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "CNHM.",
+        "start": 0,
+        "end": 5
+       }
+      },
+      "image": "CNHM.",
+      "means": "Chicago Natural History Museum",
+      "role": "",
+      "fields": [
+       "precise_location"
+      ],
+      "note": "Written on the locality line, so it belongs to the precise location as written."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:2",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       1,
+       1
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "E Slope Mt.",
+        "start": 6,
+        "end": 17
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "E Slope Mt.",
+        "start": 6,
+        "end": 17
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "E Slope Mt.",
+        "start": 6,
+        "end": 17
+       }
+      },
+      "image": "E Slope Mt.",
+      "means": "east slope of Mount",
+      "role": "",
+      "fields": [
+       "precise_location"
+      ],
+      "note": "\"E Slope\" is a direction qualifying Mt. McKinley that follows."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:3",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       2,
+       2
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "McKinley, Davao Prov.",
+        "start": 18,
+        "end": 39
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "McKinley, Davao Prov.",
+        "start": 18,
+        "end": 39
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "McKinley, DavaoProv.",
+        "start": 18,
+        "end": 38
+       }
+      },
+      "image": "McKinley, Davao Prov.",
+      "means": "Mount McKinley, Davao Province",
+      "role": "",
+      "fields": [
+       "precise_location",
+       "province_state"
+      ],
+      "note": "C reads \"DavaoProv.\" without the space; the image shows a space between Davao and Prov."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:4",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       3,
+       3
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "Mindanao, P.I.",
+        "start": 40,
+        "end": 54
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Mindanao, P.I.",
+        "start": 40,
+        "end": 54
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Mindanao, P.I.",
+        "start": 39,
+        "end": 53
+       }
+      },
+      "image": "Mindanao, P.I.",
+      "means": "Mindanao, Philippine Islands",
+      "role": "",
+      "fields": [
+       "precise_location",
+       "country"
+      ],
+      "note": "Mindanao is an island; P.I. expands to the Philippines."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:5",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       4,
+       4
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "6-Sept-1946,",
+        "start": 55,
+        "end": 67
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "6-Sept-1946,",
+        "start": 55,
+        "end": 67
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "6-Sept-1946,",
+        "start": 54,
+        "end": 66
+       }
+      },
+      "image": "6-Sept-1946,",
+      "means": "1946-09-06",
+      "role": "day",
+      "fields": [
+       "date_visited_from"
+      ],
+      "note": ""
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:6",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       4,
+       4
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "Elev.6400",
+        "start": 68,
+        "end": 77
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Elev.6400'",
+        "start": 68,
+        "end": 78
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Elev.6400",
+        "start": 67,
+        "end": 76
+       }
+      },
+      "image": "Elev.6400'",
+      "means": "elevation 6400 feet",
+      "role": "",
+      "fields": [
+       "elevation_from_ft",
+       "elevation_to_ft"
+      ],
+      "note": "A and C omit the foot mark; the image shows a raised mark after 6400, read as the foot apostrophe (')."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:7",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       5,
+       5
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "H. Hoogstraal leg.",
+        "start": 78,
+        "end": 96
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "H. Hoogstraal leg.",
+        "start": 79,
+        "end": 97
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "H. Hoogstraal leg.",
+        "start": 77,
+        "end": 95
+       }
+      },
+      "image": "H. Hoogstraal leg.",
+      "means": "H. Hoogstraal, collected by",
+      "role": "",
+      "fields": [
+       "collectors"
+      ],
+      "note": ""
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:8",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       6,
+       6
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "Shrubs,",
+        "start": 97,
+        "end": 104
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Shrubs,",
+        "start": 98,
+        "end": 105
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Shrubs,",
+        "start": 96,
+        "end": 103
+       }
+      },
+      "image": "Shrubs,",
+      "means": "",
+      "role": "",
+      "fields": [
+       "habitat"
+      ],
+      "note": ""
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:9",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       6,
+       6
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "mostly forest",
+        "start": 105,
+        "end": 118
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "mostly Forest",
+        "start": 106,
+        "end": 119
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Mostly forst",
+        "start": 104,
+        "end": 116
+       }
+      },
+      "image": "mostly forest",
+      "means": "",
+      "role": "",
+      "fields": [
+       "habitat"
+      ],
+      "note": "C reads \"forst\"; the image fits \"forest\"; all readers agree the word is lowercase."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:10",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       7,
+       7
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "wings 4 head",
+        "start": 119,
+        "end": 131
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Wings 4 head",
+        "start": 120,
+        "end": 132
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Wings & head",
+        "start": 117,
+        "end": 129
+       }
+      },
+      "image": "wings 4 head",
+      "means": "",
+      "role": "",
+      "fields": [
+       "habitat"
+      ],
+      "note": "C reads \"&\" for segment 18; the strokes fit the \"4\" that A and B wrote."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:11",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       8,
+       8
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "Sp.30 ♀",
+        "start": 132,
+        "end": 139
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "Sp.30 ♀",
+        "start": 133,
+        "end": 140
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "Sp.30 ♂",
+        "start": 131,
+        "end": 138
+       }
+      },
+      "image": "Sp.30 ♀",
+      "means": "species number 30, morphocode",
+      "role": "",
+      "fields": [
+       "taxon"
+      ],
+      "note": "\"Sp. 30\" follows no genus on the label; the image shows the female sign ♀ that A and B read."
+     },
+     {
+      "id": "3d08003c-1c42-5537-88f0-fe555638bd17:12",
+      "label": "3d08003c-1c42-5537-88f0-fe555638bd17",
+      "lines": [
+       9,
+       9
+      ],
+      "readers": {
+       "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": {
+        "text": "",
+        "start": 139,
+        "end": 139
+       },
+       "a9c55b04-3191-4a3e-8c55-6e50f46b4737": {
+        "text": "P-95-81-16",
+        "start": 141,
+        "end": 151
+       },
+       "cc07950a-2310-4832-8db4-1c331d375e2b": {
+        "text": "",
+        "start": 138,
+        "end": 138
+       }
+      },
+      "image": "uncertain",
+      "means": "",
+      "role": "",
+      "fields": [],
+      "note": "Only B read \"P-95-81-16\"; the right margin shows faint vertical scribbles whose strokes do not settle the text."
+     }
+    ]
+   }
+  }
+ ],
+ "task": {
+  "key": "country",
+  "mandatory": true,
+  "current": {
+   "state": "unresolved",
+   "literal": "Mindanao, P.I.",
+   "parsed": null,
+   "normalized": null,
+   "authority_id": null,
+   "authority_identity": null,
+   "evidence_ids": [
+    "2b84bdfc-ac65-4aae-8c33-8e0a75f4908c",
+    "b4298fdb-c6b4-48b1-a618-9b32f0a010cb",
+    "a949b0e6-1d0d-434e-a341-23012429ccba"
+   ],
+   "reason": "The readings and sources for this field were too long to send for checking.",
+   "input_source": null,
+   "source_region_id": null,
+   "source_observation_id": null,
+   "verbatim_by_observation": {},
+   "input_source_by_observation": {},
+   "settled_observation_ids": [],
+   "layer": null,
+   "derived_from": [],
+   "evidence_relations": {},
+   "precision": null,
+   "century_rule": null
+  },
+  "candidates": [
+   {
+    "reading": "2A",
+    "literal": "Mindanao, P.I.",
+    "quote": "Mindanao, P.I.",
+    "evidence_id": "2b84bdfc-ac65-4aae-8c33-8e0a75f4908c"
+   },
+   {
+    "reading": "2B",
+    "literal": "Mindanao, P.I.",
+    "quote": "Mindanao, P.I.",
+    "evidence_id": "b4298fdb-c6b4-48b1-a618-9b32f0a010cb"
+   },
+   {
+    "reading": "2C",
+    "literal": "Mindanao, P.I.",
+    "quote": "Mindanao, P.I.",
+    "evidence_id": "a949b0e6-1d0d-434e-a341-23012429ccba"
+   }
+  ],
+  "tools": [
+   "tgn",
+   "wikidata",
+   "nga"
+  ]
+ },
+ "context": {
+  "fmnh_ins_number": {
+   "literal": "4486783",
+   "verbatim_by_observation": {}
+  },
+  "collection_code": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "country": {
+   "literal": "Mindanao, P.I.",
+   "verbatim_by_observation": {}
+  },
+  "province_state": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "county": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "city": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "precise_location": {
+   "literal": "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.",
+   "verbatim_by_observation": {
+    "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.",
+    "a9c55b04-3191-4a3e-8c55-6e50f46b4737": "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I."
+   }
+  },
+  "elevation_from_m": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "elevation_to_m": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "elevation_from_ft": {
+   "literal": "6400",
+   "verbatim_by_observation": {
+    "a9c55b04-3191-4a3e-8c55-6e50f46b4737": "6400"
+   }
+  },
+  "elevation_to_ft": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "habitat": {
+   "literal": "Shrubs, mostly forest",
+   "verbatim_by_observation": {
+    "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": "Shrubs, mostly forest",
+    "a9c55b04-3191-4a3e-8c55-6e50f46b4737": "Shrubs, mostly Forest",
+    "cc07950a-2310-4832-8db4-1c331d375e2b": "Shrubs, Mostly forst"
+   }
+  },
+  "collection_method": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "date_visited_from": {
+   "literal": "6-Sept-1946",
+   "verbatim_by_observation": {
+    "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": "6-Sept-1946",
+    "a9c55b04-3191-4a3e-8c55-6e50f46b4737": "6-Sept-1946",
+    "cc07950a-2310-4832-8db4-1c331d375e2b": "6-Sept-1946"
+   }
+  },
+  "date_visited_to": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "collectors": {
+   "literal": "H. Hoogstraal leg.",
+   "verbatim_by_observation": {
+    "6ffc2840-d48b-44a0-8b2b-bb83b55c7cf9": "H. Hoogstraal leg.",
+    "a9c55b04-3191-4a3e-8c55-6e50f46b4737": "H. Hoogstraal leg.",
+    "cc07950a-2310-4832-8db4-1c331d375e2b": "H. Hoogstraal leg."
+   }
+  },
+  "verbatim_dts": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "taxon": {
+   "literal": "Sp.30 ♀",
+   "verbatim_by_observation": {}
+  },
+  "date_identified": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  },
+  "identified_by_irn": {
+   "literal": null,
+   "verbatim_by_observation": {}
+  }
+ },
+ "lookups": [
+  {
+   "source": "wikidata",
+   "query": "Mindanao, Philippines",
+   "status": "ambiguous",
+   "note": "Wikidata has 7 places for 'Mindanao'",
+   "candidates": [
+    {
+     "name": "Mindanao",
+     "authority_id": "wikidata:Q4294079",
+     "kind": "island group of the Philippines",
+     "detail": "in Philippines"
+    },
+    {
+     "name": "Mindanao",
+     "authority_id": "wikidata:Q124873",
+     "kind": "island",
+     "detail": "in Philippines"
+    },
+    {
+     "name": "Mindanao",
+     "authority_id": "wikidata:Q77580575",
+     "kind": "painting",
+     "detail": null
+    },
+    {
+     "name": "Rio Grande de Mindanao",
+     "authority_id": "wikidata:Q2095415",
+     "kind": "river",
+     "detail": "in Philippines"
+    },
+    {
+     "name": "Mindanaona",
+     "authority_id": "wikidata:Q15870487",
+     "kind": "taxon",
+     "detail": null
+    },
+    {
+     "name": "Mindanao",
+     "authority_id": "wikidata:Q6863640",
+     "kind": "language family",
+     "detail": null
+    },
+    {
+     "name": "Mindanao",
+     "authority_id": "wikidata:Q85785617",
+     "kind": "film",
+     "detail": null
+    }
+   ],
+   "evidence": {
+    "id": "f5624427-0569-461b-9983-450e47716dc7",
+    "kind": "authority",
+    "source": "wikidata",
+    "locator": null,
+    "excerpt": "Wikidata has 7 places for 'Mindanao'\nMindanao | wikidata:Q4294079 | island group of the Philippines | in Philippines\nMindanao | wikidata:Q124873 | island | in Philippines\nMindanao | wikidata:Q77580575 | painting | \nRio Grande de Mindanao | wikidata:Q2095415 | river | in Philippines\nMindanaona | wikidata:Q15870487 | taxon | \nMindanao | wikidata:Q6863640 | language family | \nMindanao | wikidata:Q85785617 | film | "
+   }
+  },
+  {
+   "source": "wikidata",
+   "query": "Philippine Islands",
+   "status": "ambiguous",
+   "note": "Wikidata has 7 places for 'Philippine Islands'",
+   "candidates": [
+    {
+     "name": "Philippines",
+     "authority_id": "wikidata:Q928",
+     "kind": "sovereign state, archipelagic state, country",
+     "detail": "in Philippines; valid from 1565"
+    },
+    {
+     "name": "Insular Government of the Philippine Islands",
+     "authority_id": "wikidata:Q6042084",
+     "kind": "government, territory of the United States, former administrative territorial entity",
+     "detail": "in United States; valid from 1899-04-11 until 1935-11-15"
+    },
+    {
+     "name": "list of islands of the Philippines",
+     "authority_id": "wikidata:Q2389438",
+     "kind": "Wikimedia list article",
+     "detail": "in Philippines"
+    },
+    {
+     "name": "Philippines Campaign",
+     "authority_id": "wikidata:Q696462",
+     "kind": "military campaign",
+     "detail": "in Commonwealth of the Philippines; valid from 1941-12-07 until 1942-05-10"
+    },
+    {
+     "name": "Philippine Islands",
+     "authority_id": "wikidata:Q49695034",
+     "kind": "hill",
+     "detail": "in Portage County, United States"
+    },
+    {
+     "name": "Philippine Islands Council, Boy Scouts of America",
+     "authority_id": "wikidata:Q24534794",
+     "kind": "-",
+     "detail": null
+    },
+    {
+     "name": "Philippine Islands (NAID 542445)",
+     "authority_id": "wikidata:Q64331048",
+     "kind": "collection",
+     "detail": null
+    }
+   ],
+   "evidence": {
+    "id": "bedea9e1-e506-4300-8f5b-d2d510a6b6c5",
+    "kind": "authority",
+    "source": "wikidata",
+    "locator": null,
+    "excerpt": "Wikidata has 7 places for 'Philippine Islands'\nPhilippines | wikidata:Q928 | sovereign state, archipelagic state, country | in Philippines; valid from 1565\nInsular Government of the Philippine Islands | wikidata:Q6042084 | government, territory of the United States, former administrative territorial entity | in United States; valid from 1899-04-11 until 1935-11-15\nlist of islands of the Philippines | wikidata:Q2389438 | Wikimedia list article | in Philippines\nPhilippines Campaign | wikidata:Q696462 | military campaign | in Commonwealth of the Philippines; valid from 1941-12-07 until 1942-05-10\nPhilippine Islands | wikidata:Q49695034 | hill | in Portage County, United States\nPhilippine Islands Council, Boy Scouts of America | wikidata:Q24534794 | - | \nPhilippine Islands (NAID 542445) | wikidata:Q64331048 | collection | "
+   }
+  },
+  {
+   "source": "tgn",
+   "query": "Mindanao, Philippines",
+   "status": "ambiguous",
+   "note": "Getty TGN has 7 places for 'Mindanao'",
+   "candidates": [
+    {
+     "name": "Mindanao",
+     "authority_id": "tgn:7016744",
+     "kind": "islands (landforms), inhabited places",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Pulangi River",
+     "authority_id": "tgn:1127181",
+     "kind": "rivers",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Celebes Sea",
+     "authority_id": "tgn:1112260",
+     "kind": "seas",
+     "detail": "in Oceans, World"
+    },
+    {
+     "name": "Bohol Sea",
+     "authority_id": "tgn:1112295",
+     "kind": "seas",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Northern Mindanao",
+     "authority_id": "tgn:8729053",
+     "kind": "regions (administrative divisions), first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Autonomous Region in Muslim Mindanao",
+     "authority_id": "tgn:8728925",
+     "kind": "former administrative divisions, first level subdivisions (political entities), regions (administrative divisions)",
+     "detail": "in Pilipinas"
+    },
+    {
+     "name": "Bangsamoro Autonomous Region of Muslim Mindanao",
+     "authority_id": "tgn:8730096",
+     "kind": "regions (administrative divisions), first level subdivisions (political entities)",
+     "detail": "in Pilipinas"
+    }
+   ],
+   "evidence": {
+    "id": "47eefc33-bae3-44ef-8baf-5047e83024f1",
+    "kind": "authority",
+    "source": "tgn",
+    "locator": null,
+    "excerpt": "Getty TGN has 7 places for 'Mindanao'\nMindanao | tgn:7016744 | islands (landforms), inhabited places | in Pilipinas\nPulangi River | tgn:1127181 | rivers | in Pilipinas\nCelebes Sea | tgn:1112260 | seas | in Oceans, World\nBohol Sea | tgn:1112295 | seas | in Pilipinas\nNorthern Mindanao | tgn:8729053 | regions (administrative divisions), first level subdivisions (political entities) | in Pilipinas\nAutonomous Region in Muslim Mindanao | tgn:8728925 | former administrative divisions, first level subdivisions (political entities), regions (administrative divisions) | in Pilipinas\nBangsamoro Autonomous Region of Muslim Mindanao | tgn:8730096 | regions (administrative divisions), first level subdivisions (political entities) | in Pilipinas"
+   }
+  },
+  {
+   "source": "tgn",
+   "query": "Philippine Islands",
+   "status": "ambiguous",
+   "note": "Getty TGN has 10 places for 'Philippine Islands'",
+   "candidates": [
+    {
+     "name": "Philippine Islands",
+     "authority_id": "tgn:2578581",
+     "kind": "ridges (landforms)",
+     "detail": "in Portage, Wisconsin, United States"
+    },
+    {
+     "name": "Philippines",
+     "authority_id": "tgn:1000135",
+     "kind": "nations, commonwealths, controlled regions",
+     "detail": "in Philippines"
+    },
+    {
+     "name": "Philippine",
+     "authority_id": "tgn:7268540",
+     "kind": "inhabited places",
+     "detail": "in Zeeland, Nederland"
+    },
+    {
+     "name": "Philippine Sea",
+     "authority_id": "tgn:7016773",
+     "kind": "seas",
+     "detail": "in Oceans, World"
+    },
+    {
+     "name": "Philippine House",
+     "authority_id": "tgn:7897501",
+     "kind": "country houses",
+     "detail": "in Cork, Ireland"
+    },
+    {
+     "name": "Caroline Islands",
+     "authority_id": "tgn:7005669",
+     "kind": "island groups",
+     "detail": "in Oceania, World"
+    },
+    {
+     "name": "Island",
+     "authority_id": "tgn:2039539",
+     "kind": "inhabited places",
+     "detail": "in McLean, Kentucky, United States"
+    },
+    {
+     "name": "Island",
+     "authority_id": "tgn:2414984",
+     "kind": "inhabited places",
+     "detail": "in Pointe Coupee, Louisiana, United States"
+    },
+    {
+     "name": "Island",
+     "authority_id": "tgn:2414985",
+     "kind": "inhabited places",
+     "detail": "in Worcester, Massachusetts, United States"
+    },
+    {
+     "name": "Island",
+     "authority_id": "tgn:2414987",
+     "kind": "inhabited places",
+     "detail": "in Mahoning, Ohio, United States"
+    }
+   ],
+   "evidence": {
+    "id": "0833a799-d796-45eb-b195-8315fbfb6bca",
+    "kind": "authority",
+    "source": "tgn",
+    "locator": null,
+    "excerpt": "Getty TGN has 10 places for 'Philippine Islands'\nPhilippine Islands | tgn:2578581 | ridges (landforms) | in Portage, Wisconsin, United States\nPhilippines | tgn:1000135 | nations, commonwealths, controlled regions | in Philippines\nPhilippine | tgn:7268540 | inhabited places | in Zeeland, Nederland\nPhilippine Sea | tgn:7016773 | seas | in Oceans, World\nPhilippine House | tgn:7897501 | country houses | in Cork, Ireland\nCaroline Islands | tgn:7005669 | island groups | in Oceania, World\nIsland | tgn:2039539 | inhabited places | in McLean, Kentucky, United States\nIsland | tgn:2414984 | inhabited places | in Pointe Coupee, Louisiana, United States\nIsland | tgn:2414985 | inhabited places | in Worcester, Massachusetts, United States\nIsland | tgn:2414987 | inhabited places | in Mahoning, Ohio, United States"
+   }
+  },
+  {
+   "source": "nga",
+   "query": "Mindanao, Philippines",
+   "status": "timeout",
+   "note": "timed out",
+   "candidates": [],
+   "evidence": null
+  },
+  {
+   "source": "tgn",
+   "query": "P.I.",
+   "status": "no_match",
+   "note": "Getty TGN has no place for 'P.I.'",
+   "candidates": [],
+   "evidence": {
+    "id": "c1bdc534-9810-476b-a39c-1d213df58975",
+    "kind": "lookup",
+    "source": "tgn",
+    "locator": null,
+    "excerpt": "Getty TGN has no place for 'P.I.'"
+   }
+  },
+  {
+   "source": "wikidata",
+   "query": "P.I.",
+   "status": "ambiguous",
+   "note": "Wikidata has 7 places for 'P.I.'",
+   "candidates": [
+    {
+     "name": "private investigator",
+     "authority_id": "wikidata:Q1058617",
+     "kind": "occupation",
+     "detail": null
+    },
+    {
+     "name": "P.I.",
+     "authority_id": "wikidata:Q135071245",
+     "kind": "video game",
+     "detail": null
+    },
+    {
+     "name": "P.I.",
+     "authority_id": "wikidata:Q142068642",
+     "kind": "board game",
+     "detail": null
+    },
+    {
+     "name": "Paul Irwin Forster",
+     "authority_id": "wikidata:Q9057027",
+     "kind": "human",
+     "detail": null
+    },
+    {
+     "name": "Pontifical Oriental Institute",
+     "authority_id": "wikidata:Q176473",
+     "kind": "pontifical institute",
+     "detail": "in Rome, Italy; valid from 1917"
+    },
+    {
+     "name": "P.I. Monnickendam",
+     "authority_id": "wikidata:Q109938980",
+     "kind": "human",
+     "detail": null
+    },
+    {
+     "name": "P.I.B. Buschne Belling A.V.",
+     "authority_id": "wikidata:Q109663205",
+     "kind": "human",
+     "detail": null
+    }
+   ],
+   "evidence": {
+    "id": "fd4c4660-db01-4ba5-846f-737c8ad11b22",
+    "kind": "authority",
+    "source": "wikidata",
+    "locator": null,
+    "excerpt": "Wikidata has 7 places for 'P.I.'\nprivate investigator | wikidata:Q1058617 | occupation | \nP.I. | wikidata:Q135071245 | video game | \nP.I. | wikidata:Q142068642 | board game | \nPaul Irwin Forster | wikidata:Q9057027 | human | \nPontifical Oriental Institute | wikidata:Q176473 | pontifical institute | in Rome, Italy; valid from 1917\nP.I. Monnickendam | wikidata:Q109938980 | human | \nP.I.B. Buschne Belling A.V. | wikidata:Q109663205 | human | "
+   }
+  },
+  {
+   "source": "wikidata",
+   "query": "Philippines",
+   "status": "ambiguous",
+   "note": "Wikidata has 7 places for 'Philippines'",
+   "candidates": [
+    {
+     "name": "Philippines",
+     "authority_id": "wikidata:Q928",
+     "kind": "sovereign state, archipelagic state, country",
+     "detail": "in Philippines; valid from 1565"
+    },
+    {
+     "name": "National Historical Commission of the Philippines",
+     "authority_id": "wikidata:Q2652138",
+     "kind": "government agency, historical society",
+     "detail": "in Philippines; valid from 1965-06-19"
+    },
+    {
+     "name": "National Historical Commission of the Philippines historical marker",
+     "authority_id": "wikidata:Q21562164",
+     "kind": "-",
+     "detail": null
+    },
+    {
+     "name": "Member of the Senate of the Philippines",
+     "authority_id": "wikidata:Q18579098",
+     "kind": "position",
+     "detail": "in Philippines"
+    },
+    {
+     "name": "Philippines men's national association football team",
+     "authority_id": "wikidata:Q219854",
+     "kind": "men's national association football team",
+     "detail": "in Philippines"
+    },
+    {
+     "name": "Captaincy General of the Philippines",
+     "authority_id": "wikidata:Q2721139",
+     "kind": "Captaincies of the Spanish Empire, colony",
+     "detail": "in New Spain, Spanish Empire; valid from 1565-05-07 until 1898-06-12"
+    },
+    {
+     "name": "2019 Southeast Asian Games",
+     "authority_id": "wikidata:Q3550424",
+     "kind": "multi-sport event",
+     "detail": "in Philippines; valid from 2019-11-24 until 2019-12-11"
+    }
+   ],
+   "evidence": {
+    "id": "c22ac528-9422-441d-a802-14dd96267c3b",
+    "kind": "authority",
+    "source": "wikidata",
+    "locator": null,
+    "excerpt": "Wikidata has 7 places for 'Philippines'\nPhilippines | wikidata:Q928 | sovereign state, archipelagic state, country | in Philippines; valid from 1565\nNational Historical Commission of the Philippines | wikidata:Q2652138 | government agency, historical society | in Philippines; valid from 1965-06-19\nNational Historical Commission of the Philippines historical marker | wikidata:Q21562164 | - | \nMember of the Senate of the Philippines | wikidata:Q18579098 | position | in Philippines\nPhilippines men's national association football team | wikidata:Q219854 | men's national association football team | in Philippines\nCaptaincy General of the Philippines | wikidata:Q2721139 | Captaincies of the Spanish Empire, colony | in New Spain, Spanish Empire; valid from 1565-05-07 until 1898-06-12\n2019 Southeast Asian Games | wikidata:Q3550424 | multi-sport event | in Philippines; valid from 2019-11-24 until 2019-12-11"
+   }
+  },
+  {
+   "source": "tgn",
+   "query": "Philippines",
+   "status": "ambiguous",
+   "note": "Getty TGN has 6 places for 'Philippines'",
+   "candidates": [
+    {
+     "name": "Philippines",
+     "authority_id": "tgn:1000135",
+     "kind": "nations, commonwealths, controlled regions",
+     "detail": "in Philippines"
+    },
+    {
+     "name": "Philippine",
+     "authority_id": "tgn:7268540",
+     "kind": "inhabited places",
+     "detail": "in Zeeland, Nederland"
+    },
+    {
+     "name": "Caroline Islands",
+     "authority_id": "tgn:7005669",
+     "kind": "island groups",
+     "detail": "in Oceania, World"
+    },
+    {
+     "name": "Philippine Sea",
+     "authority_id": "tgn:7016773",
+     "kind": "seas",
+     "detail": "in Oceans, World"
+    },
+    {
+     "name": "Philippine Islands",
+     "authority_id": "tgn:2578581",
+     "kind": "ridges (landforms)",
+     "detail": "in Portage, Wisconsin, United States"
+    },
+    {
+     "name": "Philippine House",
+     "authority_id": "tgn:7897501",
+     "kind": "country houses",
+     "detail": "in Cork, Ireland"
+    }
+   ],
+   "evidence": {
+    "id": "93df6b9e-d90d-4328-a0cd-3466b36b96ff",
+    "kind": "authority",
+    "source": "tgn",
+    "locator": null,
+    "excerpt": "Getty TGN has 6 places for 'Philippines'\nPhilippines | tgn:1000135 | nations, commonwealths, controlled regions | in Philippines\nPhilippine | tgn:7268540 | inhabited places | in Zeeland, Nederland\nCaroline Islands | tgn:7005669 | island groups | in Oceania, World\nPhilippine Sea | tgn:7016773 | seas | in Oceans, World\nPhilippine Islands | tgn:2578581 | ridges (landforms) | in Portage, Wisconsin, United States\nPhilippine House | tgn:7897501 | country houses | in Cork, Ireland"
+   }
+  }
+ ]
+}

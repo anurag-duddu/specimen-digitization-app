@@ -865,13 +865,14 @@ def test_105526328s_method_settles_and_its_habitat_clears_as_not_on_the_label(tm
     verify_evidence(rig.specimen, rig.blobs)
 
 
-def test_105526328s_precise_location_mun_or_mum_beside_the_settled_town_is_not_on_the_label(tmp_path):
+def test_105526328s_precise_location_mun_or_mum_beside_the_settled_town_is_not_on_the_label(tmp_path, first_pass_path):
     """Round 2 of the production test, end to end with the real run's
     readers: the precise location's expert offers "Yepocapa, Mun." (3A) and
     "Yepocapa, Mum." (3B); the town "Yepocapa" settles. The label writes no
     place finer than the town, and the readers differ only inside the
     marker "Mun.": the precise location is not on the label (rule A). On
-    5332ce4e3 it was ambiguous, for review."""
+    5332ce4e3 it was ambiguous, for review, as it stays on the units path,
+    where neither the marker check nor rule A clears it (WP 2.2)."""
     from test_step import IN_YEPOCAPA, research
 
     rig = label_3(tmp_path)
@@ -886,6 +887,11 @@ def test_105526328s_precise_location_mun_or_mum_beside_the_settled_town_is_not_o
     field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
     assert (run.fields["city"].state, run.fields["city"].literal) == (ValueState.SUPPORTED, "Yepocapa")
     place = run.fields["precise_location"]
+    if first_pass_path == "units":
+        assert (place.state, place.literal) == (ValueState.AMBIGUOUS, None)
+        assert "precise_location" not in cleared_as_not_on_label(run)
+        assert "refusal" not in decisions.get("precise_location", {})
+        return
     assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
     assert place.reason == (field_step.NO_FINER_NOT_ON_LABEL.format(markers='"Mun."')
         + " The readers differ: Mun. or Mum.")
@@ -1897,11 +1903,13 @@ def precise(literal):
     # The department, the settled province's text.
     ("Chimaltenango", "Province/State"),
 ], ids=["the-city", "the-province"])
-def test_a_precise_location_that_is_only_a_settled_places_text_is_not_on_the_label(tmp_path, literal, field_name):
+def test_a_precise_location_that_is_only_a_settled_places_text_is_not_on_the_label(tmp_path, literal, field_name,
+        first_pass_path):
     """The answer settles nothing finer than the places: the precise location
     is not present, as label_lacks_value would make it, and clears as not on
     the label (rule A), its reason and check row saying why. On f800c656 it
-    settles as the place's text."""
+    settles as the place's text, as it does on the units path, where a
+    town-only locality is still a precise location (WP 2.2)."""
     from test_step import ABSENT, IN_YEPOCAPA, TODAY, lacking, not_on_label_rows, research
 
     rig = yepocapa_rig(tmp_path)
@@ -1914,6 +1922,10 @@ def test_a_precise_location_that_is_only_a_settled_places_text_is_not_on_the_lab
     assert {key: run.fields[key].state for key in ("province_state", "city")} == dict.fromkeys(
         ("province_state", "city"), ValueState.SUPPORTED)
     place = run.fields["precise_location"]
+    if first_pass_path == "units":
+        assert (place.state, place.literal) == (ValueState.SUPPORTED, literal)
+        assert "precise_location" not in cleared_as_not_on_label(run) and "refusal" not in decisions["precise_location"]
+        return
     assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
     assert place.reason == field_step.REPEATS_NOT_ON_LABEL.format(literal=literal, field=field_name) + " Read."
     assert decisions["precise_location"] == {"refusal": "place_text_only", "rule": "A_not_on_label"}
@@ -1957,10 +1969,12 @@ def test_a_precise_location_whose_town_did_not_settle_is_unchanged(tmp_path):
     assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa")
 
 
-def test_a_precise_location_that_is_only_the_towns_text_waits_for_a_person_where_rule_a_declines(tmp_path):
+def test_a_precise_location_that_is_only_the_towns_text_waits_for_a_person_where_rule_a_declines(tmp_path,
+        first_pass_path):
     """Rule A needs every label read whole: with a reader's unreadable span the
     precise location stays not present, for review, its reason naming the
-    city, as label_lacks_value would leave it."""
+    city, as label_lacks_value would leave it. On the units path the town
+    stands as the precise location (WP 2.2)."""
     from test_step import ABSENT, IN_YEPOCAPA, TODAY, lacking, not_on_label_rows, research
 
     rig = yepocapa_rig(tmp_path)
@@ -1972,6 +1986,10 @@ def test_a_precise_location_that_is_only_the_towns_text_waits_for_a_person_where
     field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
     field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
     place = run.fields["precise_location"]
+    if first_pass_path == "units":
+        assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa")
+        assert "refusal" not in decisions.get("precise_location", {}) and not not_on_label_rows(run, "precise_location")
+        return
     assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
     assert place.reason == field_step.REPEATS_A_PLACE.format(literal="Yepocapa", field="City") + " Read."
     assert decisions["precise_location"] == {"refusal": "place_text_only",
@@ -1981,10 +1999,11 @@ def test_a_precise_location_that_is_only_the_towns_text_waits_for_a_person_where
 
 
 def test_a_precise_location_that_is_only_the_towns_text_is_not_present_off_the_profiles_list(
-        tmp_path, monkeypatch):
+        tmp_path, monkeypatch, first_pass_path):
     """Off the profile's not-on-the-label list the value is still what
     label_lacks_value makes it, not present, and the record waits for a
-    person (rule A applies only to the fields the profile lists)."""
+    person (rule A applies only to the fields the profile lists). On the units
+    path the town stands as the precise location (WP 2.2)."""
     from test_step import ABSENT, IN_YEPOCAPA, lacking
 
     from specimen_digitization.field_research import contracts
@@ -1996,6 +2015,9 @@ def test_a_precise_location_that_is_only_the_towns_text_is_not_present_off_the_p
     settle(rig, lacking(*(set(ABSENT) - {"precise_location"}), **IN_YEPOCAPA, precise_location=precise("Yepocapa")),
         tools=Gazetteer(rig.blobs))
     place = run.fields["precise_location"]
+    if first_pass_path == "units":
+        assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa")
+        return
     assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
     assert place.reason == field_step.REPEATS_A_PLACE.format(literal="Yepocapa", field="City") + " Read."
     assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:precise_location" in run.reasons
@@ -2042,12 +2064,13 @@ def test_a_town_with_a_unit_word_after_it_still_settles(tmp_path):
 
 
 @pytest.mark.parametrize("listed", [False, True], ids=["off-the-list", "listed"])
-def test_a_town_and_its_marker_are_the_marker_checks_alone(tmp_path, monkeypatch, listed):
+def test_a_town_and_its_marker_are_the_marker_checks_alone(tmp_path, monkeypatch, listed, first_pass_path):
     """"Yepocapa, Mun." beside the settled town. Off the profile's list the
     step does not look for a marker (_no_finer_place), so the resolved line
     settles as its text and the record clears, as PR #309's review (finding
     4) established; listed, the marker check makes it not present and it
-    clears as not on the label. Both as on f800c656."""
+    clears as not on the label. Both as on f800c656. On the units path the
+    marker check never runs (WP 2.2): listed too, the line settles as its text."""
     from test_step import ABSENT, IN_YEPOCAPA, TODAY, lacking, research
 
     from specimen_digitization.field_research import contracts
@@ -2063,7 +2086,7 @@ def test_a_town_and_its_marker_are_the_marker_checks_alone(tmp_path, monkeypatch
     field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
     field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
     place = run.fields["precise_location"]
-    if listed:
+    if listed and first_pass_path == "old":
         assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
         assert decisions["precise_location"] == {"refusal": "admin_marker_only", "rule": "A_not_on_label"}
     else:

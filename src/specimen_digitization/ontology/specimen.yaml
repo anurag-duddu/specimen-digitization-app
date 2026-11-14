@@ -25,8 +25,10 @@
 # tests/test_ontology.py; by a model; or not yet, with the work package that
 # builds it); one statement that is not a rule; and the highest-point table from
 # Wikidata, which code reads (WP 2.3) and no rendered text carries. The rules
-# render through Ontology.render_rules, which no model's instructions carry in
-# this version. Version 2.0 also resolves the meanings that version 1.0 and
+# render through Ontology.render_rules, which no model's instructions carry;
+# plan WP 2.2 gives each rule the instruction a model carries on the units path
+# (see the rules) and adds the code's own notation tables (`tables`, last),
+# which no rendered text carries either. Version 2.0 also resolves the meanings that version 1.0 and
 # WP 1.5's gap report left open, from sources and without asking the owner. The
 # owner, 2026-11-14, in the coordinator's session, answering the coordinator's
 # plan to put them to him as questions:
@@ -348,7 +350,7 @@ notation_rule:
 # The label notations and every reading each allows (G29), with the fields
 # each can belong to. The elevation unit spellings and the range joiners that
 # common.txt renders from field_research/written.py (its ELEVATION_UNITS and
-# RANGE_JOINERS lines) stay there until WP 2.2 makes this file their one source.
+# RANGE_JOINERS lines) are in `tables` below, pinned equal to written.py's.
 notations:
   - id: philippine_islands_abbreviation
     written: ["P.I."]
@@ -471,7 +473,9 @@ notations:
       - src/specimen_digitization/field_research/prompts/common.txt:39
   # field_research/written.py decides the capital "M" exception in code (_a_name,
   # written.py:451-462; _counts_sexes, written.py:465-494; the unit decision,
-  # written.py:523-528); WP 2.2 aligns this entry with it.
+  # written.py:523-528). WP 2.2 checked this entry against those lines: a capital
+  # "M" after a number is no unit in a count of males and females, and a doubtful
+  # one before a person's name or initial, the two cases its reading states.
   - id: metres
     written: ["<n> m"]
     readings: ["metres, the unit of an elevation; not metres when a capital \"M\" stands before a name or in a count of males and females"]
@@ -668,6 +672,14 @@ questions:
 # that pin it, one to one), `model`, or `not yet`, with `when` naming the work
 # package that builds it. A rule WP 2.3 builds is checked by
 # code from then, and WP 2.3 changes its `check` and that test list.
+#
+# WP 2.2 puts the rules into the models' instructions on the units path, each
+# as its `instruction`: what a model does under the rule, never how the code
+# decides. A model receives only the rules that concern it
+# (Ontology.render_instructions), so the units path's expert request stays
+# under its input bound: each field's expert the rules whose `fields` name its
+# field; the readers and the first pass the rules marked `reading`, those about
+# reading a label; the organiser, which proposes every field, every rule.
 rules:
   - id: one_collecting_event
     statement: >-
@@ -676,6 +688,11 @@ rules:
       punctuation and unit words such as "Dept." aside) that no source the
       answer cites confirms as one place, an answer that settles the field on
       one label's text is refused.
+    instruction: >-
+      A specimen has one collecting event: where two labels write two different
+      collecting dates, or two place names no source confirms as one place, give both
+      texts, never one label's alone.
+    fields: [country, province_state, county, city, precise_location, date_visited_from, date_visited_to]
     check: code
     darwin_core: "Event: eventDate; dcterms:Location: locality"
     source:
@@ -688,6 +705,9 @@ rules:
       The apply-time refusal stays as today: it checks a candidate against the
       settled country and province, but a city against a settled county only
       for a near spelling.
+    instruction: >-
+      A place below the country lies inside the country and province its label writes.
+    fields: [province_state, county, city]
     note: >-
       Moved to `not yet` in review round 4 (the coordinator's ruling): today's
       check breaks this on one input, a WP 2.3 fail-first case. The country
@@ -712,6 +732,10 @@ rules:
       person, including what the refusal at apply time lets pass (a settled
       Coles County, then an exact "Chicago" under Illinois), and so is a chain
       that derivation fills when it breaks the chain.
+    instruction: >-
+      The places form one chain, country > province or state > county > city, each
+      inside the one above it.
+    fields: [country, province_state, county, city]
     check: not yet
     when: WP 2.3
     darwin_core: country, stateProvince, county, municipality
@@ -724,6 +748,10 @@ rules:
       is allowed. Dates written at different precisions compare on the parts
       both have ("1946" and "1946-09-06" agree). A determination dated before
       the collecting date is marked for a person, both dates listed.
+    instruction: >-
+      The collecting date is on or before the determination date, the same day
+      allowed; dates written at different precisions agree on the parts both write.
+    fields: [date_visited_from, date_visited_to, date_identified]
     check: not yet
     when: WP 2.3
     darwin_core: eventDate, dateIdentified
@@ -734,6 +762,11 @@ rules:
     statement: >-
       A numeric date whose two orders, day-month and month-day, give two
       different dates is never settled on either reading by the date check.
+    instruction: >-
+      A numeric date whose day-month and month-day orders give two different dates is
+      either until evidence decides: never read it one way alone.
+    fields: [date_visited_from, date_visited_to, date_identified]
+    reading: true
     check: code
     darwin_core: eventDate, dateIdentified
     source:
@@ -743,6 +776,11 @@ rules:
     statement: >-
       Codes are never dates nor any part of them: a slide code such as
       "IV-29-68-4" beside the collecting date "IV-23-48" is no date.
+    instruction: >-
+      A code is never a date nor part of one: a slide code such as "IV-29-68-4" beside
+      the collecting date "IV-23-48" is no date.
+    fields: [date_visited_from, date_visited_to, date_identified]
+    reading: true
     note: >-
       Moved to `not yet` in review round 5 (the coordinator's ruling): today's
       date check breaks this on one input, a WP 2.3 fail-first case. With the
@@ -765,6 +803,11 @@ rules:
       A label's type (locality, determination, code) sends its units to the
       experts of its fields first and never keeps a field's expert from a unit:
       a determination label that writes a locality reaches the locality expert.
+    instruction: >-
+      A label's type (locality, determination, code) never limits what its text holds:
+      a determination label may write a locality.
+    fields: []
+    reading: true
     check: not yet
     when: WP 2.3
     darwin_core: "ours: no Darwin Core term fits a label"
@@ -784,6 +827,11 @@ rules:
       is unresolved: magnitude alone never decides; so it is when (b) or (c)
       fails or the country is marked. Terrain takes no part while the owner's
       decision D5 is held.
+    instruction: >-
+      Keep an elevation's foot mark (') or "ft" wherever it is written; a
+      number's size alone never makes it feet.
+    fields: [elevation_from_m, elevation_to_m, elevation_from_ft, elevation_to_ft]
+    reading: true
     check: not yet
     when: WP 2.3
     darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
@@ -796,6 +844,10 @@ rules:
       An answer that settles an elevation field on a number that one of its
       readings writes with no unit anywhere in that reading is refused: a unit
       is never guessed from the magnitude, the place or a map.
+    instruction: >-
+      Never give an elevation a unit its label does not write: not from its size, the
+      place or a map.
+    fields: [elevation_from_m, elevation_to_m, elevation_from_ft, elevation_to_ft]
     check: code
     darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
     source:
@@ -806,6 +858,10 @@ rules:
     statement: >-
       An answer that settles an elevation field on a number that one of its
       readings writes in the other unit is refused.
+    instruction: >-
+      An elevation's written unit decides its field: metres go to the metre fields,
+      feet to the foot fields.
+    fields: [elevation_from_m, elevation_to_m, elevation_from_ft, elevation_to_ft]
     check: code
     darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
     source:
@@ -817,6 +873,10 @@ rules:
       Upward derivation (a country from a settled province) stays as today and
       fills only open fields; the place chains that derivation fills are
       checked against the place chain, and one that fails it is marked.
+    instruction: >-
+      Leave a larger place the label does not write empty: never take it from a
+      smaller place's parents.
+    fields: [country, province_state, county]
     note: >-
       Moved to `not yet` in review round 4 (the coordinator's ruling): today's
       derivation breaks this on inputs that are WP 2.3's fail-first cases.
@@ -842,6 +902,10 @@ rules:
       derived elevation never replaces a stated one; and no elevation is
       derived while an elevation field is neither settled nor open (one the
       readings disagree on goes to a person first).
+    instruction: >-
+      Never convert an elevation to the other unit: give it in the unit the label
+      writes.
+    fields: [elevation_from_m, elevation_to_m, elevation_from_ft, elevation_to_ft]
     check: code
     darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
     source:
@@ -853,6 +917,10 @@ rules:
     statement: >-
       A derived Date Visited To is the date of a settled Date Visited From, at
       its precision, and is never derived from a written range.
+    instruction: >-
+      Give Date Visited To only from an end date the label writes, never from a single
+      collecting date.
+    fields: [date_visited_to]
     check: code
     darwin_core: eventDate
     source:
@@ -873,18 +941,40 @@ rules:
       written among those lines included. It is never cut to the first line,
       and a label whose locality names nothing finer than its town still has a
       Precise Location: those lines as written.
+    instruction: >-
+      Precise Location is the label's locality as written: every line of its locality
+      text, with its line breaks, the higher places and an elevation written on those
+      lines, never a collector or a date; never only its first line, and a locality
+      naming nothing finer than its town has one too.
+    fields: [precise_location]
+    reading: true
     note: >-
-      Today's code disagrees in three places, and WP 2.2 makes each follow this
-      rule (the plan's WP 2.2 row, the coordinator's re-plan of 2026-11-14):
-      the precise location brief leaves out the higher places and an elevation
-      (precise_location.txt:8) and answers label_lacks_value when no reading
-      writes anything finer than the other place fields (:12); the step clears
-      such a field as not on the label (step.py:3594-3620, owner decision A as
-      the schema session applied it to this field); and a precise location read
-      from the transcript that holds an elevation is refused
-      (agreement.py:323-324, :840-861), so "Yepocapa, 4800 ft." is refused today.
-    check: not yet
-    when: WP 2.2
+      Checked by a model from WP 2.2 (the plan's WP 2.2 row, the coordinator's
+      re-plan of 2026-11-14), on the units path only: the instruction above is
+      in the readers', the first pass's, the organiser's and the precise
+      location expert's instructions, and that expert's brief takes the whole
+      locality (prompts/units.txt, its precise_location.txt texts). Of the
+      three places that disagreed with it, the brief and the step follow it
+      there, and the old path keeps them: a town-only locality is never
+      cleared as not on the label (step._no_finer_place, step._repeats_a_place,
+      step.mark_not_on_label, step.not_on_label);
+      tests/field_research/test_precise_location_extent.py pins each on both
+      paths. A precise location read from the transcript that holds an
+      elevation ("Yepocapa, 4800 ft." over "Chimaltenango, Guatemala") is still
+      refused, on both paths (agreement._holds_another_kind, :323-324,
+      :840-861), and so is one whose elevation text another field settled
+      (step._taken): the field is left for a person. An organiser candidate
+      that holds an elevation and is taken as it is can settle, on both paths,
+      as on main (agreement.literal_refusal checks another kind's text only on
+      the transcript basis). The coordinator's ruling
+      of 2026-11-14 took the elevation out of WP 2.2 after two review rounds
+      found inputs that passed a date or no locality through; WP 2.3 decides
+      when an elevation inside a locality is accepted (the plan's WP 2.3 row).
+      It is not `code`: besides that refusal, no check refuses a precise
+      location cut short ("E. slope Mt. McKinley" alone, where the label goes
+      on with "Davao Prov." and "Mindanao, P.I."), so code does not guarantee
+      that the value is the label's whole locality.
+    check: model
     darwin_core: verbatimLocality
     source:
       - docs/product-requirements/PRD.md:519
@@ -1142,3 +1232,84 @@ highest_points:
     - {country: Q805, country_name: "Yemen", point: Q1261935, point_name: "Jabal an Nabi Shu'ayb", elevation_m: 3666}
     - {country: Q953, country_name: "Zambia", point: Q18351462, point_name: "Mafinga Central", elevation_m: 2339}
     - {country: Q954, country_name: "Zimbabwe", point: Q152294, point_name: "Mount Nyangani", elevation_m: 2592}
+
+# The code's own notation tables (plan WP 2.2: one source of notations). Each
+# stays in the module that reads it, so the old path reads what it read before,
+# and tests/test_ontology.py pins each equal to its entry here: a change on
+# either side fails that test until the other follows. No rendered text carries
+# them; the experts' brief renders its unit and range lines from the code's
+# tables (field_research/prompts/__init__.py).
+tables:
+  place_unit_words:
+    means: >-
+      the unit words of a place's name, folded, that the Google geocoding tool
+      drops as whole words before it compares a result with a label's place
+      ("Davao Prov." compares as "davao")
+    words: [
+      "prov", "province", "provincia", "estado", "state", "region", "dept", "department",
+      "depto", "co", "county", "mun", "municipio", "municipality"]
+    source:
+      - src/specimen_digitization/application/geography_tool.py:59-66
+      - src/specimen_digitization/application/geography_tool.py:112-122
+  elevation_units:
+    means: >-
+      an elevation's units by unit, folded, periods and spaces dropped, as the
+      elevation checks read them after or before a number
+    units:
+      m: [
+        "m", "mts", "mtr", "mtrs", "metre", "metres", "meter", "meters", "metro", "metros",
+        "metri", "msnm", "msm", "masl", "mamsl", "msl", "mslm", "mum", "mudm", "munn", "mnn",
+        "manm", "malt", "melev"]
+      ft: [
+        "ft", "feet", "foot", "pies", "pie", "pes", "fuss", "fu\u00df", "pieds", "pied",
+        "piedi", "piede", "voet", "ftasl", "ftamsl", "psnm", "piessnm", "ftalt", "'"]
+    source:
+      - src/specimen_digitization/field_research/written.py:126-152
+  range_joiners:
+    means: >-
+      the words, by language, and the signs that join two numbers or dates
+      into a range, besides a dash
+    words:
+      English: ["to", "till", "until", "thru", "through", "and"]
+      Spanish: ["a", "al", "hasta", "hasta el", "y"]
+      Portuguese: ["a", "ao", "at\u00e9", "e"]
+      French: ["\u00e0", "au", "jusqu'\u00e0", "jusqu'au", "et"]
+      German: ["bis", "bis zum", "und"]
+      Italian: ["a", "al", "fino", "e"]
+      Dutch: ["tot", "tot en met", "en", "t/m"]
+      Latin: ["ad", "usque"]
+    signs: ["&", "/", "~"]
+    source:
+      - src/specimen_digitization/field_research/written.py:104-124
+  date_notations:
+    means: >-
+      the notations a date literal is read by, in the order they are tried,
+      each by its name in the code's table and an example the notation reads
+      first; a name selects how the literal is read, not always the order
+      recorded on a reading: "numeric" gives readings ordered month-day-year
+      and day-month-year, and "year-numeric" year-month-day and year-day-month
+    notations:
+      - {order: month-day-year, example: "IX-6-46"}
+      - {order: month-day, example: "IX-6"}
+      - {order: month-year, example: "IX.'46"}
+      - {order: day-month-year, example: "6 IX 1946"}
+      - {order: day-month-year, example: "6.ix.1946"}
+      - {order: year-month-day, example: "1946 IX 6"}
+      - {order: year-month-day, example: "1946.ix.6"}
+      - {order: year-month, example: "1946.IX"}
+      - {order: day-month, example: "6 IX"}
+      - {order: day-month, example: "6.ix"}
+      - {order: numeric, example: "4-5-48"}
+      - {order: year-numeric, example: "1946-04-05"}
+      - {order: day-monthname-year, example: "6 Sept. 1946"}
+      - {order: monthname-day-year, example: "Sept. 6, 1946"}
+      - {order: monthname-year, example: "Sept. 1946"}
+      - {order: monthname-day, example: "Sept. 6"}
+      - {order: day-monthname, example: "6 Sept."}
+      - {order: year-monthname-day, example: "1946 Sept. 6"}
+      - {order: year-monthname, example: "1946 Sept."}
+      - {order: year, example: "1946"}
+      - {order: year, example: "'46"}
+    source:
+      - src/specimen_digitization/application/date_notations.py:62-85
+      - src/specimen_digitization/application/field_validators.py:274-281

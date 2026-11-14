@@ -33,6 +33,11 @@ from specimen_digitization.field_research.contracts import (
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 SLIDES = ("105526325", "105526324")
+# The largest request of each rebuilt conversation, in bytes (budget.input_token_bound), with WP 2.2's
+# instructions: the province expert's rules (ontology.render_instructions("expert", "province_state"),
+# 523 bytes with the blank line before them) in, common.txt's two date notation lines replaced (573
+# bytes out; test_units_instructions.py). On main 530b2cf18 they were 47,867 and 47,495.
+LARGEST = {"105526325": 47_817, "105526324": 47_445}
 
 
 @pytest.fixture(autouse=True)
@@ -71,8 +76,9 @@ class Stored:
         return SourceAnswer(source_id, query, LookupStatus.TIMEOUT, (), None, note="timed out")
 
 
-def conversation(lookups):
-    """The rebuilt conversation (module docstring) as a FunctionModel's turns."""
+def conversation(lookups, literal=None):
+    """The rebuilt conversation (module docstring) as a FunctionModel's turns; with `literal`, both refused
+    answers give that literal (as for an expert other than the province's)."""
     queries = list(dict.fromkeys(query for _, query in lookups))
     turns = [[ToolCallPart("lookup", {"source": source, "query": query})
         for source, query in [*(key for key in lookups if key[1] == each), *((("nga", each),) if each == queries[0]
@@ -82,9 +88,9 @@ def conversation(lookups):
     # As long as an answer's explanation may be (experts.MAX_EXPLANATION).
     explanation = ("The readings write 'Davao Prov.' and 'Mindanao'; Wikidata confirms Davao as the province, and "
         "Mindanao is the island the province lies on, so the province is Davao. " * 5)[:experts.MAX_EXPLANATION]
-    refused = [{"outcome": "resolved", "literal": "Mindanao", "reading_names": ["2A", "2B"],
+    refused = [{"outcome": "resolved", "literal": literal or "Mindanao", "reading_names": ["2A", "2B"],
         "source_evidence_ids": [wikidata.evidence.id], "explanation": explanation},
-        {"outcome": "resolved", "literal": "Mindanao", "reading_names": ["2A"], "value": "Mindanao",
+        {"outcome": "resolved", "literal": literal or "Mindanao", "reading_names": ["2A"], "value": literal or "Mindanao",
          "source_evidence_ids": [wikidata.evidence.id], "explanation": explanation}]
     sent = []
 
@@ -128,7 +134,7 @@ def test_the_rebuilt_conversation_of_a_refused_province_request_fits_the_input_b
     assert outcome.failure is None and outcome.answer == FieldAnswer(outcome="sources_cannot_resolve",
         explanation="The sources do not settle the province.")
     assert len(bounds) == requests == 7
-    assert max(bounds) <= budget.DEFAULT_MAX_INPUT_TOKENS
+    assert max(bounds) == LARGEST[slide] <= budget.DEFAULT_MAX_INPUT_TOKENS
 
 
 def test_a_unit_whose_readers_write_one_text_carries_it_once():
@@ -144,3 +150,94 @@ def test_a_unit_whose_readers_write_one_text_carries_it_once():
     assert [(unit.get("text"), unit.get("readers")) for unit in document["1"]] == [
         (None, {"1A": "Shrubs,", "1B": "Shurbs,"}), ("forest", None)]
     assert [unit["readers"] for unit in document["2"]] == [{"2A": "Mt."}, {"2A": "Apo"}]
+
+
+# WP 2.2's review (G51, not blocking 2): the precise location expert's units-path instructions are now longer
+# than the province's. The same rebuilt conversation given to each place expert, both refused answers forced to
+# one literal no reading writes ("Mindanaq", refused as no candidate), measured in bytes at its largest request.
+PLACE_EXPERTS = ("province_state", "precise_location", "city", "county", "country")
+LARGEST_BY_EXPERT = {
+    ("105526325", "province_state"): 46_179, ("105526325", "precise_location"): 46_690, ("105526325", "city"): 45_513,
+    ("105526325", "county"): 46_065, ("105526325", "country"): 44_803,
+    ("105526324", "province_state"): 45_807, ("105526324", "precise_location"): 46_271, ("105526324", "city"): 45_141,
+    ("105526324", "county"): 45_693, ("105526324", "country"): 44_431,
+}
+
+
+@pytest.mark.parametrize("key", PLACE_EXPERTS)
+@pytest.mark.parametrize("slide", SLIDES)
+def test_the_rebuilt_conversation_given_to_each_place_expert_fits_the_input_bound(monkeypatch, slide, key):
+    """It shows the margin of each place expert on one conversation, not a maximum over every conversation."""
+    from dataclasses import replace
+
+    from specimen_digitization.field_research.contracts import FIELD_TOOLS
+
+    readings, task, context, lookups = loaded(slide)
+    task = replace(task, key=key, tools=tuple(FIELD_TOOLS[key]))
+    bounds = []
+    measure = budget.input_token_bound
+    monkeypatch.setattr(budget, "input_token_bound", lambda messages, parameters: bounds.append(
+        measure(messages, parameters)) or bounds[-1])
+    respond, requests = conversation(lookups, "Mindanaq")
+    resolver = experts.make_resolver(model_factory=lambda: FunctionModel(respond),
+        meter=budget.CostMeter(10_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+    outcome = asyncio.run(resolver(task, readings, context, tools=Stored(lookups)))
+    assert outcome.failure is None and outcome.answer.outcome == "sources_cannot_resolve"
+    assert len(bounds) == requests == 7
+    assert max(bounds) == LARGEST_BY_EXPERT[(slide, key)] <= budget.DEFAULT_MAX_INPUT_TOKENS
+
+
+# WP 2.2's paid run (the coordinator's round-2 request): the three-reader arm's country expert on 105526322 was
+# refused as input_too_large in its second attempt, after 5 model calls (wp15c's country settled in 2 and 3 calls).
+# tests/fixtures/units_country_request_105526322.json holds that attempt's inputs from the stored run (its "source"
+# says how). Rebuilt: one turn per distinct query, an answer the checks refuse, with as long an explanation as an
+# answer may give, then the request for the next answer. The model's own text in each turn is not stored, so the
+# rebuilt requests are smaller than the refused one; the test pins them as a known case at their size.
+COUNTRY_SLIDE = "105526322"
+COUNTRY_LARGEST = 45_408
+
+
+def loaded_country():
+    data = json.loads((FIXTURES / f"units_country_request_{COUNTRY_SLIDE}.json").read_text(encoding="utf-8"))
+    readings = tuple(Reading(r["name"], r["region_id"], r["observation_id"], r["input_source"], r["text"],
+        units=ReadingUnits.model_validate(r["units"]) if r["units"] is not None else None) for r in data["readings"])
+    given = data["task"]
+    task = FieldTask(given["key"], given["mandatory"], FieldValue.model_validate(given["current"]),
+        tuple(Candidate(**candidate) for candidate in given["candidates"]), tuple(given["tools"]))
+    context = {key: FieldValue(literal=value["literal"], verbatim_by_observation=value["verbatim_by_observation"])
+        for key, value in data["context"].items()}
+    lookups = {(item["source"], item["query"]): SourceAnswer(item["source"], item["query"],
+        LookupStatus(item["status"]), tuple(SourceCandidate(**candidate) for candidate in item["candidates"]),
+        Evidence(**item["evidence"]) if item["evidence"] else None, note=item["note"]) for item in data["lookups"]}
+    return readings, task, context, lookups
+
+
+def test_the_rebuilt_country_request_of_wp_2_2s_paid_run_is_a_known_case_at_its_size(monkeypatch):
+    readings, task, context, lookups = loaded_country()
+    assert all(reading.units is not None for reading in readings) and len(lookups) == 9
+    queries = list(dict.fromkeys(query for _, query in lookups))
+    turns = [[ToolCallPart("lookup", {"source": source, "query": query}) for source, query in lookups if query == each]
+        for each in queries]
+    explanation = ("The readings write 'Mindanao, P.I.'; the sources find the Philippines for 'Philippine Islands' "
+        "but several places for 'P.I.' and for 'Mindanao', so the country stays open. " * 5)[:experts.MAX_EXPLANATION]
+    sent = []
+
+    def respond(messages, info):
+        sent.append(len(messages))
+        if len(sent) <= len(turns):
+            return ModelResponse(parts=turns[len(sent) - 1])
+        given = ({"outcome": "resolved", "literal": "Philippine Islandz", "reading_names": ["2A"],
+            "explanation": explanation} if len(sent) == len(turns) + 1 else
+            {"outcome": "sources_cannot_resolve", "explanation": "The sources do not settle the country."})
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, given)])
+
+    bounds = []
+    measure = budget.input_token_bound
+    monkeypatch.setattr(budget, "input_token_bound", lambda messages, parameters: bounds.append(
+        measure(messages, parameters)) or bounds[-1])
+    resolver = experts.make_resolver(model_factory=lambda: FunctionModel(respond),
+        meter=budget.CostMeter(10_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+    outcome = asyncio.run(resolver(task, readings, context, tools=Stored(lookups)))
+    assert outcome.failure is None and outcome.answer.outcome == "sources_cannot_resolve"
+    assert len(bounds) == len(turns) + 2 == 6
+    assert max(bounds) == COUNTRY_LARGEST <= budget.DEFAULT_MAX_INPUT_TOKENS

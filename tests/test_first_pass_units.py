@@ -139,12 +139,21 @@ def test_the_units_prompt_is_pinned_on_the_units_path_and_only_there(tmp_path):
     assert PromptName.FIRST_PASS_UNITS.value not in old["prompts"]
     assert set(old["prompts"]) == {name.value for name in PromptName} - {"first-pass-units"}
     pinned = ResolvedPrompt.model_validate(units["prompts"]["first-pass-units"])
-    # The pinned text holds the brief render.
+    # The pinned text holds the brief render, then the rules about reading a label (WP 2.2).
     from specimen_digitization import ontology
 
-    assert ontology.render(brief=True) in pinned.text
+    assert ontology.render(brief=True) + "\n" + ontology.render_instructions("first_pass") in pinned.text
+    assert pinned.text.endswith(ontology.render_instructions("first_pass"))
     assert "Specimen ontology, version 2.0." in pinned.text
-    assert {k: v for k, v in units["prompts"].items() if k != "first-pass-units"} == old["prompts"]
+    # The readers' and the organiser's prompts carry the ontology's rules for them on the units
+    # path only (prompts.with_rules); every other prompt is the old path's.
+    ruled = {PromptName.LITERAL_TRANSCRIPTION.value: "reader", PromptName.STRUCTURED_EXTRACTION.value: "organiser"}
+    assert {k: v for k, v in units["prompts"].items() if k != "first-pass-units" and k not in ruled} == {
+        k: v for k, v in old["prompts"].items() if k not in ruled}
+    for name, model in ruled.items():
+        served, carried = old["prompts"][name], units["prompts"][name]
+        assert carried == {**served, "text": served["text"] + "\n\n" + ontology.render_instructions(model).strip()}
+        assert "specimen ontology" not in served["text"].lower()
 
 
 # The units prompt's image line, with the wording measured in the WP 1.5 gap analysis (off-repo:

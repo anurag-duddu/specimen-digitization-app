@@ -476,10 +476,9 @@ def test_bounded_prompt_resolution_uses_code_fallback_without_remote_provider(
     }.items():
         expected = expected.replace("{{" + key + "}}", value)
     if "{{ontology}}" in expected:
-        # FIRST_PASS_UNITS's `ontology` input.
-        from specimen_digitization import ontology
-
-        expected = expected.replace("{{ontology}}", ontology.render(brief=True))
+        # FIRST_PASS_UNITS's `ontology` input: the ontology's brief text and its rules about
+        # reading a label (WP 2.2).
+        expected = expected.replace("{{ontology}}", prompts.units_ontology())
     assert resolved.text == expected
     assert resolved.version is None
     assert resolved.text.encode() not in b"".join(batches)

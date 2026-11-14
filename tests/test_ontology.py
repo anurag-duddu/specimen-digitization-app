@@ -1,4 +1,4 @@
-"""The specimen ontology, version 2.0 (docs/execution/units/PLAN.md, WP 1.0 and WP 2.1;
+"""The specimen ontology, version 2.0 (docs/execution/units/PLAN.md, WP 1.0, WP 2.1 and WP 2.2;
 docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md sections 4 and 5)."""
 
 import copy
@@ -23,6 +23,9 @@ RENDERED = Path(__file__).with_name("fixtures") / "ontology_v2_rendered.txt"
 RENDERED_BRIEF = Path(__file__).with_name("fixtures") / "ontology_v2_rendered_brief.txt"
 # The rules' own text (WP 2.1): ontology.render_rules().
 RENDERED_RULES = Path(__file__).with_name("fixtures") / "ontology_v2_rules_rendered.txt"
+# The rules' instructions each model receives (WP 2.2): ontology.render_instructions, by model, and
+# by field for the experts, as JSON.
+RENDERED_INSTRUCTIONS = Path(__file__).with_name("fixtures") / "ontology_v2_instructions_rendered.json"
 MOVED_AT = " at 7a09445a2"
 PLACE = (
     "a place; the sources decide which level it is (a country, a province or state, a county or municipio, a"
@@ -429,6 +432,7 @@ def test_every_source_names_a_file_and_lines_it_has():
                     loaded.not_rules):
         sources += [source for item in section for source in item.source]
     sources += shipped()["notation_rule"]["source"]
+    sources += [source for table in shipped()["tables"].values() for source in table["source"]]
 
     for source in sources:
         if source.startswith("https://"):
@@ -454,7 +458,7 @@ def test_the_shipped_file_parses_unchanged_through_a_copy():
 
 # ---- version 2.0: the rules (WP 2.1) ----------------------------------------------------------------
 
-RULE_PARTS = ("id", "statement", "check", "darwin_core", "source")
+RULE_PARTS = ("id", "statement", "check", "darwin_core", "source", "instruction", "fields")
 
 
 @pytest.mark.parametrize("part", RULE_PARTS)
@@ -467,7 +471,7 @@ def test_the_loader_refuses_a_rule_missing_any_part(part):
         ontology.parse(data)
 
 
-@pytest.mark.parametrize("part", RULE_PARTS[:2] + RULE_PARTS[3:])
+@pytest.mark.parametrize("part", RULE_PARTS[:2] + RULE_PARTS[3:6])
 def test_the_loader_refuses_a_rule_whose_part_is_empty(part):
     data = shipped()
     entry(data, "rules", "date_order")[part] = [] if part == "source" else " "
@@ -516,8 +520,9 @@ def test_the_rules_rendered_text_is_pinned():
 
 
 def test_the_rules_text_names_no_code_line_work_package_or_gate_and_no_model_text_carries_it():
-    """The rules render through their own function; WP 2.2 puts that text into the models' instructions, so
-    it holds nothing NOT_FOR_A_MODEL refuses, and render() (both forms) holds no rule and no table row."""
+    """The rules render through their own function, which holds nothing NOT_FOR_A_MODEL refuses, and
+    render() (both forms) holds no rule and no table row: the models carry each rule's instruction
+    (render_instructions), never its statement."""
     rules = ontology.render_rules()
     assert NOT_FOR_A_MODEL.findall(rules) == []
     loaded = ontology.ontology()
@@ -534,7 +539,7 @@ RULE_CHECKS = {
     "date_order": "not yet", "day_month_order": "code", "code_is_no_date": "not yet", "label_type_routing": "not yet",
     "elevation_unit_feet": "not yet", "elevation_needs_a_unit": "code", "elevation_unit_decides_field": "code",
     "place_parents_derived": "not yet", "elevation_conversion": "code", "end_date_from_one_date": "code",
-    "precise_location_extent": "not yet",
+    "precise_location_extent": "model",
 }
 
 
@@ -545,8 +550,7 @@ def test_the_file_holds_the_specs_rules_each_checked_as_stated():
     assert {rule.id: rule.when for rule in loaded.rules if rule.check == "not yet"} == {
         "place_within_settled_places": "WP 2.3", "place_chain": "WP 2.3", "date_order": "WP 2.3",
         "code_is_no_date": "WP 2.3", "label_type_routing": "WP 2.3", "elevation_unit_feet": "WP 2.3",
-        "place_parents_derived": "WP 2.3",
-        "precise_location_extent": "WP 2.2"}
+        "place_parents_derived": "WP 2.3"}
     assert [entry.id for entry in loaded.not_rules] == ["taxon_regional_occurrence"]
     assert "docs/product-requirements/PRD.md:1207" in loaded.not_rules[0].source
 
@@ -751,3 +755,160 @@ def test_the_loader_refuses_the_table_without_any_part_of_its_citation(part):
 
     with pytest.raises(ontology.OntologyError, match="has no source" if part == "source" else f"missing key '{part}'"):
         ontology.parse(data)
+
+
+# ---- WP 2.2: the rules in the models' instructions --------------------------------------------------
+
+def every_instruction() -> dict[str, str]:
+    """ontology.render_instructions for each model, an expert's under "expert:<field>"."""
+    found = {model: ontology.render_instructions(model) for model in ("reader", "first_pass", "organiser")}
+    found |= {f"expert:{key}": ontology.render_instructions("expert", key) for key in MANDATORY}
+    return found
+
+
+def test_the_instructions_each_model_receives_are_pinned():
+    assert every_instruction() == json.loads(RENDERED_INSTRUCTIONS.read_text(encoding="utf-8"))
+
+
+# The fields each rule concerns and whether it is about reading a label: an expert receives the rules
+# naming its field, the readers and the first pass the reading rules, the organiser every rule.
+PLACES4 = ("country", "province_state", "county", "city")
+DATES = ("date_visited_from", "date_visited_to", "date_identified")
+ELEVATIONS = ("elevation_from_m", "elevation_to_m", "elevation_from_ft", "elevation_to_ft")
+RULE_ROUTES = {
+    "one_collecting_event": ((*PLACES4, "precise_location", "date_visited_from", "date_visited_to"), False),
+    "place_within_settled_places": (("province_state", "county", "city"), False),
+    "place_chain": (PLACES4, False),
+    "date_order": (DATES, False),
+    "day_month_order": (DATES, True),
+    "code_is_no_date": (DATES, True),
+    "label_type_routing": ((), True),
+    "elevation_unit_feet": (ELEVATIONS, True),
+    "elevation_needs_a_unit": (ELEVATIONS, False),
+    "elevation_unit_decides_field": (ELEVATIONS, False),
+    "place_parents_derived": (("country", "province_state", "county"), False),
+    "elevation_conversion": (ELEVATIONS, False),
+    "end_date_from_one_date": (("date_visited_to",), False),
+    "precise_location_extent": (("precise_location",), True),
+}
+
+
+def test_each_model_receives_the_rules_that_concern_it_and_no_other():
+    loaded = ontology.ontology()
+    assert {rule.id: (rule.fields, rule.reading) for rule in loaded.rules} == RULE_ROUTES
+    for model, text in every_instruction().items():
+        expert = model.partition(":")[2]
+        for rule in loaded.rules:
+            wanted = (model == "organiser" or (expert and expert in rule.fields)
+                or (model in ("reader", "first_pass") and rule.reading))
+            assert text.count(f"- {rule.instruction}") == wanted, (model, rule.id)
+        assert bool(text) == any(f"- {rule.instruction}" in text for rule in loaded.rules)
+
+
+# Words that say how the code decides, which a model's instruction never says (the coordinator's ruling 5
+# for WP 2.2: instructions say what to do).
+HOW_CODE_DECIDES = re.compile(r"\b(?:refused|refuses|marked|cleared|clears|settles|the code|the step|derived|"
+    r"checked|unresolved|a person)\b", re.IGNORECASE)
+
+
+def test_an_instruction_says_what_to_do_and_names_no_code_line_work_package_or_gate():
+    for rule in ontology.ontology().rules:
+        assert NOT_FOR_A_MODEL.findall(rule.instruction) == [], rule.id
+        assert HOW_CODE_DECIDES.findall(rule.instruction) == [], rule.id
+        assert rule.instruction not in rule.statement and rule.statement not in rule.instruction
+    for text in every_instruction().values():
+        assert NOT_FOR_A_MODEL.findall(text) == []
+
+
+@pytest.mark.parametrize("change,message", [
+    ({"fields": ["precise_location", "locality"]}, "is not one of the profile's 20 fields"),
+    ({"fields": ["precise_location", "precise_location"]}, "names a field twice"),
+    ({"reading": "yes"}, "must be true or false"),
+    ({"fields": " "}, "must be a list"),
+])
+def test_the_loader_refuses_a_rules_malformed_fields_or_reading(change, message):
+    data = shipped()
+    entry(data, "rules", "precise_location_extent").update(change)
+
+    with pytest.raises(ontology.OntologyError, match=message):
+        ontology.parse(data)
+
+
+@pytest.mark.parametrize("model,field,message", [
+    ("reviewer", None, "no model 'reviewer'"),
+    ("expert", None, "an expert's rules need its field"),
+    ("organiser", "country", "an expert's rules need its field"),
+    ("expert", "locality", "is not one of the profile's 20 fields"),
+])
+def test_render_instructions_refuses_a_model_or_field_it_does_not_know(model, field, message):
+    with pytest.raises(ontology.OntologyError, match=message):
+        ontology.render_instructions(model, field)
+
+
+# ---- WP 2.2: one source of notations, the code's tables pinned to the file -------------------------
+
+def table_problems(tables: ontology.Tables) -> list[str]:
+    """Where the file's tables and the code's disagree: geography_tool.NOTATIONS, written.ELEVATION_UNITS,
+    written.RANGE_WORDS and RANGE_SIGNS, and date_notations.NOTATIONS (its orders in order, each example
+    read first by the notation at its place)."""
+    from specimen_digitization.application import date_notations, geography_tool
+    from specimen_digitization.field_research import written
+
+    problems = []
+    words = tables.place_unit_words
+    if len(set(words)) != len(words) or frozenset(words) != geography_tool.NOTATIONS:
+        problems.append("place_unit_words")
+    if dict(tables.elevation_units) != written.ELEVATION_UNITS:
+        problems.append("elevation_units")
+    if dict(tables.range_words) != written.RANGE_WORDS or tables.range_signs != written.RANGE_SIGNS:
+        problems.append("range_joiners")
+    orders = [order for order, _ in tables.date_notations]
+    if orders != [order for order, _ in date_notations.NOTATIONS]:
+        problems.append("date_notations: orders")
+    else:
+        for index, (order, example) in enumerate(tables.date_notations):
+            first = next((at for at, (_, pattern) in enumerate(date_notations.NOTATIONS) if pattern.fullmatch(example)),
+                None)
+            if first != index:
+                problems.append(f"date_notations: {order} {example!r}")
+    return problems
+
+
+def test_the_codes_notation_tables_are_the_files():
+    assert table_problems(ontology.ontology().tables) == []
+
+
+@pytest.mark.parametrize("change,problem", [
+    (lambda t: t["place_unit_words"]["words"].append("dpto"), "place_unit_words"),
+    (lambda t: t["place_unit_words"]["words"].remove("mun"), "place_unit_words"),
+    (lambda t: t["elevation_units"]["units"]["ft"].remove("'"), "elevation_units"),
+    (lambda t: t["elevation_units"]["units"]["m"].append("mt"), "elevation_units"),
+    (lambda t: t["range_joiners"]["words"]["German"].append("bis zu"), "range_joiners"),
+    (lambda t: t["range_joiners"]["signs"].append("+"), "range_joiners"),
+    (lambda t: t["date_notations"]["notations"].pop(), "date_notations: orders"),
+    (lambda t: t["date_notations"]["notations"][3].update(example="6.ix.1946"),
+        "date_notations: day-month-year '6.ix.1946'"),
+], ids=["word-added", "word-removed", "foot-mark-removed", "mt-added", "joiner-added", "sign-added",
+        "notation-removed", "example-of-another-notation"])
+def test_a_table_that_disagrees_with_the_codes_fails(change, problem):
+    """The pin's failures, shown on copies of the file: each change to a table makes it disagree with
+    the code's, as a change to the code's table would."""
+    data = shipped()
+    change(data["tables"])
+
+    assert table_problems(ontology.parse(data).tables) == [problem]
+
+
+@pytest.mark.parametrize("table", ["place_unit_words", "elevation_units", "range_joiners", "date_notations"])
+def test_the_loader_refuses_a_table_with_no_source(table):
+    data = shipped()
+    del data["tables"][table]["source"]
+
+    with pytest.raises(ontology.OntologyError, match=f"tables.{table} has no source"):
+        ontology.parse(data)
+
+
+def test_no_rendered_text_carries_the_code_tables():
+    rendered = [ontology.render(), ontology.render(brief=True), ontology.render_rules(), *every_instruction().values()]
+    for text in rendered:
+        assert "mamsl" not in text and "depto" not in text and "year-monthname" not in text
