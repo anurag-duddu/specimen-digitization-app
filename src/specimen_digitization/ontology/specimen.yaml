@@ -685,15 +685,24 @@ rules:
       - src/specimen_digitization/field_research/agreement.py:2405-2423
   - id: place_within_settled_places
     statement: >-
-      When a place value is applied, the check of its larger places refuses a
-      place below the country whose source names no larger place, one whose
-      source puts it outside the country settled for its reading, a county or
-      a city outside the province settled for its reading, and a county that
-      is that province itself.
-    check: code
+      The refusal at apply time stays as today: a place candidate is checked
+      against the country and the province settled for its reading, and one
+      that lies outside them is refused.
+    note: >-
+      Moved to `not yet` in review round 4 (the coordinator's ruling): today's
+      check breaks this on two inputs, which are WP 2.3's fail-first cases.
+      The country Georgia settled, a county Fulton whose source names the US
+      state Georgia passes, because lies_in matches a parent by name
+      (agreement.py:2637-2641). The country United States settled, a province
+      written "Cook" and unsettled, a settled county Cook and an exact city
+      Gary in Indiana: refused NO_PROVINCE, as WP 2.3 keeps it.
+    check: not yet
+    when: WP 2.3
     darwin_core: country, stateProvince, county, municipality
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:242-246
+      - docs/execution/units/PLAN.md:127
+      - src/specimen_digitization/field_research/agreement.py:2637-2641
       - src/specimen_digitization/field_research/agreement.py:2772-2796
   - id: place_chain
     statement: >-
@@ -722,10 +731,8 @@ rules:
       - docs/execution/units/PLAN.md:127
   - id: day_month_order
     statement: >-
-      The date check reads a numeric date whose two orders, day-month and
-      month-day, give two different dates both ways and settles neither
-      reading, a conflict with both readings for a person; a numeric date
-      whose two orders give one date (5-5-48) settles on it.
+      A numeric date whose two orders, day-month and month-day, give two
+      different dates is never settled on either reading by the date check.
     check: code
     darwin_core: eventDate, dateIdentified
     source:
@@ -775,8 +782,8 @@ rules:
   - id: elevation_needs_a_unit
     statement: >-
       An answer that settles an elevation field on a number that one of its
-      readings writes with no unit is refused: a unit is never guessed from the
-      magnitude, the place or a map.
+      readings writes with no unit anywhere in that reading is refused: a unit
+      is never guessed from the magnitude, the place or a map.
     check: code
     darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
     source:
@@ -795,29 +802,26 @@ rules:
       - docs/execution/units/PLAN.md:127
   - id: place_parents_derived
     statement: >-
-      Upward derivation: a derived country, province or state, or county is
-      the parent that the source of a settled place below it names at that
-      level; it never replaces a value settled from the label; no parent is
-      derived where the settled places below whose proposals derivation takes
-      name different ones there; and a county is never derived from a city
-      whose source names fewer than three larger places, nor a province from a
-      county whose source names fewer than two.
+      Upward derivation (a country from a settled province) stays as today and
+      fills only open fields; the place chains that derivation fills are
+      checked against the place chain, and one that fails it is marked.
     note: >-
-      Derivation takes a place's proposal only where the field it fills is
-      open, or holds that place's own misfiled text (derive.py:118,
-      _can_derive_place). So with the province's text "Cook" unresolved, a
-      settled county Cook in Illinois and a settled city Gary in Indiana, the
-      province is derived as Illinois from the county alone
-      (test_a_misfiled_province_text_leaves_the_city_out_of_the_parent_agreement).
-      A derived chain that fails the place chain is marked by WP 2.3's check
-      stage (the rule place_chain; the plan's WP 2.3 row names the place chains
-      that derivation fills).
-    check: code
+      Moved to `not yet` in review round 4 (the coordinator's ruling): today's
+      derivation breaks this on inputs that are WP 2.3's fail-first cases.
+      With the province's text "Cook" unresolved, a settled county Cook in
+      Illinois and a settled city Gary in Indiana, the province is derived as
+      Illinois from the county alone (derive.py:118, _can_derive_place), a
+      chain that fails the place chain; and no test pins that a province
+      derived from a county is the county's province-level parent, never the
+      country (derive.py:45).
+    check: not yet
+    when: WP 2.3
     darwin_core: country, stateProvince, county
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:268-269
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:242-246
+      - docs/execution/units/PLAN.md:127
       - src/specimen_digitization/field_research/derive.py:43-50
-      - src/specimen_digitization/field_research/derive.py:68-74
       - src/specimen_digitization/field_research/derive.py:95-146
   - id: elevation_conversion
     statement: >-

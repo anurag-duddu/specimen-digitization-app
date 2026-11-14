@@ -528,12 +528,12 @@ def test_the_rules_text_names_no_code_line_work_package_or_gate_and_no_model_tex
 
 
 # The spec's section 4 and 5 relations and checks (WP 2.1's row), each a rule of the file, with how it is
-# checked today. WP 2.3 builds the four `not yet` rules it names and flips them to `code`.
+# checked today. WP 2.3 builds the six `not yet` rules it names and flips them to `code`.
 RULE_CHECKS = {
-    "one_collecting_event": "code", "place_within_settled_places": "code", "place_chain": "not yet",
+    "one_collecting_event": "code", "place_within_settled_places": "not yet", "place_chain": "not yet",
     "date_order": "not yet", "day_month_order": "code", "code_is_no_date": "code", "label_type_routing": "not yet",
     "elevation_unit_feet": "not yet", "elevation_needs_a_unit": "code", "elevation_unit_decides_field": "code",
-    "place_parents_derived": "code", "elevation_conversion": "code", "end_date_from_one_date": "code",
+    "place_parents_derived": "not yet", "elevation_conversion": "code", "end_date_from_one_date": "code",
     "precise_location_extent": "not yet",
 }
 
@@ -543,8 +543,9 @@ def test_the_file_holds_the_specs_rules_each_checked_as_stated():
 
     assert {rule.id: rule.check for rule in loaded.rules} == RULE_CHECKS
     assert {rule.id: rule.when for rule in loaded.rules if rule.check == "not yet"} == {
-        "place_chain": "WP 2.3", "date_order": "WP 2.3", "label_type_routing": "WP 2.3",
-        "elevation_unit_feet": "WP 2.3", "precise_location_extent": "WP 2.2"}
+        "place_within_settled_places": "WP 2.3", "place_chain": "WP 2.3", "date_order": "WP 2.3",
+        "label_type_routing": "WP 2.3", "elevation_unit_feet": "WP 2.3", "place_parents_derived": "WP 2.3",
+        "precise_location_extent": "WP 2.2"}
     assert [entry.id for entry in loaded.not_rules] == ["taxon_regional_occurrence"]
     assert "docs/product-requirements/PRD.md:1207" in loaded.not_rules[0].source
 
@@ -559,14 +560,8 @@ CODE_RULE_TESTS = {
         "tests/field_research/test_experts.py"
         "::test_two_labels_writing_one_field_differently_settle_only_through_a_source_confirming_both",
     ),
-    "place_within_settled_places": (
-        "tests/field_research/test_experts.py::test_a_place_fits_the_other_place_fields_its_reading_writes",
-        "tests/field_research/test_agreement.py"
-        "::test_a_county_on_the_settled_provinces_record_or_text_is_refused_as_the_province",
-    ),
     "day_month_order": (
         "tests/test_date_forms.py::test_a_form_that_leaves_a_choice_names_it_and_settles_nothing[4-5-48]",
-        "tests/test_date_forms.py::test_a_form_reads_as_its_start_end_and_precision[5-5-48]",
     ),
     "code_is_no_date": (
         "tests/field_research/test_date_split_lines.py"
@@ -575,16 +570,6 @@ CODE_RULE_TESTS = {
         "tests/field_research/test_agreement.py::test_a_number_with_no_unit_never_settles_an_elevation",),
     "elevation_unit_decides_field": (
         "tests/field_research/test_agreement.py::test_an_elevation_never_settles_a_field_of_the_other_unit",),
-    "place_parents_derived": (
-        "tests/field_research/test_step.py::test_blank_unresolved_country_is_derived_from_settled_state",
-        "tests/field_research/test_step.py::test_exact_place_matches_can_derive_missing_location_ancestors",
-        "tests/field_research/test_step.py"
-        "::test_a_parent_is_derived_only_when_every_settled_place_below_names_the_same_one",
-        "tests/field_research/test_step.py::test_a_county_or_a_province_is_derived_only_from_enough_parents",
-        "tests/field_research/test_step.py::test_a_derived_parent_never_replaces_a_place_settled_from_the_label",
-        "tests/field_research/test_step.py"
-        "::test_a_misfiled_province_text_leaves_the_city_out_of_the_parent_agreement",
-    ),
     "elevation_conversion": (
         "tests/field_research/test_step.py::test_derived_values_fill_what_the_label_leaves_out",
         "tests/field_research/test_step.py::test_no_elevation_is_derived_from_a_unit_the_readings_disagree_on",
@@ -652,12 +637,12 @@ def test_the_rule_to_test_map_fails_on_a_code_rule_with_no_test_or_a_test_that_d
 
     foreign = "tests/test_date_forms.py::test_a_form_reads_as_its_start_end_and_precision[4-5-48]"
     assert "tests/test_date_forms.py::test_a_form_that_leaves_a_choice_names_it_and_settles_nothing[4-5-48]" in collected
-    moved = {**CODE_RULE_TESTS, "day_month_order": (CODE_RULE_TESTS["day_month_order"][0], foreign)}
+    moved = {**CODE_RULE_TESTS, "day_month_order": (foreign,)}
     assert _map_problems(code, moved, collected) == [foreign + ": no such test"]
 
-    single = "tests/test_date_forms.py::test_a_form_reads_as_its_start_end_and_precision["
-    away = frozenset(item.replace(single, single + "renamed-") for item in collected)
-    assert _map_problems(code, CODE_RULE_TESTS, away) == [single + "5-5-48]: no such test"]
+    ambiguous = "tests/test_date_forms.py::test_a_form_that_leaves_a_choice_names_it_and_settles_nothing["
+    away = frozenset(item.replace(ambiguous, ambiguous + "renamed-") for item in collected)
+    assert _map_problems(code, CODE_RULE_TESTS, away) == [ambiguous + "4-5-48]: no such test"]
 
 
 # ---- version 2.0: the meanings resolved from sources (WP 2.1) -------------------------------------------

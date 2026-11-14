@@ -1781,26 +1781,6 @@ def test_a_county_or_a_province_is_derived_only_from_enough_parents(source_key, 
 
 
 
-def test_a_misfiled_province_text_leaves_the_city_out_of_the_parent_agreement():
-    """Today's behaviour, pinned (WP 2.1's rule place_parents_derived, its note): the province's text "Cook"
-    is unresolved, so derivation takes the settled county Cook's proposal (Illinois) through that misfiled
-    text (derive._can_derive_place) and leaves out the settled city Gary's (Indiana); the province is derived
-    as Illinois from the county alone. The place-chain check of WP 2.3 marks a derived chain that fails the
-    chain (the rule place_chain; the plan's WP 2.3 row)."""
-    us = ("United States", "tgn:us")
-    county, county_answer = _settled_place("county", "Cook", "tgn:cook", (("Illinois", "tgn:il"), us), "ev-cook")
-    city, city_answer = _settled_place("city", "Gary", "tgn:gary",
-        (("Lake", "tgn:lake"), ("Indiana", "tgn:in"), us), "ev-gary")
-    run = SimpleNamespace(evidence=[], fields={"country": FieldValue(state=ValueState.NOT_PRESENT),
-        "province_state": FieldValue(state=ValueState.UNRESOLVED, literal="Cook"), "county": county, "city": city})
-
-    filled = derive.fill(run, eligible=["country", "province_state"], asset_id=None,
-        received={"county": [county_answer], "city": [city_answer]})
-
-    province = run.fields["province_state"]
-    assert filled == ["province_state", "country"]
-    assert (province.parsed, province.authority_id, province.derived_from) == ("Illinois", "tgn:il", ["county"])
-
 def test_a_derived_parent_never_replaces_a_place_settled_from_the_label():
     """WP 2.1's rule place_parents_derived (derive._can_derive_place): the county was settled from the label's
     own text "Chicago", the city's text too, and the city's source names Cook as its county; the county keeps
