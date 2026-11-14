@@ -51,8 +51,9 @@ are".
   reading, the organiser's candidates, its lookups and the ontology. One rule says what settles a
   field and whether the value is cleared or marked for a person (section 4).
 - After every expert has answered, one check stage runs over the settled values: the place chain,
-  the date order and the elevation unit. A failed check marks the field; an inference fills an open
-  part, marked. Nothing else changes after the experts answer.
+  the date order and the elevation unit. A failed check marks the field; an inference whose rule's
+  conditions all hold fills an open part, cleared (section 4, amended 2026-11-14). Nothing else
+  changes after the experts answer.
 - The units path ships behind a switch, off by default. Each run records the path it started on
   and keeps it. The old path is deleted after the phase-1 gate and the production switch-on; a run
   reopened after that is moved to the units path (plan WP 1.8).
@@ -131,14 +132,14 @@ Under this spec the first pass gives, among others:
 
 | unit | readers | image | means | role | fields |
 |---|---|---|---|---|---|
-| CNHM. | A, B, C same | CNHM. | Chicago Natural History Museum, the Field Museum's name 1943-1966 | | none until the owner's reading (section 5) |
+| CNHM. | A, B, C same | CNHM. | Chicago Natural History Museum, the Field Museum's name 1943-1966 | | none: the institution, never a collector (section 5, 2026-11-14) |
 | E Slope Mt. McKinley (lines 1-2) | same | same | east slope of Mount McKinley | | precise_location |
 | P.I. | same | same | Philippine Islands | | country |
 | 6-Sept-1946 | same | same | 1946-09-06 | | date_visited_from |
 | Elev.6400 / Elev.6400' | A "Elev.6400", B "Elev.6400'", C "Elev.6400" | "Elev.6400" or uncertain | elevation 6400, unit not certain from the image | | elevation_from_ft |
 | H. Hoogstraal leg. | same | same | collected by H. Hoogstraal | | collectors |
-| Sp.30 ♀ / ♂ | A, B "♀", C "♂" | ♀ | species number 30, female | | none until the owner's reading |
-| P-95-81-16 | B only | uncertain | a code | | none until the owner's reading |
+| Sp.30 ♀ / ♂ | A, B "♀", C "♂" | ♀ | species number 30, female | | taxon for "Sp.30", a morphocode that names no scientific taxon; none for "♀" (section 5, 2026-11-14) |
+| P-95-81-16 | B only | uncertain | a code | | none: no source settles what it is (section 5, 2026-11-14) |
 
 ## 4. The harness
 
@@ -252,15 +253,22 @@ order is applied and `derive.fill` runs (`step.py:2321-2357`):
   the cleared country's highest point (the Philippines: Mount Apo, 2,954 m; a table in the ontology
   file, from Wikidata, cited per row), and (c) the number read as feet is possible. The country must
   be cleared, not marked. Without (a) the field is unresolved: magnitude alone never decides, as
-  today (`NO_UNIT`, `agreement.py:302`, `:822-825`). The rule takes effect after the owner's reading
-  in plan WP 2.1. Terrain takes no part while D5 is held (`GEOREFERENCING.md:179`, the
-  Measurements row: none while D5 is held).
+  today (`NO_UNIT`, `agreement.py:302`, `:822-825`). The rule takes effect in plan WP 2.3; WP 2.1
+  sends it to the owner as a notice (section 5, the line dated 2026-11-14). Terrain takes no part
+  while D5 is held (`GEOREFERENCING.md:179`, the Measurements row: none while D5 is held).
 
-A failed check marks the field. An inference fills an open part, marked, its `reason` naming the
-rule. Upward derivation (a country from a settled province; `field_research/derive.py:43-49`,
-`:66-74`) stays as today and fills only open fields. Nothing is revised after the experts answer
-except by marking. Research is saved once, as today (`workflow.py:1151-1153`), and a retry reruns
-the step as today; no deadline changes.
+A failed check marks the field. An inference whose rule's conditions all hold fills an open part,
+cleared, its `reason` naming the rule ("Basis: inferred, rule <id>"); where a condition fails, the
+field is unresolved. Amended 2026-11-14: this sentence read "An inference fills an open part,
+marked, its `reason` naming the rule". That day, in the coordinator's session, the owner typed
+"4 shouldn't be flagged. It should be caught and handled. Goal isn't to throw everything at the user it is to help by being in in autonomy as much as possible."
+(answering the coordinator's plan to put the open meanings of section 5 to him as questions), and then
+"Harness needs to work and do its magic".
+A failed check still marks the field; plan WP 2.3 decides how the harness handles it first.
+Upward derivation (a country from a settled province; `field_research/derive.py:43-49`, `:66-74`)
+stays as today and fills only open fields. Nothing is revised after the experts answer except by
+marking. Research is saved once, as today (`workflow.py:1151-1153`), and a retry reruns the step as
+today; no deadline changes.
 
 ### Residual risks
 
@@ -323,13 +331,16 @@ in WP 2.1; until then those units carry no field.
 
 2026-11-13, the owner, in the coordinator's session. Asked 'Should a printed "LEWIS COLLECTION" heading be stored as the Collection Code?', the owner answered with the button "Yes, store it". The answer covers this heading only; no other printed heading is ruled. `ontology/specimen.yaml` carries it as the notation `lewis_collection_heading`, on the units path only.
 
+2026-11-14, the owner, in the coordinator's session, answering the coordinator's plan to put the open meanings to him as questions, typed "4 shouldn't be flagged. It should be caught and handled. Goal isn't to throw everything at the user it is to help by being in in autonomy as much as possible." So no meaning is put to him: WP 2.1 resolves each open meaning from sources (the PRD and the field briefs, then the reference truth's general conventions, then a public reference), and `ontology/specimen.yaml` carries each resolved meaning as a notation or a rule with its sources. A meaning no source settles stays as it was, its unit carrying no field: in WP 2.1, "P-95-81-16" (the file's `questions`) and the printed heading "Siphonaptera of Utah" (no entry).
+
 Version 2.0 (WP 2.1) adds the relations and the checks of section 4: one collecting event per
 specimen (two labels with different localities or dates for it are a conflict); the place chain; the
 date order; the elevation unit, with the highest-point table; codes are never dates nor any part of
 them (t1-329 writes "IV-29-68-4" beside the collecting date "IV-23-48"); a label type routes units
 to experts first and never excludes a field (every expert receives every unit); a taxon's regional
 occurrence is not a rule (D4 is held, and absence from an authority is not impossibility,
-`PRD.md:1207`). The owner and the collection's curators read the rules once, there.
+`PRD.md:1207`). The rules go to the owner as a notice, not as questions (the line dated 2026-11-14
+above).
 
 Where the rules get their knowledge: the approved gazetteers for places (`contracts.py`,
 `FIELD_TOOLS`); GBIF, Catalogue of Life and Global Names for taxon names; Wikidata for the
@@ -349,7 +360,7 @@ lists none); a people source is put to the owner with phase 1's measurement, nev
 | Organiser | proposes candidates quoted from whole readings, stored as evidence rows with offsets (`application/harness.py:123-166`) | kept; whether the production pipeline calls it is decided in plan WP 2.5 |
 | What settles a field | readers agree (every reader); a source; a near spelling; one place; another label; the preferred reader's text; a person's text (`agreement.labels`, `:1366-1557`) | the rule of section 4: candidates, three kinds of backing, cleared or marked |
 | The image guard | a near spelling or another label never overrides a text the first pass confirmed in the image; the conflict settles nothing (`confirmed_against_image`, `:1303`; `CONFLICT`, `:1526`, `:1547`) | the image is one backing; a conflict gives the best-backed value, marked, or `ambiguous` when none would clear |
-| Checks and derivation | place parents checked at apply time (`parents_refusal`, `:2065-2089`); feet/metres, end date, parent places derived (`derive.py:66-91`) | the apply-time refusal stays; one check stage after the experts; a failed check marks; an inference fills an open part, marked; derivation as today |
+| Checks and derivation | place parents checked at apply time (`parents_refusal`, `:2065-2089`); feet/metres, end date, parent places derived (`derive.py:66-91`) | the apply-time refusal stays; one check stage after the experts; a failed check marks; an inference whose rule's conditions all hold fills an open part, cleared (section 4, amended 2026-11-14); derivation as today |
 | Review | several possibilities, or sources cannot resolve (`step.py:1339-1355`) | marked (a value with a review finding), `ambiguous` with options as rule 6 stores it, or unresolved |
 
 ## 7. Build order
@@ -370,8 +381,8 @@ instructions) -> 1.4 organiser kept and measured -> 1.5 measurement (gate: crite
 1.6 app shows the units -> 1.7 docs -> 1.8 switch on in production, then delete the old first pass,
 its prompt variable, the switch and the unused field-harness prompt.
 
-Phase 2, the ontology's second version: 2.1 relations and checks (the owner's and curators' one
-reading) -> 2.2 the rules baked into every model's instructions, readers included -> 2.3 the check
+Phase 2, the ontology's second version: 2.1 relations and checks (sent to the owner as a notice)
+-> 2.2 the rules baked into every model's instructions, readers included -> 2.3 the check
 stage (the place chain, the date order, the elevation unit, label types) -> 2.4 unit roles and the
 per-label answer for parts on different labels -> 2.5 organiser decision -> 2.6 measurement (gate:
 criteria 1 and 2 met) -> 2.7 docs.

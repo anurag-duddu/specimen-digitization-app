@@ -5,12 +5,12 @@
 # know, a field that is not one of the profile's 20, and an entry with no
 # source, and renders the file to the text a model's instructions carry.
 #
-# Version 1.0 holds no meaning the engineer invented: the things of the spec's
+# Version 1.0 held no meaning the engineer invented: the things of the spec's
 # section 5 table, the profile's 20 fields with their Darwin Core terms, the
 # label notations moved from the Insects harness knowledge (its NOTATIONS,
 # PLACE_ALIASES and RULES; the module and its test are deleted with this
 # version) and from the label notations of field_research/prompts/common.txt,
-# the fields a unit could belong to, the units whose meaning waits for the
+# the fields a unit could belong to, the units whose meaning waited for the
 # owner's reading in WP 2.1, and, added on 2026-11-13, the owner's reading of
 # one printed heading (the notation lewis_collection_heading). Every entry
 # names its source. A source "<path>:<lines>" is a file of this repository at
@@ -18,6 +18,25 @@
 # "insects.py:<lines> at 7a09445a2"
 # is the deleted module, at main 7a09445a2, where the plan's WP 1.0 row gives
 # its path (docs/execution/units/PLAN.md:98).
+#
+# Version 2.0 (plan WP 2.1, 2026-11-14) adds the rules: the relations and checks
+# of the spec's sections 4 and 5, each with its Darwin Core term and how it is
+# checked today (by code, with the test that proves it named in
+# tests/test_ontology.py; by a model; or not yet, with the work package that
+# builds it); one statement that is not a rule; and the highest-point table from
+# Wikidata, which code reads (WP 2.3) and no rendered text carries. The rules
+# render through Ontology.render_rules, which no model's instructions carry in
+# this version. Version 2.0 also resolves the meanings that version 1.0 and
+# WP 1.5's gap report left open, from sources and without asking the owner. The
+# owner, 2026-11-14, in the coordinator's session, answering the coordinator's
+# plan to put them to him as questions:
+# "4 shouldn't be flagged. It should be caught and handled. Goal isn't to throw everything at the user it is to help by being in in autonomy as much as possible."
+# Each resolved meaning is a notation or a rule below, with its sources (the PRD
+# and the field briefs first, then the reference truth's general conventions,
+# then a public reference); the meaning no source settles stays in `questions`,
+# its unit carrying no field. A source this version adds names the file's lines
+# at the commit that adds it, as above; this version adds lines to the spec, and
+# the spec's lines that older entries name are moved with them.
 #
 # A notation's or a question's `written` forms are matched in a unit's text by
 # code (ontology.Ontology.advice): letter case aside, except in a word in angle
@@ -33,55 +52,55 @@
 # is read as a date (common.txt:48), and a unit holding an open question
 # carries no field and no reading.
 
-version: "1.0"
+version: "2.0"
 
 frame:
   name: Darwin Core conceptual model of specimen data
   reference: https://dwc.tdwg.org/cm/, version 2026-10-13
   source:
-    - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:298-302
+    - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:306-310
 
 things:
   - id: specimen
     name: Specimen
     examples: the slide, its catalogue number, the institution that holds it
     darwin_core: MaterialEntity; catalogNumber, institutionCode
-    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:306]
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:314]
   - id: collecting_event
     name: Collecting event
     examples: "one act of collecting: where, when, how, in what habitat"
     darwin_core: "Event: eventDate, samplingProtocol, habitat; the collectors as recordedBy"
-    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:307]
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:315]
   - id: locality
     name: Locality
     examples: the place of the event, in a chain country > province > county > city, with an elevation
     darwin_core: "dcterms:Location: locality, municipality, county, stateProvince, country, minimumElevationInMeters"
-    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:308]
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:316]
   - id: agent
     name: Agent
     examples: a collector, an identifier
     darwin_core: Agent; recordedBy, identifiedBy
-    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:309]
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:317]
   - id: determination
     name: Determination
     examples: a taxon name given to the specimen by a person on a date
     darwin_core: "Identification: identifiedBy, dateIdentified; the name as Taxon: scientificName"
-    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:310]
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:318]
   - id: taxon
     name: Taxon
     examples: the name, its rank, its accepted name
     darwin_core: Taxon
-    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:311]
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:319]
   - id: code
     name: Code
     examples: a slide or preparation code, a species number
     darwin_core: "no term fits them; the thing is this file's own"
-    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:312]
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:320]
   - id: label
     name: Label
     examples: a physical label; it carries attributes of the things above and has a type (locality, determination, code)
     darwin_core: "no term; the thing is this file's own"
-    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:313]
+    source: [docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:321]
 
 # The profile's 20 fields (application/domain.py MANDATORY, the Insects
 # profile's mandatory fields), in its order. `label` is the PRD table's display
@@ -96,7 +115,7 @@ fields:
       "FMNHINS", sometimes on a barcode label.
     source:
       - src/specimen_digitization/field_research/prompts/fmnh_ins_number.txt:1
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:306
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:314
       - src/specimen_digitization/research_harness/sources.py:45
   - key: collection_code
     label: Collection Code
@@ -195,7 +214,7 @@ fields:
       <substrate>", "on <host>" or "<vegetation> forest", copied as written.
     source:
       - src/specimen_digitization/field_research/prompts/habitat.txt:1
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:307
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:315
   - key: collection_method
     label: Collection Method
     darwin_core: samplingProtocol
@@ -204,7 +223,7 @@ fields:
       "Berlese", "light trap", "beating" or "sweeping".
     source:
       - src/specimen_digitization/field_research/prompts/collection_method.txt:1
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:307
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:315
   - key: date_visited_from
     label: Date Visited From
     darwin_core: eventDate
@@ -213,7 +232,7 @@ fields:
       collecting range, at the precision written.
     source:
       - src/specimen_digitization/field_research/prompts/date_visited_from.txt:1
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:307
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:315
       - src/specimen_digitization/research_harness/sources.py:47
   - key: date_visited_to
     label: Date Visited To
@@ -223,7 +242,7 @@ fields:
       end date, at the precision written.
     source:
       - src/specimen_digitization/field_research/prompts/date_visited_to.txt:1
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:307
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:315
       - src/specimen_digitization/research_harness/sources.py:47
   - key: collectors
     label: Collectors
@@ -231,7 +250,7 @@ fields:
     holds: The people who collected the specimen, exactly as the label writes them.
     source:
       - src/specimen_digitization/field_research/prompts/collectors.txt:1
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:307
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:315
       - docs/product-requirements/EMU_PARTIES_IRN_RESEARCH.md:23
   - key: verbatim_dts
     label: Verbatim D/T/S
@@ -255,7 +274,7 @@ fields:
     holds: The scientific name the labels give the specimen, at the rank written.
     source:
       - src/specimen_digitization/field_research/prompts/taxon.txt:1
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:310
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:318
       - src/specimen_digitization/research_harness/sources.py:48
   - key: identified_by_irn
     label: Identified by IRN
@@ -267,7 +286,7 @@ fields:
       maps no identifiedByID.
     source:
       - src/specimen_digitization/field_research/prompts/identified_by_irn.txt:1
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:309-310
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:317-318
       - docs/product-requirements/EMU_PARTIES_IRN_RESEARCH.md:23
       - docs/product-requirements/EMU_PARTIES_IRN_RESEARCH.md:28
   - key: date_identified
@@ -276,7 +295,7 @@ fields:
     holds: The date the specimen was identified (determined), at the precision written.
     source:
       - src/specimen_digitization/field_research/prompts/date_identified.txt:1
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:310
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:318
       - src/specimen_digitization/research_harness/sources.py:46
 
 # The fields a kind of unit could belong to, where no notation names them.
@@ -404,13 +423,24 @@ notations:
     source:
       - src/specimen_digitization/field_research/prompts/common.txt:36
       - src/specimen_digitization/field_research/prompts/county.txt:5
+  # Its fields resolved in version 2.0 (formerly the question island_fields, from
+  # PR #421's review, point 7): insects.py gave precise_location, county and
+  # province_state; the briefs and the PRD give an island no field of its own.
   - id: island
     written: ["Is."]
     readings: ["island or islands"]
-    fields: [precise_location, county, province_state]
+    fields: [precise_location]
+    note: >-
+      An island is neither a province nor a city, and no field of the profile
+      holds an island's level: the precise location keeps it as written.
     source:
       - insects.py:41-43 at 7a09445a2
       - src/specimen_digitization/field_research/prompts/common.txt:38
+      - src/specimen_digitization/field_research/prompts/province_state.txt:7
+      - src/specimen_digitization/field_research/prompts/city.txt:6
+      - docs/product-requirements/PRD.md:785-786
+      - tests/fixtures/field_model_pilot_rows.json:17
+      - tests/fixtures/field_model_pilot_rows.json:30
   - id: near
     written: ["nr."]
     readings: ["near"]
@@ -545,76 +575,534 @@ notations:
       - src/specimen_digitization/field_research/prompts/collection_method.txt:4
       - tests/fixtures/field_model_pilot_rows.json:134
   # The owner's reading of 2026-11-13 (the spec's section 5, its dated line). The
-  # source line is that line of the spec at the commit that adds this entry.
+  # source line is that line of the spec.
   - id: lewis_collection_heading
     written: ["LEWIS COLLECTION"]
     readings: ["the printed heading of the Lewis Collection's label templates; it is the Collection Code, copied as written"]
     fields: [collection_code]
     source:
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:324
-
-# Questions for the owner's single reading in WP 2.1 (plan section 6). A
-# question with `written` forms is about units: until the reading a unit
-# holding one carries no field. A question with `notation` is about that
-# notation's entry, which stands as it is until the reading.
-questions:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:332
+  # Meanings version 1.0 left open, resolved in version 2.0 from sources (the
+  # spec's section 5, its line dated 2026-11-14).
+  # "CNHM.": the reference truth's author reads it as the museum's old name, not
+  # a collector (field_model_pilot_rows.json:134), and the public record dates
+  # that name (Wikidata's and Wikipedia's entry for the Field Museum).
   - id: cnhm
     written: ["CNHM."]
     periods_optional: true
-    question: What is "CNHM." on these labels, and does it fill a field?
-    context: >-
-      The fixture's author, not S8, reads CNHM as the museum's old name rather
-      than a collector; S8's table lists "H. Hoogstraal; CNHM" in its collector
-      column. The spec's worked example reads it as Chicago Natural History
-      Museum, the Field Museum's name 1943-1966, with no field until this
-      reading.
-    answered_in: WP 2.1
+    readings: ["Chicago Natural History Museum, the Field Museum's name from 1943 to 1966: the institution, never a collector"]
+    fields: []
+    note: No field of the profile holds the institution.
     source:
-      - docs/execution/units/PLAN.md:98
-      - docs/execution/units/PLAN.md:217-219
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:134
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:320-322
       - tests/fixtures/field_model_pilot_rows.json:134
-  - id: species_number_and_sex
-    written: ["Sp.30 ♀"]
-    question: Where does "Sp.30 ♀" go, and does it fill a field?
-    context: >-
-      The readers of label e98a924c-L2 write "Sp.30 ♀", one of three "♂". The
-      spec's worked example reads it as species number 30, female, with no
-      field until this reading; its Code row lists a species number.
-    answered_in: WP 2.1
+      - https://en.wikipedia.org/wiki/Field_Museum_of_Natural_History
+  # "Sp.30": the taxon brief's morphocode ("sp. <n>").
+  - id: species_number
+    written: ["sp. <n>"]
+    readings: ["a morphocode, a species number: after a genus, a genus-level identification; with no genus on any label, it names no scientific taxon"]
+    fields: [taxon]
     source:
-      - docs/execution/units/PLAN.md:98
-      - docs/execution/units/PLAN.md:217-219
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:120-122
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:140
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:312
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:320-322
+      - src/specimen_digitization/field_research/prompts/taxon.txt:5
+      - src/specimen_digitization/field_research/prompts/taxon.txt:8-9
+  # "♀" and "♂": the signs for female and male (Unicode's FEMALE SIGN, U+2640, and
+  # MALE SIGN, U+2642); Darwin Core's term for the sex, which the profile's 20
+  # fields do not include; the reference truth's rows hold no sex.
+  - id: female_sign
+    written: ["\u2640"]
+    readings: ["female: the specimen's sex, which no field of the profile holds"]
+    fields: []
+    source:
+      - https://www.unicode.org/charts/PDF/U2600.pdf
+      - https://dwc.tdwg.org/terms/#dwc:sex
+      - src/specimen_digitization/application/domain.py:69-90
+      - tests/fixtures/field_model_pilot_rows.json:75-87
+  - id: male_sign
+    written: ["\u2642"]
+    readings: ["male: the specimen's sex, which no field of the profile holds"]
+    fields: []
+    source:
+      - https://www.unicode.org/charts/PDF/U2600.pdf
+      - https://dwc.tdwg.org/terms/#dwc:sex
+      - src/specimen_digitization/application/domain.py:69-90
+      - tests/fixtures/field_model_pilot_rows.json:75-87
+
+# Meanings no source settles. Version 2.0 resolved the others from sources
+# (the spec's section 5, its line dated 2026-11-14); these are not put to the
+# owner. A question with `written` forms is about units: a unit holding one
+# carries no field. A question with `notation` is about that notation's entry,
+# which stands as it is.
+questions:
   - id: p_code
     written: ["P-95-81-16"]
     question: What is "P-95-81-16", and does it fill a field?
     context: >-
       One reader of label e98a924c-L2 writes it on a line of its own; over 12
       recorded runs the first pass judged it uncertain in 7, reader A in 3 and
-      neither in 2. The spec's worked example reads it as a code, with no field
-      until this reading.
-    answered_in: WP 2.1
+      neither in 2. The spec's worked example reads it as a code.
+    status: >-
+      No source settles it (WP 2.1, 2026-11-14): it has neither form of a slide
+      code, the catalogue number check takes five to nine digits only, and no
+      reading marks it as a collection code; the pilot truth holds it in no
+      field. Reported to the coordinator, not put to the owner.
     source:
-      - docs/execution/units/PLAN.md:98
-      - docs/execution/units/PLAN.md:217-219
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:121
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:124-126
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:141
-      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:320-322
-  - id: island_fields
-    notation: island
-    question: Which fields can "Is." (island or islands) belong to?
-    context: >-
-      The Insects knowledge gives it precise_location, county and
-      province_state; the province brief says an island is not a province.
-      The notation keeps those fields until this reading.
-    answered_in: WP 2.1
+      - docs/execution/units/PLAN.md:110
+      - docs/execution/units/PLAN.md:230-237
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:122
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:125-127
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:142
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:328-330
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:334
+      - src/specimen_digitization/field_research/prompts/common.txt:48
+      - src/specimen_digitization/field_research/prompts/fmnh_ins_number.txt:3
+      - src/specimen_digitization/field_research/prompts/collection_code.txt:4
+      - tests/fixtures/field_model_pilot_rows.json:75-87
+
+# The rules (version 2.0): the relations and checks of the spec's sections 4
+# and 5. `check` says how each is checked today: `code` (tests/test_ontology.py
+# names the test that proves it, one to one), `model`, or `not yet`, with `when`
+# naming the work package that builds it. A rule WP 2.3 builds is checked by
+# code from then, and WP 2.3 changes its `check` and that test list.
+rules:
+  - id: one_collecting_event
+    statement: >-
+      A specimen has one collecting event. When two of its labels write
+      different text for one of its fields, an answer that settles the field on
+      one label's text is refused unless a source confirms each label's text as
+      the same place or name.
+    check: code
+    darwin_core: "Event: eventDate; dcterms:Location: locality"
     source:
-      - insects.py:41-43 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/province_state.txt:7
-      - https://github.com/anurag-duddu/specimen-digitization-app/pull/421#issuecomment-6458120321
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:336-337
+      - src/specimen_digitization/field_research/agreement.py:289
+      - src/specimen_digitization/field_research/agreement.py:2405-2423
+  - id: place_within_settled_places
+    statement: >-
+      Below the country, a place settles only when its source names the
+      country settled for its reading among the place's parents, and, for a
+      county or a city, the province settled for its reading too when one is;
+      a place that does not fit is refused when its value is applied.
+    check: code
+    darwin_core: country, stateProvince, county, municipality
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:242-246
+      - src/specimen_digitization/field_research/agreement.py:2741-2756
+  - id: place_chain
+    statement: >-
+      The places form one chain, country > province or state > county > city.
+      A settled value outside the chain settled above it is marked for a
+      person, including what the refusal at apply time lets pass (a settled
+      Coles County, then an exact "Chicago" under Illinois), and so is a chain
+      that derivation fills when it breaks the chain.
+    check: not yet
+    when: WP 2.3
+    darwin_core: country, stateProvince, county, municipality
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:242-246
+      - docs/execution/units/PLAN.md:126
+  - id: date_order
+    statement: >-
+      The collecting date is on or before the determination date; the same day
+      is allowed. Dates written at different precisions compare on the parts
+      both have ("1946" and "1946-09-06" agree). A determination dated before
+      the collecting date is marked for a person, both dates listed.
+    check: not yet
+    when: WP 2.3
+    darwin_core: eventDate, dateIdentified
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:247-249
+      - docs/execution/units/PLAN.md:126
+  - id: day_month_order
+    statement: >-
+      A numeric date in which no part over 12 tells the day from the month
+      reads two ways, day-month and month-day: the date check settles neither
+      reading, and an answer that lists both leaves the field ambiguous, a
+      conflict with both readings for a person.
+    check: code
+    darwin_core: eventDate, dateIdentified
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:249-250
+      - src/specimen_digitization/application/field_validators.py:135-137
+      - src/specimen_digitization/field_research/experts.py:476-480
+  - id: code_is_no_date
+    statement: >-
+      A slide or preparation code is never a date, nor is any part of it: text
+      that stands inside a longer hyphen-joined code in any reading is no date.
+    check: code
+    darwin_core: "ours: no Darwin Core term fits a code; eventDate"
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:338-339
+      - src/specimen_digitization/field_research/checks.py:205-207
+      - src/specimen_digitization/field_research/prompts/common.txt:48
+  - id: label_type_routing
+    statement: >-
+      A label's type (locality, determination, code) sends its units to the
+      experts of its fields first and never keeps a field's expert from a unit:
+      a determination label that writes a locality reaches the locality expert.
+    check: not yet
+    when: WP 2.3
+    darwin_core: "ours: no Darwin Core term fits a label"
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:321
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:339-340
+      - docs/execution/units/PLAN.md:126
+  - id: elevation_unit_feet
+    statement: >-
+      An elevation whose cleared text writes no unit is read as feet only when
+      (a) at least one reader wrote the foot mark or "ft" at this unit, (b) the
+      number read as metres is above the highest point of the specimen's
+      country, which is cleared, not marked (the highest-point table), and (c)
+      the number read as feet is possible (16000 with a mark is not, in the
+      Philippines). When all hold, the elevation settles in feet, cleared, its
+      reason "Basis: inferred, rule elevation_unit_feet". Without (a) the field
+      is unresolved: magnitude alone never decides; so it is when (b) or (c)
+      fails or the country is marked. Terrain takes no part while the owner's
+      decision D5 is held.
+    check: not yet
+    when: WP 2.3
+    darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:251-258
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:260-267
+      - docs/execution/units/PLAN.md:126
+  - id: elevation_needs_a_unit
+    statement: >-
+      An answer that settles an elevation field on a number that one of its
+      readings writes with no unit is refused: a unit is never guessed from the
+      magnitude, the place or a map.
+    check: code
+    darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:255-256
+      - src/specimen_digitization/field_research/agreement.py:310
+      - src/specimen_digitization/field_research/agreement.py:832-836
+  - id: elevation_unit_decides_field
+    statement: >-
+      An answer that settles an elevation field on a number that one of its
+      readings writes in the other unit is refused; the other unit's fields come
+      from the conversion.
+    check: code
+    darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
+    source:
+      - src/specimen_digitization/field_research/agreement.py:309
+      - src/specimen_digitization/field_research/agreement.py:824-831
+      - docs/execution/units/PLAN.md:126
+  - id: place_parents_derived
+    statement: >-
+      Upward derivation: a country, province or state, or county the label
+      leaves without a value takes, derived, the parent that the source of a
+      settled place below it names at that level, when every settled place
+      that names a parent there names the same one.
+    note: >-
+      A county comes from a city only when the city's source names three
+      parents or more, and a province from a county only when the county's
+      names two or more (derive.py:111-114).
+    check: code
+    darwin_core: country, stateProvince, county
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:268-269
+      - src/specimen_digitization/field_research/derive.py:43-50
+      - src/specimen_digitization/field_research/derive.py:68-74
+      - src/specimen_digitization/field_research/derive.py:95-146
+  - id: elevation_conversion
+    statement: >-
+      One stated elevation fills both ends of its unit, and the other unit's
+      fields hold its exact conversion, 1 ft = 0.3048 m, to the hundredth, when
+      the label states nothing in that unit.
+    check: code
+    darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
+    source:
+      - src/specimen_digitization/field_research/derive.py:4-7
+      - src/specimen_digitization/field_research/derive.py:75-83
+      - src/specimen_digitization/application/derivations.py:29
+  - id: end_date_from_one_date
+    statement: >-
+      When the label states one collecting date, the collection ends on the day
+      it began: Date Visited To takes Date Visited From's date, at its
+      precision. A written range keeps both its ends as written.
+    check: code
+    darwin_core: eventDate
+    source:
+      - src/specimen_digitization/field_research/derive.py:42
+      - src/specimen_digitization/field_research/derive.py:84-91
+  # Resolved in version 2.0 (the spec's section 5, its line dated 2026-11-14):
+  # the extent of Precise Location (WP 1.5's gap report: "CNHM. E Slope Mt."
+  # cleared where the truth holds the whole locality) and O2 (a label whose
+  # only locality text is the town's, "Yepocapa, 4800 ft."). Settled by the PRD
+  # (the verbatim locality, as written, at the root of the place tree) and its
+  # georeferencing document (verbatimLocality "Yepocapa, 4800 ft. / Chimaltenago,
+  # / Guatemala" for slide 105526329), and confirmed by the reference truth,
+  # whose ten pilot rows each hold the label's whole locality lines.
+  - id: precise_location_extent
+    statement: >-
+      Precise Location is the label's locality as written: every line of its
+      locality text, with its line breaks, the higher places and an elevation
+      written among those lines included. It is never cut to the first line,
+      and a label whose locality names nothing finer than its town still has a
+      Precise Location: those lines as written.
+    note: >-
+      Today the precise location brief leaves out the higher places and an
+      elevation (precise_location.txt:8) and answers label_lacks_value when no
+      reading writes anything finer than the other place fields (:12), and the
+      step clears such a field as not on the label (step.py:3594-3620, owner
+      decision A as the schema session applied it to this field). WP 2.2
+      carries this rule to the experts; no work package yet names the change
+      to that clearing.
+    check: not yet
+    when: WP 2.2
+    darwin_core: verbatimLocality
+    source:
+      - docs/product-requirements/PRD.md:519
+      - docs/product-requirements/PRD.md:689-690
+      - docs/product-requirements/PRD.md:774
+      - docs/product-requirements/GEOREFERENCING.md:258
+      - docs/product-requirements/GEOREFERENCING.md:276
+      - tests/fixtures/field_model_pilot_rows.json:30
+      - tests/fixtures/field_model_pilot_rows.json:79
+      - tests/fixtures/field_model_pilot_rows.json:152
+      - tests/fixtures/field_model_pilot_rows.json:289
+      - tests/fixtures/field_model_pilot_rows.json:325
+      - https://dwc.tdwg.org/terms/#dwc:verbatimLocality
+
+# Statements the spec records as not rules: no check uses them.
+not_rules:
+  - id: taxon_regional_occurrence
+    statement: >-
+      A taxon's regional occurrence is not a rule: that an authority records no
+      occurrence of a taxon in a region does not make it impossible there, and
+      no check uses occurrence while the owner's decision D4 is held.
+    darwin_core: "scientificName; dcterms:Location"
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:340-342
+      - docs/product-requirements/PRD.md:1207
+      - docs/product-requirements/GEOREFERENCING.md:179
+
+# Each country's highest point and its elevation, from Wikidata, for the
+# elevation unit rule (condition (b)); code reads it (WP 2.3), and no rendered
+# text carries it. Every row cites Wikidata through its two items (the country,
+# P610 "highest point", and the point, P2044 "elevation above sea level", in
+# metres as the query service normalises it), retrieved once with the query
+# below. Philippines -> Mount Apo, 2954 m, as the spec states.
+highest_points:
+  source: Wikidata (https://www.wikidata.org/), CC0
+  endpoint: https://query.wikidata.org/sparql
+  retrieved: "2026-11-14T14:02:05Z"
+  query: |
+    SELECT ?country ?countryLabel ?point ?pointLabel ?elevation ?rank WHERE {
+      { ?country wdt:P31 wd:Q6256 . } UNION { ?country wdt:P31 wd:Q3624078 . }
+      FILTER NOT EXISTS { ?country wdt:P576 ?dissolved . }
+      ?country wdt:P610 ?point .
+      ?point p:P2044 ?statement .
+      ?statement wikibase:rank ?rank .
+      FILTER(?rank != wikibase:DeprecatedRank)
+      ?statement psn:P2044/wikibase:quantityAmount ?elevation .
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul". }
+    }
+  selection: >-
+    One row per country the query returns: its elevation statements of the
+    best rank present (preferred, else normal); of those, the greatest
+    elevation in metres; on a tie, the point with the lower Q-number. The
+    countries are the items that are an instance of country (Q6256) or of
+    sovereign state (Q3624078) and have no dissolution date (P576).
+  rows:
+    - {country: Q889, country_name: "Afghanistan", point: Q271700, point_name: "Noshaq", elevation_m: 7492}
+    - {country: Q222, country_name: "Albania", point: Q912579, point_name: "Korab", elevation_m: 2764}
+    - {country: Q262, country_name: "Algeria", point: Q822326, point_name: "Mount Tahat", elevation_m: 2918}
+    - {country: Q228, country_name: "Andorra", point: Q62467, point_name: "Coma Pedrosa", elevation_m: 2942}
+    - {country: Q916, country_name: "Angola", point: Q1348116, point_name: "Mount Moco", elevation_m: 2619}
+    - {country: Q781, country_name: "Antigua and Barbuda", point: Q1718336, point_name: "Mount Obama", elevation_m: 402}
+    - {country: Q414, country_name: "Argentina", point: Q39739, point_name: "Aconcagua", elevation_m: 6962}
+    - {country: Q399, country_name: "Armenia", point: Q203568, point_name: "Mount Aragats", elevation_m: 4090}
+    - {country: Q21203, country_name: "Aruba", point: Q594885, point_name: "Mount Jamanota", elevation_m: 188}
+    - {country: Q408, country_name: "Australia", point: Q2114101, point_name: "Mawson Peak", elevation_m: 2745}
+    - {country: Q40, country_name: "Austria", point: Q3388, point_name: "Grossglockner", elevation_m: 3798}
+    - {country: Q227, country_name: "Azerbaijan", point: Q725591, point_name: "Mount Bazardüzü", elevation_m: 4466}
+    - {country: Q398, country_name: "Bahrain", point: Q1032812, point_name: "Mountain of Smoke", elevation_m: 134}
+    - {country: Q902, country_name: "Bangladesh", point: Q2696459, point_name: "Mowdok tiang", elevation_m: 1054}
+    - {country: Q244, country_name: "Barbados", point: Q1854502, point_name: "Mount Hillaby", elevation_m: 340}
+    - {country: Q184, country_name: "Belarus", point: Q921447, point_name: "Dziaržynkaja hara", elevation_m: 345}
+    - {country: Q31, country_name: "Belgium", point: Q322824, point_name: "Signal de Botrange", elevation_m: 694.24}
+    - {country: Q242, country_name: "Belize", point: Q47490, point_name: "Doyle's Delight", elevation_m: 1124}
+    - {country: Q962, country_name: "Benin", point: Q923330, point_name: "Mont Sokbaro", elevation_m: 658}
+    - {country: Q917, country_name: "Bhutan", point: Q219986, point_name: "Gangkhar Puensum", elevation_m: 7570}
+    - {country: Q750, country_name: "Bolivia", point: Q272593, point_name: "Nevado Sajama", elevation_m: 6542}
+    - {country: Q225, country_name: "Bosnia and Herzegovina", point: Q837723, point_name: "Maglić", elevation_m: 2386}
+    - {country: Q963, country_name: "Botswana", point: Q3491942, point_name: "Otse Hill", elevation_m: 1491}
+    - {country: Q155, country_name: "Brazil", point: Q739484, point_name: "Pico da Neblina", elevation_m: 2994}
+    - {country: Q921, country_name: "Brunei", point: Q1003282, point_name: "Bukit Pagon", elevation_m: 1850}
+    - {country: Q219, country_name: "Bulgaria", point: Q209341, point_name: "Musala", elevation_m: 2925.4}
+    - {country: Q965, country_name: "Burkina Faso", point: Q116675, point_name: "Mount Tenakourou", elevation_m: 749}
+    - {country: Q967, country_name: "Burundi", point: Q1649074, point_name: "Mount Heha", elevation_m: 2684}
+    - {country: Q424, country_name: "Cambodia", point: Q539772, point_name: "Phnom Aural", elevation_m: 1813}
+    - {country: Q1009, country_name: "Cameroon", point: Q190562, point_name: "Mount Cameroon", elevation_m: 4095}
+    - {country: Q16, country_name: "Canada", point: Q120306, point_name: "Mount Logan", elevation_m: 5959}
+    - {country: Q1011, country_name: "Cape Verde", point: Q499108, point_name: "Pico do Fogo", elevation_m: 2829}
+    - {country: Q929, country_name: "Central African Republic", point: Q2422162, point_name: "Mont Ngaoui", elevation_m: 1410}
+    - {country: Q657, country_name: "Chad", point: Q257441, point_name: "Emi Koussi", elevation_m: 3445}
+    - {country: Q298, country_name: "Chile", point: Q233836, point_name: "Ojos del Salado", elevation_m: 6893}
+    - {country: Q739, country_name: "Colombia", point: Q338790, point_name: "Pico Simón Bolívar", elevation_m: 5775}
+    - {country: Q970, country_name: "Comoros", point: Q527548, point_name: "Mount Karthala", elevation_m: 2361}
+    - {country: Q26988, country_name: "Cook Islands", point: Q498069, point_name: "Te Manga", elevation_m: 652}
+    - {country: Q800, country_name: "Costa Rica", point: Q252362, point_name: "Cerro Chirripó", elevation_m: 3820}
+    - {country: Q224, country_name: "Croatia", point: Q3183447, point_name: "Dinara", elevation_m: 1831}
+    - {country: Q241, country_name: "Cuba", point: Q1145743, point_name: "Pico Turquino", elevation_m: 1974}
+    - {country: Q229, country_name: "Cyprus", point: Q819979, point_name: "Mount Olympus", elevation_m: 1952}
+    - {country: Q213, country_name: "Czech Republic", point: Q617511, point_name: "Sněžka", elevation_m: 1603.3}
+    - {country: Q974, country_name: "Democratic Republic of the Congo", point: Q221666, point_name: "Mount Stanley", elevation_m: 5109}
+    - {country: Q35, country_name: "Denmark", point: Q689106, point_name: "Møllehøj", elevation_m: 170.86}
+    - {country: Q977, country_name: "Djibouti", point: Q1951029, point_name: "Mousa Ali", elevation_m: 2028}
+    - {country: Q784, country_name: "Dominica", point: Q1638549, point_name: "Morne Diablotins", elevation_m: 1447}
+    - {country: Q786, country_name: "Dominican Republic", point: Q783742, point_name: "Pico Duarte", elevation_m: 3101}
+    - {country: Q736, country_name: "Ecuador", point: Q14081, point_name: "Chimborazo", elevation_m: 6263.47}
+    - {country: Q79, country_name: "Egypt", point: Q1140642, point_name: "Mount Catherine", elevation_m: 2637}
+    - {country: Q792, country_name: "El Salvador", point: Q74214, point_name: "Cerro El Pital", elevation_m: 2730}
+    - {country: Q983, country_name: "Equatorial Guinea", point: Q1518286, point_name: "Pico Basilé", elevation_m: 3011}
+    - {country: Q986, country_name: "Eritrea", point: Q1753730, point_name: "Emba Soira", elevation_m: 3018}
+    - {country: Q191, country_name: "Estonia", point: Q504991, point_name: "Suur Munamägi", elevation_m: 317.4}
+    - {country: Q1050, country_name: "Eswatini", point: Q1337951, point_name: "Emlembe", elevation_m: 1862}
+    - {country: Q115, country_name: "Ethiopia", point: Q275435, point_name: "Ras Dashen", elevation_m: 4533}
+    - {country: Q702, country_name: "Federated States of Micronesia", point: Q1236265, point_name: "Dolohmwar", elevation_m: 791}
+    - {country: Q712, country_name: "Fiji", point: Q1513944, point_name: "Mount Tomanivi", elevation_m: 1324}
+    - {country: Q33, country_name: "Finland", point: Q216035, point_name: "Halti", elevation_m: 1361.4}
+    - {country: Q142, country_name: "France", point: Q583, point_name: "Mont Blanc", elevation_m: 4805.59}
+    - {country: Q1000, country_name: "Gabon", point: Q3210770, point_name: "Mont Bengoué", elevation_m: 1070}
+    - {country: Q230, country_name: "Georgia", point: Q217457, point_name: "Shkhara", elevation_m: 5193.2}
+    - {country: Q183, country_name: "Germany", point: Q3375, point_name: "Zugspitze", elevation_m: 2962.06}
+    - {country: Q117, country_name: "Ghana", point: Q635179, point_name: "Mount Afadja", elevation_m: 885.1409424}
+    - {country: Q41, country_name: "Greece", point: Q80344, point_name: "Mount Olympus", elevation_m: 2917.727}
+    - {country: Q769, country_name: "Grenada", point: Q525281, point_name: "Mount Saint Catherine", elevation_m: 840}
+    - {country: Q774, country_name: "Guatemala", point: Q818467, point_name: "Volcán Tajumulco", elevation_m: 4203}
+    - {country: Q1006, country_name: "Guinea", point: Q849129, point_name: "Mount Richard-Molard", elevation_m: 1752}
+    - {country: Q1007, country_name: "Guinea-Bissau", point: Q109837809, point_name: "Monte Torin", elevation_m: 262}
+    - {country: Q734, country_name: "Guyana", point: Q4777, point_name: "Mount Roraima", elevation_m: 2810}
+    - {country: Q790, country_name: "Haiti", point: Q1971319, point_name: "Peak la Selle", elevation_m: 2674}
+    - {country: Q783, country_name: "Honduras", point: Q1055875, point_name: "Cerro Las Minas", elevation_m: 2849}
+    - {country: Q28, country_name: "Hungary", point: Q747618, point_name: "Kékes", elevation_m: 1014}
+    - {country: Q189, country_name: "Iceland", point: Q140084, point_name: "Hvannadalshnúkur", elevation_m: 2110}
+    - {country: Q668, country_name: "India", point: Q82019, point_name: "Kanchenjunga", elevation_m: 8586}
+    - {country: Q252, country_name: "Indonesia", point: Q1045888, point_name: "Puncak Jaya", elevation_m: 4884}
+    - {country: Q794, country_name: "Iran", point: Q40758, point_name: "Damavand", elevation_m: 5628}
+    - {country: Q796, country_name: "Iraq", point: Q1068860, point_name: "Cheekha Dar", elevation_m: 3611}
+    - {country: Q27, country_name: "Ireland", point: Q503368, point_name: "Carrauntoohil", elevation_m: 1038.6}
+    - {country: Q801, country_name: "Israel", point: Q540520, point_name: "Meron", elevation_m: 1208}
+    - {country: Q38, country_name: "Italy", point: Q583, point_name: "Mont Blanc", elevation_m: 4805.59}
+    - {country: Q1008, country_name: "Ivory Coast", point: Q849129, point_name: "Mount Richard-Molard", elevation_m: 1752}
+    - {country: Q766, country_name: "Jamaica", point: Q885798, point_name: "Blue Mountain Peak", elevation_m: 2256}
+    - {country: Q17, country_name: "Japan", point: Q39231, point_name: "Mount Fuji", elevation_m: 3777.24}
+    - {country: Q810, country_name: "Jordan", point: Q1261902, point_name: "Jabal Umm ad Dami", elevation_m: 1854}
+    - {country: Q232, country_name: "Kazakhstan", point: Q211529, point_name: "Khan Tengri", elevation_m: 7010}
+    - {country: Q114, country_name: "Kenya", point: Q172070, point_name: "Mount Kenya", elevation_m: 5199}
+    - {country: Q756617, country_name: "Kingdom of Denmark", point: Q825709, point_name: "Gunnbjørn Fjeld", elevation_m: 3694}
+    - {country: Q29999, country_name: "Kingdom of the Netherlands", point: Q1301834, point_name: "Mount Scenery", elevation_m: 870}
+    - {country: Q710, country_name: "Kiribati", point: Q271901, point_name: "Banaba Island", elevation_m: 81}
+    - {country: Q1246, country_name: "Kosovo", point: Q341983, point_name: "Gjeravica", elevation_m: 2656}
+    - {country: Q817, country_name: "Kuwait", point: Q4116111, point_name: "Mutla Ridge", elevation_m: 140}
+    - {country: Q813, country_name: "Kyrgyzstan", point: Q332762, point_name: "Jengish Chokusu", elevation_m: 7439}
+    - {country: Q819, country_name: "Laos", point: Q239485, point_name: "Phou Bia", elevation_m: 2819}
+    - {country: Q211, country_name: "Latvia", point: Q1122342, point_name: "Gaiziņkalns", elevation_m: 311.94}
+    - {country: Q822, country_name: "Lebanon", point: Q311330, point_name: "Qurnat as Sawda'", elevation_m: 3088}
+    - {country: Q1013, country_name: "Lesotho", point: Q733132, point_name: "Thabana Ntlenyana", elevation_m: 3482}
+    - {country: Q1014, country_name: "Liberia", point: Q1950836, point_name: "Mount Wuteve", elevation_m: 1440}
+    - {country: Q1016, country_name: "Libya", point: Q860146, point_name: "Bikku Bitti", elevation_m: 2267}
+    - {country: Q347, country_name: "Liechtenstein", point: Q665000, point_name: "Grauspitz", elevation_m: 2599}
+    - {country: Q37, country_name: "Lithuania", point: Q771431, point_name: "Aukštojas Hill", elevation_m: 293.84}
+    - {country: Q32, country_name: "Luxembourg", point: Q24457, point_name: "Kneiff", elevation_m: 560}
+    - {country: Q1019, country_name: "Madagascar", point: Q1147144, point_name: "Maromokotro", elevation_m: 2876}
+    - {country: Q1020, country_name: "Malawi", point: Q1510436, point_name: "Mulanje Massif", elevation_m: 3002}
+    - {country: Q833, country_name: "Malaysia", point: Q60967, point_name: "Mount Kinabalu", elevation_m: 4095}
+    - {country: Q826, country_name: "Maldives", point: Q176749, point_name: "Villingili", elevation_m: 5.1}
+    - {country: Q912, country_name: "Mali", point: Q1454300, point_name: "Mount Hombori", elevation_m: 1153}
+    - {country: Q233, country_name: "Malta", point: Q1850604, point_name: "Ta' Dmejrek", elevation_m: 253}
+    - {country: Q709, country_name: "Marshall Islands", point: Q518353, point_name: "Likiep Atoll", elevation_m: 10}
+    - {country: Q1025, country_name: "Mauritania", point: Q2595789, point_name: "Kediet ej Jill", elevation_m: 915}
+    - {country: Q1027, country_name: "Mauritius", point: Q1760978, point_name: "Piton de la Petite Rivière Noire", elevation_m: 828}
+    - {country: Q96, country_name: "Mexico", point: Q238147, point_name: "Citlaltepetl", elevation_m: 5636}
+    - {country: Q217, country_name: "Moldova", point: Q47940, point_name: "Bălănești Hill", elevation_m: 430}
+    - {country: Q235, country_name: "Monaco", point: Q1069352, point_name: "Chemin des Révoires", elevation_m: 162}
+    - {country: Q711, country_name: "Mongolia", point: Q1091113, point_name: "Hüiten Peak", elevation_m: 4374}
+    - {country: Q236, country_name: "Montenegro", point: Q2720697, point_name: "Zla Kolata", elevation_m: 2534}
+    - {country: Q1028, country_name: "Morocco", point: Q503433, point_name: "Jbel Toubkal", elevation_m: 4167}
+    - {country: Q1029, country_name: "Mozambique", point: Q1353678, point_name: "Monte Binga", elevation_m: 2436}
+    - {country: Q836, country_name: "Myanmar", point: Q870063, point_name: "Hkakabo Razi", elevation_m: 5881}
+    - {country: Q1030, country_name: "Namibia", point: Q897834, point_name: "Brandberg", elevation_m: 2573}
+    - {country: Q697, country_name: "Nauru", point: Q2667931, point_name: "Command Ridge", elevation_m: 71}
+    - {country: Q837, country_name: "Nepal", point: Q513, point_name: "Mount Everest", elevation_m: 8848.86}
+    - {country: Q55, country_name: "Netherlands", point: Q1301834, point_name: "Mount Scenery", elevation_m: 870}
+    - {country: Q664, country_name: "New Zealand", point: Q5059, point_name: "Aoraki / Mount Cook", elevation_m: 3724}
+    - {country: Q811, country_name: "Nicaragua", point: Q2092378, point_name: "Cerro Mogotón", elevation_m: 2107}
+    - {country: Q1032, country_name: "Niger", point: Q3042286, point_name: "Mont Idoukal-n-Taghès", elevation_m: 2022}
+    - {country: Q1033, country_name: "Nigeria", point: Q976055, point_name: "Chappal Waddi", elevation_m: 2419}
+    - {country: Q34020, country_name: "Niue", point: Q28745318, point_name: "Niue Highest Point", elevation_m: 68}
+    - {country: Q423, country_name: "North Korea", point: Q107635, point_name: "Baekdu Mountain", elevation_m: 2744}
+    - {country: Q221, country_name: "North Macedonia", point: Q912579, point_name: "Korab", elevation_m: 2764}
+    - {country: Q20, country_name: "Norway", point: Q203942, point_name: "Galdhøpiggen", elevation_m: 2468.854}
+    - {country: Q842, country_name: "Oman", point: Q1261915, point_name: "Jebel Shams", elevation_m: 3018}
+    - {country: Q843, country_name: "Pakistan", point: Q43512, point_name: "K2", elevation_m: 8611}
+    - {country: Q695, country_name: "Palau", point: Q1191219, point_name: "Mount Ngerchelchuus", elevation_m: 242}
+    - {country: Q219060, country_name: "Palestine", point: Q6922335, point_name: "Mount Nabi Yunis", elevation_m: 1026}
+    - {country: Q804, country_name: "Panama", point: Q594726, point_name: "Volcan Baru", elevation_m: 3475}
+    - {country: Q691, country_name: "Papua New Guinea", point: Q277441, point_name: "Mount Wilhelm", elevation_m: 4509}
+    - {country: Q733, country_name: "Paraguay", point: Q1055965, point_name: "Cerro Tres Kandú", elevation_m: 842}
+    - {country: Q148, country_name: "People's Republic of China", point: Q513, point_name: "Mount Everest", elevation_m: 8848.86}
+    - {country: Q419, country_name: "Peru", point: Q200935, point_name: "Huascarán", elevation_m: 6768}
+    - {country: Q928, country_name: "Philippines", point: Q455963, point_name: "Mount Apo", elevation_m: 2954}
+    - {country: Q36, country_name: "Poland", point: Q672936, point_name: "Rysy", elevation_m: 2501}
+    - {country: Q45, country_name: "Portugal", point: Q928681, point_name: "Mount Pico", elevation_m: 2351}
+    - {country: Q846, country_name: "Qatar", point: Q1633034, point_name: "Qurayn Abu al Bawl", elevation_m: 103}
+    - {country: Q971, country_name: "Republic of the Congo", point: Q3113296, point_name: "Mont Nabemba", elevation_m: 1020}
+    - {country: Q218, country_name: "Romania", point: Q746524, point_name: "Moldoveanu Peak", elevation_m: 2544}
+    - {country: Q159, country_name: "Russia", point: Q43105, point_name: "Mount Elbrus", elevation_m: 5642}
+    - {country: Q1037, country_name: "Rwanda", point: Q737859, point_name: "Mount Karisimbi", elevation_m: 4507}
+    - {country: Q763, country_name: "Saint Kitts and Nevis", point: Q1269774, point_name: "Mount Liamuiga", elevation_m: 1156}
+    - {country: Q760, country_name: "Saint Lucia", point: Q1811114, point_name: "Mount Gimie", elevation_m: 952.4}
+    - {country: Q757, country_name: "Saint Vincent and the Grenadines", point: Q26544, point_name: "La Soufrière", elevation_m: 1220}
+    - {country: Q683, country_name: "Samoa", point: Q1147814, point_name: "Silisili", elevation_m: 1858}
+    - {country: Q238, country_name: "San Marino", point: Q158526, point_name: "Monte Titano", elevation_m: 756}
+    - {country: Q851, country_name: "Saudi Arabia", point: Q1261892, point_name: "Jabal Sawda", elevation_m: 3207}
+    - {country: Q1041, country_name: "Senegal", point: Q98596662, point_name: "Népin Cliff", elevation_m: 531}
+    - {country: Q403, country_name: "Serbia", point: Q20568528, point_name: "Velika Rudoka", elevation_m: 2658}
+    - {country: Q1042, country_name: "Seychelles", point: Q1579060, point_name: "Morne Seychellois", elevation_m: 905}
+    - {country: Q1044, country_name: "Sierra Leone", point: Q769525, point_name: "Mount Bintumani", elevation_m: 1945}
+    - {country: Q334, country_name: "Singapore", point: Q720209, point_name: "Bukit Timah", elevation_m: 163.63}
+    - {country: Q214, country_name: "Slovakia", point: Q81213, point_name: "Gerlachovský štít", elevation_m: 2655}
+    - {country: Q215, country_name: "Slovenia", point: Q1024, point_name: "Triglav", elevation_m: 2864}
+    - {country: Q685, country_name: "Solomon Islands", point: Q760819, point_name: "Mount Popomanaseu", elevation_m: 2335}
+    - {country: Q1045, country_name: "Somalia", point: Q649162, point_name: "Shimbiris", elevation_m: 2460}
+    - {country: Q34754, country_name: "Somaliland", point: Q649162, point_name: "Shimbiris", elevation_m: 2460}
+    - {country: Q258, country_name: "South Africa", point: Q1883683, point_name: "Mafadi", elevation_m: 3450}
+    - {country: Q884, country_name: "South Korea", point: Q494645, point_name: "Hallasan", elevation_m: 1947.06}
+    - {country: Q958, country_name: "South Sudan", point: Q948298, point_name: "Kinyeti", elevation_m: 3187}
+    - {country: Q29, country_name: "Spain", point: Q38954, point_name: "Teide", elevation_m: 3715}
+    - {country: Q854, country_name: "Sri Lanka", point: Q1146327, point_name: "Pidurutalagala", elevation_m: 2524}
+    - {country: Q1049, country_name: "Sudan", point: Q2520348, point_name: "Deriba Caldera", elevation_m: 3042}
+    - {country: Q730, country_name: "Suriname", point: Q1549215, point_name: "Julianatop", elevation_m: 1280}
+    - {country: Q34, country_name: "Sweden", point: Q214011, point_name: "Kebnekaise", elevation_m: 2096.8}
+    - {country: Q39, country_name: "Switzerland", point: Q3403, point_name: "Dufourspitze", elevation_m: 4634}
+    - {country: Q858, country_name: "Syria", point: Q215471, point_name: "Mount Hermon", elevation_m: 2813.95}
+    - {country: Q1039, country_name: "São Tomé and Príncipe", point: Q1471391, point_name: "Pico de São Tomé", elevation_m: 2024}
+    - {country: Q865, country_name: "Taiwan", point: Q500275, point_name: "Yushan Main Peak", elevation_m: 3952}
+    - {country: Q863, country_name: "Tajikistan", point: Q41413, point_name: "Ismoil Somoni Peak", elevation_m: 7495}
+    - {country: Q924, country_name: "Tanzania", point: Q1394606, point_name: "Mount Kibo", elevation_m: 5895}
+    - {country: Q869, country_name: "Thailand", point: Q1140075, point_name: "Doi Inthanon", elevation_m: 2565}
+    - {country: Q778, country_name: "The Bahamas", point: Q746274, point_name: "Mount Alvernia", elevation_m: 63}
+    - {country: Q574, country_name: "Timor-Leste", point: Q1539961, point_name: "Tatamailau", elevation_m: 2963}
+    - {country: Q945, country_name: "Togo", point: Q1753509, point_name: "Mount Agou", elevation_m: 986}
+    - {country: Q678, country_name: "Tonga", point: Q1520405, point_name: "Kao", elevation_m: 1030}
+    - {country: Q754, country_name: "Trinidad and Tobago", point: Q1056103, point_name: "El Cerro del Aripo", elevation_m: 940}
+    - {country: Q948, country_name: "Tunisia", point: Q1232136, point_name: "Jebel ech Chambi", elevation_m: 1544}
+    - {country: Q43, country_name: "Turkey", point: Q72303, point_name: "Mount Ararat", elevation_m: 5137}
+    - {country: Q874, country_name: "Turkmenistan", point: Q794684, point_name: "Aýrybaba", elevation_m: 3139}
+    - {country: Q672, country_name: "Tuvalu", point: Q632489, point_name: "Niulakita", elevation_m: 4.6}
+    - {country: Q1036, country_name: "Uganda", point: Q221666, point_name: "Mount Stanley", elevation_m: 5109}
+    - {country: Q212, country_name: "Ukraine", point: Q627508, point_name: "Hoverla", elevation_m: 2061}
+    - {country: Q878, country_name: "United Arab Emirates", point: Q3492099, point_name: "Jebel Jais", elevation_m: 1911}
+    - {country: Q145, country_name: "United Kingdom", point: Q104674, point_name: "Ben Nevis", elevation_m: 1344.527}
+    - {country: Q30, country_name: "United States", point: Q130018, point_name: "Denali", elevation_m: 6190}
+    - {country: Q77, country_name: "Uruguay", point: Q1055837, point_name: "Cerro Catedral", elevation_m: 513.7}
+    - {country: Q265, country_name: "Uzbekistan", point: Q519822, point_name: "Khazret Sultan", elevation_m: 4643}
+    - {country: Q686, country_name: "Vanuatu", point: Q1542459, point_name: "Mount Tabwemasana", elevation_m: 1879}
+    - {country: Q237, country_name: "Vatican City", point: Q1053000, point_name: "Vatican Hill", elevation_m: 75}
+    - {country: Q717, country_name: "Venezuela", point: Q213704, point_name: "Pico Bolívar", elevation_m: 4978}
+    - {country: Q881, country_name: "Vietnam", point: Q123782, point_name: "Fansipan", elevation_m: 3147.3}
+    - {country: Q805, country_name: "Yemen", point: Q1261935, point_name: "Jabal an Nabi Shu'ayb", elevation_m: 3666}
+    - {country: Q953, country_name: "Zambia", point: Q18351462, point_name: "Mafinga Central", elevation_m: 2339}
+    - {country: Q954, country_name: "Zimbabwe", point: Q152294, point_name: "Mount Nyangani", elevation_m: 2592}

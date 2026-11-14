@@ -1,4 +1,4 @@
-Specimen ontology, version 1.0. Its frame is the Darwin Core conceptual model of specimen data (https://dwc.tdwg.org/cm/, version 2026-10-13).
+Specimen ontology, version 2.0. Its frame is the Darwin Core conceptual model of specimen data (https://dwc.tdwg.org/cm/, version 2026-10-13).
 
 Things the labels describe (examples on labels; the Darwin Core class and terms):
 - Specimen: the slide, its catalogue number, the institution that holds it (in Darwin Core, MaterialEntity; catalogNumber, institutionCode).
@@ -47,7 +47,7 @@ Copy every literal exactly as the reading has it, character for character; a lit
 - "Co.": county, a word of the county's name, not the name [county]. Look it up with the word written out ("<County> County" for "<County> Co.").
 - "Mt.": mount, part of the place's name [precise_location].
 - "Mts.": a place abbreviation: when you know what it stands for, look up its expansion [country, province_state, county, city, precise_location]. As for a place's name, the sources decide which level it is.
-- "Is.": island or islands [precise_location, county, province_state].
+- "Is.": island or islands [precise_location]. An island is neither a province nor a city, and no field of the profile holds an island's level: the precise location keeps it as written.
 - "nr.": near [precise_location].
 - "E. slope", "W. side": a direction qualifying the place that follows [precise_location].
 - "leg.", "coll.", "Coll.": collected by, marking the collectors [collectors].
@@ -64,10 +64,10 @@ Copy every literal exactly as the reading has it, character for character; a lit
 - "?": the value before it is uncertain as written [no field].
 - "<Roman month>-<dd>-<yy>-<n>", "<mm>-<dd>-<yy>-<n><letter>": a slide or preparation code: a month, a day, a two-digit year and a slide number joined by hyphens; never a date, nor is any part of it [no field]. No field takes a slide code.
 - "LEWIS COLLECTION": the printed heading of the Lewis Collection's label templates; it is the Collection Code, copied as written [collection_code].
+- "CNHM.": Chicago Natural History Museum, the Field Museum's name from 1943 to 1966: the institution, never a collector [no field]. No field of the profile holds the institution.
+- "sp. <n>": a morphocode, a species number: after a genus, a genus-level identification; with no genus on any label, it names no scientific taxon [taxon].
+- "♀": female: the specimen's sex, which no field of the profile holds [no field].
+- "♂": male: the specimen's sex, which no field of the profile holds [no field].
 
-Open questions that wait for the owner's reading; until then a unit holding one carries no field.
-- "CNHM.": What is "CNHM." on these labels, and does it fill a field?
-- "Sp.30 ♀": Where does "Sp.30 ♀" go, and does it fill a field?
+Meanings no source settles yet; a unit holding one carries no field.
 - "P-95-81-16": What is "P-95-81-16", and does it fill a field?
-Open questions about a notation above, whose entry stands until the owner's reading:
-- "Is.": Which fields can "Is." (island or islands) belong to?
