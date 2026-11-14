@@ -3225,19 +3225,36 @@ def unresolved(*keys):
     return [f"mandatory_unresolved:{key}" for key in sorted(keys)]
 
 
+def cleared_absent():
+    """The fields of ABSENT that rule A clears where their experts find none and the city is
+    settled: all of them on the old path; on the units path all but the precise location, which
+    rule A never clears there, as a label that names a town has one (the ontology's rule
+    precise_location_extent; step.mark_not_on_label's condition 7, WP 2.2)."""
+    return set(ABSENT) - ({"precise_location"} if PATH == "units" else set())
+
+
+def lacking_outcome(*keys):
+    """The run's disposition and reasons when these fields stay unresolved and the precise
+    location's expert finds none beside a settled city: on the units path the precise location
+    stays for a person too (cleared_absent)."""
+    keys = set(keys) | set(ABSENT) - cleared_absent()
+    return (Disposition.REVIEW, unresolved(*keys)) if keys else (Disposition.CLEARED, [])
+
+
 def test_the_listed_fields_a_label_does_not_state_clear_as_not_on_the_label(tmp_path):
     """The label states none of ten listed fields and their experts find
     none: each clears as not on the label, citing one check row that names
     every reading. Its city is on the label: a precise location counts as not
     on the label only beside a settled city or county, so on a label that
-    lacks the city too it alone stays for a person."""
+    lacks the city too it alone stays for a person. On the units path it
+    stays for a person beside the city too (cleared_absent)."""
     rig = build_rig(tmp_path, SPARSE)
     run = rig.specimen.run
     settle(rig, lacking(*ABSENT))
-    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
-    assert cleared_as_not_on_label(run) == set(ABSENT)
+    assert (run.disposition, run.reasons) == lacking_outcome()
+    assert cleared_as_not_on_label(run) == cleared_absent()
     readings = field_step.run_readings(run)
-    for key in ABSENT:
+    for key in cleared_absent():
         value = run.fields[key]
         [row] = not_on_label_rows(run, key)
         assert (value.state, value.literal, value.parsed, value.authority_id) == (
@@ -3253,8 +3270,8 @@ def test_the_listed_fields_a_label_does_not_state_clear_as_not_on_the_label(tmp_
     rig = build_rig(tmp_path / "no-city", label_with(**dict.fromkeys((*ABSENT, "city"), None)))
     run = rig.specimen.run
     settle(rig, lacking(*ABSENT, "city"))
-    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved("precise_location"))
-    assert cleared_as_not_on_label(run) == set(ABSENT) - {"precise_location"} | {"city"}
+    assert (run.disposition, run.reasons) == lacking_outcome("precise_location")
+    assert cleared_as_not_on_label(run) == cleared_absent() - {"precise_location"} | {"city"}
 
 
 def test_collectors_the_label_does_not_state_still_go_to_review(tmp_path):
@@ -3262,8 +3279,8 @@ def test_collectors_the_label_does_not_state_still_go_to_review(tmp_path):
     run = rig.specimen.run
     settle(rig, lacking(*ABSENT))
     assert run.fields["collectors"].state == ValueState.NOT_PRESENT
-    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved("collectors"))
-    assert cleared_as_not_on_label(run) == set(ABSENT) and not not_on_label_rows(run, "collectors")
+    assert (run.disposition, run.reasons) == lacking_outcome("collectors")
+    assert cleared_as_not_on_label(run) == cleared_absent() and not not_on_label_rows(run, "collectors")
 
 
 def test_a_field_whose_line_the_label_writes_never_clears_as_not_on_the_label(tmp_path):
@@ -3271,7 +3288,7 @@ def test_a_field_whose_line_the_label_writes_never_clears_as_not_on_the_label(tm
     rig = build_rig(tmp_path, label_with(**dict.fromkeys(set(ABSENT) - {"county"}, None)))
     run = rig.specimen.run
     settle(rig, lacking(*ABSENT))
-    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved("county"))
+    assert (run.disposition, run.reasons) == lacking_outcome("county")
     assert not not_on_label_rows(run, "county") and "county" not in cleared_as_not_on_label(run)
 
 
@@ -3303,14 +3320,14 @@ def test_a_listed_field_stays_in_review_when_the_label_or_its_record_is_in_doubt
         run.observations[1].unreadable_spans = ["0:3"]
     settle(rig, lacking(*ABSENT))
     if change is not None:
-        assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+        assert (run.disposition, run.reasons) == lacking_outcome()
         change(run)
         field_step.refinalize(run, today=TODAY)
-    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved(*kept))
+    assert (run.disposition, run.reasons) == lacking_outcome(*kept)
     allowed = field_step.not_on_label_keys(field_step.profile_of(run))
     evidence = {item.id: item for item in run.evidence}
     assert not any(field_step.not_on_label(key, run.fields[key], run, evidence, allowed) for key in kept)
-    assert cleared_as_not_on_label(run) == set(ABSENT) - set(kept)
+    assert cleared_as_not_on_label(run) == cleared_absent() - set(kept)
 
 
 GUATEMALAN_TOWN = label_with(**dict.fromkeys(ABSENT, None), country="Guatemala",
@@ -3330,9 +3347,13 @@ NO_TOWN = answering(FieldAnswer(outcome="sources_cannot_resolve", explanation="N
     ("Yepocapa", NO_TOWN, ("city", "precise_location")),
 ], ids=["the-city-itself", "finer-than-the-city", "city-unresolved"])
 def test_a_precise_location_is_not_on_the_label_only_beside_a_settled_city_holding_its_text(
-        tmp_path, place, city, kept):
+        tmp_path, place, city, kept, first_pass_path):
     """A town-only label (105526328 to 105526330): the organiser gives the
-    town's line, or a finer one, as the precise location too."""
+    town's line, or a finer one, as the precise location too. On the units
+    path rule A never clears the precise location (the ontology's rule
+    precise_location_extent, WP 2.2): it stays for a person in each case."""
+    if first_pass_path == "units":
+        kept = tuple(dict.fromkeys((*kept, "precise_location")))
     text = GUATEMALAN_TOWN + ("" if place == "Yepocapa" else "\n" + place)
     quote = "city: Yepocapa" if place == "Yepocapa" else place
     rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
@@ -3508,7 +3529,9 @@ def test_a_municipio_line_beside_the_settled_town_and_department_clears_the_prec
     is not on the label (rule A). On 5332ce4e3 it went to review
     (label_lacks_value: rule A declined, organiser_found_text;
     several_possibilities: ambiguous), or settled as the line itself
-    (resolved)."""
+    (resolved). On the units path the line is a locality as written (the
+    ontology's rule precise_location_extent, WP 2.2): neither the marker
+    check nor rule A clears it, and the answer stands as given."""
     rig = build_rig(tmp_path, GUATEMALAN_MUN, candidates=[*COLLECTORS,
         *(("precise_location", name, MUN_LINE, MUN_LINE) for name in ("1A", "1B"))])
     run = rig.specimen.run
@@ -3520,6 +3543,14 @@ def test_a_municipio_line_beside_the_settled_town_and_department_clears_the_prec
     assert {key: run.fields[key].state for key in ("province_state", "city")} == dict.fromkeys(
         ("province_state", "city"), ValueState.SUPPORTED)
     place = run.fields["precise_location"]
+    if PATH == "units":
+        assert "precise_location" not in cleared_as_not_on_label(run) and not not_on_label_rows(run, "precise_location")
+        stands = {"label_lacks_value": (ValueState.NOT_PRESENT, None, {"rule": "A_declined:precise_location_extent"}),
+            "resolved": (ValueState.SUPPORTED, MUN_LINE, {}), "several_possibilities": (ValueState.AMBIGUOUS, None, {})}
+        assert (place.state, place.literal, decisions.get("precise_location", {})) == stands[answer.outcome]
+        assert (run.disposition, run.reasons) == ((Disposition.CLEARED, []) if answer.outcome == "resolved"
+            else (Disposition.REVIEW, unresolved("precise_location")))
+        return
     assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
     assert decisions["precise_location"]["rule"] == "A_not_on_label"
     assert "precise_location" in cleared_as_not_on_label(run)
@@ -3554,6 +3585,12 @@ def test_a_municipio_line_on_a_label_not_read_whole_goes_to_review(tmp_path, ans
     apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
     finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
     place = run.fields["precise_location"]
+    if PATH == "units":
+        # The marker check never runs on the units path (WP 2.2): the answer stands as given.
+        assert decisions.get("precise_location", {}) == {} and not not_on_label_rows(run, "precise_location")
+        assert (place.state, place.literal) == ((ValueState.SUPPORTED, MUN_LINE) if answer.outcome == "resolved"
+            else (ValueState.AMBIGUOUS, None))
+        return
     assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
     assert place.reason.startswith(field_step.NO_FINER_PLACE.format(markers='"Mun."'))
     assert decisions["precise_location"] == {"refusal": "admin_marker_only",
@@ -3658,8 +3695,10 @@ def test_the_organisers_precise_location_that_only_marks_the_settled_county_is_n
     decisions: dict[str, dict] = {}
     apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
     assert run.fields["precise_location"].state == ValueState.NOT_PRESENT
+    # On the units path rule A never clears the precise location (precise_location_extent, WP 2.2).
     assert decisions["precise_location"]["rule"] == (
-        "A_declined:organiser_found_text" if kept else "A_not_on_label")
+        "A_declined:organiser_found_text" if kept else "A_declined:precise_location_extent" if PATH == "units"
+        else "A_not_on_label")
 
 
 @pytest.mark.parametrize("line", ["Dist. Turrialba", "Distr. Turrialba", "Turrialba District", "Distrito Turrialba"])
@@ -4980,10 +5019,10 @@ def test_a_retry_researches_a_field_marked_not_on_the_label_again_and_cites_only
     mounted(rig, second)
     rig.clock.now += timedelta(hours=1)
     run = rig.workflow.step(rig.principal, rig.specimen.id).run
-    assert "habitat" in second.calls and (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert "habitat" in second.calls and (run.disposition, run.reasons) == lacking_outcome()
     [row] = not_on_label_rows(run, "habitat")
     assert row.id != first.id and first.id in {item.id for item in run.evidence}
-    assert cleared_as_not_on_label(run) == set(ABSENT)
+    assert cleared_as_not_on_label(run) == cleared_absent()
 
 
 MCKINLEY = "E. slope Mt. McKinley"
@@ -5029,7 +5068,7 @@ def test_a_county_that_is_only_part_of_a_word_of_the_settled_city_stays_in_revie
     run = rig.specimen.run
     settle(rig, lacking(*ABSENT, city=confirming("Leesburg", reading="1A")))
     assert run.fields["city"].state == ValueState.SUPPORTED
-    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved("county"))
+    assert (run.disposition, run.reasons) == lacking_outcome("county")
     assert "county" not in cleared_as_not_on_label(run) and not not_on_label_rows(run, "county")
 
 
@@ -5070,8 +5109,8 @@ def test_a_line_with_no_placeholder_still_lets_the_listed_fields_clear(tmp_path,
     rig = build_rig(tmp_path, SPARSE + "\n" + line)
     run = rig.specimen.run
     settle(rig, lacking(*ABSENT))
-    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
-    assert cleared_as_not_on_label(run) == set(ABSENT)
+    assert (run.disposition, run.reasons) == lacking_outcome()
+    assert cleared_as_not_on_label(run) == cleared_absent()
 
 
 @pytest.mark.parametrize("placeholder", PLACEHOLDERS)
@@ -5092,8 +5131,8 @@ def test_metres_above_sea_level_keep_the_elevations_in_review(tmp_path, written)
     rig = build_rig(tmp_path, SPARSE + "\n" + written)
     run = rig.specimen.run
     settle(rig, lacking(*ABSENT))
-    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved(*ELEVATIONS))
-    assert cleared_as_not_on_label(run) == set(ABSENT) - set(ELEVATIONS)
+    assert (run.disposition, run.reasons) == lacking_outcome(*ELEVATIONS)
+    assert cleared_as_not_on_label(run) == cleared_absent() - set(ELEVATIONS)
 
 
 # N1 of #289's second review: units the place tool does not read, as Latin
@@ -5109,8 +5148,8 @@ def test_an_elevation_in_spanish_or_short_units_keeps_the_elevations_in_review(t
     rig = build_rig(tmp_path, SPARSE + "\n" + written)
     run = rig.specimen.run
     settle(rig, lacking(*ABSENT))
-    assert (run.disposition, run.reasons) == (Disposition.REVIEW, unresolved(*ELEVATIONS))
-    assert cleared_as_not_on_label(run) == set(ABSENT) - set(ELEVATIONS)
+    assert (run.disposition, run.reasons) == lacking_outcome(*ELEVATIONS)
+    assert cleared_as_not_on_label(run) == cleared_absent() - set(ELEVATIONS)
 
 
 @pytest.mark.parametrize(("text", "elevation"), [

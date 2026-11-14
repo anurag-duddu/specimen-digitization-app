@@ -1022,8 +1022,10 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     whose expert found no habitat, held 105526328's collecting method
     "trap"). Which field such text belongs to is for a person: the field
     goes to review. A place inside the precise location, or an elevation
-    copied to the other unit, is one kind; an elevation or a date inside
-    the precise location is not. Two fields that both settle the same text
+    copied to the other unit, is one kind; a date inside the precise
+    location is not, nor, on the old path, an elevation (on the units path
+    the precise location holds an elevation written among its lines:
+    may_share_text's `units`). Two fields that both settle the same text
     from the transcript both go to review.
 
     One overlap is the other way round: a place read from the transcript
@@ -1043,6 +1045,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     evidence = {item.id: item for item in run.evidence}
     by_name = {reading.name: reading for reading in readings}
     researched = {outcome.key for outcome in outcomes}
+    units = units_path(run)
     human = human_keys(run)
     claims: list[tuple[str, frozenset]] = []
     mine: dict[str, frozenset] = {}
@@ -1082,7 +1085,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
         place = FIELD_KINDS.get(key) == "place"
         partial, other = [], None
         for claimant, theirs in claims:
-            if claimant == key or may_share_text(key, claimant) or not _overlap(spans, theirs):
+            if claimant == key or may_share_text(key, claimant, units=units) or not _overlap(spans, theirs):
                 continue
             if place and claimant in settled and _partly(spans, theirs):
                 partial.append(claimant)
@@ -1092,7 +1095,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
         if other is None:
             literal, regions = mine_texts[key]
             other = next((claimant for claimant, text, theirs in claim_texts if claimant != key
-                and not may_share_text(key, claimant) and regions & theirs and _spelled_alike(literal, text)), None)
+                and not may_share_text(key, claimant, units=units) and regions & theirs and _spelled_alike(literal, text)), None)
         if other is not None:
             taken[key] = Taken(other)
         else:
@@ -2435,11 +2438,11 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     unresolved instead; a place settled on initials that no place below it
     confirms is ambiguous (_corroborate, once every place is in). A literal
     read from the transcript that settles is marked so
-    (_from_the_transcript). A precise location whose answer gives only an
-    administrative marker beside the places settled is not present
-    (_no_finer_place, after _corroborate), and so is one settled on only
-    the text of a settled place field of the same reading
-    (_repeats_a_place); and so is a county or a city left open whose every
+    (_from_the_transcript). On the old path a precise location whose answer
+    gives only an administrative marker beside the places settled is not
+    present (_no_finer_place, after _corroborate), and so is one settled on
+    only the text of a settled place field of the same reading
+    (_repeats_a_place); and so, on either path, is a county or a city left open whose every
     text on the label is the text of a settled place above it
     (_only_a_place_above).
     label_lacks_value: not present;
@@ -3274,10 +3277,13 @@ def _no_finer_place(run, profile: CollectionProfile, tasks_by_key: Mapping[str, 
     answer is applied as before this check: a resolved answer settles as
     its text and may clear, and an unsettled one stays for review. Returns
     {"precise_location": the markers as written} for rule A
-    (mark_not_on_label), or {}. Checked once every place is in."""
+    (mark_not_on_label), or {}. Checked once every place is in. Never on the
+    units path, where the precise location is the label's locality as
+    written, a town-only locality and its marker included (the ontology's
+    rule precise_location_extent): the answer is applied as it is."""
     key = "precise_location"
     task, outcome = tasks_by_key.get(key), applied.get(key)
-    if (task is None or outcome is None or key not in not_on_label_keys(profile) or outcome.failure is not None
+    if (units_path(run) or task is None or outcome is None or key not in not_on_label_keys(profile) or outcome.failure is not None
             or outcome.answer is None or outcome.fallback or outcome.finalized_without_model
             or outcome.answer.outcome == "label_lacks_value"):
         return {}
@@ -3336,7 +3342,9 @@ def _repeats_a_place(run, tasks_by_key: Mapping[str, FieldTask], applied: Mappin
     county Chirripo) is left as it is, and so is a precise location whose
     place did not settle; a marker beside a settled place is
     _no_finer_place's. Returns {"precise_location": (the literal, the field)}
-    for rule A, or {}. Checked once every place is in."""
+    for rule A, or {}. Checked once every place is in. Never on the units
+    path, where a town-only locality is still the precise location (the
+    ontology's rule precise_location_extent): the value stands as settled."""
     from specimen_digitization.application.georef_locality import fold
 
     from .agreement import PLACE_ORDER
@@ -3345,7 +3353,7 @@ def _repeats_a_place(run, tasks_by_key: Mapping[str, FieldTask], applied: Mappin
     key = "precise_location"
     task, outcome = tasks_by_key.get(key), applied.get(key)
     value = run.fields.get(key)
-    if (task is None or outcome is None or outcome.failure is not None or outcome.answer is None
+    if (units_path(run) or task is None or outcome is None or outcome.failure is not None or outcome.answer is None
             or outcome.answer.outcome != "resolved" or value is None or value.state != ValueState.SUPPORTED
             or not value.literal or value.literal != outcome.answer.literal):
         return {}
@@ -3628,7 +3636,10 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
        the places settled, they write only an administrative marker, or
        readers differ only in one (_admin_markers);
     6. for an elevation, no reading writes an elevation (_elevation_written);
-    7. for a precise location, a city or a county is supported.
+    7. for a precise location, a city or a county is supported, and the
+       run's first-pass path is old: on the units path a label that names a
+       town has a precise location, its locality as written (the ontology's
+       rule precise_location_extent), so it is never marked.
     The value then cites one check row (kind "derived", locator
     "check:not_on_label") naming every reading of the run, and its reason
     starts "Not on the label:" (for a precise location in `no_finer`, the
@@ -3699,6 +3710,9 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
             if elevation:
                 why[key] = "elevation_written"
                 continue
+        if key == "precise_location" and units_path(run):
+            why[key] = "precise_location_extent"
+            continue
         if key == "precise_location" and not _place_settled_below_province(run):
             why[key] = "no_city_or_county_settled"
             continue
@@ -3735,14 +3749,15 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
     a not-on-the-label check row whose readings are the run's current
     readings (not_on_label_excerpt; for a precise location, any of its three,
     and for a county or a city, either of its two);
-    and, for a precise location, a city or a county is still supported. An
+    and, for a precise location, a city or a county is still supported and
+    the run's path is old (mark_not_on_label's condition 7). An
     older not-present value, with no such row, never clears."""
     if key not in allowed or value.state != ValueState.NOT_PRESENT:
         return False
     if any((value.literal, value.parsed, value.normalized, value.authority_id, value.authority_identity,
             value.verbatim_by_observation)):
         return False
-    if key == "precise_location" and not _place_settled_below_province(run):
+    if key == "precise_location" and (units_path(run) or not _place_settled_below_province(run)):
         return False
     readings = run_readings(run)
     variants = ({}, {"markers": True}, {"place": True}) if key == "precise_location" else (

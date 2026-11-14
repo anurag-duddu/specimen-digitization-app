@@ -4,10 +4,12 @@ units path (prompts.instructions(key, units=True)) and the old path's, unchanged
 The units path's text is the old path's with each text units.txt names replaced (common.txt's
 first_pass line, its rule 4 and a sentence of its literal's line; a line of each of the five
 tool-less briefs; the line of each of the four place briefs on readings that disagree; two lines of the
-collectors brief and the literal's line of the country brief) or left out (common.txt's label notations
-that the ontology's text gives too) and the specimen ontology's brief text (ontology.render(brief=True))
-between the shared rules and the brief. Every test here runs once: this module's first_pass_path fixture
-replaces conftest.py's, as no run is built."""
+collectors brief and the literal's line of the country brief; from WP 2.2, common.txt's two date
+notation lines, which the ontology's text gives, and three lines of the precise location brief) or left
+out (common.txt's label notations that the ontology's text gives too), and, between the shared rules and
+the brief, the specimen ontology's brief text (ontology.render(brief=True)) and, from WP 2.2, the
+instructions of its rules that name the field (ontology.render_instructions("expert", key)). Every test
+here runs once: this module's first_pass_path fixture replaces conftest.py's, as no run is built."""
 
 from __future__ import annotations
 
@@ -18,7 +20,7 @@ import pytest
 
 from specimen_digitization.field_research.contracts import FIELD_TOOLS
 from specimen_digitization.field_research.prompts import instructions
-from specimen_digitization.ontology import render
+from specimen_digitization.ontology import render, render_instructions
 
 
 def units_replacements():
@@ -69,22 +71,25 @@ def test_the_old_paths_instructions_are_main_s():
     assert {key: "sha256:" + hashlib.sha256(instructions(key).encode()).hexdigest() for key in FIELD_TOOLS} == MAIN
 
 
-def test_units_txt_replaces_texts_of_common_txt_the_five_tool_less_briefs_and_the_four_place_briefs_only():
+def test_units_txt_replaces_texts_of_common_txt_the_tool_less_place_and_precise_location_briefs_only():
     assert TOOL_LESS == {"collectors", "collection_code", "habitat", "collection_method", "verbatim_dts"}
-    assert set(units_replacements()) == {"common.txt", *(f"{key}.txt" for key in (*TOOL_LESS, *PLACES))}
+    assert set(units_replacements()) == {"common.txt", "precise_location.txt",
+        *(f"{key}.txt" for key in (*TOOL_LESS, *PLACES))}
 
 
 @pytest.mark.parametrize("key", FIELD_TOOLS)
 def test_the_units_paths_instructions_are_the_old_ones_with_units_txt_s_texts_and_the_ontology(key):
-    """The ontology stands once, right before the brief; taking it out gives the old path's
-    instructions with each text units.txt names in its place: each text it names stands once in
-    the old ones and its replacement once in the units path's, and a text it replaces by
-    nothing is a whole line of the old ones, left out."""
+    """The ontology stands once, then the rules that name the field (none for some fields), right
+    before the brief; taking them out gives the old path's instructions with each text units.txt
+    names in its place: each text it names stands once in the old ones and its replacement once in
+    the units path's, and a text it replaces by nothing is a whole line of the old ones, left out."""
     old, new = instructions(key), instructions(key, units=True)
     rendered = render(brief=True).strip()
+    rules = render_instructions("expert", key).strip()
+    added = rendered + ("\n\n" + rules if rules else "")
     brief = new[new.rindex("\n\nField: "):]
-    assert new.count(rendered) == 1 and new.endswith(rendered + brief)
-    without = new.replace("\n\n" + rendered, "", 1)
+    assert new.count(rendered) == 1 and new.endswith(added + brief)
+    without = new.replace("\n\n" + added, "", 1)
     done = old
     for name in ("common.txt", f"{key}.txt"):
         for old_text, new_text in units_replacements().get(name, ()):
@@ -123,9 +128,9 @@ def test_the_units_paths_instructions_name_no_first_pass_preference(key):
     assert "- units, when present:" in text
 
 
-# prompts/units.txt as WP 1.3's rework leaves it (gap report items 2(a), 3 and 4), as the sha256 of
-# its bytes.
-UNITS_TXT = "sha256:aa312890cdf669d4b6fee6d8ed24c9a720d73dc1256280a8948d840f54603a04"
+# prompts/units.txt as WP 1.3's rework (gap report items 2(a), 3 and 4) and WP 2.2 (the two date
+# notation lines; the precise location brief's three lines) leave it, as the sha256 of its bytes.
+UNITS_TXT = "sha256:4e2fc4bde94376e81821182085021444746d31c6846b8e87a11b48d7e34aeace"
 # Rule 4 on the units path: what the code decides, said once to every expert.
 RULE = ("The code decides from the image judgements, the source answers your lookups returned and the readers' "
     "agreement whether a value is cleared, marked for a person to check, or left open, and it refuses an answer it cannot "
@@ -273,3 +278,82 @@ def test_the_units_path_says_to_answer_the_text_the_readings_write(key):
         assert new.count(sentence) == 1 and sentence not in old
     for sentence, field in ((NOTE, "collectors"), (NAMES_INSIDE, "collectors"), (COUNTRY_INSIDE, "country")):
         assert new.count(sentence) == (key == field) and sentence not in old
+
+
+# ---- WP 2.2: the ontology's rules and Precise Location's whole locality -------------------------
+
+# common.txt's two date notation lines the units path replaces, each with the ontology's text that
+# gives what it said (ontology.render(brief=True)), and the line in its place, which keeps what is
+# the date check's own (parse_date, day_month_order_ambiguous).
+DATE_LINES = {
+    "- A Roman numeral I to XII in a date is the month": ("the month, January to December, in any position of the date",
+        "A month may be written by name in English, Spanish, French, German, Portuguese, Italian or Latin",
+        'a day may carry an ordinal ("3rd", "1er")'),
+    "- A numeric date (": ('"<a>-<b>-<yy>", "<a>.<b>.<yy>", "<a>/<b>/<yy>": month <a>, day <b>; or day <a>, month <b>',
+        "Settled only when a part over 12 fixes day against month; otherwise both readings stand until evidence "
+        "decides"),
+}
+DATE_SAYS = ("- parse_date reads each date notation of the specimen ontology below.",
+    "- parse_date names a numeric date that either order reads (day_month_order_ambiguous).")
+
+
+@pytest.mark.parametrize("key", FIELD_TOOLS)
+def test_the_units_path_replaces_the_two_date_notation_lines_by_the_date_checks_own_words(key):
+    """The units path's expert request stays under budget.DEFAULT_MAX_INPUT_TOKENS with the rules
+    added (test_units_request_size.py): common.txt's two date notation lines give way to one line
+    each on the date check, and the ontology's text the units path carries gives what they said."""
+    old, new = instructions(key), instructions(key, units=True)
+    replaced = [old_text for old_text, _ in units_replacements()["common.txt"]
+        if old_text.startswith(tuple(DATE_LINES))]
+    assert len(replaced) == 2
+    for line in replaced:
+        assert old.count(line) == 1 and line not in new
+    for says in DATE_SAYS:
+        assert new.count(says) == 1 and says not in old
+    rendered = render(brief=True)
+    for gives in DATE_LINES.values():
+        assert all(text in rendered for text in gives)
+
+
+@pytest.mark.parametrize("key", FIELD_TOOLS)
+def test_each_expert_receives_the_rules_that_name_its_field_on_the_units_path_only(key):
+    """ontology.render_instructions("expert", key), pinned in tests/test_ontology.py, stands once
+    in the units path's instructions and never in the old path's."""
+    from specimen_digitization import ontology
+
+    old, new = instructions(key), instructions(key, units=True)
+    rules = [rule for rule in ontology.ontology().rules if key in rule.fields]
+    for rule in ontology.ontology().rules:
+        assert rule.instruction not in old
+        assert new.count(rule.instruction) == (rule in rules)
+    assert ("The specimen ontology's rules for this field:" in new) == bool(rules)
+
+
+# The precise location brief on the units path (prompts/units.txt): the label's whole locality.
+WHOLE_LOCALITY = (
+    "Field: Precise Location (precise_location). The label's whole locality as written: every line of its locality "
+    'text, such as "E. slope Mt. <Mountain>, nr. <Town>" over "<Province>, <Country>".',
+    "the higher places those lines write (the town, the province, the country, notations included), an elevation "
+    'written on them ("<Town>, <n> ft.") and "CNHM." where a locality line writes it.',
+    "The shared rules that a place holds no elevation and never takes another field's text do not apply to these "
+    "lines.",
+    "- A locality that names nothing finer than its town is still this field: its lines as written. Answer "
+    "label_lacks_value only when no reading writes a locality.",
+)
+# What main's brief says that the rule precise_location_extent contradicts (its note).
+CUT_SHORT = (
+    "Leave out what belongs to other fields: country, province, county or city written as such, dates, collectors "
+    "and elevations.",
+    "- When no reading writes a locality more precise than the other place fields, answer label_lacks_value.",
+)
+
+
+def test_the_precise_location_brief_takes_the_whole_locality_on_the_units_path_only():
+    old, new = instructions("precise_location"), instructions("precise_location", units=True)
+    for text in WHOLE_LOCALITY:
+        assert new.count(text) == 1 and text not in old
+    for text in CUT_SHORT:
+        assert old.count(text) == 1 and text not in new
+    for key in FIELD_TOOLS:
+        if key != "precise_location":
+            assert not any(text in instructions(key, units=True) for text in WHOLE_LOCALITY)

@@ -232,6 +232,33 @@ PROMPT_VARIABLES = {
 }
 
 
+def units_ontology() -> str:
+    """The ontology text the units path's first pass carries: the ontology's brief text
+    (ontology.render(brief=True)), then the instructions of its rules about reading a label
+    (ontology.render_instructions("first_pass"))."""
+    from .ontology import render, render_instructions
+
+    return render(brief=True) + "\n" + render_instructions("first_pass")
+
+
+# The pinned prompts that, on a units-path run, carry the instructions of the ontology's
+# rules for their model (with_rules; application/production.py pin_dependencies).
+RULED = {PromptName.LITERAL_TRANSCRIPTION: "reader", PromptName.STRUCTURED_EXTRACTION: "organiser"}
+
+
+def with_rules(name: PromptName, pinned: ResolvedPrompt) -> ResolvedPrompt:
+    """A units-path run's pinned prompt (RULED): the served text, then the instructions of
+    the ontology's rules for its model (ontology.render_instructions), which its call sends
+    as its instructions. The resolution evidence (labels, version, reason) stays the
+    served text's. Any other prompt is returned as it is."""
+    model = RULED.get(name)
+    if model is None:
+        return pinned
+    from .ontology import render_instructions
+
+    return pinned.model_copy(update={"text": pinned.text + "\n\n" + render_instructions(model).strip()})
+
+
 def resolve_prompt(
     name: PromptName,
     inputs: CollectionPromptInputs,
@@ -241,13 +268,11 @@ def resolve_prompt(
 ) -> ResolvedPrompt:
     """Resolve a managed prompt and retain the served version as run evidence.
 
-    For FIRST_PASS_UNITS, plain CollectionPromptInputs get `ontology.render(brief=True)` as
+    For FIRST_PASS_UNITS, plain CollectionPromptInputs get the units text (units_ontology) as
     `ontology`; FirstPassUnitsPromptInputs are used as given."""
     requested_label = label or os.getenv("LOGFIRE_PROMPT_LABEL", "development")
     if name is PromptName.FIRST_PASS_UNITS and not isinstance(inputs, FirstPassUnitsPromptInputs):
-        from .ontology import render
-
-        inputs = FirstPassUnitsPromptInputs(**inputs.model_dump(), ontology=render(brief=True))
+        inputs = FirstPassUnitsPromptInputs(**inputs.model_dump(), ontology=units_ontology())
     variable = PROMPT_VARIABLES[name]
     with variable.get(
         inputs,

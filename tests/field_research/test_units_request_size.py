@@ -33,6 +33,11 @@ from specimen_digitization.field_research.contracts import (
 
 FIXTURES = Path(__file__).parents[1] / "fixtures"
 SLIDES = ("105526325", "105526324")
+# The largest request of each rebuilt conversation, in bytes (budget.input_token_bound), with WP 2.2's
+# instructions: the province expert's rules (ontology.render_instructions("expert", "province_state"),
+# 523 bytes with the blank line before them) in, common.txt's two date notation lines replaced (587
+# bytes out; test_units_instructions.py). On main 530b2cf18 they were 47,867 and 47,495.
+LARGEST = {"105526325": 47_803, "105526324": 47_431}
 
 
 @pytest.fixture(autouse=True)
@@ -128,7 +133,7 @@ def test_the_rebuilt_conversation_of_a_refused_province_request_fits_the_input_b
     assert outcome.failure is None and outcome.answer == FieldAnswer(outcome="sources_cannot_resolve",
         explanation="The sources do not settle the province.")
     assert len(bounds) == requests == 7
-    assert max(bounds) <= budget.DEFAULT_MAX_INPUT_TOKENS
+    assert max(bounds) == LARGEST[slide] <= budget.DEFAULT_MAX_INPUT_TOKENS
 
 
 def test_a_unit_whose_readers_write_one_text_carries_it_once():

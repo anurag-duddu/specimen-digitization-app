@@ -26,7 +26,7 @@ from ..model_gateway import (
     READER_HUGGINGFACE_ROUTES,
     HuggingFaceModelGateway,
 )
-from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt
+from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt, with_rules
 from ..transcription import build_literal_transcription_agent
 from .domain import Observation, WorkItem, WorkPage, now
 from .lane import run_status
@@ -1415,12 +1415,14 @@ class ProductionAdapters:
             collection_name="Insects",
             schema_version=run.profile.schema_version,
         )
-        # FIRST_PASS_UNITS is pinned on a units-path run only.
+        # FIRST_PASS_UNITS is pinned on a units-path run only, and there the readers' and
+        # the organiser's prompts carry the ontology's rules for them (prompts.with_rules).
         units = getattr(run, "first_pass_path", "old") == "units"
         prompts = {
-            name.value: resolve_prompt(name, inputs).model_dump(mode="json")
+            name.value: (with_rules(name, resolved) if units else resolved).model_dump(mode="json")
             for name in PromptName
             if units or name is not PromptName.FIRST_PASS_UNITS
+            for resolved in (resolve_prompt(name, inputs),)
         }
         # A reader is pinned from the reader routes only (the initial pair and
         # the NVIDIA option's); a stage route named as a reader raises.
