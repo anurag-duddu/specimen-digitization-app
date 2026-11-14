@@ -963,7 +963,10 @@ rules:
       elevation ("Yepocapa, 4800 ft." over "Chimaltenango, Guatemala") is still
       refused, on both paths (agreement._holds_another_kind, :323-324,
       :840-861), and so is one whose elevation text another field settled
-      (step._taken): the field is left for a person. The coordinator's ruling
+      (step._taken): the field is left for a person. An organiser candidate
+      that holds an elevation and is taken as it is can settle, on both paths,
+      as on main (agreement.literal_refusal checks another kind's text only on
+      the transcript basis). The coordinator's ruling
       of 2026-11-14 took the elevation out of WP 2.2 after two review rounds
       found inputs that passed a date or no locality through; WP 2.3 decides
       when an elevation inside a locality is accepted (the plan's WP 2.3 row).
