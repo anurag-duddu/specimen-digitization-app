@@ -13,23 +13,26 @@ does not state are marked so (step.mark_not_on_label) and each label's settlemen
   what failed the check.
 
 The checks:
-- place_within_settled_places and place_chain (`_place_marks`): a place below the country settled
-  on a source record that names its parents (a Getty TGN, Wikidata or NGA candidate the value
-  cites, derive._settling_candidate) lies in each place settled above it, as far as the record's
-  parents say (`fits`). Its country is the record's last parent (sources._place puts the country
-  last), so a parent of another level that has the country's name is not its country: the
-  country Georgia settled, a county Fulton whose record names the US state Georgia and the United
-  States is outside it. A place outside the country or the province settled above it fails
-  place_within_settled_places, which the refusal at apply time checks too
-  (agreement.parents_refusal); a city outside the county settled above it fails place_chain,
-  which that refusal checks only for a near spelling: a settled Coles County, then an exact
-  "Chicago" whose record names Cook County, Illinois. A place settled in an earlier attempt is
-  checked on its record read again from the store (`stored_answers`); one whose cited record
-  cannot be read again, below a place settled in this attempt, is marked (place_chain), as its
-  place in that chain is not checked.
+- place_within_settled_places and place_chain (`_place_marks`, `fits`): a place below the country,
+  settled on a source record that names its parents (a Getty TGN, Wikidata or NGA candidate the
+  value cites, derive._settling_candidate), is marked only when its record and the record of a
+  place settled above it share an identity that shows it lies outside that place: both name
+  the country by an ISO 3166-1 code and the codes differ; or both are Getty TGN records, whose
+  parents are a place's whole chain of ancestors (georef_tgn), and the settled place's record is
+  not in that chain. The record lies inside when the settled place's record is one of its
+  parents, or the two codes agree. Otherwise the check abstains and marks nothing: two
+  gazetteers' records, NGA's parents (named, with no record of their own), a parent of the
+  settled place's name but no record, a place settled on GEOLocate (never read: its parents are
+  the places the expert's query named, with no record), and a place an earlier attempt settled
+  whose record cannot be read again from the record's stored responses (`stored_answers`). A
+  place outside the country or the province settled above it fails place_within_settled_places,
+  which the refusal at apply time checks too (agreement.parents_refusal, by name); a city
+  outside the county settled above it fails place_chain, which that refusal checks only for a
+  near spelling: a settled Coles County (tgn:Coles), then an exact "Chicago" whose TGN chain is
+  Cook, Illinois, the United States.
 - place_parents_derived (`_place_marks`): a place derivation filled (layer "derived") that a
-  place settled below it does not lie in, by the same test, is marked itself; a person's
-  derived place is not, and the place below it is marked instead.
+  place settled below it lies outside, by the same test, is marked itself; a person's derived
+  place is not, and the place below it is marked instead.
 - date_order (`_date_marks`): a determination date before the collecting date, compared on the
   parts both have (`determined_before`), marks the determination, both dates listed.
 
@@ -47,6 +50,7 @@ import dataclasses
 import hashlib
 import json
 import re
+from collections import Counter
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from typing import NamedTuple
 
@@ -137,39 +141,37 @@ def _date_marks(fields: Mapping[str, FieldValue], human: Collection[str]) -> lis
 
 # ---- places ------------------------------------------------------------------------------
 
-def fits(candidate: SourceCandidate, lower: str, upper: str, places: Mapping[str, object]) -> bool:
-    """Whether the source record a place settled for the field `lower` settled on lies in the
-    place settled for the field `upper` above it, by what the record's parents (nearest first)
-    say about that place's level; `places` holds the settled places by field
-    (agreement.PlaceField), and a parent is one of them by record, name or code
-    (agreement.lies_in).
-    - The country: the record's last parent, its country (sources._place), is the settled
-      country. A parent of another level with the country's name is not its country.
-    - A province: a parent nearer than the record's country is the settled province; or, for a
-      city, the settled county, which is checked against the province itself; or the record
-      names no parent nearer than its country, and says nothing of a province.
-    - A county, for a city: a parent nearer than its country is the settled county; or the
-      record names no parent nearer than the settled province it names (or its country, where
-      it names no settled province): NGA names a town's first-level unit and its country only,
-      and says nothing of a county."""
-    from .agreement import lies_in
+def _source(authority_id: str | None) -> str | None:
+    """The gazetteer of a record id ("tgn:1000565" -> "tgn"), or None."""
+    return authority_id.partition(":")[0] if authority_id and ":" in authority_id else None
+
+
+def fits(candidate: SourceCandidate, upper: str, place) -> bool | None:
+    """Whether the source record a place settled on lies in the place settled for the field
+    `upper` above it (an agreement.PlaceField: its record and, for the country, the ISO code that
+    record carries), by an identity both records carry; None where they carry none it can
+    compare (the check abstains).
+    - True: the settled place's record is one of the record's parents; or, for the country, the
+      record's last parent, its country (sources._place), and the settled country carry the same
+      ISO 3166-1 code (agreement.country_code).
+    - False: for the country, those two codes differ; or both records are Getty TGN's and the
+      record's parents, all TGN records, are its whole chain of ancestors (georef_tgn._place:
+      every ancestor, cut at its nation where it has one), which the settled place's record is
+      not in.
+    A parent with the settled place's name and another record, or none, is never that place."""
+    from .agreement import country_code
 
     parents = candidate.parents
-
-    def named(key: str, parent) -> bool:
-        return key in places and lies_in(dataclasses.replace(candidate, parents=(parent,)), key, places[key])
-
-    if upper == "country":
-        return named("country", parents[-1])
-    # The parents nearer than the record's country: all but the last; a single parent that is not
-    # the settled country may be any level.
-    nearer = parents[:-1] if len(parents) > 1 or named("country", parents[-1]) else parents
-    if any(named(upper, parent) for parent in nearer):
+    if place.authority_id and place.authority_id in {parent.authority_id for parent in parents}:
         return True
-    if upper == "province_state":
-        return (lower == "city" and any(named("county", parent) for parent in nearer)) or not nearer
-    province = next((index for index, parent in enumerate(nearer) if named("province_state", parent)), len(nearer))
-    return not nearer[:province]
+    if upper == "country" and parents:
+        mine, theirs = country_code(parents[-1].iso_code), country_code(place.iso_code)
+        if mine and theirs:
+            return mine == theirs
+    if (parents and _source(place.authority_id) == "tgn" == _source(candidate.authority_id)
+            and all(_source(parent.authority_id) == "tgn" for parent in parents)):
+        return False
+    return None
 
 
 def settling_candidate(value: FieldValue, answers: Iterable[SourceAnswer]) -> SourceCandidate | None:
@@ -261,65 +263,61 @@ def stored_answers(run, blobs, evidence_ids: Iterable[str]) -> tuple[list[Source
         return pool.submit(asyncio.run, ask()).result(), missing
 
 
-def _place_field(key: str, value: FieldValue, rows: Mapping[str, Evidence], answers: Sequence[SourceAnswer]):
-    """A settled place value as agreement.lies_in compares it: its literal, value and expansions
-    (step._expansions), the name of the record it settled on, its record, and for the country the
-    code that record carries (step._record_code)."""
+def _place_field(key: str, value: FieldValue, answers: Sequence[SourceAnswer]):
+    """A settled place value as `fits` compares it: its record, and for the country the ISO code
+    that record carries (step._record_code, among the answers given, which hold earlier
+    attempts' records read again). Its texts are left out: a name is no identity."""
     from .agreement import PlaceField
-    from .step import _expansions, _record_code
+    from .step import _record_code
 
-    found = settling_candidate(value, answers)
-    names = [text for text in (value.literal, value.normalized, value.parsed, *_expansions(key, value, rows),
-        found.name if found is not None else None) if text]
-    code = _record_code(value, answers) if key == "country" else None
-    return PlaceField(tuple(dict.fromkeys(names)), value.authority_id, code)
+    return PlaceField((), value.authority_id, _record_code(value, answers) if key == "country" else None)
 
 
 def _named(value: FieldValue) -> str:
     return value.normalized or value.parsed or value.literal or ""
 
 
-def _place_marks(fields: Mapping[str, FieldValue], rows: Mapping[str, Evidence], answers: Sequence[SourceAnswer],
-        human: Collection[str], unread: Collection[str] = (), again: Collection[str] = ()) -> list[Mark]:
+def _place_marks(fields: Mapping[str, FieldValue], answers: Sequence[SourceAnswer], human: Collection[str],
+        tally: Counter | None = None) -> list[Mark]:
+    """The places that fail a place check (`fits` is False); `tally` counts, by check, the pairs
+    checked ("<check>:checked") and those the check abstained on ("<check>:abstained")."""
     from .agreement import PLACE_ORDER
 
-    places = {key: _place_field(key, fields[key], rows, answers) for key in PLACE_ORDER if settled(fields.get(key))}
+    tally = Counter() if tally is None else tally
+    places = {key: _place_field(key, fields[key], answers) for key in PLACE_ORDER if settled(fields.get(key))}
     marks: list[Mark] = []
     for lower in PLACE_ORDER[1:]:
         value = fields.get(lower)
         if lower not in places or value.layer == "derived":
             continue
         candidate = settling_candidate(value, answers)
-        lost = [i for i in value.evidence_ids if i in unread]
-        if candidate is None and lost and lower not in human and any(
-                upper in places and upper in again for upper in PLACE_ORDER[:PLACE_ORDER.index(lower)]):
-            # The record it settled on in an earlier attempt cannot be read again, and a place above
-            # it settled in this attempt: its place in that chain is not checked, so it is never
-            # taken as consistent.
-            marks.append(Mark(lower, PLACE_CHAIN,
-                f"Marked for a person, rule {PLACE_CHAIN}: the source's record {_named(value)!r} settled on "
-                f"(evidence {', '.join(lost)}) could not be read again, so its place in the chain is not checked.",
-                tuple(value.evidence_ids)))
-            continue
         if candidate is None or not candidate.parents:
+            tally["place:no_record_read"] += 1
             continue
         record = ", ".join(parent.name for parent in candidate.parents)
         for upper in PLACE_ORDER[:PLACE_ORDER.index(lower)]:
-            if upper not in places or fits(candidate, lower, upper, places):
+            if upper not in places:
                 continue
             above = fields[upper]
+            derived = above.layer == "derived" and upper not in human
+            check = PLACE_PARENTS_DERIVED if derived else PLACE_CHAIN if upper == "county" else PLACE_WITHIN
+            tally[f"{check}:checked"] += 1
+            verdict = fits(candidate, upper, places[upper])
+            if verdict is None:
+                tally[f"{check}:abstained"] += 1
+            if verdict is not False:
+                continue
             cited = tuple(dict.fromkeys([*value.evidence_ids, *above.evidence_ids]))
-            if above.layer == "derived" and upper not in human:
+            if derived:
                 marks.append(Mark(upper, PLACE_PARENTS_DERIVED,
-                    f"Marked for a person, rule {PLACE_PARENTS_DERIVED}: this {LEVEL_NAMES[upper]} was derived, and "
-                    f"the {LEVEL_NAMES[lower]} settled below it, {_named(value)!r}, lies in {record} by its source's "
-                    f"record ({candidate.authority_id}), not in it.", cited))
+                    f"Marked for a person, rule {PLACE_PARENTS_DERIVED}: this {LEVEL_NAMES[upper]} was derived "
+                    f"({above.authority_id}), and the {LEVEL_NAMES[lower]} settled below it, {_named(value)!r}, lies in "
+                    f"{record} by its source's record ({candidate.authority_id}), not in it.", cited))
             elif lower not in human:
-                check = PLACE_CHAIN if upper == "county" else PLACE_WITHIN
                 marks.append(Mark(lower, check,
                     f"Marked for a person, rule {check}: the source's record for {_named(value)!r} "
                     f"({candidate.authority_id}) places it in {record}, not in the {LEVEL_NAMES[upper]} settled "
-                    f"above it, {_named(above)!r}.", cited))
+                    f"above it, {_named(above)!r} ({above.authority_id}).", cited))
     return marks
 
 
@@ -349,12 +347,15 @@ def basis(key: str) -> str | None:
 
 
 def stage(run, *, readings: Sequence[Reading], received: Mapping[str, Sequence[SourceAnswer]],
-        researched: Collection[str], derived: Collection[str], human: Collection[str], blobs=None) -> list[str]:
+        researched: Collection[str], derived: Collection[str], human: Collection[str], blobs=None,
+        tally: Counter | None = None) -> list[str]:
     """Run the checks over the run's settled values, in memory; the codes of the marks made.
 
     `received` is every source answer of this attempt, by field. A settled place cites, as its
     evidence, the gazetteer answers it settled on; those this attempt did not receive (an
-    earlier attempt's) are read again from `blobs`, the record's blob store (`stored_answers`).
+    earlier attempt's) are read again from `blobs`, the record's blob store (`stored_answers`);
+    a place whose record cannot be read again is not checked (the check abstains). `tally`
+    counts what the place checks checked and abstained on, and the records not read again.
     The fields this attempt `researched` or `derived`, and both dates, are checked again: their
     earlier marks of this stage are dropped first; a field another attempt settled keeps its
     marks, and gets no mark twice. A person's field (`human`) is never marked, whatever its
@@ -369,6 +370,8 @@ def stage(run, *, readings: Sequence[Reading], received: Mapping[str, Sequence[S
         if i not in have and (row := rows.get(i)) is not None and row.source in GAZETTEERS and row.kind == "authority"]
     stored, unread = stored_answers(run, blobs, cited) if cited and blobs is not None else ([], set(cited))
     answers += stored
+    if tally is not None:
+        tally["place:records_not_read_again"] += len(unread)
     again = {*researched, *derived, "date_visited_from", "date_identified"}
     run.findings[:] = [finding for finding in run.findings
         if not (finding.rule_id == CHECK_STAGE and finding.field_key in again)]
@@ -378,7 +381,7 @@ def stage(run, *, readings: Sequence[Reading], received: Mapping[str, Sequence[S
             _with_sentence(value, sentence)
     made: list[str] = []
     present = {(finding.field_key, finding.reason_code) for finding in run.findings if finding.rule_id == CHECK_STAGE}
-    for mark in [*_place_marks(run.fields, rows, answers, human, unread, again), *_date_marks(run.fields, human)]:
+    for mark in [*_place_marks(run.fields, answers, human, tally), *_date_marks(run.fields, human)]:
         _with_sentence(run.fields[mark.field], mark.sentence)
         for label in _labels(run, mark.field, readings, rows):
             code = marked_code(mark.field, label, mark.check)

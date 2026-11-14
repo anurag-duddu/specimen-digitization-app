@@ -705,13 +705,15 @@ rules:
       The apply-time refusal stays as today: it checks a candidate against the
       settled country and province, but a city against a settled county only
       for a near spelling. On the units path the check stage marks for a
-      person what it lets pass: a place below the country, settled on a source
-      record that names its parents, whose last parent, the record's country,
-      is not the settled country; or, while the record names a parent nearer
-      than its country, none of whose parents is the settled province (for a
-      city, a parent that is the settled county will do). The country Georgia
-      settled, a county Fulton whose record names the US state Georgia and the
-      United States is marked.
+      person a place below the country, settled on a source record that names
+      its parents, whose record and the record of the country or the province
+      settled above it share an identity showing it lies outside that place:
+      for the country, the record's country (its last parent) and the settled
+      country carry different ISO 3166-1 codes; or both are Getty TGN records,
+      whose parents are a place's whole chain of ancestors, and the
+      settled place's record is not in that chain. The country Georgia settled
+      on TGN's nation, a county Fulton whose TGN chain is the US state Georgia
+      and the United States is marked. A person's value is never marked.
     instruction: >-
       A place below the country lies inside the country and province its label writes.
     fields: [province_state, county, city]
@@ -724,6 +726,16 @@ rules:
       and the case today's check already met stays refused, as today: the
       country United States settled, a province written "Cook" and unsettled,
       a settled county Cook and an exact city Gary in Indiana (NO_PROVINCE).
+      Without an identity both records carry the check abstains and marks
+      nothing (the coordinator's ruling of WP 2.3a's review round 1: a place
+      check marks only a certain conflict). It abstains on two gazetteers'
+      records, on NGA's parents (named, with no record of their own; an ISO
+      code only on the country), on a parent that has a settled place's name
+      but another record or none (no name is ever a place), on a place settled
+      on GEOLocate, which the stage never reads (its parents are the places
+      the expert's query named, with no record: sources.geolocate_parents),
+      and on a place an earlier attempt settled whose record cannot be read
+      again from the record's stored responses (ontology_checks.stored_answers).
     check: code
     darwin_core: country, stateProvince, county, municipality
     source:
@@ -731,38 +743,45 @@ rules:
       - docs/execution/units/PLAN.md:127
       - src/specimen_digitization/field_research/agreement.py:2637-2641
       - src/specimen_digitization/field_research/agreement.py:2772-2796
-      - src/specimen_digitization/field_research/ontology_checks.py:140-172
-      - src/specimen_digitization/field_research/ontology_checks.py:282-323
+      - src/specimen_digitization/field_research/ontology_checks.py:149-173
+      - src/specimen_digitization/field_research/ontology_checks.py:279-320
   - id: place_chain
     statement: >-
       The places form one chain, country > province or state > county > city.
       On the units path the check stage marks for a person a place settled on
-      a source record whose parents place it outside a place settled above it:
-      the country and the province by the rule place_within_settled_places, a
-      chain derivation fills by the rule place_parents_derived, and the county
-      by this rule, which the refusal at apply time checks only for a near
-      spelling. A city is outside the settled county when its record names,
-      nearer than the settled province it names (or than its country, where it
-      names none), a parent and none of them is that county: a settled Coles
-      County, then an exact "Chicago" whose record names Cook County, Illinois,
-      is marked. A record that names no parent there says nothing of a county
-      and marks nothing: NGA names a town's first-level unit and its country
-      only. A place settled in an earlier attempt is checked on its record read
-      again from the record's stored responses; one whose record cannot be
-      read again, below a place this attempt settled, is marked, as its place
-      in that chain is not checked. A person's value is never marked.
+      a source record whose record and the record of a place settled above it
+      share an identity showing it lies outside that place (the test of the
+      rule place_within_settled_places): the country and the province by that
+      rule, a chain derivation fills by the rule place_parents_derived, and
+      the county by this rule, which the refusal at apply time checks only for
+      a near spelling. A settled Coles County (a Getty TGN record), then an
+      exact "Chicago" whose TGN chain is Cook County, Illinois and the United
+      States, is marked. A place an earlier attempt settled is checked on its
+      record read again from the record's stored responses. A person's value
+      is never marked.
     instruction: >-
       The places form one chain, country > province or state > county > city, each
       inside the one above it.
     fields: [country, province_state, county, city]
+    note: >-
+      Without an identity both records carry the check abstains and marks
+      nothing (the coordinator's ruling of WP 2.3a's review round 1: a place
+      check marks only a certain conflict). It abstains on two gazetteers'
+      records, on NGA's parents (named, with no record of their own; an ISO
+      code only on the country), on a parent that has a settled place's name
+      but another record or none (no name is ever a place), on a place settled
+      on GEOLocate, which the stage never reads (its parents are the places
+      the expert's query named, with no record: sources.geolocate_parents),
+      and on a place an earlier attempt settled whose record cannot be read
+      again from the record's stored responses (ontology_checks.stored_answers).
     check: code
     darwin_core: country, stateProvince, county, municipality
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:242-246
       - docs/execution/units/PLAN.md:127
-      - src/specimen_digitization/field_research/ontology_checks.py:140-172
-      - src/specimen_digitization/field_research/ontology_checks.py:282-323
-      - src/specimen_digitization/field_research/ontology_checks.py:203-261
+      - src/specimen_digitization/field_research/ontology_checks.py:149-173
+      - src/specimen_digitization/field_research/ontology_checks.py:279-320
+      - src/specimen_digitization/field_research/ontology_checks.py:204-262
   - id: date_order
     statement: >-
       The collecting date is on or before the determination date; the same day
@@ -780,8 +799,8 @@ rules:
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:247-249
       - docs/execution/units/PLAN.md:127
-      - src/specimen_digitization/field_research/ontology_checks.py:110-114
-      - src/specimen_digitization/field_research/ontology_checks.py:121-135
+      - src/specimen_digitization/field_research/ontology_checks.py:114-118
+      - src/specimen_digitization/field_research/ontology_checks.py:125-139
       - src/specimen_digitization/field_research/step.py:4158-4169
   - id: day_month_order
     statement: >-
@@ -806,7 +825,8 @@ rules:
       holds the literal, even where that reading glues a letter to it: the
       literal "I-23-48", reading A "Guatemala I-23-48", reading B "Guatemala
       VI-23-48-4". A date that punctuation separates from a code beside it
-      ("IV-23-48;IV-29-68-4") is still a date.
+      ("IV-23-48;IV-29-68-4") is still a date. Each occurrence of the literal
+      in each reading counts: one inside a code makes it no date.
     instruction: >-
       A code is never a date nor part of one: a slide code such as "IV-29-68-4" beside
       the collecting date "IV-23-48" is no date.
@@ -819,7 +839,12 @@ rules:
       VI-23-48-4", the check settled 1948-01-23, because date_lines.places
       drops B, where the literal's "I" follows "V", so the code veto never saw
       B's code. WP 2.3a gives no date there on the units path
-      (checks.in_a_code); the old path keeps its result.
+      (checks.in_a_code); the old path keeps its result. As the statement's
+      "any reading" says, the veto reaches across the specimen's labels: a
+      slide label writing "IV-23-48-4" and a locality label writing
+      "IV-23-48" give no date on the units path, as does "IV-23-48-4
+      IV-23-48" on one line, where main gives 1948-04-23 (G51's review of
+      round 1, not blocking).
     check: code
     darwin_core: "ours: no Darwin Core term fits a code; eventDate"
     source:
@@ -909,11 +934,13 @@ rules:
       never the country. The place chains that derivation fills are checked
       against the place chain on the units path: a place derivation filled is
       marked for a person when a place settled below it, on a source record
-      that names its parents, does not lie in it by those parents (the test of
-      the rules place_within_settled_places and place_chain), unless a person
-      kept it, when the place below it is marked instead. A province "Cook"
-      unresolved, a settled county Cook in Illinois and a settled city Gary in
-      Indiana: the province derived as Illinois is marked.
+      that names its parents, shares an identity with it showing it does not
+      lie in it (the test of the rules place_within_settled_places and
+      place_chain), unless a person kept it, when the place below it is marked
+      instead. A province "Cook" unresolved, a settled county Cook in Illinois
+      and a settled city Gary in Indiana, all Getty TGN records: the province
+      derived as Illinois (TGN's record) is marked, as Gary's chain is Lake,
+      Indiana and the United States.
     instruction: >-
       Leave a larger place the label does not write empty: never take it from a
       smaller place's parents.
@@ -926,7 +953,9 @@ rules:
       chain that fails the place chain; and no test pinned that a province
       derived from a county is the county's province-level parent, never the
       country. Derivation is unchanged in WP 2.3a; its check stage marks that
-      province on the units path, and a test pins the parent derived.
+      province on the units path, and a test pins the parent derived. Without
+      an identity both records carry, the check abstains, as for the rule
+      place_within_settled_places.
     check: code
     darwin_core: country, stateProvince, county
     source:
@@ -935,7 +964,7 @@ rules:
       - docs/execution/units/PLAN.md:127
       - src/specimen_digitization/field_research/derive.py:43-50
       - src/specimen_digitization/field_research/derive.py:95-146
-      - src/specimen_digitization/field_research/ontology_checks.py:282-323
+      - src/specimen_digitization/field_research/ontology_checks.py:279-320
   - id: elevation_conversion
     statement: >-
       A derived elevation is a stated one copied to the other end of its unit,
