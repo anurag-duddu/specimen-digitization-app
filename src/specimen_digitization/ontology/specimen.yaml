@@ -685,17 +685,18 @@ rules:
       - src/specimen_digitization/field_research/agreement.py:2405-2423
   - id: place_within_settled_places
     statement: >-
-      The refusal at apply time stays as today: a place candidate is checked
-      against the country and the province settled for its reading, and one
-      that lies outside them is refused.
+      The apply-time refusal stays as today: it checks a candidate against the
+      settled country and province, but a city against a settled county only
+      for a near spelling.
     note: >-
       Moved to `not yet` in review round 4 (the coordinator's ruling): today's
-      check breaks this on two inputs, which are WP 2.3's fail-first cases.
-      The country Georgia settled, a county Fulton whose source names the US
-      state Georgia passes, because lies_in matches a parent by name
-      (agreement.py:2637-2641). The country United States settled, a province
-      written "Cook" and unsettled, a settled county Cook and an exact city
-      Gary in Indiana: refused NO_PROVINCE, as WP 2.3 keeps it.
+      check breaks this on one input, a WP 2.3 fail-first case. The country
+      Georgia settled, a county Fulton whose source names the US state Georgia
+      passes, because lies_in matches a parent by name (agreement.py:2637-2641);
+      WP 2.3's check stage marks it. WP 2.3 also names a case today's check
+      already meets: the country United States settled, a province written
+      "Cook" and unsettled, a settled county Cook and an exact city Gary in
+      Indiana -> refused, as today (NO_PROVINCE).
     check: not yet
     when: WP 2.3
     darwin_core: country, stateProvince, county, municipality
@@ -740,13 +741,24 @@ rules:
       - src/specimen_digitization/application/field_validators.py:129-141
   - id: code_is_no_date
     statement: >-
-      A slide or preparation code is never a date, nor is any part of it: text
-      that stands inside a longer hyphen-joined code in any reading is no date.
-    check: code
+      Codes are never dates nor any part of them: a slide code such as
+      "IV-29-68-4" beside the collecting date "IV-23-48" is no date.
+    note: >-
+      Moved to `not yet` in review round 5 (the coordinator's ruling): today's
+      date check breaks this on one input, a WP 2.3 fail-first case. With the
+      literal "I-23-48", reading A "Guatemala I-23-48" and reading B
+      "Guatemala VI-23-48-4", the check settles 1948-01-23: date_lines.places
+      drops B, where the literal's "I" follows "V" (checks.py:231), so the code
+      veto (checks.py:348) never sees B's code.
+    check: not yet
+    when: WP 2.3
     darwin_core: "ours: no Darwin Core term fits a code; eventDate"
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:338-339
+      - docs/execution/units/PLAN.md:127
       - src/specimen_digitization/field_research/checks.py:205-207
+      - src/specimen_digitization/field_research/checks.py:231
+      - src/specimen_digitization/field_research/checks.py:346-353
       - src/specimen_digitization/field_research/prompts/common.txt:48
   - id: label_type_routing
     statement: >-

@@ -528,10 +528,10 @@ def test_the_rules_text_names_no_code_line_work_package_or_gate_and_no_model_tex
 
 
 # The spec's section 4 and 5 relations and checks (WP 2.1's row), each a rule of the file, with how it is
-# checked today. WP 2.3 builds the six `not yet` rules it names and flips them to `code`.
+# checked today. WP 2.3 builds the seven `not yet` rules it names and flips them to `code`.
 RULE_CHECKS = {
     "one_collecting_event": "code", "place_within_settled_places": "not yet", "place_chain": "not yet",
-    "date_order": "not yet", "day_month_order": "code", "code_is_no_date": "code", "label_type_routing": "not yet",
+    "date_order": "not yet", "day_month_order": "code", "code_is_no_date": "not yet", "label_type_routing": "not yet",
     "elevation_unit_feet": "not yet", "elevation_needs_a_unit": "code", "elevation_unit_decides_field": "code",
     "place_parents_derived": "not yet", "elevation_conversion": "code", "end_date_from_one_date": "code",
     "precise_location_extent": "not yet",
@@ -544,7 +544,8 @@ def test_the_file_holds_the_specs_rules_each_checked_as_stated():
     assert {rule.id: rule.check for rule in loaded.rules} == RULE_CHECKS
     assert {rule.id: rule.when for rule in loaded.rules if rule.check == "not yet"} == {
         "place_within_settled_places": "WP 2.3", "place_chain": "WP 2.3", "date_order": "WP 2.3",
-        "label_type_routing": "WP 2.3", "elevation_unit_feet": "WP 2.3", "place_parents_derived": "WP 2.3",
+        "code_is_no_date": "WP 2.3", "label_type_routing": "WP 2.3", "elevation_unit_feet": "WP 2.3",
+        "place_parents_derived": "WP 2.3",
         "precise_location_extent": "WP 2.2"}
     assert [entry.id for entry in loaded.not_rules] == ["taxon_regional_occurrence"]
     assert "docs/product-requirements/PRD.md:1207" in loaded.not_rules[0].source
@@ -563,9 +564,6 @@ CODE_RULE_TESTS = {
     "day_month_order": (
         "tests/test_date_forms.py::test_a_form_that_leaves_a_choice_names_it_and_settles_nothing[4-5-48]",
     ),
-    "code_is_no_date": (
-        "tests/field_research/test_date_split_lines.py"
-        "::test_a_reader_that_shows_the_literal_inside_a_code_still_decides_it_is_no_date",),
     "elevation_needs_a_unit": (
         "tests/field_research/test_agreement.py::test_a_number_with_no_unit_never_settles_an_elevation",),
     "elevation_unit_decides_field": (
@@ -574,6 +572,7 @@ CODE_RULE_TESTS = {
         "tests/field_research/test_step.py::test_derived_values_fill_what_the_label_leaves_out",
         "tests/field_research/test_step.py::test_no_elevation_is_derived_from_a_unit_the_readings_disagree_on",
         "tests/test_derivations.py::test_a_single_metre_value_is_both_ends_and_fills_the_feet_fields",
+        "tests/test_derivations.py::test_a_feet_value_converts_to_metres_rounded_to_the_hundredth",
         "tests/test_derivations.py::test_stated_elevations_are_never_replaced",
     ),
     "end_date_from_one_date": (
