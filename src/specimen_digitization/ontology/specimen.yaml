@@ -21,7 +21,7 @@
 #
 # Version 2.0 (plan WP 2.1, 2026-11-14) adds the rules: the relations and checks
 # of the spec's sections 4 and 5, each with its Darwin Core term and how it is
-# checked today (by code, with the test that proves it named in
+# checked today (by code, an invariant pinned by the tests named in
 # tests/test_ontology.py; by a model; or not yet, with the work package that
 # builds it); one statement that is not a rule; and the highest-point table from
 # Wikidata, which code reads (WP 2.3) and no rendered text carries. The rules
@@ -663,45 +663,38 @@ questions:
       - tests/fixtures/field_model_pilot_rows.json:75-87
 
 # The rules (version 2.0): the relations and checks of the spec's sections 4
-# and 5. `check` says how each is checked today: `code` (tests/test_ontology.py
-# names the test that proves it, one to one), `model`, or `not yet`, with `when`
-# naming the work package that builds it. A rule WP 2.3 builds is checked by
+# and 5. `check` says how each is checked today: `code` (its statement is an
+# invariant today's code guarantees, and tests/test_ontology.py names the tests
+# that pin it, one to one), `model`, or `not yet`, with `when` naming the work
+# package that builds it. A rule WP 2.3 builds is checked by
 # code from then, and WP 2.3 changes its `check` and that test list.
 rules:
   - id: one_collecting_event
     statement: >-
-      A specimen has one collecting event. When two of its labels write
-      different text for one of its fields, a collecting date or a place among
-      them, an answer that settles the field on one label's text is refused
-      unless a source confirms each label's text as the same place or name.
+      A specimen has one collecting event. When two of its labels write two
+      different collecting dates, or two place names (letter case, accents,
+      punctuation and unit words such as "Dept." aside) that no source the
+      answer cites confirms as one place, an answer that settles the field on
+      one label's text is refused.
     check: code
     darwin_core: "Event: eventDate; dcterms:Location: locality"
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:336-337
       - src/specimen_digitization/field_research/agreement.py:289
+      - src/specimen_digitization/field_research/agreement.py:952-959
       - src/specimen_digitization/field_research/agreement.py:2405-2423
   - id: place_within_settled_places
     statement: >-
-      Below the country, a place candidate settles only when its source names
-      its parents. When a country is settled for its reading, the place lies
-      in it; when a province is, a county or a city lies in that province; and
-      a county is never the settled province itself. When the country has no
-      value settled for the reading, or, for a county or a city, the province
-      its reading writes has no settled value, an exact match still settles
-      when that larger place can be derived from it later: the reading writes
-      no text for it, writes the candidate's own misfiled text there, or
-      writes text already settled at a level between them; for the country,
-      also when the gazetteers confirm the record's every text for it as the
-      candidate's parent; for a province, only when the candidate's source
-      names two parents or more. A near spelling settles only when every
-      larger place its reading writes is one of its parents. A place that does
-      not fit is refused when its value is applied.
+      When a place value is applied, the check of its larger places refuses a
+      place below the country whose source names no larger place, one whose
+      source puts it outside the country settled for its reading, a county or
+      a city outside the province settled for its reading, and a county that
+      is that province itself.
     check: code
     darwin_core: country, stateProvince, county, municipality
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:242-246
-      - src/specimen_digitization/field_research/agreement.py:2678-2734
-      - src/specimen_digitization/field_research/agreement.py:2741-2804
+      - src/specimen_digitization/field_research/agreement.py:2772-2796
   - id: place_chain
     statement: >-
       The places form one chain, country > province or state > county > city.
@@ -729,17 +722,15 @@ rules:
       - docs/execution/units/PLAN.md:127
   - id: day_month_order
     statement: >-
-      A numeric date in which no part over 12 tells the day from the month,
-      and whose two orders give two different dates, reads two ways: the date
-      check settles neither reading, and an answer that lists both leaves the
-      field ambiguous, a conflict with both readings for a person. When both
-      orders give one date (5-5-48), it settles.
+      The date check reads a numeric date whose two orders, day-month and
+      month-day, give two different dates both ways and settles neither
+      reading, a conflict with both readings for a person; a numeric date
+      whose two orders give one date (5-5-48) settles on it.
     check: code
     darwin_core: eventDate, dateIdentified
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:249-250
       - src/specimen_digitization/application/field_validators.py:129-141
-      - src/specimen_digitization/field_research/experts.py:476-480
   - id: code_is_no_date
     statement: >-
       A slide or preparation code is never a date, nor is any part of it: text
@@ -795,8 +786,7 @@ rules:
   - id: elevation_unit_decides_field
     statement: >-
       An answer that settles an elevation field on a number that one of its
-      readings writes in the other unit is refused; the other unit's fields come
-      from the conversion.
+      readings writes in the other unit is refused.
     check: code
     darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
     source:
@@ -805,14 +795,13 @@ rules:
       - docs/execution/units/PLAN.md:127
   - id: place_parents_derived
     statement: >-
-      Upward derivation: a country, a province or state, or a county the label
-      leaves without a value takes, derived, the parent that the source of a
-      settled place below it names at that level (a province's source names
-      its country; a county's, its province and country; a city's, its county,
-      province and country), when every settled place that names a parent
-      there names the same one. A county comes from a city only when the
-      city's source names three parents or more, and a province from a county
-      only when the county's names two or more.
+      Upward derivation: a derived country, province or state, or county is
+      the parent that the source of a settled place below it names at that
+      level; it never replaces a value settled from the label; no parent is
+      derived where settled places below name different ones there; and a
+      county is never derived from a city whose source names fewer than three
+      larger places, nor a province from a county whose source names fewer
+      than two.
     check: code
     darwin_core: country, stateProvince, county
     source:
@@ -822,21 +811,22 @@ rules:
       - src/specimen_digitization/field_research/derive.py:95-146
   - id: elevation_conversion
     statement: >-
-      One stated elevation fills both ends of its unit, and, when the label
-      states nothing in the other unit, the other unit's fields hold its exact
-      conversion, feet to metres or metres to feet, at 1 ft = 0.3048 m, to the
-      hundredth.
+      A derived elevation is a stated one copied to the other end of its unit,
+      or its exact conversion (1 ft = 0.3048 m) rounded to the hundredth; a
+      derived elevation never replaces a stated one; and no elevation is
+      derived while an elevation field is neither settled nor open (one the
+      readings disagree on goes to a person first).
     check: code
     darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
     source:
       - src/specimen_digitization/field_research/derive.py:4-7
-      - src/specimen_digitization/field_research/derive.py:75-83
-      - src/specimen_digitization/application/derivations.py:29
+      - src/specimen_digitization/field_research/derive.py:168-186
+      - src/specimen_digitization/application/derivations.py:29-30
+      - src/specimen_digitization/application/derivations.py:97-122
   - id: end_date_from_one_date
     statement: >-
-      When the label states one collecting date, the collection ends on the day
-      it began: Date Visited To takes Date Visited From's date, at its
-      precision. A written range keeps both its ends as written.
+      A derived Date Visited To is the date of a settled Date Visited From, at
+      its precision, and is never derived from a written range.
     check: code
     darwin_core: eventDate
     source:

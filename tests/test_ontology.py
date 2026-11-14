@@ -549,32 +549,22 @@ def test_the_file_holds_the_specs_rules_each_checked_as_stated():
     assert "docs/product-requirements/PRD.md:1207" in loaded.not_rules[0].source
 
 
-# Every rule checked by code today, against the tests that prove it (node ids under the repository's root; a
-# parametrized case by its id, which the file writes as a quoted literal), one to one: no test proves two
-# rules. WP 2.3 adds its rules here when it flips them to `code`.
+# Every rule checked by code today, against the tests that pin it (node ids under the repository's root, as
+# pytest collects them; a parametrized case by its own id), one to one: no test pins two rules. Each `code`
+# statement is an invariant today's code guarantees; a mutant that breaks it fails one of its tests. WP 2.3
+# adds its rules here when it flips them to `code`.
 CODE_RULE_TESTS = {
     "one_collecting_event": (
         "tests/field_research/test_experts.py::test_a_field_on_two_labels_settles_only_when_both_settle_to_one_value",
         "tests/field_research/test_experts.py"
         "::test_two_labels_writing_one_field_differently_settle_only_through_a_source_confirming_both",
-        "tests/field_research/test_experts.py::test_labels_that_write_one_name_differently_settle_on_one_gbif_usage",
     ),
     "place_within_settled_places": (
         "tests/field_research/test_experts.py::test_a_place_fits_the_other_place_fields_its_reading_writes",
         "tests/field_research/test_agreement.py"
-        "::test_a_place_with_no_settled_larger_place_settles_only_when_that_place_can_be_derived_from_it",
-        "tests/field_research/test_agreement.py"
         "::test_a_county_on_the_settled_provinces_record_or_text_is_refused_as_the_province",
-        "tests/field_research/test_location_level_roles.py"
-        "::test_a_province_written_only_as_its_unit_word_still_holds_a_county_to_it",
-        "tests/field_research/test_step.py::test_live_illinois_reconciliation_recovers_state_county_and_city",
-        "tests/field_research/test_location_last_gaps.py"
-        "::test_one_readers_usa_and_ill_settle_the_state_county_and_country",
-        "tests/field_research/test_agreement.py::test_a_near_spelled_city_still_needs_every_larger_place_as_its_parent",
     ),
     "day_month_order": (
-        "tests/field_research/test_several_possibilities_rule.py"
-        "::test_a_numeric_date_the_check_reads_two_ways_is_not_put_to_the_rule",
         "tests/test_date_forms.py::test_a_form_that_leaves_a_choice_names_it_and_settles_nothing[4-5-48]",
         "tests/test_date_forms.py::test_a_form_reads_as_its_start_end_and_precision[5-5-48]",
     ),
@@ -591,9 +581,11 @@ CODE_RULE_TESTS = {
         "tests/field_research/test_step.py"
         "::test_a_parent_is_derived_only_when_every_settled_place_below_names_the_same_one",
         "tests/field_research/test_step.py::test_a_county_or_a_province_is_derived_only_from_enough_parents",
+        "tests/field_research/test_step.py::test_a_derived_parent_never_replaces_a_place_settled_from_the_label",
     ),
     "elevation_conversion": (
         "tests/field_research/test_step.py::test_derived_values_fill_what_the_label_leaves_out",
+        "tests/field_research/test_step.py::test_no_elevation_is_derived_from_a_unit_the_readings_disagree_on",
         "tests/test_derivations.py::test_a_single_metre_value_is_both_ends_and_fills_the_feet_fields",
         "tests/test_derivations.py::test_stated_elevations_are_never_replaced",
     ),
@@ -658,7 +650,7 @@ def test_the_rule_to_test_map_fails_on_a_code_rule_with_no_test_or_a_test_that_d
 
     foreign = "tests/test_date_forms.py::test_a_form_reads_as_its_start_end_and_precision[4-5-48]"
     assert "tests/test_date_forms.py::test_a_form_that_leaves_a_choice_names_it_and_settles_nothing[4-5-48]" in collected
-    moved = {**CODE_RULE_TESTS, "day_month_order": (*CODE_RULE_TESTS["day_month_order"][:2], foreign)}
+    moved = {**CODE_RULE_TESTS, "day_month_order": (CODE_RULE_TESTS["day_month_order"][0], foreign)}
     assert _map_problems(code, moved, collected) == [foreign + ": no such test"]
 
     single = "tests/test_date_forms.py::test_a_form_reads_as_its_start_end_and_precision["

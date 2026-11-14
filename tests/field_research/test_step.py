@@ -1779,6 +1779,23 @@ def test_a_county_or_a_province_is_derived_only_from_enough_parents(source_key, 
 
     assert {key: run.fields[key].parsed for key in filled} == derived
 
+
+def test_a_derived_parent_never_replaces_a_place_settled_from_the_label():
+    """WP 2.1's rule place_parents_derived (derive._can_derive_place): the county was settled from the label's
+    own text "Chicago", the city's text too, and the city's source names Cook as its county; the county keeps
+    its value."""
+    city, city_answer = _settled_place("city", "Chicago", "tgn:chicago",
+        (("Cook", "tgn:cook"), ("Illinois", "tgn:il"), ("United States", "tgn:us")), "ev-chicago")
+    county = FieldValue(state=ValueState.SUPPORTED, literal="Chicago", normalized="Chicago", authority_id="tgn:chi",
+        evidence_ids=["ev-county"], layer="settled")
+    run = SimpleNamespace(evidence=[], fields={"country": FieldValue(state=ValueState.NOT_PRESENT),
+        "province_state": FieldValue(state=ValueState.NOT_PRESENT), "county": county, "city": city})
+
+    filled = derive.fill(run, eligible=["country", "province_state", "county"], asset_id=None,
+        received={"city": [city_answer]})
+
+    assert "county" not in filled and run.fields["county"] is county
+
 def test_a_near_spelling_settles_when_every_other_place_field_is_among_its_parents(tmp_path):
     """The full US label with its city one letter off: TGN's Chicago lies in
     Cook, Illinois, United States, the label's county, state and country."""
