@@ -29,6 +29,83 @@ async function until(action, label, milliseconds = 20000) {
   throw new Error(`Timed out: ${label}`);
 }
 
+// The first Chrome launch on a fresh CI machine can be slow. On the ubuntu-26.04
+// image 20261111 (Chrome 157) it passed the old 20 s limit in six CI jobs on
+// 2026-11-13 and took up to 22 s in probes on fresh machines, where cold disk
+// reads slowed the whole startup; a second launch on the same machine took
+// about 0.15 s. So each launch gets a minute, a failed launch is retried once
+// with a new profile, and Chrome's own output is kept, bounded, so a launch
+// that still fails explains itself.
+const chromeLaunchAttempts = 2;
+const chromeEndpointMilliseconds = 60000;
+const chromeOutputCharacters = 16384;
+
+// Clears its timer when the promise wins, so an armed timer cannot hold the
+// process open after the check is done.
+async function waitAtMost(promise, milliseconds) {
+  let timer;
+  await Promise.race([promise, new Promise(resolve => { timer = setTimeout(resolve, milliseconds); })]);
+  clearTimeout(timer);
+}
+
+// Starts Chrome on a new profile and waits for its debugging endpoint. The
+// result's stop() ends this Chrome; a launch that fails is stopped here.
+async function launchChrome(profile) {
+  const chrome = spawn(chromePath, [
+    '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
+    '--disable-background-networking', '--disable-sync', '--disable-extensions',
+    '--disable-popup-blocking', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
+    'about:blank',
+  ], {stdio: ['ignore', 'pipe', 'pipe']});
+  // Listen before anything can throw: a failed spawn reports 'error' on the
+  // next tick, and an unheard 'error' would end the process.
+  let chromeFailure;
+  chrome.on('error', error => { chromeFailure ??= error; });
+  const exited = new Promise(resolve => chrome.once('exit', resolve));
+  const closed = new Promise(resolve => chrome.once('close', resolve));
+  // Node creates no pipes when a spawn fails for lack of file descriptors.
+  const streams = [chrome.stdout, chrome.stderr].filter(Boolean);
+  let output = '';
+  for (const stream of streams) {
+    stream.setEncoding('utf8');
+    stream.on('data', chunk => { output = (output + chunk).slice(-chromeOutputCharacters); });
+  }
+  const ended = () => chrome.exitCode !== null || chrome.signalCode !== null;
+  // A failed spawn has no pid and never exits; Node reports it as 'error'.
+  const running = () => chrome.pid !== undefined && !ended();
+  async function stop(graceMilliseconds = 0) {
+    if (running() && graceMilliseconds) await waitAtMost(exited, graceMilliseconds);
+    if (running()) {
+      chrome.kill('SIGKILL');
+      await waitAtMost(exited, 3000);
+    }
+    // Output still in the pipes arrives before 'close'. Chrome's helper
+    // processes inherit the pipes and can hold them open, so the wait is short.
+    await waitAtMost(closed, 1000);
+    for (const stream of streams) stream.destroy();
+  }
+  const started = Date.now();
+  try {
+    const port = await until(async () => {
+      if (chromeFailure) throw chromeFailure;
+      if (ended()) throw new Error(`Chrome exited ${chrome.exitCode ?? chrome.signalCode}`);
+      try {
+        return (await fs.readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+        return false;
+      }
+    }, 'fresh Chrome debugging endpoint', chromeEndpointMilliseconds);
+    return {port, milliseconds: Date.now() - started, stop};
+  } catch (error) {
+    const elapsed = Date.now() - started;
+    await stop();
+    error.message += ` after ${elapsed} ms. Chrome output` +
+      ` (at most the last ${chromeOutputCharacters} characters):\n${output.trim() || '(none)'}`;
+    throw error;
+  }
+}
+
 class DevTools {
   constructor(socket) {
     this.socket = socket;
@@ -110,7 +187,7 @@ async function serve(script) {
 
 (async () => {
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'specimen-intake-auth-browser-'));
-  let chrome, mainServer, callbackServer, client;
+  let chrome, chromeLaunch, mainServer, callbackServer, client;
   try {
     const compiled = path.join(temporary, 'fixture.js');
     const build = spawnSync(process.env.DART_EXECUTABLE || 'dart', [
@@ -124,26 +201,18 @@ async function serve(script) {
     const callback = await serve();
     callbackServer = callback.server;
     assert.notEqual(main.origin, callback.origin);
-    const profile = path.join(temporary, 'chrome-profile');
-    chrome = spawn(chromePath, [
-      '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
-      '--disable-background-networking', '--disable-sync', '--disable-extensions',
-      '--disable-popup-blocking', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
-      'about:blank',
-    ], {stdio: 'ignore'});
-    let chromeFailure;
-    chrome.once('error', error => { chromeFailure = error; });
-    const port = await until(async () => {
-      if (chromeFailure) throw chromeFailure;
-      if (chrome.exitCode !== null) throw new Error(`Chrome exited ${chrome.exitCode}`);
+    for (let attempt = 1; !chrome; attempt++) {
       try {
-        return (await fs.readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0];
+        // Every attempt starts from its own empty profile.
+        chrome = await launchChrome(path.join(temporary, `chrome-profile-${attempt}`));
+        chromeLaunch = {attempts: attempt, endpointMilliseconds: chrome.milliseconds};
       } catch (error) {
-        if (error.code !== 'ENOENT') throw error;
-        return false;
+        if (attempt === chromeLaunchAttempts) throw error;
+        console.error(`Chrome launch ${attempt} of ${chromeLaunchAttempts} failed; ` +
+          `retrying with a new profile.\n${error.message}`);
       }
-    }, 'fresh Chrome debugging endpoint');
-    const version = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();
+    }
+    const version = await (await fetch(`http://127.0.0.1:${chrome.port}/json/version`)).json();
     const socket = new WebSocket(version.webSocketDebuggerUrl);
     await new Promise((resolve, reject) => {
       socket.addEventListener('open', resolve, {once: true});
@@ -372,7 +441,7 @@ async function serve(script) {
       'retry popup cleanup');
     assert.deepEqual(client.exceptions, []);
     console.log(JSON.stringify({status: 'passed', evidence: 'actual dart2js -O4 adapter and fresh Chrome on loopback',
-      checks: {crossOriginWindowProxy: true, wrongOriginRejected: true, wrongSourceRejected: true,
+      chromeLaunch, checks: {crossOriginWindowProxy: true, wrongOriginRejected: true, wrongSourceRejected: true,
         wrongStateRejected: true, nullSourceRejected: true, validCallbackCompleted: true,
         pickerKeptOpen: true, defaultPopupClosed: true, tenMinuteConsentWindowPreserved: true,
         expiryHasConnectRecovery: true, expiredPopupClosed: true, listenersRemoved: true,
@@ -389,10 +458,7 @@ async function serve(script) {
       await client.send('Browser.close').catch(() => {});
       client.socket.close();
     }
-    if (chrome && chrome.exitCode === null) {
-      await Promise.race([new Promise(resolve => chrome.once('exit', resolve)), delay(3000)]);
-      if (chrome.exitCode === null) chrome.kill('SIGKILL');
-    }
+    if (chrome) await chrome.stop(3000);
     await Promise.all([mainServer, callbackServer].filter(Boolean).map(server =>
       new Promise(resolve => server.close(resolve))));
     await fs.rm(temporary, {recursive: true, force: true, maxRetries: 5, retryDelay: 100});
