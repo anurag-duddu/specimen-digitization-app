@@ -3,6 +3,7 @@ docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md sections 4 a
 
 import ast
 import copy
+import json
 from decimal import Decimal
 from pathlib import Path
 import re
@@ -161,7 +162,7 @@ def test_the_first_pass_text_keeps_what_cuts_and_reads_a_unit_and_leaves_out_wha
 FEET = ("feet, the unit of an elevation",)
 DATES = ("date_visited_from", "date_visited_to", "date_identified")
 CNHM = ("Chicago Natural History Museum, the Field Museum's name from 1943 to 1966: the institution, never a"
-        " collector")
+        " collector, and no field of its own")
 MORPHOCODE = ("a morphocode, a species number: after a genus, a genus-level identification; with no genus on any"
               " label, it names no scientific taxon")
 FEMALE = "female: the specimen's sex, which no field of the profile holds"
@@ -546,16 +547,35 @@ def test_the_file_holds_the_specs_rules_each_checked_as_stated():
     assert "docs/product-requirements/PRD.md:1207" in loaded.not_rules[0].source
 
 
-# Every rule checked by code today, against the tests that prove it (node ids under the repository's root),
-# one to one: WP 2.3 adds its rules here when it flips them to `code`.
+# Every rule checked by code today, against the tests that prove it (node ids under the repository's root; a
+# parametrized case by its id, which the file writes as a quoted literal), one to one: no test proves two
+# rules. WP 2.3 adds its rules here when it flips them to `code`.
 CODE_RULE_TESTS = {
     "one_collecting_event": (
-        "tests/field_research/test_experts.py::test_a_field_on_two_labels_settles_only_when_both_settle_to_one_value",),
+        "tests/field_research/test_experts.py::test_a_field_on_two_labels_settles_only_when_both_settle_to_one_value",
+        "tests/field_research/test_experts.py"
+        "::test_two_labels_writing_one_field_differently_settle_only_through_a_source_confirming_both",
+        "tests/field_research/test_experts.py::test_labels_that_write_one_name_differently_settle_on_one_gbif_usage",
+    ),
     "place_within_settled_places": (
-        "tests/field_research/test_experts.py::test_a_place_fits_the_other_place_fields_its_reading_writes",),
+        "tests/field_research/test_experts.py::test_a_place_fits_the_other_place_fields_its_reading_writes",
+        "tests/field_research/test_agreement.py"
+        "::test_a_place_with_no_settled_larger_place_settles_only_when_that_place_can_be_derived_from_it",
+        "tests/field_research/test_agreement.py"
+        "::test_a_county_on_the_settled_provinces_record_or_text_is_refused_as_the_province",
+        "tests/field_research/test_location_level_roles.py"
+        "::test_a_province_written_only_as_its_unit_word_still_holds_a_county_to_it",
+        "tests/field_research/test_step.py::test_live_illinois_reconciliation_recovers_state_county_and_city",
+        "tests/field_research/test_location_last_gaps.py"
+        "::test_one_readers_usa_and_ill_settle_the_state_county_and_country",
+        "tests/field_research/test_agreement.py::test_a_near_spelled_city_still_needs_every_larger_place_as_its_parent",
+    ),
     "day_month_order": (
         "tests/field_research/test_several_possibilities_rule.py"
-        "::test_a_numeric_date_the_check_reads_two_ways_is_not_put_to_the_rule",),
+        "::test_a_numeric_date_the_check_reads_two_ways_is_not_put_to_the_rule",
+        "tests/test_date_forms.py::test_a_form_that_leaves_a_choice_names_it_and_settles_nothing[4-5-48]",
+        "tests/test_date_forms.py::test_a_form_reads_as_its_start_end_and_precision[5-5-48]",
+    ),
     "code_is_no_date": (
         "tests/field_research/test_date_split_lines.py"
         "::test_a_reader_that_shows_the_literal_inside_a_code_still_decides_it_is_no_date",),
@@ -564,11 +584,21 @@ CODE_RULE_TESTS = {
     "elevation_unit_decides_field": (
         "tests/field_research/test_agreement.py::test_an_elevation_never_settles_a_field_of_the_other_unit",),
     "place_parents_derived": (
-        "tests/field_research/test_step.py::test_blank_unresolved_country_is_derived_from_settled_state",),
+        "tests/field_research/test_step.py::test_blank_unresolved_country_is_derived_from_settled_state",
+        "tests/field_research/test_step.py::test_exact_place_matches_can_derive_missing_location_ancestors",
+        "tests/field_research/test_step.py"
+        "::test_a_parent_is_derived_only_when_every_settled_place_below_names_the_same_one",
+        "tests/field_research/test_step.py::test_a_county_or_a_province_is_derived_only_from_enough_parents",
+    ),
     "elevation_conversion": (
-        "tests/field_research/test_step.py::test_derived_values_fill_what_the_label_leaves_out",),
+        "tests/field_research/test_step.py::test_derived_values_fill_what_the_label_leaves_out",
+        "tests/test_derivations.py::test_a_single_metre_value_is_both_ends_and_fills_the_feet_fields",
+        "tests/test_derivations.py::test_stated_elevations_are_never_replaced",
+    ),
     "end_date_from_one_date": (
-        "tests/field_research/test_date_split_lines.py::test_a_range_s_start_is_not_copied_to_its_end",),
+        "tests/field_research/test_date_split_lines.py::test_a_range_s_start_is_not_copied_to_its_end",
+        "tests/field_research/test_date_split_lines.py::test_one_collecting_date_is_its_own_end_at_its_precision",
+    ),
 }
 
 
@@ -588,7 +618,9 @@ def _map_problems(code: set[str], tests: dict[str, tuple[str, ...]]) -> list[str
     problems += [f"{node}: listed twice" for node in sorted({node for node in nodes if nodes.count(node) > 1})]
     for node in nodes:
         path, _, name = node.partition("::")
-        if not (ROOT / path).is_file() or name not in _test_functions(ROOT / path):
+        name, _, case = name.partition("[")
+        if (not (ROOT / path).is_file() or name not in _test_functions(ROOT / path)
+                or (case and f'"{case.removesuffix("]")}"' not in (ROOT / path).read_text(encoding="utf-8"))):
             problems.append(f"{node}: no such test")
     return problems
 
@@ -619,8 +651,9 @@ def test_the_resolved_meanings_name_their_sources_and_carry_their_fields():
     loaded = ontology.ontology()
     notations = {notation.id: notation for notation in loaded.notations}
 
-    assert notations["cnhm"].fields == () and notations["cnhm"].source == (
-        "tests/fixtures/field_model_pilot_rows.json:134", "https://en.wikipedia.org/wiki/Field_Museum_of_Natural_History")
+    assert notations["cnhm"].fields == () and {
+        "tests/fixtures/field_model_pilot_rows.json:134", "https://en.wikipedia.org/wiki/Field_Museum_of_Natural_History",
+    } <= set(notations["cnhm"].source)
     assert notations["species_number"].fields == ("taxon",)
     assert "src/specimen_digitization/field_research/prompts/taxon.txt:8-9" in notations["species_number"].source
     assert notations["female_sign"].fields == notations["male_sign"].fields == ()
@@ -635,6 +668,26 @@ def test_the_resolved_meanings_name_their_sources_and_carry_their_fields():
                    "tests/fixtures/field_model_pilot_rows.json:325"):
         assert source in extent.source
 
+
+def test_cnhm_is_the_institution_and_on_a_locality_line_part_of_the_precise_location():
+    """"CNHM." fills no field of its own and is never a collector; written on a locality line it is part of
+    the precise location as written (precise_location_extent), as the pilot truth holds it. The reading is
+    general: it names no slide."""
+    loaded = ontology.ontology()
+    cnhm = next(notation for notation in loaded.notations if notation.id == "cnhm")
+    extent = next(rule for rule in loaded.rules if rule.id == "precise_location_extent")
+
+    assert (cnhm.written, cnhm.fields, cnhm.readings) == (("CNHM.",), (), (CNHM,))
+    assert cnhm.note == "Written on a locality line, it is part of the precise location as written."
+    assert "every line of its locality text" in extent.statement
+    assert not re.search(r"\d{6,}|e98a924c|t1-\d|slide", " ".join((*cnhm.readings, cnhm.note)))
+    rows = json.loads((ROOT / "tests/fixtures/field_model_pilot_rows.json").read_text(encoding="utf-8"))["rows"]
+    on_a_locality_line = [row for row in rows if "CNHM" in row["as_written"]["locality"]]
+    assert len(on_a_locality_line) == 2
+    for row in on_a_locality_line:
+        assert "CNHM" in row["expected"]["precise_location"] and "CNHM" not in row["expected"]["collectors"]
+    for line in (57, 79, 115):
+        assert f"tests/fixtures/field_model_pilot_rows.json:{line}" in cnhm.source
 
 def test_the_specs_dated_line_of_2026_11_14_quotes_the_owner():
     path = ROOT / "docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md"

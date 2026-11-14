@@ -586,15 +586,20 @@ notations:
   # spec's section 5, its line dated 2026-11-14).
   # "CNHM.": the reference truth's author reads it as the museum's old name, not
   # a collector (field_model_pilot_rows.json:134), and the public record dates
-  # that name (Wikidata's and Wikipedia's entry for the Field Museum).
+  # that name (Wikipedia's entry for the Field Museum). The truth's precise
+  # locations keep it where the label writes it on a locality line (:57, :79,
+  # :115), as the rule precise_location_extent below says of every word there.
   - id: cnhm
     written: ["CNHM."]
     periods_optional: true
-    readings: ["Chicago Natural History Museum, the Field Museum's name from 1943 to 1966: the institution, never a collector"]
+    readings: ["Chicago Natural History Museum, the Field Museum's name from 1943 to 1966: the institution, never a collector, and no field of its own"]
     fields: []
-    note: No field of the profile holds the institution.
+    note: Written on a locality line, it is part of the precise location as written.
     source:
       - tests/fixtures/field_model_pilot_rows.json:134
+      - tests/fixtures/field_model_pilot_rows.json:57
+      - tests/fixtures/field_model_pilot_rows.json:79
+      - tests/fixtures/field_model_pilot_rows.json:115
       - https://en.wikipedia.org/wiki/Field_Museum_of_Natural_History
   # "Sp.30": the taxon brief's morphocode ("sp. <n>").
   - id: species_number
@@ -645,8 +650,8 @@ questions:
       reading marks it as a collection code; the pilot truth holds it in no
       field. Reported to the coordinator, not put to the owner.
     source:
-      - docs/execution/units/PLAN.md:110
-      - docs/execution/units/PLAN.md:230-237
+      - docs/execution/units/PLAN.md:111
+      - docs/execution/units/PLAN.md:231-241
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:122
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:125-127
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:142
@@ -666,9 +671,9 @@ rules:
   - id: one_collecting_event
     statement: >-
       A specimen has one collecting event. When two of its labels write
-      different text for one of its fields, an answer that settles the field on
-      one label's text is refused unless a source confirms each label's text as
-      the same place or name.
+      different text for one of its fields, a collecting date or a place among
+      them, an answer that settles the field on one label's text is refused
+      unless a source confirms each label's text as the same place or name.
     check: code
     darwin_core: "Event: eventDate; dcterms:Location: locality"
     source:
@@ -677,15 +682,26 @@ rules:
       - src/specimen_digitization/field_research/agreement.py:2405-2423
   - id: place_within_settled_places
     statement: >-
-      Below the country, a place settles only when its source names the
-      country settled for its reading among the place's parents, and, for a
-      county or a city, the province settled for its reading too when one is;
-      a place that does not fit is refused when its value is applied.
+      Below the country, a place candidate settles only when its source names
+      its parents. When a country is settled for its reading, the place lies
+      in it; when a province is, a county or a city lies in that province; and
+      a county is never the settled province itself. When the country has no
+      value settled for the reading, or, for a county or a city, the province
+      its reading writes has no settled value, an exact match still settles
+      when that larger place can be derived from it later: the reading writes
+      no text for it, writes the candidate's own misfiled text there, or
+      writes text already settled at a level between them; for the country,
+      also when the gazetteers confirm the record's every text for it as the
+      candidate's parent; for a province, only when the candidate's source
+      names two parents or more. A near spelling settles only when every
+      larger place its reading writes is one of its parents. A place that does
+      not fit is refused when its value is applied.
     check: code
     darwin_core: country, stateProvince, county, municipality
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:242-246
-      - src/specimen_digitization/field_research/agreement.py:2741-2756
+      - src/specimen_digitization/field_research/agreement.py:2678-2734
+      - src/specimen_digitization/field_research/agreement.py:2741-2804
   - id: place_chain
     statement: >-
       The places form one chain, country > province or state > county > city.
@@ -698,7 +714,7 @@ rules:
     darwin_core: country, stateProvince, county, municipality
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:242-246
-      - docs/execution/units/PLAN.md:126
+      - docs/execution/units/PLAN.md:127
   - id: date_order
     statement: >-
       The collecting date is on or before the determination date; the same day
@@ -710,18 +726,19 @@ rules:
     darwin_core: eventDate, dateIdentified
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:247-249
-      - docs/execution/units/PLAN.md:126
+      - docs/execution/units/PLAN.md:127
   - id: day_month_order
     statement: >-
-      A numeric date in which no part over 12 tells the day from the month
-      reads two ways, day-month and month-day: the date check settles neither
-      reading, and an answer that lists both leaves the field ambiguous, a
-      conflict with both readings for a person.
+      A numeric date in which no part over 12 tells the day from the month,
+      and whose two orders give two different dates, reads two ways: the date
+      check settles neither reading, and an answer that lists both leaves the
+      field ambiguous, a conflict with both readings for a person. When both
+      orders give one date (5-5-48), it settles.
     check: code
     darwin_core: eventDate, dateIdentified
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:249-250
-      - src/specimen_digitization/application/field_validators.py:135-137
+      - src/specimen_digitization/application/field_validators.py:129-141
       - src/specimen_digitization/field_research/experts.py:476-480
   - id: code_is_no_date
     statement: >-
@@ -744,7 +761,7 @@ rules:
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:321
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:339-340
-      - docs/execution/units/PLAN.md:126
+      - docs/execution/units/PLAN.md:127
   - id: elevation_unit_feet
     statement: >-
       An elevation whose cleared text writes no unit is read as feet only when
@@ -763,7 +780,7 @@ rules:
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:251-258
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:260-267
-      - docs/execution/units/PLAN.md:126
+      - docs/execution/units/PLAN.md:127
   - id: elevation_needs_a_unit
     statement: >-
       An answer that settles an elevation field on a number that one of its
@@ -785,17 +802,17 @@ rules:
     source:
       - src/specimen_digitization/field_research/agreement.py:309
       - src/specimen_digitization/field_research/agreement.py:824-831
-      - docs/execution/units/PLAN.md:126
+      - docs/execution/units/PLAN.md:127
   - id: place_parents_derived
     statement: >-
-      Upward derivation: a country, province or state, or county the label
+      Upward derivation: a country, a province or state, or a county the label
       leaves without a value takes, derived, the parent that the source of a
-      settled place below it names at that level, when every settled place
-      that names a parent there names the same one.
-    note: >-
-      A county comes from a city only when the city's source names three
-      parents or more, and a province from a county only when the county's
-      names two or more (derive.py:111-114).
+      settled place below it names at that level (a province's source names
+      its country; a county's, its province and country; a city's, its county,
+      province and country), when every settled place that names a parent
+      there names the same one. A county comes from a city only when the
+      city's source names three parents or more, and a province from a county
+      only when the county's names two or more.
     check: code
     darwin_core: country, stateProvince, county
     source:
@@ -805,9 +822,10 @@ rules:
       - src/specimen_digitization/field_research/derive.py:95-146
   - id: elevation_conversion
     statement: >-
-      One stated elevation fills both ends of its unit, and the other unit's
-      fields hold its exact conversion, 1 ft = 0.3048 m, to the hundredth, when
-      the label states nothing in that unit.
+      One stated elevation fills both ends of its unit, and, when the label
+      states nothing in the other unit, the other unit's fields hold its exact
+      conversion, feet to metres or metres to feet, at 1 ft = 0.3048 m, to the
+      hundredth.
     check: code
     darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
     source:
@@ -840,13 +858,15 @@ rules:
       and a label whose locality names nothing finer than its town still has a
       Precise Location: those lines as written.
     note: >-
-      Today the precise location brief leaves out the higher places and an
-      elevation (precise_location.txt:8) and answers label_lacks_value when no
-      reading writes anything finer than the other place fields (:12), and the
-      step clears such a field as not on the label (step.py:3594-3620, owner
-      decision A as the schema session applied it to this field). WP 2.2
-      carries this rule to the experts; no work package yet names the change
-      to that clearing.
+      Today's code disagrees in three places, and WP 2.2 makes each follow this
+      rule (the plan's WP 2.2 row, the coordinator's re-plan of 2026-11-14):
+      the precise location brief leaves out the higher places and an elevation
+      (precise_location.txt:8) and answers label_lacks_value when no reading
+      writes anything finer than the other place fields (:12); the step clears
+      such a field as not on the label (step.py:3594-3620, owner decision A as
+      the schema session applied it to this field); and a precise location read
+      from the transcript that holds an elevation is refused
+      (agreement.py:323-324, :840-861), so "Yepocapa, 4800 ft." is refused today.
     check: not yet
     when: WP 2.2
     darwin_core: verbatimLocality

@@ -254,7 +254,7 @@ order is applied and `derive.fill` runs (`step.py:2321-2357`):
   file, from Wikidata, cited per row), and (c) the number read as feet is possible. The country must
   be cleared, not marked. Without (a) the field is unresolved: magnitude alone never decides, as
   today (`NO_UNIT`, `agreement.py:302`, `:822-825`). The rule takes effect in plan WP 2.3; WP 2.1
-  sends it to the owner as a notice (section 5, the line dated 2026-11-14). Terrain takes no part
+  sends it as a notice to the owner and, through him, the curators (section 5). Terrain takes no part
   while D5 is held (`GEOREFERENCING.md:179`, the Measurements row: none while D5 is held).
 
 A failed check marks the field. An inference whose rule's conditions all hold fills an open part,
@@ -339,8 +339,10 @@ date order; the elevation unit, with the highest-point table; codes are never da
 them (t1-329 writes "IV-29-68-4" beside the collecting date "IV-23-48"); a label type routes units
 to experts first and never excludes a field (every expert receives every unit); a taxon's regional
 occurrence is not a rule (D4 is held, and absence from an authority is not impossibility,
-`PRD.md:1207`). The rules go to the owner as a notice, not as questions (the line dated 2026-11-14
-above).
+`PRD.md:1207`). The rules go as a notice to the owner and, through him, to the collection's
+curators, not as questions; a correction from either before merge is applied before merge. The
+coordinator changed the reading from questions to a notice on 2026-11-14, on the basis of the owner's
+two messages of that day (the line dated 2026-11-14 above, and section 4).
 
 Where the rules get their knowledge: the approved gazetteers for places (`contracts.py`,
 `FIELD_TOOLS`); GBIF, Catalogue of Life and Global Names for taxon names; Wikidata for the
@@ -381,8 +383,8 @@ instructions) -> 1.4 organiser kept and measured -> 1.5 measurement (gate: crite
 1.6 app shows the units -> 1.7 docs -> 1.8 switch on in production, then delete the old first pass,
 its prompt variable, the switch and the unused field-harness prompt.
 
-Phase 2, the ontology's second version: 2.1 relations and checks (sent to the owner as a notice)
--> 2.2 the rules baked into every model's instructions, readers included -> 2.3 the check
+Phase 2, the ontology's second version: 2.1 relations and checks (a notice to the owner and,
+through him, the curators) -> 2.2 the rules baked into every model's instructions, readers included -> 2.3 the check
 stage (the place chain, the date order, the elevation unit, label types) -> 2.4 unit roles and the
 per-label answer for parts on different labels -> 2.5 organiser decision -> 2.6 measurement (gate:
 criteria 1 and 2 met) -> 2.7 docs.

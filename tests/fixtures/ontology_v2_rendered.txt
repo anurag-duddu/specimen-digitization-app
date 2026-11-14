@@ -64,7 +64,7 @@ Copy every literal exactly as the reading has it, character for character; a lit
 - "?": the value before it is uncertain as written [no field].
 - "<Roman month>-<dd>-<yy>-<n>", "<mm>-<dd>-<yy>-<n><letter>": a slide or preparation code: a month, a day, a two-digit year and a slide number joined by hyphens; never a date, nor is any part of it [no field]. No field takes a slide code.
 - "LEWIS COLLECTION": the printed heading of the Lewis Collection's label templates; it is the Collection Code, copied as written [collection_code].
-- "CNHM.": Chicago Natural History Museum, the Field Museum's name from 1943 to 1966: the institution, never a collector [no field]. No field of the profile holds the institution.
+- "CNHM.": Chicago Natural History Museum, the Field Museum's name from 1943 to 1966: the institution, never a collector, and no field of its own [no field]. Written on a locality line, it is part of the precise location as written.
 - "sp. <n>": a morphocode, a species number: after a genus, a genus-level identification; with no genus on any label, it names no scientific taxon [taxon].
 - "♀": female: the specimen's sex, which no field of the profile holds [no field].
 - "♂": male: the specimen's sex, which no field of the profile holds [no field].
