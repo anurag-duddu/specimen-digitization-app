@@ -65,8 +65,9 @@ def test_a_precise_location_holding_an_elevation_among_its_lines_is_refused_on_t
 
 @pytest.mark.parametrize("literal", ["Yepocapa, IV-24-48", "Yepocapa, 4800 ft. IV-24-48 to V-2-48"])
 def test_a_precise_location_holding_a_date_is_still_refused_on_both_paths(first_pass_path, literal):
-    """The rule names the higher places and an elevation, never a date: a date, or a range of
-    dates, in the precise location is refused on both paths."""
+    """The rule names the higher places and an elevation, never a date: a date or a range of dates
+    the precise location writes beside its locality (not as a number with an elevation unit) is
+    refused on both paths."""
     readings = label_readings(literal + "\nChimaltenango, Guatemala", first_pass_path == "units")
     task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
 
@@ -221,3 +222,91 @@ def test_an_elevation_read_from_the_transcript_beside_an_elevation_only_precise_
     field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
     assert run.fields["elevation_from_ft"].state == ValueState.UNRESOLVED
     assert decisions["elevation_from_ft"]["refusal"] == "taken"
+
+
+# ---- round 1 of PR #435's review (G51, B1 and B3) ---------------------------------------------------
+
+@pytest.mark.parametrize("literal", ["Yepocapa, May 1948 M. Smith\nChimaltenango, Guatemala", "Yepocapa, 1948 M. Smith"])
+def test_a_doubtful_elevation_is_never_passed_over_so_a_date_and_a_collector_stay_out(first_pass_path, literal):
+    """G51's B1: "1948 M." before a name may be a year and a person's initial (written.Number.sign), not an
+    elevation the reading writes with a unit. Only a definite elevation is passed over on the units path, so
+    this literal is refused on both paths, as on main."""
+    readings = label_readings(literal if "\n" in literal else literal + "\nChimaltenango, Guatemala",
+        first_pass_path == "units")
+    task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
+
+    refused = agreement.literal_refusal(task, readings, literal=literal, named=readings)
+
+    assert refused is not None and refused.reason == agreement.HOLDS_AN_ELEVATION
+
+
+def test_a_label_writing_a_year_and_a_collector_on_its_locality_line_gets_no_precise_location(tmp_path,
+        first_pass_path):
+    """G51's B1 input end to end: "Yepocapa, May 1948 M. Smith" over "Chimaltenango, Guatemala", the precise
+    location's expert answering both lines from the transcript: never stored, on either path."""
+    text = "Yepocapa, May 1948 M. Smith\nChimaltenango, Guatemala"
+    rig, run, decisions = settled_run(tmp_path, text, {**IN_YEPOCAPA, "precise_location": whole(text)})
+    place = run.fields["precise_location"]
+    assert place.state != ValueState.SUPPORTED and place.literal is None
+    assert decisions["precise_location"]["refusal"] == "holds_an_elevation"
+
+
+@pytest.mark.parametrize("key", ["collection_code", "city"])
+def test_only_the_precise_location_passes_over_an_elevation(first_pass_path, key):
+    """G51's B3 (c): the units path's pass-over is the precise location's alone; a collection code or a city
+    read from the transcript as "Yepocapa, 4800 ft." is refused for its elevation on both paths."""
+    readings = label_readings(YEPOCAPA, first_pass_path == "units")
+    task = FieldTask(key, True, FieldValue(), (), FIELD_TOOLS[key])
+
+    refused = agreement.literal_refusal(task, readings, literal="Yepocapa, 4800 ft.", named=readings)
+
+    assert refused is not None and refused.reason == agreement.HOLDS_AN_ELEVATION
+
+
+def test_an_elevation_spelled_alike_by_another_reader_is_taken_on_the_old_path(tmp_path, first_pass_path):
+    """G51's B3 (a): 1A writes "4800 ft.", 1B "4800 Ft."; the elevation settles on 1A's, and the precise
+    location's expert answers 1B's "4800 Ft." from the transcript. step._taken's spelled-alike check finds the
+    elevation's text: the precise location goes to review as text another kind of field claims ("taken"), on
+    the old path and, as its literal holds no locality text, on the units path too."""
+    from test_step import Scripted, resolved
+
+    rig = build_rig(tmp_path, YEPOCAPA, YEPOCAPA.replace("4800 ft.", "4800 Ft."))
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({**{key: answering(LACKS) for key in FIELDS}, **IN_YEPOCAPA,
+        "elevation_from_ft": answering(resolved("4800 ft.", value="4800", reading="1A")),
+        "precise_location": answering(FieldAnswer(outcome="resolved", literal="4800 Ft.", reading_names=["1B"],
+            explanation="Read."))}), tools=Gazetteer(rig.blobs))
+    decisions: dict[str, dict] = {}
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    place = run.fields["precise_location"]
+    assert place.state != ValueState.SUPPORTED
+    assert decisions["precise_location"] == {"refusal": "taken"}
+    assert place.reason.startswith(field_step.TAKEN.format(other="Elevation From (ft)"))
+
+
+def test_a_units_path_run_cleared_as_not_on_the_label_by_older_code_goes_to_a_person_on_refinalize(tmp_path,
+        first_pass_path):
+    """G51's B3 (b): a stored precise location that the code before WP 2.2 cleared as not on the label (rule A,
+    its check row stored), refinalized: on the units path step.not_on_label no longer clears it, so the record
+    waits for a person; on the old path it stays cleared."""
+    from specimen_digitization.field_research.contracts import FieldOutcome
+
+    rig, run, decisions = settled_run(tmp_path, YEPOCAPA, {**IN_YEPOCAPA})
+    readings = field_step.run_readings(run)
+    tasks = [FieldTask("precise_location", True, run.fields["precise_location"], (), FIELD_TOOLS["precise_location"])]
+    path = run.first_pass_path
+    # The code before WP 2.2 marked it on either path (mark_not_on_label's condition 7 without the units gate).
+    run.first_pass_path = "old"
+    marked = field_step.mark_not_on_label(run, field_step.profile_of(run), tasks,
+        [FieldOutcome("precise_location", LACKS, model_calls=1)], readings=readings, blobs=rig.blobs)
+    run.first_pass_path = path
+    assert "precise_location" in marked and not_on_label_rows(run, "precise_location")
+
+    field_step.finalize_fields(run, None, [], specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
+
+    if first_pass_path == "units":
+        assert "precise_location" not in cleared_as_not_on_label(run)
+        assert "mandatory_unresolved:precise_location" in run.reasons
+    else:
+        assert "precise_location" in cleared_as_not_on_label(run)
+        assert "mandatory_unresolved:precise_location" not in run.reasons

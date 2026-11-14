@@ -956,9 +956,11 @@ rules:
       locality (prompts/units.txt, its precise_location.txt texts). The code
       follows the rule there in the three places that disagreed with it, which
       the old path keeps: a precise location read from the transcript that
-      holds an elevation among its lines settles (agreement._holds_another_kind),
-      and so does one beside an elevation field's settled text
-      (agreement.may_share_text, step._taken); and a town-only locality is
+      holds a definite elevation (a number with its unit) among its locality
+      text settles (agreement._holds_another_kind), and so does one beside an
+      elevation field's settled text (agreement.may_share_text, step._taken);
+      an elevation alone, a doubtful one ("1948 M." before a name) and a date
+      are still refused; and a town-only locality is
       never cleared as not on the label (step._no_finer_place,
       step._repeats_a_place, step.mark_not_on_label, step.not_on_label).
       tests/field_research/test_precise_location_extent.py pins each on both

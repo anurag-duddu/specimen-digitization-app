@@ -882,23 +882,32 @@ NOT_LOCALITY = written.ELEVATION_WORDS | written.HEADINGS | written.APPROXIMATE 
 
 
 def _past_elevations(literal: str) -> tuple[str, str] | None:
-    """What written.other_kind finds in a precise location's literal once
-    every elevation it finds is passed over: each is blanked in turn (its
-    characters made spaces, so no word joins across it) until other_kind finds
-    a date, a range or nothing (_holds_another_kind, units path). A literal
-    that holds an elevation and no locality text beside it (locality_beyond_
-    elevations: "4800 ft.", "Elev. 6400'") is still an elevation: the first
-    elevation found is returned for it."""
-    text, first = literal, None
-    while (found := written.other_kind(text, place=True)) is not None and found[0] == written.ELEVATION:
-        start = text.find(found[1])
-        if start < 0 or not found[1].strip():
-            return found
-        first = first or found
-        text = text[:start] + " " * len(found[1]) + text[start + len(found[1]):]
+    """What written.other_kind finds in a precise location's literal once its
+    definite elevations are passed over (_definite_elevations_blanked): a
+    date, a range, a doubtful elevation ("1948 M." before a name, which may
+    be a person's initial: written.Number.sign) or nothing
+    (_holds_another_kind, units path). A literal that holds a definite
+    elevation and no locality text beside it ("4800 ft.", "Elev. 6400'") is
+    still an elevation: the first one is returned for it."""
+    text, first = _definite_elevations_blanked(literal)
+    found = written.other_kind(text, place=True)
     if found is None and first is not None and not _has_locality(text):
-        return first
+        return written.ELEVATION, first
     return found
+
+
+def _definite_elevations_blanked(literal: str) -> tuple[str, str | None]:
+    """The literal with each definite elevation blanked (its characters made
+    spaces, so no word joins across it), and the first one's text, or None: a
+    number with an elevation unit the reading writes with it, no distance
+    (written.numbers: Number.unit and Number.whole). A number whose only sign
+    of an elevation is a heading or a capital "M" is not passed over."""
+    found = [number.whole for number in written.numbers(literal, written.pieces(literal, written.words(literal)))
+             if number.unit is not None and number.whole is not None and not number.distance]
+    text = literal
+    for start, end in found:
+        text = text[:start] + " " * (end - start) + text[end:]
+    return text, (literal[found[0][0]:found[0][1]] if found else None)
 
 
 def _has_locality(text: str) -> bool:
@@ -909,17 +918,11 @@ def _has_locality(text: str) -> bool:
 
 
 def locality_beyond_elevations(literal: str) -> bool:
-    """Whether a precise location's literal holds locality text beyond the
-    elevations written.other_kind finds in it and the words beside them
-    (_past_elevations): "Yepocapa, 4800 ft." does, "4800 ft." and "Elev.
-    6400'" do not."""
-    text = literal
-    while (found := written.other_kind(text, place=True)) is not None and found[0] == written.ELEVATION:
-        start = text.find(found[1])
-        if start < 0 or not found[1].strip():
-            break
-        text = text[:start] + " " * len(found[1]) + text[start + len(found[1]):]
-    return _has_locality(text)
+    """Whether a precise location's literal holds locality text beyond its
+    definite elevations and the words beside them
+    (_definite_elevations_blanked): "Yepocapa, 4800 ft." does, "4800 ft." and
+    "Elev. 6400'" do not."""
+    return _has_locality(_definite_elevations_blanked(literal)[0])
 
 
 def _longer_written(task: FieldTask, readings: Sequence[Reading], literal: str,

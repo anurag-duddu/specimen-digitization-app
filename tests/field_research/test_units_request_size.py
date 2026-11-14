@@ -76,8 +76,9 @@ class Stored:
         return SourceAnswer(source_id, query, LookupStatus.TIMEOUT, (), None, note="timed out")
 
 
-def conversation(lookups):
-    """The rebuilt conversation (module docstring) as a FunctionModel's turns."""
+def conversation(lookups, literal=None):
+    """The rebuilt conversation (module docstring) as a FunctionModel's turns; with `literal`, both refused
+    answers give that literal (as for an expert other than the province's)."""
     queries = list(dict.fromkeys(query for _, query in lookups))
     turns = [[ToolCallPart("lookup", {"source": source, "query": query})
         for source, query in [*(key for key in lookups if key[1] == each), *((("nga", each),) if each == queries[0]
@@ -87,9 +88,9 @@ def conversation(lookups):
     # As long as an answer's explanation may be (experts.MAX_EXPLANATION).
     explanation = ("The readings write 'Davao Prov.' and 'Mindanao'; Wikidata confirms Davao as the province, and "
         "Mindanao is the island the province lies on, so the province is Davao. " * 5)[:experts.MAX_EXPLANATION]
-    refused = [{"outcome": "resolved", "literal": "Mindanao", "reading_names": ["2A", "2B"],
+    refused = [{"outcome": "resolved", "literal": literal or "Mindanao", "reading_names": ["2A", "2B"],
         "source_evidence_ids": [wikidata.evidence.id], "explanation": explanation},
-        {"outcome": "resolved", "literal": "Mindanao", "reading_names": ["2A"], "value": "Mindanao",
+        {"outcome": "resolved", "literal": literal or "Mindanao", "reading_names": ["2A"], "value": literal or "Mindanao",
          "source_evidence_ids": [wikidata.evidence.id], "explanation": explanation}]
     sent = []
 
@@ -149,3 +150,38 @@ def test_a_unit_whose_readers_write_one_text_carries_it_once():
     assert [(unit.get("text"), unit.get("readers")) for unit in document["1"]] == [
         (None, {"1A": "Shrubs,", "1B": "Shurbs,"}), ("forest", None)]
     assert [unit["readers"] for unit in document["2"]] == [{"2A": "Mt."}, {"2A": "Apo"}]
+
+
+# WP 2.2's review (G51, not blocking 2): the precise location expert's units-path instructions are now longer
+# than the province's. The same rebuilt conversation given to each place expert, both refused answers forced to
+# one literal no reading writes ("Mindanaq", refused as no candidate), measured in bytes at its largest request.
+PLACE_EXPERTS = ("province_state", "precise_location", "city", "county", "country")
+LARGEST_BY_EXPERT = {
+    ("105526325", "province_state"): 46_179, ("105526325", "precise_location"): 46_632, ("105526325", "city"): 45_513,
+    ("105526325", "county"): 46_065, ("105526325", "country"): 44_803,
+    ("105526324", "province_state"): 45_807, ("105526324", "precise_location"): 46_213, ("105526324", "city"): 45_141,
+    ("105526324", "county"): 45_693, ("105526324", "country"): 44_431,
+}
+
+
+@pytest.mark.parametrize("key", PLACE_EXPERTS)
+@pytest.mark.parametrize("slide", SLIDES)
+def test_the_rebuilt_conversation_given_to_each_place_expert_fits_the_input_bound(monkeypatch, slide, key):
+    """It shows the margin of each place expert on one conversation, not a maximum over every conversation."""
+    from dataclasses import replace
+
+    from specimen_digitization.field_research.contracts import FIELD_TOOLS
+
+    readings, task, context, lookups = loaded(slide)
+    task = replace(task, key=key, tools=tuple(FIELD_TOOLS[key]))
+    bounds = []
+    measure = budget.input_token_bound
+    monkeypatch.setattr(budget, "input_token_bound", lambda messages, parameters: bounds.append(
+        measure(messages, parameters)) or bounds[-1])
+    respond, requests = conversation(lookups, "Mindanaq")
+    resolver = experts.make_resolver(model_factory=lambda: FunctionModel(respond),
+        meter=budget.CostMeter(10_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+    outcome = asyncio.run(resolver(task, readings, context, tools=Stored(lookups)))
+    assert outcome.failure is None and outcome.answer.outcome == "sources_cannot_resolve"
+    assert len(bounds) == requests == 7
+    assert max(bounds) == LARGEST_BY_EXPERT[(slide, key)] <= budget.DEFAULT_MAX_INPUT_TOKENS
