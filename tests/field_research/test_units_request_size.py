@@ -185,3 +185,59 @@ def test_the_rebuilt_conversation_given_to_each_place_expert_fits_the_input_boun
     assert outcome.failure is None and outcome.answer.outcome == "sources_cannot_resolve"
     assert len(bounds) == requests == 7
     assert max(bounds) == LARGEST_BY_EXPERT[(slide, key)] <= budget.DEFAULT_MAX_INPUT_TOKENS
+
+
+# WP 2.2's paid run (the coordinator's round-2 request): the three-reader arm's country expert on 105526322 was
+# refused as input_too_large in its second attempt, after 5 model calls (wp15c's country settled in 2 and 3 calls).
+# tests/fixtures/units_country_request_105526322.json holds that attempt's inputs from the stored run (its "source"
+# says how). Rebuilt: one turn per distinct query, an answer the checks refuse, with as long an explanation as an
+# answer may give, then the request for the next answer. The model's own text in each turn is not stored, so the
+# rebuilt requests are smaller than the refused one; the test pins them as a known case at their size.
+COUNTRY_SLIDE = "105526322"
+COUNTRY_LARGEST = 45_408
+
+
+def loaded_country():
+    data = json.loads((FIXTURES / f"units_country_request_{COUNTRY_SLIDE}.json").read_text(encoding="utf-8"))
+    readings = tuple(Reading(r["name"], r["region_id"], r["observation_id"], r["input_source"], r["text"],
+        units=ReadingUnits.model_validate(r["units"]) if r["units"] is not None else None) for r in data["readings"])
+    given = data["task"]
+    task = FieldTask(given["key"], given["mandatory"], FieldValue.model_validate(given["current"]),
+        tuple(Candidate(**candidate) for candidate in given["candidates"]), tuple(given["tools"]))
+    context = {key: FieldValue(literal=value["literal"], verbatim_by_observation=value["verbatim_by_observation"])
+        for key, value in data["context"].items()}
+    lookups = {(item["source"], item["query"]): SourceAnswer(item["source"], item["query"],
+        LookupStatus(item["status"]), tuple(SourceCandidate(**candidate) for candidate in item["candidates"]),
+        Evidence(**item["evidence"]) if item["evidence"] else None, note=item["note"]) for item in data["lookups"]}
+    return readings, task, context, lookups
+
+
+def test_the_rebuilt_country_request_of_wp_2_2s_paid_run_is_a_known_case_at_its_size(monkeypatch):
+    readings, task, context, lookups = loaded_country()
+    assert all(reading.units is not None for reading in readings) and len(lookups) == 9
+    queries = list(dict.fromkeys(query for _, query in lookups))
+    turns = [[ToolCallPart("lookup", {"source": source, "query": query}) for source, query in lookups if query == each]
+        for each in queries]
+    explanation = ("The readings write 'Mindanao, P.I.'; the sources find the Philippines for 'Philippine Islands' "
+        "but several places for 'P.I.' and for 'Mindanao', so the country stays open. " * 5)[:experts.MAX_EXPLANATION]
+    sent = []
+
+    def respond(messages, info):
+        sent.append(len(messages))
+        if len(sent) <= len(turns):
+            return ModelResponse(parts=turns[len(sent) - 1])
+        given = ({"outcome": "resolved", "literal": "Philippine Islandz", "reading_names": ["2A"],
+            "explanation": explanation} if len(sent) == len(turns) + 1 else
+            {"outcome": "sources_cannot_resolve", "explanation": "The sources do not settle the country."})
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, given)])
+
+    bounds = []
+    measure = budget.input_token_bound
+    monkeypatch.setattr(budget, "input_token_bound", lambda messages, parameters: bounds.append(
+        measure(messages, parameters)) or bounds[-1])
+    resolver = experts.make_resolver(model_factory=lambda: FunctionModel(respond),
+        meter=budget.CostMeter(10_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+    outcome = asyncio.run(resolver(task, readings, context, tools=Stored(lookups)))
+    assert outcome.failure is None and outcome.answer.outcome == "sources_cannot_resolve"
+    assert len(bounds) == len(turns) + 2 == 6
+    assert max(bounds) == COUNTRY_LARGEST <= budget.DEFAULT_MAX_INPUT_TOKENS
