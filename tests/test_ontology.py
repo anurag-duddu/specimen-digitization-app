@@ -1,12 +1,14 @@
 """The specimen ontology, version 2.0 (docs/execution/units/PLAN.md, WP 1.0 and WP 2.1;
 docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md sections 4 and 5)."""
 
-import ast
 import copy
-import json
 from decimal import Decimal
+from functools import cache
+import json
 from pathlib import Path
 import re
+import subprocess
+import sys
 
 import pytest
 import yaml
@@ -602,25 +604,33 @@ CODE_RULE_TESTS = {
 }
 
 
-def _test_functions(path: Path) -> set[str]:
-    """The names of the module-level test functions a test file defines."""
-    tree = ast.parse(path.read_text(encoding="utf-8"))
-    return {node.name for node in tree.body
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_")}
+@cache
+def _collected(paths: tuple[str, ...]) -> frozenset[str]:
+    """The node ids pytest collects from these test files (`pytest --collect-only -q`, run once in a
+    subprocess): a parametrized case exists only as its function's own collected id."""
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", f"--rootdir={ROOT}", *paths],
+        cwd=ROOT, capture_output=True, text=True, timeout=600)
+    nodes = frozenset(line.strip() for line in result.stdout.splitlines() if "::" in line)
+    assert result.returncode == 0 and nodes, result.stdout[-2000:] + result.stderr[-2000:]
+    return nodes
 
 
-def _map_problems(code: set[str], tests: dict[str, tuple[str, ...]]) -> list[str]:
+def _mapped_files() -> tuple[str, ...]:
+    return tuple(sorted({node.partition("::")[0] for tests in CODE_RULE_TESTS.values() for node in tests}))
+
+
+def _map_problems(code: set[str], tests: dict[str, tuple[str, ...]], collected: frozenset[str]) -> list[str]:
     """What breaks the one-to-one map: a rule checked by code with no test, a listed rule not checked by code,
-    a test listed twice, a listed test no file defines."""
+    a test listed twice, a listed node id pytest does not collect. A node id with a case ("[5-5-48]") is
+    that collected case; one without names a function every case of which is collected under it."""
     problems = [f"{rule}: checked by code, no test" for rule in sorted(code - {k for k, v in tests.items() if v})]
     problems += [f"{rule}: not checked by code" for rule in sorted(set(tests) - code)]
     nodes = [node for listed in tests.values() for node in listed]
     problems += [f"{node}: listed twice" for node in sorted({node for node in nodes if nodes.count(node) > 1})]
     for node in nodes:
-        path, _, name = node.partition("::")
-        name, _, case = name.partition("[")
-        if (not (ROOT / path).is_file() or name not in _test_functions(ROOT / path)
-                or (case and f'"{case.removesuffix("]")}"' not in (ROOT / path).read_text(encoding="utf-8"))):
+        found = node in collected or ("[" not in node and any(item.startswith(node + "[") for item in collected))
+        if not found:
             problems.append(f"{node}: no such test")
     return problems
 
@@ -628,21 +638,32 @@ def _map_problems(code: set[str], tests: dict[str, tuple[str, ...]]) -> list[str
 def test_every_rule_checked_by_code_names_its_tests_one_to_one_and_each_test_exists():
     code = {rule.id for rule in ontology.ontology().rules if rule.check == "code"}
 
-    assert _map_problems(code, CODE_RULE_TESTS) == []
+    assert _map_problems(code, CODE_RULE_TESTS, _collected(_mapped_files())) == []
 
 
 def test_the_rule_to_test_map_fails_on_a_code_rule_with_no_test_or_a_test_that_does_not_exist():
-    """The map's failures, shown on copies: a rule flipped to `code` with no test, and a listed test that no
-    file defines."""
+    """The map's failures, shown on copies: a rule flipped to `code` with no test; a renamed function; a
+    case of another function's parameters ("4-5-48" is test_date_forms.py's AMBIGUOUS, not SINGLE_DATES);
+    and a case whose id is renamed away, though its literal stays in the file (Codex's round-2 probes)."""
+    collected = _collected(_mapped_files())
     data = shipped()
     entry(data, "rules", "date_order")["check"] = "code"
     del entry(data, "rules", "date_order")["when"]
     flipped = {rule.id for rule in ontology.parse(data).rules if rule.check == "code"}
-    assert _map_problems(flipped, CODE_RULE_TESTS) == ["date_order: checked by code, no test"]
+    assert _map_problems(flipped, CODE_RULE_TESTS, collected) == ["date_order: checked by code, no test"]
 
     code = {rule.id for rule in ontology.ontology().rules if rule.check == "code"}
     renamed = {**CODE_RULE_TESTS, "end_date_from_one_date": (CODE_RULE_TESTS["end_date_from_one_date"][0] + "_x",)}
-    assert _map_problems(code, renamed) == [renamed["end_date_from_one_date"][0] + ": no such test"]
+    assert _map_problems(code, renamed, collected) == [renamed["end_date_from_one_date"][0] + ": no such test"]
+
+    foreign = "tests/test_date_forms.py::test_a_form_reads_as_its_start_end_and_precision[4-5-48]"
+    assert "tests/test_date_forms.py::test_a_form_that_leaves_a_choice_names_it_and_settles_nothing[4-5-48]" in collected
+    moved = {**CODE_RULE_TESTS, "day_month_order": (*CODE_RULE_TESTS["day_month_order"][:2], foreign)}
+    assert _map_problems(code, moved, collected) == [foreign + ": no such test"]
+
+    single = "tests/test_date_forms.py::test_a_form_reads_as_its_start_end_and_precision["
+    away = frozenset(item.replace(single, single + "renamed-") for item in collected)
+    assert _map_problems(code, CODE_RULE_TESTS, away) == [single + "5-5-48]: no such test"]
 
 
 # ---- version 2.0: the meanings resolved from sources (WP 2.1) -------------------------------------------
