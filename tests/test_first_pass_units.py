@@ -143,7 +143,7 @@ def test_the_units_prompt_is_pinned_on_the_units_path_and_only_there(tmp_path):
     from specimen_digitization import ontology
 
     assert ontology.render(brief=True) in pinned.text
-    assert "Specimen ontology, version 1.0." in pinned.text
+    assert "Specimen ontology, version 2.0." in pinned.text
     assert {k: v for k, v in units["prompts"].items() if k != "first-pass-units"} == old["prompts"]
 
 

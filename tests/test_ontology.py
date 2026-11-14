@@ -1,9 +1,14 @@
-"""The specimen ontology, version 1.0 (docs/execution/units/PLAN.md, WP 1.0;
-docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 5)."""
+"""The specimen ontology, version 2.0 (docs/execution/units/PLAN.md, WP 1.0 and WP 2.1;
+docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md sections 4 and 5)."""
 
 import copy
+from decimal import Decimal
+from functools import cache
+import json
 from pathlib import Path
 import re
+import subprocess
+import sys
 
 import pytest
 import yaml
@@ -13,9 +18,11 @@ from specimen_digitization.application.domain import MANDATORY
 from specimen_digitization.field_research.prompts import FIELD_LABELS
 
 ROOT = Path(__file__).resolve().parents[1]
-RENDERED = Path(__file__).with_name("fixtures") / "ontology_v1_rendered.txt"
+RENDERED = Path(__file__).with_name("fixtures") / "ontology_v2_rendered.txt"
 # The first pass's text (WP 1.2): ontology.render(brief=True).
-RENDERED_BRIEF = Path(__file__).with_name("fixtures") / "ontology_v1_rendered_brief.txt"
+RENDERED_BRIEF = Path(__file__).with_name("fixtures") / "ontology_v2_rendered_brief.txt"
+# The rules' own text (WP 2.1): ontology.render_rules().
+RENDERED_RULES = Path(__file__).with_name("fixtures") / "ontology_v2_rules_rendered.txt"
 MOVED_AT = " at 7a09445a2"
 PLACE = (
     "a place; the sources decide which level it is (a country, a province or state, a county or municipio, a"
@@ -74,7 +81,7 @@ def test_the_loader_refuses_a_notation_with_no_source(source):
         ontology.parse(data)
 
 
-@pytest.mark.parametrize("section", ["things", "fields", "routing", "questions"])
+@pytest.mark.parametrize("section", ["things", "fields", "routing", "questions", "rules", "not_rules"])
 def test_every_other_entry_needs_a_source_too(section):
     data = shipped()
     del data[section][0]["source"]
@@ -83,18 +90,20 @@ def test_every_other_entry_needs_a_source_too(section):
         ontology.parse(data)
 
 
-@pytest.mark.parametrize("where", ["top", "frame", "things", "fields", "routing", "notations", "questions"])
+@pytest.mark.parametrize("where", ["top", "frame", "things", "fields", "routing", "notations", "questions", "rules",
+                                   "not_rules", "highest_points", "highest_points.rows"])
 def test_the_loader_refuses_an_unknown_key(where):
     data = shipped()
-    target = data if where == "top" else data[where] if where == "frame" else data[where][0]
-    target["relations"] = "not in version 1.0"
+    target = (data if where == "top" else data[where] if where in ("frame", "highest_points")
+              else data["highest_points"]["rows"][0] if where == "highest_points.rows" else data[where][0])
+    target["relations"] = "not in version 2.0"
 
     with pytest.raises(ontology.OntologyError, match="unknown key 'relations'"):
         ontology.parse(data)
 
 
 def test_the_loader_refuses_a_key_written_twice():
-    text = ontology.PATH.read_text(encoding="utf-8").replace('version: "1.0"', 'version: "1.0"\nversion: "1.1"')
+    text = ontology.PATH.read_text(encoding="utf-8").replace('version: "2.0"', 'version: "2.0"\nversion: "2.1"')
 
     with pytest.raises(ontology.OntologyError, match="'version' written twice"):
         ontology.read(text)
@@ -150,15 +159,22 @@ def test_the_first_pass_text_keeps_what_cuts_and_reads_a_unit_and_leaves_out_wha
 # from e98a924c-L2 and t1-329 (the spec's sections 3 and 4), with the fields
 # and readings the file gives each. A place's name is a judgement the file
 # leaves to the model (its routing entry); every other unit is matched by its
-# notations. The three open units carry none.
+# notations. Version 2.0 resolved "CNHM." and "Sp.30 \N{FEMALE SIGN}" from sources (WP 2.1);
+# "P-95-81-16" stays open and carries none.
 FEET = ("feet, the unit of an elevation",)
 DATES = ("date_visited_from", "date_visited_to", "date_identified")
+CNHM = ("Chicago Natural History Museum, the Field Museum's name from 1943 to 1966: the institution, never a"
+        " collector, and no field of its own")
+MORPHOCODE = ("a morphocode, a species number: after a genus, a genus-level identification; with no genus on any"
+              " label, it names no scientific taxon")
+FEMALE = "female: the specimen's sex, which no field of the profile holds"
+MALE = "male: the specimen's sex, which no field of the profile holds"
 PILOT_UNITS = [
-    ("CNHM.", None, (), (), ("cnhm",)),
+    ("CNHM.", None, (), (CNHM,), ()),
     ("P.I.", None, ("country",), ("Philippine Islands, the Philippines",), ()),
     ("Elev.6400'", None, ("elevation_from_ft", "elevation_to_ft"), FEET, ()),
     ("H. Hoogstraal leg.", None, ("collectors",), ("collected by, marking the collectors",), ()),
-    ("Sp.30 \N{FEMALE SIGN}", None, (), (), ("species_number_and_sex",)),
+    ("Sp.30 \N{FEMALE SIGN}", None, ("taxon",), (MORPHOCODE, FEMALE), ()),
     ("6-Sept-1946", None, DATES, ("the month",), ()),
     ("P-95-81-16", None, (), (), ("p_code",)),
     ("IV-29-68-4", None, (), (
@@ -219,15 +235,18 @@ def test_the_lewis_notation_names_the_specs_dated_line_as_its_source_and_the_loa
         ontology.parse(data)
 
 
-def test_the_three_open_units_are_the_files_questions_and_carry_nothing_else():
+def test_the_one_open_unit_is_the_files_only_question_and_carries_nothing_else():
+    """WP 2.1 resolved "CNHM.", "Sp.30 \N{FEMALE SIGN}" and island_fields from sources; no source settles
+    "P-95-81-16", which stays as it was, not put to the owner."""
     loaded = ontology.ontology()
 
-    assert [question.written for question in loaded.questions if question.written] == [
-        ("CNHM.",), ("Sp.30 \N{FEMALE SIGN}",), ("P-95-81-16",)]
-    assert all(question.answered_in == "WP 2.1" for question in loaded.questions)
+    assert [(question.id, question.written, question.notation) for question in loaded.questions] == [
+        ("p_code", ("P-95-81-16",), "")]
+    assert loaded.questions[0].status.startswith("No source settles it (WP 2.1, 2026-11-14)")
+    assert "owner's reading" not in ontology.render() and "owner's reading" not in ontology.render(brief=True)
     # A question takes the whole unit, notations beside it too.
-    assert loaded.advice("H. Hoogstraal; CNHM") == ontology.Advice(questions=("cnhm",))
     assert loaded.advice("P-95-81-16", "place_name") == ontology.Advice(questions=("p_code",))
+    assert loaded.advice("H. Hoogstraal; CNHM") == ontology.Advice(means=(CNHM,), notations=("cnhm",))
 
 
 def test_no_part_of_a_slide_code_is_a_date():
@@ -364,15 +383,20 @@ def test_a_place_abbreviation_the_brief_only_expands_is_routed_as_a_place_name()
                                     entries["new_south_wales_abbreviation"].note))
 
 
-def test_the_island_notation_keeps_its_fields_and_carries_a_question_for_the_owners_reading():
+def test_an_island_belongs_to_the_precise_location_only():
+    """island_fields, resolved in WP 2.1: an island is not a province (province_state.txt:7) nor a city
+    (city.txt:6), and no v1 field holds an island's level (PRD.md:785-786)."""
     loaded = ontology.ontology()
-    question = next(question for question in loaded.questions if question.id == "island_fields")
+    island = next(notation for notation in loaded.notations if notation.id == "island")
 
-    assert (question.notation, question.written, question.answered_in) == ("island", (), "WP 2.1")
     assert loaded.advice("Is.") == ontology.Advice(
-        fields=("precise_location", "county", "province_state"), means=("island or islands",),
-        notations=("island",))
-    assert '- "Is.": Which fields can "Is." (island or islands) belong to?' in loaded.render()
+        fields=("precise_location",), means=("island or islands",), notations=("island",))
+    for source in ("src/specimen_digitization/field_research/prompts/province_state.txt:7",
+                   "src/specimen_digitization/field_research/prompts/city.txt:6",
+                   "docs/product-requirements/PRD.md:785-786"):
+        assert source in island.source
+    assert "island_fields" not in {question.id for question in loaded.questions}
+    assert "Which fields can" not in loaded.render()
 
 
 @pytest.mark.parametrize("change,message", [
@@ -382,7 +406,7 @@ def test_the_island_notation_keeps_its_fields_and_carries_a_question_for_the_own
 ])
 def test_a_question_is_about_units_or_about_one_notation_of_the_file(change, message):
     data = shipped()
-    question = entry(data, "questions", "cnhm")
+    question = entry(data, "questions", "p_code")
     for key, value in change.items():
         if value is None:
             del question[key]
@@ -401,7 +425,8 @@ def _cited(source: str) -> tuple[Path, str]:
 def test_every_source_names_a_file_and_lines_it_has():
     loaded = ontology.ontology()
     sources = [*loaded.frame["source"]]
-    for section in (loaded.things, loaded.fields, loaded.routing, loaded.notations, loaded.questions):
+    for section in (loaded.things, loaded.fields, loaded.routing, loaded.notations, loaded.questions, loaded.rules,
+                    loaded.not_rules):
         sources += [source for item in section for source in item.source]
     sources += shipped()["notation_rule"]["source"]
 
@@ -425,3 +450,318 @@ def test_the_shipped_file_parses_unchanged_through_a_copy():
     data = shipped()
 
     assert ontology.parse(copy.deepcopy(data)) == ontology.ontology()
+
+
+# ---- version 2.0: the rules (WP 2.1) ----------------------------------------------------------------
+
+RULE_PARTS = ("id", "statement", "check", "darwin_core", "source")
+
+
+@pytest.mark.parametrize("part", RULE_PARTS)
+def test_the_loader_refuses_a_rule_missing_any_part(part):
+    data = shipped()
+    del entry(data, "rules", "elevation_unit_feet")[part]
+
+    message = r"^rules\[\d+\] has no source$" if part == "source" else rf"^rules\[\d+\]: missing key '{part}'$"
+    with pytest.raises(ontology.OntologyError, match=message):
+        ontology.parse(data)
+
+
+@pytest.mark.parametrize("part", RULE_PARTS[:2] + RULE_PARTS[3:])
+def test_the_loader_refuses_a_rule_whose_part_is_empty(part):
+    data = shipped()
+    entry(data, "rules", "date_order")[part] = [] if part == "source" else " "
+
+    with pytest.raises(ontology.OntologyError, match="has no source" if part == "source" else "non-empty string"):
+        ontology.parse(data)
+
+
+@pytest.mark.parametrize("change,message", [
+    ({"check": "yes"}, r"check must be one of code, model, not yet, not 'yes'"),
+    ({"check": "code"}, "names `when` if and only if it is not yet checked"),
+    ({"when": None}, "names `when` if and only if it is not yet checked"),
+])
+def test_a_rule_is_checked_by_code_by_a_model_or_not_yet_with_its_work_package(change, message):
+    data = shipped()
+    rule = entry(data, "rules", "place_chain")
+    for key, value in change.items():
+        if value is None:
+            del rule[key]
+        else:
+            rule[key] = value
+
+    with pytest.raises(ontology.OntologyError, match=message):
+        ontology.parse(data)
+
+
+@pytest.mark.parametrize("part", ("id", "statement", "darwin_core", "source"))
+def test_the_loader_refuses_a_statement_that_is_not_a_rule_missing_any_part(part):
+    data = shipped()
+    del entry(data, "not_rules", "taxon_regional_occurrence")[part]
+
+    with pytest.raises(ontology.OntologyError, match="has no source" if part == "source" else f"missing key '{part}'"):
+        ontology.parse(data)
+
+
+def test_a_rule_id_is_written_once_across_rules_and_not_rules():
+    data = shipped()
+    entry(data, "not_rules", "taxon_regional_occurrence")["id"] = "date_order"
+
+    with pytest.raises(ontology.OntologyError, match="an id is written twice"):
+        ontology.parse(data)
+
+
+def test_the_rules_rendered_text_is_pinned():
+    assert ontology.render_rules() == RENDERED_RULES.read_text(encoding="utf-8")
+
+
+def test_the_rules_text_names_no_code_line_work_package_or_gate_and_no_model_text_carries_it():
+    """The rules render through their own function; WP 2.2 puts that text into the models' instructions, so
+    it holds nothing NOT_FOR_A_MODEL refuses, and render() (both forms) holds no rule and no table row."""
+    rules = ontology.render_rules()
+    assert NOT_FOR_A_MODEL.findall(rules) == []
+    loaded = ontology.ontology()
+    for text in (ontology.render(), ontology.render(brief=True)):
+        for rule in (*loaded.rules, *loaded.not_rules):
+            assert rule.statement not in text and rule.id not in text
+        assert "Mount Apo" not in text and "highest point" not in text
+
+
+# The spec's section 4 and 5 relations and checks (WP 2.1's row), each a rule of the file, with how it is
+# checked today. WP 2.3 builds the four `not yet` rules it names and flips them to `code`.
+RULE_CHECKS = {
+    "one_collecting_event": "code", "place_within_settled_places": "code", "place_chain": "not yet",
+    "date_order": "not yet", "day_month_order": "code", "code_is_no_date": "code", "label_type_routing": "not yet",
+    "elevation_unit_feet": "not yet", "elevation_needs_a_unit": "code", "elevation_unit_decides_field": "code",
+    "place_parents_derived": "code", "elevation_conversion": "code", "end_date_from_one_date": "code",
+    "precise_location_extent": "not yet",
+}
+
+
+def test_the_file_holds_the_specs_rules_each_checked_as_stated():
+    loaded = ontology.ontology()
+
+    assert {rule.id: rule.check for rule in loaded.rules} == RULE_CHECKS
+    assert {rule.id: rule.when for rule in loaded.rules if rule.check == "not yet"} == {
+        "place_chain": "WP 2.3", "date_order": "WP 2.3", "label_type_routing": "WP 2.3",
+        "elevation_unit_feet": "WP 2.3", "precise_location_extent": "WP 2.2"}
+    assert [entry.id for entry in loaded.not_rules] == ["taxon_regional_occurrence"]
+    assert "docs/product-requirements/PRD.md:1207" in loaded.not_rules[0].source
+
+
+# Every rule checked by code today, against the tests that pin it (node ids under the repository's root, as
+# pytest collects them; a parametrized case by its own id), one to one: no test pins two rules. Each `code`
+# statement is an invariant today's code guarantees; a mutant that breaks it fails one of its tests. WP 2.3
+# adds its rules here when it flips them to `code`.
+CODE_RULE_TESTS = {
+    "one_collecting_event": (
+        "tests/field_research/test_experts.py::test_a_field_on_two_labels_settles_only_when_both_settle_to_one_value",
+        "tests/field_research/test_experts.py"
+        "::test_two_labels_writing_one_field_differently_settle_only_through_a_source_confirming_both",
+    ),
+    "place_within_settled_places": (
+        "tests/field_research/test_experts.py::test_a_place_fits_the_other_place_fields_its_reading_writes",
+        "tests/field_research/test_agreement.py"
+        "::test_a_county_on_the_settled_provinces_record_or_text_is_refused_as_the_province",
+    ),
+    "day_month_order": (
+        "tests/test_date_forms.py::test_a_form_that_leaves_a_choice_names_it_and_settles_nothing[4-5-48]",
+        "tests/test_date_forms.py::test_a_form_reads_as_its_start_end_and_precision[5-5-48]",
+    ),
+    "code_is_no_date": (
+        "tests/field_research/test_date_split_lines.py"
+        "::test_a_reader_that_shows_the_literal_inside_a_code_still_decides_it_is_no_date",),
+    "elevation_needs_a_unit": (
+        "tests/field_research/test_agreement.py::test_a_number_with_no_unit_never_settles_an_elevation",),
+    "elevation_unit_decides_field": (
+        "tests/field_research/test_agreement.py::test_an_elevation_never_settles_a_field_of_the_other_unit",),
+    "place_parents_derived": (
+        "tests/field_research/test_step.py::test_blank_unresolved_country_is_derived_from_settled_state",
+        "tests/field_research/test_step.py::test_exact_place_matches_can_derive_missing_location_ancestors",
+        "tests/field_research/test_step.py"
+        "::test_a_parent_is_derived_only_when_every_settled_place_below_names_the_same_one",
+        "tests/field_research/test_step.py::test_a_county_or_a_province_is_derived_only_from_enough_parents",
+        "tests/field_research/test_step.py::test_a_derived_parent_never_replaces_a_place_settled_from_the_label",
+    ),
+    "elevation_conversion": (
+        "tests/field_research/test_step.py::test_derived_values_fill_what_the_label_leaves_out",
+        "tests/field_research/test_step.py::test_no_elevation_is_derived_from_a_unit_the_readings_disagree_on",
+        "tests/test_derivations.py::test_a_single_metre_value_is_both_ends_and_fills_the_feet_fields",
+        "tests/test_derivations.py::test_stated_elevations_are_never_replaced",
+    ),
+    "end_date_from_one_date": (
+        "tests/field_research/test_date_split_lines.py::test_a_range_s_start_is_not_copied_to_its_end",
+        "tests/field_research/test_date_split_lines.py::test_one_collecting_date_is_its_own_end_at_its_precision",
+    ),
+}
+
+
+@cache
+def _collected(paths: tuple[str, ...]) -> frozenset[str]:
+    """The node ids pytest collects from these test files (`pytest --collect-only -q`, run once in a
+    subprocess): a parametrized case exists only as its function's own collected id."""
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider", f"--rootdir={ROOT}", *paths],
+        cwd=ROOT, capture_output=True, text=True, timeout=600)
+    nodes = frozenset(line.strip() for line in result.stdout.splitlines() if "::" in line)
+    assert result.returncode == 0 and nodes, result.stdout[-2000:] + result.stderr[-2000:]
+    return nodes
+
+
+def _mapped_files() -> tuple[str, ...]:
+    return tuple(sorted({node.partition("::")[0] for tests in CODE_RULE_TESTS.values() for node in tests}))
+
+
+def _map_problems(code: set[str], tests: dict[str, tuple[str, ...]], collected: frozenset[str]) -> list[str]:
+    """What breaks the one-to-one map: a rule checked by code with no test, a listed rule not checked by code,
+    a test listed twice, a listed node id pytest does not collect. A node id with a case ("[5-5-48]") is
+    that collected case; one without names a function every case of which is collected under it."""
+    problems = [f"{rule}: checked by code, no test" for rule in sorted(code - {k for k, v in tests.items() if v})]
+    problems += [f"{rule}: not checked by code" for rule in sorted(set(tests) - code)]
+    nodes = [node for listed in tests.values() for node in listed]
+    problems += [f"{node}: listed twice" for node in sorted({node for node in nodes if nodes.count(node) > 1})]
+    for node in nodes:
+        found = node in collected or ("[" not in node and any(item.startswith(node + "[") for item in collected))
+        if not found:
+            problems.append(f"{node}: no such test")
+    return problems
+
+
+def test_every_rule_checked_by_code_names_its_tests_one_to_one_and_each_test_exists():
+    code = {rule.id for rule in ontology.ontology().rules if rule.check == "code"}
+
+    assert _map_problems(code, CODE_RULE_TESTS, _collected(_mapped_files())) == []
+
+
+def test_the_rule_to_test_map_fails_on_a_code_rule_with_no_test_or_a_test_that_does_not_exist():
+    """The map's failures, shown on copies: a rule flipped to `code` with no test; a renamed function; a
+    case of another function's parameters ("4-5-48" is test_date_forms.py's AMBIGUOUS, not SINGLE_DATES);
+    and a case whose id is renamed away, though its literal stays in the file (Codex's round-2 probes)."""
+    collected = _collected(_mapped_files())
+    data = shipped()
+    entry(data, "rules", "date_order")["check"] = "code"
+    del entry(data, "rules", "date_order")["when"]
+    flipped = {rule.id for rule in ontology.parse(data).rules if rule.check == "code"}
+    assert _map_problems(flipped, CODE_RULE_TESTS, collected) == ["date_order: checked by code, no test"]
+
+    code = {rule.id for rule in ontology.ontology().rules if rule.check == "code"}
+    renamed = {**CODE_RULE_TESTS, "end_date_from_one_date": (CODE_RULE_TESTS["end_date_from_one_date"][0] + "_x",)}
+    assert _map_problems(code, renamed, collected) == [renamed["end_date_from_one_date"][0] + ": no such test"]
+
+    foreign = "tests/test_date_forms.py::test_a_form_reads_as_its_start_end_and_precision[4-5-48]"
+    assert "tests/test_date_forms.py::test_a_form_that_leaves_a_choice_names_it_and_settles_nothing[4-5-48]" in collected
+    moved = {**CODE_RULE_TESTS, "day_month_order": (CODE_RULE_TESTS["day_month_order"][0], foreign)}
+    assert _map_problems(code, moved, collected) == [foreign + ": no such test"]
+
+    single = "tests/test_date_forms.py::test_a_form_reads_as_its_start_end_and_precision["
+    away = frozenset(item.replace(single, single + "renamed-") for item in collected)
+    assert _map_problems(code, CODE_RULE_TESTS, away) == [single + "5-5-48]: no such test"]
+
+
+# ---- version 2.0: the meanings resolved from sources (WP 2.1) -------------------------------------------
+
+def test_the_resolved_meanings_name_their_sources_and_carry_their_fields():
+    loaded = ontology.ontology()
+    notations = {notation.id: notation for notation in loaded.notations}
+
+    assert notations["cnhm"].fields == () and {
+        "tests/fixtures/field_model_pilot_rows.json:134", "https://en.wikipedia.org/wiki/Field_Museum_of_Natural_History",
+    } <= set(notations["cnhm"].source)
+    assert notations["species_number"].fields == ("taxon",)
+    assert "src/specimen_digitization/field_research/prompts/taxon.txt:8-9" in notations["species_number"].source
+    assert notations["female_sign"].fields == notations["male_sign"].fields == ()
+    assert loaded.advice("Sp.30 \N{MALE SIGN}") == ontology.Advice(
+        fields=("taxon",), means=(MORPHOCODE, MALE), notations=("species_number", "male_sign"))
+    assert loaded.advice("CNHM").notations == ("cnhm",)
+    # After a genus, the same notation (taxon.txt:5).
+    assert loaded.advice("Aus sp. 1").notations == ("species_number",)
+    extent = next(rule for rule in loaded.rules if rule.id == "precise_location_extent")
+    assert extent.darwin_core == "verbatimLocality"
+    for source in ("docs/product-requirements/PRD.md:774", "docs/product-requirements/GEOREFERENCING.md:276",
+                   "tests/fixtures/field_model_pilot_rows.json:325"):
+        assert source in extent.source
+
+
+def test_cnhm_is_the_institution_and_on_a_locality_line_part_of_the_precise_location():
+    """"CNHM." fills no field of its own and is never a collector; written on a locality line it is part of
+    the precise location as written (precise_location_extent), as the pilot truth holds it. The reading is
+    general: it names no slide."""
+    loaded = ontology.ontology()
+    cnhm = next(notation for notation in loaded.notations if notation.id == "cnhm")
+    extent = next(rule for rule in loaded.rules if rule.id == "precise_location_extent")
+
+    assert (cnhm.written, cnhm.fields, cnhm.readings) == (("CNHM.",), (), (CNHM,))
+    assert cnhm.note == "Written on a locality line, it is part of the precise location as written."
+    assert "every line of its locality text" in extent.statement
+    assert not re.search(r"\d{6,}|e98a924c|t1-\d|slide", " ".join((*cnhm.readings, cnhm.note)))
+    rows = json.loads((ROOT / "tests/fixtures/field_model_pilot_rows.json").read_text(encoding="utf-8"))["rows"]
+    on_a_locality_line = [row for row in rows if "CNHM" in row["as_written"]["locality"]]
+    assert len(on_a_locality_line) == 2
+    for row in on_a_locality_line:
+        assert "CNHM" in row["expected"]["precise_location"] and "CNHM" not in row["expected"]["collectors"]
+    for line in (57, 79, 115):
+        assert f"tests/fixtures/field_model_pilot_rows.json:{line}" in cnhm.source
+
+def test_the_specs_dated_line_of_2026_11_14_quotes_the_owner():
+    path = ROOT / "docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    owner = ("\"4 shouldn't be flagged. It should be caught and handled. Goal isn't to throw everything at the user"
+             " it is to help by being in in autonomy as much as possible.\"")
+    [dated] = [line for line in lines if line.startswith("2026-11-14, the owner")]
+
+    assert owner in dated
+    assert any("\"Harness needs to work and do its magic\"" in line for line in lines)
+    assert ontology.PATH.read_text(encoding="utf-8").count(owner) == 1
+
+
+# ---- version 2.0: the highest-point table (WP 2.1) ---------------------------------------------------------
+
+def test_the_highest_point_table_is_cited_once_with_its_query_and_has_one_row_per_country():
+    table = ontology.ontology().highest_points
+
+    assert table.endpoint == "https://query.wikidata.org/sparql"
+    assert re.fullmatch(r"2026-11-14T\d\d:\d\d:\d\dZ", table.retrieved)
+    for term in ("wdt:P610", "p:P2044", "psn:P2044", "wd:Q6256", "wd:Q3624078", "wdt:P576"):
+        assert term in table.query
+    assert len(table.rows) == 202
+    assert len({row.country for row in table.rows}) == len(table.rows)
+    assert all(re.fullmatch(r"Q[1-9]\d*", row.country) and re.fullmatch(r"Q[1-9]\d*", row.point)
+               and row.country_name and row.point_name and row.elevation_m > 0 for row in table.rows)
+
+
+def test_the_philippines_highest_point_is_mount_apo_at_2954_metres():
+    """The spec's section 4 states 2,954 m; Wikidata's value is the same."""
+    assert ontology.ontology().highest_point("Q928") == ontology.HighestPoint(
+        country="Q928", country_name="Philippines", point="Q455963", point_name="Mount Apo",
+        elevation_m=Decimal("2954"))
+    assert ontology.ontology().highest_point("Q1") is None
+
+
+@pytest.mark.parametrize("change,message", [
+    ({"point": "Apo"}, r"rows\[\d+\]\.point must be a Wikidata Q-id"),
+    ({"country": "Q0928"}, r"rows\[\d+\]\.country must be a Wikidata Q-id"),
+    ({"elevation_m": 0}, r"rows\[\d+\]\.elevation_m must be a positive number"),
+    ({"elevation_m": "2954"}, r"rows\[\d+\]\.elevation_m must be a positive number"),
+    ({"point_name": None}, r"rows\[\d+\]: missing key 'point_name'"),
+    ({"country": "Q774"}, "a country is written twice"),
+])
+def test_the_loader_refuses_a_malformed_row(change, message):
+    data = shipped()
+    row = next(item for item in data["highest_points"]["rows"] if item["country"] == "Q928")
+    for key, value in change.items():
+        if value is None:
+            del row[key]
+        else:
+            row[key] = value
+
+    with pytest.raises(ontology.OntologyError, match=message):
+        ontology.parse(data)
+
+
+@pytest.mark.parametrize("part", ("source", "endpoint", "retrieved", "query", "selection", "rows"))
+def test_the_loader_refuses_the_table_without_any_part_of_its_citation(part):
+    data = shipped()
+    del data["highest_points"][part]
+
+    with pytest.raises(ontology.OntologyError, match="has no source" if part == "source" else f"missing key '{part}'"):
+        ontology.parse(data)

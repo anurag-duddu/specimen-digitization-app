@@ -42,6 +42,7 @@ from specimen_digitization.application.workflow import (
     requeue_completed_field_research,
 )
 from specimen_digitization.field_research import agreement
+from specimen_digitization.field_research import derive
 from specimen_digitization.field_research import step as field_step
 from specimen_digitization.field_research.budget import CostMeter
 from specimen_digitization.field_research.contracts import (
@@ -1726,6 +1727,74 @@ def test_exact_place_matches_can_derive_missing_location_ancestors(tmp_path):
         fields["country"].authority_id, fields["country"].layer, fields["country"].derived_from) == (
             ValueState.SUPPORTED, "United States", "tgn:United States", "derived", ["city"])
 
+
+
+def _settled_place(key, name, authority_id, parents, evidence_id):
+    """A place field settled on a Getty TGN answer whose one candidate names `parents`, nearest first."""
+    evidence = Evidence(id=evidence_id, kind="authority", source="tgn", locator=authority_id, excerpt=name)
+    answer = SourceAnswer("tgn", name, LookupStatus.SUCCESS,
+        (SourceCandidate(name, authority_id, "place", None, tuple(PlaceRef(*parent) for parent in parents)),),
+        evidence, note="match")
+    value = FieldValue(state=ValueState.SUPPORTED, literal=name, normalized=name, authority_id=authority_id,
+        evidence_ids=[evidence_id], layer="settled")
+    return value, answer
+
+
+def test_a_parent_is_derived_only_when_every_settled_place_below_names_the_same_one():
+    """WP 2.1's rule place_parents_derived (ontology/specimen.yaml; derive._location_ancestors): the
+    settled county names Illinois as its province and the settled city names Indiana, so the open
+    province is left open; both name the United States, so the open country is derived."""
+    us = ("United States", "tgn:us")
+    county, county_answer = _settled_place("county", "Cook", "tgn:cook", (("Illinois", "tgn:il"), us), "ev-cook")
+    city, city_answer = _settled_place("city", "Gary", "tgn:gary",
+        (("Lake", "tgn:lake"), ("Indiana", "tgn:in"), us), "ev-gary")
+    run = SimpleNamespace(evidence=[], fields={"country": FieldValue(state=ValueState.NOT_PRESENT),
+        "province_state": FieldValue(state=ValueState.NOT_PRESENT), "county": county, "city": city})
+
+    filled = derive.fill(run, eligible=["country", "province_state"], asset_id=None,
+        received={"county": [county_answer], "city": [city_answer]})
+
+    assert filled == ["country"]
+    assert (run.fields["country"].parsed, run.fields["country"].authority_id) == ("United States", "tgn:us")
+    assert run.fields["province_state"].state == ValueState.NOT_PRESENT
+
+
+@pytest.mark.parametrize(("source_key", "name", "parents", "derived"), [
+    # A city whose source names two parents: its province and country, never a county.
+    ("city", "Gary", (("Indiana", "tgn:in"), ("United States", "tgn:us")),
+     {"province_state": "Indiana", "country": "United States"}),
+    # A county whose source names one parent: its country, never a province.
+    ("county", "Lake", (("United States", "tgn:us"),), {"country": "United States"}),
+], ids=["city-with-two-parents", "county-with-one-parent"])
+def test_a_county_or_a_province_is_derived_only_from_enough_parents(source_key, name, parents, derived):
+    """WP 2.1's rule place_parents_derived (derive._location_ancestors): a county comes from a city only
+    when the city's source names three parents or more, a province from a county only when the
+    county's names two or more."""
+    value, answer = _settled_place(source_key, name, f"tgn:{name.lower()}", parents, "ev-place")
+    open_keys = [key for key in ("country", "province_state", "county") if key != source_key]
+    run = SimpleNamespace(evidence=[], fields={key: FieldValue(state=ValueState.NOT_PRESENT) for key in open_keys}
+        | {source_key: value})
+
+    filled = derive.fill(run, eligible=open_keys, asset_id=None, received={source_key: [answer]})
+
+    assert {key: run.fields[key].parsed for key in filled} == derived
+
+
+def test_a_derived_parent_never_replaces_a_place_settled_from_the_label():
+    """WP 2.1's rule place_parents_derived (derive._can_derive_place): the county was settled from the label's
+    own text "Chicago", the city's text too, and the city's source names Cook as its county; the county keeps
+    its value."""
+    city, city_answer = _settled_place("city", "Chicago", "tgn:chicago",
+        (("Cook", "tgn:cook"), ("Illinois", "tgn:il"), ("United States", "tgn:us")), "ev-chicago")
+    county = FieldValue(state=ValueState.SUPPORTED, literal="Chicago", normalized="Chicago", authority_id="tgn:chi",
+        evidence_ids=["ev-county"], layer="settled")
+    run = SimpleNamespace(evidence=[], fields={"country": FieldValue(state=ValueState.NOT_PRESENT),
+        "province_state": FieldValue(state=ValueState.NOT_PRESENT), "county": county, "city": city})
+
+    filled = derive.fill(run, eligible=["country", "province_state", "county"], asset_id=None,
+        received={"city": [city_answer]})
+
+    assert "county" not in filled and run.fields["county"] is county
 
 def test_a_near_spelling_settles_when_every_other_place_field_is_among_its_parents(tmp_path):
     """The full US label with its city one letter off: TGN's Chicago lies in
