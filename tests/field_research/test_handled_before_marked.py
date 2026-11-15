@@ -74,6 +74,10 @@ def answer(literal, explanation="Both readers write it."):
     ("leg. y J. Smith", None),
     ("J. Smith det. leg.", None),
     ("A. Smith & B. Jones leg.", "A. Smith & B. Jones"),
+    ("leg. Det. J. Smith", None),
+    ("Coll. Det. J. Smith", None),
+    ("J. Dupont e coll.", None),
+    ("leg. J. de", None),
 ], ids=lambda value: repr(value))
 def test_the_role_marker_is_read_off_the_edge_of_a_collectors_literal(literal, name):
     """ontology_checks.without_role: a marker of the notation collected_by, as a whole token at the
@@ -110,8 +114,11 @@ def collectors_run(tmp_path, line, literal, candidate=None):
     ("leg. et det. J. Smith", "leg. et det. J. Smith", "leg. et det. J. Smith"),
     ("J. Dupont et coll.", "J. Dupont et coll.", "J. Dupont et coll."),
     ("J. Dupont & coll.", "J. Dupont & coll.", "J. Dupont & coll."),
+    ("leg. Det. J. Smith", "leg. Det. J. Smith", "leg. Det. J. Smith"),
+    ("Coll. Det. J. Smith", "Coll. Det. J. Smith", "Coll. Det. J. Smith"),
+    ("J. Dupont e coll.", "J. Dupont e coll.", "J. Dupont e coll."),
 ], ids=["leg-after", "leg-before", "coll", "Coll", "no-marker", "leg-inside-a-word", "leg-et-det", "et-coll",
-    "and-coll"])
+    "and-coll", "leg-Det", "Coll-Det", "e-coll"])
 def test_the_collectors_settle_without_the_marker_of_their_role_on_the_units_path(tmp_path, first_pass_path, line,
         units, old):
     """The plan's cases (WP 2.3c, change 1): the organiser and the expert give the whole line; on the units
@@ -595,7 +602,9 @@ def test_a_neighbour_on_the_field_s_own_line_blocks_as_on_main(first_pass_path, 
     (a date) blocks as on main, before it or after it, even where the whole line is accounted for (here
     another settled field wrote "Shrubs"); on the next line it bounds nothing."""
     readings = label_of(rows, ["a", "a"])
-    assert agreement.image_names(readings["a"], "Shrubs", key="habitat", settled=("Shrubs",)) is named
+    cited = tuple((name, readings[name].text.index("Shrubs"), readings[name].text.index("Shrubs") + 6)
+        for name in ("a", "b"))
+    assert agreement.image_names(readings["a"], "Shrubs", key="habitat", settled=cited) is named
 
 
 @pytest.mark.parametrize(("rows", "named"), [
@@ -612,9 +621,9 @@ def test_a_line_is_another_field_s_only_when_every_reader_s_text_there_is(first_
 
 
 def test_the_settlement_gives_the_guard_the_other_settled_fields_texts(tmp_path, first_pass_path, monkeypatch):
-    """step._settlement passes the texts of the other fields settled from the label (step._settled_texts)
-    to the rule (agreement.labels' `settled`); every other call, and every call on the old path, passes
-    none."""
+    """step._settlement passes where the other fields settled from the label are written, as their
+    provenance cites them (step._settled_texts: observation and offsets), to the rule (agreement.labels'
+    `settled`); every other call, and every call on the old path, passes none."""
     seen = []
     original = agreement.labels
 
@@ -631,7 +640,11 @@ def test_the_settlement_gives_the_guard_the_other_settled_fields_texts(tmp_path,
         assert not [settled for _, settled in seen if settled]
         return
     assert given == [field_step._settled_texts(run, "habitat")]
-    assert "Chicago" in given[0] and "Synthetic grassland" not in given[0]
+    texts = {reading.observation_id: reading.text for reading in field_step.run_readings(run)}
+    cited = {texts[observation][start:end] for observation, start, end in given[0]}
+    # The collectors' organiser row locates "J. Smith"; the keyed lines' parser rows carry no offsets
+    # (a "region:" locator), so they cite no occurrence.
+    assert cited == {"J. Smith"}
 
 
 @pytest.mark.parametrize(("line", "text", "image", "named"), [
@@ -707,16 +720,37 @@ def test_only_another_kind_s_text_on_the_next_line_bounds_nothing(first_pass_pat
     assert agreement.image_names(readings["a"], literal, key=key) is named
 
 
-@pytest.mark.parametrize(("settled", "named"), [(("Yepocapa",), True), ((), False), (("Yepo",), False)],
-    ids=["another-field-s-text", "no-settled-text", "not-a-whole-word"])
-def test_a_line_that_is_another_settled_field_s_text_bounds_nothing(first_pass_path, settled, named):
+@pytest.mark.parametrize(("settled", "named"), [
+    ((("a", 0, 8), ("b", 0, 8)), True), ((), False), ((("a", 0, 8),), False), ((("a", 0, 4), ("b", 0, 8)), False),
+    ((("c", 0, 8), ("d", 0, 8)), False),
+], ids=["cited-in-both-readings", "nothing-cited", "cited-in-one-reading", "a-part-cited", "cited-on-another-label"])
+def test_a_line_that_is_another_settled_field_s_cited_text_bounds_nothing(first_pass_path, settled, named):
     """The line-break stop by another settled field's text (agreement.image_names' `settled`, from
-    step._settled_texts): "forest" below "Yepocapa," / "Yepocapa" bounds nothing for the habitat when
-    the city settled on "Yepocapa", blanked as a whole word, the comma left; with no such text, or one
-    that is no whole word of the line, main's walk."""
+    step._settled_texts): "forest" below "Yepocapa," / "Yepocapa" bounds nothing for the habitat when the
+    city's provenance cites "Yepocapa" there in both readings, the comma left. Text cited in one reading
+    only, a part of the word, or the same words cited on another label's readings ("c", "d") account for
+    nothing (the coordinator's ruling on Codex's round 2 of PR #439)."""
     rows = [(1, "Yepocapa,", "Yepocapa"), (2, "forest", "forest")]
     readings = label_of(rows, ["a", "a"])
     assert agreement.image_names(readings["a"], "forest", key="habitat", settled=settled) is named
+
+
+def test_a_name_another_field_settled_on_another_label_does_not_account_for_this_label_s_line(first_pass_path):
+    """Codex's round 2 on PR #439: the collectors "J. Smith &" over "R. Jones" / "R. Jones,", and a
+    determination label "R. Jones det." whose "R. Jones" settled another field. That field's provenance
+    cites the determination label's readings, so the collection label's line is not accounted for: the
+    walk is main's and "J. Smith &" settles marked, never cleared. Cited on the collection label itself it
+    stays marked too: the literal ends with a joiner (agreement.LINE_JOINERS, G51's round 2)."""
+    readings = label_of([(1, "J. Smith &", "J. Smith &"), (2, "R. Jones", "R. Jones,")], ["a", "a"])
+    task = FieldTask("collectors", True, FieldValue(), tuple(Candidate(name, "J. Smith &", "J. Smith &", f"e{name}")
+        for name in ("1A", "1B")), ())
+    elsewhere = (("det-a", 0, 8), ("det-b", 0, 8))
+    assert not agreement.image_names(readings["a"], "J. Smith &", key="collectors", settled=elsewhere)
+    label = agreement.labels(task, tuple(readings.values()), [], settled=elsewhere)["L"]
+    assert (label.settled, label.cleared, label.why) == (frozenset({"J. Smith &"}), False, agreement.TEXT_ONLY)
+    here = tuple((name, readings[name].text.index("R. Jones"), readings[name].text.index("R. Jones") + 8)
+        for name in ("a", "b"))
+    assert not agreement.image_names(readings["a"], "J. Smith &", key="collectors", settled=here)
 
 
 # ---- 5. an elevation whose expert names two (#437's G51 review, the coordinator's ruling) --------
@@ -779,3 +813,75 @@ def test_a_re_ask_s_lookup_answer_does_not_repeat_its_call(first_pass_path, aske
         assert "source" not in got and "query" not in got and got["status"] == "no_match"
     else:
         assert (got["source"], got["query"]) == ("tgn", "Davao, Philippines")
+
+
+def test_a_settled_field_cites_only_its_own_rows_that_place_its_text(first_pass_path):
+    """step._settled_texts: each occurrence another settled field's label rows place (observation and
+    literal offsets); a row that contradicts the value, a row with no offsets, a derived value and the
+    field itself cite nothing."""
+    from specimen_digitization.application.domain import Evidence
+    from specimen_digitization.application.organiser import CandidateLocation, format_locator
+
+    def row(observation, start, end, locator=None):
+        return Evidence(kind="literal", source="field_research", excerpt="x", locator=locator or format_locator(
+            CandidateLocation("1A", observation, 0, 20, start, end)))
+
+    own, other, keyed, derived_row, mine = row("o1", 0, 8), row("o2", 3, 9), row("o1", 0, 1, "region:r1"), \
+        row("o1", 10, 14), row("o1", 15, 19)
+    run = SimpleNamespace(evidence=[own, other, keyed, derived_row, mine], fields={
+        "city": FieldValue(state=ValueState.SUPPORTED, layer="settled", evidence_ids=[own.id, other.id, keyed.id],
+            evidence_relations={own.id: "supports", other.id: "contradicts", keyed.id: "supports"}),
+        "country": FieldValue(state=ValueState.SUPPORTED, layer="derived", evidence_ids=[derived_row.id]),
+        "habitat": FieldValue(state=ValueState.SUPPORTED, layer="verbatim", evidence_ids=[mine.id])})
+    assert field_step._settled_texts(run, "habitat") == (("o1", 0, 8),)
+
+
+@pytest.mark.parametrize(("rows", "literal"), [
+    ([(1, "leg. J. Smith &", "leg. J. Smith &"), (2, "Cook", "Cook.")], "J. Smith &"),
+    ([(1, "J. Smith", "J. Smith"), (2, "& Cook", "& Cook.")], "J. Smith"),
+], ids=["the-literal-ends-with-a-joiner", "the-next-line-begins-with-one"])
+def test_a_value_joined_across_the_line_break_keeps_main_s_guard(first_pass_path, rows, literal):
+    """G51's round 2 on PR #439: the county "Cook" settled, and its provenance cites "Cook" on the
+    collectors' next line, which may be the second collector. A literal that ends with a joiner, or a
+    next line that begins with one (agreement.LINE_JOINERS), goes on: the walk is main's however the next
+    line is accounted for, and the collectors settle marked."""
+    readings = label_of(rows, ["a", "a"])
+    cook = tuple((name, readings[name].text.index("Cook"), readings[name].text.index("Cook") + 4)
+        for name in ("a", "b"))
+    assert not agreement.image_names(readings["a"], literal, key="collectors", settled=cook)
+    task = FieldTask("collectors", True, FieldValue(), tuple(Candidate(name, literal, literal, f"e{name}")
+        for name in ("1A", "1B")), ())
+    label = agreement.labels(task, tuple(readings.values()), [], settled=cook)["L"]
+    assert (label.cleared, label.why) == (False, agreement.TEXT_ONLY)
+
+
+def test_a_label_a_person_decided_lends_its_texts_to_no_other_label(first_pass_path):
+    """G51's probe_shadow: a label P whose transcript a person decided ("Cook"), then a label L whose
+    readers write "J. Smith" over "Cook" / "Cook." (no joiner, so the line check runs). P's settled texts
+    are not passed to L's guard as another field's (agreement.labels_by_rule keeps its `settled`
+    parameter): L settles as it does with no P, marked."""
+    from specimen_digitization.field_research.contracts import FirstPassAdvice
+
+    readings = label_of([(1, "J.", "J."), (1, "Smith", "Smith"), (2, "Cook", "Cook.")], ["a", "a", UNCERTAIN])
+    advice = FirstPassAdvice(preferred="2A", rationale="", reader_notes={}, differences=(), person_decided=True)
+    person = Reading("2A", "P", "p", "decided_transcript", "Cook", first_pass=advice)
+    found = {}
+    for with_person in (False, True):
+        given = (*([person] if with_person else []), *readings.values())
+        candidates = [Candidate(name, "J. Smith", "J. Smith", f"e{name}") for name in ("1A", "1B")]
+        if with_person:
+            candidates.append(Candidate("2A", "Cook", "Cook", "e2A"))
+        task = FieldTask("collectors", True, FieldValue(), tuple(candidates), ())
+        label = agreement.labels(task, given, [])["L"]
+        found[with_person] = (label.settled, label.cleared, label.why)
+    assert found[True] == found[False] and found[False][1] is False
+
+
+@pytest.mark.parametrize(("key", "named"), [("city", True), ("habitat", False)])
+def test_a_place_field_reads_the_next_line_as_a_place_s_text(first_pass_path, key, named):
+    """agreement._not_this_field reads the next line as a place's text for a place field
+    (written.other_kind(place=True), as the rest of the code reads a place's text): "M 1200" there is an
+    elevation for the city, and bounds nothing; for the habitat it is no other kind, and the walk is
+    main's."""
+    readings = label_of([(1, "Yepocapa", "Yepocapa"), (2, "M 1200", "M 1250")], ["a", "a"])
+    assert agreement.image_names(readings["a"], "Yepocapa", key=key) is named

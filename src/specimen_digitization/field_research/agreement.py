@@ -509,6 +509,10 @@ ACROSS_LINES = frozenset({"precise_location"})
 # (image_names).
 KEEPS_LINE_BREAKS = ACROSS_LINES | frozenset({"verbatim_dts", "date_visited_from", "date_visited_to",
     "date_identified"})
+# The words that join two parts of a value (the coordinator's ruling on G51's round 2 of PR #439): a
+# literal that ends with one, or a next line that begins with one, goes on past the line break, and
+# the image test's walk never stops there (image_names).
+LINE_JOINERS = frozenset({"&", "and", "et", "y", "u", "und", "e"})
 
 
 def _flat(text: str) -> str:
@@ -1516,7 +1520,7 @@ def _preferred_spelling(task: FieldTask, preferred: Reading | None, group: Seque
 
 def labels(task: FieldTask, readings: Sequence[Reading], answers: Sequence[SourceAnswer], *,
         transcript: str | None = None, named: Sequence[Reading] = (), offered: Iterable[str] = (),
-        settled: Collection[str] = ()) -> dict[str, Label]:
+        settled: Collection[tuple[str, int, int]] = ()) -> dict[str, Label]:
     """Each label that writes the field, by region, settled on its own
     (G19, G20, G27, G32), on its own evidence first, then on another label's,
     then on the first pass's advice (the owner, 2026-10-25: "There an LLM
@@ -1824,7 +1828,7 @@ def _differs(unit) -> bool:
 
 
 def image_names(reading: Reading, literal: str, *, exact: bool = False, key: str | None = None,
-        settled: Collection[str] = ()) -> bool:
+        settled: Collection[tuple[str, int, int]] = ()) -> bool:
     """Whether the first pass names this reading's text at the literal (rule 3's IMAGE):
     at every place the reading writes it, every covering unit's image is the reading's own
     text there, letter case and spacing aside (agreement_key), or character for character
@@ -1840,13 +1844,15 @@ def image_names(reading: Reading, literal: str, *, exact: bool = False, key: str
     for the field `key`, when its brief keeps no line break (not KEEPS_LINE_BREAKS) and the
     label's readers all write the same text at the covering units (none _differs), the walk
     outward stops at a line break only where the next line is certainly not this field's
-    (_not_this_field): every reader's text on that line is wholly the texts of other settled
-    fields (`settled`) or text of a kind other than the field's own (written.other_kind: a
+    (_not_this_field): every reader's text on that line is wholly the occurrences other settled
+    fields' provenance cites there (`settled`) or text of a kind other than the field's own (written.other_kind: a
     date, an elevation, a range of them), punctuation aside ("6-Sept.-1946, Elev.6400" and
     "..., Elev.6400'" on the line above "H. Hoogstraal leg."). A line that may go on with this
     field ("R. Jones" after "leg. J. Smith &", "forest" after "cloud", "megalippe" after
     "Danaus plexippus", not visible or not) keeps main's walk, and so do no `key`, a field
-    whose brief keeps line breaks, and readers that differ at a covering unit: the image alone
+    whose brief keeps line breaks, a literal that ends with a joiner or a next line that begins
+    with one (LINE_JOINERS: "J. Smith &" over "Cook", whatever field settled "Cook"), and
+    readers that differ at a covering unit: the image alone
     never picks between readers' different texts at the field's own units by it. It is the
     units path's: only readings that carry units reach it (labels)."""
     from specimen_digitization.application.reading_units import NOT_VISIBLE, UNCERTAIN
@@ -1862,7 +1868,8 @@ def image_names(reading: Reading, literal: str, *, exact: bool = False, key: str
             if unit.image in (UNCERTAIN, NOT_VISIBLE) or (
                     unit.image != own if exact else agreement_key(unit.image) != agreement_key(own)):
                 return False
-        one_line = key is not None and key not in KEEPS_LINE_BREAKS and not any(_differs(unit) for unit in cover)
+        one_line = (key is not None and key not in KEEPS_LINE_BREAKS and not any(_differs(unit) for unit in cover)
+            and not _joined(literal.split()[-1:]))
         first, last = units.index(cover[0]), units.index(cover[-1])
         for step, at, edge in ((-1, first - 1, cover[0]), (1, last + 1, cover[-1])):
             while 0 <= at < len(units) and _differs(units[at]):
@@ -1875,32 +1882,46 @@ def image_names(reading: Reading, literal: str, *, exact: bool = False, key: str
     return True
 
 
-def _not_this_field(units, unit, settled: Collection[str], key: str | None = None) -> bool:
+def _not_this_field(units, unit, settled: Collection[tuple[str, int, int]], key: str | None = None) -> bool:
     """Whether a unit's line is certainly no part of the field `key` (image_names): the unit is
-    on one line, no unit crosses that line, and every reader's text there (its units' texts on
-    that line, joined) is wholly the texts of other settled fields (`settled`, blanked as whole
-    words, the longest first, as ontology_checks._without blanks them) and text of a kind other
-    than the field's own (written.other_kind: an elevation, a date or a range of them; an
-    elevation field's own kinds are an elevation and a range, a date field's a date and a
-    range), with nothing left but punctuation, white space and, beside an elevation, its
-    heading (written.HEADINGS: "Elev." of "Elev.6400'", whose elevation text other_kind gives
-    as "6400'")."""
-    from .ontology_checks import _without
-
+    on one line, no unit crosses that line, no reader's text there begins with a joiner
+    (LINE_JOINERS: the value goes on), and every reader's text there (its units' texts on
+    that line, joined) is wholly the occurrences other settled fields' provenance cites there
+    (`settled`: (observation, start, end) in that reader's text, step._settled_texts; the same
+    words elsewhere account for nothing, the coordinator's ruling on Codex's round 2 of PR
+    #439) and text of a kind other than the field's own (written.other_kind, read as a place's
+    text for a place field: an elevation, a date or a range of them; an elevation field's own
+    kinds are an elevation and a range, a date field's a date and a range), with nothing left
+    but punctuation, white space and, beside an elevation, its heading (written.HEADINGS: "Elev." of "Elev.6400'", whose
+    elevation text other_kind gives as "6400'")."""
     own = {"elevation": {written.ELEVATION, written.RANGE}, "date": {written.DATE, written.RANGE}}.get(
         FIELD_KINDS.get(key or ""), set())
+    place = FIELD_KINDS.get(key or "") == "place"
 
     line = unit.lines[0]
     if unit.lines[1] != line or any(other.lines[0] <= line <= other.lines[1] and other.lines[0] != other.lines[1]
             for other in units):
         return False
     here = [other for other in units if other.lines == (line, line)]
-    for key in unit.readers:
-        left = _without(" ".join(other.readers[key].text for other in here if other.readers[key].text),
-            [text for text in settled if text and text.strip()])
+    for reader in unit.readers:
+        cited = [(start, end) for owner, start, end in settled if owner == reader]
+        pieces = []
+        for other in here:
+            span = other.readers[reader]
+            if not span.text:
+                continue
+            chars = list(span.text)
+            for start, end in cited:
+                for at in range(max(start, span.start), min(end, span.end)):
+                    chars[at - span.start] = " "
+            pieces.append("".join(chars))
+        written_there = " ".join(other.readers[reader].text for other in here if other.readers[reader].text)
+        if _joined(written_there.split()[:1]):
+            return False
+        left = " ".join(pieces)
         kinds = set()
         for _ in range(len(left)):
-            found = written.other_kind(left)
+            found = written.other_kind(left, place=place)
             if found is None or found[0] in own:
                 break
             kinds.add(found[0])
@@ -1910,6 +1931,12 @@ def _not_this_field(units, unit, settled: Collection[str], key: str | None = Non
                 or written.fold(word) == written.HEADING_WITH_PERIOD)) for word in words):
             return False
     return True
+
+
+def _joined(tokens: Sequence[str]) -> bool:
+    """Whether a token, a literal's last or a line's first, is a joiner (LINE_JOINERS, letter case
+    aside): the value goes on past the line break."""
+    return any(token.casefold() in LINE_JOINERS for token in tokens)
 
 
 def _same_line(unit, edge, step: int) -> bool:
@@ -2063,7 +2090,7 @@ def _within(reading: Reading, text: str, texts: Iterable[str]) -> bool:
 
 
 def _spelled(task: FieldTask, group: Sequence[Reading], each: Sequence[frozenset[str]], keys: frozenset[str],
-        confirmed: frozenset[str] = frozenset(), *, settled: Collection[str] = ()) -> str:
+        confirmed: frozenset[str] = frozenset(), *, settled: Collection[tuple[str, int, int]] = ()) -> str:
     """The text a candidate (its agreement keys) settles on: the text the image names, of
     the first reader that writes it so; else the first reader's text of `confirmed` (the
     texts a source confirms); else the first reader's spelling (_spelling)."""
@@ -2099,7 +2126,8 @@ def _confirmed_group(task: FieldTask, groups: Sequence[frozenset[str]], answers:
 
 
 def _labels_on_units(task: FieldTask, readings: Sequence[Reading], answers: Sequence[SourceAnswer], *,
-        transcript: str | None, offered: Iterable[str], settled: Collection[str] = ()) -> dict[str, Label]:
+        transcript: str | None, offered: Iterable[str],
+        settled: Collection[tuple[str, int, int]] = ()) -> dict[str, Label]:
     """`labels` on the units path: each label's readings, the organiser's literals and the
     texts offered to every label (the expert's literal read from the transcript, and
     `offered`), for labels_by_rule."""
@@ -2119,7 +2147,7 @@ def _labels_on_units(task: FieldTask, readings: Sequence[Reading], answers: Sequ
 def labels_by_rule(task: FieldTask, regions: Mapping[str, Sequence[Reading]],
         literals: Mapping[str, Iterable[str]], allowed: Mapping[str, Mapping[str, str]],
         answers: Sequence[SourceAnswer], *, sourced: bool, offered: Sequence[str] = (),
-        settled: Collection[str] = ()) -> dict[str, Label]:
+        settled: Collection[tuple[str, int, int]] = ()) -> dict[str, Label]:
     """`labels` on the units path: each label that writes the field, settled by the rule of
     FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4.
 
@@ -2187,12 +2215,12 @@ def labels_by_rule(task: FieldTask, regions: Mapping[str, Sequence[Reading]],
             own = set(allowed.get(preferred.name, {}))
             source = _by_source(task, mine & own, mine, answers) if len(mine) > 1 and sourced else None
             if all(each) and len({agreement_key(text) for text in texts}) == 1:
-                settled = frozenset({_spelling(task, preferred.name, mine)}) if mine else frozenset()
+                decided = frozenset({_spelling(task, preferred.name, mine)}) if mine else frozenset()
             else:
-                settled = source.settled if source is not None else (mine if len(mine) == 1 and mine <= own
+                decided = source.settled if source is not None else (mine if len(mine) == 1 and mine <= own
                     else frozenset())
-            found[region] = Label(texts, settled, by_source=source is not None, basis=BY_PERSON if settled else None,
-                person=preferred.name, cleared=bool(settled))
+            found[region] = Label(texts, decided, by_source=source is not None, basis=BY_PERSON if decided else None,
+                person=preferred.name, cleared=bool(decided))
             continue
         found[region] = _settle_by_rule(task, group, each, writers, texts, answers, sourced=sourced,
             elsewhere=frozenset().union(*(keys for other, keys in agreed.items() if other != region)), blocked=blocked,
@@ -2202,7 +2230,8 @@ def labels_by_rule(task: FieldTask, regions: Mapping[str, Sequence[Reading]],
 
 def _settle_by_rule(task: FieldTask, group: Sequence[Reading], each: Sequence[frozenset[str]],
         writers: Mapping[str, set[str]], texts: frozenset[str], answers: Sequence[SourceAnswer], *,
-        sourced: bool, elsewhere: frozenset[str], blocked: tuple[str, ...] = (), settled: Collection[str] = ()) -> Label:
+        sourced: bool, elsewhere: frozenset[str], blocked: tuple[str, ...] = (),
+        settled: Collection[tuple[str, int, int]] = ()) -> Label:
     """One label no person transcribed, by points 1 and 3 to 6 of labels_by_rule;
     `elsewhere` holds the agreement keys of the texts another label backs as TEXT, and
     `blocked` the texts readers write at the candidates' places that are no candidate: a

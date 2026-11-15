@@ -783,7 +783,7 @@ class Role(NamedTuple):
 
 # The words that join two people's names (G51's round 1 on PR #439, the coordinator's ruling): a name
 # that starts or ends with one is no whole name.
-JOINERS = frozenset({"et", "&", "and", "y", "u", "und"})
+JOINERS = frozenset({"et", "&", "and", "y", "u", "und", "e"})
 # The ontology's notation of the determiner's role, another role word a name never holds.
 DETERMINER_NOTATION = "determined_by"
 
@@ -807,11 +807,15 @@ def role_words() -> frozenset[str]:
 
 
 def plain_name(text: str) -> bool:
-    """Whether a text is a name alone: no token of it is a role word (role_words), and neither its
-    first nor its last token is a joiner (JOINERS, letter case aside)."""
+    """Whether a text is a name alone: no token of it is a role word (role_words, letter case aside:
+    "Det."), and neither its first nor its last token is a joiner (JOINERS, letter case aside) or a
+    word in lower case, a joiner or a particle in any language ("J. Dupont e", "J. de"; the
+    coordinator's rulings on G51's rounds 1 and 2 of PR #439)."""
     tokens = text.split()
-    return bool(tokens) and not any(token in role_words() for token in tokens) and not (
-        tokens[0].casefold() in JOINERS or tokens[-1].casefold() in JOINERS)
+    roles = {word.casefold() for word in role_words()}
+    return bool(tokens) and not any(token.casefold() in roles for token in tokens) and not any(
+        token.casefold() in JOINERS or (token.lower() == token and any(char.isalpha() for char in token))
+        for token in (tokens[0], tokens[-1]))
 
 
 @cache
