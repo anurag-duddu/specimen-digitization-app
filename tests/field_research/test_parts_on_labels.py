@@ -198,13 +198,16 @@ def test_a_day_and_month_on_label_1_and_the_year_on_label_2_are_ambiguous_with_e
 
 # ---- as today -------------------------------------------------------------------------------------
 
-def outcome_of(tmp_path, monkeypatch, first, second, given, script, roles, tools):
-    """The run's fields, findings and reasons once `script` settles it, with the units' roles and
-    fields `roles` gives each label ({label: {text: (role, fields)}})."""
-    rig = two_labels(tmp_path, monkeypatch, first, second, given)
+def outcome_of(tmp_path, monkeypatch, first, second, given, script, roles, tools, key="taxon"):
+    """The run's fields, findings and reasons once `script` settles the field `key`, with the units'
+    roles and fields `roles` gives each label ({label: {text: (role, fields)}}). Each run gets its own
+    second label: the patch that adds it is undone once the run is built."""
+    with monkeypatch.context() as patch:
+        rig = two_labels(tmp_path, patch, first, second, given)
+    assert len(rig.specimen.run.regions) == 2
     for label, named in roles.items():
         with_roles(rig, label, named)
-    settle(rig, Scripted({"taxon": script}), tools=tools(rig.blobs))
+    settle(rig, Scripted({key: script}), tools=tools(rig.blobs))
     run = rig.specimen.run
     shown = json.dumps({"fields": {key: value.model_dump(mode="json", exclude={"evidence_ids", "evidence_relations"})
         for key, value in run.fields.items()}, "findings": sorted(f.reason_code for f in run.findings),
@@ -214,7 +217,9 @@ def outcome_of(tmp_path, monkeypatch, first, second, given, script, roles, tools
         shown = shown.replace(region.id, f"region-{number}")
     for number, observation in enumerate(run.observations):
         shown = shown.replace(observation.id, f"observation-{number}")
-    return json.loads(shown)
+    found = json.loads(shown)
+    found["findings"].sort()
+    return found
 
 
 WHOLE = "taxon: Danaus plexippus"
@@ -238,6 +243,10 @@ AS_TODAY = {
     "a-date-role": ("plexippus", {0: {"Danaus": ("genus", ["taxon"])}, 1: {"plexippus": ("year", ["taxon"])}}),
     # Owner decision B (WP 2.T): parts that name no genus on any label.
     "no-genus": ("sp. 30", {0: {"plexippus": ("species", ["taxon"])}, 1: {"30": ("species", ["taxon"])}}),
+    # G51's round 1 on #444: label 2 writes the name with its genus abbreviated, both labels' roles right;
+    # label 1 has a part of each role (the rule's (iii)).
+    "abbreviated-genus-on-label-2": ("D. plexippus", {0: {"Danaus": ("genus", ["taxon"]),
+        "plexippus": ("species", ["taxon"])}, 1: {"D.": ("genus", ["taxon"]), "plexippus": ("species", ["taxon"])}}),
 }
 
 
@@ -253,6 +262,20 @@ def test_parts_one_label_writes_whole_settle_as_today_on_both_paths(tmp_path, mo
         test_step.FakeSources)
     assert given_roles == without
     assert given_roles["fields"]["taxon"]["state"] == "supported"
+
+
+def test_one_whole_date_on_two_labels_with_noisy_roles_settles_as_today_on_both_paths(tmp_path, monkeypatch):
+    """Codex's round 1 on #444: both labels write "IX-14-46", one whole-date unit tagged day and the other
+    year; the expert answers label 1's date. The same run with the roles as without them."""
+    first = TEXT.replace("date_visited_from: 2020-06-01", "date_visited_from: IX-14-46")
+    given = [("date_visited_from", name, "IX-14-46", "date_visited_from: IX-14-46") for name in ("1A", "1B")]
+    roles = {0: {"IX-14-46": ("day", ["date_visited_from"])}, 1: {"IX-14-46": ("year", ["date_visited_from"])}}
+    script = answering(resolved("IX-14-46", value="1946-09-14"))
+    noisy = outcome_of(tmp_path / "roles", monkeypatch, first, "IX-14-46", given, script, roles, test_step.FakeSources,
+        key="date_visited_from")
+    assert noisy == outcome_of(tmp_path / "none", monkeypatch, first, "IX-14-46", given, script, {},
+        test_step.FakeSources, key="date_visited_from")
+    assert noisy["fields"]["date_visited_from"]["state"] == "supported"
 
 
 def test_a_genus_alone_on_one_label_settles_as_today_on_both_paths(tmp_path, monkeypatch):
@@ -343,8 +366,31 @@ D = ("date_visited_from",)
     # One label writes every part another writes, letter case and spacing aside.
     ([[("Aus", "genus", T), ("bus", "species", T)], [("AUS", "genus", T)]], False),
     ([[("Aus", "genus", T)], [("aus", "genus", T), ("bus", "species", T)]], False),
-    # The same text in another role is another part.
-    ([[("Aus", "genus", T)], [("Aus", "species", T)]], True),
+    # The texts decide, not the roles (the coordinator's ruling on #444's round 1): the same text in
+    # another role is one part, and so is a part another label's unit holds as whole words (Codex's
+    # "Aus" beside one genus-tagged unit "Aus bus").
+    ([[("Aus", "genus", T)], [("Aus", "species", T)]], False),
+    ([[("Aus", "genus", T)], [("Aus bus", "genus", T)]], False),
+    ([[("Aus bus", "genus", T)], [("aus", "genus", T)]], False),
+    # A part only inside a longer word of another label's part is no part of it.
+    ([[("Aus", "genus", T)], [("Ausbus", "genus", T)]], True),
+    # (ii): one label's readings hold every part as whole words, though its own units cut them otherwise.
+    ([[("Aus", "genus", T), ("x", "", ())], [("bus", "species", T)], [("Aus bus", "", ())]], False),
+    # G51's round 1 on #444, each one value: a part of each role on one label (iii), beside an abbreviated
+    # genus or another author's form; and a unit whose text has not its role's shape (a name of two words
+    # tagged species) is no part.
+    ([[("Danaus", "genus", T), ("plexippus", "species", T)], [("D.", "genus", T), ("plexippus", "species", T)]], False),
+    ([[("Danaus", "genus", T), ("plexippus", "species", T), ("L.", "author", T)],
+        [("Danaus", "genus", T), ("plexippus", "species", T), ("Linnaeus", "author", T)]], False),
+    ([[("Danaus", "genus", T)], [("Danaus plexippus", "species", T)]], False),
+    # A species tagged genus, or a genus tagged species, has not its role's shape.
+    ([[("Aus", "genus", T)], [("bus", "genus", T)]], False),
+    ([[("Aus", "genus", T)], [("Bus", "species", T)]], False),
+    # A unit naming the taxon with a date's role is no part of it, whatever its shape; nor is an author of
+    # two words.
+    ([[("Aus", "genus", T)], [("1946", "year", T)]], False),
+    ([[("Aus", "genus", T)], [("6", "day", T)]], False),
+    ([[("Aus", "genus", T), ("bus", "species", T)], [("Hagen 1866", "author", T)]], False),
     # Three labels: two write the genus, the third the species.
     ([[("Aus", "genus", T)], [("Aus", "genus", T)], [("bus", "species", T)]], True),
     # Three labels: the second and third each write a part the other does not; the first writes less.
@@ -376,6 +422,34 @@ def test_field_parts_takes_a_date_s_parts_where_its_fields_name_the_date():
     assert field_step.field_parts("taxon", readings(day_month, year)) == {}
     determined = label_units("r2", ("1950", "year", ("date_identified",)))
     assert field_step.field_parts("date_visited_from", readings(day_month, determined)) == {}
+    # Codex's round 1 on #444: one whole date on both labels, its units' roles day and year, is one value;
+    # so is a part that is only a digit of another label's number ("6" is no part of "1946").
+    whole = (label_units("r1", ("IX-14-46", "day", D)), label_units("r2", ("IX-14-46", "year", D)))
+    assert field_step.field_parts("date_visited_from", readings(*whole)) == {}
+    # A year written with a comma on one label and a period on the other is one year.
+    assert field_step.field_parts("date_visited_from", readings(label_units("r1", ("1946,", "year", D)),
+        label_units("r2", ("1946.", "year", D)))) == {}
+    # G51's round 1 on #444: a whole date tagged day is no part, beside another whole date or beside a
+    # determination's stray year that also names the collecting date.
+    assert field_step.field_parts("date_visited_from", readings(label_units("r1", ("IX-14-46", "day", D)),
+        label_units("r2", ("14.IX.1946", "day", D)))) == {}
+    assert field_step.field_parts("date_visited_from", readings(label_units("r1", ("IX-14-46", "day", D)),
+        label_units("r2", ("1950", "year", ("date_identified", "date_visited_from"))))) == {}
+    assert field_step.field_parts("date_visited_from", readings(label_units("r1", ("6", "day", D)),
+        label_units("r2", ("1946", "year", D)))) == {"r1": [("day", ("6",))], "r2": [("year", ("1946",))]}
+
+
+@pytest.mark.parametrize(("role", "text", "shaped"), [
+    ("genus", "Danaus", True), ("genus", "D.", True), ("genus", "danaus", False), ("genus", "Danaus plexippus", False),
+    ("genus", "Sp.30", False), ("species", "plexippus", True), ("species", "Plexippus", False),
+    ("species", "sp. 22", False), ("author", "L.", True), ("author", "linnaeus", False), ("author", "Hagen 1866", False),
+    ("day", "6", True), ("day", "31", True), ("day", "32", False), ("day", "IX-14-46", False), ("day", "6,", True),
+    ("month", "IX", True), ("month", "Sept.", True), ("month", "12", True), ("month", "13", False),
+    ("month", "XIII", False), ("year", "1946", True), ("year", "'46", True), ("year", "46", False),
+    ("year", "IV-24-48", False),
+])
+def test_a_part_has_the_shape_of_its_role(role, text, shaped):
+    assert field_step._part_shaped(role, text) is shaped
 
 
 def test_field_parts_names_each_reader_s_text_once():

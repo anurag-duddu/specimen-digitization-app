@@ -53,7 +53,8 @@ SLIDE_CODE = "slide_code"
 # (a single date is its own end); every other date field takes the start.
 DATE_PART: dict[str, Literal["start", "end"]] = {"date_visited_to": "end"}
 # The ontology's notation roman_month, its reading of a 1 written for an I ("1X" as IX): a token
-# of the capitals I, V and X and the digit 1 (digit_one_month), and the note a date read so carries.
+# of the capitals I, V and X and the digit 1, with a V or an X (digit_one_month), and the note a
+# date read so carries.
 _DIGIT_ONE = re.compile(r"(?<![0-9A-Za-z])[1IVX]+(?![0-9A-Za-z])")
 DIGIT_ONE = "roman_month_digit_one"
 
@@ -61,12 +62,13 @@ DIGIT_ONE = "roman_month_digit_one"
 def digit_one_month(literal: str) -> str | None:
     """The literal with the one Roman month it writes with a digit one for an I read as I
     ("1X-14-46" as "IX-14-46", "X1-3-46" as "XI-3-46"), or None. Such a month is a token of the
-    capitals I, V and X and the digit 1, holding both a 1 and a letter, that is a Roman month I
-    to XII with each 1 read as I. A token of digits alone ("11") is an Arabic number, whose
-    reading stays as written; a literal with two such tokens is left as written too. Whether
-    the token stands where a month does is the date parser's to say (parse_date)."""
+    capitals I, V and X and the digit 1, holding a 1 and a V or an X, that is a Roman month I
+    to XII with each 1 read as I. A token of 1s and Is alone ("11", "1I", "I1") is left as
+    written: read as Arabic its 1s make a month (the coordinator's ruling on #444's G51 round 1).
+    A literal with two such tokens is left as written too. Whether the token stands where a
+    month does is the date parser's to say (parse_date)."""
     tokens = [match for match in _DIGIT_ONE.finditer(literal) if "1" in match.group()
-        and set(match.group()) != {"1"} and match.group().replace("1", "I") in ROMAN_MONTHS]
+        and set(match.group()) & {"V", "X"} and match.group().replace("1", "I") in ROMAN_MONTHS]
     if len(tokens) != 1:
         return None
     [match] = tokens

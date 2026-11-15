@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 from test_first_pass_advice import with_units
-from test_step import COLLECTORS, TEXT, Scripted, answering, build_rig, resolved, settle
+from test_step import COLLECTORS, TEXT, Scripted, answering, build_rig, failing, resolved, settle
 
 from specimen_digitization.application.collection_profiles import published_registry
 from specimen_digitization.application.domain import FieldValue, LookupStatus, ValueState
@@ -46,6 +46,9 @@ DATE = "date_visited_from: 2020-06-01"
     # A slide code stays no date, its digit one read or not; the date beside it is read.
     ("1X-17-66", "1X-17-66-1", (), ()),
     ("1X-14-46", "1X-14-46\n1X-17-66-1", ("1946-09-14",), ()),
+    # 1s and Is alone, which read as Arabic make a month (G51's round 1 on #444): as written.
+    ("1I-3-46", "1I-3-46", (), ()),
+    ("I1-3-46", "I1-3-46", (), ()),
     # Two such months, a token that is no Roman month with its ones read as I, and lower case: as written.
     ("1X-1X-46", "1X-1X-46", (), ()),
     ("1L-14-46", "1L-14-46", (), ()),
@@ -58,11 +61,12 @@ def test_a_digit_one_for_the_i_of_a_roman_month_is_read_as_i_on_the_units_path_o
         assert ("roman_month_digit_one" in found.notes) == (on and bool(wanted) and literal != "11-3-46")
 
 
-def test_digit_one_month_reads_only_one_month_token_with_a_one_and_a_letter():
+def test_digit_one_month_reads_only_one_month_token_with_a_one_and_a_v_or_an_x():
     assert checks.digit_one_month("1X-14-46") == "IX-14-46"
     assert checks.digit_one_month("X1-3-46") == "XI-3-46"
     assert checks.digit_one_month("V11-3-46") == "VII-3-46"
-    for literal in ("11-3-46", "1-3-46", "IX-14-46", "1X-1X-46", "X111-3-46", "A1X-3-46", "1X4-3-46", "1x-3-46"):
+    for literal in ("11-3-46", "1-3-46", "1I-3-46", "I1-3-46", "11I-3-46", "IX-14-46", "1X-1X-46", "X111-3-46", "A1X-3-46",
+            "1X4-3-46", "1x-3-46"):
         assert checks.digit_one_month(literal) is None, literal
 
 
@@ -120,7 +124,7 @@ def test_the_ontology_s_roman_month_names_the_digit_one_reading_and_its_sources(
     [month] = [notation for notation in ontology.ontology().notations if notation.id == "roman_month"]
     assert month.readings[1] == "the same, a 1 written for an I (1X: IX)"
     assert {"tests/fixtures/field_model_pilot_rows.json:163-167", "tests/fixtures/field_model_pilot_rows.json:193",
-        "src/specimen_digitization/field_research/checks.py:55-73"} <= set(month.source)
+        "src/specimen_digitization/field_research/checks.py:55-75"} <= set(month.source)
 
 
 # ---- 2. a month and day ending a line above their year -------------------------------------------
@@ -129,11 +133,11 @@ LINE = "Guatemala, IV-25\n1948, R.D. Mitchell"
 IV25 = [*COLLECTORS, *(("date_visited_from", n, "IV-25", "Guatemala, IV-25") for n in ("1A", "1B"))]
 
 
-def year_below_run(tmp_path, literal, *, first=LINE, other=None, settled=None, candidate="IV-25"):
+def year_below_run(tmp_path, literal, *, first=LINE, other=None, settled=None, candidate="IV-25", quote=None):
     """The run once the date's expert answers `literal`, its first label `first` (and `other` for reader
-    1B), the organiser's candidate `candidate`, with `settled` ({field: literal}) settled on label 1 before
-    this attempt."""
-    quote = first.split("\n")[0]
+    1B), the organiser's candidate `candidate` quoting `quote` (the first line of `first` by default), with
+    `settled` ({field: literal}) settled on label 1 before this attempt."""
+    quote = first.split("\n")[0] if quote is None else quote
     rig = build_rig(tmp_path, TEXT.replace(DATE, first), None if other is None else TEXT.replace(DATE, other),
         candidates=[*COLLECTORS, *(("date_visited_from", n, candidate, quote) for n in ("1A", "1B"))])
     run = rig.specimen.run
@@ -166,6 +170,8 @@ REFUSED = {
     "no-year": ("IV-25\nR.D.", "Guatemala, IV-25\nR.D. Mitchell", None, "IV-25"),
     # (c) readers that disagree on the year.
     "readers-disagree": ("IV-25\n1948", LINE, "Guatemala, IV-25\n1949, R.D. Mitchell", "IV-25"),
+    # (c) readers whose tokens there differ, though both read 1948: one writes a comma after it, one a period.
+    "readers-differ-in-the-token": ("IV-25\n1948", LINE, "Guatemala, IV-25\n1948. R.D. Mitchell", "IV-25"),
     # (c) a reader that writes no line break after the date.
     "one-reader-on-one-line": ("IV-25\n1948", LINE, "Guatemala, IV-25 1948, R.D. Mitchell", "IV-25"),
     # (a) the first line is no candidate: it holds more than the candidate.
@@ -179,13 +185,18 @@ REFUSED = {
     "year-glued-to-a-name": ("IV-25\n1948", "Guatemala, IV-25\n1948,R.D. Mitchell", None, "IV-25"),
     # (d) the date rules read no date of the two lines: a day the calendar refuses.
     "no-such-day": ("II-30\n1948", "Guatemala, II-30\n1948, R.D. Mitchell", None, "II-30"),
+    # (b) the second line is no year: a year alone on its line above the date (Codex's round 1 on #444),
+    # which the date rules read as one date with it (date_lines.split_literal takes a year first).
+    "year-first": ("1948\nIV-25", "Guatemala,\n1948\nIV-25, R.D. Mitchell", None, "1948"),
+    "two-digit-year-first": ("'48\nIV-25", "Guatemala,\n'48\nIV-25 R.D. Mitchell", None, "'48"),
 }
 
 
 @pytest.mark.parametrize("case", REFUSED, ids=REFUSED)
 def test_a_year_below_that_breaks_a_condition_is_refused_as_today_on_both_paths(tmp_path, case):
     literal, first, other, candidate = REFUSED[case]
-    run = year_below_run(tmp_path, literal, first=first, other=other, candidate=candidate)
+    run = year_below_run(tmp_path, literal, first=first, other=other, candidate=candidate,
+        quote=candidate if case.endswith("year-first") else None)
     date = run.fields["date_visited_from"]
     assert (date.state, date.reason) == (ValueState.UNRESOLVED, agreement.NOT_CANDIDATE + " Settled.")
 
@@ -200,7 +211,32 @@ def test_another_field_s_settled_text_on_the_year_holds_the_date_back_on_the_uni
         assert (date.state, date.reason) == (ValueState.UNRESOLVED, agreement.NOT_CANDIDATE + " Settled.")
         return
     assert date.state != ValueState.SUPPORTED and date.literal != "IV-25\n1948"
-    assert "Habitat" in date.reason
+    # The reason says what holds the year: not text read from the transcript (G51's round 1 on #444).
+    assert date.reason.startswith("The year this date takes from the next line is also in the value found for Habitat.")
+
+
+def test_a_later_attempt_s_text_over_the_borrowed_year_is_refused_on_the_units_path(tmp_path, first_pass_path):
+    """Codex's round 1 on #444: attempt 1 settles "IV-25\n1948" while the collectors' expert fails; attempt 2
+    settles the organiser's collectors candidate "1948, R.D. Mitchell", which runs over the year the date
+    took. On the units path the date, settled first, keeps it and the collectors are refused (step._taken,
+    _borrowed_years); the old path keeps main's result: the date refused, the collectors settled."""
+    candidates = [*(("collectors", n, "1948, R.D. Mitchell", "1948, R.D. Mitchell") for n in ("1A", "1B")),
+        *(("date_visited_from", n, "IV-25", "Guatemala, IV-25") for n in ("1A", "1B"))]
+    rig = build_rig(tmp_path, TEXT.replace(DATE, LINE), candidates=candidates)
+    run = rig.specimen.run
+    settle(rig, Scripted({"date_visited_from": answering(resolved("IV-25\n1948", value="1948-04-25")),
+        "collectors": failing("model_error")}))
+    assert run.fields["collectors"].state != ValueState.SUPPORTED
+    settle(rig, Scripted({"collectors": answering(resolved("1948, R.D. Mitchell"))}))
+    date, collectors = run.fields["date_visited_from"], run.fields["collectors"]
+    if first_pass_path == "old":
+        assert date.state != ValueState.SUPPORTED
+        assert (collectors.state, collectors.literal) == (ValueState.SUPPORTED, "1948, R.D. Mitchell")
+        return
+    assert (date.state, date.literal) == (ValueState.SUPPORTED, "IV-25\n1948")
+    assert collectors.state != ValueState.SUPPORTED
+    assert collectors.reason.startswith(
+        "This text holds the year the value found for Date Visited From took from its next line.")
 
 
 def test_year_below_and_next_line_year_on_the_named_readings():
