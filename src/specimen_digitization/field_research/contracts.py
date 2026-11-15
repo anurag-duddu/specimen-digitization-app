@@ -88,9 +88,9 @@ NOT_ON_LABEL: Mapping[tuple[str, str], frozenset[str]] = {
 }
 # WP 2.R item (iii), 2026-11-15, units path only: the fields of a profile
 # version that also clear as "not on the label" while the collecting date is
-# one exact day and no reading writes a date without a day, a season, a
-# month's name, a time or a part of the day (step.date_exact_and_alone); a
-# second exact date does not keep the reason.
+# one exact day and no reading writes a digit outside the settled fields'
+# literals, where their provenance places them, nor a season, a month's name
+# or a part of the day (step.date_exact_and_alone).
 # Verbatim D/T/S holds what the PRD records as the collection manager's EMu
 # instruction, "Used to hold non EMu-standard format time and date values",
 # with the examples "Avril 1917; Summer 1914; am; pm", used "when there is no

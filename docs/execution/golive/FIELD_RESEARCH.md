@@ -2004,14 +2004,14 @@ this one, gets its own entry.
   check that makes the clearing certain, on the units path only: Verbatim
   D/T/S also clears as not on the label when Date Visited From is supported,
   not a person's, not marked, read from the label and parsed as one day (no
-  range), and no reading of any label writes, besides it, a date without a
-  day ("XI.46", "Sept. 1946", "1946", "9.1946", "1946-47"), a season
-  ("Summer 1914", "Sommer"), a month's name, even in a joined word
-  ("mid-Sept."), or what may be a time or a part of the day ("10 pm",
-  "10.30", "sunrise", "nuit"; the PRD's examples and the plain words of
-  English, Spanish, Portuguese, French, German and Italian, as the
-  coordinator ruled on #442's review round 1). A second exact date does not
-  keep the reason (`contracts.NOT_ON_LABEL_WHEN_DATE_EXACT`,
+  range), and no reading of any label writes a digit outside every settled
+  field's literal at the place its provenance cites (a date, a time, a code
+  or a number no settled field accounts for: "XI.46", "10.30", a slide code),
+  nor, with no digit, a season ("Summer", "Sommer"), a month's name, even in
+  a joined word ("mid-Sept."), or a part of the day ("sunrise", "nuit",
+  "a. m."; the PRD's examples and the plain words of English, Spanish,
+  Portuguese, French, German and Italian), as the coordinator ruled on
+  #442's review rounds 1 and 2 (`contracts.NOT_ON_LABEL_WHEN_DATE_EXACT`,
   `step.date_exact_and_alone`, checked again when the record is finalized;
   `tests/field_research/test_verbatim_dts.py`). For the collecting date and the
   collectors no source settles that their absence clears, so they keep

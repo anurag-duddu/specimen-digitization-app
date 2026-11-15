@@ -4181,112 +4181,68 @@ DAY_PART_WORDS = frozenset({
 WORD_PIECES = re.compile("[-/\N{EN DASH}\N{EM DASH}]")
 
 
-def _clock_time() -> re.Pattern[str]:
-    """What may be a clock time, with or without a marker (the coordinator's ruling on #442,
-    2026-11-15): hours 0 to 23 and minutes 00 to 59 joined by "." or ":" ("10.30", "10:30") or by "h"
-    ("10h30"); a number with a time unit of written.OTHER_UNITS ("22 h", "2300 hrs") or "o'clock"; and "am",
-    "pm", "a.m.", "p.m.", "a. m." or "p. m." after a number or alone."""
-    from .written import OTHER_UNITS
-
-    units = "|".join(re.escape(unit) for unit in sorted(OTHER_UNITS["time"], key=len, reverse=True))
-    return re.compile(r"(?<![0-9.:])(?:[01]?[0-9]|2[0-3])(?:[.:]|[^\S\n]*h[^\S\n]*)[0-5][0-9](?![0-9])"
-        r"|(?<![0-9A-Za-z])[0-9]{1,4}(?:[.:][0-9]{2})?[^\S\n]*(?:" + units + r")(?![A-Za-z])"
-        r"|(?<![0-9A-Za-z])[0-9]{1,2}[^\S\n]*o(?:'|\N{RIGHT SINGLE QUOTATION MARK})?[^\S\n]*clock(?![A-Za-z])"
-        r"|(?<![^\W\d_])[ap]\.?[^\S\n]*m\.?(?![^\W\d_])", re.I)
+# "a. m." and "p. m." written with a space inside, which no single word holds.
+SPACED_AM_PM = re.compile(r"(?<![^\W\d_])[ap]\.?[^\S\n]+m\.?(?![^\W\d_])", re.I)
 
 
-def _month_and_year() -> re.Pattern[str]:
-    """A token shaped like a date without a day that checks.parse_date may not read, standing whole (no
-    letter or digit on either side, and no part joined to it by "-", "." or "/", spaced or not, as in a
-    slide code or a date: _joined): a month and a year ("xi.46", "9.1946", "09/1946"), a
-    Roman numeral I to XII in either case or a number 1 to 12, a separator, then a year of two or four
-    digits (the coordinator's ruling on #442, 2026-11-15); or years from 1800 written as a range or a
-    decade ("1946-47", "1940s"). Nothing is parsed: Verbatim D/T/S only keeps its reason beside one."""
-    from specimen_digitization.application.date_notations import ROMAN
+def settled_spans(run, readings: Sequence[Reading]) -> dict[tuple[str, str], list[tuple[int, int]]]:
+    """Where the run's settled fields stand, by provenance: for each supported field, each of its evidence
+    rows whose locator (organiser.parse_locator) names one of `readings`, by name and observation, gives
+    the literal's span there (literal_start to literal_end), keyed by (reading name, observation)."""
+    from specimen_digitization.application.organiser import parse_locator
 
-    numerals = "|".join(sorted(ROMAN, key=len, reverse=True))
-    return re.compile(rf"(?<![0-9A-Za-z./-])(?:{numerals}|0?[1-9]|1[0-2])[^\S\n]*[-./][^\S\n]*"
-        r"(?:'?[0-9]{2}|[0-9]{4})(?![0-9A-Za-z]|[-./][0-9A-Za-z])"
-        r"|(?<![0-9A-Za-z./-])(?:1[89]|20)[0-9]{2}(?:s|[^\S\n]*[-/][^\S\n]*(?:[0-9]{2}|(?:1[89]|20)[0-9]{2}))"
-        r"(?![0-9A-Za-z]|[-./][0-9A-Za-z])", re.I)
-
-
-def _joined(text: str, start: int, end: int) -> bool:
-    """Whether the text at start:end is joined by "-", "." or "/", spaced or not, to a letter or a digit
-    on either side ("IX - 14" in "IX - 14 - 46")."""
-    before, after = text[:start].rstrip(" \t"), text[end:].lstrip(" \t")
-    return (before[-1:] in ("-", ".", "/") and before[:-1].rstrip(" \t")[-1:].isalnum()
-        or after[:1] in ("-", ".", "/") and after[1:].lstrip(" \t")[:1].isalnum())
+    by_key = {(reading.name, reading.observation_id): reading for reading in readings}
+    rows = {item.id: item for item in run.evidence}
+    spans: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    for value in run.fields.values():
+        if value.state != ValueState.SUPPORTED:
+            continue
+        for evidence_id in value.evidence_ids:
+            row = rows.get(evidence_id)
+            location = parse_locator(row.locator) if row is not None and row.locator else None
+            reading = by_key.get((location.label, location.observation_id)) if location is not None else None
+            if reading is not None and 0 <= location.literal_start < location.literal_end <= len(reading.text):
+                spans.setdefault((reading.name, reading.observation_id), []).append(
+                    (location.literal_start, location.literal_end))
+    return spans
 
 
-def _no_day(found) -> bool:
-    """Whether a date check read the text as a date without a day: a month ("XI.46", "Sept. 1946") or a
-    year alone ("1946"), or a range with such an end."""
-    return any(reading.precision != "day" or reading.end_precision not in (None, "day")
-        for reading in found.readings)
-
-
-def other_date_or_time(readings: Sequence[Reading], settled: FieldValue, date_rules) -> str | None:
-    """The first text a reading writes that Verbatim D/T/S may hold, or None:
-    - a time or part of the day: what may be a clock time (_clock_time) outside the settled collecting
-      date (its literal and each reader's verbatim of it, where they stand), or a word, or a piece of
-      one (WORD_PIECES), of DAY_PART_WORDS anywhere;
-    - besides the settled collecting date, a date without a day: a token shaped like a month and a year
-      (_month_and_year); and on each line, from each word, the longest run of up to written.DATE_WORDS
-      words that checks.parse_date reads (units=True: a slide code is no date), as the collecting date's
-      field or as Date Identified's, is one when it reads as a month or a year alone (_no_day); a word in
-      no date is one when it, or a piece of it, is a season (SEASON_WORDS) or a month's name
-      (date_months)."""
-    from . import checks
+def other_date_or_time(run, readings: Sequence[Reading]) -> str | None:
+    """The first text a reading of any label writes that Verbatim D/T/S may hold, or None (the
+    coordinator's ruling on #442's review round 2, 2026-11-15):
+    - a digit outside every settled field's literal at the place its provenance cites (settled_spans):
+      a date, a time, a code or a number no settled field accounts for; the word that holds it;
+    - with no digit: a word, or a piece of one (WORD_PIECES), of DAY_PART_WORDS anywhere, "a. m." or
+      "p. m." (SPACED_AM_PM); and, outside the settled fields' literals, a word or a piece of one that is
+      a season (SEASON_WORDS) or a month's name (date_months)."""
     from specimen_digitization.application.date_months import month_of
-    from .written import DATE_WORDS, EDGE, _bare, words
+    from .written import EDGE, _bare, words
 
-    clock, month_and_year = _clock_time(), _month_and_year()
-    written = {text for text in (settled.literal, *settled.verbatim_by_observation.values()) if text and text.strip()}
+    covered = settled_spans(run, readings)
     for reading in readings:
         text = reading.text
-        taken = [hit.span() for item in written for hit in re.finditer(re.escape(item), text)]
-        hits = (*clock.finditer(text), *(hit for hit in month_and_year.finditer(text)
-            if not _joined(text, hit.start(), hit.end())))
-        for hit in hits:
-            if not any(a < hit.end() and hit.start() < b for a, b in taken):
-                return hit.group()
+        spans = covered.get((reading.name, reading.observation_id), [])
+
+        def inside(start: int, end: int) -> bool:
+            return any(low <= start and end <= high for low, high in spans)
+
+        for index, char in enumerate(text):
+            if char.isdigit() and not inside(index, index + 1):
+                before, after = re.search(r"\S*\Z", text[:index]), re.match(r"\S*", text[index:])
+                return before.group() + after.group()
+        if (hit := SPACED_AM_PM.search(text)) is not None:
+            return hit.group()
         offset = 0
         for line in text.splitlines(keepends=True):
-            spans = [(offset + start, offset + end) for start, end in words(line)]
-            offset += len(line)
-            for start, end in spans:
+            for start, end in ((offset + a, offset + b) for a, b in words(line)):
                 word = text[start:end]
-                if any(_bare(piece) in DAY_PART_WORDS for piece in (word, *WORD_PIECES.split(word))):
+                pieces = (word, *WORD_PIECES.split(word))
+                if any(_bare(piece) in DAY_PART_WORDS for piece in pieces):
                     return word
-            index = 0
-            while index < len(spans):
-                if any(a < spans[index][1] and spans[index][0] < b for a, b in taken):
-                    index += 1
-                    continue
-                longest = None
-                for last in range(index, min(len(spans), index + DATE_WORDS)):
-                    if any(a < spans[last][1] and spans[last][0] < b for a, b in taken):
-                        break
-                    literal = text[spans[index][0]:spans[last][1]].strip(EDGE).rstrip(".,;:")
-                    if not any(char.isdigit() for char in literal):
-                        continue
-                    found = [checks.parse_date(literal, reading_texts=[text], date_rules=date_rules, field=field,
-                        units=True) for field in (COLLECTING_DATE, checks.DETERMINATION_FIELD)]
-                    found = [item for item in found if item.readings]
-                    if found:
-                        longest = last, literal, found
-                if longest is not None:
-                    last, literal, found = longest
-                    if any(_no_day(item) for item in found):
-                        return literal
-                    index = last + 1
-                    continue
-                word = text[spans[index][0]:spans[index][1]]
-                if any(_bare(piece) in SEASON_WORDS or month_of(piece.strip(EDGE)) is not None
-                        for piece in (word, *WORD_PIECES.split(word))):
+                if not inside(start, end) and any(_bare(piece) in SEASON_WORDS or month_of(piece.strip(EDGE))
+                        is not None for piece in pieces):
                     return word
-                index += 1
+            offset += len(line)
     return None
 
 
@@ -4296,8 +4252,8 @@ def date_exact_and_alone(run, profile: CollectionProfile, readings: Sequence[Rea
     (contracts.NOT_ON_LABEL_WHEN_DATE_EXACT): Date Visited From is supported, not a person's value, settled
     from the label (SETTLED_LAYERS, with a literal), its parsed value an ISO date at day precision, not
     marked (marked_reasons), and its literal one day, which checks.parse_date reads as that day alone,
-    never a range ("6-9 Sept. 1946"); and no reading of any label writes a date without a day besides it,
-    a season, a month's name, or a time or part of the day (other_date_or_time)."""
+    never a range ("6-9 Sept. 1946"); and no reading of any label writes a digit outside the settled
+    fields' literals, a season, a month's name, or a part of the day (other_date_or_time)."""
     from . import checks
 
     readings = run_readings(run) if readings is None else readings
@@ -4311,7 +4267,7 @@ def date_exact_and_alone(run, profile: CollectionProfile, readings: Sequence[Rea
     if found.status != LookupStatus.SUCCESS or [(item.iso, item.precision, item.end or item.iso)
             for item in found.readings] != [(value.parsed, "day", value.parsed)]:
         return False
-    return other_date_or_time(readings, value, profile.date_rules) is None
+    return other_date_or_time(run, readings) is None
 
 
 def not_on_label_allowed(run, profile: CollectionProfile, readings: Sequence[Reading] | None = None) -> frozenset[str]:

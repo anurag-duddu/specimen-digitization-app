@@ -40,20 +40,24 @@ DATED = resolved(DATE, value="1946-09-06")
 
 
 def dated(*extra, line=DATE):
-    """The rig's label with the collecting date line `line`, no Verbatim D/T/S line, and the lines `extra`."""
-    return "\n".join([label_with(date_visited_from=line, verbatim_dts=None), *extra])
+    """The rig's label with the collecting date line `line`, no Verbatim D/T/S line and no identified-by IRN
+    line (no label writes one, and its digit is no settled field's), and the lines `extra`. Every other digit
+    it writes stands in a settled field's literal: the catalogue number, the elevation and the two dates."""
+    return "\n".join([label_with(date_visited_from=line, verbatim_dts=None, identified_by_irn=None), *extra])
 
 
-def settled(tmp_path, text, other=None, *, date=DATED, dts=LACKS, literals=(DATE, DATE), offered=(), refused=False):
+def settled(tmp_path, text, other=None, *, date=DATED, dts=LACKS, literals=(DATE, DATE), offered=(), refused=False,
+        scripts=None):
     """The rig's run researched, applied and finalized, its second reader writing `other` if given: the
     organiser offers each reader's collecting date (`literals`, 1A's then 1B's) and, for Verbatim D/T/S, only
-    `offered`; the date's expert answers `date`, Verbatim D/T/S's `dts`. The run and the step's decisions."""
+    `offered`; the date's expert answers `date`, Verbatim D/T/S's `dts`, other fields' experts `scripts`. The run
+    and the step's decisions."""
     candidates = [item for item in every_field(*(("date_visited_from", name, literal, f"date_visited_from: {literal}")
         for name, literal in zip(("1A", "1B"), literals, strict=True))) if item[0] != "verbatim_dts"] + list(offered)
     rig = build_rig(tmp_path, text, other, candidates=candidates, refused=refused)
     run = rig.specimen.run
     prepared, outcomes, calls = research(rig, Scripted({"date_visited_from": answering(date),
-        "verbatim_dts": answering(dts)}))
+        "verbatim_dts": answering(dts), **(scripts or {})}))
     decisions: dict[str, dict] = {}
     field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
     field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
@@ -120,6 +124,10 @@ KEPT = {
     # The readers' clause around the date, "6-Sept.-1946, 10 pm", is not the expert's literal: the date is held.
     "a time on the date's line": dict(text=dated(line=DATE + ", 10 pm")),
     "a clock time on a line of its own": dict(text=dated("22:30")),
+    "a number no field settles": dict(text=dated("sp. 22")),
+    # The elevation's expert finds no answer, so it stays held: its digits stand in no settled field's literal.
+    "a number only a held field holds": dict(text=dated(), scripts={"elevation_from_ft": answering(FieldAnswer(
+        outcome="sources_cannot_resolve", explanation="No source."))}),
     "a clock time with a period": dict(text=dated("22.00")),
     "a span of clock times": dict(text=dated("20.00-22.00")),
     "a part of the day": dict(text=dated("sunrise p.m.")),
@@ -171,8 +179,12 @@ OTHER_LABEL = (
     "1946", "1950", "'46", "1946-47", "1940s",
     # a month's name in a joined word
     "mid-Sept.", "Sept.-Oct.",
-    # a clock time, with no marker too
-    "10.30", "22.00", "20.00-22.00", "a. m.", "10 o'clock",
+    # a clock time, with no marker too, and after a heading (#442's review round 2)
+    "10.30", "22.00", "20.00-22.00", "a. m.", "10 o'clock", "Time:22:00", "Time:22.00",
+    # joined months and years (#442's review round 2)
+    "xi.46-xii.46", "xi.46 / xii.46",
+    # the settled date's literal again, where no row of it stands: its provenance is the first label's
+    DATE,
     # a season in each language: en, es, pt, fr, de, it
     "Summer 1946", "oto\N{LATIN SMALL LETTER N WITH TILDE}o", "ver\N{LATIN SMALL LETTER A WITH TILDE}o",
     "\N{LATIN SMALL LETTER E WITH ACUTE}t\N{LATIN SMALL LETTER E WITH ACUTE}",
