@@ -2005,8 +2005,9 @@ this one, gets its own entry.
   D/T/S also clears as not on the label when Date Visited From is supported,
   not a person's, not marked, read from the label and parsed as one day (no
   range), and no reading of any label writes a digit outside every settled
-  field's literal at the place its provenance cites (a date, a time, a code
-  or a number no settled field accounts for: "XI.46", "10.30", a slide code),
+  field's literal at the place its provenance cites (a date, a time or a
+  number nothing accounts for: "XI.46", "10.30"; a slide code the ontology's
+  notation reads whole is no date, so its own digits are accounted for),
   nor, with no digit, a season ("Summer", "Sommer"), a month's name, even in
   a joined word ("mid-Sept."), or a part of the day ("sunrise", "nuit",
   "a. m."; the PRD's examples and the plain words of English, Spanish,

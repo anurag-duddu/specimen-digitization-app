@@ -256,15 +256,21 @@ def parse_date(
     return _date_check(literal, runs, part)
 
 
-def in_a_code(literal: str, text: str) -> bool:
-    """Whether the text writes the literal inside a slide code: a match of one of the written
-    forms of the ontology's notation `slide_code` contains one of the literal's occurrences.
-    "I-23-48" in "Guatemala VI-23-48-4" is; "IV-23-48" in "IV-23-48;IV-29-68-4", where the
-    code is the text after the semicolon, is not, nor beside "IV-29-68-4" on a line."""
+def code_spans(text: str) -> list[tuple[int, int]]:
+    """Where the text writes a slide code: each match of one of the written forms of the
+    ontology's notation `slide_code` ("IX-17-66-2", "10-6-78-1a"), whole."""
     from specimen_digitization.ontology import ontology
 
     [code] = [notation for notation in ontology().notations if notation.id == SLIDE_CODE]
-    spans = [match.span() for pattern in code.patterns for match in pattern.finditer(text)]
+    return [match.span() for pattern in code.patterns for match in pattern.finditer(text)]
+
+
+def in_a_code(literal: str, text: str) -> bool:
+    """Whether the text writes the literal inside a slide code: a match of one of the written
+    forms of the ontology's notation `slide_code` (code_spans) contains one of the literal's
+    occurrences. "I-23-48" in "Guatemala VI-23-48-4" is; "IV-23-48" in "IV-23-48;IV-29-68-4",
+    where the code is the text after the semicolon, is not, nor beside "IV-29-68-4" on a line."""
+    spans = code_spans(text)
     return any(start <= hit.start() and hit.end() <= end
         for hit in re.finditer(re.escape(literal), text) for start, end in spans)
 

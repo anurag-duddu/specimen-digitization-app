@@ -210,6 +210,31 @@ def test_a_date_without_a_day_or_a_time_on_another_label_keeps_the_reason(tmp_pa
         "A_declined:date_not_exact_and_alone" if first_pass_path == "units" else "A_declined:not_listed")
 
 
+# Slide codes the pilot's labels write, which the ontology's notation slide_code reads whole (checks.code_spans): no
+# date, so their digits are accounted for (the coordinator's ruling on #442, 2026-11-15; the rule code_is_no_date).
+CODES = ("IX-3-66-10", "IV-29-68-4", "IX-17-66-2", "VI-24-68-7.")
+
+
+@pytest.mark.parametrize("code", CODES)
+def test_a_slide_code_on_another_label_is_accounted_for(tmp_path, monkeypatch, code, first_pass_path):
+    """The second label's readers write a slide code and nothing else; the first label's date is exact. On the
+    units path Verbatim D/T/S clears; on the old path it keeps main's reason."""
+    second_label_read(monkeypatch, code, code)
+    run, decisions = settled(tmp_path, dated())
+    assert (REASON in run.reasons) is (first_pass_path == "old")
+    assert decisions["verbatim_dts"]["rule"] == (
+        "A_not_on_label" if first_pass_path == "units" else "A_declined:not_listed")
+
+
+def test_a_number_beside_a_slide_code_keeps_the_reason(tmp_path, monkeypatch, first_pass_path):
+    """Only the code's own digits are accounted for: "10.30" after it on its line keeps the reason."""
+    second_label_read(monkeypatch, CODES[0] + " 10.30", CODES[0] + " 10.30")
+    run, decisions = settled(tmp_path, dated())
+    assert REASON in run.reasons and not check_rows(run)
+    assert decisions["verbatim_dts"]["rule"] == (
+        "A_declined:date_not_exact_and_alone" if first_pass_path == "units" else "A_declined:not_listed")
+
+
 def test_a_date_settled_but_marked_keeps_the_reason(tmp_path, first_pass_path):
     """Named case: a date settled but marked. The first pass is refused and given up on, so on the units path
     the label settles every field on its readers agreeing alone, marked text_only (test_step's

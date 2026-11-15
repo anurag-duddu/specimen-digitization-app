@@ -4210,18 +4210,22 @@ def settled_spans(run, readings: Sequence[Reading]) -> dict[tuple[str, str], lis
 def other_date_or_time(run, readings: Sequence[Reading]) -> str | None:
     """The first text a reading of any label writes that Verbatim D/T/S may hold, or None (the
     coordinator's ruling on #442's review round 2, 2026-11-15):
-    - a digit outside every settled field's literal at the place its provenance cites (settled_spans):
-      a date, a time, a code or a number no settled field accounts for; the word that holds it;
+    - a digit outside every settled field's literal at the place its provenance cites (settled_spans)
+      and outside every slide code (checks.code_spans: the ontology's notation slide_code, whole, as
+      checks.in_a_code reads it; the rule code_is_no_date; GEOREFERENCING.md: preparation codes such as
+      "10-6-78-1a" or "IX-17-66-2" "are never dates"): a date, a time, a code or a number nothing
+      accounts for; the word that holds it;
     - with no digit: a word, or a piece of one (WORD_PIECES), of DAY_PART_WORDS anywhere, "a. m." or
       "p. m." (SPACED_AM_PM); and, outside the settled fields' literals, a word or a piece of one that is
       a season (SEASON_WORDS) or a month's name (date_months)."""
     from specimen_digitization.application.date_months import month_of
+    from .checks import code_spans
     from .written import EDGE, _bare, words
 
     covered = settled_spans(run, readings)
     for reading in readings:
         text = reading.text
-        spans = covered.get((reading.name, reading.observation_id), [])
+        spans = [*covered.get((reading.name, reading.observation_id), []), *code_spans(text)]
 
         def inside(start: int, end: int) -> bool:
             return any(low <= start and end <= high for low, high in spans)
