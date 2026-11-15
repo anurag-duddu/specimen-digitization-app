@@ -763,8 +763,8 @@ rules:
       On the units path the check stage marks for a person a place settled on
       a source record whose record and a place settled above it name two
       different nations by an identity both carry (the test of the rule
-      place_within_settled_places); a place derived into the chain is marked
-      by the rule place_parents_derived. Below the country a place is in the
+      place_within_settled_places); a derived country is marked by the rule
+      place_parents_derived. Below the country a place is in the
       chain when the settled place's record is among its record's parents,
       and otherwise the check abstains: a settled Coles County, then an exact
       "Chicago" whose TGN preferred chain is Cook County, Illinois and the
@@ -975,9 +975,12 @@ rules:
       derived as Illinois from the county alone (derive._can_derive_place), a
       chain that fails the place chain; and no test pinned that a province
       derived from a county is the county's province-level parent, never the
-      country. Derivation is unchanged in WP 2.3a; its check stage marks that
-      province on the units path, and a test pins the parent derived. Without
-      an identity both records carry, the check abstains, as for the rule
+      country. Derivation is unchanged in WP 2.3a, and a test pins the parent
+      derived. Its check stage does not mark that province: below the country
+      the check abstains on TGN's preferred chain alone (the coordinator's
+      ruling of WP 2.3a's review round 2), and it marks a derived country only,
+      when a place below it names another nation by an identity both carry.
+      Without such an identity the check abstains, as for the rule
       place_within_settled_places.
     check: code
     darwin_core: country, stateProvince, county
