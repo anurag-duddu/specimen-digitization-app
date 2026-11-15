@@ -666,7 +666,7 @@ CODE_RULE_TESTS = {
         f"{ELEV}::test_a_country_s_row_is_its_wikidata_item_s_else_its_name_s",
         f"{ELEV}::test_a_number_on_two_units_or_another_held_elevation_is_not_inferred",
         f"{ELEV}::test_condition_a_is_one_number_a_reader_marks_and_another_leaves_bare",
-        f"{ELEV}::test_condition_a_takes_a_unit_with_no_heading_only_where_the_held_field_s_rows_place_the_number",
+        f"{ELEV}::test_condition_a_never_takes_a_unit_the_held_field_s_cited_rows_alone_place_the_number",
         f"{ELEV}::test_g51_s_inputs_stay_unresolved",
         f"{ELEV}::test_condition_a_takes_a_unit_the_first_pass_routes_to_an_elevation_and_options_naming_no_other_number",
     ),

@@ -906,8 +906,9 @@ rules:
       the number read as metres is above the highest point of the specimen's
       country, which is cleared, not marked (the highest-point table); and
       (c) the number read as feet is possible (16000 with a mark is not, in
-      the Philippines). When all hold, the elevation settles in feet,
-      cleared, its reason "Basis: inferred, rule elevation_unit_feet".
+      the Philippines). When all hold, Elevation From (ft) settles to that
+      number, cleared, its reason "Basis: inferred, rule elevation_unit_feet",
+      and derivation fills the other elevation fields.
       Otherwise the field is unresolved: magnitude alone never decides.
       Terrain takes no part while the owner's decision D5 is held.
     instruction: >-
@@ -922,8 +923,12 @@ rules:
       with no literal or a bare number while every other elevation field is
       open, is inferred only on its own unit (ontology_checks.foot_number):
       one the first pass routes to an elevation field, or whose readers each
-      write the number inside the held field's own label rows or right after
-      an elevation's heading ("Elev.", "alt."). No reader writes a quotation
+      write the number right after an elevation's heading, by the headings
+      field_research/written.py's HEADINGS lists ("alt", "altitude", "elev",
+      "elevation" and others, periods dropped) and "el." (this notation
+      file's elevation_heading lists only "alt." and "el.");
+      the held field's cited label rows bind no unit (Codex's round 2 on PR
+      #437). No reader writes a quotation
       mark right before the number; one or more write the foot mark
       (straight, curly or a prime) glued to it or "ft" after it, with no
       other unit after that, and one or more write no unit; none writes
@@ -1074,8 +1079,10 @@ rules:
       On the units path, a precise location whose literal writes no settled
       province or country and, in every reading of its label, ends a line
       before a line that continues the locality with a settled province or
-      country (nothing else on that line but other settled fields' texts,
-      place unit words and punctuation) is marked for a person as cut short;
+      country outside every other settled field's text (nothing else on
+      that line but other settled fields' texts, place unit words and
+      punctuation) is marked for a person as cut short, unless a person
+      decided it, when it is never marked;
       a precise location that names nothing finer than its town, or than its
       country, is never cleared as not on the label; and one that holds an
       elevation settles only when its elevation text is the literal an
@@ -1124,8 +1131,10 @@ rules:
       on the units path: the PRD's verbatim locality as written, at the root
       of the place tree, and the georeferencing document's verbatimLocality,
       whose example keeps the country's line. Code does not see a precise
-      location cut short within a line, or before a line that writes a name
-      no field settled ("Mindanao, P.I."); the model's instruction covers
+      location cut short within a line, before a line that writes a name no
+      field settled ("Mindanao, P.I."), with a literal that writes the
+      province while the next line adds the country, or where its label's
+      readers write the literal differently; the model's instruction covers
       those.
     check: code
     darwin_core: verbatimLocality

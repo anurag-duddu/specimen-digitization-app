@@ -549,21 +549,6 @@ def _number_at(text: str):
 QUOTES = frozenset("'\"\N{LEFT DOUBLE QUOTATION MARK}\N{RIGHT DOUBLE QUOTATION MARK}`")
 
 
-def _named_by(held: FieldValue | None, rows: Mapping[str, Evidence]) -> dict[str, list[tuple[int, int]]]:
-    """Where the held field's own label rows (its literal rows, as the organiser or the expert
-    cited them for it) place its text, by observation: the rows' literal spans
-    (organiser.parse_locator)."""
-    from specimen_digitization.application.organiser import parse_locator
-
-    spans: dict[str, list[tuple[int, int]]] = {}
-    for i in (held.evidence_ids if held is not None else ()):
-        row = rows.get(i)
-        found = parse_locator(row.locator) if row is not None and row.kind == "literal" else None
-        if found is not None:
-            spans.setdefault(found.observation_id, []).append((found.literal_start, found.literal_end))
-    return spans
-
-
 def _after_a_heading(text: str, start: int) -> bool:
     """Whether a reading writes an elevation's heading right before the number at `start` on its
     line, glued to it or a space apart ("Elev.6400", "alt. 1200"): the word before it, folded with
@@ -628,9 +613,10 @@ def foot_number(run, readings: Sequence[Reading], held: FieldValue | None) -> Wr
     """Condition (a) of elevation_unit_feet, on the held field's own unit, and only when certain
     (the coordinator's rulings on Codex's and G51's round 1 of PR #437). The unit's readers all
     write one same number (written.numbers), the held field's literal when it has one, and:
-    - (i) the unit is the elevation's: every reader writes the number inside the held field's own
-      label rows (_named_by) or right after an elevation's heading (_after_a_heading), or the
-      first pass's unit names an elevation field among its fields;
+    - (i) the unit is the elevation's: the first pass's unit names an elevation field among its
+      fields, or every reader writes the number right after an elevation's heading
+      (_after_a_heading). The held field's cited label rows bind nothing (Codex's round 2 on PR
+      #437: "No. 3456'" under rows that cover it);
     - (ii) no reading of any label writes another elevation text (elevation_texts);
     - (iii) where the expert gave options (options_of), every number they write is this one;
     - (iv) no reader writes a quotation mark right before the number (_quoted); at least one
@@ -641,8 +627,6 @@ def foot_number(run, readings: Sequence[Reading], held: FieldValue | None) -> Wr
     from . import written
 
     texts = {reading.observation_id: reading.text for reading in readings}
-    rows = {item.id: item for item in getattr(run, "evidence", None) or ()}
-    named = _named_by(held, rows)
     literal = held.literal if held is not None else None
     written_ones = elevation_texts(readings)
     found = []
@@ -668,8 +652,7 @@ def foot_number(run, readings: Sequence[Reading], held: FieldValue | None) -> Wr
                 here.add((key, start))
                 if text[span.start:span.end] != span.text or _quoted(text, start):
                     break
-                if not (routed or any(first <= start and end <= last for first, last in named.get(key, ()))
-                        or _after_a_heading(text, start)):
+                if not (routed or _after_a_heading(text, start)):
                     break
                 if found_number.distance:
                     break
@@ -798,24 +781,29 @@ def _without(line: str, texts: Iterable[str]) -> str:
 def _continues(line: str, reading: Reading, fields: Mapping[str, FieldValue],
         places: Sequence[tuple[str, FieldValue]]) -> tuple[str, str] | None:
     """The settled higher place a reading's next line continues the precise location with, as (its
-    field, its text), or None. The line writes, as whole words, the text of a settled province or
-    country (_whole_words; _extent_marks has made sure the literal writes none); and the line is
-    nothing but the
-    locality going on: with every settled field's texts (_texts_of: the higher places', and any
-    other's, such as an elevation's) blanked, what is left is punctuation, white space and the
-    place unit words of the ontology's table (`tables.place_unit_words`: "Prov.", "Dept.")."""
+    field, its text), or None. With the texts of the other settled fields blanked (_texts_of: any
+    settled field's but the precise location's and the higher places' own, such as an
+    elevation's or a collector's), the line still writes, as whole words, the text of a settled
+    province or country (_whole_words; _extent_marks has made sure the literal writes none): a
+    place counts only outside another field's literal (G51's round 2 on PR #437: "University of
+    the Philippines" as the collectors). And the line is nothing but the locality going on: with
+    the higher places' texts blanked too, what is left is punctuation, white space and the place
+    unit words of the ontology's table (`tables.place_unit_words`: "Prov.", "Dept.")."""
     from specimen_digitization.ontology import ontology
 
     from . import written
 
+    higher = {key for key, _ in places}
+    others = [text for key, value in fields.items() if key != "precise_location" and key not in higher
+        and settled(value) for text in _texts_of(value, reading)]
+    outside = _without(line, others)
     hit = next(((key, text) for key, place in places for text in _texts_of(place, reading)
-        if _whole_words(text, line)), None)
+        if _whole_words(text, outside)), None)
     if hit is None:
         return None
-    others = [text for key, value in fields.items() if key != "precise_location" and settled(value)
-        for text in _texts_of(value, reading)]
+    own = [text for _, place in places for text in _texts_of(place, reading)]
     units = set(ontology().tables.place_unit_words)
-    left = [word for word in re.findall(r"\w+", _without(line, others)) if written._bare(word) not in units]
+    left = [word for word in re.findall(r"\w+", _without(outside, own)) if written._bare(word) not in units]
     return hit if not left else None
 
 

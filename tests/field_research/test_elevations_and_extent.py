@@ -372,27 +372,24 @@ def test_condition_a_takes_a_unit_the_first_pass_routes_to_an_elevation_and_opti
     assert ontology_checks.options_of(FieldValue(reason="Two. Options: 6400; 3300 ft.")) == ["6400", "3300 ft"]
 
 
-def test_condition_a_takes_a_unit_with_no_heading_only_where_the_held_field_s_rows_place_the_number(
-        first_pass_path):
-    """105526324's shape, "3300," against "3300'," with no heading: the unit is the held field's own only when
-    its label rows (the organiser's, which the held value cites) place the number there in every reading."""
+def test_condition_a_never_takes_a_unit_the_held_field_s_cited_rows_alone_place_the_number(first_pass_path):
+    """Codex's round 2 on PR #437 (the coordinator's ruling): the held field's cited label rows bind no unit. Its
+    input: "No. 3456" against "No. 3456'", the unit routed only to the collection code, the held elevation citing
+    rows that cover 3456 and listing the options "3456" and "3456'": nothing is inferred. A unit is the
+    elevation's only through a heading or the first pass's routing to an elevation field, and there a quoted
+    number still binds nothing."""
+    rows = (label_row("o0", 4, 8), label_row("o1", 4, 9))
+    run, readings = one_unit("No. 3456", "No. 3456'", rows=rows, fields=["collection_code"])
+    cited = FieldValue(state=ValueState.AMBIGUOUS, evidence_ids=[row.id for row in rows],
+        reason="The readers differ on the mark. Options: 3456; 3456'.")
+    assert ontology_checks.foot_number(run, readings, cited) is None
     texts = ("3300, Davao Prov.", "3300', Davao Prov.")
-    rows = (label_row("o0", 0, 4), label_row("o1", 0, 5))
-    run, readings = one_unit(*texts, rows=rows)
-    cited = FieldValue(state=ValueState.AMBIGUOUS, evidence_ids=[row.id for row in rows])
-
+    run, readings = one_unit(*texts, rows=(label_row("o0", 0, 4), label_row("o1", 0, 5)))
+    assert ontology_checks.foot_number(run, readings, FieldValue(evidence_ids=[row.id for row in run.evidence])) is None
+    run, readings = one_unit(*texts, fields=["elevation_from_ft"])
+    assert [obs for obs, _, _ in ontology_checks.foot_number(run, readings, None).marked] == ["o1"]
+    run, readings = one_unit("'3300, Davao Prov.", "'3300', Davao Prov.", fields=["elevation_from_ft"])
     assert ontology_checks.foot_number(run, readings, None) is None
-    assert [obs for obs, _, _ in ontology_checks.foot_number(run, readings, cited).marked] == ["o1"]
-    one = FieldValue(state=ValueState.AMBIGUOUS, evidence_ids=[rows[1].id])
-    assert ontology_checks.foot_number(run, readings, one) is None
-    # The rows place the number, but it is quoted: "Trap '6400" (Codex's round 1).
-    quoted = ("'3300, Davao Prov.", "'3300', Davao Prov.")
-    marks = (label_row("o0", 1, 5), label_row("o1", 1, 6))
-    run, readings = one_unit(*quoted, rows=marks)
-    assert ontology_checks.foot_number(run, readings, FieldValue(evidence_ids=[row.id for row in marks])) is None
-    elsewhere = (label_row("o0", 6, 11), label_row("o1", 7, 12))
-    run, readings = one_unit(*texts, rows=elsewhere)
-    assert ontology_checks.foot_number(run, readings, FieldValue(evidence_ids=[row.id for row in elsewhere])) is None
 
 
 # ---- 2. dependent fields wait for their source ---------------------------------------------------
@@ -970,10 +967,17 @@ def test_a_person_s_precise_location_is_never_marked_cut_short(first_pass_path):
     ("Mt. Apo, Davao, Mindanao\nDavao Penal Colony leg.", {"precise_location": settled_at("Mt. Apo, Davao, Mindanao"),
         "province_state": settled_at("Davao")}, False),
     (("E. slope Mt. McKinley\nDavao Prov.\n3 Sept. '46", "E. slope Mt McKinley\n3 Sept. '46"), MCKINLEY_FIELDS, False),
+    # G51's round 2: the next line is another settled field's literal holding the place's name.
+    ("Los Banos\nUniversity of the Philippines", {"precise_location": settled_at("Los Banos"),
+      "country": settled_at("Philippines"), "collectors": settled_at("University of the Philippines")}, False),
+    ("Yepocapa\nGuatemala Exped.", {"precise_location": settled_at("Yepocapa"), "country": settled_at("Guatemala"),
+      "collectors": settled_at("Guatemala Exped.")}, False),
+    ("Mt. Apo\nDavao Penal Colony", {"precise_location": settled_at("Mt. Apo"), "province_state": settled_at("Davao"),
+      "habitat": settled_at("Davao Penal Colony")}, False),
 ], ids=["los-banos", "105526321", "a-name-no-field-settled", "105526324-elevation-settled",
         "105526324-elevation-held", "unit-word", "another-word", "a-place-the-literal-writes", "inside-a-word",
         "within-a-line", "readers-differ", "yepocapa-expedition", "athens-georgia", "davao-penal-colony",
-        "mt-with-no-period"])
+        "mt-with-no-period", "collectors-university", "collectors-expedition", "habitat-penal-colony"])
 def test_the_next_line_marks_only_as_the_locality_going_on(first_pass_path, texts, fields, marked):
     """Codex's round 1, finding 4 (the coordinator's ruling): a whole-word match is no certainty. The next
     line must write a settled higher place the literal does not write, and nothing besides but other settled
