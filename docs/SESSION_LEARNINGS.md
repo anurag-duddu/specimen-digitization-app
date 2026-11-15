@@ -26176,7 +26176,7 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 
 ## 2026-11-14 - WP 2.3b of the reading-units program: elevations, dependent fields and Precise Location's extent
 
-- Task: WP 2.3b of `docs/execution/units/PLAN.md`, the second of the coordinator's three parts of WP 2.3 (the brief `~/specimen-golive/units-program/brief_wp23b_elevations.md`, off-repo). Branch `claude/wp23b-elevations`, worktree `.claude/worktrees/wp23b-elevations` from origin/main 7f412f91d (PR #436 merged). Builder session; no merge.
+- Task: WP 2.3b of `docs/execution/units/PLAN.md`, the second of the coordinator's three parts of WP 2.3 (the brief `~/specimen-golive/units-program/brief_wp23b_elevations.md`, off-repo). Branch `claude/wp23b-elevations`, worktree `.claude/worktrees/wp23b-elevations` from origin/main 7f412f91d (PR #436 merged). Builder session; no merge. Pull request #437.
 - Outcome, on the units path only (the old path keeps main's results, each asserted on both paths):
   - `ontology_checks.infer_feet` applies the rule `elevation_unit_feet`. Elevation From (ft), held while every other elevation field is open, settles cleared ("Basis: inferred, rule elevation_unit_feet: ...") when all of these hold: one unit's readers write one number, one or more with the foot mark or "ft" and one or more with none; the country is cleared and not marked; the number as metres is above the country's highest point in the yaml table, and as feet it is not. `derive.fill` then fills the partners.
   - `ontology_checks.wait_for_sources`: an elevation field or Date Visited To that is settled absent while its source is held waits instead, unknown, with a reason naming the source.
