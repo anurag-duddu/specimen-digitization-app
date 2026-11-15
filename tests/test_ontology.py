@@ -589,12 +589,17 @@ CODE_RULE_TESTS = {
         f"{ELEV}::test_6400_with_no_mark_leaves_its_partners_waiting",
         f"{ELEV}::test_a_field_settled_absent_beside_a_settled_source_does_not_wait",
         f"{ELEV}::test_derivation_writes_what_it_wrote_on_main",
+        f"{ELEV}::test_a_person_who_settles_the_foot_field_gets_its_partners_derived",
+        f"{ELEV}::test_a_failed_source_with_no_elevation_written_keeps_main_s_result",
     ),
     "end_date_from_one_date": (
         "tests/field_research/test_date_split_lines.py::test_a_range_s_start_is_not_copied_to_its_end",
         "tests/field_research/test_date_split_lines.py::test_one_collecting_date_is_its_own_end_at_its_precision",
         f"{ELEV}::test_105526325_s_held_date_leaves_date_visited_to_waiting",
         f"{ELEV}::test_a_waiting_end_date_is_derived_once_its_start_settles",
+        f"{ELEV}::test_a_waiting_field_adds_no_review_reason_of_its_own",
+        f"{ELEV}::test_a_person_who_settles_the_start_gets_the_end_derived_on_approval",
+        f"{ELEV}::test_a_waiting_field_whose_source_settles_without_a_derivation_takes_today_s_treatment",
     ),
     # WP 2.3a's check stage (field_research/ontology_checks.py), and the date check's code veto.
     "place_within_settled_places": (
@@ -661,6 +666,9 @@ CODE_RULE_TESTS = {
         f"{ELEV}::test_a_country_s_row_is_its_wikidata_item_s_else_its_name_s",
         f"{ELEV}::test_a_number_on_two_units_or_another_held_elevation_is_not_inferred",
         f"{ELEV}::test_condition_a_is_one_number_a_reader_marks_and_another_leaves_bare",
+        f"{ELEV}::test_condition_a_takes_a_unit_with_no_heading_only_where_the_held_field_s_rows_place_the_number",
+        f"{ELEV}::test_g51_s_inputs_stay_unresolved",
+        f"{ELEV}::test_condition_a_takes_a_unit_the_first_pass_routes_to_an_elevation_and_options_naming_no_other_number",
     ),
     "precise_location_extent": (
         f"{EXTENT}::test_a_town_only_locality_is_not_cleared_as_not_on_the_label_on_the_units_path",
@@ -674,7 +682,7 @@ CODE_RULE_TESTS = {
         f"{ELEV}::test_the_review_rounds_elevation_inputs_stay_refused_whatever_elevation_settled",
         f"{ELEV}::test_elevation_kept_keeps_one_elevation_at_its_line_s_end_beside_a_locality",
         f"{ELEV}::test_an_organiser_candidate_holding_an_elevation_follows_the_same_rule",
-        f"{ELEV}::test_an_organiser_candidate_holding_a_date_is_refused_on_the_units_path",
+        f"{ELEV}::test_an_organiser_candidate_holding_a_date_settles_on_both_paths",
         f"{ELEV}::test_105526329_s_whole_locality_settles_beside_its_settled_elevation_on_the_units_path",
         f"{ELEV}::test_105526329_s_whole_locality_is_refused_beside_another_elevation_or_none",
         f"{ELEV}::test_the_expert_s_own_check_lets_a_kept_elevation_pass_on_the_units_path_only",
@@ -682,6 +690,8 @@ CODE_RULE_TESTS = {
         f"{ELEV}::test_a_precise_location_cut_short_before_a_line_holding_a_settled_higher_place_is_marked",
         f"{ELEV}::test_the_cut_short_check_abstains_unless_certain",
         f"{ELEV}::test_a_person_s_precise_location_is_never_marked_cut_short",
+        f"{ELEV}::test_the_next_line_marks_only_as_the_locality_going_on",
+        f"{ELEV}::test_an_elevation_another_field_s_text_takes_is_no_elevation_the_locality_may_keep",
         f"{ELEV}::test_a_label_whose_only_locality_text_is_its_country_settles_it_as_the_precise_location_on_the_"
         "units_path",
     ),
@@ -781,7 +791,7 @@ def test_cnhm_is_the_institution_and_on_a_locality_line_part_of_the_precise_loca
 
     assert (cnhm.written, cnhm.fields, cnhm.readings) == (("CNHM.",), (), (CNHM,))
     assert cnhm.note == "Written on a locality line, it is part of the precise location as written."
-    assert "every line of its locality text" in extent.statement
+    assert "every line of its locality text" in extent.note and "every line of its locality" in extent.instruction
     assert not re.search(r"\d{6,}|e98a924c|t1-\d|slide", " ".join((*cnhm.readings, cnhm.note)))
     rows = json.loads((ROOT / "tests/fixtures/field_model_pilot_rows.json").read_text(encoding="utf-8"))["rows"]
     on_a_locality_line = [row for row in rows if "CNHM" in row["as_written"]["locality"]]

@@ -2136,16 +2136,20 @@ def test_readers_that_agree_settle_on_the_preferred_readers_spelling_through_the
 def test_no_elevation_is_derived_from_a_unit_the_readings_disagree_on(rig, first_pass_path):
     """Elevation To (ft) ambiguous: nothing is derived. The metre fields' experts answer that the label
     lacks them: on the old path they settle absent; on the units path they wait for the held field (WP 2.3b,
-    the rule elevation_conversion: ontology_checks.wait_for_sources), never settled absent."""
+    the rule elevation_conversion: ontology_checks.wait_for_sources), never settled absent, and add no review
+    reason of their own."""
     run = rig.specimen.run
     settle(rig, Scripted({"elevation_to_ft": answering(FieldAnswer(outcome="several_possibilities",
         options=["1500", "1600"], explanation="Two readings."))}))
     value = run.fields["elevation_from_m"]
     if first_pass_path == "units":
+        # It adds no review reason of its own: its held source's routes the record (WP 2.3b's review round 1).
         assert value.state == ValueState.UNKNOWN and value.reason.startswith("Waits for Elevation To (ft)")
+        assert "mandatory_unresolved:elevation_from_m" not in run.reasons
+        assert "mandatory_unresolved:elevation_to_ft" in run.reasons
     else:
         assert value.state == ValueState.NOT_PRESENT
-    assert "mandatory_unresolved:elevation_from_m" in run.reasons
+        assert "mandatory_unresolved:elevation_from_m" in run.reasons
 
 
 # ---- finalize_fields ---------------------------------------------------------

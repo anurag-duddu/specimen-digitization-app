@@ -752,13 +752,14 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     literals the elevation fields settled, by label; ANY_ELEVATION for the
     expert's own check, before any field settles) holds its elevation text
     for every label it is read from (_another_kind: the ontology's rule
-    precise_location_extent, plan WP 2.3b)."""
+    precise_location_extent, plan WP 2.3b); a candidate is held to the
+    elevation rule only, a date or a range in it passing as on main."""
     basis = literal_basis(task, readings, literal, named)
     units = any(reading.units is not None for reading in readings)
     if basis == CANDIDATE:
         return (_unit_refusal(task, readings, literal, named)
-            or (_another_kind(task, literal, named, elevations) if units and task.key == "precise_location"
-                else None)
+            or (_another_kind(task, literal, named, elevations, elevation_only=True)
+                if units and task.key == "precise_location" else None)
             or _part_of_name(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named))
     if basis == TRANSCRIPT:
         return (_part_of_range(task, readings, literal, named) or _unit_refusal(task, readings, literal, named)
@@ -924,11 +925,17 @@ def elevation_settled_inside(literal: str, named: Sequence[Reading], elevations)
         for label in {reading.region_id for reading in named})
 
 
-def _another_kind(task: FieldTask, literal: str, named: Sequence[Reading], elevations) -> Refusal | None:
+def _another_kind(task: FieldTask, literal: str, named: Sequence[Reading], elevations, *,
+        elevation_only: bool = False) -> Refusal | None:
     """On the units path, _holds_another_kind, except that a precise location
     keeps an elevation an elevation field settled from its label
-    (elevation_settled_inside)."""
+    (elevation_settled_inside). With `elevation_only` (an organiser candidate,
+    which main lets pass), only an elevation is refused: a date or a range
+    passes as on main ("Ejido 20 de Noviembre", the coordinator's ruling on
+    G51's round 1 of PR #437)."""
     refused = _holds_another_kind(task, literal)
+    if elevation_only and refused is not None and refused.reason != HOLDS_AN_ELEVATION:
+        return None
     if (refused is not None and task.key == ELEVATION_INSIDE and refused.reason == HOLDS_AN_ELEVATION
             and elevation_settled_inside(literal, named, elevations)):
         return None

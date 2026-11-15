@@ -898,16 +898,18 @@ rules:
       - src/specimen_digitization/field_research/experts.py:336-370
   - id: elevation_unit_feet
     statement: >-
-      An elevation whose cleared text writes no unit is read as feet only when
-      (a) at least one reader wrote the foot mark or "ft" at this unit, (b) the
-      number read as metres is above the highest point of the specimen's
-      country, which is cleared, not marked (the highest-point table), and (c)
-      the number read as feet is possible (16000 with a mark is not, in the
-      Philippines). When all hold, the elevation settles in feet, cleared, its
-      reason "Basis: inferred, rule elevation_unit_feet". Without (a) the field
-      is unresolved: magnitude alone never decides; so it is when (b) or (c)
-      fails or the country is marked. Terrain takes no part while the owner's
-      decision D5 is held.
+      On the units path an elevation whose text writes no unit is read as feet
+      only when (a) at the elevation's own unit at least one reader wrote the
+      foot mark or "ft" right after its number, unquoted and with no other
+      unit after it, and another reader wrote no unit, no reading writes
+      another elevation, and the expert's options name no other number; (b)
+      the number read as metres is above the highest point of the specimen's
+      country, which is cleared, not marked (the highest-point table); and
+      (c) the number read as feet is possible (16000 with a mark is not, in
+      the Philippines). When all hold, the elevation settles in feet,
+      cleared, its reason "Basis: inferred, rule elevation_unit_feet".
+      Otherwise the field is unresolved: magnitude alone never decides.
+      Terrain takes no part while the owner's decision D5 is held.
     instruction: >-
       Keep an elevation's foot mark (') or "ft" wherever it is written; a
       number's size alone never makes it feet.
@@ -918,13 +920,24 @@ rules:
       (field_research/ontology_checks.infer_feet, run by step.apply_outcomes
       after each label's settlement is recorded): Elevation From (ft), held
       with no literal or a bare number while every other elevation field is
-      open, is inferred when one unit's readers write one number, one or more
-      with the foot mark (straight, curly or a prime) or "ft" right after it
-      and one or more with no unit, none with another unit or as a distance;
-      the country is cleared (a label's cleared finding) and has no marked
-      finding; and the table's row of its Wikidata item, else of its source's
-      name, gives (b) and (c). Derivation then fills the other elevation
-      fields. Any other case is left as on main: unresolved.
+      open, is inferred only on its own unit (ontology_checks.foot_number):
+      one the first pass routes to an elevation field, or whose readers each
+      write the number inside the held field's own label rows or right after
+      an elevation's heading ("Elev.", "alt."). No reader writes a quotation
+      mark right before the number; one or more write the foot mark
+      (straight, curly or a prime) glued to it or "ft" after it, with no
+      other unit after that, and one or more write no unit; none writes
+      another unit or a distance. No reading of any label writes another
+      elevation, and the expert's options, where it gave some, name no other
+      number. These follow the coordinator's rulings on Codex's and G51's
+      round 1 on PR #437, whose inputs "Trap '6400", "No. 3456'", "Camp at
+      5000 ft." beside "Elev.6400'", "Camp '6400'" and "Elev. 6400' m" are
+      named cases that stay unresolved. The country is cleared (a label's
+      cleared finding) and has no marked finding, and the table's row of its
+      Wikidata item, else the one row named as the country is (its
+      normalized value, else its parsed value, else its literal), gives (b)
+      and (c). Derivation then fills the other elevation fields. Any other
+      case is left as on main: unresolved.
     check: code
     darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
     source:
@@ -1011,8 +1024,11 @@ rules:
       derived while an elevation field is neither settled nor open (one the
       readings disagree on goes to a person first). On the units path an
       elevation field is never settled absent while another elevation field
-      is ambiguous, unresolved or unknown: it waits, unknown, its reason
-      naming that field, and is derived once that field settles.
+      is ambiguous, unresolved or unknown and a reading writes an elevation:
+      it waits, unknown, its reason naming that field, with no review reason
+      of its own; it is derived once that field settles, after the experts
+      or after a person's decision, and where it then cannot be derived it
+      is not present again, with its own review reason.
     instruction: >-
       Never convert an elevation to the other unit: give it in the unit the label
       writes.
@@ -1030,8 +1046,11 @@ rules:
       A derived Date Visited To is the date of a settled Date Visited From, at
       its precision, and is never derived from a written range. On the units
       path Date Visited To is never settled absent while Date Visited From is
-      ambiguous, unresolved or unknown: it waits, unknown, its reason naming
-      Date Visited From, and is derived once that date settles.
+      ambiguous, unresolved or unknown with a text: it waits, unknown, its
+      reason naming Date Visited From, with no review reason of its own; it
+      is derived once that date settles, after the experts or after a
+      person's decision, and where it then cannot be derived it is not
+      present again, with its own review reason.
     instruction: >-
       Give Date Visited To only from an end date the label writes, never from a single
       collecting date.
@@ -1052,18 +1071,15 @@ rules:
   # whose ten pilot rows each hold the label's whole locality lines.
   - id: precise_location_extent
     statement: >-
-      Precise Location is the label's locality as written: every line of its
-      locality text, with its line breaks, the higher places and an elevation
-      written among those lines included. It is never cut to the first line,
-      and a label whose locality names nothing finer than its town, or than
-      its country, still has a Precise Location: those lines as written. On
-      the units path a precise location that names nothing finer than its
-      town is never cleared as not on the label; one that holds an elevation
-      settles only when its elevation text is the literal an elevation field
-      settled from that label; and one whose literal, wherever a reading of
-      its label writes it, ends its line before a line that writes the
-      settled province's or country's text is marked for a person as cut
-      short.
+      On the units path, a precise location whose literal writes no settled
+      province or country and, in every reading of its label, ends a line
+      before a line that continues the locality with a settled province or
+      country (nothing else on that line but other settled fields' texts,
+      place unit words and punctuation) is marked for a person as cut short;
+      a precise location that names nothing finer than its town, or than its
+      country, is never cleared as not on the label; and one that holds an
+      elevation settles only when its elevation text is the literal an
+      elevation field settled from that label.
     instruction: >-
       Precise Location is the label's locality as written: every line of its locality
       text, with its line breaks, the higher places and an elevation written on those
@@ -1072,8 +1088,17 @@ rules:
     fields: [precise_location]
     reading: true
     note: >-
-      Checked by code on the units path from WP 2.3b, and by a model there
-      from WP 2.2: the instruction above is in the readers', the first
+      The rule's meaning, which the instruction carries to the models:
+      Precise Location is the label's locality as written, every line of its
+      locality text, with its line breaks, the higher places and an
+      elevation written among those lines included; it is never cut to the
+      first line, and a label whose locality names nothing finer than its
+      town, or than its country, still has one: those lines as written. Code
+      guarantees the statement above, on the units path only (the
+      coordinator's ruling on G51's round 1 on PR #437, as WP 2.3a restated
+      its place rules), and a model the rest. Checked by code on the units
+      path from WP 2.3b, and by a model there from WP 2.2: the instruction
+      above is in the readers', the first
       pass's, the organiser's and the precise location expert's
       instructions, and that expert's brief takes the whole locality
       (prompts/units.txt, its precise_location.txt texts). The code's parts:
@@ -1084,8 +1109,14 @@ rules:
       agreement.elevation_kept keeps that elevation (one elevation, ending
       its line, a locality besides it, no date) and its text is the literal
       an elevation field settles from the same label
-      (agreement.literal_refusal, step._taken); and the check stage marks one
-      cut short (ontology_checks._extent_marks). The old path keeps main's: a
+      (agreement.literal_refusal, step._taken), an elevation the guard on
+      another field's text takes not counting; and the check stage marks one
+      cut short (ontology_checks._extent_marks), only where its label's next
+      line is the locality going on ("Davao Prov." after "E. slope Mt.
+      McKinley"; never "University of the Philippines" after "Los Banos,
+      Philippines", "Guatemala Exped. 1948" after "Yepocapa, Chimaltenango,
+      Guatemala", or a reading that writes "Mt" with no period: Codex's and
+      G51's round 1 on PR #437). The old path keeps main's: a
       town-only locality is cleared as not on the label, a precise location
       read from the transcript that holds an elevation is refused, and an
       organiser candidate that holds one can settle. A label whose only
@@ -1093,8 +1124,9 @@ rules:
       on the units path: the PRD's verbatim locality as written, at the root
       of the place tree, and the georeferencing document's verbatimLocality,
       whose example keeps the country's line. Code does not see a precise
-      location cut short within a line, or before a line that writes no
-      settled province or country; the model's instruction covers those.
+      location cut short within a line, or before a line that writes a name
+      no field settled ("Mindanao, P.I."); the model's instruction covers
+      those.
     check: code
     darwin_core: verbatimLocality
     source:

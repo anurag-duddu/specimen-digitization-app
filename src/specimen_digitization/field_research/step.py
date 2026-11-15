@@ -1134,7 +1134,8 @@ def _settled_elevations(run, settled: Mapping[str, FieldValue], readings: Sequen
         researched: Collection[str], human: frozenset[str]) -> dict[str, set[str]]:
     """The literals the elevation fields settle, by label, on the units path, which a precise
     location read from those labels may keep (agreement.literal_refusal's `elevations`): the
-    values this attempt's answers settle (`settled`: _first_pass) and those of the fields it
+    values this attempt's answers settle (`settled`: _first_pass, less the fields _taken takes)
+    and those of the fields it
     does not research that claim their text (_claims_text: settled before, or a person's), each
     under the labels of its value (_value_regions)."""
     from .agreement import FIELD_UNITS
@@ -2570,9 +2571,10 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     first = _first_pass(run, tasks_by_key, ordered, **common)
     taken = _taken(run, tasks_by_key, ordered, readings, first)
     # On the units path a precise location keeps an elevation only when an elevation field settles
-    # its text from that label (agreement.literal_refusal; the ontology's precise_location_extent).
-    elevations = _settled_elevations(run, first, readings, {outcome.key for outcome in ordered}, human) \
-        if units_path(run) else None
+    # its text from that label (agreement.literal_refusal; the ontology's precise_location_extent):
+    # an elevation the guard on text another field holds takes (_taken) settles nothing.
+    elevations = _settled_elevations(run, {key: value for key, value in first.items() if key not in taken},
+        readings, {outcome.key for outcome in ordered}, human) if units_path(run) else None
     applied, added = _apply_answers(run, tasks_by_key, ordered, taken=taken, evidence=evidence, blobs=blobs,
         decisions=decisions, elevations=elevations, **common)
     # A precise location that gives only an administrative marker beside the
@@ -2607,7 +2609,7 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
         # (ontology_checks.wait_for_sources).
         from .ontology_checks import wait_for_sources
 
-        for key in wait_for_sources(run, eligible=eligible):
+        for key in wait_for_sources(run, eligible=eligible, readings=readings):
             decisions.setdefault(key, {})["rule"] = "waits_for_source"
     # Last, so that a value derived above is never marked absent.
     declined: dict[str, str] = {}
@@ -4103,6 +4105,9 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
     - 282-291, on the units path: a determination date is before the
       collecting date only on the parts both dates have (the rule date_order,
       ontology_checks.determined_before), so "1946" and "1946-09-06" agree.
+    - On the units path, a field that waits for a held source
+      (ontology_checks.waiting_fields) adds no reason of its own: its source's
+      reason routes the record.
     - Not in canonical_materialization_v2: the code of each marked finding
       (marked_reasons), until a person approves the record, as the labels'
       review_required reasons above.
@@ -4144,8 +4149,16 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
     if len(evidence) != len(run.evidence):
         raise EvidenceIntegrityError("evidence_integrity_failure")
     mandatory = frozenset(mandatory)
+    # On the units path a field that waits for a held source adds no reason of its own: its
+    # source's reason routes the record (WP 2.3b, ontology_checks.waiting_fields).
+    if units_path(run):
+        from .ontology_checks import waiting_fields
+
+        waits = waiting_fields(run)
+    else:
+        waits = set()
     for key in sorted(latest_work):
-        if latest_work[key] not in TERMINAL:
+        if latest_work[key] not in TERMINAL or key in waits:
             continue
         value = run.fields.get(key) or FieldValue()
         # 227-231
@@ -4333,9 +4346,13 @@ APPROVAL = "human_approval_required"
 def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: date | None = None) -> None:
     """The clearance rules again, on a run field research has completed.
 
-    Nothing is researched or paid for and no field changes: a reviewer's value
-    stays exactly as the reviewer made it, and finalize_fields' rules decide
-    the record on the fields as they are. As on the native path, where every
+    Nothing is researched or paid for and a reviewer's value stays exactly as
+    the reviewer made it, and finalize_fields' rules decide the record on the
+    fields as they are. One change on the units path: a field that waits for
+    its source (ontology_checks.wait_for_sources) and whose source is no
+    longer held is derived from it by its rule, or, where its rule cannot
+    derive it, takes back the not-present value it had before it waited
+    (ontology_checks.follow_sources). As on the native path, where every
     review decision ends in the ordinary finalize: a run with a blocker (the
     decision's integrity check) stays blocked with it, a person's decision
     (``decided``) waits for their approval until they give it, and an approval
@@ -4346,6 +4363,11 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
         run.stage, run.disposition, run.reasons = "processing_blocked", None, [run.blocker]
         return
     pending = decided or APPROVAL in run.reasons
+    if units_path(run):
+        # A field that waited for its source follows it once a person settles it (WP 2.3b).
+        from .ontology_checks import follow_sources
+
+        follow_sources(run, asset_id=run.regions[0].asset_id if run.regions else None, blobs=blobs)
     finalize_fields(run, None, (), specimen=specimen, blobs=blobs, today=today)
     if pending and not run.human_approved:
         run.reasons = [*run.reasons, APPROVAL]
