@@ -2643,23 +2643,14 @@ On a label with no decided transcript, a reviewer's field correction leaves
 corrected value has no raw reading behind it): the way out is a transcription
 decision, which reruns field research and pays for it again.
 
-On the units path (WP 2.R of the reading-units program, 2026-11-15; G19: "a
-field still left with conflicting readings goes to needs human review"), a
-label loses `unresolved_transcription:<region>` only where its readings do not
-conflict (`step.readings_conflict`): no unit where its readers write different
-text, letter case and spacing aside (`agreement._differs`). Any other
-difference keeps the reason, whether or not a field seems to draw it, since a
-field may depend on a span its rows do not quote (a year on the next line
-decides the date "IV-25"). While a field of the run clears as not on the label,
-a unit whose readers' texts differ at all keeps the reason too, unless, on each
-reading, it lies wholly inside the literal of a label row of another field
-settled with that text: the label's reason is then the only one that routes the
-cleared field ("Malaise trap" against "MALAISE TRAP", the collecting method
-cleared). A row that cannot be placed on its reading (its quote not the
-reading's text there) accounts for nothing. A label the first pass gave up on
-keeps the reason, and so does a label whose readings come from one route or
-one model, or that has no units. A field left held on a label that loses the
-reason keeps its own, so the record still goes to a person for it.
+WP 2.R of the reading-units program (2026-11-15) tried narrowing
+`unresolved_transcription` on the units path and removed it: first for a
+label whose readers' differences no field's rows or text touched, then for one
+whose readers differ only in letter case or spacing. Review found a difference
+of each kind that decides a field: a year on the next line decides the date
+"IV-25" ("1948" against "1949"), and "Mt. Apo" against "MT. APO" below it
+changes whether that year is read with the date (`date_lines`). The rule above
+stands on both paths.
 
 A field cleared as not on the label, or a taxon cleared as unmatched, is
 reopened like any other field with Correct value: the reviewer's value is

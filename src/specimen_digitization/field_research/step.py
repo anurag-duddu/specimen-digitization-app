@@ -4352,56 +4352,6 @@ def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups
         for row in rows for lookup in lookups if _no_name(lookup, literal))
 
 
-def readings_conflict(run, region_id: str, allowed: frozenset[str] = frozenset()) -> bool:
-    """On the units path, whether the label's unresolved_transcription stands (WP 2.R; G19,
-    `docs/execution/golive/PLAN.md:77`: "a field still left with conflicting readings goes to
-    needs human review"). False only when all of these hold:
-    - the label has reading units and readings from two or more routes and two or more models
-      (independent_observations_missing's test);
-    - no unit is one where its readers write different text, letter case and spacing aside
-      (agreement._differs): readings that differ only so do not conflict. Any other difference
-      keeps the reason, whether or not a field seems to draw it: whether a field depends on a
-      span cannot be told from the span alone (a year on the next line decides a date the
-      literal "IV-25" quotes; the coordinator's ruling on #441's first review);
-    - when a field of the run clears as not on the label (not_on_label, with `allowed`), every
-      unit whose readers' texts are not identical lies wholly, for each of its readers, inside
-      the literal of a label row on that reading of another field settled with its text
-      (_claims_text), the row's text that field's literal, letter case and spacing aside: the
-      label's reason is the only one that routes a field owner decision A cleared (the
-      coordinator's ruling on #441's first review: "Malaise trap" against "MALAISE TRAP", the
-      collecting method cleared, keeps it).
-    A label the first pass gave up on keeps the reason before this test (scientific_reasons)."""
-    from .agreement import _differs, agreement_key
-    from specimen_digitization.application.organiser import parse_locator
-
-    entry = next((item for item in getattr(run, "reading_units", None) or () if item.label == region_id), None)
-    observations = [item for item in run.observations if item.region_id == region_id]
-    if (entry is None or len({item.route_id for item in observations}) < 2
-            or len({item.model_id for item in observations}) < 2 or any(_differs(unit) for unit in entry.units)):
-        return True
-    evidence = {item.id: item for item in run.evidence}
-    if not any(not_on_label(key, value, run, evidence, allowed) for key, value in run.fields.items()):
-        return False
-    readings = {reading.observation_id: reading for reading in run_readings(run) if reading.region_id == region_id}
-    human = human_keys(run)
-    held: dict[str, list[tuple[int, int]]] = {}
-    for key, value in run.fields.items():
-        if not _claims_text(key, value, human):
-            continue
-        for evidence_id in value.evidence_ids:
-            row = evidence.get(evidence_id)
-            location = parse_locator(row.locator) if row is not None else None
-            reading = readings.get(location.observation_id) if location is not None else None
-            if (reading is not None and reading.name == location.label
-                    and reading.text[location.quote_start:location.quote_end] == row.excerpt
-                    and agreement_key(reading.text[location.literal_start:location.literal_end])
-                    == agreement_key(value.literal)):
-                held.setdefault(location.observation_id, []).append((location.literal_start, location.literal_end))
-    return any(not all(observation in readings and any(start <= span.start and span.end <= end
-            for start, end in held.get(observation, ())) for observation, span in unit.readers.items())
-        for unit in entry.units if len({span.text for span in unit.readers.values()}) > 1)
-
-
 def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterable[str],
         qualified: frozenset[str], today: date, allowed: frozenset[str] = frozenset()) -> list[str]:
     """canonical_materialization_v2._scientific_reasons (182-295), ported.
@@ -4435,12 +4385,6 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
       (first_pass.given_up_regions) is unresolved_transcription however its
       fields settle, and whether or not its readers agree, until a person
       transcribes it: no first pass compared its readings.
-    - 203-217, on the units path: any other label is unresolved_transcription
-      only where readings_conflict holds (WP 2.R; G19): its readers write
-      different text at a unit, letter case and spacing aside, or it has one
-      reader or no units, or a field clears as not on the label and a unit
-      whose readers' texts differ is no settled field's text; a field held
-      there keeps its own reason.
     - 282-291, on the units path: a determination date is before the
       collecting date only on the parts both dates have (the rule date_order,
       ontology_checks.determined_before), so "1946" and "1946-09-06" agree.
@@ -4479,10 +4423,9 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
             drawn = [key for key, value in run.fields.items() if key != IRN and (
                 value.source_region_id == region.id or any(identifier in ids for identifier in value.verbatim_by_observation)
                 or any(item.id in value.evidence_ids and item.region_id == region.id for item in run.evidence))]
-            if (not drawn or any(run.fields[key].state != ValueState.SUPPORTED
+            if not drawn or any(run.fields[key].state != ValueState.SUPPORTED
                     or not _raw_grounded(run.fields[key], run) and key not in qualified
-                    for key in drawn if latest_work.get(key) in TERMINAL)) and (
-                    not units_path(run) or readings_conflict(run, region.id, allowed)):
+                    for key in drawn if latest_work.get(key) in TERMINAL):
                 reasons.append(f"unresolved_transcription:{region.id}")
     evidence = {item.id: item for item in run.evidence}
     # 219-220: an identity collision is an integrity failure, never a review reason.
