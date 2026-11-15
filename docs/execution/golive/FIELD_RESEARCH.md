@@ -2000,7 +2000,16 @@ this one, gets its own entry.
   collection manager's answer of 2026-10-07), and the row's checks find its
   text only through what the organiser found for it (`step._organiser_texts`):
   in units-wp15c's four runs that was nothing on 105526327, whose label
-  writes the month "XI.46". For the collecting date and the
+  writes the month "XI.46". WP 2.R's item (iii) (2026-11-15) adds the code
+  check that makes the clearing certain, on the units path only: Verbatim
+  D/T/S also clears as not on the label when Date Visited From is supported,
+  not marked, read from the label and parsed at day precision, and no reading
+  of any label writes another date with no day ("XI.46", "Sept. 1946"), a
+  season ("Summer 1914"), a month's name alone, or a time or part of the day
+  ("10 pm", "sunrise"; the PRD's examples and the plain English and Spanish
+  words) (`contracts.NOT_ON_LABEL_WHEN_DATE_EXACT`,
+  `step.date_exact_and_alone`, checked again when the record is finalized;
+  `tests/field_research/test_verbatim_dts.py`). For the collecting date and the
   collectors no source settles that their absence clears, so they keep
   today's result.
 

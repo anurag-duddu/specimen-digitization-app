@@ -104,6 +104,7 @@ from .contracts import (
     SourceAnswer,
     SourceTools,
     not_on_label_fields,
+    not_on_label_when_date_exact,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -4048,7 +4049,7 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
         for stale in [i for i in value.evidence_ids if i in rows and rows[i].locator == NOT_ON_LABEL_CHECK]:
             value.evidence_ids.remove(stale)
             value.evidence_relations.pop(stale, None)
-    allowed = not_on_label_keys(profile)
+    allowed = not_on_label_allowed(run, profile, readings)
     if not allowed or not _whole_label_read(run, readings):
         why.update(dict.fromkeys(lacking, "label_not_read_whole" if allowed else "not_listed"))
         return []
@@ -4059,7 +4060,8 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
         outcome, value = by_key.get(key), run.fields.get(key)
         if key not in allowed or key in human or outcome is None or value is None:
             if key in lacking:
-                why[key] = "not_listed"
+                why[key] = ("date_not_exact_and_alone" if key not in allowed and units_path(run)
+                    and key in not_on_label_when_date_exact(profile.id, profile.version) else "not_listed")
             continue
         answer = outcome.answer
         if key not in lacking:
@@ -4142,6 +4144,122 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
                 and row.source == SOURCE and row.locator == NOT_ON_LABEL_CHECK and row.excerpt in expected):
             return True
     return False
+
+
+# ---- Verbatim D/T/S beside an exact collecting date (WP 2.R item (iii)) ----
+
+COLLECTING_DATE = "date_visited_from"
+ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
+# What Verbatim D/T/S holds besides a date with no day, as words folded with their periods dropped
+# (written._bare): a season, or a time or part of the day. The PRD's examples ("Summer 1914; am; pm",
+# "sunrise", "daylight"; PRD.md, its section on date and time semantics clarified 2026-10-07), and the
+# plain English and Spanish words for the others.
+SEASON_WORDS = frozenset({"spring", "summer", "autumn", "fall", "winter", "primavera", "verano", "otono",
+    "invierno"})
+DAY_PART_WORDS = frozenset({"am", "pm", "sunrise", "sunset", "daylight", "dawn", "dusk", "night", "morning",
+    "afternoon", "evening", "noon", "midnight", "manana", "tarde", "noche", "amanecer", "atardecer", "anochecer",
+    "madrugada", "mediodia", "medianoche"})
+
+
+def _clock_time() -> re.Pattern[str]:
+    """A clock time: hours and minutes ("10:30", "10h30"), or a number with "am", "pm", "a.m.",
+    "p.m." or a time unit of written.OTHER_UNITS ("10 pm", "22 h", "2300 hrs")."""
+    from .written import OTHER_UNITS
+
+    units = "|".join(re.escape(unit) for unit in sorted(OTHER_UNITS["time"], key=len, reverse=True))
+    return re.compile(r"(?<![0-9])[0-9]{1,2}[^\S\n]*[:h][^\S\n]*[0-9]{2}(?![0-9])"
+        r"|(?<![0-9A-Za-z])[0-9]{1,4}(?:[.:][0-9]{2})?[^\S\n]*(?:a\.?[^\S\n]?m\.?|p\.?[^\S\n]?m\.?|"
+        + units + r")(?![A-Za-z])", re.I)
+
+
+def _no_day(found) -> bool:
+    """Whether a date check read the text as a date with no day: a month ("XI.46", "Sept. 1946"), or a
+    range with such an end."""
+    return any("month" in (reading.precision, reading.end_precision) for reading in found.readings)
+
+
+def other_date_or_time(readings: Sequence[Reading], settled: FieldValue, date_rules) -> str | None:
+    """The first text a reading writes that Verbatim D/T/S may hold, or None:
+    - a time or part of the day anywhere: a clock time (_clock_time) or a word of DAY_PART_WORDS;
+    - besides the settled collecting date (its literal and each reader's verbatim of it, where they
+      stand), a date with no day: on each line, from each word, the longest run of up to
+      written.DATE_WORDS words that checks.parse_date reads (units=True: a slide code is no date), as
+      the collecting date's field or as Date Identified's, is one when it reads as a month (_no_day);
+      a word in no date is one when it is a season (SEASON_WORDS) or a month's name (date_months)."""
+    from . import checks
+    from specimen_digitization.application.date_months import month_of
+    from .written import DATE_WORDS, EDGE, _bare, words
+
+    clock = _clock_time()
+    written = {text for text in (settled.literal, *settled.verbatim_by_observation.values()) if text and text.strip()}
+    for reading in readings:
+        text = reading.text
+        if (hit := clock.search(text)) is not None:
+            return hit.group()
+        taken = [hit.span() for item in written for hit in re.finditer(re.escape(item), text)]
+        offset = 0
+        for line in text.splitlines(keepends=True):
+            spans = [(offset + start, offset + end) for start, end in words(line)]
+            offset += len(line)
+            for start, end in spans:
+                if _bare(text[start:end]) in DAY_PART_WORDS:
+                    return text[start:end]
+            index = 0
+            while index < len(spans):
+                if any(a < spans[index][1] and spans[index][0] < b for a, b in taken):
+                    index += 1
+                    continue
+                longest = None
+                for last in range(index, min(len(spans), index + DATE_WORDS)):
+                    if any(a < spans[last][1] and spans[last][0] < b for a, b in taken):
+                        break
+                    literal = text[spans[index][0]:spans[last][1]].strip(EDGE).rstrip(".,;:")
+                    if not any(char.isdigit() for char in literal):
+                        continue
+                    found = [checks.parse_date(literal, reading_texts=[text], date_rules=date_rules, field=field,
+                        units=True) for field in (COLLECTING_DATE, checks.DETERMINATION_FIELD)]
+                    found = [item for item in found if item.readings]
+                    if found:
+                        longest = last, literal, found
+                if longest is not None:
+                    last, literal, found = longest
+                    if any(_no_day(item) for item in found):
+                        return literal
+                    index = last + 1
+                    continue
+                word = text[spans[index][0]:spans[index][1]]
+                if _bare(word) in SEASON_WORDS or month_of(word.strip(EDGE)) is not None:
+                    return word
+                index += 1
+    return None
+
+
+def date_exact_and_alone(run, profile: CollectionProfile, readings: Sequence[Reading] | None = None) -> bool:
+    """WP 2.R item (iii): whether the collecting date is exact and the label writes nothing else Verbatim
+    D/T/S holds, so that, on the units path, it may clear as not on the label
+    (contracts.NOT_ON_LABEL_WHEN_DATE_EXACT): Date Visited From is supported, not a person's value, settled
+    from the label (SETTLED_LAYERS, with a literal), its parsed value an ISO date at day precision, and not
+    marked (marked_reasons); and no reading of any label writes a date with no day besides it, a season, a
+    month's name, or a time or part of the day (other_date_or_time)."""
+    readings = run_readings(run) if readings is None else readings
+    value = run.fields.get(COLLECTING_DATE)
+    if (value is None or COLLECTING_DATE in human_keys(run) or value.state != ValueState.SUPPORTED
+            or value.layer not in SETTLED_LAYERS or not value.literal
+            or ISO_DAY.fullmatch(value.parsed or "") is None
+            or any(code.startswith(f"marked:{COLLECTING_DATE}:") for code in marked_reasons(run))):
+        return False
+    return other_date_or_time(readings, value, profile.date_rules) is None
+
+
+def not_on_label_allowed(run, profile: CollectionProfile, readings: Sequence[Reading] | None = None) -> frozenset[str]:
+    """The fields that may clear as not on the label on this run: the profile's list (not_on_label_keys)
+    and, on the units path while date_exact_and_alone holds, its fields that clear so only beside an exact
+    collecting date (contracts.not_on_label_when_date_exact)."""
+    allowed = not_on_label_keys(profile)
+    extra = not_on_label_when_date_exact(profile.id, profile.version)
+    if extra and units_path(run) and date_exact_and_alone(run, profile, readings):
+        return allowed | extra
+    return allowed
 
 
 # ---- each field's trace ---------------------------------------------------
@@ -4680,7 +4798,7 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     qualified = frozenset(key for key, value in run.fields.items()
         if value.state == ValueState.SUPPORTED and value.layer == "derived")
     human = scientific_reasons(run, work, mandatory=profile.mandatory_fields, qualified=qualified, today=today,
-        allowed=not_on_label_keys(profile))
+        allowed=not_on_label_allowed(run, profile))
     # canonical_materialization_v2 447-450: a person's carried decision is
     # reviewed again, until a person approves the record (on the native path the
     # approval's ordinary finalize no longer names it).

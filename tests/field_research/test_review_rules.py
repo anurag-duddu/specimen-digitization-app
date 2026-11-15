@@ -324,7 +324,8 @@ def test_a_field_held_on_a_label_whose_reason_is_dropped_keeps_its_own(tmp_path,
 
 # The fields contracts.NOT_ON_LABEL leaves out, each kept out by WP 2.R from its sources (contracts.py's
 # comment): their absence keeps mandatory_unresolved on both paths. identified_by_irn never routes (G16, G43);
-# the taxon follows owner decision B as WP 2.T left it.
+# the taxon follows owner decision B as WP 2.T left it. Verbatim D/T/S, which WP 2.R's item (iii) clears on the
+# units path beside an exact collecting date (contracts.NOT_ON_LABEL_WHEN_DATE_EXACT), is test_verbatim_dts.py's.
 LEFT_OUT = ("fmnh_ins_number", "country", "province_state", "date_visited_from", "date_visited_to", "collectors",
     "verbatim_dts")
 
@@ -336,7 +337,7 @@ def test_the_not_on_label_list_is_unchanged_by_wp_2r():
     assert contracts.not_on_label_fields(*key) == listed
 
 
-@pytest.mark.parametrize("key", LEFT_OUT)
+@pytest.mark.parametrize("key", [key for key in LEFT_OUT if key != "verbatim_dts"])
 def test_a_field_left_off_the_list_keeps_its_reason_when_the_label_does_not_write_it(tmp_path, key,
         first_pass_path):
     """Its line is off the label, the organiser gives no candidate for it and its expert answers

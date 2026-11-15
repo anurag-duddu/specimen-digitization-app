@@ -77,12 +77,24 @@ NO_APPROVED_AUTHORITY = frozenset({"identified_by_irn"})
 # and the row's checks find its text only through what the organiser found for
 # it, which in units-wp15c's four runs was nothing on 105526327, whose label
 # writes the month "XI.46"; for the collecting date and the collectors no source
-# settles that their absence clears.
+# settles that their absence clears. WP 2.R's item (iii) adds Verbatim D/T/S
+# where a code check makes that certain (NOT_ON_LABEL_WHEN_DATE_EXACT).
 NOT_ON_LABEL: Mapping[tuple[str, str], frozenset[str]] = {
     ("zoology_insects_slides", "1.0.0"): frozenset({
         "county", "city", "collection_code", "collection_method", "date_identified", "habitat",
         "elevation_from_m", "elevation_to_m", "elevation_from_ft", "elevation_to_ft", "precise_location",
     }),
+}
+# WP 2.R item (iii), 2026-11-15, units path only: the fields of a profile
+# version that also clear as "not on the label" while the collecting date is
+# exact and the label writes no other date or time (step.date_exact_and_alone).
+# Verbatim D/T/S holds what the PRD records as the collection manager's EMu
+# instruction, "Used to hold non EMu-standard format time and date values",
+# with the examples "Avril 1917; Summer 1914; am; pm", used "when there is no
+# exact time or date" (PRD.md, its section on date and time semantics clarified
+# 2026-10-07; ontology/specimen.yaml, verbatim_dts).
+NOT_ON_LABEL_WHEN_DATE_EXACT: Mapping[tuple[str, str], frozenset[str]] = {
+    ("zoology_insects_slides", "1.0.0"): frozenset({"verbatim_dts"}),
 }
 # Never "not on the label", whatever a profile lists: their absence usually
 # means a reading failed. The taxon follows owner decision B instead (a name
@@ -102,6 +114,15 @@ def not_on_label_fields(profile_id: str, version: str) -> frozenset[str]:
     """
     published = version.partition("+")[0]
     return NOT_ON_LABEL.get((profile_id, published), frozenset()) - NEVER_NOT_ON_LABEL
+
+
+def not_on_label_when_date_exact(profile_id: str, version: str) -> frozenset[str]:
+    """The fields of this profile version that may clear as "not on the label"
+    on the units path only beside an exact collecting date
+    (NOT_ON_LABEL_WHEN_DATE_EXACT), build metadata ignored as in
+    not_on_label_fields."""
+    published = version.partition("+")[0]
+    return NOT_ON_LABEL_WHEN_DATE_EXACT.get((profile_id, published), frozenset()) - NEVER_NOT_ON_LABEL
 
 
 @dataclass(frozen=True)
