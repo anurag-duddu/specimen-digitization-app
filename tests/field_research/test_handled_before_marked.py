@@ -8,14 +8,10 @@ magic".
 2. When every answer of an expert is refused by its checks, the units path keeps each refusal's check
    and literal (FieldOutcome.rejected), and the field's reason names them (census cause H1).
 3. One re-ask before a mark (field_research/reask.py).
-4. The image test's neighbour guard narrowed (agreement.image_names with the field's key): close to the
-   wp15c follow-up's variant N2, a line break ends the walk, for a field other than a precise location
-   whose covering units its readers write alike, where the next line is certainly not the field's: wholly
-   other settled fields' texts or text of another kind (Codex's round 1 on PR #439 and the coordinator's
-   ruling). The brief's N1 (a differing neighbour blocks only when
-   its image is uncertain or not visible) was tried and rejected: it cleared a cut-short value on PR
-   #425's pinned reviewer inputs (test_settlement_rule.py's TABLE: "forest" of "cloud forest", "trap" of
-   "light trap", "Danaus plexippus" of the trinomial, "Mt. McKinley" of "E Slope Mt. McKinley").
+4. The image test's neighbour guard stays main's. A narrowed variant (a line break ending the walk outward,
+   near the wp15c follow-up's N2, with the brief's N1 rejected before it) was tried and removed: each review
+   round on PR #439 found another input it cleared cut short. The inputs stay here as regressions, marked.
+5. An elevation whose expert's options name two elevations is not settled by the rule (#437's G51 review).
 
 Every test runs on both first-pass paths (conftest.py), unless its module sets one. On the old path,
 live in production until WP 1.8, each test asserts origin/main's result."""
@@ -519,7 +515,7 @@ def test_the_re_ask_sentence_follows_the_input_in_the_expert_s_request_on_the_un
         assert ASKED not in sent and experts.REASK_PREFIX not in sent
 
 
-# ---- 4. the neighbour guard narrowed ------------------------------------------------------------
+# ---- 4. the neighbour guard, as on main (a variant tried and removed) ---------------------------
 
 def label_of(rows, images):
     """One label's two readers ("a", "b") and its units by hand: `rows` gives each unit's line and each
@@ -542,27 +538,51 @@ def label_of(rows, images):
     return {key: Reading(f"1{key.upper()}", "L", key, "raw_reading", text, units=built) for key, text in texts.items()}
 
 
-# 105526322's collectors' line below its elevation's, where reader B writes the foot mark.
-HOOGSTRAAL = [(1, "6-Sept-1946,", "6-Sept-1946,"), (1, "Elev.6400", "Elev.6400'"), (2, "H. Hoogstraal leg.",
-    "H. Hoogstraal leg.")]
+
+# The inputs each round of review on PR #439 found the narrowed guard clearing, cut short, where main's guard
+# marks them; the variant was removed (the coordinator's decision after G51's round 3). Under main's guard
+# (agreement.image_names) every one stays marked.
+REVIEW_INPUTS = [
+    ("collectors", [(1, "leg. J. Smith &", "leg. J. Smith &"), (2, "R. Jones", "R. James")], "J. Smith &"),
+    ("habitat", [(1, "cloud", "rain"), (2, "forest", "forest")], "forest"),
+    ("collection_method", [(1, "light", "flight"), (2, "trap", "trap")], "trap"),
+    ("habitat", [(1, "cloud", "cloud"), (2, "forest", "fcrest")], "cloud"),
+    ("collection_method", [(1, "light", "light"), (2, "trap", "trep")], "light"),
+    ("collectors", [(1, "J. Smith &", "J. Smith &"), (2, "Hoogstraal", "Hoogstral")], "J. Smith &"),
+    ("taxon", [(1, "Danaus", "Danaus"), (1, "plexippus", "plexippus"), (2, "megalippe", "")], "Danaus plexippus"),
+    ("verbatim_dts", [(1, "6-Sept.", "6-Sept."), (2, "1946", "1948")], "6-Sept."),
+    ("collectors", [(1, "J. Smith &", "J. Smith &"), (2, "R. Jones", "R. Jones,")], "J. Smith &"),
+    ("collectors", [(1, "leg. J. Smith &", "leg. J. Smith &"), (2, "Cook", "Cook.")], "J. Smith &"),
+    ("collectors", [(1, "J. Smith", "J. Smith"), (2, "& Cook", "& Cook.")], "J. Smith"),
+    ("collectors", [(1, "J. Smith &", "J. Smith, &"), (2, "R. Jones", "R. Jones")], "R. Jones"),
+    ("collectors", [(1, "J. Smith", "J. Smith,"), (2, "& R. Jones", "& R. Jones")], "& R. Jones"),
+    ("city", [(1, "Yepocapa", "Yepocapa"), (2, "M 1200", "M 1250")], "Yepocapa"),
+]
+REVIEW_IDS = ["codex1-collectors-and", "codex1-cloud-forest", "codex1-light-trap", "g51r1-cloud-forest",
+    "g51r1-light-trap", "g51r1-collectors-and", "g51r1-danaus-megalippe", "g51r1-verbatim-dts-over-two-lines",
+    "codex2-r-jones-det", "g51r2-cook", "g51r2-next-line-joined", "g51r3-backward-joined", "g51r3-backward-and-literal",
+    "g51r2-place-reading"]
 
 
-def test_a_one_line_field_whose_readers_agree_is_named_across_a_line_break(first_pass_path):
-    """The named case: "H. Hoogstraal leg.", which both readers write and the image names, on the line
-    below "6-Sept-1946, Elev.6400" / "6-Sept-1946, Elev.6400'", a date and an elevation
-    (written.other_kind). For the collectors the walk outward stops at the line break, so the image names
-    it; main's walk (no key) and the precise location's (ACROSS_LINES) still stop at the differing unit,
-    and so does the collectors' when the two are on one line."""
-    readings = label_of(HOOGSTRAAL, ["a", "a", "a"])
-    assert agreement.image_names(readings["a"], "H. Hoogstraal", key="collectors")
-    assert not agreement.image_names(readings["a"], "H. Hoogstraal")
-    assert not agreement.image_names(readings["a"], "H. Hoogstraal", key="precise_location")
-    same_line = label_of([(1, *row[1:]) for row in HOOGSTRAAL], ["a", "a", "a"])
-    assert not agreement.image_names(same_line["a"], "H. Hoogstraal", key="collectors")
-    task = FieldTask("collectors", True, FieldValue(), tuple(Candidate(name, "H. Hoogstraal leg.", "H. Hoogstraal",
-        f"e{name}") for name in ("1A", "1B")), ())
+@pytest.mark.parametrize(("key", "rows", "literal"), REVIEW_INPUTS, ids=REVIEW_IDS)
+def test_the_review_rounds_cut_short_inputs_stay_marked(first_pass_path, key, rows, literal):
+    """Each input of Codex's and G51's rounds on PR #439 where a differing line beside the literal may be the
+    same field's: the image does not name the literal (a differing neighbour, named by the image, blocks), and
+    the label settles it marked (text_only), never cleared."""
+    readings = label_of(rows, ["a"] * len(rows))
+    assert not agreement.image_names(readings["a"], literal)
+    task = FieldTask(key, True, FieldValue(), tuple(Candidate(name, literal, literal, f"e{name}")
+        for name in ("1A", "1B")), FIELD_TOOLS[key])
     label = agreement.labels(task, tuple(readings.values()), [])["L"]
-    assert (label.settled, label.cleared) == (frozenset({"H. Hoogstraal"}), True)
+    assert (label.settled, label.cleared, label.why) == (frozenset({literal}), False, agreement.TEXT_ONLY)
+
+
+def test_a_not_visible_neighbour_on_the_next_line_and_a_named_one_after_it_block(first_pass_path):
+    """G51's probe_nv: "megalippe", which the image judges not visible, then "Hubner" / "Hiibner", which it
+    names: the walk goes past the not-visible unit to the differing one, which blocks."""
+    rows = [(1, "Danaus", "Danaus"), (1, "plexippus", "plexippus"), (2, "megalippe", ""), (2, "Hubner", "Hiibner")]
+    readings = label_of(rows, ["b", "b", NOT_VISIBLE, "a"])
+    assert not agreement.image_names(readings["b"], "Danaus plexippus")
 
 
 # 105526328's third label (wp15c r1/pair), lines 5 to 7: the elevation's readers differ, and so do the
@@ -572,12 +592,10 @@ ELEVATION_800 = [(5, "IV-24-48", "IV-24-48"), (6, "Elev. +800 ft.", "Elev. 4800 
 
 
 def test_105526328_s_elev_800_ft_stays_held(first_pass_path):
-    """The named case: where the readers differ at the field's own unit, the walk is main's, so a
-    differing unit on the next line still keeps the image from naming A's "Elev. +800 ft." (truth 4800
-    ft.): the expert's several_possibilities stays unsettled by the rule (step._by_rule), and an answer of
-    A's text has no IMAGE backing."""
+    """The named case: a differing unit on the next line keeps the image from naming A's "Elev. +800 ft."
+    (truth 4800 ft.): the expert's several_possibilities stays unsettled by the rule (step._by_rule), and an
+    answer of A's text has no IMAGE backing."""
     readings = label_of(ELEVATION_800, ["a", "a", "a"])
-    assert not agreement.image_names(readings["a"], "Elev. +800 ft.", key="elevation_from_ft")
     assert not agreement.image_names(readings["a"], "Elev. +800 ft.")
     task = FieldTask("elevation_from_ft", True, FieldValue(), (Candidate("1A", "Elev. +800 ft.", "Elev. +800 ft.", "ea"),
         Candidate("1B", "Elev. 4800 ft.", "Elev. 4800 ft.", "eb")), FIELD_TOOLS["elevation_from_ft"])
@@ -586,171 +604,26 @@ def test_105526328_s_elev_800_ft_stays_held(first_pass_path):
     assert field_step._by_rule(task, several, tuple(readings.values()), (), date_rules=None) is None
     label = agreement.labels(task, tuple(readings.values()), [])["L"]
     assert not label.cleared
-    # The line above differing too, a date there: where the readers differ at the field's own unit the walk
-    # is main's whatever the next line holds.
-    dated = label_of([(5, "IV-24-48", "IV-24-46"), ELEVATION_800[1]], ["a", "a"])
-    assert not agreement.image_names(dated["a"], "Elev. +800 ft.", key="elevation_from_ft")
 
 
-@pytest.mark.parametrize(("rows", "named"), [
-    ([(1, "Shrubs", "Shrubs"), (1, "IV-24-48", "IV-24-46")], False),
-    ([(1, "IV-24-48", "IV-24-46"), (1, "Shrubs", "Shrubs")], False),
-    ([(1, "Shrubs", "Shrubs"), (2, "IV-24-48", "IV-24-46")], True),
-], ids=["same-line-after", "same-line-before", "next-line"])
-def test_a_neighbour_on_the_field_s_own_line_blocks_as_on_main(first_pass_path, rows, named):
-    """The line-break stop is a stop at a line break only: a habitat's differing neighbour on its own line
-    (a date) blocks as on main, before it or after it, even where the whole line is accounted for (here
-    another settled field wrote "Shrubs"); on the next line it bounds nothing."""
-    readings = label_of(rows, ["a", "a"])
-    cited = tuple((name, readings[name].text.index("Shrubs"), readings[name].text.index("Shrubs") + 6)
-        for name in ("a", "b"))
-    assert agreement.image_names(readings["a"], "Shrubs", key="habitat", settled=cited) is named
+def test_a_label_a_person_decided_changes_nothing_on_another_label(first_pass_path):
+    """G51's probe_shadow, as a regression: a label P whose transcript a person decided ("Cook"), then a label
+    L whose readers write "J. Smith" over "Cook" / "Cook.". L settles as it does with no P, marked."""
+    from specimen_digitization.field_research.contracts import FirstPassAdvice
 
-
-@pytest.mark.parametrize(("rows", "named"), [
-    ([(1, "IV-24-48", "lot #2"), (2, "forest", "forest")], False),
-    ([(1, "alt.", "alt"), (2, "forest", "forest")], False),
-    ([((1, 2), "dry\nwet", "dry\nwet"), (2, "IV-24-48", "IV-24-46"), (3, "forest", "forest")], False),
-    ([(1, "IV-24-48", "IV-24-46"), (2, "forest", "forest")], True),
-], ids=["one-reader-s-line-only", "a-heading-with-no-elevation", "a-line-a-unit-crosses", "both-lines-a-date"])
-def test_a_line_is_another_field_s_only_when_every_reader_s_text_there_is(first_pass_path, rows, named):
-    """agreement._not_this_field: every reader's text on the line must be accounted for, an elevation's
-    heading counts only beside an elevation, and a line another unit runs onto is never accounted for."""
-    readings = label_of(rows, ["a"] * len(rows))
-    assert agreement.image_names(readings["a"], "forest", key="habitat") is named
-
-
-def test_the_settlement_gives_the_guard_the_other_settled_fields_texts(tmp_path, first_pass_path, monkeypatch):
-    """step._settlement passes where the other fields settled from the label are written, as their
-    provenance cites them (step._settled_texts: observation and offsets), to the rule (agreement.labels'
-    `settled`); every other call, and every call on the old path, passes none."""
-    seen = []
-    original = agreement.labels
-
-    def spy(task, readings, answers, **kwargs):
-        seen.append((task.key, tuple(kwargs.get("settled", ()))))
-        return original(task, readings, answers, **kwargs)
-
-    monkeypatch.setattr(agreement, "labels", spy)
-    rig = build_rig(tmp_path)
-    settle(rig, Scripted({}))
-    run = rig.specimen.run
-    given = [settled for key, settled in seen if key == "habitat" and settled]
-    if first_pass_path == "old":
-        assert not [settled for _, settled in seen if settled]
-        return
-    assert given == [field_step._settled_texts(run, "habitat")]
-    texts = {reading.observation_id: reading.text for reading in field_step.run_readings(run)}
-    cited = {texts[observation][start:end] for observation, start, end in given[0]}
-    # The collectors' organiser row locates "J. Smith"; the keyed lines' parser rows carry no offsets
-    # (a "region:" locator), so they cite no occurrence.
-    assert cited == {"J. Smith"}
-
-
-@pytest.mark.parametrize(("line", "text", "image", "named"), [
-    (2, "megalippe", NOT_VISIBLE, True), (1, "megalippe", NOT_VISIBLE, True), (2, "megalippe", UNCERTAIN, False),
-    (2, "megalippe", "a", False), (1, "megalippe", UNCERTAIN, False), (1, "megalippe", "a", False),
-    (2, "IV-24-48", UNCERTAIN, True), (2, "IV-24-48", "a", True), (1, "IV-24-48", "a", False),
-], ids=["not-visible-next-line", "not-visible-same-line", "uncertain-next-line", "named-next-line",
-    "uncertain-same-line", "named-same-line", "a-date-next-line-uncertain", "a-date-next-line-named",
-    "a-date-same-line"])
-def test_a_differing_neighbour_blocks_as_on_main_unless_its_line_is_certainly_another_field_s(first_pass_path, line,
-        text, image, named):
-    """The named case and the line-break stop: A writes "Danaus plexippus" and then a text B does not write,
-    and the image names the two words both write. A not-visible neighbour keeps main's result, named (the
-    brief's N1 would block it), on the same line or the next. "megalippe" on the next line may go on with
-    the taxon, so it blocks as on main whatever its image; a date there ("IV-24-48", written.other_kind)
-    certainly does not, and bounds nothing. On the field's own line every differing neighbour that is
-    not "not visible" blocks, as on main."""
-    rows = [(1, "Danaus", "Danaus"), (1, "plexippus", "plexippus"), (line, text, "")]
-    readings = label_of(rows, ["b", "b", image])
-    assert agreement.image_names(readings["b"], "Danaus plexippus", key="taxon") is named
-    if image == NOT_VISIBLE or line == 1:
-        assert agreement.image_names(readings["b"], "Danaus plexippus") is named
-
-
-@pytest.mark.parametrize(("key", "rows", "literal"), [
-    ("collectors", [(1, "leg. J. Smith &", "leg. J. Smith &"), (2, "R. Jones", "R. James")], "J. Smith &"),
-    ("habitat", [(1, "cloud", "rain"), (2, "forest", "forest")], "forest"),
-    ("collection_method", [(1, "light", "flight"), (2, "trap", "trap")], "trap"),
-    ("habitat", [(1, "cloud", "cloud"), (2, "forest", "fcrest")], "cloud"),
-    ("collection_method", [(1, "light", "light"), (2, "trap", "trep")], "light"),
-    ("collectors", [(1, "J. Smith &", "J. Smith &"), (2, "Hoogstraal", "Hoogstral")], "J. Smith &"),
-    ("taxon", [(1, "Danaus", "Danaus"), (1, "plexippus", "plexippus"), (2, "megalippe", "")], "Danaus plexippus"),
-    ("verbatim_dts", [(1, "6-Sept.", "6-Sept."), (2, "1946", "1948")], "6-Sept."),
-], ids=["codex-collectors-and", "codex-cloud-forest", "codex-light-trap", "g51-cloud-forest", "g51-light-trap",
-    "g51-collectors-and", "g51-danaus-megalippe", "g51-verbatim-dts-over-two-lines"])
-def test_a_line_that_may_go_on_with_the_field_keeps_main_s_guard(first_pass_path, key, rows, literal):
-    """Codex's and G51's round 1 on PR #439, the named cases: the readers agree at the literal's units, and
-    the differing line beside it may be the same field's (a second collector after "&", "cloud" or "light"
-    before or after the line, a subspecies, the year of verbatim D/T/S, whose brief keeps its line breaks).
-    The walk is main's: the image does not name the literal, and the label settles it marked (text_only),
-    never cleared."""
-    readings = label_of(rows, ["a"] * len(rows))
-    assert not agreement.image_names(readings["a"], literal, key=key)
-    task = FieldTask(key, True, FieldValue(), tuple(Candidate(name, literal, literal, f"e{name}")
-        for name in ("1A", "1B")), FIELD_TOOLS[key])
-    label = agreement.labels(task, tuple(readings.values()), [])["L"]
-    assert (label.settled, label.cleared, label.why) == (frozenset({literal}), False, agreement.TEXT_ONLY)
-
-
-def test_a_not_visible_neighbour_on_the_next_line_keeps_main_s_walk(first_pass_path):
-    """G51's probe_nv: "megalippe", which the image judges not visible, and "Hubner" / "Hiibner" on the
-    next line. The line may go on with the taxon, so the walk is main's: past the not-visible unit to the
-    differing one the image names, which blocks."""
-    rows = [(1, "Danaus", "Danaus"), (1, "plexippus", "plexippus"), (2, "megalippe", ""), (2, "Hubner", "Hiibner")]
-    readings = label_of(rows, ["b", "b", NOT_VISIBLE, "a"])
-    assert not agreement.image_names(readings["b"], "Danaus plexippus", key="taxon")
-    assert not agreement.image_names(readings["b"], "Danaus plexippus")
-
-
-@pytest.mark.parametrize(("key", "rows", "literal", "named"), [
-    ("elevation_from_ft", [(1, "4800 ft.", "4800 ft."), (2, "Elev. 1200", "Elev. 1250")], "4800 ft.", False),
-    ("elevation_from_ft", [(1, "4800 ft.", "4800 ft."), (2, "IV-24-48", "IV-24-46")], "4800 ft.", True),
-    ("habitat", [(1, "forest", "forest"), (2, "Elev. 1200", "Elev. 1250")], "forest", True),
-    ("date_identified", [(1, "1950", "1950"), (2, "Elev. 1200", "Elev. 1250")], "1950", False),
-], ids=["an-elevation-below-an-elevation", "a-date-below-an-elevation", "an-elevation-below-a-habitat",
-    "a-date-field-keeps-its-line-breaks"])
-def test_only_another_kind_s_text_on_the_next_line_bounds_nothing(first_pass_path, key, rows, literal, named):
-    """The coordinator's ruling on G51's round 1: "another kind" is a kind other than the field's own, so an
-    elevation on the next line may go on with an elevation field and keeps main's walk; and the stop never
-    applies to a field whose brief keeps line breaks (agreement.KEEPS_LINE_BREAKS: the dates, verbatim
-    D/T/S, the precise location)."""
-    readings = label_of(rows, ["a", "a"])
-    assert agreement.image_names(readings["a"], literal, key=key) is named
-
-
-@pytest.mark.parametrize(("settled", "named"), [
-    ((("a", 0, 8), ("b", 0, 8)), True), ((), False), ((("a", 0, 8),), False), ((("a", 0, 4), ("b", 0, 8)), False),
-    ((("c", 0, 8), ("d", 0, 8)), False),
-], ids=["cited-in-both-readings", "nothing-cited", "cited-in-one-reading", "a-part-cited", "cited-on-another-label"])
-def test_a_line_that_is_another_settled_field_s_cited_text_bounds_nothing(first_pass_path, settled, named):
-    """The line-break stop by another settled field's text (agreement.image_names' `settled`, from
-    step._settled_texts): "forest" below "Yepocapa," / "Yepocapa" bounds nothing for the habitat when the
-    city's provenance cites "Yepocapa" there in both readings, the comma left. Text cited in one reading
-    only, a part of the word, or the same words cited on another label's readings ("c", "d") account for
-    nothing (the coordinator's ruling on Codex's round 2 of PR #439)."""
-    rows = [(1, "Yepocapa,", "Yepocapa"), (2, "forest", "forest")]
-    readings = label_of(rows, ["a", "a"])
-    assert agreement.image_names(readings["a"], "forest", key="habitat", settled=settled) is named
-
-
-def test_a_name_another_field_settled_on_another_label_does_not_account_for_this_label_s_line(first_pass_path):
-    """Codex's round 2 on PR #439: the collectors "J. Smith &" over "R. Jones" / "R. Jones,", and a
-    determination label "R. Jones det." whose "R. Jones" settled another field. That field's provenance
-    cites the determination label's readings, so the collection label's line is not accounted for: the
-    walk is main's and "J. Smith &" settles marked, never cleared. Cited on the collection label itself it
-    stays marked too: the literal ends with a joiner (agreement.LINE_JOINERS, G51's round 2)."""
-    readings = label_of([(1, "J. Smith &", "J. Smith &"), (2, "R. Jones", "R. Jones,")], ["a", "a"])
-    task = FieldTask("collectors", True, FieldValue(), tuple(Candidate(name, "J. Smith &", "J. Smith &", f"e{name}")
-        for name in ("1A", "1B")), ())
-    elsewhere = (("det-a", 0, 8), ("det-b", 0, 8))
-    assert not agreement.image_names(readings["a"], "J. Smith &", key="collectors", settled=elsewhere)
-    label = agreement.labels(task, tuple(readings.values()), [], settled=elsewhere)["L"]
-    assert (label.settled, label.cleared, label.why) == (frozenset({"J. Smith &"}), False, agreement.TEXT_ONLY)
-    here = tuple((name, readings[name].text.index("R. Jones"), readings[name].text.index("R. Jones") + 8)
-        for name in ("a", "b"))
-    assert not agreement.image_names(readings["a"], "J. Smith &", key="collectors", settled=here)
+    readings = label_of([(1, "J.", "J."), (1, "Smith", "Smith"), (2, "Cook", "Cook.")], ["a", "a", UNCERTAIN])
+    advice = FirstPassAdvice(preferred="2A", rationale="", reader_notes={}, differences=(), person_decided=True)
+    person = Reading("2A", "P", "p", "decided_transcript", "Cook", first_pass=advice)
+    found = {}
+    for with_person in (False, True):
+        given = (*([person] if with_person else []), *readings.values())
+        candidates = [Candidate(name, "J. Smith", "J. Smith", f"e{name}") for name in ("1A", "1B")]
+        if with_person:
+            candidates.append(Candidate("2A", "Cook", "Cook", "e2A"))
+        task = FieldTask("collectors", True, FieldValue(), tuple(candidates), ())
+        label = agreement.labels(task, given, [])["L"]
+        found[with_person] = (label.settled, label.cleared, label.why)
+    assert found[True] == found[False] and found[False][1] is False
 
 
 # ---- 5. an elevation whose expert names two (#437's G51 review, the coordinator's ruling) --------
@@ -813,75 +686,3 @@ def test_a_re_ask_s_lookup_answer_does_not_repeat_its_call(first_pass_path, aske
         assert "source" not in got and "query" not in got and got["status"] == "no_match"
     else:
         assert (got["source"], got["query"]) == ("tgn", "Davao, Philippines")
-
-
-def test_a_settled_field_cites_only_its_own_rows_that_place_its_text(first_pass_path):
-    """step._settled_texts: each occurrence another settled field's label rows place (observation and
-    literal offsets); a row that contradicts the value, a row with no offsets, a derived value and the
-    field itself cite nothing."""
-    from specimen_digitization.application.domain import Evidence
-    from specimen_digitization.application.organiser import CandidateLocation, format_locator
-
-    def row(observation, start, end, locator=None):
-        return Evidence(kind="literal", source="field_research", excerpt="x", locator=locator or format_locator(
-            CandidateLocation("1A", observation, 0, 20, start, end)))
-
-    own, other, keyed, derived_row, mine = row("o1", 0, 8), row("o2", 3, 9), row("o1", 0, 1, "region:r1"), \
-        row("o1", 10, 14), row("o1", 15, 19)
-    run = SimpleNamespace(evidence=[own, other, keyed, derived_row, mine], fields={
-        "city": FieldValue(state=ValueState.SUPPORTED, layer="settled", evidence_ids=[own.id, other.id, keyed.id],
-            evidence_relations={own.id: "supports", other.id: "contradicts", keyed.id: "supports"}),
-        "country": FieldValue(state=ValueState.SUPPORTED, layer="derived", evidence_ids=[derived_row.id]),
-        "habitat": FieldValue(state=ValueState.SUPPORTED, layer="verbatim", evidence_ids=[mine.id])})
-    assert field_step._settled_texts(run, "habitat") == (("o1", 0, 8),)
-
-
-@pytest.mark.parametrize(("rows", "literal"), [
-    ([(1, "leg. J. Smith &", "leg. J. Smith &"), (2, "Cook", "Cook.")], "J. Smith &"),
-    ([(1, "J. Smith", "J. Smith"), (2, "& Cook", "& Cook.")], "J. Smith"),
-], ids=["the-literal-ends-with-a-joiner", "the-next-line-begins-with-one"])
-def test_a_value_joined_across_the_line_break_keeps_main_s_guard(first_pass_path, rows, literal):
-    """G51's round 2 on PR #439: the county "Cook" settled, and its provenance cites "Cook" on the
-    collectors' next line, which may be the second collector. A literal that ends with a joiner, or a
-    next line that begins with one (agreement.LINE_JOINERS), goes on: the walk is main's however the next
-    line is accounted for, and the collectors settle marked."""
-    readings = label_of(rows, ["a", "a"])
-    cook = tuple((name, readings[name].text.index("Cook"), readings[name].text.index("Cook") + 4)
-        for name in ("a", "b"))
-    assert not agreement.image_names(readings["a"], literal, key="collectors", settled=cook)
-    task = FieldTask("collectors", True, FieldValue(), tuple(Candidate(name, literal, literal, f"e{name}")
-        for name in ("1A", "1B")), ())
-    label = agreement.labels(task, tuple(readings.values()), [], settled=cook)["L"]
-    assert (label.cleared, label.why) == (False, agreement.TEXT_ONLY)
-
-
-def test_a_label_a_person_decided_lends_its_texts_to_no_other_label(first_pass_path):
-    """G51's probe_shadow: a label P whose transcript a person decided ("Cook"), then a label L whose
-    readers write "J. Smith" over "Cook" / "Cook." (no joiner, so the line check runs). P's settled texts
-    are not passed to L's guard as another field's (agreement.labels_by_rule keeps its `settled`
-    parameter): L settles as it does with no P, marked."""
-    from specimen_digitization.field_research.contracts import FirstPassAdvice
-
-    readings = label_of([(1, "J.", "J."), (1, "Smith", "Smith"), (2, "Cook", "Cook.")], ["a", "a", UNCERTAIN])
-    advice = FirstPassAdvice(preferred="2A", rationale="", reader_notes={}, differences=(), person_decided=True)
-    person = Reading("2A", "P", "p", "decided_transcript", "Cook", first_pass=advice)
-    found = {}
-    for with_person in (False, True):
-        given = (*([person] if with_person else []), *readings.values())
-        candidates = [Candidate(name, "J. Smith", "J. Smith", f"e{name}") for name in ("1A", "1B")]
-        if with_person:
-            candidates.append(Candidate("2A", "Cook", "Cook", "e2A"))
-        task = FieldTask("collectors", True, FieldValue(), tuple(candidates), ())
-        label = agreement.labels(task, given, [])["L"]
-        found[with_person] = (label.settled, label.cleared, label.why)
-    assert found[True] == found[False] and found[False][1] is False
-
-
-@pytest.mark.parametrize(("key", "named"), [("city", True), ("habitat", False)])
-def test_a_place_field_reads_the_next_line_as_a_place_s_text(first_pass_path, key, named):
-    """agreement._not_this_field reads the next line as a place's text for a place field
-    (written.other_kind(place=True), as the rest of the code reads a place's text): "M 1200" there is an
-    elevation for the city, and bounds nothing; for the habitat it is no other kind, and the walk is
-    main's."""
-    readings = label_of([(1, "Yepocapa", "Yepocapa"), (2, "M 1200", "M 1250")], ["a", "a"])
-    assert agreement.image_names(readings["a"], "Yepocapa", key=key) is named

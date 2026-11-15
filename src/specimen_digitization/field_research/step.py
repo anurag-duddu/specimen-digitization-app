@@ -2873,8 +2873,7 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
     # The answer's literal is offered to every label, whatever readings it names (agreement.refusal),
     # and, for an answer the rule settled from an expert's several_possibilities (_by_rule), its
     # options (`offered`), as the rule was given them.
-    found = labels(task, readings, answers, transcript=literal, named=named, offered=offered,
-        settled=_settled_texts(run, task.key))
+    found = labels(task, readings, answers, transcript=literal, named=named, offered=offered)
     rows = {item.id: item for item in run.evidence}
     for region, label in found.items():
         if not label.settled or not (label.cleared or label.why):
@@ -2903,29 +2902,6 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
         value.reason = " ".join(part for part in (value.reason, *notes) if part)
         run.findings.append(RunFinding(rule_id=SETTLEMENT, rule_version=SETTLEMENT_RULES, severity=severity,
             field_key=task.key, reason_code=code, evidence_ids=cited))
-
-
-def _settled_texts(run, key: str) -> tuple[tuple[str, int, int], ...]:
-    """Where the label writes the other fields settled from it (supported, in a layer settled from
-    the label, SETTLED_LAYERS): each occurrence their provenance cites, as (observation, start,
-    end) in that reading's text, from the label rows the value cites as its own (not contradicting
-    it) whose locator places the text (organiser.parse_locator). The image test's neighbour guard
-    accounts for a line by these occurrences alone, never by the same words elsewhere
-    (agreement.image_names' `settled`; the coordinator's ruling on Codex's round 2 of PR #439)."""
-    from specimen_digitization.application.organiser import parse_locator
-
-    rows = {item.id: item for item in run.evidence}
-    found = []
-    for other, value in run.fields.items():
-        if other == key or value.state != ValueState.SUPPORTED or value.layer not in SETTLED_LAYERS:
-            continue
-        for evidence_id in value.evidence_ids:
-            row = rows.get(evidence_id)
-            where = parse_locator(row.locator) if row is not None and row.kind == "literal" else None
-            if where is not None and value.evidence_relations.get(evidence_id) != "contradicts" \
-                    and where.literal_end > where.literal_start:
-                found.append((where.observation_id, where.literal_start, where.literal_end))
-    return tuple(dict.fromkeys(found))
 
 
 def _across_lines(outcomes: Sequence[FieldOutcome], by_name: Mapping[str, Reading]) -> tuple[FieldOutcome, ...]:
