@@ -9,7 +9,6 @@
     "taxonRank": "GENUS",
     "kingdom": "Animalia",
     "class": "Insecta",
-    "checklistKey": "7ddf754f-d193-4cc9-b351-99906754a03b",
     "verbose": "true"
    },
    "stored_status": "ambiguous",
@@ -262,7 +261,6 @@
     "taxonRank": "GENUS",
     "kingdom": "Animalia",
     "class": "Insecta",
-    "checklistKey": "7ddf754f-d193-4cc9-b351-99906754a03b",
     "verbose": "true"
    },
    "stored_status": "ambiguous",
@@ -388,7 +386,6 @@
     "taxonRank": "SPECIES",
     "kingdom": "Animalia",
     "class": "Insecta",
-    "checklistKey": "7ddf754f-d193-4cc9-b351-99906754a03b",
     "verbose": "true"
    },
    "stored_status": "ambiguous",
@@ -501,7 +498,6 @@
     "taxonRank": "GENUS",
     "kingdom": "Animalia",
     "class": "Insecta",
-    "checklistKey": "7ddf754f-d193-4cc9-b351-99906754a03b",
     "verbose": "true"
    },
    "stored_status": "ambiguous",
@@ -730,7 +726,6 @@
     "taxonRank": "GENUS",
     "kingdom": "Animalia",
     "class": "Insecta",
-    "checklistKey": "7ddf754f-d193-4cc9-b351-99906754a03b",
     "verbose": "true"
    },
    "stored_status": "ambiguous",

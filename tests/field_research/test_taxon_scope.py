@@ -35,7 +35,7 @@ from test_step import (
 )
 
 from specimen_digitization.application.domain import Evidence, FieldValue, Lookup, LookupStatus, ValueState
-from specimen_digitization.application.lookup import GbifTaxonomy
+from specimen_digitization.application.lookup import COL_XR, GbifTaxonomy
 from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.field_research import step as field_step
 from specimen_digitization.field_research.contracts import FieldAnswer, FieldOutcome, SourceAnswer, SourceCandidate
@@ -709,7 +709,7 @@ def stored(name, *, class_of=None):
 def test_a_name_whose_every_exact_gbif_record_lies_outside_insecta_never_succeeds(tmp_path, name):
     """units-wp15c's hosts written without a marker: every exact record GBIF gave is a mammal's."""
     found = GbifTaxonomy(LocalBlobs(tmp_path), stored(name)).lookup(name)
-    assert found.query == BODIES[name]["query"]
+    assert found.query == {**BODIES[name]["query"], "checklistKey": COL_XR}
     assert (found.status.value, found.status) == (BODIES[name]["stored_status"], LookupStatus.AMBIGUOUS)
 
 
