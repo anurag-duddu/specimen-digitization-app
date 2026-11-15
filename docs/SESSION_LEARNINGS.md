@@ -26255,6 +26255,12 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 - Review round 4 (Codex on 2da4fc4c6; G51 approved the same head): the guard regressions' `[old]` cases built their readings with units, so they ran the units path's rule under the old path's name. They now build the old path's readings, with no units (`on_path`), and assert main's old-path result: the readers' agreed literal (`BY_AGREEMENT`) for the 14 review inputs, the not-visible case and the person-label case, and nothing settled for 105526328. The image test and `step._by_rule` are the units path's, asserted on it only.
 - Learning: a fixture that runs a test on both paths proves nothing about the old path unless the test's inputs are what the old path builds. Readings that carry units take the units path's rule whatever the fixture says.
 
+## 2026-11-15 - The wp15c GBIF fixture's checklistKey was a gitleaks false alarm
+
+- The staged gitleaks hook flagged the five `checklistKey` lines (value `COL_XR`) of `tests/fixtures/gbif_wp15c_match_bodies.json` (PR #438) as generic-api-key, which blocked every local merge of main. The value is GBIF's public Catalogue of Life checklist dataset UUID (`COL_XR` in `application/lookup.py`), not a secret.
+- Fix, with no scanner exemption: the key is gone from the fixture's five `query` objects, and `test_a_name_whose_every_exact_gbif_record_lies_outside_insecta_never_succeeds` compares `found.query` with `{**BODIES[name]["query"], "checklistKey": COL_XR}`, so the full request dict is still pinned and the key comes from the code's own constant. `gitleaks detect --no-git --redact` on the fixture: 5 leaks before, none after.
+- Learning: a fixture that stores a public identifier under a key named like a credential trips the generic-api-key rule. Store it without that key and take it from the code's constant in the test.
+
 ## 2026-11-15 - WP 2.R of the reading-units program: the two review rules narrowed to their requirements
 
 - Task: WP 2.R of `docs/execution/units/PLAN.md` (the brief `~/specimen-golive/units-program/brief_wp2r_review_rules.md`, off-repo; the coordinator's re-plan, item 5). Branch `claude/wp2r-review-rules`, worktree `.claude/worktrees/wp2r-review-rules`, started from #439's branch at 2da4fc4c6 and merged with main af24b248d. Builder session; no merge. The owner typed on 2026-11-14: "4 shouldn't be flagged. It should be caught and handled. Goal isn't to throw everything at the user it is to help by being in in autonomy as much as possible." and "Harness needs to work and do its magic".
