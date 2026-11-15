@@ -7,8 +7,10 @@ row's precise location is the locality's lines as written, :325), 105526321's wh
 block, "E. slope Mt. McKinley" over "Davao Prov." over "Mindanao, P.I." (:30), and 105526328's
 municipio line (:268-289). Each test runs on both paths (conftest.py): on the units path a
 town-only locality is not cleared as not on the label, and on the old path each keeps
-origin/main's result. A precise location that holds an elevation is refused on both paths, as on
-origin/main: the coordinator's ruling of 2026-11-14 left that to WP 2.3.
+origin/main's result. A precise location that holds an elevation is refused on both paths when no
+elevation field settled its elevation text from the label; WP 2.3b's acceptance on the units path
+(the coordinator's ruling of 2026-11-14) is tested in test_elevations_and_extent.py, and changes
+here only test_105526329s_whole_locality_with_its_settled_elevation_settles_on_the_units_path.
 """
 
 from __future__ import annotations
@@ -48,11 +50,11 @@ def label_readings(text, units):
 
 
 @pytest.mark.parametrize("literal", [YEPOCAPA, "Yepocapa, 4800 ft.", MCKINLEY_3300])
-def test_a_precise_location_holding_an_elevation_is_refused_on_both_paths_until_wp_2_3(first_pass_path, literal):
-    """agreement.literal_refusal on the precise location read from the transcript: a locality that writes an
-    elevation among its lines is refused for it (HOLDS_AN_ELEVATION) on both paths, as on origin/main, so a
-    person decides. The units path's brief asks for the whole locality, the elevation included; WP 2.3 decides
-    when the code accepts it (the coordinator's ruling of 2026-11-14, the plan's WP 2.3 row)."""
+def test_a_precise_location_holding_an_elevation_is_refused_when_no_elevation_settled(first_pass_path, literal):
+    """agreement.literal_refusal on the precise location read from the transcript, with no elevation field's
+    literal given: a locality that writes an elevation among its lines is refused for it (HOLDS_AN_ELEVATION)
+    on both paths, as on origin/main, so a person decides. WP 2.3b accepts it on the units path only when the
+    elevation field settled its elevation text from that label (test_elevations_and_extent.py)."""
     text = YEPOCAPA if literal.startswith("Yepocapa") else MCKINLEY_3300
     readings = label_readings(text, first_pass_path == "units")
     task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
@@ -76,7 +78,9 @@ ELEVATION_REVIEW_CASES = [
 def test_the_review_rounds_elevation_inputs_are_refused_as_a_precise_location_on_both_paths(first_pass_path,
         literal):
     """Each is refused for an elevation it holds (agreement._holds_another_kind), on both paths, as on
-    origin/main, so no date, collector or elevation-only text settles as the precise location."""
+    origin/main, so no date, collector or elevation-only text settles as the precise location. WP 2.3b's rule
+    accepts none of them, whatever elevation settled
+    (test_elevations_and_extent.test_the_review_rounds_elevation_inputs_stay_refused_whatever_elevation_settled)."""
     readings = label_readings(literal + "\nChimaltenango, Guatemala", first_pass_path == "units")
     task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
 
@@ -105,11 +109,13 @@ def settled_run(tmp_path, text, scripts):
     return rig, run, decisions
 
 
-def test_105526329s_whole_locality_with_its_settled_elevation_waits_for_a_person_on_both_paths(tmp_path,
+def test_105526329s_whole_locality_with_its_settled_elevation_settles_on_the_units_path(tmp_path,
         first_pass_path):
-    """105526329's two locality lines answered whole, its elevation settled from "4800 ft.": the precise
-    location goes to review as text the elevation field claims (step._taken), on both paths, as on
-    origin/main's old path, until WP 2.3 decides."""
+    """105526329's two locality lines answered whole, its elevation settled from "4800 ft.": on the old path
+    the precise location goes to review as text the elevation field claims (step._taken), as on
+    origin/main. WP 2.3b changes the units path: the elevation text is the literal the elevation field
+    settled from that label, so the whole locality settles as written (the ontology's rule
+    precise_location_extent)."""
     from test_step import resolved
 
     rig, run, decisions = settled_run(tmp_path, YEPOCAPA, {**IN_YEPOCAPA,
@@ -117,8 +123,11 @@ def test_105526329s_whole_locality_with_its_settled_elevation_waits_for_a_person
         "precise_location": whole(YEPOCAPA)})
     place = run.fields["precise_location"]
     assert run.fields["elevation_from_ft"].state == ValueState.SUPPORTED
-    assert (place.state, place.literal) == (ValueState.UNRESOLVED, None)
-    assert place.reason == field_step.TAKEN.format(other="Elevation From (ft)") + " Both readers write the locality."
+    if first_pass_path == "units":
+        assert (place.state, place.literal) == (ValueState.SUPPORTED, YEPOCAPA)
+    else:
+        assert (place.state, place.literal) == (ValueState.UNRESOLVED, None)
+        assert place.reason == field_step.TAKEN.format(other="Elevation From (ft)") + " Both readers write the locality."
 
 
 def test_105526321s_whole_locality_block_settles_as_written_on_both_paths(tmp_path, first_pass_path):

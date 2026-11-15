@@ -182,10 +182,10 @@ def two_readers(key, first, second, *, line="leg. R. D. Mitchell"):
     return task, readings
 
 
-def refusal_of(task, readings, literal, *names):
+def refusal_of(task, readings, literal, *names, elevations=None):
     named = [reading for reading in readings if reading.name in (names or ("2A",))]
     return agreement.refusal(task, readings, literal=literal, named=named, value=None, authority_id=None,
-        cited=[], received=[])
+        cited=[], received=[], elevations=elevations)
 
 
 AGREE = {
@@ -260,7 +260,10 @@ def test_readers_that_agree_settle_on_the_spelling_of_the_reader_the_first_pass_
     2026-10-25 as NOT_DECIDED, G19's binding). On the units path, which
     prefers no reader, they agree on the spelling the image names, else the
     first reader's (agreement._spelled): cleared where the image names one,
-    marked where it is uncertain."""
+    marked where it is uncertain. There each candidate holds the elevation
+    "4800 ft.", which a precise location keeps only beside the elevation field's
+    same literal from its label (WP 2.3b, the rule precise_location_extent): it
+    is given here, so the spelling decides."""
     readings = (Reading("2A", "region-2", "obs-2A", "decided_transcript", "Yepocapa,4800 ft.\nIV-25 1948"),
         Reading("2B", "region-2", "obs-2B", "raw_reading", "Yepocapa, 4800 ft.\nIV-25 1948"))
     task = FieldTask("precise_location", False, FieldValue(state=ValueState.AMBIGUOUS),
@@ -275,7 +278,8 @@ def test_readers_that_agree_settle_on_the_spelling_of_the_reader_the_first_pass_
             [label] = agreement.labels(task, seen, []).values()
             assert (label.settled, label.cleared) == (frozenset({spelling}), cleared)
             other = next(text for text in ("Yepocapa,4800 ft.", "Yepocapa, 4800 ft.") if text != spelling)
-            refused = refusal_of(task, seen, other, "2A" if other.startswith("Yepocapa,4") else "2B")
+            refused = refusal_of(task, seen, other, "2A" if other.startswith("Yepocapa,4") else "2B",
+                elevations={"region-2": {"4800 ft."}})
             assert (refused.reason, refused.differ) == (agreement.DIFFER, True)
         return
     assert refusal_of(task, readings, "Yepocapa,4800 ft.") is None
@@ -605,12 +609,14 @@ def test_the_trace_names_the_field_read_from_the_transcript_never_its_text(tmp_p
 SPANISH_LABEL = "Yepocapa, 4800ft.\nIV-23-48\nR.D. Mitchell"
 
 
-def test_text_from_the_transcript_that_another_kind_of_field_settles_goes_to_review(tmp_path):
+def test_text_from_the_transcript_that_another_kind_of_field_settles_goes_to_review(tmp_path, first_pass_path):
     """105526329's locality: both readers write "Yepocapa, 4800ft.", whose
     "4800ft." the organiser gave as the elevation. The precise location read
-    from the transcript whole would hold that elevation: the step sends it to
-    review, naming the field. On origin/main it is unresolved as no
-    candidate."""
+    from the transcript whole would hold that elevation: on the old path the
+    step sends it to review, naming the field. On origin/main it is unresolved
+    as no candidate. On the units path (WP 2.3b, the rule
+    precise_location_extent) it keeps that elevation, which the elevation field
+    settled from the same label: it settles as written."""
     rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"),
         [("elevation_from_ft", name, "4800ft.", "Yepocapa, 4800ft.") for name in ("1A", "1B")])
     run = rig.specimen.run
@@ -619,16 +625,22 @@ def test_text_from_the_transcript_that_another_kind_of_field_settles_goes_to_rev
         "precise_location": answering(FieldAnswer(outcome="resolved", literal="Yepocapa, 4800ft.",
             reading_names=["1A", "1B"], explanation="Both readers write it."))}))
     place = run.fields["precise_location"]
+    assert run.fields["elevation_from_ft"].state == ValueState.SUPPORTED
+    if first_pass_path == "units":
+        assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa, 4800ft.")
+        assert "transcript_literal:precise_location" in [f.reason_code for f in run.findings]
+        return
     assert place.state == ValueState.UNRESOLVED
     assert place.reason == field_step.TAKEN.format(other="Elevation From (ft)") + " Both readers write it."
-    assert run.fields["elevation_from_ft"].state == ValueState.SUPPORTED
     assert "transcript_literal:precise_location" not in [f.reason_code for f in run.findings]
 
 
-def test_text_another_kind_of_field_claims_names_that_check_in_the_fields_trace(tmp_path):
+def test_text_another_kind_of_field_claims_names_that_check_in_the_fields_trace(tmp_path, first_pass_path):
     """The field's trace (step.trace_fields) names the check that refused a
     resolved answer: for text read from the transcript that another kind of
-    field claims (_taken), "taken"."""
+    field claims (_taken), "taken". On the units path the precise location
+    keeps the elevation the elevation field settled (WP 2.3b), and nothing
+    refuses it."""
     from test_step import research
 
     rig = label_3(tmp_path, SPANISH_LABEL, SPANISH_LABEL.replace("Mitchell", "mitchell"),
@@ -640,6 +652,10 @@ def test_text_another_kind_of_field_claims_names_that_check_in_the_fields_trace(
             reading_names=["1A", "1B"], explanation="Both readers write it."))}))
     decisions: dict[str, dict] = {}
     field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    if first_pass_path == "units":
+        assert run.fields["precise_location"].state == ValueState.SUPPORTED
+        assert "refusal" not in decisions["precise_location"]
+        return
     assert run.fields["precise_location"].state == ValueState.UNRESOLVED
     assert decisions["precise_location"] == {"refusal": "taken"}
 
