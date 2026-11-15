@@ -1677,21 +1677,41 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
     settled, and cites one check row naming GBIF's no-name lookup, which the
     run keeps (lookup.no_name_lookup: no request is made; the step adds it
     when the expert never asked GBIF that literal). None otherwise: a taxon
-    with a genus GBIF cannot decide still goes to review."""
+    with a genus GBIF cannot decide still goes to review.
+
+    On the units path (WP 2.T), where the organiser's value is no morphocode
+    or it has no candidate, the code is the one the expert's answer quotes
+    (units-wp15c's "sp. 30 <female sign>" with no organiser value); the
+    organiser's candidates, if any, are each that code; the answer's literal
+    is offered to every label (agreement.labels, by the rule of the spec's
+    section 4); every label that writes the code settles cleared (that
+    rule's point 4: an image or a source backing clears a label, readers
+    that agree alone mark it) on one text of that code, the same on every
+    label, which is the literal; and, where no organiser candidate holds
+    that text, the readings of those labels that write it as whole words
+    name it. Every other condition above holds there as it does on the old
+    path."""
     from specimen_digitization.application.lookup import no_name_lookup
 
-    from .agreement import DECIDED, SOURCE_IDS, candidate_literal, labels, reader_literals
+    from .agreement import DECIDED, SOURCE_IDS, candidate_literal, labels, reader_literals, verbatim_runs
     from .checks import collapse, label_names_no_genus, morphocode
 
     literal = task.current.literal
     code = morphocode(literal)
+    # The units path (WP 2.T): the experts take every unit, so where the organiser left no
+    # morphocode, or no candidate, the code is the one the expert's own answer quotes, and a
+    # label settles by the units' rule on the text offered to it (agreement.labels_by_rule).
+    expert = units_path(run) and outcome.answer is not None and (code is None or not task.candidates)
+    if expert and code is None:
+        literal = outcome.answer.literal
+        code = morphocode(literal)
     if task.key != "taxon" or code is None:
         return _declined(why, "organiser_value_not_a_morphocode")
     if not _expert_found_no_genus(outcome, literal, by_name=by_name, sources=sources):
         return _declined(why, "expert_did_not_find_no_genus")
     if _gbif_asked_another_name((item.query for item in sources if item.source_id == "gbif"), literal):
         return _declined(why, "gbif_asked_another_name")
-    if not task.candidates or any(morphocode(c.literal) != code for c in task.candidates):
+    if (not task.candidates and not expert) or any(morphocode(c.literal) != code for c in task.candidates):
         return _declined(why, "candidates_not_one_morphocode")
     if not label_names_no_genus(code, [r.text for r in readings]):
         return _declined(why, "label_names_a_genus")
@@ -1701,14 +1721,27 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
         return _declined(why, "doubt_on_the_labels")
     want = collapse(literal)
     tools = frozenset(task.tools) & SOURCE_IDS
-    found = labels(task, readings, [a for a in sources if a.source_id in tools])
-    if not found or any(label.settled != frozenset({want}) or label.by_source for label in found.values()):
+    found = labels(task, readings, [a for a in sources if a.source_id in tools], offered=(literal,) if expert else ())
+    if expert:
+        # Every label that writes the code settles cleared (rule 4 of the spec's section 4), on
+        # one text of that code, the same on every label: that text is the literal.
+        settled = frozenset().union(*(label.settled for label in found.values()))
+        if (not found or len(settled) != 1 or any(not label.cleared for label in found.values())
+                or morphocode(next(iter(settled))) != code):
+            return _declined(why, "readers_do_not_settle")
+        want = literal = next(iter(settled))
+    elif not found or any(label.settled != frozenset({want}) or label.by_source for label in found.values()):
         return _declined(why, "readers_do_not_settle")
     written = reader_literals(task, readings)
     preferred = {r.region_id for r in readings if r.input_source == DECIDED and want in written.get(r.name, ())}
     named = [r for r in readings if r.region_id in found and want in written.get(r.name, ())
         and (r.input_source == DECIDED or r.region_id not in preferred)]
     whole = candidate_literal(task, readings, literal, named) if named else None
+    if expert and whole is None:
+        # No organiser candidate holds it: the readings of the settled labels that write that
+        # text themselves, as whole words (agreement.verbatim_runs), name it.
+        named = [r for r in readings if r.region_id in found and verbatim_runs(r.text, want)]
+        whole = want if named else None
     if whole is None:
         return _declined(why, "no_whole_candidate")
     answer = FieldAnswer(outcome="resolved", literal=whole, reading_names=[r.name for r in named],
@@ -3785,7 +3818,7 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
 
 # agreement's reasons for refusing a resolved answer, by constant name.
 REFUSALS = ("DIFFER", "LABELS_DIFFER", "FIRST_PASS_CONFLICT", "PERSON_DECIDED", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
-    "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
+    "HOST_NAME", "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
     "NOT_EVERY_READER", "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "A_DISTANCE", "HOLDS_AN_ELEVATION",
     "HOLDS_A_DATE", "HOLDS_A_RANGE", "FIRST_LEVEL_TOO", "NO_PROVINCE", "IS_THE_PROVINCE", "ONE_READER",
     "TEXTS_CONTESTED", "TIED")

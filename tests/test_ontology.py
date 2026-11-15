@@ -542,6 +542,8 @@ RULE_CHECKS = {
     "elevation_unit_feet": "not yet", "elevation_needs_a_unit": "code", "elevation_unit_decides_field": "code",
     "place_parents_derived": "code", "elevation_conversion": "code", "end_date_from_one_date": "code",
     "precise_location_extent": "model",
+    # WP 2.T: the taxon in the collection's scope, and a host never the taxon.
+    "taxon_in_collection_scope": "code", "host_is_no_taxon": "code",
 }
 
 
@@ -560,6 +562,7 @@ def test_the_file_holds_the_specs_rules_each_checked_as_stated():
 # statement is an invariant today's code guarantees; a mutant that breaks it fails one of its tests. WP 2.3
 # adds its rules here when it flips them to `code` (2.3a: six of them, below the first five).
 STAGE = "tests/field_research/test_check_stage.py"
+TAXON = "tests/field_research/test_taxon_scope.py"
 CODE_RULE_TESTS = {
     "one_collecting_event": (
         "tests/field_research/test_experts.py::test_a_field_on_two_labels_settles_only_when_both_settle_to_one_value",
@@ -634,6 +637,22 @@ CODE_RULE_TESTS = {
     ),
     "label_type_routing": (
         f"{STAGE}::test_a_determination_label_writing_a_locality_reaches_the_locality_expert",
+    ),
+    # WP 2.T (tests/field_research/test_taxon_scope.py): GBIF's decision inside class Insecta, on its stored
+    # answers of the units-wp15c runs and on the synthetic answers that pin row one and the homonym conflict;
+    # and the host marker, on the units path.
+    "taxon_in_collection_scope": (
+        f"{TAXON}::test_a_name_whose_every_exact_gbif_record_lies_outside_insecta_never_succeeds",
+        f"{TAXON}::test_epipsocus_names_two_genera_inside_insecta_and_stays_ambiguous",
+        f"{TAXON}::test_the_one_accepted_insecta_record_settles_a_name_whose_homonym_lies_outside_insecta",
+        "tests/test_taxonomy_tool.py::test_a_homonym_conflict_is_an_exact_same_name_by_another_author_in_insecta",
+        "tests/test_taxonomy_tool.py::test_only_the_gbif_md_row_one_match_succeeds",
+    ),
+    "host_is_no_taxon": (
+        f"{TAXON}::test_a_name_written_after_a_host_marker_is_never_the_taxon_on_the_units_path",
+        f"{TAXON}::test_a_name_after_a_word_that_only_ends_in_a_marker_settles_on_both_paths",
+        f"{TAXON}::test_the_host_markers_are_the_ontology_s_notation",
+        f"{TAXON}::test_a_host_is_a_name_right_after_a_whole_word_marker_on_its_line",
     ),
 }
 
@@ -842,6 +861,8 @@ RULE_ROUTES = {
     "elevation_conversion": (ELEVATIONS, False),
     "end_date_from_one_date": (("date_visited_to",), False),
     "precise_location_extent": (("precise_location",), True),
+    "taxon_in_collection_scope": (("taxon",), False),
+    "host_is_no_taxon": (("taxon",), False),
 }
 
 

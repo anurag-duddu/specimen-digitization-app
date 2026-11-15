@@ -613,6 +613,21 @@ notations:
     source:
       - src/specimen_digitization/field_research/prompts/taxon.txt:5
       - src/specimen_digitization/field_research/prompts/taxon.txt:8-9
+  # A host, the animal or plant the specimen was taken from (WP 2.T): Darwin Core
+  # holds it as associatedTaxa, "host:" its example's relation, never as the
+  # specimen's scientificName, the name the labels give the specimen itself; none
+  # of the profile's 20 fields holds it. The units-wp15c labels write "Host
+  # Thomomys", "Ex. Canis familiaris" and "ex Peromyscus leucopus".
+  - id: host_marker
+    written: ["Host", "ex.", "on", "from"]
+    periods_optional: true
+    readings: ["before a name, the specimen's host (associatedTaxa), never its taxon"]
+    fields: []
+    source:
+      - https://dwc.tdwg.org/terms/#dwc:associatedTaxa
+      - https://dwc.tdwg.org/terms/#dwc:scientificName
+      - src/specimen_digitization/field_research/prompts/taxon.txt:1
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:318
   # "♀" and "♂": the signs for female and male (Unicode's FEMALE SIGN, U+2640, and
   # MALE SIGN, U+2642); Darwin Core's term for the sex, which the profile's 20
   # fields do not include; the reference truth's rows hold no sex.
@@ -1084,6 +1099,67 @@ rules:
       - tests/fixtures/field_model_pilot_rows.json:289
       - tests/fixtures/field_model_pilot_rows.json:325
       - https://dwc.tdwg.org/terms/#dwc:verbatimLocality
+  # WP 2.T, the coordinator's re-plan of 2026-11-14 (its item 4), after the owner's
+  # "4 shouldn't be flagged. It should be caught and handled. Goal isn't to throw
+  # everything at the user it is to help by being in in autonomy as much as
+  # possible." and "Harness needs to work and do its magic".
+  - id: taxon_in_collection_scope
+    statement: >-
+      The taxon is a name inside the collection's higher taxon, class Insecta,
+      the class of the Insects collection whose profile the slides follow, which
+      GBIF is asked with. GBIF's decision for a name is a record in Insecta at the
+      label's rank, the name's exact accepted record or the accepted record of its
+      exact synonym, with no other exact record of the name in Insecta under
+      another authorship, whatever that record's status: a name every exact
+      record of which lies outside Insecta ("Cynomys", "Citellus" and
+      "Thomomys", genera of Mammalia) is never the specimen's taxon, and
+      "Epipsocus", whose exact records in Insecta are the accepted Epipsocus
+      Hagen, 1866 and Epipsocus Badonnel, 1955, a synonym of another genus,
+      Epipsocopsis, has no decision.
+    instruction: >-
+      A name GBIF finds only outside class Insecta, the collection's higher taxon, such as
+      a mammal's or a bird's genus written with no host marker, is never the specimen's
+      taxon. When the labels write no other name, answer label_lacks_value.
+    fields: [taxon]
+    note: >-
+      An invariant of the code before WP 2.T, on both paths: GBIF's answer is a
+      success only by row one or a cleared exact synonym, each in class Insecta
+      with no homonym conflict in Insecta. WP 2.T adds the instruction the
+      taxon expert and the organiser receive on the units path and pins the
+      invariant on GBIF's stored answers of the units-wp15c runs.
+    check: code
+    darwin_core: "scientificName; class"
+    source:
+      - src/specimen_digitization/application/profiles/published.json:8-12
+      - src/specimen_digitization/application/profiles/published.json:93-95
+      - src/specimen_digitization/application/lookup.py:574-604
+      - src/specimen_digitization/application/lookup.py:607-642
+      - src/specimen_digitization/application/lookup.py:856-863
+      - docs/GBIF.md:126-130
+      - docs/execution/golive/HARNESS.md:1044-1062
+      - https://dwc.tdwg.org/terms/#dwc:class
+  - id: host_is_no_taxon
+    statement: >-
+      A name a label writes as the host the specimen was taken from, right after
+      a host marker (the notation host_marker, a whole word on the name's line,
+      letter case and a final period aside: "Host Thomomys", "Ex. Canis
+      familiaris", "ex Peromyscus leucopus"), is Darwin Core's associatedTaxa,
+      never the specimen's scientificName. On the units path an answer whose
+      literal any reading writes so, or whose first word is such a marker, does
+      not settle the taxon, whatever GBIF finds for it. A word that only ends in
+      a marker ("Mex.", "Upon") is none.
+    instruction: >-
+      A name after a host marker ("Host Thomomys", "Ex. Canis familiaris", "ex Peromyscus
+      leucopus") is the host the specimen was taken from, never its taxon. When the labels
+      write no other name, answer label_lacks_value.
+    fields: [taxon]
+    check: code
+    darwin_core: "associatedTaxa; scientificName"
+    source:
+      - https://dwc.tdwg.org/terms/#dwc:associatedTaxa
+      - https://dwc.tdwg.org/terms/#dwc:scientificName
+      - src/specimen_digitization/field_research/taxon_host.py:20-70
+      - src/specimen_digitization/field_research/agreement.py:954-969
 
 # Statements the spec records as not rules: no check uses them.
 not_rules:

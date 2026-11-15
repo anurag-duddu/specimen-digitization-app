@@ -300,6 +300,7 @@ TIED = ("Two or more texts have the same backing, as many readers and the same f
 NOT_CANDIDATE = "This value is not the text found for this field in the readings."
 PART_OF_NAME = "The label writes a longer scientific name than this value."
 DOUBTFUL_GENUS = "The label marks this name's genus as doubtful."
+HOST_NAME = "The label writes this name as the host the specimen was taken from, not its taxon."
 NO_PLACE = "No approved place source confirms this value."
 EXPANSIONS_DIFFER = "The sources found different places for the label's abbreviation."
 FIRST_LEVEL_TOO = ("The sources also find this name as a province or state, so they cannot tell which the "
@@ -741,7 +742,8 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     candidate whose quote writes a longer name from it on is such a piece too
     (_part_of_name), as is text read from a reading that writes a longer
     name around it (_longer_written), and a literal whose genus the label
-    marks as doubtful never settles (_genus_in_doubt). An elevation, by
+    marks as doubtful never settles (_genus_in_doubt), nor, on the units path,
+    one the labels write as the specimen's host (_host). An elevation, by
     candidate or read from the transcript, settles only a field of the unit
     the reading writes it in (_unit_refusal). Text read from the transcript
     is never one end of a range for a date or an elevation (_part_of_range),
@@ -750,11 +752,11 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     basis = literal_basis(task, readings, literal, named)
     if basis == CANDIDATE:
         return (_unit_refusal(task, readings, literal, named) or _part_of_name(task, readings, literal, named)
-            or _genus_in_doubt(task, readings, literal, named))
+            or _genus_in_doubt(task, readings, literal, named) or _host(task, readings, literal))
     if basis == TRANSCRIPT:
         return (_part_of_range(task, readings, literal, named) or _unit_refusal(task, readings, literal, named)
             or _holds_another_kind(task, literal) or _longer_written(task, readings, literal, named)
-            or _genus_in_doubt(task, readings, literal, named))
+            or _genus_in_doubt(task, readings, literal, named) or _host(task, readings, literal))
     allowed = candidates_by_reading(task, readings)
     offered = [f"{source.name}: {text!r}" for source in dict.fromkeys(named)
         for text in allowed.get(source.name, {}).values()]
@@ -946,6 +948,24 @@ def _genus_in_doubt(task: FieldTask, readings: Sequence[Reading], literal: str,
                 f"{text!r} writes a qualifier or a '?' right before or on the genus of {written!r}, so the "
                 "label marks that genus as doubtful. A doubtful genus never settles the taxon, whatever "
                 "GBIF says: answer sources_cannot_resolve."))
+    return None
+
+
+def _host(task: FieldTask, readings: Sequence[Reading], literal: str) -> Refusal | None:
+    """On the units path, for a taxon, why the literal cannot settle it: it is a host the labels
+    write (taxon_host.host_written: its first word is a host marker, or a reading of the
+    specimen writes it right after one, the ontology's rule host_is_no_taxon), which Darwin
+    Core holds as associatedTaxa, never as the specimen's scientificName. None otherwise, for
+    any other field, and on the old path."""
+    from .taxon_host import host_written
+
+    if task.key != "taxon" or not any(reading.units is not None for reading in readings):
+        return None
+    if host_written(literal, [reading.text for reading in readings]):
+        return Refusal(HOST_NAME, (
+            f"A label writes {literal!r} after a host marker (Host, ex, on, from): it is the host the "
+            "specimen was taken from, never its taxon. Answer for a name the labels give the specimen "
+            "itself, or label_lacks_value when they write no other name."))
     return None
 
 

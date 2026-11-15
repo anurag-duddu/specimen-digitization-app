@@ -36,8 +36,10 @@ SLIDES = ("105526325", "105526324")
 # The largest request of each rebuilt conversation, in bytes (budget.input_token_bound), with WP 2.2's
 # instructions: the province expert's rules (ontology.render_instructions("expert", "province_state"),
 # 523 bytes with the blank line before them) in, common.txt's two date notation lines replaced (573
-# bytes out; test_units_instructions.py). On main 530b2cf18 they were 47,867 and 47,495.
-LARGEST = {"105526325": 47_817, "105526324": 47_445}
+# bytes out; test_units_instructions.py). On main 530b2cf18 they were 47,867 and 47,495. WP 2.T's
+# notation host_marker, one line of the ontology's brief text every expert carries, adds 112 bytes to
+# each request here (main 7f412f91d: 47,817 and 47,445).
+LARGEST = {"105526325": 47_929, "105526324": 47_557}
 
 
 @pytest.fixture(autouse=True)
@@ -153,14 +155,14 @@ def test_a_unit_whose_readers_write_one_text_carries_it_once():
 
 
 # WP 2.2's review (G51, not blocking 2): the precise location expert's units-path instructions are now longer
-# than the province's. The same rebuilt conversation given to each place expert, both refused answers forced to
+# than the province's. Each value is 112 bytes over main 7f412f91d's, for WP 2.T's host_marker line. The same rebuilt conversation given to each place expert, both refused answers forced to
 # one literal no reading writes ("Mindanaq", refused as no candidate), measured in bytes at its largest request.
 PLACE_EXPERTS = ("province_state", "precise_location", "city", "county", "country")
 LARGEST_BY_EXPERT = {
-    ("105526325", "province_state"): 46_179, ("105526325", "precise_location"): 46_690, ("105526325", "city"): 45_513,
-    ("105526325", "county"): 46_065, ("105526325", "country"): 44_803,
-    ("105526324", "province_state"): 45_807, ("105526324", "precise_location"): 46_271, ("105526324", "city"): 45_141,
-    ("105526324", "county"): 45_693, ("105526324", "country"): 44_431,
+    ("105526325", "province_state"): 46_291, ("105526325", "precise_location"): 46_802, ("105526325", "city"): 45_625,
+    ("105526325", "county"): 46_177, ("105526325", "country"): 44_915,
+    ("105526324", "province_state"): 45_919, ("105526324", "precise_location"): 46_383, ("105526324", "city"): 45_253,
+    ("105526324", "county"): 45_805, ("105526324", "country"): 44_543,
 }
 
 
@@ -194,7 +196,7 @@ def test_the_rebuilt_conversation_given_to_each_place_expert_fits_the_input_boun
 # answer may give, then the request for the next answer. The model's own text in each turn is not stored, so the
 # rebuilt requests are smaller than the refused one; the test pins them as a known case at their size.
 COUNTRY_SLIDE = "105526322"
-COUNTRY_LARGEST = 45_408
+COUNTRY_LARGEST = 45_520  # 45,408 on main 7f412f91d; WP 2.T's host_marker line adds 112 bytes
 
 
 def loaded_country():
