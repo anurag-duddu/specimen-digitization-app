@@ -2652,9 +2652,9 @@ of each kind that decides a field: a year on the next line decides the date
 changes whether that year is read with the date (`date_lines`). Main's rule
 in `step.scientific_reasons` stands on both paths: a label with no transcript,
 or one unresolved or without text, is `unresolved_transcription` when no field
-is drawn from it or a field drawn from it is not supported or not grounded in a
-reader's raw reading, and a label the first pass gave up on is so however its
-fields settle.
+is drawn from it, or a field drawn from it, its work done, is not supported, or
+is neither grounded in a reader's raw reading nor derived; and a label the
+first pass gave up on is so however its fields settle.
 
 A field cleared as not on the label, or a taxon cleared as unmatched, is
 reopened like any other field with Correct value: the reviewer's value is
