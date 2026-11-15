@@ -1982,6 +1982,27 @@ this one, gets its own entry.
   means a reading failed: catalogue number, country, the two collecting
   dates and collectors; and the taxon, which follows B. Province or state,
   verbatim D/T/S and identified-by IRN keep today's behaviour.
+- WP 2.R of the reading-units program (2026-11-15) checked each field the
+  list leaves out against its sources and added none
+  (`tests/field_research/test_review_rules.py` pins them). The owner's answer
+  named no fields (the schema session's record of it, the same file). The
+  catalogue number is read from the slide's barcode label (PRD.md 12.4, "How
+  a person resolves each group today": "The label and its barcode"), which
+  each drawn slide of the reference set holds (`docs/execution/units/PLAN.md`
+  section 1). PRD.md
+  12.4's table of v1 keys from v2 parts fills a country and a province with
+  no condition, a county only "where the country has one" and a city "when
+  there is one"; a country or a province the label does not write is filled
+  by derivation from settled fields (`prompts/country.txt:9`,
+  `prompts/province_state.txt:11`; G37), as Date Visited To is from Date
+  Visited From (G44). Verbatim D/T/S
+  holds a date with no exact day or a time of day (PRD.md 12.4, the
+  collection manager's answer of 2026-10-07), and the row's checks find its
+  text only through what the organiser found for it (`step._organiser_texts`):
+  in units-wp15c's four runs that was nothing on 105526327, whose label
+  writes the month "XI.46". For the collecting date and the
+  collectors no source settles that their absence clears, so they keep
+  today's result.
 
 **When a listed field clears as not on the label.** Only when all of these
 hold (`step.mark_not_on_label`, after the derived values, so a derivable
@@ -2621,6 +2642,19 @@ On a label with no decided transcript, a reviewer's field correction leaves
 `unresolved_transcription:<region>` in place, even after approval (the
 corrected value has no raw reading behind it): the way out is a transcription
 decision, which reruns field research and pays for it again.
+
+On the units path (WP 2.R of the reading-units program, 2026-11-15; G19: "a
+field still left with conflicting readings goes to needs human review"), a
+label whose readers differ is `unresolved_transcription:<region>` only while
+its differing spans decide a field (`step.differing_spans_decide_a_field`): a
+field's evidence row quotes a unit where the readers differ
+(`agreement._differs`, letter case and spacing aside), a field's text stands
+on one (`agreement.covering_units`), or a field not supported is advised for
+one. A label the first pass gave up on keeps it, and so does a label with
+fewer than two readings, with readings from one route or one model, or with no
+units. A field left held on a label that loses the reason keeps its own, so
+the record still goes to a person for it; a correction above leaves the reason
+in place only while a field still depends on a differing span.
 
 A field cleared as not on the label, or a taxon cleared as unmatched, is
 reopened like any other field with Correct value: the reviewer's value is
