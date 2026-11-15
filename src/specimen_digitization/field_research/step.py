@@ -4352,76 +4352,54 @@ def taxon_unmatched(taxon: FieldValue, evidence: Mapping[str, Evidence], lookups
         for row in rows for lookup in lookups if _no_name(lookup, literal))
 
 
-def differing_spans_decide_a_field(run, region_id: str) -> bool:
+def readings_conflict(run, region_id: str, allowed: frozenset[str] = frozenset()) -> bool:
     """On the units path, whether the label's unresolved_transcription stands (WP 2.R; G19,
     `docs/execution/golive/PLAN.md:77`: "a field still left with conflicting readings goes to
-    needs human review"): False only when no field depends on a unit where the label's readers
-    differ (agreement._differs, letter case and spacing aside, so there may be none), so the
-    label alone sends no record to a person. True (the reason stands) when any of these holds:
-    - the label has no reading units, or fewer than two readings (run_readings: a reader that
-      wrote nothing gives none), or its readings come from fewer than two routes or models
-      (independent_observations_missing's test): one reader has no second reading;
-    - a field (identified_by_irn aside), in any state, has an evidence row on one of the
-      label's readings (organiser.parse_locator) whose quote overlaps a unit where the label's
-      readers differ (agreement._differs), or a row of the label whose place on the units
-      cannot be read: a locator that does not parse or names none of the label's readings, a
-      reading the units do not name, a differing unit whose text for that reading is not the
-      reading's text at its span, or a quote that is not the reading's text there;
-    - a field's literal, parsed or normalized text, a reader's verbatim of it, or one of its
-      candidates' literals stands in one of the label's readings on a differing unit
-      (agreement.covering_units);
-    - a field not supported (settled absent, or held) is advised for a differing unit (the
-      unit's `fields`).
+    needs human review"). False only when all of these hold:
+    - the label has reading units and readings from two or more routes and two or more models
+      (independent_observations_missing's test);
+    - no unit is one where its readers write different text, letter case and spacing aside
+      (agreement._differs): readings that differ only so do not conflict. Any other difference
+      keeps the reason, whether or not a field seems to draw it: whether a field depends on a
+      span cannot be told from the span alone (a year on the next line decides a date the
+      literal "IV-25" quotes; the coordinator's ruling on #441's first review);
+    - when a field of the run clears as not on the label (not_on_label, with `allowed`), every
+      unit whose readers' texts are not identical lies wholly, for each of its readers, inside
+      the literal of a label row on that reading of another field settled with its text
+      (_claims_text), the row's text that field's literal, letter case and spacing aside: the
+      label's reason is the only one that routes a field owner decision A cleared (the
+      coordinator's ruling on #441's first review: "Malaise trap" against "MALAISE TRAP", the
+      collecting method cleared, keeps it).
     A label the first pass gave up on keeps the reason before this test (scientific_reasons)."""
-    from .agreement import _differs, covering_units
+    from .agreement import _differs, agreement_key
     from specimen_digitization.application.organiser import parse_locator
 
     entry = next((item for item in getattr(run, "reading_units", None) or () if item.label == region_id), None)
-    readings = [reading for reading in run_readings(run) if reading.region_id == region_id]
     observations = [item for item in run.observations if item.region_id == region_id]
-    if (entry is None or len(readings) < 2
-            or len({item.route_id for item in observations}) < 2 or len({item.model_id for item in observations}) < 2):
+    if (entry is None or len({item.route_id for item in observations}) < 2
+            or len({item.model_id for item in observations}) < 2 or any(_differs(unit) for unit in entry.units)):
         return True
-    differing = [unit for unit in entry.units if _differs(unit)]
-    if not differing:
+    evidence = {item.id: item for item in run.evidence}
+    if not any(not_on_label(key, value, run, evidence, allowed) for key, value in run.fields.items()):
         return False
-    by_name = {reading.name: reading for reading in readings}
-    rows = {item.id: item for item in run.evidence}
-    candidates: dict[str, list[str]] = {}
-    for item in stored_candidates(run.fields, run.evidence, reading_texts_of(run)):
-        candidates.setdefault(item.field_key, []).append(item.literal)
+    readings = {reading.observation_id: reading for reading in run_readings(run) if reading.region_id == region_id}
+    human = human_keys(run)
+    held: dict[str, list[tuple[int, int]]] = {}
     for key, value in run.fields.items():
-        if key == IRN:
+        if not _claims_text(key, value, human):
             continue
         for evidence_id in value.evidence_ids:
-            row = rows.get(evidence_id)
-            if row is None:
-                continue
-            location = parse_locator(row.locator)
-            reading = by_name.get(location.label) if location is not None else None
-            if reading is None or reading.observation_id != location.observation_id:
-                # Not a row on one of this label's readings: a row of the label whose place
-                # cannot be read keeps the reason.
-                if row.region_id == region_id:
-                    return True
-                continue
-            observation = location.observation_id
-            if (observation not in entry.units[0].readers or any(
-                    reading.text[span.start:span.end] != span.text for span in (unit.readers[observation]
-                        for unit in differing))
-                    or reading.text[location.quote_start:location.quote_end] != row.excerpt):
-                return True
-            if any(unit.readers[observation].start < location.quote_end
-                    and location.quote_start < unit.readers[observation].end for unit in differing):
-                return True
-        written = {text for text in (value.literal, value.parsed, value.normalized,
-            *value.verbatim_by_observation.values(), *candidates.get(key, ())) if text and text.strip()}
-        if any(_differs(unit) for text in written for reading in readings
-                for cover in covering_units(reading, text) for unit in cover):
-            return True
-        if value.state != ValueState.SUPPORTED and any(key in unit.fields for unit in differing):
-            return True
-    return False
+            row = evidence.get(evidence_id)
+            location = parse_locator(row.locator) if row is not None else None
+            reading = readings.get(location.observation_id) if location is not None else None
+            if (reading is not None and reading.name == location.label
+                    and reading.text[location.quote_start:location.quote_end] == row.excerpt
+                    and agreement_key(reading.text[location.literal_start:location.literal_end])
+                    == agreement_key(value.literal)):
+                held.setdefault(location.observation_id, []).append((location.literal_start, location.literal_end))
+    return any(not all(observation in readings and any(start <= span.start and span.end <= end
+            for start, end in held.get(observation, ())) for observation, span in unit.readers.items())
+        for unit in entry.units if len({span.text for span in unit.readers.values()}) > 1)
 
 
 def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterable[str],
@@ -4458,10 +4436,11 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
       fields settle, and whether or not its readers agree, until a person
       transcribes it: no first pass compared its readings.
     - 203-217, on the units path: any other label is unresolved_transcription
-      only where differing_spans_decide_a_field holds (WP 2.R; G19): a field
-      depends on a unit where its readers differ, or has a row there that
-      cannot be placed on the units, or the label has one reader or no units;
-      a field held there keeps its own reason.
+      only where readings_conflict holds (WP 2.R; G19): its readers write
+      different text at a unit, letter case and spacing aside, or it has one
+      reader or no units, or a field clears as not on the label and a unit
+      whose readers' texts differ is no settled field's text; a field held
+      there keeps its own reason.
     - 282-291, on the units path: a determination date is before the
       collecting date only on the parts both dates have (the rule date_order,
       ontology_checks.determined_before), so "1946" and "1946-09-06" agree.
@@ -4503,7 +4482,7 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
             if (not drawn or any(run.fields[key].state != ValueState.SUPPORTED
                     or not _raw_grounded(run.fields[key], run) and key not in qualified
                     for key in drawn if latest_work.get(key) in TERMINAL)) and (
-                    not units_path(run) or differing_spans_decide_a_field(run, region.id)):
+                    not units_path(run) or readings_conflict(run, region.id, allowed)):
                 reasons.append(f"unresolved_transcription:{region.id}")
     evidence = {item.id: item for item in run.evidence}
     # 219-220: an identity collision is an integrity failure, never a review reason.
