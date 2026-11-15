@@ -1,0 +1,894 @@
+{
+ "source": "GBIF species match v2 answers (checklist COL XR, CC BY 4.0) stored by units-wp15c-20261113's runs (~/specimen-golive/runs/units-wp15c-20261113/state/<run>/<slide>, the run's stored GBIF lookup of that query and its stored body), one per name: the query the lookup sent, the run and slide, the stored status, and the body with its top-level usage, acceptedUsage, classification, synonym flag and diagnostics kept and, of its alternatives, only those whose matchType is EXACT.",
+ "bodies": {
+  "Cynomys": {
+   "run": "r1/pair",
+   "slide": "105526336",
+   "query": {
+    "scientificName": "Cynomys",
+    "taxonRank": "GENUS",
+    "kingdom": "Animalia",
+    "class": "Insecta",
+    "checklistKey": "7ddf754f-d193-4cc9-b351-99906754a03b",
+    "verbose": "true"
+   },
+   "stored_status": "ambiguous",
+   "body": {
+    "usage": {
+     "key": "N",
+     "name": "Animalia",
+     "canonicalName": "Animalia",
+     "rank": "KINGDOM",
+     "status": "ACCEPTED",
+     "type": "SCIENTIFIC",
+     "formattedName": "<i>Animalia</i>"
+    },
+    "classification": [
+     {
+      "key": "CS5HF",
+      "name": "Eukaryota",
+      "rank": "DOMAIN"
+     },
+     {
+      "key": "N",
+      "name": "Animalia",
+      "rank": "KINGDOM"
+     }
+    ],
+    "synonym": false,
+    "diagnostics": {
+     "matchType": "HIGHERRANK",
+     "confidence": 93,
+     "note": "nextMatch=0",
+     "timeTaken": 8,
+     "alternatives": [
+      {
+       "usage": {
+        "key": "3YKX",
+        "name": "Cynomys Rafinesque, 1817",
+        "canonicalName": "Cynomys",
+        "authorship": "Rafinesque, 1817",
+        "rank": "GENUS",
+        "code": "ZOOLOGICAL",
+        "status": "ACCEPTED",
+        "type": "SCIENTIFIC",
+        "formattedName": "<i>Cynomys</i> Rafinesque, 1817"
+       },
+       "classification": [
+        {
+         "key": "CS5HF",
+         "name": "Eukaryota",
+         "rank": "DOMAIN"
+        },
+        {
+         "key": "N",
+         "name": "Animalia",
+         "rank": "KINGDOM"
+        },
+        {
+         "key": "CH2",
+         "name": "Chordata",
+         "rank": "PHYLUM"
+        },
+        {
+         "key": "8V4V3",
+         "name": "Vertebrata",
+         "rank": "SUBPHYLUM"
+        },
+        {
+         "key": "8V4V5",
+         "name": "Gnathostomata",
+         "rank": "INFRAPHYLUM"
+        },
+        {
+         "key": "8VVWB",
+         "name": "Osteichthyes",
+         "rank": "PARVPHYLUM"
+        },
+        {
+         "key": "9CK8W",
+         "name": "Tetrapoda",
+         "rank": "MEGACLASS"
+        },
+        {
+         "key": "6224G",
+         "name": "Mammalia",
+         "rank": "CLASS"
+        },
+        {
+         "key": "6226C",
+         "name": "Theria",
+         "rank": "SUBCLASS"
+        },
+        {
+         "key": "LG",
+         "name": "Eutheria",
+         "rank": "INFRACLASS"
+        },
+        {
+         "key": "3Z5",
+         "name": "Rodentia",
+         "rank": "ORDER"
+        },
+        {
+         "key": "4FD",
+         "name": "Sciuromorpha",
+         "rank": "SUBORDER"
+        },
+        {
+         "key": "G48",
+         "name": "Sciuridae",
+         "rank": "FAMILY"
+        },
+        {
+         "key": "KHX",
+         "name": "Xerinae",
+         "rank": "SUBFAMILY"
+        },
+        {
+         "key": "KYW",
+         "name": "Marmotini",
+         "rank": "TRIBE"
+        },
+        {
+         "key": "3YKX",
+         "name": "Cynomys",
+         "rank": "GENUS"
+        }
+       ],
+       "diagnostics": {
+        "matchType": "EXACT",
+        "confidence": 93,
+        "note": "Similarity: name=100; authorship=0; classification=-6; rank=6; status=1; score=101",
+        "timeTaken": 0
+       }
+      },
+      {
+       "usage": {
+        "key": "8NNMP",
+        "name": "Cynomys Rafinesque, 1817",
+        "canonicalName": "Cynomys",
+        "authorship": "Rafinesque, 1817",
+        "rank": "SUBGENUS",
+        "code": "ZOOLOGICAL",
+        "status": "ACCEPTED",
+        "infragenericEpithet": "Cynomys",
+        "type": "SCIENTIFIC",
+        "formattedName": "subgen. <i>Cynomys</i> Rafinesque, 1817"
+       },
+       "classification": [
+        {
+         "key": "CS5HF",
+         "name": "Eukaryota",
+         "rank": "DOMAIN"
+        },
+        {
+         "key": "N",
+         "name": "Animalia",
+         "rank": "KINGDOM"
+        },
+        {
+         "key": "CH2",
+         "name": "Chordata",
+         "rank": "PHYLUM"
+        },
+        {
+         "key": "8V4V3",
+         "name": "Vertebrata",
+         "rank": "SUBPHYLUM"
+        },
+        {
+         "key": "8V4V5",
+         "name": "Gnathostomata",
+         "rank": "INFRAPHYLUM"
+        },
+        {
+         "key": "8VVWB",
+         "name": "Osteichthyes",
+         "rank": "PARVPHYLUM"
+        },
+        {
+         "key": "9CK8W",
+         "name": "Tetrapoda",
+         "rank": "MEGACLASS"
+        },
+        {
+         "key": "6224G",
+         "name": "Mammalia",
+         "rank": "CLASS"
+        },
+        {
+         "key": "6226C",
+         "name": "Theria",
+         "rank": "SUBCLASS"
+        },
+        {
+         "key": "LG",
+         "name": "Eutheria",
+         "rank": "INFRACLASS"
+        },
+        {
+         "key": "3Z5",
+         "name": "Rodentia",
+         "rank": "ORDER"
+        },
+        {
+         "key": "4FD",
+         "name": "Sciuromorpha",
+         "rank": "SUBORDER"
+        },
+        {
+         "key": "G48",
+         "name": "Sciuridae",
+         "rank": "FAMILY"
+        },
+        {
+         "key": "KHX",
+         "name": "Xerinae",
+         "rank": "SUBFAMILY"
+        },
+        {
+         "key": "KYW",
+         "name": "Marmotini",
+         "rank": "TRIBE"
+        },
+        {
+         "key": "3YKX",
+         "name": "Cynomys",
+         "rank": "GENUS"
+        },
+        {
+         "key": "8NNMP",
+         "name": "Cynomys",
+         "rank": "SUBGENUS"
+        }
+       ],
+       "diagnostics": {
+        "matchType": "EXACT",
+        "confidence": 90,
+        "note": "Similarity: name=100; authorship=0; classification=-6; rank=-1; status=1; score=94",
+        "timeTaken": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  "Citellus": {
+   "run": "r1/pair",
+   "slide": "105526369",
+   "query": {
+    "scientificName": "Citellus",
+    "taxonRank": "GENUS",
+    "kingdom": "Animalia",
+    "class": "Insecta",
+    "checklistKey": "7ddf754f-d193-4cc9-b351-99906754a03b",
+    "verbose": "true"
+   },
+   "stored_status": "ambiguous",
+   "body": {
+    "usage": {
+     "key": "3Q9L",
+     "name": "Citellus Oken, 1816",
+     "canonicalName": "Citellus",
+     "authorship": "Oken, 1816",
+     "rank": "GENUS",
+     "code": "ZOOLOGICAL",
+     "status": "SYNONYM",
+     "type": "SCIENTIFIC",
+     "formattedName": "<i>Citellus</i> Oken, 1816"
+    },
+    "acceptedUsage": {
+     "key": "7KBZ",
+     "name": "Spermophilus F. Cuvier, 1825",
+     "canonicalName": "Spermophilus",
+     "authorship": "F. Cuvier, 1825",
+     "rank": "GENUS",
+     "code": "ZOOLOGICAL",
+     "type": "SCIENTIFIC",
+     "formattedName": "<i>Spermophilus</i> F. Cuvier, 1825"
+    },
+    "classification": [
+     {
+      "key": "CS5HF",
+      "name": "Eukaryota",
+      "rank": "DOMAIN"
+     },
+     {
+      "key": "N",
+      "name": "Animalia",
+      "rank": "KINGDOM"
+     },
+     {
+      "key": "CH2",
+      "name": "Chordata",
+      "rank": "PHYLUM"
+     },
+     {
+      "key": "8V4V3",
+      "name": "Vertebrata",
+      "rank": "SUBPHYLUM"
+     },
+     {
+      "key": "8V4V5",
+      "name": "Gnathostomata",
+      "rank": "INFRAPHYLUM"
+     },
+     {
+      "key": "8VVWB",
+      "name": "Osteichthyes",
+      "rank": "PARVPHYLUM"
+     },
+     {
+      "key": "9CK8W",
+      "name": "Tetrapoda",
+      "rank": "MEGACLASS"
+     },
+     {
+      "key": "6224G",
+      "name": "Mammalia",
+      "rank": "CLASS"
+     },
+     {
+      "key": "6226C",
+      "name": "Theria",
+      "rank": "SUBCLASS"
+     },
+     {
+      "key": "LG",
+      "name": "Eutheria",
+      "rank": "INFRACLASS"
+     },
+     {
+      "key": "3Z5",
+      "name": "Rodentia",
+      "rank": "ORDER"
+     },
+     {
+      "key": "4FD",
+      "name": "Sciuromorpha",
+      "rank": "SUBORDER"
+     },
+     {
+      "key": "G48",
+      "name": "Sciuridae",
+      "rank": "FAMILY"
+     },
+     {
+      "key": "KHX",
+      "name": "Xerinae",
+      "rank": "SUBFAMILY"
+     },
+     {
+      "key": "KYW",
+      "name": "Marmotini",
+      "rank": "TRIBE"
+     },
+     {
+      "key": "7KBZ",
+      "name": "Spermophilus",
+      "rank": "GENUS"
+     }
+    ],
+    "synonym": true,
+    "diagnostics": {
+     "matchType": "EXACT",
+     "confidence": 95,
+     "note": "Similarity: name=100; authorship=0; classification=-6; rank=6; status=0; score=100; nextMatch=5",
+     "timeTaken": 16,
+     "alternatives": []
+    }
+   }
+  },
+  "Canis familiaris": {
+   "run": "r1/pair",
+   "slide": "105526596",
+   "query": {
+    "scientificName": "Canis familiaris",
+    "taxonRank": "SPECIES",
+    "kingdom": "Animalia",
+    "class": "Insecta",
+    "checklistKey": "7ddf754f-d193-4cc9-b351-99906754a03b",
+    "verbose": "true"
+   },
+   "stored_status": "ambiguous",
+   "body": {
+    "usage": {
+     "key": "QLXF",
+     "name": "Canis familiaris Linnaeus, 1758",
+     "canonicalName": "Canis familiaris",
+     "authorship": "Linnaeus, 1758",
+     "rank": "SPECIES",
+     "code": "ZOOLOGICAL",
+     "status": "ACCEPTED",
+     "genericName": "Canis",
+     "specificEpithet": "familiaris",
+     "type": "SCIENTIFIC",
+     "formattedName": "<i>Canis</i> <i>familiaris</i> Linnaeus, 1758"
+    },
+    "classification": [
+     {
+      "key": "CS5HF",
+      "name": "Eukaryota",
+      "rank": "DOMAIN"
+     },
+     {
+      "key": "N",
+      "name": "Animalia",
+      "rank": "KINGDOM"
+     },
+     {
+      "key": "CH2",
+      "name": "Chordata",
+      "rank": "PHYLUM"
+     },
+     {
+      "key": "8V4V3",
+      "name": "Vertebrata",
+      "rank": "SUBPHYLUM"
+     },
+     {
+      "key": "8V4V5",
+      "name": "Gnathostomata",
+      "rank": "INFRAPHYLUM"
+     },
+     {
+      "key": "8VVWB",
+      "name": "Osteichthyes",
+      "rank": "PARVPHYLUM"
+     },
+     {
+      "key": "9CK8W",
+      "name": "Tetrapoda",
+      "rank": "MEGACLASS"
+     },
+     {
+      "key": "6224G",
+      "name": "Mammalia",
+      "rank": "CLASS"
+     },
+     {
+      "key": "6226C",
+      "name": "Theria",
+      "rank": "SUBCLASS"
+     },
+     {
+      "key": "LG",
+      "name": "Eutheria",
+      "rank": "INFRACLASS"
+     },
+     {
+      "key": "VS",
+      "name": "Carnivora",
+      "rank": "ORDER"
+     },
+     {
+      "key": "4CT",
+      "name": "Caniformia",
+      "rank": "SUBORDER"
+     },
+     {
+      "key": "C3K84",
+      "name": "Canidae",
+      "rank": "FAMILY"
+     },
+     {
+      "key": "3GTH",
+      "name": "Canis",
+      "rank": "GENUS"
+     },
+     {
+      "key": "QLXF",
+      "name": "Canis familiaris",
+      "rank": "SPECIES"
+     }
+    ],
+    "synonym": false,
+    "diagnostics": {
+     "matchType": "EXACT",
+     "confidence": 98,
+     "note": "Similarity: name=110; authorship=0; classification=-6; rank=6; status=1; score=111; singleMatch=5",
+     "timeTaken": 8,
+     "alternatives": []
+    }
+   }
+  },
+  "Thomomys": {
+   "run": "r1/pair",
+   "slide": "105526459",
+   "query": {
+    "scientificName": "Thomomys",
+    "taxonRank": "GENUS",
+    "kingdom": "Animalia",
+    "class": "Insecta",
+    "checklistKey": "7ddf754f-d193-4cc9-b351-99906754a03b",
+    "verbose": "true"
+   },
+   "stored_status": "ambiguous",
+   "body": {
+    "usage": {
+     "key": "7W5J",
+     "name": "Thomomys Wied-Neuwied, 1839",
+     "canonicalName": "Thomomys",
+     "authorship": "Wied-Neuwied, 1839",
+     "rank": "GENUS",
+     "code": "ZOOLOGICAL",
+     "status": "ACCEPTED",
+     "type": "SCIENTIFIC",
+     "formattedName": "<i>Thomomys</i> Wied-Neuwied, 1839"
+    },
+    "classification": [
+     {
+      "key": "CS5HF",
+      "name": "Eukaryota",
+      "rank": "DOMAIN"
+     },
+     {
+      "key": "N",
+      "name": "Animalia",
+      "rank": "KINGDOM"
+     },
+     {
+      "key": "CH2",
+      "name": "Chordata",
+      "rank": "PHYLUM"
+     },
+     {
+      "key": "8V4V3",
+      "name": "Vertebrata",
+      "rank": "SUBPHYLUM"
+     },
+     {
+      "key": "8V4V5",
+      "name": "Gnathostomata",
+      "rank": "INFRAPHYLUM"
+     },
+     {
+      "key": "8VVWB",
+      "name": "Osteichthyes",
+      "rank": "PARVPHYLUM"
+     },
+     {
+      "key": "9CK8W",
+      "name": "Tetrapoda",
+      "rank": "MEGACLASS"
+     },
+     {
+      "key": "6224G",
+      "name": "Mammalia",
+      "rank": "CLASS"
+     },
+     {
+      "key": "6226C",
+      "name": "Theria",
+      "rank": "SUBCLASS"
+     },
+     {
+      "key": "LG",
+      "name": "Eutheria",
+      "rank": "INFRACLASS"
+     },
+     {
+      "key": "3Z5",
+      "name": "Rodentia",
+      "rank": "ORDER"
+     },
+     {
+      "key": "4CW",
+      "name": "Castorimorpha",
+      "rank": "SUBORDER"
+     },
+     {
+      "key": "6247K",
+      "name": "Geomyidae",
+      "rank": "FAMILY"
+     },
+     {
+      "key": "VCBZH",
+      "name": "Geomyinae",
+      "rank": "SUBFAMILY"
+     },
+     {
+      "key": "VC97Q",
+      "name": "Thomomyini",
+      "rank": "TRIBE"
+     },
+     {
+      "key": "7W5J",
+      "name": "Thomomys",
+      "rank": "GENUS"
+     }
+    ],
+    "synonym": false,
+    "diagnostics": {
+     "matchType": "EXACT",
+     "confidence": 95,
+     "note": "Similarity: name=100; authorship=0; classification=-6; rank=6; status=1; score=101; nextMatch=4",
+     "timeTaken": 12,
+     "alternatives": [
+      {
+       "usage": {
+        "key": "8P24D",
+        "name": "Thomomys Wied-Neuwied, 1839",
+        "canonicalName": "Thomomys",
+        "authorship": "Wied-Neuwied, 1839",
+        "rank": "SUBGENUS",
+        "code": "ZOOLOGICAL",
+        "status": "SYNONYM",
+        "infragenericEpithet": "Thomomys",
+        "type": "SCIENTIFIC",
+        "formattedName": "subgen. <i>Thomomys</i> Wied-Neuwied, 1839"
+       },
+       "acceptedUsage": {
+        "key": "7W5J",
+        "name": "Thomomys Wied-Neuwied, 1839",
+        "canonicalName": "Thomomys",
+        "authorship": "Wied-Neuwied, 1839",
+        "rank": "GENUS",
+        "code": "ZOOLOGICAL",
+        "type": "SCIENTIFIC",
+        "formattedName": "<i>Thomomys</i> Wied-Neuwied, 1839"
+       },
+       "classification": [
+        {
+         "key": "CS5HF",
+         "name": "Eukaryota",
+         "rank": "DOMAIN"
+        },
+        {
+         "key": "N",
+         "name": "Animalia",
+         "rank": "KINGDOM"
+        },
+        {
+         "key": "CH2",
+         "name": "Chordata",
+         "rank": "PHYLUM"
+        },
+        {
+         "key": "8V4V3",
+         "name": "Vertebrata",
+         "rank": "SUBPHYLUM"
+        },
+        {
+         "key": "8V4V5",
+         "name": "Gnathostomata",
+         "rank": "INFRAPHYLUM"
+        },
+        {
+         "key": "8VVWB",
+         "name": "Osteichthyes",
+         "rank": "PARVPHYLUM"
+        },
+        {
+         "key": "9CK8W",
+         "name": "Tetrapoda",
+         "rank": "MEGACLASS"
+        },
+        {
+         "key": "6224G",
+         "name": "Mammalia",
+         "rank": "CLASS"
+        },
+        {
+         "key": "6226C",
+         "name": "Theria",
+         "rank": "SUBCLASS"
+        },
+        {
+         "key": "LG",
+         "name": "Eutheria",
+         "rank": "INFRACLASS"
+        },
+        {
+         "key": "3Z5",
+         "name": "Rodentia",
+         "rank": "ORDER"
+        },
+        {
+         "key": "4CW",
+         "name": "Castorimorpha",
+         "rank": "SUBORDER"
+        },
+        {
+         "key": "6247K",
+         "name": "Geomyidae",
+         "rank": "FAMILY"
+        },
+        {
+         "key": "VCBZH",
+         "name": "Geomyinae",
+         "rank": "SUBFAMILY"
+        },
+        {
+         "key": "VC97Q",
+         "name": "Thomomyini",
+         "rank": "TRIBE"
+        },
+        {
+         "key": "7W5J",
+         "name": "Thomomys",
+         "rank": "GENUS"
+        }
+       ],
+       "diagnostics": {
+        "matchType": "EXACT",
+        "confidence": 90,
+        "note": "Similarity: name=100; authorship=0; classification=-6; rank=-1; status=0; score=93",
+        "timeTaken": 0
+       }
+      }
+     ]
+    }
+   }
+  },
+  "Epipsocus": {
+   "run": "r1/pair",
+   "slide": "105526328",
+   "query": {
+    "scientificName": "Epipsocus",
+    "taxonRank": "GENUS",
+    "kingdom": "Animalia",
+    "class": "Insecta",
+    "checklistKey": "7ddf754f-d193-4cc9-b351-99906754a03b",
+    "verbose": "true"
+   },
+   "stored_status": "ambiguous",
+   "body": {
+    "usage": {
+     "key": "8MQRG",
+     "name": "Epipsocus Hagen, 1866",
+     "canonicalName": "Epipsocus",
+     "authorship": "Hagen, 1866",
+     "rank": "GENUS",
+     "code": "ZOOLOGICAL",
+     "status": "ACCEPTED",
+     "type": "SCIENTIFIC",
+     "formattedName": "<i>Epipsocus</i> Hagen, 1866"
+    },
+    "classification": [
+     {
+      "key": "CS5HF",
+      "name": "Eukaryota",
+      "rank": "DOMAIN"
+     },
+     {
+      "key": "N",
+      "name": "Animalia",
+      "rank": "KINGDOM"
+     },
+     {
+      "key": "RT",
+      "name": "Arthropoda",
+      "rank": "PHYLUM"
+     },
+     {
+      "key": "L2655",
+      "name": "Hexapoda",
+      "rank": "SUBPHYLUM"
+     },
+     {
+      "key": "H6",
+      "name": "Insecta",
+      "rank": "CLASS"
+     },
+     {
+      "key": "CSYS4",
+      "name": "Psocodea",
+      "rank": "ORDER"
+     },
+     {
+      "key": "8MP96",
+      "name": "Psocomorpha",
+      "rank": "SUBORDER"
+     },
+     {
+      "key": "8MP9H",
+      "name": "Epipsocetae",
+      "rank": "INFRAORDER"
+     },
+     {
+      "key": "8MPD4",
+      "name": "Epipsocidae",
+      "rank": "FAMILY"
+     },
+     {
+      "key": "8MQRG",
+      "name": "Epipsocus",
+      "rank": "GENUS"
+     }
+    ],
+    "synonym": false,
+    "diagnostics": {
+     "matchType": "EXACT",
+     "confidence": 100,
+     "note": "Similarity: name=100; authorship=0; classification=19; rank=6; status=1; score=126; nextMatch=0",
+     "timeTaken": 14,
+     "alternatives": [
+      {
+       "usage": {
+        "key": "8MQRH",
+        "name": "Epipsocus Badonnel, 1955",
+        "canonicalName": "Epipsocus",
+        "authorship": "Badonnel, 1955",
+        "rank": "GENUS",
+        "code": "ZOOLOGICAL",
+        "status": "SYNONYM",
+        "type": "SCIENTIFIC",
+        "formattedName": "<i>Epipsocus</i> Badonnel, 1955"
+       },
+       "acceptedUsage": {
+        "key": "8MRVC",
+        "name": "Epipsocopsis Badonnel, 1955",
+        "canonicalName": "Epipsocopsis",
+        "authorship": "Badonnel, 1955",
+        "rank": "GENUS",
+        "code": "ZOOLOGICAL",
+        "type": "SCIENTIFIC",
+        "formattedName": "<i>Epipsocopsis</i> Badonnel, 1955"
+       },
+       "classification": [
+        {
+         "key": "CS5HF",
+         "name": "Eukaryota",
+         "rank": "DOMAIN"
+        },
+        {
+         "key": "N",
+         "name": "Animalia",
+         "rank": "KINGDOM"
+        },
+        {
+         "key": "RT",
+         "name": "Arthropoda",
+         "rank": "PHYLUM"
+        },
+        {
+         "key": "L2655",
+         "name": "Hexapoda",
+         "rank": "SUBPHYLUM"
+        },
+        {
+         "key": "H6",
+         "name": "Insecta",
+         "rank": "CLASS"
+        },
+        {
+         "key": "CSYS4",
+         "name": "Psocodea",
+         "rank": "ORDER"
+        },
+        {
+         "key": "8MP96",
+         "name": "Psocomorpha",
+         "rank": "SUBORDER"
+        },
+        {
+         "key": "8MP9H",
+         "name": "Epipsocetae",
+         "rank": "INFRAORDER"
+        },
+        {
+         "key": "8MPD4",
+         "name": "Epipsocidae",
+         "rank": "FAMILY"
+        },
+        {
+         "key": "8MRVC",
+         "name": "Epipsocopsis",
+         "rank": "GENUS"
+        }
+       ],
+       "diagnostics": {
+        "matchType": "EXACT",
+        "confidence": 100,
+        "note": "Similarity: name=100; authorship=0; classification=19; rank=6; status=0; score=125",
+        "timeTaken": 0
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
+}

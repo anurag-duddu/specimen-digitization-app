@@ -2572,11 +2572,21 @@ not, before it answers for a morphocode):
   initials to them), when the expert likewise makes no GBIF lookup but of
   the code itself.
 
-Each still clears as unmatched
+Each still clears as unmatched on the old path
 (`test_a_genus_the_label_checks_do_not_read_clears_when_the_expert_makes_no_lookup`
 for "sim. Epipsocus", "NR Epipsocus" and "C.F Epipsocus" above
 "V-4-67-1", and for "Epipsocus" above "wings + head" or "legs" and "R.D.
-Epipsocus" right above the code). Where the expert does look the genus up, as its brief says,
+Epipsocus" right above the code). On the units path (WP 2.T) neither clears.
+There, rule B, by either of its branches, declines while any label of the
+specimen writes a word that may be a genus. Such a word is any run of
+letters, of any case, other than a `checks.NOT_GENERA` word or a Roman
+numeral I to XII, that no single span holds whole. The spans are a
+settled field's occurrence where its provenance places it, a whole
+notation token, a code with no genus, a catalogue number with its prefix,
+or a keyed line's key; a unit's span carries to another reader there only
+when that reader writes the same words, each at most one character apart
+(`step._genus_on_a_label`; the same test on the units path, and
+`tests/field_research/test_taxon_scope.py`). Where the expert does look the genus up, as its brief says,
 the GBIF guard refuses rule B, since that query is not the code
 (`step._gbif_asked_another_name`;
 `test_the_real_resolver_looking_the_genus_up_as_its_brief_says_keeps_the_taxon_in_review`
