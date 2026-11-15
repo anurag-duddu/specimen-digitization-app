@@ -26310,3 +26310,46 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 - Learning: check that a prompt-only fix passes the step before writing the sentence. On the base commit 44aeb6863, a two-line date literal that extends a one-line candidate fails `literal_refusal` (NOT_CANDIDATE) on both paths. `parse_date` lends no year from a next line such as "1948, R.D. Mitchell", which is not a bare year. The stored wp15c r2/pair settlement of "IV-25" cites the expert's `year_literal` 1948.
 - Learning: the stored first pass's roles are noisy. Whole dates carry "day" or "year" ("IX-14-46"), and a female sign with "wings" carries "species". So a role only picks candidate parts. The texts decide, and a part only ever holds a field back.
 - Learning: an equivalence claim for a dropped condition needs the other condition's own inputs searched, here both orders of a split date. A guard on text two fields share needs every attempt's order, not only one attempt's.
+## 2026-11-15 - WP 2.5 of the reading-units program: the organiser decision
+
+- Task: WP 2.5 of `docs/execution/units/PLAN.md` (brief `~/specimen-golive/units-program/brief_wp25_organiser.md`, off-repo). Branch `claude/wp25-organiser`, worktree `.claude/worktrees/wp25-organiser`, from main 44aeb6863; PR #443.
+- Outcome: the production pipeline keeps the organiser call, and nothing of the off path remains.
+  - The off path was built for the measurement in commit a4fc37e95:
+    - a setting, `SPECIMEN_UNITS_ORGANISER`;
+    - its pin on a units-path run;
+    - parse's gate on that pin;
+    - `harness.apply_units`, which wrote the organiser's rows from the reading units;
+    - their tests.
+  - The coordinator's ruling after the run removed it. The grounds were the owner's mandate (PLAN.md:7), "It's not about adding more and creating more dead code.", and PLAN section 1's criterion 3, "Nothing dead remains". The branch's `src` and `scripts` are main's again.
+  - PLAN section 5's `harness.apply_candidates` row and the 2.5 row record the decision, the counts, the run folder and the spend.
+- The paid run (`~/specimen-golive/runs/units-wp25-20261115`, off-repo): code a4fc37e95, pair arm, organiser on and off side by side, two repeats, a live first pass in each.
+  - Spend: USD 2.6557 at list (ledger), costed before at USD 2.76.
+  - Repeat 2 ran on the nine subjects the gate fitted under the stop.
+  - Scored with `tests/reference/units_program/score.py` on the nine subjects all four runs hold. Off against on, means of two repeats:
+    - primary (n 62): cleared wrong 4 vs 6, right 39 vs 46.5, left without a value 16.5 vs 9;
+    - derived (n 33): cleared wrong 3 vs 0, right 24.5 vs 29, left 5.5 vs 4;
+    - absent (n 4): equal.
+  - Criterion 1 for off: not met.
+- D7 on main:
+  - Collectors: no longer true for the organiser's candidates. `step._without_roles` and `experts._without_role` shed an edge "leg.", so "H.Hoogstraal" is the whole candidate.
+  - Country: still true for a whole-unit candidate.
+  - The rows written from units were whole units by construction, and the off runs showed D7's shape three ways:
+    - country ended unresolved with the whole unit "Mindanao, P.I.": on 105526326 and 105526327 in r1, after every answer was refused (`no_place`); on 105526327 in r2, from the expert's own `sources_cannot_resolve`;
+    - 105526322: collectors settled "Hoogstraal" from the unit cut "H." / "Hoogstraal" / "leg.";
+    - 105526324: Elevation From (ft) cleared "3300'," from a unit with its comma, and its derived fields settled absent.
+- "P.I.": no source settles that `parsed` holds an abbreviation's expansion, so main's result is kept (`parsed` "P.I.", `normalized` "Philippines").
+  - PRD.md:329 (HAR-004) keeps the literal, parsed and normalized values separate.
+  - PRD.md:515 gives a country a literal and a normalized candidate.
+  - PRD.md:636 gives parsed to a fixed rule's value.
+  - GEOREFERENCING.md:172 makes the expansion a reading the evidence settles.
+  - `field_research/step.py:1345-1357` puts a lookup's value in `normalized`.
+- Validation actually run (main checkout's `.venv`, CPython 3.11.16, `PYTHONPATH` this worktree's `src`, `TZ=America/Chicago`, `LANG`/`LC_ALL=en_US.UTF-8`), on a4fc37e95 before the removal:
+  - `tests/field_research`, `tests/reference`, `scripts/ci/test_runtime_settings.py` and the units, organiser, application, extraction, lane-route, prompt, telemetry and evidence-integrity suites: 8489 passed, 14 skipped. The pytest summary is kept in `~/specimen-golive/units-program/wp25/pytest_suites_a4fc37e95.txt` (off-repo).
+  - Mutants of the off path (`~/specimen-golive/units-program/wp25/mutants.py`, `mutants_round2.jsonl`): 25 of 25 killed.
+  - After the removal, `git diff origin/main -- src scripts tests` is empty.
+- Learning: `repeat` is a reserved word in zsh. A rig function named `repeat()` fails to parse at its line, after the lines above it have run; here that was the probe call.
+- Learning: a gate that stops a whole repeat when the repeat's projected cost does not fit throws away the subjects that would fit. It is better to choose the subjects that fit, run every setting on them, and score only the subjects every run holds.
+  - Here the gate was rewritten during repeat 1 because the first specimens cost about USD 0.075 a run against the estimate's 0.0697.
+  - Inferred from the first version's rule, not observed: on repeat 1's final cost, USD 1.41 spent plus 1.41 projected is 2.82, under the 2.95 stop. So that version would have started all ten and left the ledger stop to refuse the tail.
+- Learning: the reference scorer reads `tests/fixtures/field_model_pilot_rows.json` for its digest, so a frozen rig copy needs that file beside `tests/reference/units_program`.
+- Learning: candidates written from reading units constrain the experts' literals as the organiser's do (`agreement._cut_candidate`, `_nested`). A unit cut finer or wider than a field's value refuses the right literal or settles the wrong one.
