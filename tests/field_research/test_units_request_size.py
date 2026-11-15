@@ -244,3 +244,45 @@ def test_the_rebuilt_country_request_of_wp_2_2s_paid_run_is_a_known_case_at_its_
     assert outcome.failure is None and outcome.answer.outcome == "sources_cannot_resolve"
     assert len(bounds) == len(turns) + 2 == 6
     assert max(bounds) == COUNTRY_LARGEST <= budget.DEFAULT_MAX_INPUT_TOKENS
+
+
+# WP 2.3c: the one re-ask (field_research/reask.py) sends the expert's request again with one sentence after its
+# input (FieldTask.reask). The longest kind is a place check's, which names the record's parents; this one is 302
+# bytes. Given to the province expert on the rebuilt conversation of LARGEST, the largest request is 47,840 bytes,
+# under the bound: in a re-ask's requests a lookup's answer does not repeat the source and the query its call
+# carries (experts._Expert._lookup). Without that trim it would be 48,253, over the bound. Each value is 112 bytes
+# over its value on main 216ebbfae (47,728 and 47,356; 48,141 untrimmed), for WP 2.T's host_marker line.
+REASK_SENTENCE = (
+    "Your answer 'Davao Prov.' failed the check place_within_settled_places: the source's record for 'Davao Province' "
+    "(tgn:7001234) places it in Davao Region, Mindanao, Philippines, not in the country settled above it, "
+    "'Guatemala' (tgn:1000111). Answer once more; your answer goes through every check again.")
+REASK_LARGEST = {"105526325": 47_840, "105526324": 47_468}
+
+
+def test_the_re_ask_sentence_measured_is_a_place_check_s():
+    from specimen_digitization.field_research import reask
+
+    assert REASK_SENTENCE == reask.ASKED.format(literal="Davao Prov.", check="place_within_settled_places",
+        saw="the source's record for 'Davao Province' (tgn:7001234) places it in Davao Region, Mindanao, "
+        "Philippines, not in the country settled above it, 'Guatemala' (tgn:1000111)")
+    assert len(REASK_SENTENCE.encode()) == 302
+
+
+@pytest.mark.parametrize("slide", SLIDES)
+def test_the_re_ask_request_fits_the_input_bound(monkeypatch, slide):
+    """The rebuilt conversation of LARGEST, the task carrying the re-ask's sentence: every request is
+    sent, the largest under the bound."""
+    from dataclasses import replace
+
+    readings, task, context, lookups = loaded(slide)
+    task = replace(task, reask=REASK_SENTENCE)
+    bounds = []
+    measure = budget.input_token_bound
+    monkeypatch.setattr(budget, "input_token_bound", lambda messages, parameters: bounds.append(
+        measure(messages, parameters)) or bounds[-1])
+    respond, requests = conversation(lookups)
+    resolver = experts.make_resolver(model_factory=lambda: FunctionModel(respond),
+        meter=budget.CostMeter(10_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+    outcome = asyncio.run(resolver(task, readings, context, tools=Stored(lookups)))
+    assert outcome.failure is None and len(bounds) == requests == 7
+    assert max(bounds) == REASK_LARGEST[slide] <= budget.DEFAULT_MAX_INPUT_TOKENS

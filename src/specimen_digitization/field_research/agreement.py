@@ -313,6 +313,9 @@ A_DISTANCE = "The label writes this number as a distance, not an elevation."
 HOLDS_AN_ELEVATION = "This text holds an elevation, which is another field's."
 HOLDS_A_DATE = "This text holds a date, which is another field's."
 HOLDS_A_RANGE = "This text holds a range of dates or elevations, which is another field's."
+# The units path (the ontology's notation collected_by, plan WP 2.3c): a collectors literal that
+# is a collected_by marker alone ("leg.") names no one.
+ROLE_ONLY = "This text is the collectors' role marker alone, which names no one."
 HOLDS = {written.ELEVATION: HOLDS_AN_ELEVATION, written.DATE: HOLDS_A_DATE, written.RANGE: HOLDS_A_RANGE}
 # The unit each elevation field holds (application.derivations.UNITS), and
 # its name in the experts' retry.
@@ -755,9 +758,20 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     expert's own check, before any field settles) holds its elevation text
     for every label it is read from (_another_kind: the ontology's rule
     precise_location_extent, plan WP 2.3b); a candidate is held to the
-    elevation rule only, a date or a range in it passing as on main."""
+    elevation rule only, a date or a range in it passing as on main. On the units path a
+    collectors literal that is a collected_by marker alone ("leg.", "coll.", "Coll.";
+    ontology_checks.without_role) settles nothing (ROLE_ONLY: the marker is the role the ontology's
+    notation collected_by names, plan WP 2.3c)."""
     basis = literal_basis(task, readings, literal, named)
     units = any(reading.units is not None for reading in readings)
+    if units and task.key == "collectors":
+        from .ontology_checks import without_role
+
+        role = without_role(literal)
+        if role is not None and not role.name:
+            return Refusal(ROLE_ONLY, f"{literal!r} is the marker of the collectors' role (collected by), not a "
+                "name. Give the name it marks as the literal, without the marker, or answer label_lacks_value "
+                "when the label names no collector.")
     if basis == CANDIDATE:
         return (_unit_refusal(task, readings, literal, named)
             or (_another_kind(task, literal, named, elevations, elevation_only=True)

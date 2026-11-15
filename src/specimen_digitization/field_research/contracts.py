@@ -161,6 +161,10 @@ class FieldTask:
     candidates: tuple[Candidate, ...]
     # Approved source ids and deterministic checks this field's expert may call.
     tools: tuple[str, ...]
+    # The units path's one re-ask (plan WP 2.3c, field_research/reask.py): the
+    # sentence naming the check of the stage the expert's earlier answer failed
+    # and what it saw, which the expert's request carries after its input.
+    reask: str | None = None
 
 
 @dataclass(frozen=True)
@@ -282,6 +286,15 @@ class FieldOutcome:
     # reason names them (step._unreachable_note); so does a source_unavailable
     # field's on the step's last attempt (step._unreachable_reason).
     unreachable: tuple[str, ...] = ()
+    # On the units path, when every answer the expert gave was refused by its
+    # checks (experts.UNCHECKED): each refusal's check and the refused literal,
+    # in the order given (census cause H1, plan WP 2.3c). A diagnostic: it
+    # decides nothing, and no model is sent it (step._rejected_note).
+    rejected: tuple[tuple[str, str | None], ...] = ()
+    # The units path's one re-ask (plan WP 2.3c, field_research/reask.py): the
+    # sentence that put the field back to its expert after a check of the
+    # stage failed, on the outcome of the answer the re-ask gave.
+    reasked: str | None = None
 
 
 class FieldResolver(Protocol):

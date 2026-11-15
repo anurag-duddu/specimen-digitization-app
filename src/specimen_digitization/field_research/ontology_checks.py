@@ -71,6 +71,7 @@ import re
 from collections import Counter
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from decimal import Decimal
+from functools import cache
 from typing import NamedTuple
 
 import httpx
@@ -90,6 +91,9 @@ PLACE_PARENTS_DERIVED = "place_parents_derived"
 DATE_ORDER = "date_order"
 PRECISE_LOCATION_EXTENT = "precise_location_extent"
 CHECKS = (PLACE_WITHIN, PLACE_CHAIN, PLACE_PARENTS_DERIVED, DATE_ORDER, PRECISE_LOCATION_EXTENT)
+# The keys of step.apply_outcomes' decisions under which the stage names a field's first failed
+# check and what it saw (Mark.saw), for the units path's one re-ask (field_research/reask.py).
+STAGE_CHECK, STAGE_SAW = "stage_check", "stage_saw"
 # The inference (infer_feet), by the id of its ontology rule.
 ELEVATION_UNIT_FEET = "elevation_unit_feet"
 # The rule each field derive.fill derives follows, as the ontology file names it (derive.DERIVED_RULES).
@@ -102,12 +106,14 @@ ISO_DATE = re.compile(r"(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?")
 
 class Mark(NamedTuple):
     """A failed check: the field it marks, the check (an ontology rule's id), the sentence its
-    reason ends with, and the evidence the finding cites."""
+    reason ends with, the evidence the finding cites, and what the check saw, as the units path's
+    one re-ask tells the field's expert (field_research/reask.py)."""
 
     field: str
     check: str
     sentence: str
     evidence_ids: tuple[str, ...] = ()
+    saw: str = ""
 
 
 def settled(value: FieldValue | None) -> bool:
@@ -153,7 +159,10 @@ def _date_marks(fields: Mapping[str, FieldValue], human: Collection[str]) -> lis
     sentence = (f"Marked for a person, rule {DATE_ORDER}: the determination date {_iso(determined)} is before the "
         f"collecting date {_iso(start)}.")
     cited = tuple(dict.fromkeys(i for value in (collected, identified) for i in value.evidence_ids))
-    return [Mark(field, DATE_ORDER, sentence, cited)]
+    saw = (f"the determination date {_iso(determined)} is before the collecting date {_iso(start)}"
+        if field == "date_identified" else
+        f"the collecting date {_iso(start)} is after the determination date {_iso(determined)}")
+    return [Mark(field, DATE_ORDER, sentence, cited, saw)]
 
 
 # ---- places ------------------------------------------------------------------------------
@@ -371,10 +380,9 @@ def _place_marks(fields: Mapping[str, FieldValue], answers: Sequence[SourceAnswe
                     f"({above.authority_id}), and the {LEVEL_NAMES[lower]} settled below it, {_named(value)!r}, lies in "
                     f"{record} by its source's record ({candidate.authority_id}), not in it.", cited))
             elif lower not in human:
-                marks.append(Mark(lower, check,
-                    f"Marked for a person, rule {check}: the source's record for {_named(value)!r} "
-                    f"({candidate.authority_id}) places it in {record}, not in the {LEVEL_NAMES[upper]} settled "
-                    f"above it, {_named(above)!r} ({above.authority_id}).", cited))
+                saw = (f"the source's record for {_named(value)!r} ({candidate.authority_id}) places it in {record}, "
+                    f"not in the {LEVEL_NAMES[upper]} settled above it, {_named(above)!r} ({above.authority_id})")
+                marks.append(Mark(lower, check, f"Marked for a person, rule {check}: {saw}.", cited, saw))
     return marks
 
 
@@ -755,6 +763,118 @@ def infer_feet(run, *, readings: Sequence[Reading], eligible: Collection[str], a
     return [key]
 
 
+# ---- the collectors' role marker (plan WP 2.3c) ---------------------------------------------
+
+# The field whose literal never holds the marker of its role, and the ontology's notation of that
+# marker ("leg.", "coll.", "Coll.": collected by).
+ROLE_FIELD = "collectors"
+ROLE_NOTATION = "collected_by"
+
+
+class Role(NamedTuple):
+    """A collectors literal read without the marker at its edge: the name (empty when the
+    literal is the marker alone), the marker, and the name's offsets in the literal."""
+
+    name: str
+    marker: str
+    start: int
+    end: int
+
+
+# The words that join two people's names (G51's round 1 on PR #439, the coordinator's ruling): a name
+# that starts or ends with one is no whole name.
+JOINERS = frozenset({"et", "&", "and", "y", "u", "und", "e"})
+# The ontology's notation of the determiner's role, another role word a name never holds.
+DETERMINER_NOTATION = "determined_by"
+
+
+@cache
+def role_markers() -> tuple[str, ...]:
+    """The spellings the ontology's notation collected_by writes ("leg.", "coll.", "Coll.")."""
+    from specimen_digitization.ontology import ontology
+
+    return next(item for item in ontology().notations if item.id == ROLE_NOTATION).written
+
+
+@cache
+def role_words() -> frozenset[str]:
+    """Every role word of the ontology's notations collected_by and determined_by ("leg.", "coll.",
+    "Coll.", "det.")."""
+    from specimen_digitization.ontology import ontology
+
+    return frozenset(form for item in ontology().notations if item.id in (ROLE_NOTATION, DETERMINER_NOTATION)
+        for form in item.written)
+
+
+def plain_name(text: str) -> bool:
+    """Whether a text is a name alone: no token of it is a role word (role_words, letter case aside:
+    "Det."), and neither its first nor its last token is a joiner (JOINERS, letter case aside) or a
+    word in lower case, a joiner or a particle in any language ("J. Dupont e", "J. de"; the
+    coordinator's rulings on G51's rounds 1 and 2 of PR #439)."""
+    tokens = text.split()
+    roles = {word.casefold() for word in role_words()}
+    return bool(tokens) and not any(token.casefold() in roles for token in tokens) and not any(
+        token.casefold() in JOINERS or (token.lower() == token and any(char.isalpha() for char in token))
+        for token in (tokens[0], tokens[-1]))
+
+
+@cache
+def _role_patterns() -> tuple[re.Pattern[str], ...]:
+    """The marker alone; a name and the marker after it; the marker and a name after it; the
+    marker right after a text; the marker right before one (role_markers, longest first)."""
+    markers = "|".join(re.escape(marker) for marker in sorted(role_markers(), key=len, reverse=True))
+    return (re.compile(rf"\s*(?P<marker>{markers})\s*", re.S),
+        re.compile(rf"(?P<name>.*?\S)[,;]?\s+(?P<marker>{markers})\s*", re.S),
+        re.compile(rf"\s*(?P<marker>{markers})\s+(?P<name>\S.*)", re.S),
+        re.compile(rf"[,;]?[ \t]+(?P<marker>{markers})(?!\S)"),
+        re.compile(rf"(?:^|(?<=\s))(?P<marker>{markers})[ \t]+$"))
+
+
+def without_role(literal: str | None) -> Role | None:
+    """The literal of the collectors without a collected_by marker (role_markers) at an edge, or
+    None when no marker stands at an edge. The marker is a whole token, spelled as the notation
+    writes it: at the end, after white space (a comma or a semicolon may close the name before
+    it); at the start, before white space. "H. Hoogstraal leg." and "leg. H. Hoogstraal" give the
+    name "H. Hoogstraal"; "Legrand", "H. Hoogstraalleg." and "F.G. Werner" give None; the marker
+    alone gives the name "". The name keeps no white space at its edges. Only a name alone is
+    read off (plain_name): where what remains holds another role word or starts or ends with a
+    joiner ("leg. et det. J. Smith", "J. Dupont et coll.", "J. Dupont & coll."), None, and the
+    literal stays as it is."""
+    if not literal:
+        return None
+    alone, at_end, at_start = _role_patterns()[:3]
+    if (found := alone.fullmatch(literal)) is not None:
+        return Role("", found["marker"], 0, 0)
+    start, end, marker = 0, len(literal), None
+    if (found := at_end.fullmatch(literal)) is not None:
+        end, marker = found.end("name"), found["marker"]
+    if (found := at_start.fullmatch(literal, 0, end)) is not None:
+        start, marker = found.start("name"), marker or found["marker"]
+    if marker is None:
+        return None
+    if alone.fullmatch(literal, start, end) is not None:
+        return Role("", marker, 0, 0)
+    while start < end and literal[start].isspace():
+        start += 1
+    while end > start and literal[end - 1].isspace():
+        end -= 1
+    if not plain_name(literal[start:end]):
+        return None
+    return Role(literal[start:end], marker, start, end)
+
+
+def role_beside(text: str, start: int, end: int) -> str | None:
+    """The collected_by marker a reading writes right beside its text at [start, end), on the
+    same line: after it, past white space (a comma or a semicolon may come first), and before
+    white space or the text's end; or before it, after the line's start or white space, past
+    white space. None otherwise."""
+    after, before = _role_patterns()[3:]
+    line_start = text.rfind("\n", 0, start) + 1
+    if (found := after.match(text, end)) is not None or (found := before.search(text[line_start:start])) is not None:
+        return found["marker"]
+    return None
+
+
 # ---- the extent of Precise Location (plan WP 2.3b) -----------------------------------------
 
 # The places above the precise location whose text, on the next line, shows it cut short.
@@ -854,15 +974,30 @@ def _extent_marks(fields: Mapping[str, FieldValue], readings: Sequence[Reading],
             hit = _continues(line, reading, fields, places)
             if hit is None:
                 return []
-            shown = shown or (line.strip(), *hit)
+            if shown is None:
+                # What the re-ask tells the expert (Mark.saw): the next line and each line after it
+                # that continues the locality with a settled province or country too (_continues).
+                following = [(line.strip(), *hit)]
+                while after >= 0:
+                    start, after = after + 1, reading.text.find("\n", after + 1)
+                    more = reading.text[start:None if after < 0 else after]
+                    if (also := _continues(more, reading, fields, places)) is None:
+                        break
+                    following.append((more.strip(), *also))
+                shown = following
             at = reading.text.find(value.literal, at + 1)
     if shown is None:
         return []
-    line, key, text = shown
+    line, key, text = shown[0]
     cited = tuple(dict.fromkeys([*value.evidence_ids, *fields[key].evidence_ids]))
+    lines = " and ".join(repr(item[0]) for item in shown)
+    held = " and ".join(dict.fromkeys(f"{LEVEL_NAMES[item[1]]} {item[2]!r}" for item in shown))
+    saw = (f"it ends its line, and the label's next {'lines' if len(shown) > 1 else 'line'}, {lines}, "
+        f"{'write' if len(shown) > 1 else 'writes'} the settled {held}; Precise Location takes every line "
+        "of the locality, the higher places included")
     return [Mark("precise_location", PRECISE_LOCATION_EXTENT,
         f"Marked for a person, rule {PRECISE_LOCATION_EXTENT}: the label's next line, {line!r}, writes the "
-        f"{LEVEL_NAMES[key]} settled, {text!r}, so its locality goes on after this text.", cited)]
+        f"{LEVEL_NAMES[key]} settled, {text!r}, so its locality goes on after this text.", cited, saw)]
 
 
 # ---- the stage ---------------------------------------------------------------------------
@@ -892,7 +1027,7 @@ def basis(key: str) -> str | None:
 
 def stage(run, *, readings: Sequence[Reading], received: Mapping[str, Sequence[SourceAnswer]],
         researched: Collection[str], derived: Collection[str], human: Collection[str], blobs=None,
-        tally: Counter | None = None) -> list[str]:
+        tally: Counter | None = None, decisions: dict[str, dict] | None = None) -> list[str]:
     """Run the checks over the run's settled values, in memory; the codes of the marks made.
 
     `received` is every source answer of this attempt, by field. A settled place cites, as its
@@ -903,7 +1038,10 @@ def stage(run, *, readings: Sequence[Reading], received: Mapping[str, Sequence[S
     The fields this attempt `researched` or `derived`, and both dates, are checked again: their
     earlier marks of this stage are dropped first; a field another attempt settled keeps its
     marks, and gets no mark twice. A person's field (`human`) is never marked, whatever its
-    layer. Each value this attempt derived gets its basis sentence (`basis`), before any mark's."""
+    layer. Each value this attempt derived gets its basis sentence (`basis`), before any mark's.
+    `decisions` (step.apply_outcomes') gets, for each field marked, the check (STAGE_CHECK) and
+    what it saw (STAGE_SAW), which the units path's one re-ask tells the field's expert
+    (field_research/reask.py)."""
     from .agreement import PLACE_ORDER
     from .step import marked_code
 
@@ -928,6 +1066,9 @@ def stage(run, *, readings: Sequence[Reading], received: Mapping[str, Sequence[S
     for mark in [*_place_marks(run.fields, answers, human, tally), *_date_marks(run.fields, human),
             *_extent_marks(run.fields, readings, rows, human)]:
         _with_sentence(run.fields[mark.field], mark.sentence)
+        if decisions is not None:
+            decisions.setdefault(mark.field, {}).setdefault(STAGE_CHECK, mark.check)
+            decisions[mark.field].setdefault(STAGE_SAW, mark.saw)
         for label in _labels(run, mark.field, readings, rows):
             code = marked_code(mark.field, label, mark.check)
             if (mark.field, code) in present:
