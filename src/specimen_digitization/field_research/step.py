@@ -1297,7 +1297,7 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
     # On the units path the collectors' name is cited where its row locates it, without the marker
     # of its role (the ontology's notation collected_by): the organiser's row may locate the
     # name with the marker, and its line keeps the marker as evidence of the role.
-    from .ontology_checks import ROLE_FIELD, ROLE_NOTATION, role_beside
+    from .ontology_checks import ROLE_FIELD, ROLE_NOTATION, plain_name, role_beside
 
     named_only = units_path(run) and task.key == ROLE_FIELD
     relations: dict[str, str] = {}
@@ -1343,7 +1343,8 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
     elif value is not None:
         normalized = value
     reason = answer.explanation
-    if named_only and (marker := next((found for reading in named if (at := reading.text.find(literal)) >= 0
+    if named_only and plain_name(literal) and (marker := next((found for reading in named
+            if (at := reading.text.find(literal)) >= 0
             and (found := role_beside(reading.text, at, at + len(literal)))), None)):
         reason = (f"{reason} The marker {marker!r} beside the name says its role, collected by (notation "
             f"{ROLE_NOTATION}): the name is settled without it.")
@@ -2872,7 +2873,8 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
     # The answer's literal is offered to every label, whatever readings it names (agreement.refusal),
     # and, for an answer the rule settled from an expert's several_possibilities (_by_rule), its
     # options (`offered`), as the rule was given them.
-    found = labels(task, readings, answers, transcript=literal, named=named, offered=offered)
+    found = labels(task, readings, answers, transcript=literal, named=named, offered=offered,
+        settled=_settled_texts(run, task.key))
     rows = {item.id: item for item in run.evidence}
     for region, label in found.items():
         if not label.settled or not (label.cleared or label.why):
@@ -2901,6 +2903,15 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
         value.reason = " ".join(part for part in (value.reason, *notes) if part)
         run.findings.append(RunFinding(rule_id=SETTLEMENT, rule_version=SETTLEMENT_RULES, severity=severity,
             field_key=task.key, reason_code=code, evidence_ids=cited))
+
+
+def _settled_texts(run, key: str) -> tuple[str, ...]:
+    """The texts the label writes for the other fields settled from it (supported, in a layer settled
+    from the label, SETTLED_LAYERS): their literals and each reader's verbatim. The image test's
+    neighbour guard accounts for a line by them (agreement.image_names' `settled`)."""
+    return tuple(dict.fromkeys(text for other, value in run.fields.items() if other != key
+        and value.state == ValueState.SUPPORTED and value.layer in SETTLED_LAYERS
+        for text in (value.literal, *value.verbatim_by_observation.values()) if text and text.strip()))
 
 
 def _across_lines(outcomes: Sequence[FieldOutcome], by_name: Mapping[str, Reading]) -> tuple[FieldOutcome, ...]:

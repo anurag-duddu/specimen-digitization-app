@@ -14,9 +14,10 @@ reconciliation settled) is put back to its expert once: the same task, readings 
 request carrying one sentence that names the failed check and what the check saw (FieldTask.reask,
 experts.REASK_PREFIX). Its answer goes through every check again: the expert's own, then, applied
 with every other outcome on a copy of the run, the step's refusals, the settlement rule and the
-stage. It is kept when its field settles (supported, from the label) and no check of the stage
-marks it; the settlement rule then clears or marks it as it would any answer, and its reason names
-the re-ask (FieldOutcome.reasked). Otherwise the field keeps the answer it had, applied as without
+stage. It is kept when its field settles (supported, from the label) and the stage, run again,
+marks neither it nor any field it did not mark before the re-ask (G51's round 1 on PR #439, the
+coordinator's ruling); the settlement rule then clears or marks it as it would any answer, and its
+reason names the re-ask (FieldOutcome.reasked). Otherwise the field keeps the answer it had, applied as without
 the re-ask, so it is marked as the stage marks it today; the lookups the re-ask made are recorded
 and decide nothing (step.apply_outcomes' `unused`).
 
@@ -93,6 +94,11 @@ def _marked(copy, key: str) -> bool:
     return any(finding.rule_id == CHECK_STAGE and finding.field_key == key for finding in copy.findings)
 
 
+def _stage_marks(copy) -> frozenset[str]:
+    """The fields a check of the stage marks on a trial's copy of the run."""
+    return frozenset(finding.field_key for finding in copy.findings if finding.rule_id == CHECK_STAGE)
+
+
 def _settles(copy, key: str) -> bool:
     from .step import SETTLED_LAYERS
 
@@ -148,6 +154,7 @@ async def again(run, profile, prepared, outcomes: Sequence[FieldOutcome], *, res
     asked = {key: item for key, item in to_ask(run, copy, decisions, outcomes).items() if key in tasks_by_key}
     if not asked:
         return outcomes, []
+    before = _stage_marks(copy)
     made: dict[str, list] = {key: [] for key in asked}
     jobs = {key: asyncio.create_task(step._resolve(resolver,
         replace(tasks_by_key[key], reask=ASKED.format(literal=literal, check=check, saw=saw)), readings, context,
@@ -170,7 +177,8 @@ async def again(run, profile, prepared, outcomes: Sequence[FieldOutcome], *, res
             cost_micros=by_key[key].cost_micros + answer.cost_micros)
 
     # Each kept answer goes through every check again, applied with the others; one that does not
-    # settle, or that a check of the stage marks, is not kept, and the rest are tried again.
+    # settle, or that a check of the stage marks, is not kept, and the rest are tried again. Where the
+    # stage marks a field it did not mark before the re-ask, no answer of this try is kept.
     while kept:
         trial = [given(outcome.key) if outcome.key in kept else outcome for outcome in outcomes]
         try:
@@ -181,6 +189,8 @@ async def again(run, profile, prepared, outcomes: Sequence[FieldOutcome], *, res
             kept = set()
             break
         failing = {key for key in kept if not _settles(copy, key) or _marked(copy, key)}
+        if _stage_marks(copy) - before:
+            failing = set(kept)
         if not failing:
             break
         kept -= failing

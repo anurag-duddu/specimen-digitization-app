@@ -781,12 +781,37 @@ class Role(NamedTuple):
     end: int
 
 
+# The words that join two people's names (G51's round 1 on PR #439, the coordinator's ruling): a name
+# that starts or ends with one is no whole name.
+JOINERS = frozenset({"et", "&", "and", "y", "u", "und"})
+# The ontology's notation of the determiner's role, another role word a name never holds.
+DETERMINER_NOTATION = "determined_by"
+
+
 @cache
 def role_markers() -> tuple[str, ...]:
     """The spellings the ontology's notation collected_by writes ("leg.", "coll.", "Coll.")."""
     from specimen_digitization.ontology import ontology
 
     return next(item for item in ontology().notations if item.id == ROLE_NOTATION).written
+
+
+@cache
+def role_words() -> frozenset[str]:
+    """Every role word of the ontology's notations collected_by and determined_by ("leg.", "coll.",
+    "Coll.", "det.")."""
+    from specimen_digitization.ontology import ontology
+
+    return frozenset(form for item in ontology().notations if item.id in (ROLE_NOTATION, DETERMINER_NOTATION)
+        for form in item.written)
+
+
+def plain_name(text: str) -> bool:
+    """Whether a text is a name alone: no token of it is a role word (role_words), and neither its
+    first nor its last token is a joiner (JOINERS, letter case aside)."""
+    tokens = text.split()
+    return bool(tokens) and not any(token in role_words() for token in tokens) and not (
+        tokens[0].casefold() in JOINERS or tokens[-1].casefold() in JOINERS)
 
 
 @cache
@@ -807,7 +832,10 @@ def without_role(literal: str | None) -> Role | None:
     writes it: at the end, after white space (a comma or a semicolon may close the name before
     it); at the start, before white space. "H. Hoogstraal leg." and "leg. H. Hoogstraal" give the
     name "H. Hoogstraal"; "Legrand", "H. Hoogstraalleg." and "F.G. Werner" give None; the marker
-    alone gives the name "". The name keeps no white space at its edges."""
+    alone gives the name "". The name keeps no white space at its edges. Only a name alone is
+    read off (plain_name): where what remains holds another role word or starts or ends with a
+    joiner ("leg. et det. J. Smith", "J. Dupont et coll.", "J. Dupont & coll."), None, and the
+    literal stays as it is."""
     if not literal:
         return None
     alone, at_end, at_start = _role_patterns()[:3]
@@ -826,6 +854,8 @@ def without_role(literal: str | None) -> Role | None:
         start += 1
     while end > start and literal[end - 1].isspace():
         end -= 1
+    if not plain_name(literal[start:end]):
+        return None
     return Role(literal[start:end], marker, start, end)
 
 
