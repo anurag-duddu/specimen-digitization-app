@@ -86,6 +86,11 @@ PLACES = {
     # Guatemala City as sources._place gives its record: its department Guatemala (tgn:1000621) kept, the
     # nation Guatemala (tgn:7005493) dropped for having that name (Codex's round-2 input).
     "Guatemala City": ("tgn:7005498", "inhabited places, national capitals", (("Guatemala", "tgn:1000621"),)),
+    # The department Guatemala's TGN record, its types as tests/fixtures/georeferencing/tgn_records.json gives
+    # them: no nation's.
+    "Guatemala, department": ("tgn:1000621",
+        "departments (political divisions), agricultural land, first level subdivisions (political entities)",
+        (("Guatemala", "tgn:7005493"),)),
     # A town whose TGN chain stops short: its response lacked the ancestor row above its county.
     "Partial": ("tgn:partial", "inhabited places", (("Somewhere", "tgn:somewhere-county"),)),
     # TGN's records on 2026-11-14 (G51's round-2 probe): Aurora's preferred parent is Arapahoe County;
@@ -1057,3 +1062,33 @@ def test_fits_decides_by_ids_and_codes_and_abstains_otherwise():
     assert fits(coded, "country", PlaceField((), "nga:gt", "GT"), ()) is True
     assert fits(coded, "country", PlaceField((), "wikidata:Q783", "HN"), ()) is False
     assert fits(coded, "country", PlaceField((), "tgn:7005493"), ()) is None
+
+
+
+def test_a_tgn_record_the_stage_holds_is_a_nation_only_by_tgn_s_nation_type(tmp_path, monkeypatch, first_pass_path):
+    """Codex's round-3 finding 1: Guatemala City (tgn:7005498) with its department Guatemala (tgn:1000621) as
+    its one parent, the country Guatemala settled on tgn:7005493, and the city's expert also holding TGN's
+    record of that department (its types first-level subdivision, department, agricultural land:
+    tgn_records.json). A record the stage holds is a nation only when its kinds name TGN's nation type
+    (ontology_checks.tgn_nations), so the department is none and the chain is not known to reach its
+    nation: the check abstains, on both paths."""
+    from specimen_digitization.field_research.ontology_checks import tgn_nations
+
+    a_second_label(monkeypatch, "Guatemala City")
+    rig = build_rig(tmp_path, label_with(country="Guatemala", province_state=None, county=None, city=None))
+    run = rig.specimen.run
+
+    async def city(task, readings, tools):
+        answer = await tools.lookup("tgn", "Guatemala City", field_key=task.key)
+        department = await tools.lookup("tgn", "Guatemala, department", field_key=task.key)
+        return FieldOutcome(task.key, resolved("Guatemala City", authority_id="tgn:7005498", cited=[answer.evidence.id],
+            reading="2A"), evidence=[answer.evidence, department.evidence], model_calls=1)
+
+    settle(rig, Scripted({"country": tgn("Guatemala"), "province_state": answering(LACKS), "county": answering(LACKS),
+        "city": city}), tools=Places(rig.blobs))
+
+    assert [value_of(run, key)[:2] for key in ("country", "city")] == [
+        (ValueState.SUPPORTED, "Guatemala"), (ValueState.SUPPORTED, "Guatemala City")]
+    assert marks(run) == []
+    # The department's record, as the city's expert held it, names no nation's type.
+    assert tgn_nations([Places(rig.blobs)._answer("tgn", "Guatemala, department")]) == frozenset()

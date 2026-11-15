@@ -605,6 +605,7 @@ CODE_RULE_TESTS = {
         f"{STAGE}::test_a_plain_retry_keeps_the_marks_of_fields_it_does_not_research",
         f"{STAGE}::test_a_reassessment_that_researches_a_marked_field_again_drops_its_stale_mark",
         f"{STAGE}::test_a_tgn_chain_not_known_to_reach_its_nation_abstains",
+        f"{STAGE}::test_a_tgn_record_the_stage_holds_is_a_nation_only_by_tgn_s_nation_type",
         f"{STAGE}::test_a_stored_row_is_rebuilt_only_from_its_own_responses",
         f"{STAGE}::test_a_stored_row_is_read_again_only_from_a_lookup_that_gives_its_excerpt",
         f"{STAGE}::test_fits_decides_by_ids_and_codes_and_abstains_otherwise",
