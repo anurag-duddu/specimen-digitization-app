@@ -17,6 +17,7 @@ from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from typing import Any, Literal
 
 from specimen_digitization.application.derivations import HUNDREDTH, METRES_PER_FOOT
+from specimen_digitization.application.date_notations import ROMAN_MONTHS
 from specimen_digitization.application.domain import LookupStatus
 from specimen_digitization.application.field_validators import (
     catalog_number_validator,
@@ -51,6 +52,25 @@ SLIDE_CODE = "slide_code"
 # The part of a date literal a field takes: Date Visited To takes a range's end
 # (a single date is its own end); every other date field takes the start.
 DATE_PART: dict[str, Literal["start", "end"]] = {"date_visited_to": "end"}
+# The ontology's notation roman_month, its reading of a 1 written for an I ("1X" as IX): a token
+# of the capitals I, V and X and the digit 1 (digit_one_month), and the note a date read so carries.
+_DIGIT_ONE = re.compile(r"(?<![0-9A-Za-z])[1IVX]+(?![0-9A-Za-z])")
+DIGIT_ONE = "roman_month_digit_one"
+
+
+def digit_one_month(literal: str) -> str | None:
+    """The literal with the one Roman month it writes with a digit one for an I read as I
+    ("1X-14-46" as "IX-14-46", "X1-3-46" as "XI-3-46"), or None. Such a month is a token of the
+    capitals I, V and X and the digit 1, holding both a 1 and a letter, that is a Roman month I
+    to XII with each 1 read as I. A token of digits alone ("11") is an Arabic number, whose
+    reading stays as written; a literal with two such tokens is left as written too. Whether
+    the token stands where a month does is the date parser's to say (parse_date)."""
+    tokens = [match for match in _DIGIT_ONE.finditer(literal) if "1" in match.group()
+        and set(match.group()) != {"1"} and match.group().replace("1", "I") in ROMAN_MONTHS]
+    if len(tokens) != 1:
+        return None
+    [match] = tokens
+    return literal[:match.start()] + match.group().replace("1", "I") + literal[match.end():]
 
 
 def _as_dict(result: Any) -> dict[str, Any]:
@@ -226,10 +246,23 @@ def parse_date(
     (`literal_inside_a_longer_token`). On the units path (`units`), a literal that any
     reading writes inside a slide code, as the ontology's notation reads one, is no date
     (`in_a_code`, the rule code_is_no_date), even where that reading glues a letter or a
-    digit to its edge: reading B's "VI-23-48-4" beside reading A's "I-23-48".
+    digit to its edge: reading B's "VI-23-48-4" beside reading A's "I-23-48". On the units
+    path, too, a Roman month written with a digit one for an I (digit_one_month: "1X-14-46")
+    is read as that month where the parser then reads a date (the ontology's notation
+    roman_month), the note DIGIT_ONE saying so, and the literal stays as written.
     """
     if not literal or not literal.strip():
         return DateCheck(literal, LookupStatus.POLICY, notes=(NOT_IN_SOURCE,), part=part)
+    if units and (read := digit_one_month(literal)) is not None:
+        # The ontology's notation roman_month: a digit one written for the I of a Roman month,
+        # read as I where the date parser then reads a date, in every reading that holds the
+        # literal; the check keeps the literal as written. Otherwise the literal is read as
+        # written, below.
+        found = parse_date(read, reading_texts=[text.replace(literal, read) for text in reading_texts],
+            date_rules=date_rules, year_literal=year_literal, part=part, reading_names=reading_names, field=field,
+            units=True)
+        if found.readings:
+            return replace(found, literal=literal, notes=(*found.notes, DIGIT_ONE))
     names = list(reading_names) if reading_names is not None else [
         str(number) for number in range(1, len(reading_texts) + 1)]
     named = list(zip(names, reading_texts, strict=True))

@@ -234,7 +234,7 @@ from specimen_digitization.application.domain import LookupStatus
 from specimen_digitization.application.georef_locality import comparison_key, fold, one_letter_apart
 from specimen_digitization.application.georef_wikidata import FIRST_LEVEL, LEVEL_NAMES
 
-from . import written
+from . import date_lines, written
 from .abbreviations import abbreviated, fit, fits, initialism
 from .checks import collapse, genus_in_doubt, longer_name, taxon_query_grounded
 from .contracts import GAZETTEERS, PLACE_SOURCES, FieldTask, Reading, SourceAnswer, SourceCandidate
@@ -733,8 +733,67 @@ def literal_basis(task: FieldTask, readings: Sequence[Reading], literal: str,
     return None
 
 
+# On the units path (plan WP 2.4, the coordinator's ruling of 2026-11-15 on pilot slide 105526330,
+# "IV-25" ending a line above "1948, R.D. Mitchell"): a date field's literal that extends an organiser
+# candidate across one line break by the year that starts the next line (year_below, next_line_year).
+DATE_FIELDS = frozenset({"date_visited_from", "date_visited_to", "date_identified"})
+# A year alone on its line as the date rules read one (date_lines.YEAR_TOKEN: four digits, or two after an
+# apostrophe), and the punctuation that may end its token.
+_YEAR_TOKEN = re.compile(date_lines.YEAR_TOKEN)
+_AFTER_YEAR = ",.;"
+
+
+def year_below(task: FieldTask, readings: Sequence[Reading], literal: str,
+        named: Sequence[Reading]) -> tuple[str, str] | None:
+    """A date field's literal of two lines that extends an organiser candidate by the year starting
+    the next line, as its first line and its second, or None. (a) Its first line is, exactly, a
+    candidate literal of every reading it names (candidate_literal); (b) its second is the first
+    token of the next line alone, a year (four digits, or two after an apostrophe), with or
+    without the punctuation ending that token ("1948" or "1948," of "1948, R.D. Mitchell"; never
+    "1948, R.D." nor the "1948" of "1948,R.D. Mitchell"); (c) every
+    reading of the labels it names writes the first line, then a line break, and at each place it
+    does so that same token first on the next line. Whether the date rules read the two lines as one
+    date is next_line_year's to say."""
+    if task.key not in DATE_FIELDS or not named or literal.count("\n") != 1:
+        return None
+    first, second = literal.split("\n")
+    if (not first or first != first.strip() or not _YEAR_TOKEN.fullmatch(second.rstrip(_AFTER_YEAR))
+            or candidate_literal(task, readings, first, named) != first):
+        return None
+    regions = {reading.region_id for reading in named}
+    tokens = set()
+    for reading in (reading for reading in readings if reading.region_id in regions):
+        at = reading.text.find(first + "\n")
+        if at < 0:
+            return None
+        while at >= 0:
+            # The next line's first token: what it holds before its first white space.
+            tokens.add(re.match(r"\S*", reading.text[at + len(first) + 1:]).group())
+            at = reading.text.find(first + "\n", at + 1)
+    if len(tokens) != 1 or second not in (token := next(iter(tokens)), token.rstrip(_AFTER_YEAR)):
+        return None
+    return first, second
+
+
+def next_line_year(task: FieldTask, readings: Sequence[Reading], literal: str, named: Sequence[Reading],
+        date_rules) -> bool:
+    """Whether a date field's literal extends an organiser candidate by the year below it
+    (year_below) and (d) parse_date, under the profile's date rules, reads the two lines as one date
+    at day precision in every reading of its labels, through split_lines. False without date rules."""
+    from .checks import DATE_PART, parse_date
+
+    if date_rules is None or year_below(task, readings, literal, named) is None:
+        return False
+    regions = {reading.region_id for reading in named}
+    texts = [reading for reading in readings if reading.region_id in regions]
+    found = parse_date(literal, reading_texts=[reading.text for reading in texts], date_rules=date_rules,
+        part=DATE_PART.get(task.key), reading_names=[reading.name for reading in texts], field=task.key, units=True)
+    return (found.status == LookupStatus.SUCCESS and bool(found.readings)
+        and all(reading.precision == "day" and "split_lines" in reading.via for reading in found.readings))
+
+
 def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
-        named: Sequence[Reading], elevations=None) -> Refusal | None:
+        named: Sequence[Reading], elevations=None, date_rules=None) -> Refusal | None:
     """Why the answer's literal may not settle the field, or None: it must be
     a whole candidate literal of each reading it names, whichever reader
     wrote it (the first pass's preferred reading is advice, never a
@@ -761,7 +820,9 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     elevation rule only, a date or a range in it passing as on main. On the units path a
     collectors literal that is a collected_by marker alone ("leg.", "coll.", "Coll.";
     ontology_checks.without_role) settles nothing (ROLE_ONLY: the marker is the role the ontology's
-    notation collected_by names, plan WP 2.3c)."""
+    notation collected_by names, plan WP 2.3c). On the units path, too, a date field's literal that
+    extends a candidate by the year starting the next line passes where `date_rules`, the profile's,
+    read it as one date (next_line_year)."""
     basis = literal_basis(task, readings, literal, named)
     units = any(reading.units is not None for reading in readings)
     if units and task.key == "collectors":
@@ -783,6 +844,8 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
             or (_another_kind(task, literal, named, elevations) if units else _holds_another_kind(task, literal))
             or _longer_written(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named)
             or _host(task, readings, literal))
+    if units and next_line_year(task, readings, literal, named, date_rules):
+        return None
     allowed = candidates_by_reading(task, readings)
     offered = [f"{source.name}: {text!r}" for source in dict.fromkeys(named)
         for text in allowed.get(source.name, {}).values()]
@@ -2923,13 +2986,16 @@ def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
 
 def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         named: Sequence[Reading], value: str | None, authority_id: str | None,
-        cited: Sequence[SourceAnswer], received: Sequence[SourceAnswer], elevations=None) -> Refusal | None:
+        cited: Sequence[SourceAnswer], received: Sequence[SourceAnswer], elevations=None,
+        date_rules=None) -> Refusal | None:
     """Why a resolved answer may not settle its field, or None.
 
     `named` are the readings the answer names (each already writes the
     literal), `cited` the source answers it cites and `received` every source
-    answer its field received; `elevations` as literal_refusal takes them."""
-    refused = literal_refusal(task, readings, literal=literal, named=named, elevations=elevations)
+    answer its field received; `elevations` and `date_rules` as literal_refusal
+    takes them."""
+    refused = literal_refusal(task, readings, literal=literal, named=named, elevations=elevations,
+        date_rules=date_rules)
     if refused is not None:
         return refused
     # The units path offers the answer's literal to every label, whatever readings it names.

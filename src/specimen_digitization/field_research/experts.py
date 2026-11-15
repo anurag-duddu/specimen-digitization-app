@@ -642,7 +642,7 @@ class _Expert:
         # elevation the rule could keep passes here, and the step decides on
         # what the elevation fields settle (agreement.ANY_ELEVATION).
         refused = agreement.literal_refusal(self.task, self.readings, literal=literal, named=named,
-            elevations=agreement.ANY_ELEVATION)
+            elevations=agreement.ANY_ELEVATION, date_rules=self.date_rules)
         if refused is not None:
             raise Refused(_refusal_code(refused.reason), refused.retry)
         cited = [received[i] for i in answer.source_evidence_ids]
@@ -686,6 +686,7 @@ class _Expert:
             cited=cited,
             received=self.received,
             elevations=agreement.ANY_ELEVATION,
+            date_rules=self.date_rules,
         )
         if refused is not None:
             raise Refused(_refusal_code(refused.reason), refused.retry)

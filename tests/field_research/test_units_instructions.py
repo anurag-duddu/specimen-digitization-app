@@ -71,10 +71,11 @@ def test_the_old_paths_instructions_are_main_s():
     assert {key: "sha256:" + hashlib.sha256(instructions(key).encode()).hexdigest() for key in FIELD_TOOLS} == MAIN
 
 
-def test_units_txt_replaces_texts_of_common_txt_the_tool_less_place_and_precise_location_briefs_only():
+def test_units_txt_replaces_texts_of_common_txt_the_tool_less_place_precise_location_and_date_briefs_only():
+    """WP 2.4 adds the two collecting-date briefs (a year that starts the next line)."""
     assert TOOL_LESS == {"collectors", "collection_code", "habitat", "collection_method", "verbatim_dts"}
-    assert set(units_replacements()) == {"common.txt", "precise_location.txt",
-        *(f"{key}.txt" for key in (*TOOL_LESS, *PLACES))}
+    assert set(units_replacements()) == {"common.txt", "precise_location.txt", "date_visited_from.txt",
+        "date_visited_to.txt", *(f"{key}.txt" for key in (*TOOL_LESS, *PLACES))}
 
 
 @pytest.mark.parametrize("key", FIELD_TOOLS)
@@ -128,9 +129,10 @@ def test_the_units_paths_instructions_name_no_first_pass_preference(key):
     assert "- units, when present:" in text
 
 
-# prompts/units.txt as WP 1.3's rework (gap report items 2(a), 3 and 4) and WP 2.2 (the two date
-# notation lines; the precise location brief's three lines) leave it, as the sha256 of its bytes.
-UNITS_TXT = "sha256:55275609d5e505dd83d0b4e8238a70a573b94a80aceb9ba541059abdab958b96"
+# prompts/units.txt as WP 1.3's rework (gap report items 2(a), 3 and 4), WP 2.2 (the two date
+# notation lines; the precise location brief's three lines) and WP 2.4 (the date briefs' sentence on a
+# year that starts the next line) leave it, as the sha256 of its bytes.
+UNITS_TXT = "sha256:5e0926c7f18bdd1f706136b45a89aaecd0f9c41958dd4f8cb632cbf6524bd297"
 # Rule 4 on the units path: what the code decides, said once to every expert.
 RULE = ("The code decides from the image judgements, the source answers your lookups returned and the readers' "
     "agreement whether a value is cleared, marked for a person to check, or left open, and it refuses an answer it cannot "
