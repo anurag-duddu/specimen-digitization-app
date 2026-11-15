@@ -26292,7 +26292,7 @@ approvals were requested together; cloud setup remained unapplied when recorded.
     - parse's gate on that pin;
     - `harness.apply_units`, which wrote the organiser's rows from the reading units;
     - their tests.
-  - The coordinator's ruling after the run removed it (the owner's "no dead code"; PLAN section 1, criterion 3). The branch's `src` and `scripts` are main's again.
+  - The coordinator's ruling after the run removed it. The grounds were the owner's mandate (PLAN.md:7), "It's not about adding more and creating more dead code.", and PLAN section 1's criterion 3, "Nothing dead remains". The branch's `src` and `scripts` are main's again.
   - PLAN section 5's `harness.apply_candidates` row and the 2.5 row record the decision, the counts, the run folder and the spend.
 - The paid run (`~/specimen-golive/runs/units-wp25-20261115`, off-repo): code a4fc37e95, pair arm, organiser on and off side by side, two repeats, a live first pass in each.
   - Spend: USD 2.6557 at list (ledger), costed before at USD 2.76.
@@ -26306,21 +26306,22 @@ approvals were requested together; cloud setup remained unapplied when recorded.
   - Collectors: no longer true for the organiser's candidates. `step._without_roles` and `experts._without_role` shed an edge "leg.", so "H.Hoogstraal" is the whole candidate.
   - Country: still true for a whole-unit candidate.
   - The rows written from units were whole units by construction, and the off runs showed D7's shape three ways:
-    - country ended unresolved with the whole unit "Mindanao, P.I." on 105526327 in both repeats and on 105526326 in r1;
+    - country ended unresolved with the whole unit "Mindanao, P.I.": on 105526326 and 105526327 in r1, after every answer was refused (`no_place`); on 105526327 in r2, from the expert's own `sources_cannot_resolve`;
     - 105526322: collectors settled "Hoogstraal" from the unit cut "H." / "Hoogstraal" / "leg.";
     - 105526324: Elevation From (ft) cleared "3300'," from a unit with its comma, and its derived fields settled absent.
 - "P.I.": no source settles that `parsed` holds an abbreviation's expansion, so main's result is kept (`parsed` "P.I.", `normalized` "Philippines").
+  - PRD.md:329 (HAR-004) keeps the literal, parsed and normalized values separate.
   - PRD.md:515 gives a country a literal and a normalized candidate.
   - PRD.md:636 gives parsed to a fixed rule's value.
   - GEOREFERENCING.md:172 makes the expansion a reading the evidence settles.
   - `field_research/step.py:1345-1357` puts a lookup's value in `normalized`.
 - Validation actually run (main checkout's `.venv`, CPython 3.11.16, `PYTHONPATH` this worktree's `src`, `TZ=America/Chicago`, `LANG`/`LC_ALL=en_US.UTF-8`), on a4fc37e95 before the removal:
-  - `tests/field_research`, `tests/reference`, `scripts/ci/test_runtime_settings.py` and the units, organiser, application, extraction, lane-route, prompt, telemetry and evidence-integrity suites: 8489 passed, 14 skipped.
+  - `tests/field_research`, `tests/reference`, `scripts/ci/test_runtime_settings.py` and the units, organiser, application, extraction, lane-route, prompt, telemetry and evidence-integrity suites: 8489 passed, 14 skipped. The pytest summary is kept in `~/specimen-golive/units-program/wp25/pytest_suites_a4fc37e95.txt` (off-repo).
   - Mutants of the off path (`~/specimen-golive/units-program/wp25/mutants.py`, `mutants_round2.jsonl`): 25 of 25 killed.
   - After the removal, `git diff origin/main -- src scripts tests` is empty.
 - Learning: `repeat` is a reserved word in zsh. A rig function named `repeat()` fails to parse at its line, after the lines above it have run; here that was the probe call.
 - Learning: a gate that stops a whole repeat when the repeat's projected cost does not fit throws away the subjects that would fit. It is better to choose the subjects that fit, run every setting on them, and score only the subjects every run holds.
   - Here the gate was rewritten during repeat 1 because the first specimens cost about USD 0.075 a run against the estimate's 0.0697.
-  - On repeat 1's final cost (USD 1.41), the first version would have started all ten and left the ledger stop to refuse the tail.
+  - Inferred from the first version's rule, not observed: on repeat 1's final cost, USD 1.41 spent plus 1.41 projected is 2.82, under the 2.95 stop. So that version would have started all ten and left the ledger stop to refuse the tail.
 - Learning: the reference scorer reads `tests/fixtures/field_model_pilot_rows.json` for its digest, so a frozen rig copy needs that file beside `tests/reference/units_program`.
 - Learning: candidates written from reading units constrain the experts' literals as the organiser's do (`agreement._cut_candidate`, `_nested`). A unit cut finer or wider than a field's value refuses the right literal or settles the wrong one.
