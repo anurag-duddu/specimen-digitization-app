@@ -2654,16 +2654,21 @@ decision, which reruns field research and pays for it again.
 
 On the units path (WP 2.R of the reading-units program, 2026-11-15; G19: "a
 field still left with conflicting readings goes to needs human review"), a
-label whose readers differ is `unresolved_transcription:<region>` only while
-its differing spans decide a field (`step.differing_spans_decide_a_field`): a
-field's evidence row quotes a unit where the readers differ
-(`agreement._differs`, letter case and spacing aside), a field's text stands
-on one (`agreement.covering_units`), or a field not supported is advised for
-one. A label the first pass gave up on keeps it, and so does a label with
-fewer than two readings, with readings from one route or one model, or with no
-units. A field left held on a label that loses the reason keeps its own, so
-the record still goes to a person for it; a correction above leaves the reason
-in place only while a field still depends on a differing span.
+label loses `unresolved_transcription:<region>` only where its readings do not
+conflict (`step.readings_conflict`): no unit where its readers write different
+text, letter case and spacing aside (`agreement._differs`). Any other
+difference keeps the reason, whether or not a field seems to draw it, since a
+field may depend on a span its rows do not quote (a year on the next line
+decides the date "IV-25"). While a field of the run clears as not on the label,
+a unit whose readers' texts differ at all keeps the reason too, unless, on each
+reading, it lies wholly inside the literal of a label row of another field
+settled with that text: the label's reason is then the only one that routes the
+cleared field ("Malaise trap" against "MALAISE TRAP", the collecting method
+cleared). A row that cannot be placed on its reading (its quote not the
+reading's text there) accounts for nothing. A label the first pass gave up on
+keeps the reason, and so does a label whose readings come from one route or
+one model, or that has no units. A field left held on a label that loses the
+reason keeps its own, so the record still goes to a person for it.
 
 A field cleared as not on the label, or a taxon cleared as unmatched, is
 reopened like any other field with Correct value: the reviewer's value is
