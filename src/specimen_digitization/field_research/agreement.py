@@ -312,6 +312,9 @@ A_DISTANCE = "The label writes this number as a distance, not an elevation."
 HOLDS_AN_ELEVATION = "This text holds an elevation, which is another field's."
 HOLDS_A_DATE = "This text holds a date, which is another field's."
 HOLDS_A_RANGE = "This text holds a range of dates or elevations, which is another field's."
+# The units path (the ontology's notation collected_by, plan WP 2.3c): a collectors literal that
+# is a collected_by marker alone ("leg.") names no one.
+ROLE_ONLY = "This text is the collectors' role marker alone, which names no one."
 HOLDS = {written.ELEVATION: HOLDS_AN_ELEVATION, written.DATE: HOLDS_A_DATE, written.RANGE: HOLDS_A_RANGE}
 # The unit each elevation field holds (application.derivations.UNITS), and
 # its name in the experts' retry.
@@ -753,9 +756,20 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     expert's own check, before any field settles) holds its elevation text
     for every label it is read from (_another_kind: the ontology's rule
     precise_location_extent, plan WP 2.3b); a candidate is held to the
-    elevation rule only, a date or a range in it passing as on main."""
+    elevation rule only, a date or a range in it passing as on main. On the units path a
+    collectors literal that is a collected_by marker alone ("leg.", "coll.", "Coll.";
+    ontology_checks.without_role) settles nothing (ROLE_ONLY: the marker is the role the ontology's
+    notation collected_by names, plan WP 2.3c)."""
     basis = literal_basis(task, readings, literal, named)
     units = any(reading.units is not None for reading in readings)
+    if units and task.key == "collectors":
+        from .ontology_checks import without_role
+
+        role = without_role(literal)
+        if role is not None and not role.name:
+            return Refusal(ROLE_ONLY, f"{literal!r} is the marker of the collectors' role (collected by), not a "
+                "name. Give the name it marks as the literal, without the marker, or answer label_lacks_value "
+                "when the label names no collector.")
     if basis == CANDIDATE:
         return (_unit_refusal(task, readings, literal, named)
             or (_another_kind(task, literal, named, elevations, elevation_only=True)
@@ -1801,7 +1815,7 @@ def _differs(unit) -> bool:
     return len({agreement_key(span.text) for span in unit.readers.values()}) > 1
 
 
-def image_names(reading: Reading, literal: str, *, exact: bool = False) -> bool:
+def image_names(reading: Reading, literal: str, *, exact: bool = False, key: str | None = None) -> bool:
     """Whether the first pass names this reading's text at the literal (rule 3's IMAGE):
     at every place the reading writes it, every covering unit's image is the reading's own
     text there, letter case and spacing aside (agreement_key), or character for character
@@ -1811,27 +1825,46 @@ def image_names(reading: Reading, literal: str, *, exact: bool = False) -> bool:
     plexippus"), or a text the readers write differently there ("cloud" and "rain" before
     "forest"), is not on the label. A unit the readers write alike bounds nothing. A unit
     whose image is uncertain, or another reader's different text, names nothing for it.
-    The units' fields advice takes no part."""
+    The units' fields advice takes no part.
+
+    The neighbour guard narrowed (plan WP 2.3c, the wp15c follow-up's section 4): for the
+    field `key`, when its value never runs over lines (every field but ACROSS_LINES') and
+    the label's readers all write the same text at the covering units (none _differs), the
+    walk outward stops at a line break: a unit on another line than the covering unit next
+    to it is no part of this field's text, and bounds nothing ("6-Sept.-1946, Elev.6400" and
+    "..., Elev.6400'" on the line above "H. Hoogstraal leg."). So the image alone never
+    picks between readers' different texts at the field's own units by it. With no `key`,
+    for a precise location, and where the readers differ at a covering unit, the walk is
+    main's. It is the units path's: only readings that carry units reach it (labels)."""
     from specimen_digitization.application.reading_units import NOT_VISIBLE, UNCERTAIN
 
     places = covering_units(reading, literal)
     if not places or not all(places):
         return False
     units = reading.units.units
-    key = reading.observation_id
+    owner = reading.observation_id
     for cover in places:
         for unit in cover:
-            own = unit.readers[key].text
+            own = unit.readers[owner].text
             if unit.image in (UNCERTAIN, NOT_VISIBLE) or (
                     unit.image != own if exact else agreement_key(unit.image) != agreement_key(own)):
                 return False
+        one_line = key is not None and key not in ACROSS_LINES and not any(_differs(unit) for unit in cover)
         first, last = units.index(cover[0]), units.index(cover[-1])
-        for step, at in ((-1, first - 1), (1, last + 1)):
+        for step, at, edge in ((-1, first - 1, cover[0]), (1, last + 1, cover[-1])):
             while 0 <= at < len(units) and _differs(units[at]):
+                if one_line and not _same_line(units[at], edge, step):
+                    break
                 if units[at].image != NOT_VISIBLE:
                     return False
                 at += step
     return True
+
+
+def _same_line(unit, edge, step: int) -> bool:
+    """Whether a unit outward of the covering unit `edge` (before it for `step` -1, after it for
+    1) shares a line with it: its last line is the edge's first, or its first the edge's last."""
+    return unit.lines[1] >= edge.lines[0] if step < 0 else unit.lines[0] <= edge.lines[1]
 
 
 def _key_offset(text: str, key: str) -> int | None:
@@ -1985,7 +2018,7 @@ def _spelled(task: FieldTask, group: Sequence[Reading], each: Sequence[frozenset
     texts a source confirms); else the first reader's spelling (_spelling)."""
     for reading, own in zip(group, each):
         for text in sorted(own):
-            if agreement_key(text) in keys and image_names(reading, text, exact=True):
+            if agreement_key(text) in keys and image_names(reading, text, exact=True, key=task.key):
                 return text
     for reading, own in zip(group, each):
         for text in sorted(own):
@@ -2128,7 +2161,7 @@ def _settle_by_rule(task: FieldTask, group: Sequence[Reading], each: Sequence[fr
     order = {reading.observation_id: index for index, reading in enumerate(group)}
 
     def named(keys: frozenset[str]) -> bool:
-        return any(image_names(reading, text) for reading, own in zip(group, each) for text in own
+        return any(image_names(reading, text, key=task.key) for reading, own in zip(group, each) for text in own
             if key_of.get(text, agreement_key(text)) in keys)
 
     confirmed, basis = (_confirmed_group(task, list(by_key.values()), answers, blocked) if sourced else (None, None))

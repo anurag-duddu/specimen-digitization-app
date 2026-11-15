@@ -319,13 +319,30 @@ def _candidates(run, readings: Sequence[Reading]) -> dict[str, list[Candidate]]:
     return found
 
 
+def _without_roles(candidates: Sequence[Candidate]) -> list[Candidate]:
+    """The collectors' candidates on the units path, each literal without the collected_by marker
+    at its edge (ontology_checks.without_role: the role the ontology's notation collected_by names); a
+    candidate that is the marker alone is left out. Its quote is the organiser's, with the marker."""
+    from .ontology_checks import without_role
+
+    found = []
+    for candidate in candidates:
+        role = without_role(candidate.literal)
+        if role is None:
+            found.append(candidate)
+        elif role.name:
+            found.append(replace(candidate, literal=role.name))
+    return found
+
+
 def build_tasks(run, profile: CollectionProfile | None = None):
     """``(readings, tasks, context)`` for a run after parse.
 
     One task per profile field, except a field a person decided and a field an
     earlier attempt already settled (a retry researches only the rest).
     ``context`` is every field's value as the organiser (or an earlier attempt)
-    left it.
+    left it. On the units path the collectors' candidates leave out the marker
+    of their role (_without_roles).
     """
     from .location_reassessment import KEY as REASSESSMENT, active_keys, working_run
 
@@ -336,6 +353,10 @@ def build_tasks(run, profile: CollectionProfile | None = None):
     profile = profile_of(run) if profile is None else profile
     readings = run_readings(run)
     candidates = _candidates(run, readings)
+    from .ontology_checks import ROLE_FIELD
+
+    if units_path(run) and ROLE_FIELD in candidates:
+        candidates[ROLE_FIELD] = _without_roles(candidates[ROLE_FIELD])
     human = human_keys(run)
     tasks = []
     for key in field_keys(profile):
@@ -1273,11 +1294,18 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
     if not named:
         return None
     transcript = literal_basis(task, tuple(by_name.values()), literal, named) == TRANSCRIPT
+    # On the units path the collectors' name is cited where its row locates it, without the marker
+    # of its role (the ontology's notation collected_by): the organiser's row may locate the
+    # name with the marker, and its line keeps the marker as evidence of the role.
+    from .ontology_checks import ROLE_FIELD, ROLE_NOTATION, role_beside
+
+    named_only = units_path(run) and task.key == ROLE_FIELD
     relations: dict[str, str] = {}
     for reading in named:
         own = [e for e in task.current.evidence_ids if e in evidence and evidence[e].kind == "literal"
             and evidence[e].region_id == reading.region_id
-            and reading.observation_id in evidence[e].observation_ids and literal in evidence[e].excerpt]
+            and reading.observation_id in evidence[e].observation_ids and literal in evidence[e].excerpt
+            and (not named_only or _locates(evidence[e], reading, literal))]
         if not own:
             row = _literal_row(task.key, reading, literal, asset_id, blobs, transcript=transcript)
             run.evidence.append(row)
@@ -1314,12 +1342,26 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
                 relations[row.id] = "supports"
     elif value is not None:
         normalized = value
+    reason = answer.explanation
+    if named_only and (marker := next((found for reading in named if (at := reading.text.find(literal)) >= 0
+            and (found := role_beside(reading.text, at, at + len(literal)))), None)):
+        reason = (f"{reason} The marker {marker!r} beside the name says its role, collected by (notation "
+            f"{ROLE_NOTATION}): the name is settled without it.")
     # A field no source or check supplies is the label's text as written (G38's
     # verbatim layer); any other is settled by its sources and checks.
     return FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed=parsed, normalized=normalized,
         authority_id=answer.authority_id, evidence_ids=list(relations), evidence_relations=relations,
-        reason=answer.explanation, layer="settled" if task.tools else "verbatim",
+        reason=reason, layer="settled" if task.tools else "verbatim",
         **_lineage(named, literal, others))
+
+
+def _locates(row: Evidence, reading: Reading, literal: str) -> bool:
+    """Whether a label row's locator (organiser.parse_locator) places exactly the literal in the
+    reading's text."""
+    from specimen_digitization.application.organiser import parse_locator
+
+    found = parse_locator(row.locator)
+    return found is not None and reading.text[found.literal_start:found.literal_end] == literal
 
 
 # Where the organiser's value came from (data contract 4.3, G27, G28).
@@ -1433,7 +1475,20 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         return _unsettled(task, ValueState.AMBIGUOUS, cited=cited,
             reason=answer.explanation + " Options: " + "; ".join(options) + ".")
     literal = answer.literal if answer.literal and any(answer.literal in r.text for r in readings) else current.literal
-    return _unsettled(task, ValueState.UNRESOLVED, literal=literal, cited=cited, reason=answer.explanation)
+    reason = answer.explanation
+    if units_path(run) and outcome.fallback and outcome.rejected:
+        reason = f"{reason} {_rejected_note(outcome.rejected)}"
+    return _unsettled(task, ValueState.UNRESOLVED, literal=literal, cited=cited, reason=reason)
+
+
+def _rejected_note(rejected: Sequence[tuple[str, str | None]]) -> str:
+    """On the units path, the sentence an unresolved field's reason ends with when every answer
+    its expert gave was refused by its checks (FieldOutcome.rejected, census cause H1): each
+    refused literal with the check that refused it, in the order given. It changes no state,
+    and the field's reason is never sent to a model."""
+    shown = "; ".join(f"{literal!r} by {check}" if literal else f"an answer with no literal by {check}"
+        for check, literal in rejected)
+    return f"Refused answers: {shown}."
 
 
 def _unsettled_options(task, readings, sources: Sequence[SourceAnswer], *, answer) -> list[str]:
@@ -1514,6 +1569,12 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     answers = [item for item in sources if item.source_id in tools]
     given = [option for option in dict.fromkeys(answer.options) if option and option.strip()]
     offered = [answer.literal] if answer.literal and answer.literal.strip() else []
+    if task.key in derive.ELEVATIONS and len(elevation_numbers([*offered, *given])) > 1:
+        # The coordinator's ruling on #437's G51 review (precision): an expert whose options name more
+        # than one elevation ("6400", "5000 ft.") is not settled by the rule on the one that alone
+        # carries a unit; the field stays held, as on the old path, unless a rule of the ontology
+        # settles it with every condition holding (ontology_checks.infer_feet's (iii)).
+        return None
     found = labels(task, readings, answers, offered=offered + given)
     if any(not _unbacked(label) for label in found.values()):
         found = {region: label for region, label in found.items() if not _unbacked(label)}
@@ -1551,6 +1612,14 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     return replace(outcome, answer=FieldAnswer(outcome="resolved", literal=literal,
         reading_names=[reading.name for reading in named], value=value,
         source_evidence_ids=[item.evidence.id for item in cited], explanation=explanation))
+
+
+def elevation_numbers(texts: Iterable[str]) -> frozenset[tuple[str, ...]]:
+    """The elevations the texts write, one a text: each the numbers it writes, as their digits with
+    any thousands comma left out ("1,500 m" and "1500" are one elevation, "1200-1500 m" and
+    "1200-1500" another, a range): the elevations an expert's options name (_by_rule)."""
+    return frozenset(found for text in texts if (found := tuple(number.replace(",", "")
+        for number in re.findall(r"\d[\d,]*(?:\.\d+)?", text))))
 
 
 # Owner decision B, 2026-10-09: a taxon whose label names no genus clears as
@@ -2466,7 +2535,8 @@ def _country_alternatives_are_lower_places(run, task, outcome, *, readings, rece
 
 def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[FieldTask],
         outcomes: Sequence[FieldOutcome], *, blobs=None, calls: Sequence[SourceCall] = (),
-        asset_id: str | None = None, decisions: dict[str, dict] | None = None) -> list[str]:
+        asset_id: str | None = None, decisions: dict[str, dict] | None = None,
+        unused: Sequence[SourceCall] = ()) -> list[str]:
     """Turn the outcomes into the run's field values and evidence, in memory only.
 
     resolved: supported, with the literal, its lineage, the label rows of the
@@ -2521,7 +2591,10 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     rule infers what its conditions allow (ontology_checks.infer_feet), the
     derivation fills what that lets it derive, and the check stage
     (ontology_checks.stage) marks each settled, inferred or derived value that
-    fails a rule of the ontology, revising none.
+    fails a rule of the ontology, revising none. ``unused``: the lookups of a
+    re-ask whose answer was not kept (field_research/reask.py), recorded with
+    their evidence and decided on by no field; a value settled on a kept
+    re-ask's answer (FieldOutcome.reasked) says so in its reason.
     """
     from .agreement import PLACE_ORDER
     from .location_reassessment import active_keys
@@ -2535,7 +2608,7 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     tasks_by_key = {task.key: task for task in tasks}
     places = _place_texts(run, tasks_by_key, readings)
     previous_evidence = {item.id for item in run.evidence}
-    _add_sources(run, outcomes, calls, readings, _taxon_literals(run, tasks, outcomes))
+    _add_sources(run, outcomes, [*calls, *unused], readings, _taxon_literals(run, tasks, outcomes))
     fresh = {item.id for item in run.evidence} - previous_evidence
     evidence = {item.id: item for item in run.evidence}
     human = human_keys(run)
@@ -2543,6 +2616,8 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     for call in calls:
         received.setdefault(call.field_key, []).append(call.answer)
     outcomes = _across_lines(outcomes, by_name)
+    if units_path(run):
+        outcomes = _role_markers(outcomes)
     outcomes = _reconcile_location_outcomes(run, tasks_by_key, outcomes, readings=readings,
         received=received, evidence=evidence, human=human)
     # The units path, rules 4 and 5: an expert's several_possibilities answer put to the rule
@@ -2619,6 +2694,12 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     for key, code in declined.items():
         # A value derived above keeps "derived" (rule A declines it as present).
         decisions.setdefault(key, {}).setdefault("rule", "A_declined:" + code)
+    # A value settled on the answer of the units path's one re-ask says so (field_research/reask.py).
+    for outcome in outcomes:
+        value = run.fields.get(outcome.key)
+        if (outcome.reasked and outcome.key in tasks_by_key and outcome.key not in human and value is not None
+                and value.state == ValueState.SUPPORTED and value.layer in SETTLED_LAYERS):
+            value.reason = " ".join(part for part in (value.reason, outcome.reasked) if part)
     # An answer that stood although a source could not be reached names it.
     rows = {item.id: item for item in run.evidence}
     for outcome in outcomes:
@@ -2652,7 +2733,7 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
                 decisions.setdefault(key, {})["rule"] = "derived"
             derived = [*derived, *more]
         stage(run, readings=readings, received=received, researched=tasks_by_key, derived=derived, human=human,
-            blobs=blobs)
+            blobs=blobs, decisions=decisions)
     return derived
 
 
@@ -2841,6 +2922,25 @@ def _across_lines(outcomes: Sequence[FieldOutcome], by_name: Mapping[str, Readin
             literal = across_lines(outcome.key, [by_name[name] for name in answer.reading_names], answer.literal)
             if literal is not None:
                 outcome = replace(outcome, answer=answer.model_copy(update={"literal": literal}))
+        found.append(outcome)
+    return tuple(found)
+
+
+def _role_markers(outcomes: Sequence[FieldOutcome]) -> tuple[FieldOutcome, ...]:
+    """On the units path (apply_outcomes), each resolved collectors answer with its literal
+    without the collected_by marker at its edge (ontology_checks.without_role: the role the
+    ontology's notation names), and its value too when it was the literal; a literal that is the
+    marker alone stays as it is, and the agreement rule refuses it (agreement.ROLE_ONLY). Every
+    other outcome as it is."""
+    from .ontology_checks import ROLE_FIELD, without_role
+
+    found = []
+    for outcome in outcomes:
+        answer = outcome.answer
+        if (outcome.key == ROLE_FIELD and answer is not None and answer.outcome == "resolved"
+                and (role := without_role(answer.literal)) is not None and role.name):
+            update = {"literal": role.name, **({"value": role.name} if answer.value == answer.literal else {})}
+            outcome = replace(outcome, answer=answer.model_copy(update=update))
         found.append(outcome)
     return tuple(found)
 
@@ -3868,7 +3968,7 @@ REFUSALS = ("DIFFER", "LABELS_DIFFER", "FIRST_PASS_CONFLICT", "PERSON_DECIDED", 
     "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
     "NOT_EVERY_READER", "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "A_DISTANCE", "HOLDS_AN_ELEVATION",
     "HOLDS_A_DATE", "HOLDS_A_RANGE", "FIRST_LEVEL_TOO", "NO_PROVINCE", "IS_THE_PROVINCE", "ONE_READER",
-    "TEXTS_CONTESTED", "TIED")
+    "TEXTS_CONTESTED", "TIED", "ROLE_ONLY")
 # A lookup's status as a field's trace names it. Logfire's default scrubber
 # replaces any attribute whose value holds "auth" or "credential", so the two
 # refusals (HTTP 401 and 403) are renamed.
@@ -4608,12 +4708,13 @@ class FieldResearchStep:
             raise OperationalBlock("field_research_unconfigured") from error
         calls: list[SourceCall] = []
         outcomes = None
+        unused: list[SourceCall] = []
         decisions: dict[str, dict] = {}
         # Research, then each field's decision (trace_fields), in one span.
         with logfire.span(SPAN) as span:
             try:
-                outcomes = asyncio.run(self._research(research_run, profile, prepared, resolver, workflow.blobs,
-                    calls, self._bound(deadline_seconds), span))
+                outcomes, unused = asyncio.run(self._research(research_run, profile, prepared, resolver,
+                    workflow.blobs, calls, self._bound(deadline_seconds), span, asset_id=specimen.asset.id))
             finally:
                 # Research cut short by an error still settles to what the meter
                 # spent: once asyncio.run returns no request is in flight, and each
@@ -4627,7 +4728,7 @@ class FieldResearchStep:
                     tokens=getattr(meter, "reported", None))
             try:
                 apply_outcomes(research_run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=calls,
-                    asset_id=specimen.asset.id, decisions=decisions)
+                    asset_id=specimen.asset.id, decisions=decisions, unused=unused)
                 retained = commit(run, research_run, decisions=decisions) if research_run is not run else set()
                 blocker = finalize_fields(run, profile, outcomes, specimen=specimen, blobs=workflow.blobs,
                     today=workflow.clock().date())
@@ -4662,10 +4763,21 @@ class FieldResearchStep:
             bound = min(bound, deadline.remaining() - self.margin_seconds)
         return max(1.0, bound)
 
-    async def _research(self, run, profile, prepared, resolver, blobs, calls, bound, span=None):
+    async def _research(self, run, profile, prepared, resolver, blobs, calls, bound, span=None, *, asset_id=None):
+        """Every field's expert (research_fields), then, on the units path, the one re-ask of a field
+        a check of the stage marks (reask.again), within the time research left of `bound`: the
+        outcomes, and the lookups of the re-asks whose answers were not kept."""
+        loop = asyncio.get_running_loop()
+        started = loop.time()
         async with self.tools_factory(run, profile, blobs) as tools:
-            return await research_fields(run, profile, resolver=resolver, tools=tools,
+            outcomes = await research_fields(run, profile, resolver=resolver, tools=tools,
                 concurrency=self.concurrency, deadline_seconds=bound, prepared=prepared, calls=calls, span=span)
+            if not units_path(run):
+                return outcomes, []
+            from .reask import again
+
+            return await again(run, profile, prepared, outcomes, resolver=resolver, tools=tools, calls=calls,
+                blobs=blobs, asset_id=asset_id, seconds=bound - (loop.time() - started))
 
 
 def _production_resolver(run, profile, meter):

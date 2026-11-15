@@ -264,7 +264,7 @@ marked, its `reason` naming the rule". That day, in the coordinator's session, t
 "4 shouldn't be flagged. It should be caught and handled. Goal isn't to throw everything at the user it is to help by being in in autonomy as much as possible."
 (answering the coordinator's plan to put the open meanings of section 5 to him as questions), and then
 "Harness needs to work and do its magic".
-A failed check still marks the field; plan WP 2.3 decides how the harness handles it first.
+A failed check still marks the field; plan WP 2.3 decides how the harness handles it first. 2026-11-14 (plan WP 2.3c), after the owner's "4 shouldn't be flagged. It should be caught and handled. Goal isn't to throw everything at the user it is to help by being in in autonomy as much as possible." and "Harness needs to work and do its magic": before a mark, the harness puts the field back to its expert once. That holds for a value an expert settled in the attempt, never a person's. The expert's request names the failed check and what it saw. Its answer goes through every check again; it is kept when it settles with no check of the stage failing, its `reason` naming the re-ask, and otherwise the field is marked as before. A field is re-asked at most once per attempt.
 Upward derivation (a country from a settled province; `field_research/derive.py:43-49`, `:66-74`)
 stays as today and fills only open fields. Nothing is revised after the experts answer except by
 marking. Research is saved once, as today (`workflow.py:1151-1153`), and a retry reruns the step as
