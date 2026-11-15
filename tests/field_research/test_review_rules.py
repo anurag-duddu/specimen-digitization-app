@@ -11,7 +11,10 @@ field. The inputs stay below as regressions, the reason kept on both paths.
 
 (ii) mandatory_unresolved is not raised for a field settled absent as not on the label (owner decision A,
 docs/execution/golive/FIELD_RESEARCH.md, "Fields the label does not state") only where its expert answered
-label_lacks_value and the not-on-the-label check row agrees (step.mark_not_on_label, step.not_on_label). WP 2.R
+label_lacks_value, or its answer falls under one of the place cases step.mark_not_on_label names (for a precise
+location, `no_finer`: only an administrative marker beside the places settled, or `repeated`: only a settled place's
+text; for a county or a city, `above`: only the text of a settled place above it), and the not-on-the-label check row
+agrees (step.mark_not_on_label, step.not_on_label). WP 2.R
 checked each field the list leaves out against its sources and adds none (contracts.NOT_ON_LABEL's comment), so
 the rule is today's; its named cases are test_step's
 test_the_listed_fields_a_label_does_not_state_clear_as_not_on_the_label (a field the label does not write,

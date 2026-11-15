@@ -70,9 +70,10 @@ NO_APPROVED_AUTHORITY = frozenset({"identified_by_irn"})
 # own entry.
 # WP 2.R (2026-11-15) checked each field the list leaves out against its sources
 # and added none (docs/execution/golive/FIELD_RESEARCH.md, "The list (A)"): the
-# owner's answer named no fields; the catalogue number is read from the slide's
-# barcode label; a country and a province are filled by derivation when the
-# label does not write them, as Date Visited To is from Date Visited From (G44);
+# owner's answer named no fields; a person finds the catalogue number on the
+# label and its barcode (PRD.md 12.4); a country and a province are filled by
+# derivation when the label does not write them, as Date Visited To is from
+# Date Visited From (G44);
 # Verbatim D/T/S holds a date with no exact day or a time of day (PRD.md 12.4),
 # and the row's checks find its text only through what the organiser found for
 # it, which in units-wp15c's four runs was nothing on 105526327, whose label

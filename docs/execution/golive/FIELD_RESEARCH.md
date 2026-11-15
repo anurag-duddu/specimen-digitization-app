@@ -1986,10 +1986,10 @@ this one, gets its own entry.
   list leaves out against its sources and added none
   (`tests/field_research/test_review_rules.py` pins them). The owner's answer
   named no fields (the schema session's record of it, the same file). The
-  catalogue number is read from the slide's barcode label (PRD.md 12.4, "How
-  a person resolves each group today": "The label and its barcode"), which
-  each drawn slide of the reference set holds (`docs/execution/units/PLAN.md`
-  section 1). PRD.md
+  catalogue number is one a person finds on the label and its barcode (PRD.md
+  12.4, "How a person resolves each group today": "The label and its
+  barcode"), a barcode label each drawn slide of the reference set holds
+  (`docs/execution/units/PLAN.md` section 1). PRD.md
   12.4's table of v1 keys from v2 parts fills a country and a province with
   no condition, a county only "where the country has one" and a city "when
   there is one"; a country or a province the label does not write is filled
@@ -2658,8 +2658,12 @@ label whose readers' differences no field's rows or text touched, then for one
 whose readers differ only in letter case or spacing. Review found a difference
 of each kind that decides a field: a year on the next line decides the date
 "IV-25" ("1948" against "1949"), and "Mt. Apo" against "MT. APO" below it
-changes whether that year is read with the date (`date_lines`). The rule above
-stands on both paths.
+changes whether that year is read with the date (`date_lines`). Main's rule
+in `step.scientific_reasons` stands on both paths: a label with no transcript,
+or one unresolved or without text, is `unresolved_transcription` when no field
+is drawn from it, or a field drawn from it, its work done, is not supported, or
+is neither grounded in a reader's raw reading nor derived; and a label the
+first pass gave up on is so however its fields settle.
 
 A field cleared as not on the label, or a taxon cleared as unmatched, is
 reopened like any other field with Correct value: the reviewer's value is
