@@ -16,23 +16,24 @@ The checks:
 - place_within_settled_places and place_chain (`_place_marks`, `fits`): a place below the country,
   settled on a source record that names its parents (a Getty TGN, Wikidata or NGA candidate the
   value cites, derive._settling_candidate), is marked only when its record and the record of a
-  place settled above it share an identity that shows it lies outside that place: both name
-  the country by an ISO 3166-1 code and the codes differ; or both are Getty TGN records, whose
-  parents are a place's whole chain of ancestors (georef_tgn), and the settled place's record is
-  not in that chain. The record lies inside when the settled place's record is one of its
-  parents, or the two codes agree. Otherwise the check abstains and marks nothing: two
-  gazetteers' records, NGA's parents (named, with no record of their own), a parent of the
-  settled place's name but no record, a place settled on GEOLocate (never read: its parents are
-  the places the expert's query named, with no record), and a place an earlier attempt settled
-  whose record cannot be read again from the record's stored responses (`stored_answers`). A
-  place outside the country or the province settled above it fails place_within_settled_places,
-  which the refusal at apply time checks too (agreement.parents_refusal, by name); a city
-  outside the county settled above it fails place_chain, which that refusal checks only for a
-  near spelling: a settled Coles County (tgn:Coles), then an exact "Chicago" whose TGN chain is
-  Cook, Illinois, the United States.
-- place_parents_derived (`_place_marks`): a place derivation filled (layer "derived") that a
-  place settled below it lies outside, by the same test, is marked itself; a person's derived
-  place is not, and the place below it is marked instead.
+  place settled above it share an identity that shows it lies outside that place. Only the
+  country can be shown so: a place lies in one nation, and its record's country and the settled
+  country differ by ISO 3166-1 code, or are two Getty TGN nations' records, the place's TGN chain
+  ending at a nation the stage knows (`tgn_nations`). Below the country the check is inside (the
+  settled place's record is among the record's parents) or abstains: TGN places a place under
+  several parents and the records read give its preferred chain alone (Aurora, tgn:2015136, under
+  Arapahoe County and also Adams County), and the coordinator's ruling of WP 2.3a's review round 2
+  marks a province or a county only when the record's whole parent set is known, which today's
+  reader does not give. The check abstains too on two gazetteers' records, NGA's parents (named,
+  with no record of their own), Wikidata's (its direct P131 places), a parent of the settled
+  place's name but another record, a TGN chain not known to reach its nation (cut short where a
+  parent shares another's name, or an ancestor is missing), a place settled on GEOLocate (never
+  read: its parents are the places the expert's query named, with no record), and a place an
+  earlier attempt settled whose record cannot be read again (`stored_answers`). A failure at the
+  country marks the place with place_within_settled_places.
+- place_parents_derived (`_place_marks`): a derived country (layer "derived") that a place settled
+  below it lies outside, by the same test, is marked itself; a person's derived place is not, and
+  the place below it is marked instead.
 - date_order (`_date_marks`): a determination date before the collecting date, compared on the
   parts both have (`determined_before`), marks the determination, both dates listed.
 
@@ -146,7 +147,24 @@ def _source(authority_id: str | None) -> str | None:
     return authority_id.partition(":")[0] if authority_id and ":" in authority_id else None
 
 
-def fits(candidate: SourceCandidate, upper: str, place) -> bool | None:
+# Getty TGN's place type for a nation, as its records' kinds name it (georef_tgn.NATIONS's label).
+TGN_NATION = "nations"
+
+
+def tgn_nations(answers: Iterable[SourceAnswer], country=None) -> frozenset[str]:
+    """The Getty TGN records the stage knows are nations: a TGN candidate of the answers given
+    whose kinds name TGN's nation type (TGN_NATION), and the settled country's own TGN record
+    (`country`, an agreement.PlaceField). A parent carries no type (contracts.PlaceRef), so a
+    parent is known to be a nation only through these."""
+    found = {candidate.authority_id for answer in answers for candidate in answer.candidates
+        if _source(candidate.authority_id) == "tgn"
+        and TGN_NATION in {kind.strip() for kind in (candidate.kind or "").split(",")}}
+    if country is not None and _source(country.authority_id) == "tgn":
+        found.add(country.authority_id)
+    return frozenset(found)
+
+
+def fits(candidate: SourceCandidate, upper: str, place, nations: Collection[str] = ()) -> bool | None:
     """Whether the source record a place settled on lies in the place settled for the field
     `upper` above it (an agreement.PlaceField: its record and, for the country, the ISO code that
     record carries), by an identity both records carry; None where they carry none it can
@@ -154,22 +172,31 @@ def fits(candidate: SourceCandidate, upper: str, place) -> bool | None:
     - True: the settled place's record is one of the record's parents; or, for the country, the
       record's last parent, its country (sources._place), and the settled country carry the same
       ISO 3166-1 code (agreement.country_code).
-    - False: for the country, those two codes differ; or both records are Getty TGN's and the
-      record's parents, all TGN records, are its whole chain of ancestors (georef_tgn._place:
-      every ancestor, cut at its nation where it has one), which the settled place's record is
-      not in.
-    A parent with the settled place's name and another record, or none, is never that place."""
+    - False, for the country only: those two codes differ; or both records are Getty TGN's, the
+      record's parents are all TGN records, and its last parent is a nation the stage knows
+      (`nations`, tgn_nations) other than the settled country's record. A place lies in one
+      nation, so two nations' records conflict. A TGN chain is taken to reach its nation only
+      then: sources._place drops a parent whose name another parent has (Guatemala City's
+      department Guatemala keeps the nation Guatemala out), and georef_tgn._place stops a chain
+      at an ancestor its response lacks.
+    Below the country it is True or None, never False (the coordinator's ruling of WP 2.3a's
+    review round 2): TGN places a place under several parents (Aurora, tgn:2015136, under
+    Arapahoe County and Adams County), and the records read give its preferred chain alone
+    (georef_tgn), so a province or a county missing from it is not shown to be outside. A parent
+    with the settled place's name and another record, or none, is never that place."""
     from .agreement import country_code
 
     parents = candidate.parents
     if place.authority_id and place.authority_id in {parent.authority_id for parent in parents}:
         return True
-    if upper == "country" and parents:
-        mine, theirs = country_code(parents[-1].iso_code), country_code(place.iso_code)
-        if mine and theirs:
-            return mine == theirs
-    if (parents and _source(place.authority_id) == "tgn" == _source(candidate.authority_id)
-            and all(_source(parent.authority_id) == "tgn" for parent in parents)):
+    if upper != "country" or not parents:
+        return None
+    mine, theirs = country_code(parents[-1].iso_code), country_code(place.iso_code)
+    if mine and theirs:
+        return mine == theirs
+    if (_source(place.authority_id) == "tgn" == _source(candidate.authority_id)
+            and all(_source(parent.authority_id) == "tgn" for parent in parents)
+            and parents[-1].authority_id in nations):
         return False
     return None
 
@@ -205,11 +232,13 @@ async def _no_wait(_seconds: float) -> None:
 def stored_answers(run, blobs, evidence_ids: Iterable[str]) -> tuple[list[SourceAnswer], set[str]]:
     """The gazetteer answers behind these evidence rows, read again from the record's blob store:
     each row a Getty TGN, Wikidata or NGA lookup stored (kind "authority"), with the call that
-    made it (Run.tool_calls). The lookup is asked again of sources.ApprovedSources through a
-    transport that serves only the responses the row's stored record lists (its `exchanges`), so
-    nothing is sent; the rebuilt answer counts only when its evidence excerpt is the row's, and
-    it then carries the row itself. Returns the answers, and the ids of the rows that could not
-    be read again (no blob store, no call, a response missing, or another excerpt)."""
+    made it (Run.tool_calls). Each row is rebuilt on its own: its lookup is asked again of a
+    sources.ApprovedSources of its own (no answer cached from another row) through a transport
+    that serves only the responses that row's stored record lists (its `exchanges`), so nothing
+    is sent and no other row's response is read. The rebuilt answer counts only when every
+    request it made was one of those responses and its evidence excerpt is the row's; it then
+    carries the row itself. Returns the answers, and the ids of the rows that could not be read
+    again (no blob store, no call, a response missing or not that row's, or another excerpt)."""
     from .sources import ApprovedSources, SourceSlots
 
     rows = {item.id: item for item in run.evidence}
@@ -217,42 +246,53 @@ def stored_answers(run, blobs, evidence_ids: Iterable[str]) -> tuple[list[Source
     wanted = [i for i in dict.fromkeys(evidence_ids)
         if (row := rows.get(i)) is not None and row.source in GAZETTEERS and row.kind == "authority"]
     missing: set[str] = set()
-    jobs, bodies = [], {}
+    jobs = []
     for i in wanted:
         row, call = rows[i], calls.get(i)
         try:
             record = json.loads(blobs.get(row.raw_ref))
-            for exchange in record["exchanges"]:
-                bodies[exchange["url"]] = (exchange.get("http_status", 200), blobs.get(exchange["raw_ref"]))
+            bodies = {exchange["url"]: (exchange.get("http_status", 200), blobs.get(exchange["raw_ref"]))
+                for exchange in record["exchanges"]}
         except Exception:  # noqa: BLE001 - any failure to read a stored record is a record not read
             missing.add(i)
             continue
         if call is None or call.source != row.source or not call.field_keys:
             missing.add(i)
             continue
-        jobs.append((row, call))
+        jobs.append((row, call, bodies))
     if not jobs:
         return [], missing
 
-    def serve(request: httpx.Request) -> httpx.Response:
-        found = bodies.get(str(request.url))
-        return httpx.Response(404) if found is None else httpx.Response(found[0], content=found[1])
+    async def rebuild(row, call, bodies) -> SourceAnswer | None:
+        strays: list[str] = []
 
-    async def ask() -> list[SourceAnswer]:
-        found = []
+        def serve(request: httpx.Request) -> httpx.Response:
+            found = bodies.get(str(request.url))
+            if found is None:
+                strays.append(str(request.url))
+                return httpx.Response(404)
+            return httpx.Response(found[0], content=found[1])
+
         async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as client:
             sources = ApprovedSources(blobs=_Scratch(), client=client, sleep=_no_wait, clock=lambda: 0.0,
                 slots=SourceSlots({}, wait_seconds=None))
             try:
-                for row, call in jobs:
-                    answer = await sources.lookup(call.source, str(call.arguments.get("query", "")),
-                        field_key=call.field_keys[0])
-                    if answer.evidence is None or answer.evidence.excerpt != row.excerpt:
-                        missing.add(row.id)
-                        continue
-                    found.append(dataclasses.replace(answer, evidence=row))
+                answer = await sources.lookup(call.source, str(call.arguments.get("query", "")),
+                    field_key=call.field_keys[0])
             finally:
                 sources.close()
+        if strays or answer.evidence is None or answer.evidence.excerpt != row.excerpt:
+            return None
+        return dataclasses.replace(answer, evidence=row)
+
+    async def ask() -> list[SourceAnswer]:
+        found = []
+        for row, call, bodies in jobs:
+            answer = await rebuild(row, call, bodies)
+            if answer is None:
+                missing.add(row.id)
+            else:
+                found.append(answer)
         return found
 
     try:
@@ -285,6 +325,7 @@ def _place_marks(fields: Mapping[str, FieldValue], answers: Sequence[SourceAnswe
 
     tally = Counter() if tally is None else tally
     places = {key: _place_field(key, fields[key], answers) for key in PLACE_ORDER if settled(fields.get(key))}
+    nations = tgn_nations(answers, places.get("country"))
     marks: list[Mark] = []
     for lower in PLACE_ORDER[1:]:
         value = fields.get(lower)
@@ -302,7 +343,7 @@ def _place_marks(fields: Mapping[str, FieldValue], answers: Sequence[SourceAnswe
             derived = above.layer == "derived" and upper not in human
             check = PLACE_PARENTS_DERIVED if derived else PLACE_CHAIN if upper == "county" else PLACE_WITHIN
             tally[f"{check}:checked"] += 1
-            verdict = fits(candidate, upper, places[upper])
+            verdict = fits(candidate, upper, places[upper], nations)
             if verdict is None:
                 tally[f"{check}:abstained"] += 1
             if verdict is not False:
