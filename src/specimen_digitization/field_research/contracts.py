@@ -68,6 +68,17 @@ NO_APPROVED_AUTHORITY = frozenset({"identified_by_irn"})
 # keeps the run's profile snapshot, so a key added to the published profile
 # would never reach it. Another profile, or a new version of this one, gets its
 # own entry.
+# WP 2.R (2026-11-15) checked each field the list leaves out against its sources
+# and added none (docs/execution/golive/FIELD_RESEARCH.md, "The list (A)"): the
+# owner's answer named no fields; a person finds the catalogue number on the
+# label and its barcode (PRD.md 12.4); a country and a province are filled by
+# derivation when the label does not write them, as Date Visited To is from
+# Date Visited From (G44);
+# Verbatim D/T/S holds a date with no exact day or a time of day (PRD.md 12.4),
+# and the row's checks find its text only through what the organiser found for
+# it, which in units-wp15c's four runs was nothing on 105526327, whose label
+# writes the month "XI.46"; for the collecting date and the collectors no source
+# settles that their absence clears.
 NOT_ON_LABEL: Mapping[tuple[str, str], frozenset[str]] = {
     ("zoology_insects_slides", "1.0.0"): frozenset({
         "county", "city", "collection_code", "collection_method", "date_identified", "habitat",

@@ -251,7 +251,8 @@ def test_the_rebuilt_country_request_of_wp_2_2s_paid_run_is_a_known_case_at_its_
 # bytes. Given to the province expert on the rebuilt conversation of LARGEST, the largest request is 47,840 bytes,
 # under the bound: in a re-ask's requests a lookup's answer does not repeat the source and the query its call
 # carries (experts._Expert._lookup). Without that trim it would be 48,253, over the bound. Each value is 112 bytes
-# over its value on main 216ebbfae (47,728 and 47,356; 48,141 untrimmed), for WP 2.T's host_marker line.
+# over its value on the WP 2.3c branch based on main 216ebbfae, before that branch merged WP 2.T (47,728 and
+# 47,356; 48,141 untrimmed): the difference is WP 2.T's host_marker line. Main 216ebbfae itself sends no re-ask.
 REASK_SENTENCE = (
     "Your answer 'Davao Prov.' failed the check place_within_settled_places: the source's record for 'Davao Province' "
     "(tgn:7001234) places it in Davao Region, Mindanao, Philippines, not in the country settled above it, "
