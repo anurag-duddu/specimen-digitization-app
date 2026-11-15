@@ -913,8 +913,19 @@ rules:
       number's size alone never makes it feet.
     fields: [elevation_from_m, elevation_to_m, elevation_from_ft, elevation_to_ft]
     reading: true
-    check: not yet
-    when: WP 2.3
+    note: >-
+      Checked by code from WP 2.3b, on the units path only
+      (field_research/ontology_checks.infer_feet, run by step.apply_outcomes
+      after each label's settlement is recorded): Elevation From (ft), held
+      with no literal or a bare number while every other elevation field is
+      open, is inferred when one unit's readers write one number, one or more
+      with the foot mark (straight, curly or a prime) or "ft" right after it
+      and one or more with no unit, none with another unit or as a distance;
+      the country is cleared (a label's cleared finding) and has no marked
+      finding; and the table's row of its Wikidata item, else of its source's
+      name, gives (b) and (c). Derivation then fills the other elevation
+      fields. Any other case is left as on main: unresolved.
+    check: code
     darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:251-258
@@ -968,6 +979,7 @@ rules:
       Leave a larger place the label does not write empty: never take it from a
       smaller place's parents.
     fields: [country, province_state, county]
+    derives: true
     note: >-
       Moved to `not yet` in WP 2.1's review round 4 (the coordinator's
       ruling): with the province's text "Cook" unresolved, a settled county
@@ -997,11 +1009,15 @@ rules:
       or its exact conversion (1 ft = 0.3048 m) rounded to the hundredth; a
       derived elevation never replaces a stated one; and no elevation is
       derived while an elevation field is neither settled nor open (one the
-      readings disagree on goes to a person first).
+      readings disagree on goes to a person first). On the units path an
+      elevation field is never settled absent while another elevation field
+      is ambiguous, unresolved or unknown: it waits, unknown, its reason
+      naming that field, and is derived once that field settles.
     instruction: >-
       Never convert an elevation to the other unit: give it in the unit the label
       writes.
     fields: [elevation_from_m, elevation_to_m, elevation_from_ft, elevation_to_ft]
+    derives: true
     check: code
     darwin_core: verbatimElevation, minimumElevationInMeters, maximumElevationInMeters
     source:
@@ -1012,11 +1028,15 @@ rules:
   - id: end_date_from_one_date
     statement: >-
       A derived Date Visited To is the date of a settled Date Visited From, at
-      its precision, and is never derived from a written range.
+      its precision, and is never derived from a written range. On the units
+      path Date Visited To is never settled absent while Date Visited From is
+      ambiguous, unresolved or unknown: it waits, unknown, its reason naming
+      Date Visited From, and is derived once that date settles.
     instruction: >-
       Give Date Visited To only from an end date the label writes, never from a single
       collecting date.
     fields: [date_visited_to]
+    derives: true
     check: code
     darwin_core: eventDate
     source:
@@ -1035,8 +1055,15 @@ rules:
       Precise Location is the label's locality as written: every line of its
       locality text, with its line breaks, the higher places and an elevation
       written among those lines included. It is never cut to the first line,
-      and a label whose locality names nothing finer than its town still has a
-      Precise Location: those lines as written.
+      and a label whose locality names nothing finer than its town, or than
+      its country, still has a Precise Location: those lines as written. On
+      the units path a precise location that names nothing finer than its
+      town is never cleared as not on the label; one that holds an elevation
+      settles only when its elevation text is the literal an elevation field
+      settled from that label; and one whose literal, wherever a reading of
+      its label writes it, ends its line before a line that writes the
+      settled province's or country's text is marked for a person as cut
+      short.
     instruction: >-
       Precise Location is the label's locality as written: every line of its locality
       text, with its line breaks, the higher places and an elevation written on those
@@ -1045,32 +1072,30 @@ rules:
     fields: [precise_location]
     reading: true
     note: >-
-      Checked by a model from WP 2.2 (the plan's WP 2.2 row, the coordinator's
-      re-plan of 2026-11-14), on the units path only: the instruction above is
-      in the readers', the first pass's, the organiser's and the precise
-      location expert's instructions, and that expert's brief takes the whole
-      locality (prompts/units.txt, its precise_location.txt texts). Of the
-      three places that disagreed with it, the brief and the step follow it
-      there, and the old path keeps them: a town-only locality is never
-      cleared as not on the label (step._no_finer_place, step._repeats_a_place,
-      step.mark_not_on_label, step.not_on_label);
-      tests/field_research/test_precise_location_extent.py pins each on both
-      paths. A precise location read from the transcript that holds an
-      elevation ("Yepocapa, 4800 ft." over "Chimaltenango, Guatemala") is still
-      refused, on both paths (agreement._holds_another_kind, :323-324,
-      :840-861), and so is one whose elevation text another field settled
-      (step._taken): the field is left for a person. An organiser candidate
-      that holds an elevation and is taken as it is can settle, on both paths,
-      as on main (agreement.literal_refusal checks another kind's text only on
-      the transcript basis). The coordinator's ruling
-      of 2026-11-14 took the elevation out of WP 2.2 after two review rounds
-      found inputs that passed a date or no locality through; WP 2.3 decides
-      when an elevation inside a locality is accepted (the plan's WP 2.3 row).
-      It is not `code`: besides that refusal, no check refuses a precise
-      location cut short ("E. slope Mt. McKinley" alone, where the label goes
-      on with "Davao Prov." and "Mindanao, P.I."), so code does not guarantee
-      that the value is the label's whole locality.
-    check: model
+      Checked by code on the units path from WP 2.3b, and by a model there
+      from WP 2.2: the instruction above is in the readers', the first
+      pass's, the organiser's and the precise location expert's
+      instructions, and that expert's brief takes the whole locality
+      (prompts/units.txt, its precise_location.txt texts). The code's parts:
+      a town-only locality is never cleared as not on the label
+      (step._no_finer_place, step._repeats_a_place, step.mark_not_on_label,
+      step.not_on_label); a precise location that holds an elevation, by
+      candidate or read from the transcript, settles only when
+      agreement.elevation_kept keeps that elevation (one elevation, ending
+      its line, a locality besides it, no date) and its text is the literal
+      an elevation field settles from the same label
+      (agreement.literal_refusal, step._taken); and the check stage marks one
+      cut short (ontology_checks._extent_marks). The old path keeps main's: a
+      town-only locality is cleared as not on the label, a precise location
+      read from the transcript that holds an elevation is refused, and an
+      organiser candidate that holds one can settle. A label whose only
+      locality text is its country settles that text as its precise location
+      on the units path: the PRD's verbatim locality as written, at the root
+      of the place tree, and the georeferencing document's verbatimLocality,
+      whose example keeps the country's line. Code does not see a precise
+      location cut short within a line, or before a line that writes no
+      settled province or country; the model's instruction covers those.
+    check: code
     darwin_core: verbatimLocality
     source:
       - docs/product-requirements/PRD.md:519

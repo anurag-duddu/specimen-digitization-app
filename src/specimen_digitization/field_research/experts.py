@@ -583,8 +583,12 @@ class _Expert:
             names.append(reading.name)
         named = [self.by_label[_label(name)] for name in answer.reading_names]
         # The literal is a whole organiser candidate of the readings it names,
-        # or whole words of one line of each (agreement.literal_refusal).
-        refused = agreement.literal_refusal(self.task, self.readings, literal=literal, named=named)
+        # or whole words of one line of each (agreement.literal_refusal). No
+        # field has settled yet: on the units path a precise location's
+        # elevation the rule could keep passes here, and the step decides on
+        # what the elevation fields settle (agreement.ANY_ELEVATION).
+        refused = agreement.literal_refusal(self.task, self.readings, literal=literal, named=named,
+            elevations=agreement.ANY_ELEVATION)
         if refused is not None:
             raise ModelRetry(refused.retry)
         cited = [received[i] for i in answer.source_evidence_ids]
@@ -627,6 +631,7 @@ class _Expert:
             authority_id=answer.authority_id,
             cited=cited,
             received=self.received,
+            elevations=agreement.ANY_ELEVATION,
         )
         if refused is not None:
             raise ModelRetry(refused.retry)

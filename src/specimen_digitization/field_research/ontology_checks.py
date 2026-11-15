@@ -1,6 +1,15 @@
 """The check stage: the settled values checked against the specimen ontology's rules
 (docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4, "The check
-stage"; docs/execution/units/PLAN.md, WP 2.3, its first part, 2.3a).
+stage"; docs/execution/units/PLAN.md, WP 2.3: its first part, 2.3a, and its second, 2.3b).
+
+WP 2.3b adds, on the units path, two steps step.apply_outcomes runs before the stage:
+- wait_for_sources, right after derive.fill: a field derive.fill derives from another (an
+  elevation's other end or unit, Date Visited To) that is settled absent while that source is
+  held waits instead, unknown, its reason naming the source, so derive.fill fills it once the
+  source settles (the rules elevation_conversion and end_date_from_one_date);
+- infer_feet, after each label's settlement is recorded: the rule elevation_unit_feet settles
+  Elevation From (ft), cleared, when all its conditions hold, its reason "Basis: inferred, rule
+  elevation_unit_feet: ..."; derive.fill then fills the elevation fields it lets derive.
 
 On the units path only (step.units_path), step.apply_outcomes runs `stage` last: after every
 expert has answered, derivation has filled the open fields (derive.fill), the fields the label
@@ -36,6 +45,9 @@ The checks:
   the place below it is marked instead.
 - date_order (`_date_marks`): a determination date before the collecting date, compared on the
   parts both have (`determined_before`), marks the determination, both dates listed.
+- precise_location_extent (`_extent_marks`, WP 2.3b): a settled precise location whose literal,
+  wherever a reading of its label writes it, ends its line before a line that writes the settled
+  province's or country's text is marked as cut short; otherwise the check abstains.
 
 The stage also adds the sentence "Basis: derived, rule <id>." (DERIVED_RULES) to the reason of
 each value derive.fill derived in this attempt, after the derivation's own text and before any
@@ -53,12 +65,14 @@ import json
 import re
 from collections import Counter
 from collections.abc import Collection, Iterable, Mapping, Sequence
+from decimal import Decimal
 from typing import NamedTuple
 
 import httpx
 
 from specimen_digitization.application.domain import Evidence, FieldValue, RunFinding, ValueState
 
+from . import derive as derive_rules
 from .contracts import GAZETTEERS, Reading, SourceAnswer, SourceCandidate
 
 # The stage's findings (RunFinding.rule_id) and their version.
@@ -69,15 +83,12 @@ PLACE_WITHIN = "place_within_settled_places"
 PLACE_CHAIN = "place_chain"
 PLACE_PARENTS_DERIVED = "place_parents_derived"
 DATE_ORDER = "date_order"
-CHECKS = (PLACE_WITHIN, PLACE_CHAIN, PLACE_PARENTS_DERIVED, DATE_ORDER)
-# The rule each field derive.fill derives follows: a place from a settled place's parents, an
-# elevation from a stated one, the end of a single collecting date.
-DERIVED_RULES = {
-    "country": PLACE_PARENTS_DERIVED, "province_state": PLACE_PARENTS_DERIVED, "county": PLACE_PARENTS_DERIVED,
-    "elevation_from_m": "elevation_conversion", "elevation_to_m": "elevation_conversion",
-    "elevation_from_ft": "elevation_conversion", "elevation_to_ft": "elevation_conversion",
-    "date_visited_to": "end_date_from_one_date",
-}
+PRECISE_LOCATION_EXTENT = "precise_location_extent"
+CHECKS = (PLACE_WITHIN, PLACE_CHAIN, PLACE_PARENTS_DERIVED, DATE_ORDER, PRECISE_LOCATION_EXTENT)
+# The inference (infer_feet), by the id of its ontology rule.
+ELEVATION_UNIT_FEET = "elevation_unit_feet"
+# The rule each field derive.fill derives follows, as the ontology file names it (derive.DERIVED_RULES).
+DERIVED_RULES = derive_rules.DERIVED_RULES
 LEVEL_NAMES = {"country": "country", "province_state": "province or state", "county": "county", "city": "city"}
 # The layers of a value the stage checks: settled from the label, or derived.
 CHECKED_LAYERS = frozenset({"verbatim", "settled", "derived"})
@@ -362,6 +373,281 @@ def _place_marks(fields: Mapping[str, FieldValue], answers: Sequence[SourceAnswe
     return marks
 
 
+# ---- dependent fields (plan WP 2.3b) -------------------------------------------------------
+
+# A source a derived field waits for: neither settled nor settled absent.
+HELD = frozenset({ValueState.AMBIGUOUS, ValueState.UNRESOLVED, ValueState.UNKNOWN})
+# Each field derive.fill derives from another field of the label, with its sources: an elevation
+# from any other elevation (its other end, or its other unit: elevation_conversion), the end of the
+# collection from its start (end_date_from_one_date).
+SOURCES = {**{key: tuple(other for other in derive_rules.ELEVATIONS if other != key)
+    for key in derive_rules.ELEVATIONS}, "date_visited_to": ("date_visited_from",)}
+WAITS = ("Waits for {sources}, which is not settled: this field is derived from it once it settles (rule {rule}), "
+    "and is not settled absent before.")
+
+
+def wait_for_sources(run, *, eligible: Collection[str]) -> dict[str, list[str]]:
+    """On the units path, after derive.fill (step.apply_outcomes): each field of SOURCES among
+    `eligible` that is settled absent (not present, with no text: derive.is_open) while one of
+    its sources is held (HELD: ambiguous, unresolved or unknown) waits instead: unknown, its
+    reason starting with WAITS, which names those sources and the rule derive.fill follows,
+    its evidence kept. An unknown field with no text is open, so derive.fill fills it once its
+    source settles. A source is held as the fields stand before any field waits. Returns each
+    field that waits, with the sources it waits for."""
+    from .prompts import FIELD_LABELS
+
+    held = {key for key, value in run.fields.items() if value.state in HELD}
+    waiting: dict[str, list[str]] = {}
+    for key, sources in SOURCES.items():
+        value = run.fields.get(key)
+        if (key not in eligible or value is None or value.state != ValueState.NOT_PRESENT
+                or not derive_rules.is_open(value)):
+            continue
+        mine = [source for source in sources if source in held]
+        if mine:
+            waiting[key] = mine
+    for key, mine in waiting.items():
+        value = run.fields[key]
+        said = WAITS.format(sources=" and ".join(FIELD_LABELS.get(source, source) for source in mine),
+            rule=DERIVED_RULES[key])
+        run.fields[key] = value.model_copy(update={"state": ValueState.UNKNOWN,
+            "reason": " ".join(part for part in (said, value.reason) if part)})
+    return waiting
+
+
+# ---- the elevation unit (plan WP 2.3b) -----------------------------------------------------
+
+# The spellings of a foot that condition (a) of elevation_unit_feet counts, folded, periods,
+# spaces and edge punctuation dropped: the foot mark (straight, curly or a prime: written.fold)
+# and "ft".
+FOOT_MARKS = frozenset({"'", "ft"})
+FOOT_IN_METRES = Decimal("0.3048")
+INFERRED = "inference:" + ELEVATION_UNIT_FEET
+BARE_NUMBER = re.compile(r"\d+")
+
+
+def cleared_country(run) -> FieldValue | None:
+    """The run's country when it is cleared, not marked: supported, settled from the label
+    (layer verbatim or settled), with a label's `cleared:country:<label>` finding (rule
+    step.SETTLEMENT) and no `marked:country:` finding of any rule; else None."""
+    from .step import SETTLEMENT
+
+    value = run.fields.get("country")
+    if value is None or value.state != ValueState.SUPPORTED or value.layer not in ("verbatim", "settled"):
+        return None
+    codes = [finding.reason_code for finding in run.findings if finding.field_key == "country"]
+    if any(code.startswith("marked:country:") for code in codes):
+        return None
+    cleared = any(finding.rule_id == SETTLEMENT and finding.reason_code.startswith("cleared:country:")
+        for finding in run.findings if finding.field_key == "country")
+    return value if cleared else None
+
+
+def highest_point(country: FieldValue):
+    """The ontology's highest-point row of a settled country (ontology.HighestPoint): by the
+    Wikidata item it settled on (authority_id "wikidata:Q<n>"), else the one row whose
+    country_name is its name (its normalized value, else its parsed value, else its literal:
+    _named), letter case aside; None otherwise."""
+    from specimen_digitization.ontology import ontology
+
+    table = ontology()
+    if country.authority_id and country.authority_id.startswith("wikidata:"):
+        return table.highest_point(country.authority_id.removeprefix("wikidata:"))
+    name = _named(country).casefold()
+    rows = [row for row in table.highest_points.rows if name and row.country_name.casefold() == name]
+    return rows[0] if len(rows) == 1 else None
+
+
+class Written(NamedTuple):
+    """The one number a unit's readers write (the unit, the number, and each reader's
+    observation with where the number stands in its reading and whether it has the foot mark)."""
+
+    unit: object
+    number: str
+    marked: tuple[tuple[str, int, int], ...]
+
+
+def _number_at(text: str):
+    """The one number a reader's text at a unit writes (written.numbers), or None."""
+    from . import written
+
+    found = written.numbers(text)
+    return found[0] if len(found) == 1 else None
+
+
+def foot_number(run, readings: Sequence[Reading], literal: str | None) -> Written | None:
+    """The unit whose readers all write one same number, at least one with the foot mark or
+    "ft" (FOOT_MARKS) right after it and at least one with no unit, none with another unit or as
+    a distance (written.numbers); the number `literal` when it is given. None unless exactly one
+    unit of the run's labels (Run.reading_units) is so."""
+    from . import written
+
+    texts = {reading.observation_id: reading.text for reading in readings}
+    found = []
+    for label in getattr(run, "reading_units", None) or ():
+        for unit in label.units:
+            numbers = {key: _number_at(span.text) for key, span in unit.readers.items()}
+            if not numbers or any(number is None for number in numbers.values()):
+                continue
+            digits = {unit.readers[key].text[number.start:number.end] for key, number in numbers.items()}
+            if len(digits) != 1 or not BARE_NUMBER.fullmatch(number := next(iter(digits))):
+                continue
+            if literal is not None and literal.strip() != number:
+                continue
+            marked, bare = [], 0
+            for key, found_number in numbers.items():
+                span = unit.readers[key]
+                if found_number.distance or found_number.unit not in (None, "ft"):
+                    break
+                if found_number.unit is None:
+                    bare += 1
+                    continue
+                spelling = re.sub(r"[\s.,;:()]", "", written.fold(span.text[found_number.end:found_number.whole[1]]))
+                if spelling in FOOT_MARKS and texts.get(key, "")[span.start:span.end] == span.text:
+                    marked.append((key, span.start + found_number.start, span.start + found_number.end))
+            else:
+                if marked and bare:
+                    found.append(Written(unit, number, tuple(marked)))
+    return found[0] if len(found) == 1 else None
+
+
+def infer_feet(run, *, readings: Sequence[Reading], eligible: Collection[str], asset_id: str | None = None,
+        blobs=None) -> list[str]:
+    """The ontology's rule elevation_unit_feet, on the units path (step.apply_outcomes, after each
+    label's settlement is recorded): Elevation From (ft), held (unresolved or ambiguous), among
+    `eligible`, while every other elevation field is open (derive.is_open), is inferred as feet
+    when all of these hold:
+    - (a) one unit's readers write one number, at least one with the foot mark or "ft" right
+      after it and at least one with no unit (foot_number), the number being the held field's
+      literal when it has one;
+    - the country is cleared, not marked (cleared_country), and has a row of the ontology's
+      highest-point table (highest_point);
+    - (b) the number read as metres is above that row's highest point;
+    - (c) the number read as feet (1 ft = 0.3048 m) is not above it.
+    It then settles, cleared (no marked finding), in the layer "settled": the number as its
+    literal and parsed value, citing one "derived" row (locator INFERRED) whose excerpt states
+    the value, the rule and its inputs, and a label row for each reader that wrote the mark;
+    its reason starts "Basis: inferred, rule elevation_unit_feet: " and says why. Returns the fields
+    inferred: ["elevation_from_ft"] or []."""
+    from specimen_digitization.application.organiser import CandidateLocation, format_locator
+
+    from .step import SOURCE
+
+    key = "elevation_from_ft"
+    value = run.fields.get(key)
+    if key not in eligible or value is None or value.state not in (ValueState.UNRESOLVED, ValueState.AMBIGUOUS):
+        return []
+    if any(not derive_rules.is_open(run.fields.get(other)) for other in derive_rules.ELEVATIONS
+            if other != key and other in run.fields):
+        return []
+    country = cleared_country(run)
+    row = highest_point(country) if country is not None else None
+    written_at = foot_number(run, readings, value.literal) if row is not None else None
+    if written_at is None:
+        return []
+    number = Decimal(written_at.number)
+    if not number > row.elevation_m or number * FOOT_IN_METRES > row.elevation_m:
+        return []
+    by_observation = {reading.observation_id: reading for reading in readings}
+    named = [by_observation[obs] for obs, _, _ in written_at.marked if obs in by_observation]
+    if not named:
+        return []
+    detail = (f"reader {', '.join(reading.name for reading in named)} writes {written_at.number} with the foot mark "
+        f"or ft at unit {written_at.unit.id}, where another writes it with no unit; {written_at.number} m is above "
+        f"the highest point of {row.country_name}, {row.point_name}, {row.elevation_m} m (Wikidata {row.country}, "
+        f"{row.point}), and {written_at.number} ft ({number * FOOT_IN_METRES} m) is not")
+    record = json.dumps({"field_key": key, "value": written_at.number, "rule": ELEVATION_UNIT_FEET,
+        "unit": written_at.unit.id, "readers": [reading.name for reading in named], "country": country.authority_id,
+        "highest_point": {"country": row.country, "point": row.point, "elevation_m": str(row.elevation_m)}},
+        sort_keys=True).encode()
+    inferred = Evidence(kind="derived", asset_id=asset_id, source=SOURCE, locator=INFERRED,
+        excerpt=f"{key} = {written_at.number}: inferred as feet (rule {ELEVATION_UNIT_FEET}): {detail}",
+        raw_ref=blobs.put(record) if blobs is not None else None,
+        digest=hashlib.sha256(record).hexdigest() if blobs is not None else None)
+    rows = [inferred]
+    for obs, start, end in written_at.marked:
+        reading = by_observation.get(obs)
+        if reading is None:
+            continue
+        line_start = reading.text.rfind("\n", 0, start) + 1
+        line_end = reading.text.find("\n", end)
+        line_end = len(reading.text) if line_end < 0 else line_end
+        quote = json.dumps({"field_key": key, "reading": reading.name, "region_id": reading.region_id,
+            "observation_ids": [obs], "excerpt": reading.text[line_start:line_end], "basis": "inferred"},
+            sort_keys=True).encode()
+        rows.append(Evidence(kind="literal", asset_id=asset_id, region_id=reading.region_id, observation_ids=[obs],
+            source=SOURCE, locator=format_locator(CandidateLocation(reading.name, obs, line_start, line_end, start,
+                end)), excerpt=reading.text[line_start:line_end],
+            raw_ref=blobs.put(quote) if blobs is not None else None,
+            digest=hashlib.sha256(quote).hexdigest() if blobs is not None else None))
+    run.evidence.extend(rows)
+    relations = {item.id: "decides" if item is inferred else "supports" for item in rows}
+    run.fields[key] = FieldValue(state=ValueState.SUPPORTED, literal=written_at.number, parsed=written_at.number,
+        evidence_ids=list(relations), evidence_relations=relations, layer="settled", input_source="raw_reading",
+        source_region_id=written_at.unit.label, source_observation_id=named[0].observation_id,
+        verbatim_by_observation={reading.observation_id: written_at.number for reading in named},
+        input_source_by_observation={reading.observation_id: "raw_reading" for reading in named},
+        settled_observation_ids=[reading.observation_id for reading in named],
+        reason=f"Basis: inferred, rule {ELEVATION_UNIT_FEET}: {detail}.")
+    return [key]
+
+
+# ---- the extent of Precise Location (plan WP 2.3b) -----------------------------------------
+
+# The places above the precise location whose text, on the next line, shows it cut short.
+HIGHER_PLACES = ("province_state", "country")
+
+
+def _whole_words(text: str, line: str) -> bool:
+    return bool(text) and re.search(rf"(?<!\w){re.escape(text)}(?!\w)", line) is not None
+
+
+def _extent_marks(fields: Mapping[str, FieldValue], readings: Sequence[Reading], rows: Mapping[str, Evidence],
+        human: Collection[str]) -> list[Mark]:
+    """precise_location_extent: a settled precise location cut short, marked only when certain.
+    In every reading of its labels (step._value_regions) that writes its literal, at every
+    place it writes it, the literal ends its line (only white space follows on that line) and
+    the reading's next line writes, as whole words, the text of a settled province or country
+    (HIGHER_PLACES: its literal, or that reader's verbatim of it): the label's locality goes on
+    with a higher place. Otherwise the check abstains, as it does when no reading writes the
+    literal, for a person's precise location and with no such place settled."""
+    from .step import _value_regions
+
+    value = fields.get("precise_location")
+    if not settled(value) or "precise_location" in human or not value.literal:
+        return []
+    places = [(key, fields[key]) for key in HIGHER_PLACES if settled(fields.get(key)) and fields[key].literal]
+    if not places:
+        return []
+    labels = _value_regions(value, readings, rows)
+    shown = None
+    for reading in readings:
+        if reading.region_id not in labels:
+            continue
+        at = reading.text.find(value.literal)
+        while at >= 0:
+            end = at + len(value.literal)
+            line_end = reading.text.find("\n", end)
+            if line_end < 0 or reading.text[end:line_end].strip():
+                return []
+            after = reading.text.find("\n", line_end + 1)
+            line = reading.text[line_end + 1:None if after < 0 else after]
+            hit = next(((key, text) for key, place in places
+                for text in dict.fromkeys((place.verbatim_by_observation.get(reading.observation_id), place.literal))
+                if text and _whole_words(text, line)), None)
+            if hit is None:
+                return []
+            shown = shown or (line.strip(), *hit)
+            at = reading.text.find(value.literal, at + 1)
+    if shown is None:
+        return []
+    line, key, text = shown
+    cited = tuple(dict.fromkeys([*value.evidence_ids, *fields[key].evidence_ids]))
+    return [Mark("precise_location", PRECISE_LOCATION_EXTENT,
+        f"Marked for a person, rule {PRECISE_LOCATION_EXTENT}: the label's next line, {line!r}, writes the "
+        f"{LEVEL_NAMES[key]} settled, {text!r}, so its locality goes on after this text.", cited)]
+
+
 # ---- the stage ---------------------------------------------------------------------------
 
 def _labels(run, key: str, readings: Sequence[Reading], rows: Mapping[str, Evidence]) -> list[str]:
@@ -422,7 +708,8 @@ def stage(run, *, readings: Sequence[Reading], received: Mapping[str, Sequence[S
             _with_sentence(value, sentence)
     made: list[str] = []
     present = {(finding.field_key, finding.reason_code) for finding in run.findings if finding.rule_id == CHECK_STAGE}
-    for mark in [*_place_marks(run.fields, answers, human, tally), *_date_marks(run.fields, human)]:
+    for mark in [*_place_marks(run.fields, answers, human, tally), *_date_marks(run.fields, human),
+            *_extent_marks(run.fields, readings, rows, human)]:
         _with_sentence(run.fields[mark.field], mark.sentence)
         for label in _labels(run, mark.field, readings, rows):
             code = marked_code(mark.field, label, mark.check)

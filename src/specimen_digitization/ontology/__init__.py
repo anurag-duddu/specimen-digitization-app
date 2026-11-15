@@ -137,7 +137,9 @@ class Rule:
     checked names in `when` the work package that builds it. `instruction` is
     what a model does under the rule; the experts of `fields`, and with
     `reading` the readers and the first pass, receive it, and the organiser
-    receives every rule's (Ontology.render_instructions)."""
+    receives every rule's (Ontology.render_instructions). With `derives`,
+    field_research/derive.py fills the rule's fields by it, and the rule is
+    the one the basis of a value it derives names (derive.DERIVED_RULES)."""
 
     id: str
     statement: str
@@ -149,6 +151,7 @@ class Rule:
     reading: bool = False
     when: str = ""
     note: str = ""
+    derives: bool = False
 
 
 @dataclass(frozen=True)
@@ -605,7 +608,7 @@ def parse(data: Any) -> Ontology:
     for index, value in enumerate(_list(top["rules"], "rules")):
         where = f"rules[{index}]"
         entry = _entry(value, where, {"id", "statement", "instruction", "fields", "check", "darwin_core", "source"},
-                       frozenset({"reading", "when", "note"}))
+                       frozenset({"reading", "when", "note", "derives"}))
         check = _text(entry["check"], f"{where}.check")
         if check not in CHECKS:
             raise OntologyError(f"{where}.check must be one of {', '.join(CHECKS)}, not {check!r}")
@@ -622,7 +625,11 @@ def parse(data: Any) -> Ontology:
             reading=_flag(entry.get("reading", False), f"{where}.reading"),
             when=_text(entry["when"], f"{where}.when") if "when" in entry else "",
             note=_text(entry["note"], f"{where}.note") if "note" in entry else "",
+            derives=_flag(entry.get("derives", False), f"{where}.derives"),
         ))
+    derived = [key for rule in rules if rule.derives for key in rule.fields]
+    if len(derived) != len(set(derived)):
+        raise OntologyError("rules: a field is derived by two rules")
     not_rules = []
     for index, value in enumerate(_list(top["not_rules"], "not_rules")):
         where = f"not_rules[{index}]"

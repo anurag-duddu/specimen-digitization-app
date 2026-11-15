@@ -47,7 +47,7 @@ import json
 import logging
 import os
 import re
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
@@ -560,10 +560,12 @@ def _lineage(named: Sequence[Reading], literal: str, others: Sequence[tuple[Read
         "settled_observation_ids": observations}
 
 
-def _refusal(task, answer, *, readings, by_name, sources):
+def _refusal(task, answer, *, readings, by_name, sources, elevations=None):
     """Why a resolved answer may not settle its field (agreement.refusal, the
     experts' check repeated here on what the field's lookups returned), or
-    None. ``sources`` are the source answers the field received."""
+    None. ``sources`` are the source answers the field received;
+    ``elevations`` the elevation literals settled by label (_settled_elevations),
+    which a precise location may keep on the units path."""
     from .agreement import refusal
 
     literal = answer.literal
@@ -576,7 +578,7 @@ def _refusal(task, answer, *, readings, by_name, sources):
     by_id = {item.evidence.id: item for item in received if item.evidence is not None}
     cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
     return refusal(task, readings, literal=literal, named=named, value=answer.value,
-        authority_id=answer.authority_id, cited=cited, received=received)
+        authority_id=answer.authority_id, cited=cited, received=received, elevations=elevations)
 
 
 def _place_texts(run, tasks_by_key: Mapping[str, FieldTask], readings) -> dict[str, dict[str, frozenset[str]]]:
@@ -1079,11 +1081,14 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             claim_texts.append((key, value.literal, _value_regions(value, readings, evidence)))
     taken: dict[str, Taken] = {}
     yielded: dict[str, str] = {}
+    units = units_path(run)
     for key, spans in mine.items():
         place = FIELD_KINDS.get(key) == "place"
         partial, other = [], None
-        for claimant, theirs in claims:
+        for (claimant, theirs), (_, their_text, their_regions) in zip(claims, claim_texts, strict=True):
             if claimant == key or may_share_text(key, claimant) or not _overlap(spans, theirs):
+                continue
+            if units and _keeps_an_elevation(key, *mine_texts[key], claimant, their_text, their_regions):
                 continue
             if place and claimant in settled and _partly(spans, theirs):
                 partial.append(claimant)
@@ -1105,6 +1110,45 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
         if claimant not in taken or taken[claimant].other == key:
             taken[claimant] = Taken(key, partly=True)
     return taken
+
+
+def _keeps_an_elevation(key: str, literal: str, regions: set, claimant: str, text: str, theirs: set) -> bool:
+    """On the units path (_taken), whether a precise location and an elevation field share the
+    elevation's text by the ontology's rule precise_location_extent (plan WP 2.3b): the precise
+    location's literal keeps an elevation (agreement.elevation_kept) whose text is, after
+    collapse, the elevation field's literal, on a label both are read from. Either may be the
+    answer read from the transcript, the other the value that claims its text."""
+    from .agreement import ELEVATION_INSIDE, FIELD_UNITS, collapse, elevation_kept
+
+    if key == ELEVATION_INSIDE and claimant in FIELD_UNITS:
+        place, height = literal, text
+    elif claimant == ELEVATION_INSIDE and key in FIELD_UNITS:
+        place, height = text, literal
+    else:
+        return False
+    kept = elevation_kept(place)
+    return kept is not None and collapse(kept) == collapse(height) and bool(regions & theirs)
+
+
+def _settled_elevations(run, settled: Mapping[str, FieldValue], readings: Sequence[Reading],
+        researched: Collection[str], human: frozenset[str]) -> dict[str, set[str]]:
+    """The literals the elevation fields settle, by label, on the units path, which a precise
+    location read from those labels may keep (agreement.literal_refusal's `elevations`): the
+    values this attempt's answers settle (`settled`: _first_pass) and those of the fields it
+    does not research that claim their text (_claims_text: settled before, or a person's), each
+    under the labels of its value (_value_regions)."""
+    from .agreement import FIELD_UNITS
+
+    evidence = {item.id: item for item in run.evidence}
+    values = [settled[key] for key in FIELD_UNITS if key in settled]
+    values += [run.fields[key] for key in FIELD_UNITS if key not in researched and key in run.fields
+        and _claims_text(key, run.fields[key], human)]
+    found: dict[str, set[str]] = {}
+    for value in values:
+        if value.literal:
+            for region in _value_regions(value, readings, evidence):
+                found.setdefault(region, set()).add(value.literal)
+    return found
 
 
 def _partly(spans, others) -> bool:
@@ -1297,11 +1341,13 @@ def _unsettled(task, state, *, literal=None, cited=(), reason) -> FieldValue:
 
 def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, blobs, date_rules=None,
         sources: Sequence[SourceAnswer] = (), places, pending=frozenset(), final=False,
-        decision: dict | None = None, received: Mapping[str, Sequence[SourceAnswer]] | None = None) -> FieldValue:
+        decision: dict | None = None, received: Mapping[str, Sequence[SourceAnswer]] | None = None,
+        elevations=None) -> FieldValue:
     """The field's value from its outcome. ``decision`` collects, as codes,
     which of the step's checks refused a resolved answer ("refusal") and which
     rule decided it ("rule"), for the field's trace (trace_fields).
-    ``received`` holds the source answers of every field, by field (_misfit)."""
+    ``received`` holds the source answers of every field, by field (_misfit);
+    ``elevations`` the elevation literals settled by label (_refusal)."""
     decision = {} if decision is None else decision
     answer = outcome.answer
     current = task.current
@@ -1325,7 +1371,8 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         reconciled = outcome.finalized_without_model and answer.explanation.startswith(
             "Resolved by location reconciliation:")
         if not reconciled:
-            refused = _refusal(task, answer, readings=readings, by_name=by_name, sources=sources)
+            refused = _refusal(task, answer, readings=readings, by_name=by_name, sources=sources,
+                elevations=elevations)
             if refused is not None:
                 decision["refusal"] = refusal_code(refused.reason)
                 # A pick between readers no source settles is ambiguous; a value no
@@ -1849,7 +1896,7 @@ def _taxon_literals(run, tasks: Sequence[FieldTask], outcomes: Sequence[FieldOut
 def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[FieldOutcome], *,
         taken: Mapping[str, Taken], human, readings, by_name, evidence: dict, asset_id, blobs, date_rules,
         received: Mapping[str, Sequence[SourceAnswer]], places, final: bool,
-        decisions: dict[str, dict], put: Mapping[str, FieldOutcome] | None = None) -> tuple[
+        decisions: dict[str, dict], put: Mapping[str, FieldOutcome] | None = None, elevations=None) -> tuple[
             dict[str, FieldOutcome], dict[str, list[str]]]:
     """Each outcome, in `ordered` (the places from the country down), as its
     field's value (_field_value), a field in `taken` as text another kind of
@@ -1858,7 +1905,9 @@ def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence
     A field in `put` (the units path: its expert's several_possibilities answer, which
     the outcome in `ordered` puts to the rule, _by_rule) whose rule's answer does not
     settle (it is refused, or its text is another kind of field's, `taken`) takes the
-    value of its expert's own answer, with the refusal's code in its decision. Returns
+    value of its expert's own answer, with the refusal's code in its decision.
+    ``elevations``: the elevation literals settled by label, which a precise location may
+    keep on the units path (_settled_elevations; none in _first_pass). Returns
     the outcomes applied and, per field, the evidence rows its value added."""
     put = put or {}
     pending = {outcome.key for outcome in ordered}
@@ -1879,7 +1928,7 @@ def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence
             value = None if task.key in taken else _field_value(run, task, outcome, readings=readings,
                 by_name=by_name, evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=date_rules,
                 sources=received.get(task.key, ()), places=places, pending=frozenset(pending), final=final,
-                decision=decision, received=received)
+                decision=decision, received=received, elevations=elevations)
             if task.key in put and value is not None and value.state == ValueState.SUPPORTED:
                 decision["rule"] = "rule_settled"
             elif task.key in put:
@@ -1887,7 +1936,7 @@ def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence
                 value = _field_value(run, task, outcome, readings=readings, by_name=by_name,
                     evidence=evidence, asset_id=asset_id, blobs=blobs, date_rules=date_rules,
                     sources=received.get(task.key, ()), places=places, pending=frozenset(pending), final=final,
-                    decision=decision, received=received)
+                    decision=decision, received=received, elevations=elevations)
             run.fields[task.key] = value
         applied[task.key] = outcome
         added[task.key] = [item.id for item in run.evidence[before:]]
@@ -2463,9 +2512,15 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     field, the codes of the checks and rules that decided it (trace_fields).
     Then, for each field researched in this attempt, how each label whose
     readers differ settled it, against its first pass's preferred reader
-    (_first_pass_preference). On the units path, last, the check stage
-    (ontology_checks.stage): each settled or derived value that fails a rule
-    of the ontology is marked for a person, and none is revised.
+    (_first_pass_preference). On the units path a field derived from another
+    that is settled absent while its source is held waits instead, right after
+    the derivation (ontology_checks.wait_for_sources); a precise location keeps
+    an elevation only beside the elevation field's same literal from its label
+    (_settled_elevations, _keeps_an_elevation); and, last, the elevation unit
+    rule infers what its conditions allow (ontology_checks.infer_feet), the
+    derivation fills what that lets it derive, and the check stage
+    (ontology_checks.stage) marks each settled, inferred or derived value that
+    fails a rule of the ontology, revising none.
     """
     from .agreement import PLACE_ORDER
     from .location_reassessment import active_keys
@@ -2512,9 +2567,14 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     # Text read from the transcript that another kind of field claims (_taken):
     # only what the answers settle claims text, so they are applied once
     # first, on a copy of the run (_first_pass).
-    taken = _taken(run, tasks_by_key, ordered, readings, _first_pass(run, tasks_by_key, ordered, **common))
+    first = _first_pass(run, tasks_by_key, ordered, **common)
+    taken = _taken(run, tasks_by_key, ordered, readings, first)
+    # On the units path a precise location keeps an elevation only when an elevation field settles
+    # its text from that label (agreement.literal_refusal; the ontology's precise_location_extent).
+    elevations = _settled_elevations(run, first, readings, {outcome.key for outcome in ordered}, human) \
+        if units_path(run) else None
     applied, added = _apply_answers(run, tasks_by_key, ordered, taken=taken, evidence=evidence, blobs=blobs,
-        decisions=decisions, **common)
+        decisions=decisions, elevations=elevations, **common)
     # A precise location that gives only an administrative marker beside the
     # places settled has no value on the label (_no_finer_place).
     no_finer = _no_finer_place(run, profile, tasks_by_key, applied, added, readings, evidence=evidence,
@@ -2542,6 +2602,13 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
         run.fields["country"] = ambiguous_country
     for key in derived:
         decisions.setdefault(key, {})["rule"] = "derived"
+    if units_path(run):
+        # A field derived from another waits while its source is held, never settled absent
+        # (ontology_checks.wait_for_sources).
+        from .ontology_checks import wait_for_sources
+
+        for key in wait_for_sources(run, eligible=eligible):
+            decisions.setdefault(key, {})["rule"] = "waits_for_source"
     # Last, so that a value derived above is never marked absent.
     declined: dict[str, str] = {}
     for key in mark_not_on_label(run, profile, tasks, outcomes, readings=readings, asset_id=asset_id, blobs=blobs,
@@ -2566,11 +2633,22 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             (_settlement if units_path(run) else _first_pass_preference)(run, tasks_by_key[outcome.key], outcome,
                 readings=readings, by_name=by_name, sources=received.get(outcome.key, ()),
                 decision=decisions.get(outcome.key, {}), **given)
-    # The check stage, last, on the units path only: it marks what fails a rule of the ontology
-    # among the values settled and derived above, and revises none (ontology_checks.stage).
+    # The check stage, last, on the units path only: an inference whose rule's conditions all hold
+    # fills an open field, cleared, and derivation fills what it lets derive
+    # (ontology_checks.infer_feet); then the stage marks what fails a rule of the ontology among
+    # the values settled, inferred and derived above, and revises none (ontology_checks.stage).
     if units_path(run):
-        from .ontology_checks import stage
+        from .ontology_checks import infer_feet, stage
 
+        inferred = infer_feet(run, readings=readings, eligible=eligible, asset_id=asset_id, blobs=blobs)
+        if inferred:
+            more = derive.fill(run, eligible=[key for key in eligible if key in derive.ELEVATIONS], asset_id=asset_id,
+                blobs=blobs, received=received)
+            for key in inferred:
+                decisions.setdefault(key, {})["rule"] = "inferred"
+            for key in more:
+                decisions.setdefault(key, {})["rule"] = "derived"
+            derived = [*derived, *more]
         stage(run, readings=readings, received=received, researched=tasks_by_key, derived=derived, human=human,
             blobs=blobs)
     return derived
