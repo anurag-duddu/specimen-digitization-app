@@ -1247,8 +1247,8 @@ rules:
       stored as parts, each with its own label, literal and basis, exist. So
       when the reading units name parts of one field on two or more labels
       (a unit whose text has the shape of its role: a scientific name's
-      genus, species or author as one word; a date's day, month or year
-      alone), the parts differ (neither holds the other as whole words), no
+      genus or species as one word and its author as an author's names; a
+      date's day, month or year alone), the parts differ (neither holds the other as whole words), no
       one label's text holds them all as whole words, and, where they have
       two or more roles, no one label has a part of each, an answer that
       settles the field on one label's part, or on a text no label writes,
@@ -1271,8 +1271,8 @@ rules:
       - docs/execution/units/PLAN.md:130
       - src/specimen_digitization/application/reading_units.py:43-48
       - src/specimen_digitization/field_research/step.py:1499-1505
-      - src/specimen_digitization/field_research/step.py:1611-1724
-      - src/specimen_digitization/field_research/step.py:3125-3132
+      - src/specimen_digitization/field_research/step.py:1611-1756
+      - src/specimen_digitization/field_research/step.py:3157-3164
       - https://dwc.tdwg.org/terms/#dwc:scientificName
       - https://dwc.tdwg.org/terms/#dwc:eventDate
       - https://dwc.tdwg.org/terms/#dwc:dateIdentified

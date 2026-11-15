@@ -1627,29 +1627,61 @@ def _holds(text: str, part: str) -> bool:
 
 _GENUS = re.compile(r"[^\W\d_][^\W\d_]*\.?")
 _SPECIES = re.compile(r"[^\W\d_]+(?:-[^\W\d_]+)*")
+# An author's name word: a capitalised word or initials ("Linnaeus", "L.", "J.F.", "O'Brien",
+# "Saint-Hilaire"); and an author's whole text: name words, "&" or "et" between two of them, and an
+# optional year after a comma ("Hagen, 1866").
+_AUTHOR_WORD = re.compile(
+    r"[^\W\d_](?:[^\W\d_]|['\N{RIGHT SINGLE QUOTATION MARK}-](?=[^\W\d_]))*(?:\.[^\W\d_]+)*\.?")
+_AUTHOR_YEAR = re.compile(r"(?P<names>.*\S),\s*[0-9]{4}")
+
+
+def _author_shaped(text: str) -> bool:
+    """Whether a text looks like an author (the coordinator's ruling on #444's Codex round 2): one or
+    more name words (_AUTHOR_WORD, each capitalised), "&" or "et" only between two of them, and an
+    optional four-digit year after a comma. No word is a Roman month numeral ("IX"), no digit
+    stands outside that year (so no hyphenated digit run, as in "IX-14-46"), and no notation of
+    the ontology is written in it ("CNHM", "leg.", "Sept.")."""
+    from specimen_digitization.application.date_notations import ROMAN_MONTHS
+    from specimen_digitization.ontology import ontology
+
+    found = _AUTHOR_YEAR.fullmatch(text.strip())
+    words = (found.group("names") if found else text.strip()).split()
+    if not words or words[0] in ("&", "et") or words[-1] in ("&", "et"):
+        return False
+    for before, word in zip([None, *words], words):
+        if word in ("&", "et"):
+            if before in ("&", "et"):
+                return False
+            continue
+        if (not word[0].isupper() or _AUTHOR_WORD.fullmatch(word) is None
+                or word.rstrip(".") in ROMAN_MONTHS):
+            return False
+    return not any(pattern.search(text) for notation in ontology().notations for pattern in notation.patterns)
 
 
 def _part_shaped(role: str, text: str) -> bool:
     """Whether a unit's text has the shape of its role (the coordinator's ruling on #444's G51
     round 1): for a date, a day number (1 to 31), a month (a Roman numeral I to XII, a number 1 to
     12 or a month word, date_months.MONTH_WORDS) or a year (date_lines.YEAR_TOKEN) alone, a final
-    period, comma, semicolon or colon aside; for a name, one word: a genus capitalised ("Danaus",
-    "D."), a species in lower case ("plexippus"), an author capitalised ("L."). A whole date tagged
-    day ("IX-14-46") and a name of two words are no part."""
+    period, comma, semicolon or colon aside; for a name, a genus capitalised ("Danaus", "D.") and a
+    species in lower case ("plexippus") as one word, and an author as an author's names
+    (_author_shaped: "L.", "Linnaeus", "Hagen, 1866"). A whole date tagged day or author
+    ("IX-14-46") and a genus or species of two words are no part."""
     from specimen_digitization.application.date_months import MONTH_WORDS, fold
     from specimen_digitization.application.date_notations import ROMAN_MONTHS
 
     from .date_lines import YEAR_TOKEN
 
     word = text.strip()
-    if not word or len(word.split()) != 1:
+    if role == "author":
+        return _author_shaped(word)
+    if not word:
         return False
+    # A genus or a species is one word: neither pattern admits white space.
     if role == "genus":
         return word[0].isupper() and _GENUS.fullmatch(word) is not None
     if role == "species":
         return word.islower() and _SPECIES.fullmatch(word) is not None
-    if role == "author":
-        return word[0].isupper()
     bare = word.rstrip(".,;:")
     if role == "day":
         return bare.isdigit() and len(bare) <= 2 and 1 <= int(bare) <= 31

@@ -391,6 +391,10 @@ D = ("date_visited_from",)
     ([[("Aus", "genus", T)], [("1946", "year", T)]], False),
     ([[("Aus", "genus", T)], [("6", "day", T)]], False),
     ([[("Aus", "genus", T), ("bus", "species", T)], [("Hagen 1866", "author", T)]], False),
+    # Codex's round 2 on #444: a whole date tagged author is no part, beside a genus.
+    ([[("Danaus", "genus", T)], [("IX-14-46", "author", T)]], False),
+    # An author on another label still is a part: label 1 has no author.
+    ([[("Aus", "genus", T), ("bus", "species", T)], [("Hagen, 1866", "author", T)]], True),
     # Three labels: two write the genus, the third the species.
     ([[("Aus", "genus", T)], [("Aus", "genus", T)], [("bus", "species", T)]], True),
     # Three labels: the second and third each write a part the other does not; the first writes less.
@@ -443,6 +447,12 @@ def test_field_parts_takes_a_date_s_parts_where_its_fields_name_the_date():
     ("genus", "Danaus", True), ("genus", "D.", True), ("genus", "danaus", False), ("genus", "Danaus plexippus", False),
     ("genus", "Sp.30", False), ("species", "plexippus", True), ("species", "Plexippus", False),
     ("species", "sp. 22", False), ("author", "L.", True), ("author", "linnaeus", False), ("author", "Hagen 1866", False),
+    # An author's shape (the coordinator's ruling on Codex's round 2): name words, "&" or "et" between them, a
+    # year after a comma; no Roman month, no digit run, no notation.
+    ("author", "Linnaeus", True), ("author", "Hagen, 1866", True), ("author", "Smith & Jones", True),
+    ("author", "Hagen et Mockford", True), ("author", "J.F. Smith", True), ("author", "O'Brien", True),
+    ("author", "IX-14-46", False), ("author", "IV", False), ("author", "CNHM", False), ("author", "leg.", False),
+    ("author", "Sept.", False), ("author", "& Jones", False), ("author", "Smith &", False), ("author", "Hagen, 66", False),
     ("day", "6", True), ("day", "31", True), ("day", "32", False), ("day", "IX-14-46", False), ("day", "6,", True),
     ("month", "IX", True), ("month", "Sept.", True), ("month", "12", True), ("month", "13", False),
     ("month", "XIII", False), ("year", "1946", True), ("year", "'46", True), ("year", "46", False),
