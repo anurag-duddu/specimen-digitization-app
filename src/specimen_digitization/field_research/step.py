@@ -3179,6 +3179,28 @@ _ROMAN = re.compile(r"(?:XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)")
 _LETTERS = re.compile(r"[^\W\d_]+")
 
 
+def _one_apart(first: str, second: str) -> bool:
+    """Whether two words are equal or one character apart: one character changed, added or
+    dropped ("grassland" and "Grassland", "Mckinley" and "McKimley")."""
+    if first == second:
+        return True
+    if abs(len(first) - len(second)) > 1:
+        return False
+    if len(first) == len(second):
+        return sum(a != b for a, b in zip(first, second)) == 1
+    short, long = sorted((first, second), key=len)
+    return any(long[:i] + long[i + 1:] == short for i in range(len(long)))
+
+
+def _same_words(first: str, second: str) -> bool:
+    """Whether two readers' texts at a unit write the same words, as many and in the same order,
+    each at most a spelling variant of the other's (_one_apart): the genus scan carries one
+    reader's accounted text to the other's only then (the coordinator's ruling on G51's round 3:
+    "<female sign>" does not carry to "Epipsocus <female sign>")."""
+    words, others = first.split(), second.split()
+    return len(words) == len(others) and all(_one_apart(a, b) for a, b in zip(words, others))
+
+
 def _genus_on_a_label(run, readings: Sequence[Reading]) -> str | None:
     """On the units path, for owner decision B (WP 2.T, the coordinator's rulings on rounds 1 and 2
     of #438's review): a word that may be a genus that some reading of some label of the specimen
@@ -3195,8 +3217,11 @@ def _genus_on_a_label(run, readings: Sequence[Reading]) -> str | None:
       for "C" alone), a code with no genus (checks.NO_GENUS), a catalogue number with its prefix
       (field_validators.CATALOG: "FMNHINS 4486784"), or a keyed line's key (one of the 20 fields'
       keys and a colon at a line's start, as Workflow.parse reads "habitat: Mossy forest").
-    A word only partly inside such spans is not accounted for. A unit (Reading.units) some reader's
-    text of which lies wholly inside such spans is accounted for in every reader of it. A word no
+    A word is accounted for only when one single span holds all of it: a word only partly inside
+    one, or inside two that meet ("Epi" and "psocus" of two fields), is not. A unit
+    (Reading.units) some reader's text of which one span holds whole is accounted for in every
+    reader of it whose text there writes the same words, each at most one character apart
+    (_same_words). A word no
     span accounts for, on any label, may be the specimen's genus, as "Epipsocus" on a label of its
     own beside a label writing "Sp.30": then decision B does not apply."""
     from specimen_digitization.application.field_validators import CATALOG
@@ -3206,16 +3231,20 @@ def _genus_on_a_label(run, readings: Sequence[Reading]) -> str | None:
     from .checks import NO_GENUS, NOT_GENERA
 
     rows = {item.id: item for item in run.evidence}
-    masks = {reading.name: [False] * len(reading.text) for reading in readings}
+    # Each reading's accounted spans, kept apart: a word is accounted for only inside one of them.
+    spans: dict[str, list[tuple[int, int]]] = {reading.name: [] for reading in readings}
     # A keyed line's key (Workflow.parse reads "habitat: Mossy forest"): one of the 20 fields' keys.
     keys = re.compile(r"^[^\S\n]*(?:" + "|".join(map(re.escape, FIELD_TOOLS)) + r")[^\S\n]*:", re.MULTILINE)
     patterns = [NO_GENUS, CATALOG, keys,
         *(pattern for notation in ontology().notations for pattern in notation.patterns)]
 
     def mark(reading: Reading, start: int, end: int) -> None:
-        mask = masks[reading.name]
-        start, end = max(start, 0), min(end, len(mask))
-        mask[start:end] = [True] * max(0, end - start)
+        start, end = max(start, 0), min(end, len(reading.text))
+        if end > start:
+            spans[reading.name].append((start, end))
+
+    def inside(reading: Reading, start: int, end: int) -> bool:
+        return any(low <= start and end <= high for low, high in spans[reading.name])
 
     def mark_text(reading: Reading, text: str) -> None:
         words = text.split()
@@ -3246,17 +3275,18 @@ def _genus_on_a_label(run, readings: Sequence[Reading]) -> str | None:
                     mark_text(reading, text)
     for reading in readings:
         for unit in (reading.units.units if reading.units is not None else ()):
-            spans = [(other, span) for other in readings for observation, span in unit.readers.items()
+            texts = [(other, span) for other in readings for observation, span in unit.readers.items()
                 if other.observation_id == observation and other.region_id == reading.region_id
                 and span.end <= len(other.text)]
-            if any(span.end > span.start and all(masks[other.name][span.start:span.end]) for other, span in spans):
-                for other, span in spans:
+            covered = [other.text[span.start:span.end] for other, span in texts
+                if span.end > span.start and inside(other, span.start, span.end)]
+            for other, span in texts:
+                if any(_same_words(text, other.text[span.start:span.end]) for text in covered):
                     mark(other, span.start, span.end)
     for reading in readings:
-        mask = masks[reading.name]
         for match in _LETTERS.finditer(reading.text):
             word = match.group()
-            if all(mask[match.start():match.end()]) or word.casefold() in NOT_GENERA or _ROMAN.fullmatch(word):
+            if inside(reading, *match.span()) or word.casefold() in NOT_GENERA or _ROMAN.fullmatch(word):
                 continue
             return word
     return None

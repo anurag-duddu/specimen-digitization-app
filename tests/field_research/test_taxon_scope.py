@@ -327,6 +327,35 @@ def test_a_genus_sharing_a_unit_with_notation_text_never_clears_on_either_path(
     assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
+@pytest.mark.parametrize("covered", ["\N{FEMALE SIGN}", "CNHM", "det."])
+def test_a_reader_s_covered_text_carries_only_to_the_same_words_at_its_unit(tmp_path, monkeypatch, covered):
+    """G51's round 3 and the coordinator's ruling: at one unit reader A writes only a notation's token
+    and reader B "Epipsocus <female sign>". A's text is accounted for, but B's writes other words, so
+    the coverage does not carry and B's "Epipsocus" may be a genus (step._same_words)."""
+    import dataclasses
+
+    second = "Epipsocus \N{FEMALE SIGN}"
+    monkeypatch.setattr(test_step, "seen_units", as_one_unit(second))
+    test_step.a_second_label(monkeypatch, second)
+    rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"))
+    run = rig.specimen.run
+    readings = list(field_step.run_readings(run))
+    region = run.regions[1].id
+    first, other = [reading for reading in readings if reading.region_id == region][:2]
+    units = first.units
+    if units is not None:
+        unit = units.units[0]
+        readers = dict(unit.readers)
+        readers[first.observation_id] = readers[first.observation_id].model_copy(update={
+            "text": covered, "start": 0, "end": len(covered)})
+        units = units.model_copy(update={"units": [unit.model_copy(update={"readers": readers})]})
+    changed = [dataclasses.replace(reading, units=units if reading.region_id == region else reading.units,
+        text=covered if reading.name == first.name else reading.text) for reading in readings]
+    assert other.text == second and field_step._genus_on_a_label(run, changed) == "Epipsocus"
+    assert field_step._same_words("Synthetic grassland", "Synthetic Grassland")
+    assert not field_step._same_words(covered, second)
+
+
 def test_the_organiser_s_code_beside_a_genus_on_another_label_never_clears_on_the_units_path(
         tmp_path, monkeypatch, first_pass_path):
     """G51's P1b and the coordinator's ruling on it: the organiser's value and candidates are label 1's
@@ -383,7 +412,8 @@ def test_an_unsettled_field_s_text_accounts_for_nothing(tmp_path, monkeypatch, f
 
 def test_a_word_only_partly_inside_a_settled_field_s_occurrence_is_not_accounted_for(tmp_path):
     """A settled field's occurrence, at its row's offsets, covers "Epi" of the label's "Epipsocus": the
-    word is not wholly inside it, so it may be a genus (step._genus_on_a_label)."""
+    word is not wholly inside it, so it may be a genus (step._genus_on_a_label); nor is it when another
+    settled field's occurrence covers "psocus" (Codex's round 3)."""
     from specimen_digitization.application.organiser import CandidateLocation, format_locator
 
     rig = build_rig(tmp_path, without_the_taxon_line("Epipsocus"))
@@ -396,6 +426,14 @@ def test_a_word_only_partly_inside_a_settled_field_s_occurrence_is_not_accounted
         excerpt="Epi")
     run.evidence.append(row)
     run.fields["collection_method"] = FieldValue(state=ValueState.SUPPORTED, literal="Epi", evidence_ids=[row.id])
+    assert field_step._genus_on_a_label(run, readings) == "Epipsocus"
+    # Codex's round 3: a second settled field's occurrence cites the rest of the word, [3, 9). Two spans
+    # that meet do not hold the word: only one single span does.
+    other = Evidence(kind="literal", region_id=reading.region_id, observation_ids=[reading.observation_id],
+        source="test", locator=format_locator(CandidateLocation("1A", reading.observation_id, 3, 9, 3, 9)),
+        excerpt="psocus")
+    run.evidence.append(other)
+    run.fields["habitat"] = FieldValue(state=ValueState.SUPPORTED, literal="psocus", evidence_ids=[other.id])
     assert field_step._genus_on_a_label(run, readings) == "Epipsocus"
     row.locator = format_locator(CandidateLocation("1A", reading.observation_id, 0, 9, 0, 9))
     row.excerpt = run.fields["collection_method"].literal = "Epipsocus"
