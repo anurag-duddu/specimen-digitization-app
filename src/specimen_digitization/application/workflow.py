@@ -530,16 +530,14 @@ class Workflow:
             # A pin whose provider the registry moved, same model and price: the
             # move is saved with the step's next save (HARNESS.md 3, Failures).
             repin_first_pass_route(run, self.clock())
-        from .harness import calls_organiser, extraction_given_up
+        from .harness import extraction_given_up
 
         # parse's model call (the organiser's extraction), while the run has not
-        # given it up; once given up, parse runs without it (HARNESS.md 3). A
-        # units-path run pinned without the organiser makes no call (plan WP 2.5).
+        # given it up; once given up, parse runs without it (HARNESS.md 3).
         extracting = (
             step == "parse"
             and hasattr(self.adapters, "extract")
             and not extraction_given_up(run)
-            and calls_organiser(run)
         )
         ordinary_extraction = extracting and extraction_failure_is_recoverable(run, step)
         # Persist intent before network/model work. Crash with intent but no result is
@@ -1152,15 +1150,9 @@ class Workflow:
                     run.usage.model_copy(deep=True),
                 )
                 self.parse(proposal.run, specimen.asset.id, self.blobs)
-                if not calls_organiser(run):
-                    # A units-path run pinned without the organiser (plan WP 2.5):
-                    # its proposal is written from the reading units, with no call.
-                    from .harness import apply_units
-
-                    apply_units(proposal.run, specimen.asset.id, self.blobs)
                 # Asked again here, as before: offline adapters that hide their
                 # extract from the first check (unmetered) still extract.
-                elif hasattr(self.adapters, "extract") and not extraction_given_up(run):
+                if hasattr(self.adapters, "extract") and not extraction_given_up(run):
                     try:
                         call_usage = self.adapters.extract(proposal)
                     except (AdapterFailure, ReadingStopped) as failure:

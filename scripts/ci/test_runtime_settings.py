@@ -97,17 +97,6 @@ def test_the_processes_that_create_runs_carry_the_first_pass_units_switch_off():
     assert all(SETTING not in S.ROLES[role]["env"] for role in ("worker", "sam"))
 
 
-def test_the_worker_pins_runs_with_the_organiser_setting_on():
-    # WP 2.5 (docs/execution/units/PLAN.md, section 5's apply_candidates row): a run's
-    # dependencies are pinned in the worker (harness.organiser_pin), which calls the organiser.
-    from specimen_digitization.application.harness import ON, ORGANISER_SETTING, organiser_setting
-
-    worker = D.role_env("worker", CHECKPOINT)
-    assert ORGANISER_SETTING == "SPECIMEN_UNITS_ORGANISER" and worker[ORGANISER_SETTING] == "on"
-    assert organiser_setting(worker) == ON
-    assert all(ORGANISER_SETTING not in S.ROLES[role]["env"] for role in ("api", "sam"))
-
-
 def test_the_api_and_the_worker_carry_the_same_nvidia_option():
     # NVIDIA_NEMOTRON_OPTION.md section 2: both processes load the published
     # profiles; the API copies a run's prices at queue time and the worker picks
