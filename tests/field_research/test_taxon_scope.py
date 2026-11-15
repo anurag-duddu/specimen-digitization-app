@@ -52,6 +52,13 @@ def without_the_taxon_line(line):
     return line + "\n" + TEXT.replace("taxon: " + LABEL["taxon"] + "\n", "")
 
 
+# Where the readers differ no reading is decided, so the keyed-line parser reads no line and the organiser's
+# candidates are the fields' only provenance: the identified-by IRN's, which no expert researches, is given here
+# so that its text is accounted for (step._genus_on_a_label).
+IRN = [("identified_by_irn", name, LABEL["identified_by_irn"], "identified_by_irn: " + LABEL["identified_by_irn"])
+    for name in ("1A", "1B")]
+
+
 def taxon_reasons(run):
     return [reason for reason in run.reasons if reason in TAXON_REASONS]
 
@@ -103,7 +110,7 @@ def test_readers_writing_the_code_differently_settle_on_the_text_the_image_names
     on the text the image names; the old path keeps main's result."""
     monkeypatch.setattr(test_step, "seen_units", naming("sp. 30"))
     rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"),
-        without_the_taxon_line("Sp.30 \N{FEMALE SIGN}"))
+        without_the_taxon_line("Sp.30 \N{FEMALE SIGN}"), candidates=[*COLLECTORS, *IRN])
     run = rig.specimen.run
     settle(rig, Scripted({"taxon": cannot_resolve("Sp.30 \N{FEMALE SIGN}", asks=["Sp.30 \N{FEMALE SIGN}"],
         reading="1B")}), tools=NoGenus(rig.blobs))
@@ -117,17 +124,20 @@ def test_readers_writing_the_code_differently_settle_on_the_text_the_image_names
         assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
-def test_a_code_the_image_does_not_name_stays_unresolved_on_both_paths(tmp_path, first_pass_path):
+def test_a_code_the_image_does_not_name_stays_unresolved_on_both_paths(tmp_path, monkeypatch, first_pass_path):
     """Rule 4 of the spec's section 4: readers agreeing alone back a text, the image or a source
     clears it. Where the readers spell the code differently and the image names neither, the
     taxon stays unresolved, as on main."""
     rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"),
-        without_the_taxon_line("Sp.30 \N{FEMALE SIGN}"))
+        without_the_taxon_line("Sp.30 \N{FEMALE SIGN}"), candidates=[*COLLECTORS, *IRN])
     run = rig.specimen.run
+    words = test_step.genus_words(monkeypatch)
     settle(rig, Scripted({"taxon": cannot_resolve("sp. 30 \N{FEMALE SIGN}", asks=["sp. 30 \N{FEMALE SIGN}"])}),
         tools=NoGenus(rig.blobs))
     assert (run.fields["taxon"].state, run.fields["taxon"].literal) == (ValueState.UNRESOLVED, "sp. 30 \N{FEMALE SIGN}")
     assert taxon_reasons(run) == list(TAXON_REASONS)
+    # No word holds it back: the label's settlement does (rule 4).
+    assert not any(words)
 
 
 def test_a_code_below_a_genus_keeps_main_s_result_on_both_paths(tmp_path):
@@ -158,7 +168,7 @@ def test_a_code_the_organiser_left_with_no_value_but_its_candidates_clears_unmat
     unmatched on that text; the old path keeps main's result."""
     monkeypatch.setattr(test_step, "seen_units", naming("sp."))
     rig = build_rig(tmp_path, without_the_taxon_line("sp. 22"), without_the_taxon_line("Sp. 22"),
-        candidates=[*COLLECTORS, ("taxon", "1A", "sp. 22", "sp. 22"), ("taxon", "1B", "Sp. 22", "Sp. 22")])
+        candidates=[*COLLECTORS, *IRN, ("taxon", "1A", "sp. 22", "sp. 22"), ("taxon", "1B", "Sp. 22", "Sp. 22")])
     run = rig.specimen.run
     [task] = [task for task in field_step.build_tasks(run)[1] if task.key == "taxon"]
     assert task.current.literal is None and len(task.candidates) == 2
@@ -233,11 +243,12 @@ def test_a_taxon_the_labels_do_not_write_still_goes_to_review_on_both_paths(tmp_
     assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
-@pytest.mark.parametrize("second", ["Epipsocus\ndet. E. L. Mockford", "Epipsocus"])
+@pytest.mark.parametrize("second", ["Epipsocus\ndet. E. L. Mockford", "Epipsocus", "epipsocus"])
 def test_a_code_beside_a_genus_on_another_label_never_clears_on_either_path(tmp_path, monkeypatch, second):
-    """Codex's round 1, finding 2, and G51's P1: label 1 writes "sp. 30 <female sign>" alone, label 2 a
-    genus; the organiser gives the taxon no value, and the expert asks GBIF the code only and quotes it.
-    A genus on any label holds owner decision B back (step._genus_on_a_label): the taxon stays
+    """Codex's round 1, finding 2, G51's P1 and Codex's round 2, finding 1 (the genus in lower case):
+    label 1 writes "sp. 30 <female sign>" alone, label 2 a genus; the organiser gives the taxon no
+    value, and the expert asks GBIF the code only and quotes it. A word that may be a genus on any
+    label, whatever its case, holds owner decision B back (step._genus_on_a_label): the taxon stays
     unresolved, as on main."""
     test_step.a_second_label(monkeypatch, second)
     rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"))
@@ -267,12 +278,172 @@ def test_another_reader_s_spelling_of_a_settled_field_s_text_does_not_hold_the_c
     holds, so it is accounted for, and the code clears unmatched on the units path."""
     monkeypatch.setattr(test_step, "seen_units", naming("grassland"))
     rig = build_rig(tmp_path, without_the_taxon_line("sp. 22"),
-        without_the_taxon_line("sp. 22").replace("Synthetic grassland", "Synthetic Grassland"))
+        without_the_taxon_line("sp. 22").replace("Synthetic grassland", "Synthetic Grassland"),
+        candidates=[*COLLECTORS, *IRN])
     run = rig.specimen.run
     settle(rig, Scripted({"taxon": cannot_resolve("sp. 22", asks=["sp. 22"])}), tools=NoGenus(rig.blobs))
     assert run.fields["habitat"].literal == "Synthetic grassland"
     expected = ValueState.SUPPORTED if first_pass_path == "units" else ValueState.UNRESOLVED
     assert run.fields["taxon"].state == expected
+
+
+def as_one_unit(text):
+    """A units-path first pass that cuts the label writing `text` as one unit, the image naming it (G51's
+    round 2 probe), and every other label as test_step.seen_units does."""
+    original = test_step.seen_units
+
+    def seen(units):
+        units = original(units)
+        first = units.units[0]
+        if not any(text.split()[0] in span.text for span in first.readers.values()):
+            return units
+        readers = {key: span.model_copy(update={"text": text, "start": 0, "end": len(text)})
+            for key, span in first.readers.items()}
+        merged = first.model_copy(update={"readers": readers, "lines": (first.lines[0], units.units[-1].lines[1]),
+            "image": text})
+        return units.model_copy(update={"units": [merged]})
+    return seen
+
+
+@pytest.mark.parametrize("second", ["Epipsocus det. Mockford", "Epipsocus\ndet. Mockford", "Epipsocus \N{FEMALE SIGN}",
+    "Epipsocus\nCNHM", "Epipsocus\N{FEMALE SIGN}", "C. pipiens"])
+def test_a_genus_sharing_a_unit_with_notation_text_never_clears_on_either_path(
+        tmp_path, monkeypatch, first_pass_path, second):
+    """G51's round 2 and the coordinator's ruling: label 2, cut as one unit, writes a genus beside a
+    notation's text ("det.", a sex sign, "CNHM", glued or not), or an epithet beside an abbreviated
+    genus. A word only partly inside accounted text is not accounted for, and a unit carries coverage
+    only from a reader's text wholly accounted for: the taxon stays unresolved, as on main."""
+    monkeypatch.setattr(test_step, "seen_units", as_one_unit(second))
+    test_step.a_second_label(monkeypatch, second)
+    rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"))
+    run = rig.specimen.run
+    if first_pass_path == "units":
+        [cut] = {tuple(tuple(span.text for span in unit.readers.values()) for unit in reading.units.units)
+            for reading in field_step.run_readings(run) if reading.region_id == run.regions[1].id}
+        assert cut == ((second, second),)
+    settle(rig, Scripted({"taxon": cannot_resolve("sp. 30 \N{FEMALE SIGN}", asks=["sp. 30 \N{FEMALE SIGN}"])}),
+        tools=NoGenus(rig.blobs))
+    assert run.fields["taxon"].state == ValueState.UNRESOLVED
+    assert taxon_reasons(run) == list(TAXON_REASONS)
+
+
+def test_the_organiser_s_code_beside_a_genus_on_another_label_never_clears_on_the_units_path(
+        tmp_path, monkeypatch, first_pass_path):
+    """G51's P1b and the coordinator's ruling on it: the organiser's value and candidates are label 1's
+    "sp. 30 <female sign>", label 2 writes "Epipsocus" with its determiner. On the units path owner
+    decision B's organiser branch declines too (step._genus_on_a_label); the old path keeps main's
+    result, the code cleared unmatched."""
+    test_step.a_second_label(monkeypatch, "Epipsocus\ndet. E. L. Mockford")
+    rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"), candidates=[*COLLECTORS,
+        *(("taxon", name, "sp. 30 \N{FEMALE SIGN}", "sp. 30 \N{FEMALE SIGN}") for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    [task] = [task for task in field_step.build_tasks(run)[1] if task.key == "taxon"]
+    assert task.current.literal == "sp. 30 \N{FEMALE SIGN}" and len(task.candidates) == 2
+    settle(rig, Scripted({"taxon": cannot_resolve("sp. 30 \N{FEMALE SIGN}", asks=["sp. 30 \N{FEMALE SIGN}"])}),
+        tools=NoGenus(rig.blobs))
+    if first_pass_path == "units":
+        assert run.fields["taxon"].state == ValueState.UNRESOLVED
+        assert taxon_reasons(run) == list(TAXON_REASONS)
+    else:
+        assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
+        assert taxon_reasons(run) == []
+
+
+def test_the_organiser_s_code_beside_another_spelling_on_another_label_never_clears_on_the_units_path(
+        tmp_path, monkeypatch, first_pass_path):
+    """The coordinator's ruling on P1b, its second condition: the organiser's value and candidates are
+    label 1's "sp. 30 <female sign>", and label 2 writes "Sp.30 <female sign>". On the units path every
+    label whose readings write the code must be among the labels that settle, whichever branch reaches
+    owner decision B; the old path keeps main's result."""
+    test_step.a_second_label(monkeypatch, "Sp.30 \N{FEMALE SIGN}")
+    rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"), candidates=[*COLLECTORS,
+        *(("taxon", name, "sp. 30 \N{FEMALE SIGN}", "sp. 30 \N{FEMALE SIGN}") for name in ("1A", "1B"))])
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve("sp. 30 \N{FEMALE SIGN}", asks=["sp. 30 \N{FEMALE SIGN}"])}),
+        tools=NoGenus(rig.blobs))
+    expected = ValueState.UNRESOLVED if first_pass_path == "units" else ValueState.SUPPORTED
+    assert run.fields["taxon"].state == expected
+
+
+def test_an_unsettled_field_s_text_accounts_for_nothing(tmp_path, monkeypatch, first_pass_path):
+    """The habitat's expert finds no habitat, so its line, which the organiser's row still cites, is no
+    settled field's occurrence: its words may be a genus and hold the code back on the units path."""
+    words = test_step.genus_words(monkeypatch)
+    rig = build_rig(tmp_path, without_the_taxon_line("sp. 22"))
+    run = rig.specimen.run
+    settle(rig, Scripted({"taxon": cannot_resolve("sp. 22", asks=["sp. 22"]),
+        "habitat": answering(FieldAnswer(outcome="label_lacks_value", explanation="No habitat."))}),
+        tools=NoGenus(rig.blobs))
+    assert run.fields["habitat"].state == ValueState.NOT_PRESENT
+    if first_pass_path == "units":
+        assert set(words) == {"Synthetic"} and run.fields["taxon"].state == ValueState.UNRESOLVED
+    else:
+        assert run.fields["taxon"].state == ValueState.UNRESOLVED
+
+
+def test_a_word_only_partly_inside_a_settled_field_s_occurrence_is_not_accounted_for(tmp_path):
+    """A settled field's occurrence, at its row's offsets, covers "Epi" of the label's "Epipsocus": the
+    word is not wholly inside it, so it may be a genus (step._genus_on_a_label)."""
+    from specimen_digitization.application.organiser import CandidateLocation, format_locator
+
+    rig = build_rig(tmp_path, without_the_taxon_line("Epipsocus"))
+    run = rig.specimen.run
+    readings = field_step.run_readings(run)
+    assert field_step._genus_on_a_label(run, readings) == "Epipsocus"
+    reading = next(r for r in readings if r.name == "1A")
+    row = Evidence(kind="literal", region_id=reading.region_id, observation_ids=[reading.observation_id],
+        source="test", locator=format_locator(CandidateLocation("1A", reading.observation_id, 0, 3, 0, 3)),
+        excerpt="Epi")
+    run.evidence.append(row)
+    run.fields["collection_method"] = FieldValue(state=ValueState.SUPPORTED, literal="Epi", evidence_ids=[row.id])
+    assert field_step._genus_on_a_label(run, readings) == "Epipsocus"
+    row.locator = format_locator(CandidateLocation("1A", reading.observation_id, 0, 9, 0, 9))
+    row.excerpt = run.fields["collection_method"].literal = "Epipsocus"
+    assert field_step._genus_on_a_label(run, readings) != "Epipsocus"
+
+
+@pytest.mark.parametrize("provenance", ["verbatim", "keyed-line-row"])
+def test_a_verbatim_or_a_row_with_no_offsets_accounts_only_for_its_own_label(tmp_path, monkeypatch, provenance):
+    """Label 2 and label 3 each write "Aedes"; a settled collection code "Aedes" whose provenance is
+    label 3's alone, a reader's verbatim or a row with no offsets (a keyed line's, locator
+    "region:<id>"), accounts for label 3's word only: label 2's stays a possible genus."""
+    test_step.a_second_label(monkeypatch, "Aedes")
+    test_step.a_second_label(monkeypatch, "Aedes")
+    rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"))
+    run = rig.specimen.run
+    readings = field_step.run_readings(run)
+    third = [reading for reading in readings if reading.region_id == run.regions[2].id]
+    value = FieldValue(state=ValueState.SUPPORTED, literal="Aedes", source_region_id=run.regions[2].id)
+    if provenance == "verbatim":
+        value.verbatim_by_observation = {reading.observation_id: "Aedes" for reading in third}
+    else:
+        row = Evidence(kind="literal", region_id=run.regions[2].id, observation_ids=[r.observation_id for r in third],
+            source="test", locator="region:" + run.regions[2].id, excerpt="Aedes")
+        run.evidence.append(row)
+        value.evidence_ids = [row.id]
+    run.fields["collection_code"] = value
+    covered = [reading.name for reading in readings if reading.region_id == run.regions[2].id]
+    assert covered and field_step._genus_on_a_label(run, [r for r in readings if r.region_id != run.regions[1].id
+        and r.region_id != run.regions[0].id]) is None
+    assert field_step._genus_on_a_label(run, [r for r in readings if r.region_id != run.regions[0].id]) == "Aedes"
+
+
+def test_another_field_s_text_accounts_only_for_the_label_its_provenance_cites(tmp_path, monkeypatch, first_pass_path):
+    """Codex's round 2, finding 2: label 2 writes "Aedes" as the identification and label 3 "Aedes",
+    settled as the collection code from label 3 alone. The collection code accounts for label 3's
+    word only, so label 2's genus holds owner decision B back: the taxon stays unresolved."""
+    test_step.a_second_label(monkeypatch, "Aedes")
+    test_step.a_second_label(monkeypatch, "Aedes")
+    rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}").replace(
+        "collection_code: " + LABEL["collection_code"] + "\n", ""))
+    run = rig.specimen.run
+    names = {reading.name: reading.region_id for reading in field_step.run_readings(run)}
+    assert len(run.regions) == 3 and names["3A"] == run.regions[2].id
+    settle(rig, Scripted({"taxon": cannot_resolve("sp. 30 \N{FEMALE SIGN}", asks=["sp. 30 \N{FEMALE SIGN}"]),
+        "collection_code": answering(resolved("Aedes", reading="3A"))}), tools=NoGenus(rig.blobs))
+    assert (run.fields["collection_code"].state, run.fields["collection_code"].literal) == (ValueState.SUPPORTED, "Aedes")
+    assert run.fields["taxon"].state == ValueState.UNRESOLVED
+    assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
 def test_a_second_label_writing_another_spelling_of_the_code_holds_it_back_on_either_path(tmp_path, monkeypatch):

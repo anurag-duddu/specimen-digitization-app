@@ -3999,15 +3999,22 @@ PILOT_CODES = {
 
 @pytest.mark.parametrize("asked", [False, True], ids=["no-gbif-lookup", "gbif-no-match"])
 @pytest.mark.parametrize(("before", "code", "after"), PILOT_CODES.values(), ids=PILOT_CODES)
-def test_the_pilots_codes_with_no_genus_beside_them_still_clear_as_unmatched(tmp_path, before, code, after, asked):
+def test_the_pilots_codes_with_no_genus_beside_them_still_clear_as_unmatched(tmp_path, before, code, after, asked,
+        first_pass_path, monkeypatch):
     """The expert quotes the code, with no GBIF lookup, or after GBIF's
-    no-name answer for the code (no match, no candidates)."""
+    no-name answer for the code (no match, no candidates). On the units path a
+    word of the lines around the code that no field holds ("shrubs", "mitchell"),
+    or none at all, decides (WP 2.T)."""
     rest = TEXT.replace("taxon: Danaus plexippus\n", "")
     text = before + code + after + "\n" + rest if not before else rest + "\n" + before + code + after
     rig = build_rig(tmp_path, text, candidates=[*COLLECTORS, *(("taxon", name, code, code) for name in ("1A", "1B"))])
     run = rig.specimen.run
+    words = genus_words(monkeypatch)
     settle(rig, Scripted({"taxon": cannot_resolve(code, asks=[code] if asked else [])}), tools=NoGenus(rig.blobs))
     taxon = run.fields["taxon"]
+    if first_pass_path == "units" and any(words):
+        assert words[0] in before + after
+        return held_back_by_a_word(run, words, words[0])
     assert (taxon.state, taxon.literal, taxon.reason) == (ValueState.SUPPORTED, code, field_step.UNMATCHED)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
     assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
@@ -4075,6 +4082,26 @@ def taxon_held_back(run):
     assert {"mandatory_unresolved:taxon", "taxonomy_unresolved"} <= set(run.reasons)
     assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
     assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups, run=run)
+
+
+def genus_words(monkeypatch) -> list:
+    """The words step._genus_on_a_label returns while the step runs, in call order."""
+    found, original = [], field_step._genus_on_a_label
+
+    def scan(run, readings):
+        found.append(original(run, readings))
+        return found[-1]
+    monkeypatch.setattr(field_step, "_genus_on_a_label", scan)
+    return found
+
+
+def held_back_by_a_word(run, words, word):
+    """On the units path (WP 2.T, the coordinator's rulings on #438's review rounds 1 and 2): a word no
+    settled field, notation or code accounts for, on any label, may be a genus, so owner decision B does
+    not apply (step._genus_on_a_label, `words` its answers while the step ran), whichever branch
+    reaches it."""
+    assert words and set(words) == {word}
+    taxon_held_back(run)
 
 
 # B2 of #289's third review: an unreadable word on the label that writes the
@@ -4358,14 +4385,20 @@ def test_the_real_resolver_looking_the_genus_up_as_its_brief_says_keeps_the_taxo
 
 @pytest.mark.parametrize("written", [*(line + "\nV-4-67-1\n" + SP1 for line in ("sim. Epipsocus", "NR Epipsocus",
     "C.F Epipsocus")), "Epipsocus\nwings + head\n" + SP1, "Epipsocus\nlegs\n" + SP1, "R.D. Epipsocus\n" + SP1])
-def test_a_genus_the_label_checks_do_not_read_clears_when_the_expert_makes_no_lookup(tmp_path, written):
+def test_a_genus_the_label_checks_do_not_read_clears_when_the_expert_makes_no_lookup(tmp_path, written,
+        first_pass_path, monkeypatch):
     """The documented remaining cases (FIELD_RESEARCH.md, "Two cases
     remain"): an expert that skips the lookup its brief asks for, quoting
-    the code, clears the taxon as unmatched."""
+    the code, clears the taxon as unmatched, on the old path. On the units
+    path the genus the label writes holds it back (WP 2.T)."""
     rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
         candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
     run = rig.specimen.run
+    words = genus_words(monkeypatch)
     settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
+    if first_pass_path == "units":
+        assert words and words[0] in written
+        return held_back_by_a_word(run, words, words[0])
     assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
 
 
@@ -4479,12 +4512,18 @@ def test_a_collectors_initials_are_no_qualifier_and_the_code_still_clears(tmp_pa
 
 
 @pytest.mark.parametrize("locality", ["Melbourne, Vic.", "Ballarat VIC"])
-def test_a_locality_in_victoria_is_no_qualifier_and_the_code_still_clears(tmp_path, locality):
+def test_a_locality_in_victoria_is_no_qualifier_and_the_code_still_clears(tmp_path, locality, first_pass_path,
+        monkeypatch):
     """"vic." counts in lower case only: "Vic." with a capital is Victoria,
-    so the morphocode label clears as unmatched under rule B."""
+    so the morphocode label clears as unmatched under rule B, on the old path.
+    On the units path the locality's town, which no field holds, may be a
+    genus (WP 2.T)."""
     rig = build_rig(tmp_path, morphocoded(MORPHOCODE) + "\n" + locality)
     run = rig.specimen.run
+    words = genus_words(monkeypatch)
     settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
+    if first_pass_path == "units":
+        return held_back_by_a_word(run, words, locality.split(",")[0].split()[0])
     assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
 
@@ -4509,12 +4548,17 @@ ORDINARY_LINES = {
 
 
 @pytest.mark.parametrize("line", ORDINARY_LINES.values(), ids=ORDINARY_LINES)
-def test_ordinary_label_words_are_no_doubt_sign_and_the_code_still_clears(tmp_path, line):
+def test_ordinary_label_words_are_no_doubt_sign_and_the_code_still_clears(tmp_path, line, first_pass_path, monkeypatch):
     """The expert quotes the code with no lookup; the later pass
-    (taxon_unmatched) reads the label's places the same way."""
+    (taxon_unmatched) reads the label's places the same way. On the units
+    path a word of the line that no field holds may be a genus (WP 2.T)."""
     rig = build_rig(tmp_path, morphocoded(MORPHOCODE) + "\n" + line)
     run = rig.specimen.run
+    words = genus_words(monkeypatch)
     settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
+    if first_pass_path == "units":
+        assert words and words[0] in line
+        return held_back_by_a_word(run, words, words[0])
     taxon = run.fields["taxon"]
     assert (taxon.state, taxon.reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
     assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups, run=run)
@@ -4946,14 +4990,18 @@ def test_a_gbif_answer_shows_a_genus_by_its_candidates_its_status_or_its_query(s
 
 
 @pytest.mark.parametrize("gbif", [Homonym, FakeSources, NoMatch], ids=["homonym", "success", "no-match"])
-def test_a_stored_unmatched_taxon_whose_run_holds_a_gbif_lookup_of_a_genus_never_clears(tmp_path, gbif):
+def test_a_stored_unmatched_taxon_whose_run_holds_a_gbif_lookup_of_a_genus_never_clears(tmp_path, gbif, monkeypatch):
     """The clearance rules read the run's stored GBIF lookups too
     (taxon_unmatched): an unmatched taxon whose run holds a lookup of the
     genus (a record cleared before this rule, its expert having asked GBIF
     "Epipsocus") goes to review on its next pass."""
     rig = genus_elsewhere(tmp_path, "genus-on-the-next-line")
     run = rig.specimen.run
+    words = genus_words(monkeypatch)
     settle(rig, Scripted({"taxon": cannot_resolve(EPIPSOCUS_CODE)}), tools=NoGenus(rig.blobs))
+    if field_step.units_path(run):
+        # WP 2.T: on the units path the genus the label writes holds the code back on the first pass.
+        return held_back_by_a_word(run, words, "Epipsocus")
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
     asked = asyncio.run(gbif(rig.blobs).lookup("gbif", "Epipsocus", field_key="taxon"))
     run.lookups.append(asked.taxonomy_lookup)
@@ -5186,15 +5234,21 @@ def test_a_label_whose_coverage_is_not_confirmed_never_clears_a_field_as_not_on_
     assert not any(not_on_label_rows(run, key) for key in ABSENT)
 
 
-def test_readers_of_an_undecided_label_that_write_one_morphocode_settle_it(tmp_path):
+def test_readers_of_an_undecided_label_that_write_one_morphocode_settle_it(tmp_path, first_pass_path, monkeypatch):
     """No first-pass pick (the readers differ on the habitat line), and both
-    write "sp. 30" with a female sign: B1 settles the taxon on that text."""
+    write "sp. 30" with a female sign: B1 settles the taxon on that text, on
+    the old path. On the units path the habitat the readers differ on is left
+    unsettled, so its words are no settled field's and may be a genus (WP 2.T)."""
     other = morphocoded(MORPHOCODE).replace("Synthetic grassland", "Synthetic grassIand")
     rig = build_rig(tmp_path, morphocoded(MORPHOCODE), other, candidates=every_field(
         *(("taxon", name, MORPHOCODE, "taxon: " + MORPHOCODE) for name in ("1A", "1B"))))
     run = rig.specimen.run
     assert {r.input_source for r in field_step.run_readings(run)} == {"raw_reading"}
+    words = genus_words(monkeypatch)
     settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE, asks=[MORPHOCODE])}), tools=NoGenus(rig.blobs))
+    if first_pass_path == "units":
+        assert run.fields["habitat"].state != ValueState.SUPPORTED
+        return held_back_by_a_word(run, words, words[0])
     taxon = run.fields["taxon"]
     assert (taxon.state, taxon.literal, taxon.input_source) == (ValueState.SUPPORTED, MORPHOCODE, "raw_reading")
     assert set(taxon.verbatim_by_observation.values()) == {MORPHOCODE}

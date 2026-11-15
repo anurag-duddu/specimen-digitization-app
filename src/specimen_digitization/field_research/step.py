@@ -1750,8 +1750,10 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
     a source backing clears a label, readers that agree alone mark it) on
     one text of that code, the same on every label, which is the literal;
     and, where no organiser candidate holds that text, the readings of
-    those labels that write it as whole words name it. There, too, no label of the specimen may write a word that may
-    be a genus (_genus_on_a_label), and the value is guarded against text
+    those labels that write it as whole words name it. On the units path,
+    by either branch, no label of the specimen may write a word that may be
+    a genus (_genus_on_a_label), every label whose readings write the code
+    is among the labels that settle, and the value is guarded against text
     another kind of field holds as a resolved answer is (_taken). Every
     other condition above holds there as it does on the old path."""
     from specimen_digitization.application.lookup import no_name_lookup
@@ -1782,20 +1784,24 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
         return _declined(why, "code_label_unreadable")
     if _doubt_on_the_labels(run, readings):
         return _declined(why, "doubt_on_the_labels")
-    if expert and _genus_on_a_label(run, readings) is not None:
+    # On the units path, whichever branch reaches owner decision B (the coordinator's ruling on
+    # round 1 of #438's review, G51's P1b): no label may write a word that may be a genus, and every
+    # label whose readings write the code (checks.writes_code) is among the labels that settle.
+    units = units_path(run)
+    if units and _genus_on_a_label(run, readings) is not None:
         return _declined(why, "a_label_writes_a_genus")
     want = collapse(literal)
     tools = frozenset(task.tools) & SOURCE_IDS
     found = labels(task, readings, [a for a in sources if a.source_id in tools], offered=(literal,) if expert else ())
+    if units and not {r.region_id for r in readings if writes_code(r.text, code)} <= set(found):
+        return _declined(why, "readers_do_not_settle")
     if expert:
         # Every label that writes the code settles cleared (rule 4 of the spec's section 4), on
-        # one text of that code, the same on every label: that text is the literal.
-        # A label whose readings write the code is among them (checks.writes_code), whatever text
-        # was offered: label 2's "Sp.30 <female sign>" beside label 1's "sp. 30 <female sign>".
+        # one text of that code, the same on every label: that text is the literal; label 2's
+        # "Sp.30 <female sign>" beside label 1's "sp. 30 <female sign>" holds it back.
         settled = frozenset().union(*(label.settled for label in found.values()))
-        writing = {r.region_id for r in readings if writes_code(r.text, code)}
-        if (not found or not writing <= set(found) or len(settled) != 1
-                or any(not label.cleared for label in found.values()) or morphocode(next(iter(settled))) != code):
+        if (not found or len(settled) != 1 or any(not label.cleared for label in found.values())
+                or morphocode(next(iter(settled))) != code):
             return _declined(why, "readers_do_not_settle")
         want = literal = next(iter(settled))
     elif not found or any(label.settled != frozenset({want}) or label.by_source for label in found.values()):
@@ -3169,61 +3175,88 @@ def _doubt_on_the_labels(run, readings: Sequence[Reading]) -> tuple[str, ...]:
 _ROMAN = re.compile(r"(?:XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)")
 
 
+# A word the genus scan reads: a maximal run of letters, of any case (_genus_on_a_label).
+_LETTERS = re.compile(r"[^\W\d_]+")
+
+
 def _genus_on_a_label(run, readings: Sequence[Reading]) -> str | None:
-    """On the units path, for owner decision B with no organiser value (WP 2.T, the coordinator's
-    ruling of 2026-11-14 on round 1 of #438's review): a word that may be a genus that some reading
-    of some label of the specimen writes, the first found, or None. A word may be a genus when it
-    begins with a capital letter as written ("Epipsocus", "CYNOMYS", "E."), its brackets, quotes and
-    punctuation set aside, unless it is a word of checks.NOT_GENERA ("Legs"), a Roman numeral I to
-    XII, or text the specimen accounts for: a code with no genus (checks.NO_GENUS, any code), a
-    written form of an ontology notation (CNHM, Prov., Mt., P.I., leg., a Roman-month date), a
-    catalogue number with its prefix (field_validators.CATALOG: "FMNHINS 4486784"), or another
-    field's text: its value's literal, its readers' verbatims and the label rows it cites, where the
-    reading writes them. A unit (Reading.units) one of whose readers' texts holds accounted text is
-    accounted for in every reader of it. A word another field's expert did not take, on any label,
-    may be the specimen's genus, as "Epipsocus" on a label of its own beside a label writing
-    "Sp.30": then decision B does not apply."""
+    """On the units path, for owner decision B (WP 2.T, the coordinator's rulings on rounds 1 and 2
+    of #438's review): a word that may be a genus that some reading of some label of the specimen
+    writes, the first found, or None. A word is a maximal run of letters, of any case
+    ("Epipsocus", "epipsocus", "CYNOMYS", the "C" and the "pipiens" of "C. pipiens"), and any word
+    may be a genus unless it is a word of checks.NOT_GENERA ("legs"), a Roman numeral I to XII in
+    capitals, or lies wholly inside a span the specimen accounts for:
+    - a settled field's occurrence where its provenance places it: each label row the supported
+      value of another field cites, at the literal offsets its locator names in the reading it
+      names (organiser.parse_locator), else where that reading's label writes the row's excerpt in
+      the readings the row cites; and each reader's verbatim of that value, where that reader's
+      text writes it. The same text elsewhere is not accounted for;
+    - a whole token of an ontology notation ("CNHM", "Prov.", "det.", the sex signs; "C." accounts
+      for "C" alone), a code with no genus (checks.NO_GENUS), a catalogue number with its prefix
+      (field_validators.CATALOG: "FMNHINS 4486784"), or a keyed line's key (one of the 20 fields'
+      keys and a colon at a line's start, as Workflow.parse reads "habitat: Mossy forest").
+    A word only partly inside such spans is not accounted for. A unit (Reading.units) some reader's
+    text of which lies wholly inside such spans is accounted for in every reader of it. A word no
+    span accounts for, on any label, may be the specimen's genus, as "Epipsocus" on a label of its
+    own beside a label writing "Sp.30": then decision B does not apply."""
     from specimen_digitization.application.field_validators import CATALOG
+    from specimen_digitization.application.organiser import parse_locator
     from specimen_digitization.ontology import ontology
 
-    from .checks import _AROUND, NO_GENUS, NOT_GENERA
+    from .checks import NO_GENUS, NOT_GENERA
 
     rows = {item.id: item for item in run.evidence}
-    claimed: dict[str, list[str]] = {}
-    for key, value in run.fields.items():
-        if key == "taxon":
-            continue
-        for observation, text in value.verbatim_by_observation.items():
-            claimed.setdefault(observation, []).append(text)
-        for item in (rows[i] for i in value.evidence_ids if i in rows and rows[i].kind == "literal"):
-            for observation in item.observation_ids:
-                claimed.setdefault(observation, []).append(item.excerpt)
-        if value.literal:
-            for reading in readings:
-                claimed.setdefault(reading.observation_id, []).append(value.literal)
-    patterns = [NO_GENUS, CATALOG, *(pattern for notation in ontology().notations for pattern in notation.patterns)]
-    covered: dict[str, list[bool]] = {}
+    masks = {reading.name: [False] * len(reading.text) for reading in readings}
+    # A keyed line's key (Workflow.parse reads "habitat: Mossy forest"): one of the 20 fields' keys.
+    keys = re.compile(r"^[^\S\n]*(?:" + "|".join(map(re.escape, FIELD_TOOLS)) + r")[^\S\n]*:", re.MULTILINE)
+    patterns = [NO_GENUS, CATALOG, keys,
+        *(pattern for notation in ontology().notations for pattern in notation.patterns)]
+
+    def mark(reading: Reading, start: int, end: int) -> None:
+        mask = masks[reading.name]
+        start, end = max(start, 0), min(end, len(mask))
+        mask[start:end] = [True] * max(0, end - start)
+
+    def mark_text(reading: Reading, text: str) -> None:
+        words = text.split()
+        if words:
+            for match in re.finditer(r"\s+".join(map(re.escape, words)), reading.text):
+                mark(reading, *match.span())
+
     for reading in readings:
-        mask = covered[reading.observation_id] = [False] * len(reading.text)
-        spans = [match.span() for pattern in patterns for match in pattern.finditer(reading.text)]
-        for text in claimed.get(reading.observation_id, ()):
-            words = text.split()
-            if words:
-                spans += [match.span() for match in re.finditer(r"\s+".join(map(re.escape, words)), reading.text)]
-        for start, end in spans:
-            mask[start:end] = [True] * (end - start)
+        for pattern in patterns:
+            for match in pattern.finditer(reading.text):
+                mark(reading, *match.span())
+    for key, value in run.fields.items():
+        if key == "taxon" or value.state != ValueState.SUPPORTED:
+            continue
+        for item in (rows[i] for i in value.evidence_ids if i in rows and rows[i].kind == "literal"):
+            location = parse_locator(item.locator)
+            named = [r for r in readings if location is not None and r.name == location.label
+                and r.observation_id == location.observation_id]
+            if named and named[0].text[location.literal_start:location.literal_end].strip():
+                mark(named[0], location.literal_start, location.literal_end)
+                continue
+            for reading in readings:
+                if reading.region_id == item.region_id and reading.observation_id in item.observation_ids:
+                    mark_text(reading, item.excerpt)
+        for observation, text in value.verbatim_by_observation.items():
+            for reading in readings:
+                if reading.observation_id == observation and text:
+                    mark_text(reading, text)
     for reading in readings:
         for unit in (reading.units.units if reading.units is not None else ()):
-            if any(any(covered.get(observation, ())[span.start:span.end]) for observation, span in unit.readers.items()):
-                for observation, span in unit.readers.items():
-                    if observation in covered:
-                        covered[observation][span.start:span.end] = [True] * (span.end - span.start)
+            spans = [(other, span) for other in readings for observation, span in unit.readers.items()
+                if other.observation_id == observation and other.region_id == reading.region_id
+                and span.end <= len(other.text)]
+            if any(span.end > span.start and all(masks[other.name][span.start:span.end]) for other, span in spans):
+                for other, span in spans:
+                    mark(other, span.start, span.end)
     for reading in readings:
-        mask = covered[reading.observation_id]
-        for match in re.finditer(r"\S+", reading.text):
-            word = match.group().strip(_AROUND)
-            if (any(mask[match.start():match.end()]) or not word[:1].isupper() or word.casefold() in NOT_GENERA
-                    or _ROMAN.fullmatch(word)):
+        mask = masks[reading.name]
+        for match in _LETTERS.finditer(reading.text):
+            word = match.group()
+            if all(mask[match.start():match.end()]) or word.casefold() in NOT_GENERA or _ROMAN.fullmatch(word):
                 continue
             return word
     return None
