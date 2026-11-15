@@ -142,6 +142,9 @@ WORKER = {
             # field_research/step.py; docs/execution/golive/FIELD_RESEARCH.md). "on" mounts the six-specialist
             # harness instead.
             "SPECIMEN_RESEARCH_HARNESS": "fields",
+            # WP 2.5's organiser setting (application/harness.py, organiser_pin), read where a run's
+            # dependencies are pinned; "off" would leave the organiser call out of a units-path run.
+            "SPECIMEN_UNITS_ORGANISER": "on",
             "SPECIMEN_WORKER_JOB": WORKER_JOB},  # The drain hands work left at its deadline to the next execution.
     "secret_env": {"HF_TOKEN": "huggingface-runtime-token", "LOGFIRE_TOKEN": "specimen-worker-logfire",
                    "SPECIMEN_WORKER_ACTOR_UID": "specimen-worker-actor-uid",

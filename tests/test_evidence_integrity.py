@@ -276,3 +276,27 @@ def test_google_evidence_is_verified_through_its_stored_record(tmp_path, record)
     else:
         with pytest.raises(EvidenceIntegrityError):
             verify_evidence(specimen, blobs)
+
+
+@pytest.mark.parametrize("damage", ["intact", "units-blob", "row-digest"])
+def test_rows_written_from_the_reading_units_retain_a_verifiable_raw_digest(tmp_path, monkeypatch, damage):
+    """A units-path run pinned without the organiser (plan WP 2.5, harness.apply_units): parse
+    writes the organiser's rows from the reading units, each citing one stored blob of the run's
+    units by its SHA-256, and the integrity gate checks them as it checks the organiser's."""
+    from test_organiser_setting import to_parse
+
+    from specimen_digitization.application.organiser import SOURCE
+
+    workflow, principal, before, _ = to_parse(tmp_path, monkeypatch, "off")
+    specimen = workflow.drain(principal, before.id)
+    rows = [e for e in specimen.run.evidence if e.source == SOURCE]
+    assert rows and len({(e.raw_ref, e.digest) for e in rows}) == 1
+    if damage == "intact":
+        verify_evidence(specimen, workflow.blobs)
+        return
+    if damage == "units-blob":
+        (tmp_path / "blobs" / rows[0].raw_ref).write_bytes(b"corrupt synthetic fixture")
+    else:
+        rows[0].digest = hashlib.sha256(b"wrong").hexdigest()
+    with pytest.raises(EvidenceIntegrityError):
+        verify_evidence(specimen, workflow.blobs)

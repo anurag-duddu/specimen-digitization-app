@@ -8,6 +8,7 @@ quote, and computes every offset itself.
 """
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass
 
@@ -256,6 +257,140 @@ def _settle(fields, key: str, items: list[_Kept], names) -> None:
             COMPETING,
         )
     old.evidence_ids.extend(ids)
+
+
+# The organiser setting (plan WP 2.5, docs/execution/units/PLAN.md). "off" runs a units-path run
+# without the organiser call: parse writes the proposal from the run's reading units instead
+# (apply_units). The run records the setting when its dependencies are pinned (organiser_pin,
+# production.ProductionAdapters.pin_dependencies), and parse follows the run's record
+# (calls_organiser), never the process setting.
+ORGANISER_SETTING = "SPECIMEN_UNITS_ORGANISER"
+# The run.dependencies key, present (as "off") only on a run pinned without the organiser call.
+ORGANISER = "organiser"
+ON, OFF = "on", "off"
+
+
+def organiser_setting(environ) -> str:
+    """"on" when SPECIMEN_UNITS_ORGANISER is "on", empty or unset; "off" when it is "off";
+    another value raises a ValueError that names the setting and not the value."""
+    value = environ.get(ORGANISER_SETTING, "")
+    if value in ("", ON):
+        return ON
+    if value == OFF:
+        return OFF
+    raise ValueError(f"{ORGANISER_SETTING} must be on or off")
+
+
+def organiser_pin(run, environ) -> dict:
+    """What a run's pinned dependencies carry for the organiser: {"organiser": "off"} on a
+    units-path run when the setting is off, and nothing otherwise. An old-path run never reads
+    the setting, so it pins what main pins."""
+    if getattr(run, "first_pass_path", "old") != "units":
+        return {}
+    return {ORGANISER: OFF} if organiser_setting(environ) == OFF else {}
+
+
+def calls_organiser(run) -> bool:
+    """Whether parse calls the organiser: always, except on a units-path run whose pinned
+    dependencies hold {"organiser": "off"} (organiser_pin)."""
+    return not (
+        getattr(run, "first_pass_path", "old") == "units"
+        and (getattr(run, "dependencies", None) or {}).get(ORGANISER) == OFF
+    )
+
+
+def apply_units(run, asset_id, blobs, readings=None) -> None:
+    """The organiser's proposal written from the run's reading units, with no model call (plan
+    WP 2.5), so that `organiser.stored_candidates` and field research's `Candidate.evidence_id`
+    read it as they read the organiser's.
+
+    For each unit of each label (`run.reading_units`), each field its `fields` advice names that
+    is the run's, and each reading of the label that writes non-blank text at the unit: one
+    evidence row as apply_candidates writes one, its source `bounded_extraction_v1`, its
+    excerpt the reading's text at the unit, and its locator the reading's label (1A, 2B) with
+    the unit's offsets into that reading's text, for the quote and the literal alike. A unit's
+    reader is the reading it names: a person's transcript (`reading_units.PERSON`) is the
+    label's decided reading, and an observation is the reading of that observation whose text
+    the unit's offsets index. A span whose text is not the reading's there is skipped, as is a
+    literal the written-rule guard refuses (extraction_guard). The field's value then follows
+    apply_candidates' rule (`_settle`), label by label and across labels, its rows cited in the
+    order apply_candidates cites its own. Every row's `raw_ref` is one stored blob
+    holding the run's reading units as JSON, with its SHA-256 as the row's digest."""
+    from .reading_units import PERSON
+
+    readings = extraction_readings(run) if readings is None else list(readings)
+    names = labelled(readings)
+    decided_labels = {r.region_id for r in readings if r.role == DECIDED}
+    texts = {o.id: o.literal_text for o in getattr(run, "observations", None) or ()}
+    stored = None
+    kept: list[_Kept] = []
+    for entry in getattr(run, "reading_units", None) or ():
+        group = [(name, r) for name, r in names.items() if r.region_id == entry.label]
+        for unit in entry.units:
+            for key in dict.fromkeys(unit.fields):
+                if key not in run.fields:
+                    continue
+                for reader, span in unit.readers.items():
+                    literal = span.text
+                    if not literal.strip():
+                        continue
+                    for label, reading in group:
+                        if reader == PERSON:
+                            if reading.role != DECIDED:
+                                continue
+                        elif reading.observation_id != reader or reading.text != texts.get(reader):
+                            continue
+                        if reading.text[span.start : span.end] != literal:
+                            continue
+                        if extraction_refusal(key, literal, reading.text):
+                            continue
+                        if stored is None:
+                            raw = json.dumps(
+                                [e.model_dump(mode="json") for e in run.reading_units],
+                                ensure_ascii=False,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ).encode()
+                            stored = (blobs.put(raw), hashlib.sha256(raw).hexdigest())
+                        evidence = Evidence(
+                            kind="literal",
+                            asset_id=asset_id,
+                            region_id=reading.region_id,
+                            observation_ids=[reading.observation_id],
+                            source=SOURCE,
+                            locator=format_locator(
+                                CandidateLocation(
+                                    label,
+                                    reading.observation_id,
+                                    span.start,
+                                    span.end,
+                                    span.start,
+                                    span.end,
+                                )
+                            ),
+                            excerpt=literal,
+                            raw_ref=stored[0],
+                            digest=stored[1],
+                        )
+                        run.evidence.append(evidence)
+                        rank = (
+                            0
+                            if reading.role == DECIDED
+                            else 1
+                            if reading.region_id not in decided_labels
+                            else 2
+                        )
+                        candidate = ExtractionCandidate.model_construct(
+                            field_key=key, reading=label, literal=literal, source_excerpt=literal
+                        )
+                        kept.append(_Kept(candidate, rank, evidence, label, reading, span.start))
+    by_field: dict[str, list[_Kept]] = {}
+    for item in kept:
+        by_field.setdefault(item.candidate.field_key, []).append(item)
+    order = {name: place for place, name in enumerate(names)}
+    for key, items in by_field.items():
+        items.sort(key=lambda item: (item.rank, order[item.label], item.start))
+        _settle(run.fields, key, items, names)
 
 
 # The organiser's extraction given up on (Workflow, step "parse"; HARNESS.md 3,

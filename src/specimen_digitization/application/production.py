@@ -1443,6 +1443,8 @@ class ProductionAdapters:
                 "model_id": first_pass.model_id,
                 "provider": first_pass.provider,
             }
+        from .harness import organiser_pin
+
         return {
             "prompts": prompts,
             "routes": routes,
@@ -1451,6 +1453,9 @@ class ProductionAdapters:
             "classifier": self.classifier.pin(run) if self.classifier else None,
             "segmentation": segmentation_pins(),
             "policy": run.profile.execution.model_dump(mode="json"),
+            # {"organiser": "off"} on a units-path run when SPECIMEN_UNITS_ORGANISER is off
+            # (plan WP 2.5); nothing otherwise, so every other run pins what it did before.
+            **organiser_pin(run, os.environ),
         }
 
     def segment(self, specimen):
