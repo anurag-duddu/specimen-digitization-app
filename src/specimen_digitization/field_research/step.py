@@ -4149,61 +4149,116 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
 # ---- Verbatim D/T/S beside an exact collecting date (WP 2.R item (iii)) ----
 
 COLLECTING_DATE = "date_visited_from"
-ISO_DAY = re.compile(r"\d{4}-\d{2}-\d{2}")
-# What Verbatim D/T/S holds besides a date with no day, as words folded with their periods dropped
-# (written._bare): a season, or a time or part of the day. The PRD's examples ("Summer 1914; am; pm",
-# "sunrise", "daylight"; PRD.md, its section on date and time semantics clarified 2026-10-07), and the
-# plain English and Spanish words for the others.
-SEASON_WORDS = frozenset({"spring", "summer", "autumn", "fall", "winter", "primavera", "verano", "otono",
-    "invierno"})
-DAY_PART_WORDS = frozenset({"am", "pm", "sunrise", "sunset", "daylight", "dawn", "dusk", "night", "morning",
-    "afternoon", "evening", "noon", "midnight", "manana", "tarde", "noche", "amanecer", "atardecer", "anochecer",
-    "madrugada", "mediodia", "medianoche"})
+# What Verbatim D/T/S holds besides a date with no day, as words folded without accents and with their
+# periods dropped (written._bare): a season, or a time or part of the day. The PRD's examples ("Summer
+# 1914; am; pm", "sunrise", "daylight"; PRD.md, its section on date and time semantics clarified
+# 2026-10-07), and the plain words for the others in the collection's label languages, English, Spanish,
+# Portuguese, French, German and Italian (the coordinator's rulings on #442, 2026-11-15). A word joined to
+# others by a hyphen or a slash counts by each of its pieces ("mid-Sept.", "Sept.-Oct.", "night-time").
+SEASON_WORDS = frozenset({
+    "spring", "summer", "autumn", "fall", "winter",  # en
+    "primavera", "verano", "otono", "invierno",  # es
+    "verao", "outono", "inverno",  # pt
+    "printemps", "ete", "automne", "hiver",  # fr
+    "fruhling", "fruehling", "sommer", "herbst",  # de
+    "estate", "autunno",  # it (primavera, inverno above)
+})
+DAY_PART_WORDS = frozenset({
+    "am", "pm", "sunrise", "sunset", "daylight", "dawn", "daybreak", "dusk", "twilight", "nightfall", "night",
+    "nighttime", "night-time", "morning", "afternoon", "evening", "noon", "midnight", "daytime",  # en
+    "manana", "tarde", "noche", "amanecer", "atardecer", "anochecer", "madrugada", "mediodia", "medianoche",
+    "alba", "crepusculo",  # es
+    "manha", "noite", "amanhecer", "entardecer", "anoitecer", "alvorada", "meio-dia", "meia-noite",  # pt
+    "matin", "matinee", "soir", "soiree", "nuit", "aube", "aurore", "crepuscule", "midi", "minuit",
+    "apres-midi",  # fr
+    "morgen", "morgens", "vormittag", "mittag", "nachmittag", "abend", "abends", "nacht", "nachts",
+    "mitternacht", "dammerung", "daemmerung", "abenddammerung", "morgendammerung", "zwielicht",
+    "sonnenaufgang", "sonnenuntergang",  # de
+    "mattina", "mattino", "pomeriggio", "sera", "notte", "tramonto", "crepuscolo", "mezzogiorno",
+    "mezzanotte",  # it (alba above)
+})
+# What joins the pieces of a word.
+WORD_PIECES = re.compile("[-/\N{EN DASH}\N{EM DASH}]")
 
 
 def _clock_time() -> re.Pattern[str]:
-    """A clock time: hours and minutes ("10:30", "10h30"), or a number with "am", "pm", "a.m.",
-    "p.m." or a time unit of written.OTHER_UNITS ("10 pm", "22 h", "2300 hrs")."""
+    """What may be a clock time, with or without a marker (the coordinator's ruling on #442,
+    2026-11-15): hours 0 to 23 and minutes 00 to 59 joined by "." or ":" ("10.30", "10:30") or by "h"
+    ("10h30"); a number with a time unit of written.OTHER_UNITS ("22 h", "2300 hrs") or "o'clock"; and "am",
+    "pm", "a.m.", "p.m.", "a. m." or "p. m." after a number or alone."""
     from .written import OTHER_UNITS
 
     units = "|".join(re.escape(unit) for unit in sorted(OTHER_UNITS["time"], key=len, reverse=True))
-    return re.compile(r"(?<![0-9])[0-9]{1,2}[^\S\n]*[:h][^\S\n]*[0-9]{2}(?![0-9])"
-        r"|(?<![0-9A-Za-z])[0-9]{1,4}(?:[.:][0-9]{2})?[^\S\n]*(?:a\.?[^\S\n]?m\.?|p\.?[^\S\n]?m\.?|"
-        + units + r")(?![A-Za-z])", re.I)
+    return re.compile(r"(?<![0-9.:])(?:[01]?[0-9]|2[0-3])(?:[.:]|[^\S\n]*h[^\S\n]*)[0-5][0-9](?![0-9])"
+        r"|(?<![0-9A-Za-z])[0-9]{1,4}(?:[.:][0-9]{2})?[^\S\n]*(?:" + units + r")(?![A-Za-z])"
+        r"|(?<![0-9A-Za-z])[0-9]{1,2}[^\S\n]*o(?:'|\N{RIGHT SINGLE QUOTATION MARK})?[^\S\n]*clock(?![A-Za-z])"
+        r"|(?<![^\W\d_])[ap]\.?[^\S\n]*m\.?(?![^\W\d_])", re.I)
+
+
+def _month_and_year() -> re.Pattern[str]:
+    """A token shaped like a date without a day that checks.parse_date may not read, standing whole (no
+    letter or digit on either side, and no part joined to it by "-", "." or "/", spaced or not, as in a
+    slide code or a date: _joined): a month and a year ("xi.46", "9.1946", "09/1946"), a
+    Roman numeral I to XII in either case or a number 1 to 12, a separator, then a year of two or four
+    digits (the coordinator's ruling on #442, 2026-11-15); or years from 1800 written as a range or a
+    decade ("1946-47", "1940s"). Nothing is parsed: Verbatim D/T/S only keeps its reason beside one."""
+    from specimen_digitization.application.date_notations import ROMAN
+
+    numerals = "|".join(sorted(ROMAN, key=len, reverse=True))
+    return re.compile(rf"(?<![0-9A-Za-z./-])(?:{numerals}|0?[1-9]|1[0-2])[^\S\n]*[-./][^\S\n]*"
+        r"(?:'?[0-9]{2}|[0-9]{4})(?![0-9A-Za-z]|[-./][0-9A-Za-z])"
+        r"|(?<![0-9A-Za-z./-])(?:1[89]|20)[0-9]{2}(?:s|[^\S\n]*[-/][^\S\n]*(?:[0-9]{2}|(?:1[89]|20)[0-9]{2}))"
+        r"(?![0-9A-Za-z]|[-./][0-9A-Za-z])", re.I)
+
+
+def _joined(text: str, start: int, end: int) -> bool:
+    """Whether the text at start:end is joined by "-", "." or "/", spaced or not, to a letter or a digit
+    on either side ("IX - 14" in "IX - 14 - 46")."""
+    before, after = text[:start].rstrip(" \t"), text[end:].lstrip(" \t")
+    return (before[-1:] in ("-", ".", "/") and before[:-1].rstrip(" \t")[-1:].isalnum()
+        or after[:1] in ("-", ".", "/") and after[1:].lstrip(" \t")[:1].isalnum())
 
 
 def _no_day(found) -> bool:
-    """Whether a date check read the text as a date with no day: a month ("XI.46", "Sept. 1946"), or a
-    range with such an end."""
-    return any("month" in (reading.precision, reading.end_precision) for reading in found.readings)
+    """Whether a date check read the text as a date without a day: a month ("XI.46", "Sept. 1946") or a
+    year alone ("1946"), or a range with such an end."""
+    return any(reading.precision != "day" or reading.end_precision not in (None, "day")
+        for reading in found.readings)
 
 
 def other_date_or_time(readings: Sequence[Reading], settled: FieldValue, date_rules) -> str | None:
     """The first text a reading writes that Verbatim D/T/S may hold, or None:
-    - a time or part of the day anywhere: a clock time (_clock_time) or a word of DAY_PART_WORDS;
-    - besides the settled collecting date (its literal and each reader's verbatim of it, where they
-      stand), a date with no day: on each line, from each word, the longest run of up to
-      written.DATE_WORDS words that checks.parse_date reads (units=True: a slide code is no date), as
-      the collecting date's field or as Date Identified's, is one when it reads as a month (_no_day);
-      a word in no date is one when it is a season (SEASON_WORDS) or a month's name (date_months)."""
+    - a time or part of the day: what may be a clock time (_clock_time) outside the settled collecting
+      date (its literal and each reader's verbatim of it, where they stand), or a word, or a piece of
+      one (WORD_PIECES), of DAY_PART_WORDS anywhere;
+    - besides the settled collecting date, a date without a day: a token shaped like a month and a year
+      (_month_and_year); and on each line, from each word, the longest run of up to written.DATE_WORDS
+      words that checks.parse_date reads (units=True: a slide code is no date), as the collecting date's
+      field or as Date Identified's, is one when it reads as a month or a year alone (_no_day); a word in
+      no date is one when it, or a piece of it, is a season (SEASON_WORDS) or a month's name
+      (date_months)."""
     from . import checks
     from specimen_digitization.application.date_months import month_of
     from .written import DATE_WORDS, EDGE, _bare, words
 
-    clock = _clock_time()
+    clock, month_and_year = _clock_time(), _month_and_year()
     written = {text for text in (settled.literal, *settled.verbatim_by_observation.values()) if text and text.strip()}
     for reading in readings:
         text = reading.text
-        if (hit := clock.search(text)) is not None:
-            return hit.group()
         taken = [hit.span() for item in written for hit in re.finditer(re.escape(item), text)]
+        hits = (*clock.finditer(text), *(hit for hit in month_and_year.finditer(text)
+            if not _joined(text, hit.start(), hit.end())))
+        for hit in hits:
+            if not any(a < hit.end() and hit.start() < b for a, b in taken):
+                return hit.group()
         offset = 0
         for line in text.splitlines(keepends=True):
             spans = [(offset + start, offset + end) for start, end in words(line)]
             offset += len(line)
             for start, end in spans:
-                if _bare(text[start:end]) in DAY_PART_WORDS:
-                    return text[start:end]
+                word = text[start:end]
+                if any(_bare(piece) in DAY_PART_WORDS for piece in (word, *WORD_PIECES.split(word))):
+                    return word
             index = 0
             while index < len(spans):
                 if any(a < spans[index][1] and spans[index][0] < b for a, b in taken):
@@ -4228,7 +4283,8 @@ def other_date_or_time(readings: Sequence[Reading], settled: FieldValue, date_ru
                     index = last + 1
                     continue
                 word = text[spans[index][0]:spans[index][1]]
-                if _bare(word) in SEASON_WORDS or month_of(word.strip(EDGE)) is not None:
+                if any(_bare(piece) in SEASON_WORDS or month_of(piece.strip(EDGE)) is not None
+                        for piece in (word, *WORD_PIECES.split(word))):
                     return word
                 index += 1
     return None
@@ -4238,15 +4294,22 @@ def date_exact_and_alone(run, profile: CollectionProfile, readings: Sequence[Rea
     """WP 2.R item (iii): whether the collecting date is exact and the label writes nothing else Verbatim
     D/T/S holds, so that, on the units path, it may clear as not on the label
     (contracts.NOT_ON_LABEL_WHEN_DATE_EXACT): Date Visited From is supported, not a person's value, settled
-    from the label (SETTLED_LAYERS, with a literal), its parsed value an ISO date at day precision, and not
-    marked (marked_reasons); and no reading of any label writes a date with no day besides it, a season, a
-    month's name, or a time or part of the day (other_date_or_time)."""
+    from the label (SETTLED_LAYERS, with a literal), its parsed value an ISO date at day precision, not
+    marked (marked_reasons), and its literal one day, which checks.parse_date reads as that day alone,
+    never a range ("6-9 Sept. 1946"); and no reading of any label writes a date without a day besides it,
+    a season, a month's name, or a time or part of the day (other_date_or_time)."""
+    from . import checks
+
     readings = run_readings(run) if readings is None else readings
     value = run.fields.get(COLLECTING_DATE)
     if (value is None or COLLECTING_DATE in human_keys(run) or value.state != ValueState.SUPPORTED
             or value.layer not in SETTLED_LAYERS or not value.literal
-            or ISO_DAY.fullmatch(value.parsed or "") is None
             or any(code.startswith(f"marked:{COLLECTING_DATE}:") for code in marked_reasons(run))):
+        return False
+    found = checks.parse_date(value.literal, reading_texts=[reading.text for reading in readings],
+        date_rules=profile.date_rules, field=COLLECTING_DATE, units=True)
+    if found.status != LookupStatus.SUCCESS or [(item.iso, item.precision, item.end or item.iso)
+            for item in found.readings] != [(value.parsed, "day", value.parsed)]:
         return False
     return other_date_or_time(readings, value, profile.date_rules) is None
 
