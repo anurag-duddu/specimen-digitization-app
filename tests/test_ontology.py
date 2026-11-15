@@ -487,7 +487,8 @@ def test_the_loader_refuses_a_rule_whose_part_is_empty(part):
 ])
 def test_a_rule_is_checked_by_code_by_a_model_or_not_yet_with_its_work_package(change, message):
     data = shipped()
-    rule = entry(data, "rules", "place_chain")
+    # The one rule still `not yet` (WP 2.3b).
+    rule = entry(data, "rules", "elevation_unit_feet")
     for key, value in change.items():
         if value is None:
             del rule[key]
@@ -533,12 +534,13 @@ def test_the_rules_text_names_no_code_line_work_package_or_gate_and_no_model_tex
 
 
 # The spec's section 4 and 5 relations and checks (WP 2.1's row), each a rule of the file, with how it is
-# checked today. WP 2.3 builds the seven `not yet` rules it names and flips them to `code`.
+# checked today. WP 2.3 builds the seven `not yet` rules WP 2.1 named: its first part, 2.3a, flipped six to
+# `code`; elevation_unit_feet waits for its second part, 2.3b.
 RULE_CHECKS = {
-    "one_collecting_event": "code", "place_within_settled_places": "not yet", "place_chain": "not yet",
-    "date_order": "not yet", "day_month_order": "code", "code_is_no_date": "not yet", "label_type_routing": "not yet",
+    "one_collecting_event": "code", "place_within_settled_places": "code", "place_chain": "code",
+    "date_order": "code", "day_month_order": "code", "code_is_no_date": "code", "label_type_routing": "code",
     "elevation_unit_feet": "not yet", "elevation_needs_a_unit": "code", "elevation_unit_decides_field": "code",
-    "place_parents_derived": "not yet", "elevation_conversion": "code", "end_date_from_one_date": "code",
+    "place_parents_derived": "code", "elevation_conversion": "code", "end_date_from_one_date": "code",
     "precise_location_extent": "model",
 }
 
@@ -548,9 +550,7 @@ def test_the_file_holds_the_specs_rules_each_checked_as_stated():
 
     assert {rule.id: rule.check for rule in loaded.rules} == RULE_CHECKS
     assert {rule.id: rule.when for rule in loaded.rules if rule.check == "not yet"} == {
-        "place_within_settled_places": "WP 2.3", "place_chain": "WP 2.3", "date_order": "WP 2.3",
-        "code_is_no_date": "WP 2.3", "label_type_routing": "WP 2.3", "elevation_unit_feet": "WP 2.3",
-        "place_parents_derived": "WP 2.3"}
+        "elevation_unit_feet": "WP 2.3"}
     assert [entry.id for entry in loaded.not_rules] == ["taxon_regional_occurrence"]
     assert "docs/product-requirements/PRD.md:1207" in loaded.not_rules[0].source
 
@@ -558,7 +558,8 @@ def test_the_file_holds_the_specs_rules_each_checked_as_stated():
 # Every rule checked by code today, against the tests that pin it (node ids under the repository's root, as
 # pytest collects them; a parametrized case by its own id), one to one: no test pins two rules. Each `code`
 # statement is an invariant today's code guarantees; a mutant that breaks it fails one of its tests. WP 2.3
-# adds its rules here when it flips them to `code`.
+# adds its rules here when it flips them to `code` (2.3a: six of them, below the first five).
+STAGE = "tests/field_research/test_check_stage.py"
 CODE_RULE_TESTS = {
     "one_collecting_event": (
         "tests/field_research/test_experts.py::test_a_field_on_two_labels_settles_only_when_both_settle_to_one_value",
@@ -582,6 +583,57 @@ CODE_RULE_TESTS = {
     "end_date_from_one_date": (
         "tests/field_research/test_date_split_lines.py::test_a_range_s_start_is_not_copied_to_its_end",
         "tests/field_research/test_date_split_lines.py::test_one_collecting_date_is_its_own_end_at_its_precision",
+    ),
+    # WP 2.3a's check stage (field_research/ontology_checks.py), and the date check's code veto.
+    "place_within_settled_places": (
+        "tests/field_research/test_experts.py::test_a_place_fits_the_other_place_fields_its_reading_writes",
+        f"{STAGE}::test_a_county_in_a_state_named_as_the_settled_country_is_marked_by_the_check_stage",
+        f"{STAGE}::test_a_city_whose_province_is_written_and_unsettled_is_refused_as_today",
+        f"{STAGE}::test_a_retry_checks_a_place_an_earlier_attempt_settled_on_its_stored_record",
+        f"{STAGE}::test_a_country_on_one_label_and_an_nga_town_on_another_is_not_marked",
+        f"{STAGE}::test_a_persons_value_with_no_layer_is_not_checked",
+        f"{STAGE}::test_a_country_and_a_town_on_two_labels_are_compared_by_their_iso_codes",
+    ),
+    "place_chain": (
+        f"{STAGE}::test_a_city_outside_the_settled_county_on_tgn_s_preferred_chain_alone_is_not_marked",
+        f"{STAGE}::test_a_city_inside_its_settled_county_is_not_marked",
+        "tests/field_research/test_agreement.py::test_105526329s_county_settles_on_the_municipio_beside_its_town",
+        f"{STAGE}::test_a_city_in_another_county_of_the_settled_county_s_name_is_not_marked",
+        f"{STAGE}::test_aurora_in_adams_county_is_not_marked",
+        f"{STAGE}::test_105526329_without_its_department_line_is_not_marked",
+        f"{STAGE}::test_a_retry_abstains_on_a_place_whose_earlier_record_cannot_be_read_again",
+        f"{STAGE}::test_a_plain_retry_keeps_the_marks_of_fields_it_does_not_research",
+        f"{STAGE}::test_a_reassessment_that_researches_a_marked_field_again_drops_its_stale_mark",
+        f"{STAGE}::test_a_tgn_chain_not_known_to_reach_its_nation_abstains",
+        f"{STAGE}::test_a_tgn_record_the_stage_holds_is_a_nation_only_by_tgn_s_nation_type",
+        f"{STAGE}::test_a_stored_row_is_rebuilt_only_from_its_own_responses",
+        f"{STAGE}::test_a_stored_row_is_read_again_only_from_a_lookup_that_gives_its_excerpt",
+        f"{STAGE}::test_fits_decides_by_ids_and_codes_and_abstains_otherwise",
+    ),
+    "place_parents_derived": (
+        f"{STAGE}::test_a_derived_province_on_tgn_s_preferred_chain_alone_is_not_marked",
+        f"{STAGE}::test_a_province_derived_from_a_county_is_its_province_level_parent_never_the_country",
+        f"{STAGE}::test_the_lake_gary_derived_province_is_not_marked",
+        f"{STAGE}::test_a_derived_country_that_a_place_below_it_lies_outside_is_marked",
+        f"{STAGE}::test_a_persons_derived_place_is_never_marked_the_place_below_it_is",
+    ),
+    "date_order": (
+        f"{STAGE}::test_a_determination_on_the_collecting_day_is_allowed",
+        f"{STAGE}::test_a_determination_before_the_collecting_date_is_marked_with_both_dates",
+        f"{STAGE}::test_a_year_agrees_with_a_day_in_that_year",
+        f"{STAGE}::test_dates_compare_on_the_parts_both_have",
+        f"{STAGE}::test_a_retry_adds_the_date_sentence_once",
+    ),
+    "code_is_no_date": (
+        f"{STAGE}::test_a_date_one_reader_writes_inside_a_slide_code_is_no_date_on_the_units_path",
+        f"{STAGE}::test_a_literal_is_in_a_code_only_inside_a_match_of_the_ontology_s_slide_code",
+        f"{STAGE}::test_a_date_punctuation_separates_from_a_slide_code_is_a_date_on_both_paths",
+        f"{STAGE}::test_the_code_veto_takes_each_occurrence_of_the_literal",
+        f"{STAGE}::test_the_date_experts_check_gives_no_date_inside_a_code_and_its_value_is_refused_on_the_units_path",
+        "tests/field_research/test_checks.py::test_a_date_inside_a_code_in_any_reading_is_no_date",
+    ),
+    "label_type_routing": (
+        f"{STAGE}::test_a_determination_label_writing_a_locality_reaches_the_locality_expert",
     ),
 }
 
@@ -629,10 +681,10 @@ def test_the_rule_to_test_map_fails_on_a_code_rule_with_no_test_or_a_test_that_d
     and a case whose id is renamed away, though its literal stays in the file (Codex's round-2 probes)."""
     collected = _collected(_mapped_files())
     data = shipped()
-    entry(data, "rules", "date_order")["check"] = "code"
-    del entry(data, "rules", "date_order")["when"]
+    entry(data, "rules", "elevation_unit_feet")["check"] = "code"
+    del entry(data, "rules", "elevation_unit_feet")["when"]
     flipped = {rule.id for rule in ontology.parse(data).rules if rule.check == "code"}
-    assert _map_problems(flipped, CODE_RULE_TESTS, collected) == ["date_order: checked by code, no test"]
+    assert _map_problems(flipped, CODE_RULE_TESTS, collected) == ["elevation_unit_feet: checked by code, no test"]
 
     code = {rule.id for rule in ontology.ontology().rules if rule.check == "code"}
     renamed = {**CODE_RULE_TESTS, "end_date_from_one_date": (CODE_RULE_TESTS["end_date_from_one_date"][0] + "_x",)}

@@ -47,6 +47,7 @@ AFTER_NO_DETERMINATION = "date_follows_no_determination"
 COLLECTOR_OR_COLLECTION = "coll_may_name_a_collector_or_a_collection"
 # The date parser's notes for a literal that is (part of) a hyphen-joined code.
 _CODE_NOTES = frozenset({"slide_code", "part_of_hyphenated_token"})
+SLIDE_CODE = "slide_code"
 # The part of a date literal a field takes: Date Visited To takes a range's end
 # (a single date is its own end); every other date field takes the start.
 DATE_PART: dict[str, Literal["start", "end"]] = {"date_visited_to": "end"}
@@ -191,6 +192,7 @@ def parse_date(
     part: Literal["start", "end"] | None = None,
     reading_names: Sequence[str] | None = None,
     field: str | None = None,
+    units: bool = False,
 ) -> DateCheck:
     """Every reading a date literal's notation allows (G24, G29; HARNESS.md section 8).
 
@@ -221,13 +223,18 @@ def parse_date(
     (`coll_may_name_a_collector_or_a_collection`). A reading counts only where the
     literal stands as a token of its own
     (`date_lines.places`); a literal found only inside longer tokens is no date
-    (`literal_inside_a_longer_token`).
+    (`literal_inside_a_longer_token`). On the units path (`units`), a literal that any
+    reading writes inside a slide code, as the ontology's notation reads one, is no date
+    (`in_a_code`, the rule code_is_no_date), even where that reading glues a letter or a
+    digit to its edge: reading B's "VI-23-48-4" beside reading A's "I-23-48".
     """
     if not literal or not literal.strip():
         return DateCheck(literal, LookupStatus.POLICY, notes=(NOT_IN_SOURCE,), part=part)
     names = list(reading_names) if reading_names is not None else [
         str(number) for number in range(1, len(reading_texts) + 1)]
     named = list(zip(names, reading_texts, strict=True))
+    if units and any(in_a_code(literal, text) for _, text in named):
+        return DateCheck(literal, LookupStatus.NO_MATCH, notes=(SLIDE_CODE,), part=part)
     texts = [(name, text) for name, text in named if date_lines.places(literal, text)]
     if not texts:
         inside = any(literal in text for _, text in named)
@@ -247,6 +254,19 @@ def parse_date(
     if not runs:
         return DateCheck(literal, LookupStatus.POLICY, notes=("year_literal_not_in_reading",), part=part)
     return _date_check(literal, runs, part)
+
+
+def in_a_code(literal: str, text: str) -> bool:
+    """Whether the text writes the literal inside a slide code: a match of one of the written
+    forms of the ontology's notation `slide_code` contains one of the literal's occurrences.
+    "I-23-48" in "Guatemala VI-23-48-4" is; "IV-23-48" in "IV-23-48;IV-29-68-4", where the
+    code is the text after the semicolon, is not, nor beside "IV-29-68-4" on a line."""
+    from specimen_digitization.ontology import ontology
+
+    [code] = [notation for notation in ontology().notations if notation.id == SLIDE_CODE]
+    spans = [match.span() for pattern in code.patterns for match in pattern.finditer(text)]
+    return any(start <= hit.start() and hit.end() <= end
+        for hit in re.finditer(re.escape(literal), text) for start, end in spans)
 
 
 def _run(name: str, result: Any, via: tuple[str, ...]) -> _Run:

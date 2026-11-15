@@ -497,14 +497,15 @@ def _literal_row(key: str, reading: Reading, literal: str, asset_id, blobs, *, t
         digest=hashlib.sha256(record).hexdigest() if blobs is not None else None)
 
 
-def _check_results(key: str, tools: Sequence[str], literal: str, *, texts: Sequence[str], date_rules):
+def _check_results(key: str, tools: Sequence[str], literal: str, *, texts: Sequence[str], date_rules,
+        units: bool = False):
     """The field's deterministic checks (CHECKS) among `tools`, each run on the literal, in
-    the order of `tools`."""
+    the order of `tools`; `units` on the units path (checks.parse_date)."""
     from . import checks
 
     runs = {
         "date_parser": lambda: checks.parse_date(literal, reading_texts=texts, date_rules=date_rules,
-            part=checks.DATE_PART.get(key), field=key),
+            part=checks.DATE_PART.get(key), field=key, units=units),
         "elevation_parser": lambda: checks.parse_elevation(literal, reading_texts=texts),
         "catalog_number_validator": lambda: checks.check_catalog_number(literal, reading_texts=texts),
     }
@@ -514,13 +515,13 @@ def _check_results(key: str, tools: Sequence[str], literal: str, *, texts: Seque
 
 
 def _check_row(key: str, tools: Sequence[str], literal: str, value: str, *, texts: Sequence[str],
-        date_rules, asset_id, blobs) -> Evidence | None:
+        date_rules, asset_id, blobs, units: bool = False) -> Evidence | None:
     """The evidence of a parsed value that differs from its literal: the field's
     deterministic check run again on the literal here, kept only when it settles
     the literal as that value (a check stores no evidence of its own). None when
     it does not, an ambiguous check included: the value then stays unsupported
     and the rules send it to review."""
-    for tool, result in _check_results(key, tools, literal, texts=texts, date_rules=date_rules):
+    for tool, result in _check_results(key, tools, literal, texts=texts, date_rules=date_rules, units=units):
         if result.status != LookupStatus.SUCCESS or value not in result.values:
             continue
         found = json.dumps(result.as_dict(), sort_keys=True, ensure_ascii=False)
@@ -1261,7 +1262,7 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
         if not any(evidence[e].kind in {"authority", "authority_selection", "derived"}
                 and value in evidence[e].excerpt for e in cited):
             row = _check_row(task.key, task.tools, literal, value, texts=[r.text for r in by_name.values()],
-                date_rules=date_rules, asset_id=asset_id, blobs=blobs)
+                date_rules=date_rules, asset_id=asset_id, blobs=blobs, units=units_path(run))
             if row is not None:
                 run.evidence.append(row)
                 evidence[row.id] = row
@@ -1486,7 +1487,7 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     value = None
     if set(task.tools) & CHECKS:
         results = [result for _, result in _check_results(task.key, task.tools, literal,
-            texts=[reading.text for reading in readings], date_rules=date_rules)
+            texts=[reading.text for reading in readings], date_rules=date_rules, units=True)
             if result.status == LookupStatus.SUCCESS]
         if len(results) != 1:
             return None
@@ -2462,7 +2463,9 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     field, the codes of the checks and rules that decided it (trace_fields).
     Then, for each field researched in this attempt, how each label whose
     readers differ settled it, against its first pass's preferred reader
-    (_first_pass_preference).
+    (_first_pass_preference). On the units path, last, the check stage
+    (ontology_checks.stage): each settled or derived value that fails a rule
+    of the ontology is marked for a person, and none is revised.
     """
     from .agreement import PLACE_ORDER
     from .location_reassessment import active_keys
@@ -2563,6 +2566,13 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             (_settlement if units_path(run) else _first_pass_preference)(run, tasks_by_key[outcome.key], outcome,
                 readings=readings, by_name=by_name, sources=received.get(outcome.key, ()),
                 decision=decisions.get(outcome.key, {}), **given)
+    # The check stage, last, on the units path only: it marks what fails a rule of the ontology
+    # among the values settled and derived above, and revises none (ontology_checks.stage).
+    if units_path(run):
+        from .ontology_checks import stage
+
+        stage(run, readings=readings, received=received, researched=tasks_by_key, derived=derived, human=human,
+            blobs=blobs)
     return derived
 
 
@@ -2661,9 +2671,12 @@ def marked_code(key: str, region_id: str, why: str) -> str:
 
 
 def marked_reasons(run) -> list[str]:
-    """The codes of the run's marked findings, in their order."""
+    """The codes of the run's marked findings, in their order: a label's settlement's
+    (_settlement) and the check stage's (ontology_checks.stage)."""
+    from .ontology_checks import CHECK_STAGE
+
     return [finding.reason_code for finding in getattr(run, "findings", None) or ()
-        if finding.rule_id == SETTLEMENT and finding.reason_code.startswith("marked:")]
+        if finding.rule_id in (SETTLEMENT, CHECK_STAGE) and finding.reason_code.startswith("marked:")]
 
 
 def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
@@ -4009,6 +4022,9 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
       (first_pass.given_up_regions) is unresolved_transcription however its
       fields settle, and whether or not its readers agree, until a person
       transcribes it: no first pass compared its readings.
+    - 282-291, on the units path: a determination date is before the
+      collecting date only on the parts both dates have (the rule date_order,
+      ontology_checks.determined_before), so "1946" and "1946-09-06" agree.
     - Not in canonical_materialization_v2: the code of each marked finding
       (marked_reasons), until a person approves the record, as the labels'
       review_required reasons above.
@@ -4139,8 +4155,17 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
             start = bounds.get("date_visited_from", (None,))[0]
             end = bounds.get("date_visited_to", (None, None))[1]
             identified = bounds.get("date_identified", (None,))[0]
-            if ((start and end and start > end) or (identified and start and identified < start)
-                    or (identified and identified > today)):
+            if units_path(run):
+                # The rule date_order (ontology_checks.determined_before): the determination is
+                # compared with the collecting date on the parts both have, so "1946" and
+                # "1946-09-06" agree.
+                from .ontology_checks import date_parts, determined_before
+
+                parts = [date_parts(run.fields.get(key)) for key in ("date_visited_from", "date_identified")]
+                early = bool(identified and start and parts[0] and parts[1] and determined_before(*parts))
+            else:
+                early = bool(identified and start and identified < start)
+            if (start and end and start > end) or early or (identified and identified > today):
                 reasons.append("date_order")
     # 292-294
     identifier = run.fields.get("fmnh_ins_number") or FieldValue()

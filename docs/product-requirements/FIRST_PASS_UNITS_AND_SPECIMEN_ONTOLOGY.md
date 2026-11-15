@@ -241,9 +241,9 @@ order is applied and `derive.fill` runs (`step.py:2321-2357`):
 
 - The place chain, country > province > county > city: a value outside the chain settled above it
   is marked. The apply-time refusal stays as today: `parents_refusal` (`agreement.py:2065-2089`)
-  checks a candidate against the settled country and province, but a city against a settled county
-  only for a near spelling: a settled Coles County, then an exact "Chicago" under Illinois, passes.
+  checks a candidate against the settled country and province, but a city against a settled county only for a near spelling: a settled Coles County, then an exact "Chicago" under Illinois, passes.
   The stage marks that, and the place chains that derivation fills (WP 2.3).
+  2026-11-14 (coordinator's ruling, WP 2.3a): below the country, the stage marks only when a record's whole parent set is known. Getty TGN is polyhierarchical and today's reader keeps only the preferred chain (Aurora lies under Arapahoe and also Adams County), so cases such as Coles County then "Chicago" abstain until a units-only stored field holds TGN's non-preferred parents (PLAN WP 2.3, follow-up). At the country level the stage marks two different nations.
 - The date order: a collecting date on or before the determination date, the same day allowed;
   partial dates compare on the parts both have ("1946" and "1946-09-06" agree; `domain.py:293`
   records precision). A date ambiguous between day and month is a conflict with both readings
