@@ -3181,7 +3181,8 @@ _LETTERS = re.compile(r"[^\W\d_]+")
 
 def _one_apart(first: str, second: str) -> bool:
     """Whether two words are equal or one character apart: one character changed, added or
-    dropped ("grassland" and "Grassland", "Mckinley" and "McKimley")."""
+    dropped ("grassland" and "Grassland", "McKinley" and "Mckinley"; "Mckinley" and "McKimley", two
+    apart, are not)."""
     if first == second:
         return True
     if abs(len(first) - len(second)) > 1:
