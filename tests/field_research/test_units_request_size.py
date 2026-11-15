@@ -38,8 +38,9 @@ SLIDES = ("105526325", "105526324")
 # 523 bytes with the blank line before them) in, common.txt's two date notation lines replaced (573
 # bytes out; test_units_instructions.py). On main 530b2cf18 they were 47,867 and 47,495. WP 2.T's
 # notation host_marker, one line of the ontology's brief text every expert carries, adds 112 bytes to
-# each request here (main 7f412f91d: 47,817 and 47,445).
-LARGEST = {"105526325": 47_929, "105526324": 47_557}
+# each request here (main 7f412f91d: 47,817 and 47,445). WP 2.4's second reading of the ontology's notation
+# roman_month ("the same, a 1 written for an I (1X: IX)") adds 44 bytes (main 44aeb6863: 47,929 and 47,557).
+LARGEST = {"105526325": 47_973, "105526324": 47_601}
 
 
 @pytest.fixture(autouse=True)
@@ -157,13 +158,14 @@ def test_a_unit_whose_readers_write_one_text_carries_it_once():
 # WP 2.2's review (G51, not blocking 2): the precise location expert's units-path instructions are now longer
 # than the province's. The same rebuilt conversation given to each place expert, both refused answers forced to
 # one literal no reading writes ("Mindanaq", refused as no candidate), measured in bytes at its largest request.
-# Each value is 112 bytes over main 7f412f91d's, for WP 2.T's host_marker line.
+# Each value is 112 bytes over main 7f412f91d's, for WP 2.T's host_marker line, and 44 over main 44aeb6863's, for WP
+# 2.4's second reading of the notation roman_month.
 PLACE_EXPERTS = ("province_state", "precise_location", "city", "county", "country")
 LARGEST_BY_EXPERT = {
-    ("105526325", "province_state"): 46_291, ("105526325", "precise_location"): 46_802, ("105526325", "city"): 45_625,
-    ("105526325", "county"): 46_177, ("105526325", "country"): 44_915,
-    ("105526324", "province_state"): 45_919, ("105526324", "precise_location"): 46_383, ("105526324", "city"): 45_253,
-    ("105526324", "county"): 45_805, ("105526324", "country"): 44_543,
+    ("105526325", "province_state"): 46_335, ("105526325", "precise_location"): 46_846, ("105526325", "city"): 45_669,
+    ("105526325", "county"): 46_221, ("105526325", "country"): 44_959,
+    ("105526324", "province_state"): 45_963, ("105526324", "precise_location"): 46_427, ("105526324", "city"): 45_297,
+    ("105526324", "county"): 45_849, ("105526324", "country"): 44_587,
 }
 
 
@@ -197,7 +199,7 @@ def test_the_rebuilt_conversation_given_to_each_place_expert_fits_the_input_boun
 # answer may give, then the request for the next answer. The model's own text in each turn is not stored, so the
 # rebuilt requests are smaller than the refused one; the test pins them as a known case at their size.
 COUNTRY_SLIDE = "105526322"
-COUNTRY_LARGEST = 45_520  # 45,408 on main 7f412f91d; WP 2.T's host_marker line adds 112 bytes
+COUNTRY_LARGEST = 45_564  # 45,408 on main 7f412f91d; WP 2.T's host_marker line adds 112 bytes, WP 2.4's roman_month 44
 
 
 def loaded_country():
@@ -257,7 +259,8 @@ REASK_SENTENCE = (
     "Your answer 'Davao Prov.' failed the check place_within_settled_places: the source's record for 'Davao Province' "
     "(tgn:7001234) places it in Davao Region, Mindanao, Philippines, not in the country settled above it, "
     "'Guatemala' (tgn:1000111). Answer once more; your answer goes through every check again.")
-REASK_LARGEST = {"105526325": 47_840, "105526324": 47_468}
+# WP 2.4's second reading of the notation roman_month adds 44 bytes (main 44aeb6863: 47,840 and 47,468).
+REASK_LARGEST = {"105526325": 47_884, "105526324": 47_512}
 
 
 def test_the_re_ask_sentence_measured_is_a_place_check_s():

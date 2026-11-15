@@ -546,6 +546,8 @@ RULE_CHECKS = {
     "precise_location_extent": "code",
     # WP 2.T: the taxon in the collection's scope, and a host never the taxon.
     "taxon_in_collection_scope": "code", "host_is_no_taxon": "code",
+    # WP 2.4: a field's parts on different labels.
+    "parts_on_different_labels": "code",
 }
 
 
@@ -569,6 +571,7 @@ STAGE = "tests/field_research/test_check_stage.py"
 ELEV = "tests/field_research/test_elevations_and_extent.py"
 EXTENT = "tests/field_research/test_precise_location_extent.py"
 TAXON = "tests/field_research/test_taxon_scope.py"
+PARTS = "tests/field_research/test_parts_on_labels.py"
 CODE_RULE_TESTS = {
     "one_collecting_event": (
         "tests/field_research/test_experts.py::test_a_field_on_two_labels_settles_only_when_both_settle_to_one_value",
@@ -716,6 +719,16 @@ CODE_RULE_TESTS = {
         f"{TAXON}::test_a_name_another_label_writes_inside_a_host_s_longer_name_settles_on_both_paths",
         f"{TAXON}::test_a_name_after_a_marker_earlier_on_its_line_is_never_the_taxon_on_the_units_path",
         f"{TAXON}::test_a_name_before_a_marker_on_its_line_settles_on_both_paths",
+    ),
+    # WP 2.4 (tests/field_research/test_parts_on_labels.py): the PLAN row's named cases on both paths, the parts
+    # one label writes whole settling as today, and the condition itself.
+    "parts_on_different_labels": (
+        f"{PARTS}::test_a_genus_on_label_1_and_its_species_on_label_2_are_ambiguous_with_each_label_s_part",
+        f"{PARTS}::test_two_genera_on_two_labels_are_ambiguous_with_both",
+        f"{PARTS}::test_a_day_and_month_on_label_1_and_the_year_on_label_2_are_ambiguous_with_each_label_s_parts",
+        f"{PARTS}::test_parts_one_label_writes_whole_settle_as_today_on_both_paths",
+        f"{PARTS}::test_field_parts_holds_back_a_taxon_only_when_no_label_writes_every_part",
+        f"{PARTS}::test_field_parts_takes_a_date_s_parts_where_its_fields_name_the_date",
     ),
 }
 
@@ -931,6 +944,7 @@ RULE_ROUTES = {
     "precise_location_extent": (("precise_location",), True),
     "taxon_in_collection_scope": (("taxon",), False),
     "host_is_no_taxon": (("taxon",), False),
+    "parts_on_different_labels": (("taxon", *DATES), False),
 }
 
 

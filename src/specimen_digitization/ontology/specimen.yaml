@@ -514,13 +514,22 @@ notations:
     source:
       - insects.py:63-67 at 7a09445a2
       - src/specimen_digitization/field_research/prompts/common.txt:44
+  # The second reading (plan WP 2.4, the coordinator's ruling of 2026-11-15 on the 2.6 gate
+  # forecast): the readers of pilot slide 105526325 write "1X-14-46" where the reference
+  # truth reads the label's "IX-14-46" as 1946-09-14 (the source lines below). On the units
+  # path parse_date reads a 1 among a Roman month's letters as I, only where the result is a
+  # month I to XII and the date parser then reads a date (checks.digit_one_month).
   - id: roman_month
     written: ["<d>.<Roman month>.<yyyy>", "<Roman month>-<d>-<yy>", "<yyyy>.<Roman month>.<d>"]
-    readings: ["the month, January to December, in any position of the date, when the profile allows Roman months"]
+    readings: ["the month, January to December, in any position of the date, when the profile allows Roman months",
+      "the same, a 1 written for an I (1X: IX)"]
     fields: [date_visited_from, date_visited_to, date_identified]
     source:
       - insects.py:68-72 at 7a09445a2
       - src/specimen_digitization/field_research/prompts/common.txt:40
+      - tests/fixtures/field_model_pilot_rows.json:163-167
+      - tests/fixtures/field_model_pilot_rows.json:193
+      - src/specimen_digitization/field_research/checks.py:55-75
   - id: month_name
     written: ["Jan.", "Feb.", "Mar.", "Apr.", "Jun.", "Jul.", "Aug.", "Sep.", "Sept.", "Oct.", "Nov.", "Dec.", "ene.", "janv.", "Mai", "Okt.", "agosto"]
     periods_optional: true
@@ -1232,6 +1241,41 @@ rules:
       - https://dwc.tdwg.org/terms/#dwc:scientificName
       - src/specimen_digitization/field_research/taxon_host.py:20-71
       - src/specimen_digitization/field_research/agreement.py:1037-1052
+  - id: parts_on_different_labels
+    statement: >-
+      A field's value is stored as one literal from the labels until values
+      stored as parts, each with its own label, literal and basis, exist. So
+      when the reading units name parts of one field on two or more labels
+      (a unit whose text has the shape of its role: a scientific name's
+      genus or species as one word and its author as an author's names; a
+      date's day, month or year alone), the parts differ (neither holds the other as whole words), no
+      one label's text holds them all as whole words, and, where they have
+      two or more roles, no one label has a part of each, an answer that
+      settles the field on one label's part, or on a text no label writes,
+      does not settle it: on the units path the field is left ambiguous with
+      each label's parts named and their texts as the options, and is marked
+      for review on each label that writes a part. A taxon whose parts name
+      no genus is left as owner decision B leaves it.
+    instruction: >-
+      Where this field's parts are written on different labels (the genus on one label
+      and the species on another; the day and month on one, the year on another), answer
+      several_possibilities with each label's part, copied exactly, as an option, and say
+      in the explanation what each label writes ("label 1 writes genus Aus; label 2
+      writes species bus"); never join the parts into one literal, and never answer one
+      part as the whole value.
+    fields: [taxon, date_visited_from, date_visited_to, date_identified]
+    check: code
+    darwin_core: "scientificName; eventDate; dateIdentified"
+    source:
+      - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:287-297
+      - docs/execution/units/PLAN.md:130
+      - src/specimen_digitization/application/reading_units.py:43-48
+      - src/specimen_digitization/field_research/step.py:1499-1505
+      - src/specimen_digitization/field_research/step.py:1611-1756
+      - src/specimen_digitization/field_research/step.py:3157-3164
+      - https://dwc.tdwg.org/terms/#dwc:scientificName
+      - https://dwc.tdwg.org/terms/#dwc:eventDate
+      - https://dwc.tdwg.org/terms/#dwc:dateIdentified
 
 # Statements the spec records as not rules: no check uses them.
 not_rules:

@@ -47,6 +47,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from contextlib import asynccontextmanager, nullcontext
 from contextvars import ContextVar
@@ -581,12 +582,14 @@ def _lineage(named: Sequence[Reading], literal: str, others: Sequence[tuple[Read
         "settled_observation_ids": observations}
 
 
-def _refusal(task, answer, *, readings, by_name, sources, elevations=None):
+def _refusal(task, answer, *, readings, by_name, sources, elevations=None, date_rules=None):
     """Why a resolved answer may not settle its field (agreement.refusal, the
     experts' check repeated here on what the field's lookups returned), or
     None. ``sources`` are the source answers the field received;
     ``elevations`` the elevation literals settled by label (_settled_elevations),
-    which a precise location may keep on the units path."""
+    which a precise location may keep on the units path; ``date_rules`` the
+    profile's, under which a date's year on the next line may extend its
+    candidate there (agreement.next_line_year)."""
     from .agreement import refusal
 
     literal = answer.literal
@@ -599,7 +602,8 @@ def _refusal(task, answer, *, readings, by_name, sources, elevations=None):
     by_id = {item.evidence.id: item for item in received if item.evidence is not None}
     cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
     return refusal(task, readings, literal=literal, named=named, value=answer.value,
-        authority_id=answer.authority_id, cited=cited, received=received, elevations=elevations)
+        authority_id=answer.authority_id, cited=cited, received=received, elevations=elevations,
+        date_rules=date_rules)
 
 
 def _place_texts(run, tasks_by_key: Mapping[str, FieldTask], readings) -> dict[str, dict[str, frozenset[str]]]:
@@ -906,6 +910,10 @@ def _settling(task, answer, sources):
 
 # A literal read from the transcript that is also another kind of field's text.
 TAKEN = "This text, read from the transcript, is also the value found for {other}."
+# A date whose year, taken from the next line (agreement.year_below), another field's settled text
+# holds; and a field whose text holds the year a date settled first took from its next line (_taken).
+YEAR_TAKEN = "The year this date takes from the next line is also in the value found for {other}."
+YEAR_HELD = "This text holds the year the value found for {other} took from its next line."
 # A value whose text runs on into a place read from the transcript, which
 # overlaps it only partly and settles (_taken, _partly): e98a924c's
 # collection code "CNHM. E Slope Mt.", the organiser's candidate, beside its
@@ -916,10 +924,14 @@ RUNS_INTO = "This text runs into the value found for {other}."
 class Taken(NamedTuple):
     """Why _taken sends a field to review: the field whose value holds its
     text, and whether that field is a place it only runs into (`partly`:
-    RUNS_INTO) rather than one holding its text (TAKEN)."""
+    RUNS_INTO) rather than one holding its text (TAKEN); `year` "mine" for a
+    date whose year from the next line the other field holds (YEAR_TAKEN),
+    "theirs" for a field holding the year a date settled first took from its
+    next line (YEAR_HELD)."""
 
     other: str
     partly: bool = False
+    year: str = ""
 
 
 def _inside_a_token(text: str, index: int) -> bool:
@@ -930,6 +942,15 @@ def _inside_a_token(text: str, index: int) -> bool:
         return False
     before, after = text[index - 1], text[index]
     return (before.isalpha() and after.isalpha()) or (before.isdigit() and after.isdigit())
+
+
+def _starts(text: str, literal: str) -> list[int]:
+    """Where the text writes the literal, each start."""
+    found, at = [], text.find(literal)
+    while at >= 0:
+        found.append(at)
+        at = text.find(literal, at + 1)
+    return found
 
 
 def _occurrences(literal: str, readings: Iterable[Reading]) -> frozenset[tuple[str, int, int]]:
@@ -1050,7 +1071,9 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     the precise location is not. Two fields that both settle the same text
     from the transcript both go to review. On the units path a taxon owner
     decision B settles (_unmatched_taxon) is guarded as a resolved answer
-    is, its literal and the readings it settled on as the answer's.
+    is, its literal and the readings it settled on as the answer's; so, on
+    the units path, is the year a date's literal takes from the next line
+    (agreement.year_below), its text that year's token in each reading.
 
     One overlap is the other way round: a place read from the transcript
     whose text another field, settled in this same attempt, overlaps only
@@ -1064,7 +1087,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     629f91eb on 616ae010). A place that holds another field's whole text,
     or lies wholly inside it, still yields, as does one beside a value
     settled before this attempt or by a person."""
-    from .agreement import FIELD_KINDS, TRANSCRIPT, literal_basis, may_share_text, written_runs
+    from .agreement import FIELD_KINDS, TRANSCRIPT, literal_basis, may_share_text, written_runs, year_below
 
     evidence = {item.id: item for item in run.evidence}
     by_name = {reading.name: reading for reading in readings}
@@ -1078,6 +1101,8 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     # too (_spelled_alike; t1-329, the real-run measurement of 2026-10-25).
     claim_texts: list[tuple[str, str, set]] = []
     mine_texts: dict[str, tuple[str, set]] = {}
+    # The dates whose text in `mine` is the year they take from the next line.
+    borrowed: set[str] = set()
     for outcome in outcomes:
         answer = outcome.answer
         if outcome.failure is not None or answer is None:
@@ -1109,6 +1134,15 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             mine[outcome.key] = frozenset((r.name, start, end) for r in readings if r.region_id in regions
                 for start, end in written_runs(outcome.key, r.text, literal))
             mine_texts[outcome.key] = (literal, regions)
+        elif units and task is not None and named and (below := year_below(task, readings, literal, named)):
+            # On the units path the year a date's literal takes from the next line (agreement.year_below)
+            # is text the organiser gave no field: another field's settled text on it takes it, as text
+            # read from the transcript is taken (plan WP 2.4, the coordinator's condition (e)).
+            regions = {r.region_id for r in named}
+            mine[outcome.key] = frozenset((r.name, start + len(below[0]) + 1, start + len(literal))
+                for r in readings if r.region_id in regions for start in _starts(r.text, literal))
+            mine_texts[outcome.key] = (literal, regions)
+            borrowed.add(outcome.key)
     for key, value in run.fields.items():
         if key not in researched and _claims_text(key, value, human):
             claims.append((key, _value_spans(value, readings, evidence)))
@@ -1134,7 +1168,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             other = next((claimant for claimant, text, theirs in claim_texts if claimant != key
                 and not may_share_text(key, claimant) and regions & theirs and _spelled_alike(literal, text)), None)
         if other is not None:
-            taken[key] = Taken(other)
+            taken[key] = Taken(other, year="mine" if key in borrowed else "")
         else:
             for claimant in partial:
                 yielded.setdefault(claimant, key)
@@ -1143,7 +1177,41 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
         # when its own text read from the transcript also met that place.
         if claimant not in taken or taken[claimant].other == key:
             taken[claimant] = Taken(key, partly=True)
+    if units:
+        # A date an earlier attempt settled on a year it took from the next line keeps that year: a
+        # field this attempt settles on text over it is taken, whatever its basis, as within one
+        # attempt (the coordinator's ruling on #444's round 1: whichever settled first).
+        for key, years in _borrowed_years(run, readings, evidence, researched, human).items():
+            for claimant, theirs in claims:
+                if (claimant in settled and claimant not in taken and claimant != key
+                        and not may_share_text(claimant, key) and _overlap(theirs, years)):
+                    taken[claimant] = Taken(key, year="theirs")
     return taken
+
+
+def _borrowed_years(run, readings: Sequence[Reading], evidence: Mapping[str, Evidence], researched,
+        human) -> dict[str, frozenset]:
+    """On the units path, each date field settled before this attempt (not researched in it) on a
+    literal that takes its year from the next line (agreement.year_below, against the organiser's
+    candidates the run keeps), with that year's token in each reading of its labels: (reading,
+    start, end), as _taken's spans are."""
+    from .agreement import DATE_FIELDS, year_below
+
+    found: dict[str, frozenset] = {}
+    stored = None
+    for key in DATE_FIELDS:
+        value = run.fields.get(key)
+        if key in researched or value is None or not _claims_text(key, value, human) or "\n" not in value.literal:
+            continue
+        stored = _candidates(run, readings) if stored is None else stored
+        regions = _value_regions(value, readings, evidence)
+        named = [r for r in readings if r.region_id in regions and value.literal in r.text]
+        task = FieldTask(key=key, mandatory=False, current=value, candidates=tuple(stored.get(key, ())), tools=())
+        below = year_below(task, readings, value.literal, named) if named else None
+        if below is not None:
+            found[key] = frozenset((r.name, start + len(below[0]) + 1, start + len(value.literal))
+                for r in readings if r.region_id in regions for start in _starts(r.text, value.literal))
+    return found
 
 
 def _keeps_an_elevation(key: str, literal: str, regions: set, claimant: str, text: str, theirs: set) -> bool:
@@ -1206,7 +1274,8 @@ def _taken_value(task, outcome, taker: Taken, evidence) -> FieldValue:
 
     answer = outcome.answer
     cited = [e for e in answer.source_evidence_ids if e in evidence and evidence[e].kind != "literal"]
-    reason = (RUNS_INTO if taker.partly else TAKEN).format(other=FIELD_LABELS.get(taker.other, taker.other))
+    reason = (RUNS_INTO if taker.partly else {"mine": YEAR_TAKEN, "theirs": YEAR_HELD}.get(taker.year, TAKEN)).format(
+        other=FIELD_LABELS.get(taker.other, taker.other))
     return _unsettled(task, ValueState.UNRESOLVED, literal=task.current.literal, cited=cited,
         reason=f"{reason} {answer.explanation}")
 
@@ -1402,7 +1471,10 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         elevations=None) -> FieldValue:
     """The field's value from its outcome. ``decision`` collects, as codes,
     which of the step's checks refused a resolved answer ("refusal") and which
-    rule decided it ("rule"), for the field's trace (trace_fields).
+    rule decided it ("rule"), for the field's trace (trace_fields). On the
+    units path a resolved or several_possibilities answer for a field whose
+    parts lie on different labels (field_parts) is ambiguous, with each
+    label's parts in its reason and their texts as its options (rule PARTS).
     ``received`` holds the source answers of every field, by field (_misfit);
     ``elevations`` the elevation literals settled by label (_refusal)."""
     decision = {} if decision is None else decision
@@ -1424,12 +1496,19 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
             decision["rule"] = "timed_out_on_last_attempt"
             reason = _timeout_reason(run)
         return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited, reason=reason)
+    if (units_path(run) and answer.outcome in ("resolved", "several_possibilities")
+            and (parts := field_parts(task.key, readings))):
+        # Spec section 4, "Parts on different labels" (plan WP 2.4): a field whose parts lie on
+        # different labels settles neither on one label's part nor on a text no label writes,
+        # whatever its expert answered; _settlement marks it on each label that writes a part.
+        decision["rule"] = PARTS
+        return _unsettled(task, ValueState.AMBIGUOUS, cited=cited, reason=_parts_reason(parts, readings, answer))
     if answer.outcome == "resolved":
         reconciled = outcome.finalized_without_model and answer.explanation.startswith(
             "Resolved by location reconciliation:")
         if not reconciled:
             refused = _refusal(task, answer, readings=readings, by_name=by_name, sources=sources,
-                elevations=elevations)
+                elevations=elevations, date_rules=date_rules)
             if refused is not None:
                 decision["refusal"] = refusal_code(refused.reason)
                 # A pick between readers no source settles is ambiguous; a value no
@@ -1527,6 +1606,154 @@ def _unsettled_options(task, readings, sources: Sequence[SourceAnswer], *, answe
     for text in [*texts, *given]:
         options.setdefault(agreement_key(text), text)
     return list(options.values())
+
+
+# Spec section 4, "Parts on different labels" (plan WP 2.4; the ontology's rule
+# parts_on_different_labels): the decision's rule, and the why of the marked findings, of a field
+# whose parts lie on different labels (field_parts).
+PARTS = "parts_on_labels"
+
+
+def _whole_words(text: str) -> str:
+    """A text as field_parts compares it: NFC, letter case folded, each run of white space one space."""
+    return " ".join(unicodedata.normalize("NFC", text).casefold().split())
+
+
+def _holds(text: str, part: str) -> bool:
+    """Whether a text holds a part's text as whole words (_whole_words): nowhere inside a longer word
+    or number ("Aus" in "Aus bus", never "6" in "1946")."""
+    return re.search(r"(?<!\w)" + re.escape(_whole_words(part)) + r"(?!\w)", _whole_words(text)) is not None
+
+
+_GENUS = re.compile(r"[^\W\d_][^\W\d_]*\.?")
+_SPECIES = re.compile(r"[^\W\d_]+(?:-[^\W\d_]+)*")
+# An author's name word: a capitalised word or initials ("Linnaeus", "L.", "J.F.", "O'Brien",
+# "Saint-Hilaire"); and an author's whole text: name words, "&" or "et" between two of them, and an
+# optional year after a comma ("Hagen, 1866").
+_AUTHOR_WORD = re.compile(
+    r"[^\W\d_](?:[^\W\d_]|['\N{RIGHT SINGLE QUOTATION MARK}-](?=[^\W\d_]))*(?:\.[^\W\d_]+)*\.?")
+_AUTHOR_YEAR = re.compile(r"(?P<names>.*\S),\s*[0-9]{4}")
+
+
+def _author_shaped(text: str) -> bool:
+    """Whether a text looks like an author (the coordinator's ruling on #444's Codex round 2): one or
+    more name words (_AUTHOR_WORD, each capitalised), "&" or "et" only between two of them, and an
+    optional four-digit year after a comma. No word is a Roman month numeral ("IX"), no digit
+    stands outside that year (so no hyphenated digit run, as in "IX-14-46"), and no notation of
+    the ontology is written in it ("CNHM", "leg.", "Sept.")."""
+    from specimen_digitization.application.date_notations import ROMAN_MONTHS
+    from specimen_digitization.ontology import ontology
+
+    found = _AUTHOR_YEAR.fullmatch(text.strip())
+    words = (found.group("names") if found else text.strip()).split()
+    if not words or words[0] in ("&", "et") or words[-1] in ("&", "et"):
+        return False
+    for before, word in zip([None, *words], words):
+        if word in ("&", "et"):
+            if before in ("&", "et"):
+                return False
+            continue
+        if (not word[0].isupper() or _AUTHOR_WORD.fullmatch(word) is None
+                or word.rstrip(".") in ROMAN_MONTHS):
+            return False
+    return not any(pattern.search(text) for notation in ontology().notations for pattern in notation.patterns)
+
+
+def _part_shaped(role: str, text: str) -> bool:
+    """Whether a unit's text has the shape of its role (the coordinator's ruling on #444's G51
+    round 1): for a date, a day number (1 to 31), a month (a Roman numeral I to XII, a number 1 to
+    12 or a month word, date_months.MONTH_WORDS) or a year (date_lines.YEAR_TOKEN) alone, a final
+    period, comma, semicolon or colon aside; for a name, a genus capitalised ("Danaus", "D.") and a
+    species in lower case ("plexippus") as one word, and an author as an author's names
+    (_author_shaped: "L.", "Linnaeus", "Hagen, 1866"). A whole date tagged day or author
+    ("IX-14-46") and a genus or species of two words are no part."""
+    from specimen_digitization.application.date_months import MONTH_WORDS, fold
+    from specimen_digitization.application.date_notations import ROMAN_MONTHS
+
+    from .date_lines import YEAR_TOKEN
+
+    word = text.strip()
+    if role == "author":
+        return _author_shaped(word)
+    if not word:
+        return False
+    # A genus or a species is one word: neither pattern admits white space.
+    if role == "genus":
+        return word[0].isupper() and _GENUS.fullmatch(word) is not None
+    if role == "species":
+        return word.islower() and _SPECIES.fullmatch(word) is not None
+    bare = word.rstrip(".,;:")
+    if role == "day":
+        return bare.isdigit() and len(bare) <= 2 and 1 <= int(bare) <= 31
+    if role == "month":
+        return (bare in ROMAN_MONTHS or (bare.isdigit() and len(bare) <= 2 and 1 <= int(bare) <= 12)
+            or fold(bare).lower() in MONTH_WORDS)
+    return role == "year" and re.fullmatch(YEAR_TOKEN, bare) is not None
+
+
+def field_parts(key: str, readings: Sequence[Reading]) -> dict[str, list[tuple[str, tuple[str, ...]]]]:
+    """The parts of the field `key` each label writes, by label (its region), in the readings'
+    order, when they lie on different labels, else {}. The roles only pick the candidate parts: a
+    part is a unit (Reading.units, the units path only) whose role is one of the field's
+    (reading_units.PART_ROLES), whose fields name the field and whose every reader's text has the
+    shape of that role (_part_shaped), with its role and the distinct texts its readers wrote
+    there. The texts decide (the coordinator's rulings on #444's round 1): the parts lie on
+    different labels only when (i) two labels write parts that differ, neither part holding the
+    other as whole words (_holds, any reader's text of each; a date's part without the period,
+    comma, semicolon or colon that may end it), (ii) no one label's readings hold
+    every part as whole words, and (iii) where the parts have two or more roles, no one label
+    has a part of each (label 1's genus and species beside label 2's "D." and "plexippus"); one
+    role on every label, as two genera, is a conflict between them, which (i) and (ii) decide.
+    So "IX-14-46" on two labels, whatever roles its units carry, "Aus" beside "Aus bus", and a
+    whole date beside another label's stray year are one value. A taxon whose parts name no genus has none:
+    owner decision B (WP 2.T) keeps a morphocode no label gives a genus. A unit's role and fields
+    are the first pass's advice: here they only ever hold a field back for a person, never settle
+    one."""
+    from specimen_digitization.application.reading_units import DATE_ROLES, PART_ROLES
+
+    roles, seen = PART_ROLES.get(key, ()), set()
+    found: dict[str, list[tuple[str, tuple[str, ...]]]] = {}
+    for reading in readings:
+        if reading.units is None or reading.region_id in seen:
+            continue
+        seen.add(reading.region_id)
+        mine = [(unit.role, texts) for unit in reading.units.units if unit.role in roles and key in unit.fields
+            and (texts := tuple(dict.fromkeys(span.text for span in unit.readers.values() if span.text)))
+            and all(_part_shaped(unit.role, text) for text in texts)]
+        if mine:
+            found[reading.region_id] = mine
+    # A date's part is compared without the punctuation that may end its token ("1946," and "1946.").
+    parts = [(region, tuple(text.rstrip(".,;:") if role in DATE_ROLES else text for text in texts))
+        for region, mine in found.items() for role, texts in mine]
+    present = {role for mine in found.values() for role, _ in mine}
+    covered = len(present) > 1 and any({role for role, _ in mine} == present for mine in found.values())
+
+    def one(first, second) -> bool:
+        return any(_holds(a, b) or _holds(b, a) for a in first for b in second)
+
+    differ = any(region != other and not one(texts, theirs)
+        for region, texts in parts for other, theirs in parts)
+    held = any(all(any(_holds(reading.text, text) for reading in readings if reading.region_id == region
+        for text in texts) for _, texts in parts) for region in dict.fromkeys(r.region_id for r in readings))
+    if (not differ or held or covered
+            or (key == "taxon" and not any(role == "genus" for mine in found.values() for role, _ in mine))):
+        return {}
+    return found
+
+
+def _parts_reason(parts: Mapping[str, Sequence[tuple[str, Sequence[str]]]], readings: Sequence[Reading],
+        answer: FieldAnswer) -> str:
+    """An ambiguous field's reason when its parts lie on different labels (field_parts): what each
+    label writes, by its number as the experts' request numbers it ("label 1 writes genus Aus;
+    label 2 writes species bus"), the expert's explanation, then each part's texts as the options."""
+    numbers: dict[str, str] = {}
+    for reading in readings:
+        numbers.setdefault(reading.region_id, reading.name[:-1])
+    said = "; ".join(f"label {numbers[region]} writes " + ", ".join(f"{role} {' or '.join(texts)}"
+        for role, texts in mine) for region, mine in parts.items())
+    options = dict.fromkeys(text for mine in parts.values() for _, texts in mine for text in texts)
+    return (f"The field's parts are on different labels: {said}; a person decides how they assemble. "
+        f"{answer.explanation} Options: {'; '.join(options)}.")
 
 
 # The elevation fields whose value is the upper number of a range (prompts/elevation_to_m.txt and
@@ -2627,7 +2854,10 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     sources_cannot_resolve: unresolved, except a taxon that names no genus,
     supported as written and unmatched (_unmatched_taxon); several_possibilities:
     ambiguous, the options in the reason (on the units path first put to the rule,
-    _by_rule, and applied as a resolved answer where the rule settles one text); a
+    _by_rule, and applied as a resolved answer where the rule settles one text). On the
+    units path a resolved or several_possibilities answer for a field whose parts lie on
+    different labels is ambiguous instead, each label's parts named, and marked on each
+    of those labels (field_parts, _settlement); a
     failure: unresolved with a
     retryable reason, except on the step's last attempt (last_attempt) a
     source still unreachable, whose reason names the sources not reached
@@ -2887,7 +3117,8 @@ def cleared_code(key: str, region_id: str) -> str:
 def marked_code(key: str, region_id: str, why: str) -> str:
     """`marked:<field>:<label>:<why>`: the label settled the field on a text that only
     readers that agree or another label back (text_only), or against another backed
-    text (conflict)."""
+    text (conflict); or the label writes a part of a field whose parts lie on different
+    labels, left ambiguous (parts_on_labels, PARTS)."""
     return f"marked:{key}:{region_id}:{why}"
 
 
@@ -2912,7 +3143,10 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
     confirms (Label.matched), the confirmed text's rows. The field's earlier such
     findings go first, so a field researched again keeps only its latest; a value
     settled otherwise (location reconciliation, derivation) or left unsettled gets
-    none, and apply_outcomes calls this for no field a person decided (human_keys).
+    none, and apply_outcomes calls this for no field a person decided (human_keys). A field
+    left ambiguous because its parts lie on different labels (_field_value, PARTS) gets a
+    warning finding marked_code gives with the why PARTS for each label that writes a part
+    (field_parts), citing that label's literal rows of the field.
     `offered`: the literal and options of the expert's several_possibilities answer the
     rule settled (_by_rule), offered to every label beside the resolved literal."""
     from .agreement import CONTESTED, SOURCE_IDS, labels
@@ -2920,6 +3154,14 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
     run.findings[:] = [finding for finding in run.findings
         if not (finding.rule_id == SETTLEMENT and finding.field_key == task.key)]
     answer, value = outcome.answer, run.fields.get(task.key)
+    if value is not None and value.state == ValueState.AMBIGUOUS and decision.get("rule") == PARTS:
+        rows = {item.id: item for item in run.evidence}
+        for region in field_parts(task.key, readings):
+            run.findings.append(RunFinding(rule_id=SETTLEMENT, rule_version=SETTLEMENT_RULES, severity="warning",
+                field_key=task.key, reason_code=marked_code(task.key, region, PARTS),
+                evidence_ids=[i for i in value.evidence_ids if (row := rows.get(i)) is not None
+                    and row.kind == "literal" and row.region_id == region]))
+        return
     if (value is None or decision.get("rule") == "location_reconciliation" or value.layer == "derived"
             or value.state != ValueState.SUPPORTED):
         return

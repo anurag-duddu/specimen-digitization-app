@@ -40,6 +40,13 @@ def first_pass_path(environ) -> str:
 
 Line = Annotated[int, Field(ge=1)]
 
+# The roles of a field's parts (section 3, `role`), by field: a scientific name's, which only the
+# taxon holds, and a date's, which the three date fields share (plan WP 2.4).
+NAME_ROLES = ("genus", "species", "author")
+DATE_ROLES = ("day", "month", "year")
+PART_ROLES = {"taxon": NAME_ROLES, "date_visited_from": DATE_ROLES, "date_visited_to": DATE_ROLES,
+    "date_identified": DATE_ROLES}
+
 
 class _Record(BaseModel):
     model_config = ConfigDict(extra="forbid")
