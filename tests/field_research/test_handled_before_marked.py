@@ -538,6 +538,14 @@ def label_of(rows, images):
     return {key: Reading(f"1{key.upper()}", "L", key, "raw_reading", text, units=built) for key, text in texts.items()}
 
 
+def on_path(readings, first_pass_path):
+    """The label's readings as the path builds them: with their units on the units path; with none on the old
+    path, whose readings carry no units (step.run_readings), so its rule never reaches the image test."""
+    from dataclasses import replace
+
+    given = tuple(readings.values()) if isinstance(readings, dict) else tuple(readings)
+    return given if first_pass_path == "units" else tuple(replace(reading, units=None) for reading in given)
+
 
 # The inputs each round of review on PR #439 found the narrowed guard clearing, cut short, where main's guard
 # marks them; the variant was removed (the coordinator's decision after G51's round 3). Under main's guard
@@ -556,6 +564,9 @@ REVIEW_INPUTS = [
     ("collectors", [(1, "J. Smith", "J. Smith"), (2, "& Cook", "& Cook.")], "J. Smith"),
     ("collectors", [(1, "J. Smith &", "J. Smith, &"), (2, "R. Jones", "R. Jones")], "R. Jones"),
     ("collectors", [(1, "J. Smith", "J. Smith,"), (2, "& R. Jones", "& R. Jones")], "& R. Jones"),
+    # g51r2-place-reading pins the line "M 1200" / "M 1250" (the readers differ) below the city "Yepocapa", the
+    # input G51's round 2 gave for a place field's next line. A bare "1800" there gives main's result too; it is
+    # not pinned here.
     ("city", [(1, "Yepocapa", "Yepocapa"), (2, "M 1200", "M 1250")], "Yepocapa"),
 ]
 REVIEW_IDS = ["codex1-collectors-and", "codex1-cloud-forest", "codex1-light-trap", "g51r1-cloud-forest",
@@ -567,22 +578,37 @@ REVIEW_IDS = ["codex1-collectors-and", "codex1-cloud-forest", "codex1-light-trap
 @pytest.mark.parametrize(("key", "rows", "literal"), REVIEW_INPUTS, ids=REVIEW_IDS)
 def test_the_review_rounds_cut_short_inputs_stay_marked(first_pass_path, key, rows, literal):
     """Each input of Codex's and G51's rounds on PR #439 where a differing line beside the literal may be the
-    same field's: the image does not name the literal (a differing neighbour, named by the image, blocks), and
-    the label settles it marked (text_only), never cleared."""
+    same field's. On the units path the image does not name the literal (a differing neighbour, named by the
+    image, blocks), and the label settles it marked (text_only), never cleared. On the old path, whose
+    readings carry no units, the label settles the readers' agreed literal (BY_AGREEMENT), as on origin/main,
+    with no cleared or marked finding of its own."""
     readings = label_of(rows, ["a"] * len(rows))
-    assert not agreement.image_names(readings["a"], literal)
     task = FieldTask(key, True, FieldValue(), tuple(Candidate(name, literal, literal, f"e{name}")
         for name in ("1A", "1B")), FIELD_TOOLS[key])
-    label = agreement.labels(task, tuple(readings.values()), [])["L"]
+    label = agreement.labels(task, on_path(readings, first_pass_path), [])["L"]
+    if first_pass_path == "old":
+        assert (label.settled, label.basis, label.cleared, label.why) == (frozenset({literal}), agreement.BY_AGREEMENT,
+            False, None)
+        return
+    assert not agreement.image_names(readings["a"], literal)
     assert (label.settled, label.cleared, label.why) == (frozenset({literal}), False, agreement.TEXT_ONLY)
 
 
 def test_a_not_visible_neighbour_on_the_next_line_and_a_named_one_after_it_block(first_pass_path):
     """G51's probe_nv: "megalippe", which the image judges not visible, then "Hubner" / "Hiibner", which it
-    names: the walk goes past the not-visible unit to the differing one, which blocks."""
+    names. On the units path the walk goes past the not-visible unit to the differing one, which blocks, and
+    the label settles "Danaus plexippus" marked; on the old path it settles the readers' agreed text, as on
+    origin/main."""
     rows = [(1, "Danaus", "Danaus"), (1, "plexippus", "plexippus"), (2, "megalippe", ""), (2, "Hubner", "Hiibner")]
     readings = label_of(rows, ["b", "b", NOT_VISIBLE, "a"])
+    task = FieldTask("taxon", True, FieldValue(), tuple(Candidate(name, "Danaus plexippus", "Danaus plexippus",
+        f"e{name}") for name in ("1A", "1B")), FIELD_TOOLS["taxon"])
+    label = agreement.labels(task, on_path(readings, first_pass_path), [])["L"]
+    if first_pass_path == "old":
+        assert (label.settled, label.basis, label.why) == (frozenset({"Danaus plexippus"}), agreement.BY_AGREEMENT, None)
+        return
     assert not agreement.image_names(readings["b"], "Danaus plexippus")
+    assert (label.settled, label.cleared, label.why) == (frozenset({"Danaus plexippus"}), False, agreement.TEXT_ONLY)
 
 
 # 105526328's third label (wp15c r1/pair), lines 5 to 7: the elevation's readers differ, and so do the
@@ -596,19 +622,25 @@ def test_105526328_s_elev_800_ft_stays_held(first_pass_path):
     (truth 4800 ft.): the expert's several_possibilities stays unsettled by the rule (step._by_rule), and an
     answer of A's text has no IMAGE backing."""
     readings = label_of(ELEVATION_800, ["a", "a", "a"])
-    assert not agreement.image_names(readings["a"], "Elev. +800 ft.")
     task = FieldTask("elevation_from_ft", True, FieldValue(), (Candidate("1A", "Elev. +800 ft.", "Elev. +800 ft.", "ea"),
         Candidate("1B", "Elev. 4800 ft.", "Elev. 4800 ft.", "eb")), FIELD_TOOLS["elevation_from_ft"])
+    label = agreement.labels(task, on_path(readings, first_pass_path), [])["L"]
+    if first_pass_path == "old":
+        # The old path puts no answer to the rule (step._by_rule is the units path's); its label settles nothing
+        # where the readers differ and no source confirms one, as on origin/main.
+        assert (label.settled, label.cleared) == (frozenset(), False)
+        return
+    assert not agreement.image_names(readings["a"], "Elev. +800 ft.")
     several = FieldOutcome("elevation_from_ft", FieldAnswer(outcome="several_possibilities",
         options=["Elev. +800 ft.", "Elev. 4800 ft."], explanation="The readers write two numbers."))
     assert field_step._by_rule(task, several, tuple(readings.values()), (), date_rules=None) is None
-    label = agreement.labels(task, tuple(readings.values()), [])["L"]
     assert not label.cleared
 
 
 def test_a_label_a_person_decided_changes_nothing_on_another_label(first_pass_path):
     """G51's probe_shadow, as a regression: a label P whose transcript a person decided ("Cook"), then a label
-    L whose readers write "J. Smith" over "Cook" / "Cook.". L settles as it does with no P, marked."""
+    L whose readers write "J. Smith" over "Cook" / "Cook.". L settles as it does with no P: marked on the units
+    path, on the readers' agreement on the old path, as on origin/main."""
     from specimen_digitization.field_research.contracts import FirstPassAdvice
 
     readings = label_of([(1, "J.", "J."), (1, "Smith", "Smith"), (2, "Cook", "Cook.")], ["a", "a", UNCERTAIN])
@@ -616,14 +648,15 @@ def test_a_label_a_person_decided_changes_nothing_on_another_label(first_pass_pa
     person = Reading("2A", "P", "p", "decided_transcript", "Cook", first_pass=advice)
     found = {}
     for with_person in (False, True):
-        given = (*([person] if with_person else []), *readings.values())
+        given = (*([person] if with_person else []), *on_path(readings, first_pass_path))
         candidates = [Candidate(name, "J. Smith", "J. Smith", f"e{name}") for name in ("1A", "1B")]
         if with_person:
             candidates.append(Candidate("2A", "Cook", "Cook", "e2A"))
         task = FieldTask("collectors", True, FieldValue(), tuple(candidates), ())
         label = agreement.labels(task, given, [])["L"]
         found[with_person] = (label.settled, label.cleared, label.why)
-    assert found[True] == found[False] and found[False][1] is False
+    assert found[True] == found[False] and found[False][:2] == (frozenset({"J. Smith"}), False)
+    assert found[False][2] == (agreement.TEXT_ONLY if first_pass_path == "units" else None)
 
 
 # ---- 5. an elevation whose expert names two (#437's G51 review, the coordinator's ruling) --------
