@@ -273,14 +273,16 @@ def test_a_taxon_and_the_identified_by_irn_are_not_put_to_the_rule(tmp_path, key
 def test_the_rules_answer_refused_when_applied_leaves_the_experts_own(tmp_path, first_pass_path):
     """Both readers write "Elev. 4800 ft.", the organiser's candidate is "4800 ft" and the image
     names the text; the expert answers several_possibilities with the literal "Elev. 4800 ft."
-    and its options, as r1/three 105526328's expert did. Put to the rule, the literal, offered,
-    settles; applied, agreement.literal_refusal refuses it, as it extends the candidate
-    (NOT_CANDIDATE): the field is then as the expert's own answer leaves it, ambiguous with its
-    options, and its decision names the refusal."""
+    and options that name that one elevation. (r1/three 105526328's expert named "Elev. +800 ft."
+    too; since WP 2.3c options naming two elevations are not put to the rule, step._by_rule:
+    test_handled_before_marked.py.) Put to the rule, the literal, offered, settles; applied,
+    agreement.literal_refusal refuses it, as it extends the candidate (NOT_CANDIDATE): the field
+    is then as the expert's own answer leaves it, ambiguous with its options, and its decision
+    names the refusal."""
     rig = build_rig(tmp_path, TEXT.replace("elevation_from_ft: 1500 ft", "Elev. 4800 ft."), candidates=every_field(
         *(("elevation_from_ft", name, "4800 ft", "Elev. 4800 ft.") for name in ("1A", "1B"))))
     run = rig.specimen.run
-    options = ("Elev. 4800 ft.", "Elev. +800 ft.")
+    options = ("Elev. 4800 ft.", "4800 ft")
     decisions = {}
     prepared, outcomes, calls = research(rig, Scripted({"elevation_from_ft": answering(FieldAnswer(
         outcome="several_possibilities", literal="Elev. 4800 ft.", reading_names=["1A"], options=list(options),
