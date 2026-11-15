@@ -731,7 +731,7 @@ def literal_basis(task: FieldTask, readings: Sequence[Reading], literal: str,
 
 
 def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
-        named: Sequence[Reading]) -> Refusal | None:
+        named: Sequence[Reading], elevations=None) -> Refusal | None:
     """Why the answer's literal may not settle the field, or None: it must be
     a whole candidate literal of each reading it names, whichever reader
     wrote it (the first pass's preferred reading is advice, never a
@@ -748,15 +748,27 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     the reading writes it in (_unit_refusal). Text read from the transcript
     is never one end of a range for a date or an elevation (_part_of_range),
     and never holds a date, an elevation or a range of them for a place or
-    the collection code (_holds_another_kind)."""
+    the collection code (_holds_another_kind). On the units path (readings
+    that carry their label's units), a precise location, by candidate or read
+    from the transcript, holds an elevation only where `elevations` (the
+    literals the elevation fields settled, by label; ANY_ELEVATION for the
+    expert's own check, before any field settles) holds its elevation text
+    for every label it is read from (_another_kind: the ontology's rule
+    precise_location_extent, plan WP 2.3b); a candidate is held to the
+    elevation rule only, a date or a range in it passing as on main."""
     basis = literal_basis(task, readings, literal, named)
+    units = any(reading.units is not None for reading in readings)
     if basis == CANDIDATE:
-        return (_unit_refusal(task, readings, literal, named) or _part_of_name(task, readings, literal, named)
-            or _genus_in_doubt(task, readings, literal, named) or _host(task, readings, literal))
+        return (_unit_refusal(task, readings, literal, named)
+            or (_another_kind(task, literal, named, elevations, elevation_only=True)
+                if units and task.key == "precise_location" else None)
+            or _part_of_name(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named)
+            or _host(task, readings, literal))
     if basis == TRANSCRIPT:
         return (_part_of_range(task, readings, literal, named) or _unit_refusal(task, readings, literal, named)
-            or _holds_another_kind(task, literal) or _longer_written(task, readings, literal, named)
-            or _genus_in_doubt(task, readings, literal, named) or _host(task, readings, literal))
+            or (_another_kind(task, literal, named, elevations) if units else _holds_another_kind(task, literal))
+            or _longer_written(task, readings, literal, named) or _genus_in_doubt(task, readings, literal, named)
+            or _host(task, readings, literal))
     allowed = candidates_by_reading(task, readings)
     offered = [f"{source.name}: {text!r}" for source in dict.fromkeys(named)
         for text in allowed.get(source.name, {}).values()]
@@ -861,6 +873,77 @@ def _holds_another_kind(task: FieldTask, literal: str) -> Refusal | None:
         f"{literal!r} holds {text!r}, which is {('an ' if kind == written.ELEVATION else 'a ') + kind}: "
         "another field's text, never this one's. Copy only this field's own text, leaving that out, or "
         "answer several_possibilities or sources_cannot_resolve."))
+
+
+# The expert's own check of a precise location (experts.py): no field has settled yet, so an
+# elevation the rule could accept passes there, and the step decides on what the elevation fields
+# settle (literal_refusal's `elevations`).
+ANY_ELEVATION = object()
+# The precise location is the one field whose text may hold an elevation (precise_location_extent).
+ELEVATION_INSIDE = "precise_location"
+
+
+def elevation_kept(literal: str) -> str | None:
+    """The elevation text a precise location may keep (the ontology's rule
+    precise_location_extent, plan WP 2.3b), or None: the literal holds one
+    text that is plainly another kind of field's (written.other_kind), an
+    elevation; nothing but punctuation
+    follows it on its line ("Yepocapa, 4800 ft.", "Davao, Prov. 3300'"; not
+    "4800 ft. above sea level", "1500 m de altitud" or "1948 M. Smith"); the
+    word before it on its line is no month ("Sept. 46'"); and what the
+    literal writes besides it holds no other such text and a word that is
+    neither a heading, a unit nor a sea-level word: a locality ("4800 ft."
+    and "Elev. 6400'" alone have none)."""
+    found = written.other_kind(literal, place=True)
+    if found is None or found[0] != written.ELEVATION:
+        return None
+    text = found[1]
+    start = literal.find(text)
+    end = start + len(text)
+    line_end = literal.find("\n", end)
+    if any(char.isalnum() for char in literal[end:None if line_end < 0 else line_end]):
+        return None
+    before = literal[literal.rfind("\n", 0, start) + 1:start].split()
+    if before and written._month(before[-1]):
+        return None
+    left = literal[:start] + " " * len(text) + literal[end:]
+    if written.other_kind(left, place=True) is not None:
+        return None
+    unit_words = written.HEADINGS | written.UNIT_PARTS | written.ELEVATION_WORDS | {"el"}
+    if not any(written._bare(word) not in unit_words for word in re.findall(r"[^\W\d_]+", left)):
+        return None
+    return text
+
+
+def elevation_settled_inside(literal: str, named: Sequence[Reading], elevations) -> bool:
+    """Whether a precise location's literal keeps an elevation (elevation_kept)
+    whose text is, after collapse, a literal an elevation field settled from
+    each label the literal is read from (`elevations`: label -> literals;
+    ANY_ELEVATION holds every text)."""
+    kept = elevation_kept(literal)
+    if kept is None or elevations is None or not named:
+        return False
+    if elevations is ANY_ELEVATION:
+        return True
+    return all(collapse(kept) in {collapse(text) for text in elevations.get(label, ())}
+        for label in {reading.region_id for reading in named})
+
+
+def _another_kind(task: FieldTask, literal: str, named: Sequence[Reading], elevations, *,
+        elevation_only: bool = False) -> Refusal | None:
+    """On the units path, _holds_another_kind, except that a precise location
+    keeps an elevation an elevation field settled from its label
+    (elevation_settled_inside). With `elevation_only` (an organiser candidate,
+    which main lets pass), only an elevation is refused: a date or a range
+    passes as on main ("Ejido 20 de Noviembre", the coordinator's ruling on
+    G51's round 1 of PR #437)."""
+    refused = _holds_another_kind(task, literal)
+    if elevation_only and refused is not None and refused.reason != HOLDS_AN_ELEVATION:
+        return None
+    if (refused is not None and task.key == ELEVATION_INSIDE and refused.reason == HOLDS_AN_ELEVATION
+            and elevation_settled_inside(literal, named, elevations)):
+        return None
+    return refused
 
 
 def _longer_written(task: FieldTask, readings: Sequence[Reading], literal: str,
@@ -2826,13 +2909,13 @@ def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
 
 def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         named: Sequence[Reading], value: str | None, authority_id: str | None,
-        cited: Sequence[SourceAnswer], received: Sequence[SourceAnswer]) -> Refusal | None:
+        cited: Sequence[SourceAnswer], received: Sequence[SourceAnswer], elevations=None) -> Refusal | None:
     """Why a resolved answer may not settle its field, or None.
 
     `named` are the readings the answer names (each already writes the
     literal), `cited` the source answers it cites and `received` every source
-    answer its field received."""
-    refused = literal_refusal(task, readings, literal=literal, named=named)
+    answer its field received; `elevations` as literal_refusal takes them."""
+    refused = literal_refusal(task, readings, literal=literal, named=named, elevations=elevations)
     if refused is not None:
         return refused
     # The units path offers the answer's literal to every label, whatever readings it names.

@@ -482,12 +482,13 @@ def test_the_loader_refuses_a_rule_whose_part_is_empty(part):
 
 @pytest.mark.parametrize("change,message", [
     ({"check": "yes"}, r"check must be one of code, model, not yet, not 'yes'"),
-    ({"check": "code"}, "names `when` if and only if it is not yet checked"),
-    ({"when": None}, "names `when` if and only if it is not yet checked"),
+    ({"check": "not yet"}, "names `when` if and only if it is not yet checked"),
+    ({"when": "WP 2.3"}, "names `when` if and only if it is not yet checked"),
+    ({"derives": "yes"}, r"rules\[\d+\]\.derives must be true or false"),
 ])
 def test_a_rule_is_checked_by_code_by_a_model_or_not_yet_with_its_work_package(change, message):
     data = shipped()
-    # The one rule still `not yet` (WP 2.3b).
+    # WP 2.3b flipped the last rule `not yet`, elevation_unit_feet, to `code`.
     rule = entry(data, "rules", "elevation_unit_feet")
     for key, value in change.items():
         if value is None:
@@ -535,13 +536,14 @@ def test_the_rules_text_names_no_code_line_work_package_or_gate_and_no_model_tex
 
 # The spec's section 4 and 5 relations and checks (WP 2.1's row), each a rule of the file, with how it is
 # checked today. WP 2.3 builds the seven `not yet` rules WP 2.1 named: its first part, 2.3a, flipped six to
-# `code`; elevation_unit_feet waits for its second part, 2.3b.
+# `code`, and its second part, 2.3b, flipped elevation_unit_feet to `code` and, with the check stage's mark of a
+# precise location cut short, precise_location_extent from `model` (WP 2.2).
 RULE_CHECKS = {
     "one_collecting_event": "code", "place_within_settled_places": "code", "place_chain": "code",
     "date_order": "code", "day_month_order": "code", "code_is_no_date": "code", "label_type_routing": "code",
-    "elevation_unit_feet": "not yet", "elevation_needs_a_unit": "code", "elevation_unit_decides_field": "code",
+    "elevation_unit_feet": "code", "elevation_needs_a_unit": "code", "elevation_unit_decides_field": "code",
     "place_parents_derived": "code", "elevation_conversion": "code", "end_date_from_one_date": "code",
-    "precise_location_extent": "model",
+    "precise_location_extent": "code",
     # WP 2.T: the taxon in the collection's scope, and a host never the taxon.
     "taxon_in_collection_scope": "code", "host_is_no_taxon": "code",
 }
@@ -551,8 +553,9 @@ def test_the_file_holds_the_specs_rules_each_checked_as_stated():
     loaded = ontology.ontology()
 
     assert {rule.id: rule.check for rule in loaded.rules} == RULE_CHECKS
-    assert {rule.id: rule.when for rule in loaded.rules if rule.check == "not yet"} == {
-        "elevation_unit_feet": "WP 2.3"}
+    assert {rule.id: rule.when for rule in loaded.rules if rule.check == "not yet"} == {}
+    assert {rule.id for rule in loaded.rules if rule.derives} == {
+        "place_parents_derived", "elevation_conversion", "end_date_from_one_date"}
     assert [entry.id for entry in loaded.not_rules] == ["taxon_regional_occurrence"]
     assert "docs/product-requirements/PRD.md:1207" in loaded.not_rules[0].source
 
@@ -560,8 +563,11 @@ def test_the_file_holds_the_specs_rules_each_checked_as_stated():
 # Every rule checked by code today, against the tests that pin it (node ids under the repository's root, as
 # pytest collects them; a parametrized case by its own id), one to one: no test pins two rules. Each `code`
 # statement is an invariant today's code guarantees; a mutant that breaks it fails one of its tests. WP 2.3
-# adds its rules here when it flips them to `code` (2.3a: six of them, below the first five).
+# adds its rules here when it flips them to `code` (2.3a: six of them, below the first five; 2.3b: the last
+# two, and the tests of the derived fields that wait for their source).
 STAGE = "tests/field_research/test_check_stage.py"
+ELEV = "tests/field_research/test_elevations_and_extent.py"
+EXTENT = "tests/field_research/test_precise_location_extent.py"
 TAXON = "tests/field_research/test_taxon_scope.py"
 CODE_RULE_TESTS = {
     "one_collecting_event": (
@@ -582,10 +588,21 @@ CODE_RULE_TESTS = {
         "tests/test_derivations.py::test_a_single_metre_value_is_both_ends_and_fills_the_feet_fields",
         "tests/test_derivations.py::test_a_feet_value_converts_to_metres_rounded_to_the_hundredth",
         "tests/test_derivations.py::test_stated_elevations_are_never_replaced",
+        f"{ELEV}::test_an_elevation_s_partners_wait_while_it_is_held",
+        f"{ELEV}::test_6400_with_no_mark_leaves_its_partners_waiting",
+        f"{ELEV}::test_a_field_settled_absent_beside_a_settled_source_does_not_wait",
+        f"{ELEV}::test_derivation_writes_what_it_wrote_on_main",
+        f"{ELEV}::test_a_person_who_settles_the_foot_field_gets_its_partners_derived",
+        f"{ELEV}::test_a_failed_source_with_no_elevation_written_keeps_main_s_result",
     ),
     "end_date_from_one_date": (
         "tests/field_research/test_date_split_lines.py::test_a_range_s_start_is_not_copied_to_its_end",
         "tests/field_research/test_date_split_lines.py::test_one_collecting_date_is_its_own_end_at_its_precision",
+        f"{ELEV}::test_105526325_s_held_date_leaves_date_visited_to_waiting",
+        f"{ELEV}::test_a_waiting_end_date_is_derived_once_its_start_settles",
+        f"{ELEV}::test_a_waiting_field_adds_no_review_reason_of_its_own",
+        f"{ELEV}::test_a_person_who_settles_the_start_gets_the_end_derived_on_approval",
+        f"{ELEV}::test_a_waiting_field_whose_source_settles_without_a_derivation_takes_today_s_treatment",
     ),
     # WP 2.3a's check stage (field_research/ontology_checks.py), and the date check's code veto.
     "place_within_settled_places": (
@@ -619,6 +636,7 @@ CODE_RULE_TESTS = {
         f"{STAGE}::test_the_lake_gary_derived_province_is_not_marked",
         f"{STAGE}::test_a_derived_country_that_a_place_below_it_lies_outside_is_marked",
         f"{STAGE}::test_a_persons_derived_place_is_never_marked_the_place_below_it_is",
+        f"{ELEV}::test_derive_reads_its_rules_from_the_file_and_they_are_main_s",
     ),
     "date_order": (
         f"{STAGE}::test_a_determination_on_the_collecting_day_is_allowed",
@@ -638,6 +656,48 @@ CODE_RULE_TESTS = {
     "label_type_routing": (
         f"{STAGE}::test_a_determination_label_writing_a_locality_reaches_the_locality_expert",
     ),
+    # WP 2.3b: the elevation unit rule (ontology_checks.infer_feet) and the extent of Precise Location
+    # (agreement.elevation_kept and literal_refusal, step._taken, ontology_checks._extent_marks; WP 2.2's
+    # town-only locality).
+    "elevation_unit_feet": (
+        f"{ELEV}::test_6400_with_b_s_foot_mark_and_the_philippines_cleared_settles_6400_ft_cleared",
+        f"{ELEV}::test_the_same_with_the_philippines_marked_stays_unresolved",
+        f"{ELEV}::test_a_country_not_settled_from_the_label_or_with_no_cleared_label_is_not_cleared",
+        f"{ELEV}::test_6400_with_no_foot_mark_stays_unresolved",
+        f"{ELEV}::test_conditions_b_and_c_bound_the_number",
+        f"{ELEV}::test_a_reader_who_writes_metres_keeps_today_s_unit_differs_path",
+        f"{ELEV}::test_a_country_s_row_is_its_wikidata_item_s_else_its_name_s",
+        f"{ELEV}::test_a_number_on_two_units_or_another_held_elevation_is_not_inferred",
+        f"{ELEV}::test_condition_a_is_one_number_a_reader_marks_and_another_leaves_bare",
+        f"{ELEV}::test_condition_a_never_takes_a_unit_the_held_field_s_cited_rows_alone_place_the_number",
+        f"{ELEV}::test_g51_s_inputs_stay_unresolved",
+        f"{ELEV}::test_condition_a_takes_a_unit_the_first_pass_routes_to_an_elevation_and_options_naming_no_other_number",
+    ),
+    "precise_location_extent": (
+        f"{EXTENT}::test_a_town_only_locality_is_not_cleared_as_not_on_the_label_on_the_units_path",
+        f"{EXTENT}::test_a_precise_location_that_is_the_towns_text_is_not_cleared_on_the_units_path",
+        f"{EXTENT}::test_a_municipio_line_beside_the_settled_town_stands_on_the_units_path",
+        f"{EXTENT}::test_a_units_path_run_cleared_as_not_on_the_label_by_older_code_goes_to_a_person_on_refinalize",
+        f"{EXTENT}::test_a_precise_location_holding_an_elevation_is_refused_when_no_elevation_settled",
+        f"{EXTENT}::test_the_review_rounds_elevation_inputs_are_refused_as_a_precise_location_on_both_paths",
+        f"{EXTENT}::test_105526329s_whole_locality_with_its_settled_elevation_settles_on_the_units_path",
+        f"{ELEV}::test_yepocapa_s_elevation_is_kept_only_as_the_literal_its_elevation_field_settled",
+        f"{ELEV}::test_the_review_rounds_elevation_inputs_stay_refused_whatever_elevation_settled",
+        f"{ELEV}::test_elevation_kept_keeps_one_elevation_at_its_line_s_end_beside_a_locality",
+        f"{ELEV}::test_an_organiser_candidate_holding_an_elevation_follows_the_same_rule",
+        f"{ELEV}::test_an_organiser_candidate_holding_a_date_settles_on_both_paths",
+        f"{ELEV}::test_105526329_s_whole_locality_settles_beside_its_settled_elevation_on_the_units_path",
+        f"{ELEV}::test_105526329_s_whole_locality_is_refused_beside_another_elevation_or_none",
+        f"{ELEV}::test_the_expert_s_own_check_lets_a_kept_elevation_pass_on_the_units_path_only",
+        f"{ELEV}::test_a_settled_precise_location_and_an_elevation_share_its_text_on_the_units_path",
+        f"{ELEV}::test_a_precise_location_cut_short_before_a_line_holding_a_settled_higher_place_is_marked",
+        f"{ELEV}::test_the_cut_short_check_abstains_unless_certain",
+        f"{ELEV}::test_a_person_s_precise_location_is_never_marked_cut_short",
+        f"{ELEV}::test_the_next_line_marks_only_as_the_locality_going_on",
+        f"{ELEV}::test_an_elevation_another_field_s_text_takes_is_no_elevation_the_locality_may_keep",
+        f"{ELEV}::test_a_label_whose_only_locality_text_is_its_country_settles_it_as_the_precise_location_on_the_"
+        "units_path",
+    ),
     # WP 2.T (tests/field_research/test_taxon_scope.py): GBIF's decision inside class Insecta, on its stored
     # answers of the units-wp15c runs and on the synthetic answers that pin row one and the homonym conflict;
     # and the host marker, on the units path.
@@ -652,7 +712,10 @@ CODE_RULE_TESTS = {
         f"{TAXON}::test_a_name_written_after_a_host_marker_is_never_the_taxon_on_the_units_path",
         f"{TAXON}::test_a_name_after_a_word_that_only_ends_in_a_marker_settles_on_both_paths",
         f"{TAXON}::test_the_host_markers_are_the_ontology_s_notation",
-        f"{TAXON}::test_a_host_is_a_name_right_after_a_whole_word_marker_on_its_line",
+        f"{TAXON}::test_a_host_is_a_whole_name_after_a_whole_word_marker_earlier_on_its_line",
+        f"{TAXON}::test_a_name_another_label_writes_inside_a_host_s_longer_name_settles_on_both_paths",
+        f"{TAXON}::test_a_name_after_a_marker_earlier_on_its_line_is_never_the_taxon_on_the_units_path",
+        f"{TAXON}::test_a_name_before_a_marker_on_its_line_settles_on_both_paths",
     ),
 }
 
@@ -699,13 +762,10 @@ def test_the_rule_to_test_map_fails_on_a_code_rule_with_no_test_or_a_test_that_d
     case of another function's parameters ("4-5-48" is test_date_forms.py's AMBIGUOUS, not SINGLE_DATES);
     and a case whose id is renamed away, though its literal stays in the file (Codex's round-2 probes)."""
     collected = _collected(_mapped_files())
-    data = shipped()
-    entry(data, "rules", "elevation_unit_feet")["check"] = "code"
-    del entry(data, "rules", "elevation_unit_feet")["when"]
-    flipped = {rule.id for rule in ontology.parse(data).rules if rule.check == "code"}
-    assert _map_problems(flipped, CODE_RULE_TESTS, collected) == ["elevation_unit_feet: checked by code, no test"]
-
     code = {rule.id for rule in ontology.ontology().rules if rule.check == "code"}
+    untested = {key: tests for key, tests in CODE_RULE_TESTS.items() if key != "elevation_unit_feet"}
+    assert _map_problems(code, untested, collected) == ["elevation_unit_feet: checked by code, no test"]
+
     renamed = {**CODE_RULE_TESTS, "end_date_from_one_date": (CODE_RULE_TESTS["end_date_from_one_date"][0] + "_x",)}
     assert _map_problems(code, renamed, collected) == [renamed["end_date_from_one_date"][0] + ": no such test"]
 
@@ -753,7 +813,7 @@ def test_cnhm_is_the_institution_and_on_a_locality_line_part_of_the_precise_loca
 
     assert (cnhm.written, cnhm.fields, cnhm.readings) == (("CNHM.",), (), (CNHM,))
     assert cnhm.note == "Written on a locality line, it is part of the precise location as written."
-    assert "every line of its locality text" in extent.statement
+    assert "every line of its locality text" in extent.note and "every line of its locality" in extent.instruction
     assert not re.search(r"\d{6,}|e98a924c|t1-\d|slide", " ".join((*cnhm.readings, cnhm.note)))
     rows = json.loads((ROOT / "tests/fixtures/field_model_pilot_rows.json").read_text(encoding="utf-8"))["rows"]
     on_a_locality_line = [row for row in rows if "CNHM" in row["as_written"]["locality"]]
@@ -796,6 +856,14 @@ def test_the_philippines_highest_point_is_mount_apo_at_2954_metres():
         country="Q928", country_name="Philippines", point="Q455963", point_name="Mount Apo",
         elevation_m=Decimal("2954"))
     assert ontology.ontology().highest_point("Q1") is None
+
+
+def test_the_loader_refuses_a_field_two_derivation_rules_derive():
+    data = shipped()
+    entry(data, "rules", "elevation_unit_feet")["derives"] = True
+
+    with pytest.raises(ontology.OntologyError, match="a field is derived by two rules"):
+        ontology.parse(data)
 
 
 @pytest.mark.parametrize("change,message", [

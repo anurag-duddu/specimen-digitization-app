@@ -155,8 +155,9 @@ def test_a_unit_whose_readers_write_one_text_carries_it_once():
 
 
 # WP 2.2's review (G51, not blocking 2): the precise location expert's units-path instructions are now longer
-# than the province's. Each value is 112 bytes over main 7f412f91d's, for WP 2.T's host_marker line. The same rebuilt conversation given to each place expert, both refused answers forced to
+# than the province's. The same rebuilt conversation given to each place expert, both refused answers forced to
 # one literal no reading writes ("Mindanaq", refused as no candidate), measured in bytes at its largest request.
+# Each value is 112 bytes over main 7f412f91d's, for WP 2.T's host_marker line.
 PLACE_EXPERTS = ("province_state", "precise_location", "city", "county", "country")
 LARGEST_BY_EXPERT = {
     ("105526325", "province_state"): 46_291, ("105526325", "precise_location"): 46_802, ("105526325", "city"): 45_625,
