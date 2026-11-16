@@ -8,8 +8,8 @@ rules (`specimen.yaml:693-698` (`The rules (version 2.0)`)).
 
 The file is the source of truth. This page copies the file's words where it can and names the line
 it copies. If the two ever disagree, the file is right. The test
-`tests/test_ontology_curator_doc.py` fails when this page's lists of things, fields, notations,
-routing entries, questions and rules, or a line it cites, stop matching the file.
+`tests/test_ontology_curator_doc.py` fails when this page's tables, or the text of a line or range
+of the file it cites, stop matching the file (see "Keeping this page right" at the end).
 
 Short names on this page:
 
@@ -25,29 +25,76 @@ checked.
 
 ## Words this page uses
 
-- **Unit**: a piece of one label's text, cut at a logical break, such as "P.I.", "6-Sept-1946" or
-  "H. Hoogstraal leg." (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:135-142` (`CNHM.`)). The first
-  pass cuts every label's text into units and settles nothing
-  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:48-49` (`The first pass cuts each label's text into units at logical`)).
-- **Expert**: the system's researcher for one field, with its lookups. There is one per field,
-  and each receives every unit
-  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:50-52` (`The field experts run in parallel`)).
-- **Check stage**: after every expert has answered, one stage checks the settled values
-  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:53-56` (`After every expert has answered, one check stage runs`)).
-- **Cleared**: the value settles with no review item for a person. **Marked**: the value settles,
-  and the record carries a review item for a person
-  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:193-194` (`It is CLEARED when it has an IMAGE or a SOURCE`);
-  `FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:221-222` (`Marked means`)).
 - **Ambiguous**: no value settles, and the field keeps its candidates as options
   (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:200` (`When none has (text against text)`)).
-- **Unresolved**: "A value is `unresolved` only when nothing supports even an inference"
-  (`docs/product-requirements/PRD.md:667` (`only when nothing supports even an inference`)).
+- **Basis**: what a value is settled on. It is written in the value's reason, such as
+  "Basis: inferred, rule elevation_unit_feet"
+  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:233-234` (`In this program a value's basis is written in its`)).
+- **Check stage**: after every expert has answered, one stage checks the settled values
+  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:53-56` (`After every expert has answered, one check stage runs`)).
+- **Cleared and marked**: a settled value is either cleared, with no review item, or marked: the
+  value is set, and the record carries a review item for a person
+  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:52` (`whether the value is cleared or marked for a person`);
+  `FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:193-194` (`It is CLEARED when it has an IMAGE or a SOURCE`);
+  `FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:221-222` (`Marked means`)).
+- **Coordinator**: the session that coordinates this program. The owner gave the ruling quoted on
+  this page in it (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:332` (`the owner, in the coordinator's session`)).
+- **Darwin Core**: the published model and terms for specimen data that the file is built on. Each
+  field names its Darwin Core term, such as catalogNumber
+  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:306-308` (`Darwin Core publishes a conceptual model`); `specimen.yaml:59-63` (`frame:`)).
+- **Expert**: the system's researcher for one field, with its lookups. There is one per field, and
+  each receives every unit
+  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:50-52` (`The field experts run in parallel`)).
+- **Field research**: the stage in which the experts research the fields, one expert per field
+  (`src/specimen_digitization/field_research/__init__.py:1` (`one expert resolver per field`)).
+- **First pass**: the model that cuts every label's text into units. It settles nothing
+  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:48-49` (`The first pass cuts each label's text into units at logical`)).
+- **GBIF**: the Global Biodiversity Information Facility, the source the taxon expert looks a name
+  up in. It matches the name against the pinned Catalogue of Life checklist and decides
+  (`src/specimen_digitization/field_research/prompts/taxon.txt:3` (`GBIF matches the name against the pinned Catalogue of Life checklist`)).
+- **Getty TGN**: the Getty Thesaurus of Geographic Names, one of the system's three gazetteers, the
+  sources of place records
+  (`src/specimen_digitization/field_research/contracts.py:22` (`GAZETTEERS = ("tgn", "wikidata", "nga")`)).
+- **ISO 3166-1**: the standard country codes, such as GE for Georgia and US for the United States
+  (`specimen.yaml:735` (`ISO 3166-1 codes`); `specimen.yaml:738-739` (`settled on Wikidata's nation (GE)`)).
+- **Label id**: a name such as e98a924c-L2 names one label. That one is a label of pilot slide
+  105526322 (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:118` (`Pilot label e98a924c-L2`)).
+- **Literal**: the exact text a value copies from a reading. The value itself may be a source's
+  name: the literal "Chimaltenago" can carry the value "Chimaltenango"
+  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:173-178` (`The merged candidate's literal is the text the image`)).
+- **Morphocode**: the file's word for a species number, written "sp." and a number. After a genus
+  it is a genus-level identification (`specimen.yaml:620` (`a morphocode, a species number`)).
+- **Organiser**: a model that proposes candidates for every field, quoted from the whole readings.
+  Each expert receives them
+  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:362` (`proposes candidates quoted from whole readings`); `FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:151` (`the organiser's candidates`)).
+- **Reader**: one of the models that transcribe each label. A pilot label's readers are named A, B
+  and C (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:309-310` (`rendered into every model's instructions: the readers`);
+  `FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:118-123` (`Pilot label e98a924c-L2`)).
+- **Reading**: the word has two senses. A reader's transcription of a label is a reading
+  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:50-51` (`every raw`)). A notation's reading is one meaning the notation allows, such as
+  "the Philippines" for "P.I."
+  (`specimen.yaml:350` (`The label notations and every reading each allows`)).
+- **Reference truth**: the expected values of the pilot specimens, ten rows in
+  `tests/fixtures/field_model_pilot_rows.json`
+  (`specimen.yaml:1099-1100` (`confirmed by the reference truth`)).
 - **Refused**: code turns an answer down, and the field does not settle on it
   (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:209-212` (`No candidate has a backing`)).
+- **Settle**: a field settles when one candidate value is accepted for it
+  (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:193` (`Exactly one candidate has a backing: it settles`)).
+- **Source record**: the record a lookup source, such as a gazetteer, gives for a place, naming the
+  places it lies in, its parents
+  (`specimen.yaml:732-733` (`settled on a source record that names`)).
+- **Unit**: a piece of one label's text, cut at a logical break, such as "P.I.", "6-Sept-1946" or
+  "H. Hoogstraal leg." (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:135-142` (`CNHM.`)).
 - **Units path**: the way of reading a specimen in units. Each run records the path it started on
   and keeps it
   (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:57-58` (`The units path ships behind a switch`)).
   Some rules below hold on the units path only, and say so.
+- **Unresolved**: "A value is `unresolved` only when nothing supports even an inference"
+  (`docs/product-requirements/PRD.md:667` (`only when nothing supports even an inference`)).
+- **Work package (WP)**: a numbered step of the program's plan, `docs/execution/units/PLAN.md`.
+  WP 2.1 gave the file its version 2.0
+  (`specimen.yaml:22` (`Version 2.0 (plan WP 2.1, 2026-11-14)`)).
 
 ## What the file is built on
 
@@ -118,7 +165,7 @@ The file names eight things. The examples and the Darwin Core terms are the file
   number, and no Darwin Core term fits it
   (`specimen.yaml:96-99` (`id: code`); `specimen.yaml:866-869` (`id: code_is_no_date`)).
 
-For engineers: every relation above is a rule of the file; the rules section below lists them all.
+For engineers: most relations above are rules of the file; the rules section below lists them all.
 
 ## The 20 fields
 
@@ -157,7 +204,7 @@ system fills the field from other fields, where the file has one.
 - **The four elevation fields**: "The four elevation fields map to verbatimElevation, as written,
   and to minimumElevationInMeters and maximumElevationInMeters; an elevation in feet is the
   verbatimElevation ("4800 ft.")."
-  (`specimen.yaml:192-194` (`The four elevation fields map to verbatimElevation`)).
+  (`specimen.yaml:187-194` (`key: elevation_from_ft`)).
 - **Verbatim D/T/S**: no document of the repository names this field's Darwin Core term. The file
   uses verbatimEventDate, Darwin Core's term for an event's date and time as written
   (`specimen.yaml:264-268` (`The brief's first line says the museum has not confirmed`)).
@@ -173,9 +220,9 @@ system fills the field from other fields, where the file has one.
 ### Values the system fills in
 
 Code fills the values below. A value derived from other fields names its rule in its basis
-(`ontology/__init__.py:141-142` (`field_research/derive.py fills the rule's fields by it`)). For
-the derived values, the models are told not to fill them themselves: each bullet quotes what they
-are told.
+(`ontology/__init__.py:141-142` (`field_research/derive.py fills the rule's fields by it`)). Each
+bullet quotes the instruction the models receive under its rule. For the three derived values, that
+instruction is not to fill the value themselves.
 
 - **Country, Province/State and County** (`specimen.yaml:1005-1019` (`id: place_parents_derived`)).
   Upward derivation fills only open fields, such as a country from a settled province. A province
@@ -203,7 +250,10 @@ are told.
   When all three hold, Elevation From (ft) settles to that number, cleared, its reason
   "Basis: inferred, rule elevation_unit_feet"
   (`specimen.yaml:934` (`Basis: inferred, rule elevation_unit_feet`)), and derivation fills the
-  other elevation fields. Otherwise the field is unresolved: magnitude alone never decides.
+  other elevation fields. Otherwise the field is unresolved: magnitude alone never decides. The
+  models are told: "Keep an elevation's foot mark (') or "ft" wherever it is written; a number's
+  size alone never makes it feet."
+  (`specimen.yaml:939-940` (`Keep an elevation's foot mark`)).
 - **Date Visited To** (`specimen.yaml:1073-1076` (`id: end_date_from_one_date`)). A derived Date
   Visited To is the date of a settled Date Visited From, at its precision, and is never derived from
   a written range. The models are told: "Give Date Visited To only from an end date the label
@@ -342,8 +392,11 @@ at commit 7a09445a2
 | `female_sign` | `specimen.yaml:643` (`id: female_sign`) | `https://www.unicode.org/charts/PDF/U2600.pdf`; `https://dwc.tdwg.org/terms/#dwc:sex`; `src/specimen_digitization/application/domain.py:69-90`; `tests/fixtures/field_model_pilot_rows.json:75-87` |
 | `male_sign` | `specimen.yaml:652` (`id: male_sign`) | `https://www.unicode.org/charts/PDF/U2600.pdf`; `https://dwc.tdwg.org/terms/#dwc:sex`; `src/specimen_digitization/application/domain.py:69-90`; `tests/fixtures/field_model_pilot_rows.json:75-87` |
 
-For engineers: every source is checked to name a file and lines it has by
-`tests/test_ontology.py::test_every_source_names_a_file_and_lines_it_has`, and the experts' label
+For engineers: `tests/test_ontology.py::test_every_source_names_a_file_and_lines_it_has` skips a
+web source. Every other source must name a line or a range of lines, the first no later than the
+last. For a file of this repository the test checks that the file exists and has those lines. An `insects.py ... at 7a09445a2`
+source, from the deleted module, is checked only for its prefix and for lines within that module's
+120 lines (`tests/test_ontology.py:437-450` (`for source in sources:`)). The experts' label
 notations are pinned in the file by
 `tests/test_ontology.py::test_the_label_notations_of_the_experts_brief_are_in_the_file`.
 
@@ -351,15 +404,20 @@ notations are pinned in the file by
 
 The file's advice on where a unit belongs:
 
-1. **A unit that holds an open question carries no field and no reading**, whatever else it holds
-   (`ontology/__init__.py:309-311` (`questions = _unique`)).
-2. **Otherwise, a unit that matches a notation takes that notation's fields**
-   (`ontology/__init__.py:312-315` (`notations = [entry`)).
-3. **Where no notation names the fields, a routing entry does.** A routing entry is a judgement of
-   the unit that no notation makes, such as "this is a place's name". Its fields follow the
-   notations' fields
-   (`ontology/__init__.py:288-289` (`names a routing entry, a judgement of the unit no notation`);
-   `ontology/__init__.py:316-317` (`if route is not None:`)).
+- **A unit that holds an open question carries no field and no reading**, whatever else it holds.
+  This is the only part of the advice that overrides the rest
+  (`ontology/__init__.py:309-311` (`questions = _unique`)).
+- **A unit takes the fields of every notation it matches**
+  (`ontology/__init__.py:312-315` (`notations = [entry`)).
+- **A unit judged to be of a routing kind, such as a place's name, also takes that routing entry's
+  fields, after the notations' fields.** A routing entry is a judgement of the unit that no notation
+  makes
+  (`ontology/__init__.py:288-289` (`names a routing entry, a judgement of the unit no notation`);
+  `ontology/__init__.py:316-317` (`if route is not None:`)). The file advises judging a unit's kind
+  where no notation names its fields
+  (`specimen.yaml:303-305` (`The fields a kind of unit could belong to`)). "Mt. Apo" judged a
+  place's name shows both: "Mt." gives Precise Location, and the routing entry adds the other place
+  fields.
 
 The fields are advice only: every expert receives every unit. The order of the fields is the
 file's, not a likelihood (`specimen.yaml:303-305` (`The fields a kind of unit could belong to`)).
@@ -374,10 +432,11 @@ file's, not a likelihood (`specimen.yaml:303-305` (`The fields a kind of unit co
 ### Examples from the pilot labels
 
 Most of these units come from the pilot labels. "Judged as" is the routing entry the unit is
-given, where one applies. The fields are what the file gives each unit. The eleven pilot units the
-plan names are pinned by
+given, where one applies. The fields are what the file gives each unit, and
+`tests/test_ontology_curator_doc.py::test_each_example_units_fields_are_the_ones_the_file_gives_it`
+checks every row against the file. The eleven pilot units the plan names are also pinned by
 `tests/test_ontology.py::test_the_eleven_pilot_units_get_the_fields_and_meaning_the_file_gives_them`,
-and the other three by the tests named under the table.
+and three more by the tests named under the table.
 
 | Unit | Judged as | Fields | Why |
 |---|---|---|---|
@@ -395,6 +454,7 @@ and the other three by the tests named under the table.
 | `Chimaltenago` | a place's name (`place_name`) | Country, Province/State, County, City, Precise Location | A place: the sources decide which level it is. |
 | `LEWIS COLLECTION` | None | Collection Code | The owner's ruling below (`lewis_collection_heading`). |
 | `Siphonaptera of Utah` | None | No field | Not ruled: no entry in the file. |
+| `Mt. Apo` | a place's name (`place_name`) | Precise Location, Country, Province/State, County, City | "Mt." gives Precise Location (`mount`); the routing entry adds the other place fields. |
 
 For engineers: `Elev.6400` is pinned by `tests/test_ontology.py::test_a_form_matches_only_at_a_words_edge`,
 `LEWIS COLLECTION` by
@@ -434,24 +494,20 @@ sources instead of putting them to him as questions. Read it there, in his exact
 
 These are not answered. A unit holding an open question carries no field and no reading.
 
-| Question | The label writes | The question | In the file |
-|---|---|---|---|
-| `p_code` | `P-95-81-16` | What is "P-95-81-16", and does it fill a field? | `specimen.yaml:668` (`id: p_code`) |
+The context and the status are the file's words.
 
-- **"P-95-81-16"**: the file's context is that one reader of label e98a924c-L2 writes it on a line of
-  its own, and that over 12 recorded runs the first pass judged it uncertain in 7, reader A in 3 and
-  neither in 2. Its status: "No source settles it (WP 2.1, 2026-11-14): it has neither form of a
-  slide code, the catalogue number check takes five to nine digits only, and no reading marks it as
-  a collection code; the pilot truth holds it in no field. Reported to the coordinator, not put to
-  the owner."
-  (`specimen.yaml:668-679` (`id: p_code`);
-  `tests/test_ontology.py::test_the_one_open_unit_is_the_files_only_question_and_carries_nothing_else`).
+| Question | The label writes | The question | Context | Status | In the file |
+|---|---|---|---|---|---|
+| `p_code` | `P-95-81-16` | What is "P-95-81-16", and does it fill a field? | One reader of label e98a924c-L2 writes it on a line of its own; over 12 recorded runs the first pass judged it uncertain in 7, reader A in 3 and neither in 2. The spec's worked example reads it as a code. | No source settles it (WP 2.1, 2026-11-14): it has neither form of a slide code, the catalogue number check takes five to nine digits only, and no reading marks it as a collection code; the pilot truth holds it in no field. Reported to the coordinator, not put to the owner. | `specimen.yaml:668-679` (`id: p_code`) |
+
+- **"P-95-81-16"**: a unit that holds it carries no field and no reading
+  (`tests/test_ontology.py::test_the_one_open_unit_is_the_files_only_question_and_carries_nothing_else`).
 - **Other printed headings, such as "Siphonaptera of Utah"**: whether they are collection codes is
   not ruled, and the file has no entry for them
   (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:334` (`Siphonaptera of Utah`);
   `tests/test_ontology.py::test_no_other_printed_heading_is_ruled`).
 
-**Answered since version 1.0.** In version 1.0, "CNHM.", "Sp.30 ♀" and "P-95-81-16" carried no
+**Resolved since version 1.0.** In version 1.0, "CNHM.", "Sp.30 ♀" and "P-95-81-16" carried no
 field, waiting for the owner's reading (`docs/execution/units/PLAN.md:111` (`1.0 Ontology v1`)).
 Version 2.0 resolved the first two from sources
 (`specimen.yaml:598-604` (`Meanings version 1.0 left open`)):
@@ -486,7 +542,7 @@ The organiser receives every rule
 | Rule | Checked by | Fields | What it says | In the file |
 |---|---|---|---|---|
 | `one_collecting_event` | code | Country, Province/State, County, City, Precise Location, Date Visited From, Date Visited To | A specimen has one collecting event. When two of its labels write two different collecting dates, or two place names that no source confirms as one place (letter case, accents, punctuation and unit words such as "Dept." aside), an answer that settles the field on one label's text is refused. | `specimen.yaml:708-714` (`id: one_collecting_event`) |
-| `place_within_settled_places` | code | Province/State, County, City | When an answer is applied, a candidate is checked against the settled country and province, and a city against a settled county only for a near spelling. On the units path, the check stage also marks for a person a place whose source record and the settled country's record name two different nations by an identity both carry: different ISO 3166-1 codes, or, on Getty TGN records, a chain that ends at another nation's record. With the country Georgia settled, a county Fulton in the US state Georgia is marked. Below the country the check marks nothing. A person's value is never marked. | `specimen.yaml:727-742` (`id: place_within_settled_places`) |
+| `place_within_settled_places` | code | Province/State, County, City | When an answer is applied, a candidate is checked against the settled country and province, and a city against a settled county only for a near spelling. On the units path, the check stage also marks for a person a place below the country, settled on a source record that names its parents, whose record and the settled country's record name two different nations by an identity both carry: different ISO 3166-1 codes, or, on Getty TGN records, a chain that ends at another nation's record. With the country Georgia settled, a county Fulton in the US state Georgia is marked. Between a province, a county and a city the check marks nothing: a place is inside a settled province when the province's record is among its record's parents, and otherwise the check abstains. A person's value is never marked. | `specimen.yaml:727-742` (`id: place_within_settled_places`) |
 | `place_chain` | code | Country, Province/State, County, City | The places form one chain, country > province or state > county > city. On the units path, the check stage marks for a person a place whose source record and a place settled above it name two different nations, by the same test as the rule above. Below the country, a place is in the chain when the settled place's record is among its record's parents, and otherwise the check abstains: a settled Coles County, then an exact "Chicago", is not marked. A person's value is never marked. | `specimen.yaml:784-798` (`id: place_chain`) |
 | `date_order` | code | Date Visited From, Date Visited To, Date Identified | The collecting date is on or before the determination date, and the same day is allowed. Dates written at different precisions compare on the parts both have ("1946" and "1946-09-06" agree). On the units path, a settled determination dated before the settled collecting date is marked for a person, with both dates listed. | `specimen.yaml:832-839` (`id: date_order`) |
 | `day_month_order` | code | Date Visited From, Date Visited To, Date Identified | A numeric date whose two orders, day-month and month-day, give two different dates is never settled on either reading by the date check. | `specimen.yaml:852-855` (`id: day_month_order`) |
@@ -498,7 +554,7 @@ The organiser receives every rule
 | `place_parents_derived` | code | Country, Province/State, County | Upward derivation fills only open fields, as described under "Values the system fills in". On the units path, a derived country is marked for a person when a place settled below it names another nation by an identity both carry, unless a person kept the country: then the place below it is marked instead. A derived province or county is never marked. | `specimen.yaml:1005-1019` (`id: place_parents_derived`) |
 | `elevation_conversion` | code | Elevation From (m), Elevation To (m), Elevation From (ft), Elevation To (ft) | A derived elevation is a stated one copied to the other end of its unit, or its exact conversion (1 ft = 0.3048 m) rounded to the hundredth. A derived elevation never replaces a stated one. | `specimen.yaml:1048-1060` (`id: elevation_conversion`) |
 | `end_date_from_one_date` | code | Date Visited To | A derived Date Visited To is the date of a settled Date Visited From, at its precision, and is never derived from a written range. | `specimen.yaml:1073-1082` (`id: end_date_from_one_date`) |
-| `precise_location_extent` | code | Precise Location | The file gives the rule's meaning: Precise Location is the label's locality as written, every line of its locality text, with its line breaks, the higher places and an elevation written among those lines included. It is never cut to the first line, and a label whose locality names nothing finer than its town, or than its country, still has one (`specimen.yaml:1122-1127` (`The rule's meaning`)). On the units path, code marks for a person a precise location cut short before a line that continues the locality with a settled province or country, unless a person decided it. It never clears as not on the label a precise location that names nothing finer than its town or its country. One that holds an elevation settles only when its elevation text is the literal an elevation field settled from that label. | `specimen.yaml:1101-1113` (`id: precise_location_extent`) |
+| `precise_location_extent` | code | Precise Location | The file gives the rule's meaning: Precise Location is the label's locality as written, every line of its locality text, with its line breaks, the higher places and an elevation written among those lines included. It is never cut to the first line, and a label whose locality names nothing finer than its town, or than its country, still has one (`specimen.yaml:1122-1127` (`The rule's meaning`)). On the units path, code marks for a person, as cut short, a precise location whose text writes no settled province or country and that, in every reading of its label, ends a line just before a line continuing the locality with a settled province or country that no other settled field's text holds. That next line may hold nothing else but other settled fields' texts, place unit words and punctuation. A precise location a person decided is never marked. So "E. slope Mt. McKinley" before the line "Davao Prov. near Mati" is not marked (`tests/field_research/test_elevations_and_extent.py:949` (`Davao Prov. near Mati`); `tests/field_research/test_elevations_and_extent.py::test_the_next_line_marks_only_as_the_locality_going_on`). Code never clears as not on the label a precise location that names nothing finer than its town or its country. One that holds an elevation settles only when its elevation text is the literal an elevation field settled from that label. | `specimen.yaml:1101-1113` (`id: precise_location_extent`) |
 | `taxon_in_collection_scope` | code | Taxon | Field research settles a taxon only inside the collection's higher taxon, class Insecta, and only on GBIF's decision. A name whose every exact record lies outside Insecta ("Cynomys", "Citellus" and "Thomomys", genera of Mammalia) is never settled as the specimen's taxon. When another exact record of the name in Insecta has another authorship, as for "Epipsocus", there is no decision. A person reviewing the record may still choose any of GBIF's candidates. | `specimen.yaml:1181-1195` (`id: taxon_in_collection_scope`) |
 | `host_is_no_taxon` | code | Taxon | A name a label writes after a host marker ("Host Thomomys", "Ex. Canis familiaris", "ex Peromyscus leucopus", "from nest of Formica rufa") is the host the specimen was taken from or a taxon associated with it, Darwin Core's associatedTaxa, and is not taken as the specimen's scientificName. A word that only ends in a marker ("Mex.", "Upon") is no marker, and a name before the marker ("Aus bus" in "Aus bus on Quercus") is no host. | `specimen.yaml:1218-1231` (`id: host_is_no_taxon`) |
 | `parts_on_different_labels` | code | Taxon, Date Visited From, Date Visited To, Date Identified | A field's value is stored as one text from the labels until values stored as parts exist. When the parts of one field are on different labels (a name's genus on one and its species on another; a date's day and month on one and its year on another) and no one label holds them all, an answer that settles the field on one label's part does not settle it. On the units path the field is left ambiguous, with each label's part as an option, and is marked for review on each label that writes a part. | `specimen.yaml:1244-1265` (`id: parts_on_different_labels`) |
@@ -517,31 +573,40 @@ pinned by `tests/test_ontology.py::test_the_rules_rendered_text_is_pinned`.
 ## Reference tables in the file
 
 - **Highest points**: each country's highest point and its elevation, from Wikidata, retrieved on
-  2026-11-14, one row per country. Code reads it for the feet rule, and no model's text carries it
+  2026-11-14, one row per country the query returns. Code reads it for the feet rule, and no
+  model's text carries it
   (`specimen.yaml:1293-1302` (`Each country's highest point and its elevation, from Wikidata`)).
   The Philippines' row is Mount Apo, 2954 m
-  (`specimen.yaml:1461` (`Mount Apo`);
+  (`specimen.yaml:1461` (`point_name: "Mount Apo"`);
   `tests/test_ontology.py::test_the_philippines_highest_point_is_mount_apo_at_2954_metres`).
   The table has 202 rows
   (`tests/test_ontology.py::test_the_highest_point_table_is_cited_once_with_its_query_and_has_one_row_per_country`).
 - **The code's own notation tables**: the unit words of a place's name, the spellings of the
   elevation units, the words and signs that join a range, and the date notations. Each is pinned
-  equal to the table the code reads, and no model's text carries them
+  equal to the table the code reads
   (`specimen.yaml:1524-1603` (`The code's own notation tables`);
-  `tests/test_ontology.py::test_the_codes_notation_tables_are_the_files`;
-  `tests/test_ontology.py::test_no_rendered_text_carries_the_code_tables`).
+  `tests/test_ontology.py::test_the_codes_notation_tables_are_the_files`). The ontology's rendered
+  text carries none of them (`tests/test_ontology.py::test_no_rendered_text_carries_the_code_tables`).
+  The experts' brief builds its own lines for the elevation units and for what joins a range from
+  the code's tables (`specimen.yaml:350-353` (`The label notations and every reading each allows`);
+  `src/specimen_digitization/field_research/written.py:972-994` (`def range_line`);
+  `src/specimen_digitization/field_research/prompts/__init__.py:101-104` (`range_line()`)).
 
 ## Keeping this page right
 
 `tests/test_ontology_curator_doc.py` reads this page and the file. It fails when:
 
-- the things, the fields (key, display name, Darwin Core term), the notations (forms and fields),
-  the notation sources, the routing entries, the questions or the rules (check and fields) on this
-  page differ from the file's, in the file's order;
+- a table that copies the file differs from it, in the file's order: the things; the fields (key,
+  display name, Darwin Core term, what it holds); the notations (forms, fields, and the meaning
+  cell built from the readings, the note and the optional final period); the notation sources; the
+  routing entries (unit, fields, meaning); the questions (question, context, status); the rules
+  (check and fields);
 - the "Filled from other fields" column misses a derivation rule the file gives a field;
 - an example unit's fields differ from what the file gives it;
-- a cited line of `specimen.yaml` no longer holds the text in brackets after it, or a cited file or
-  line does not exist;
-- a cited test does not exist.
+- the text of a line or range of `specimen.yaml` that this page cites changes. The test keeps a
+  fingerprint of each cited range and names the page lines to re-read. When the text has only moved,
+  it says where it now sits;
+- a cited file or line does not exist, a cited line no longer holds the text in brackets after it,
+  or a cited test does not exist.
 
 When the file changes, change this page with it, in the same pull request.
