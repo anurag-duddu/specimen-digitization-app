@@ -80,8 +80,9 @@ the latest transcript decision (`application/workflow.py:320-336`, `:671-680`). 
 `tests/test_old_path_migration.py` and `tests/test_old_path_migration_carry.py`. Its release (the
 off-repo record `~/specimen-golive/units-program/release_446.txt`): the Data release (run
 43911184657) and the Runtime release (run 43911184486) succeeded, and the API's `/version` gave
-c431da22. The CI/CD run 43911184649 failed on its first attempt, so Hosting still gave be1d45167
-when that record was written; the run was then started again. PR #446's "Left" list is carried in
+c431da22. The CI/CD run 43911184649 failed on its first attempt (its iOS build was cancelled), so
+Hosting was not deployed; its second attempt succeeded, and Hosting then gave c431da22 (the same
+record). PR #446's "Left" list is carried in
 section 5.
 
 Row 1.8 put the switch-on "After the 1.5 gate". That gate was not met (section 1); the owner's
@@ -148,11 +149,12 @@ the one conflicting elevation for a person?" he answered "Yes, run it" (the log,
 - **Logfire.** The prompts `transcription-disagreement-adjudication` and `field-harness` (variables
   `prompt__transcription_disagreement_adjudication` and `prompt__field_harness`) were deleted on
   2026-11-16 with the owner's variables key, after a backup kept off the repository (the log,
-  line 525; `~/specimen-golive/units-program/logfire_cleanup/`). The coordinator's record
-  (`~/specimen-golive/units-program/brief_wp27_closeout.md`) gives 28 prompts remaining and
-  `prompt__first_pass_units` not registered there, and the mirrors carry the text of main
-  1ca922535; this closeout did not read Logfire. Production reads no variables (the log, line 525),
-  so the Prompts page is not current. Registering every prompt there is a follow-up if the owner
-  still wants it.
+  line 525; `~/specimen-golive/units-program/logfire_cleanup/`). The coordinator's listing after
+  the deletion (the log, line 528; `logfire_cleanup/remaining_20261116.txt`) shows 28 prompts and
+  none for the units first pass, so `prompt__first_pass_units` is not registered there; the
+  coordinator's record (`~/specimen-golive/units-program/brief_wp27_closeout.md`) gives the
+  mirrors as carrying the text of main 1ca922535. The Prompts page is therefore not current.
+  Production reads no variables (the log, line 525), so this affects only what that page shows.
+  Registering every prompt there is a follow-up if the owner still wants it.
 - **Phase 3** (3.1 people lookups, 3.2 the conventions table, 3.3 the steady-state run) did not
   start.
