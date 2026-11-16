@@ -494,8 +494,8 @@ and answered with the button "Yes, store it"
   (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:332` (`The answer covers this heading only`)).
 - **Which runs it reaches**: the spec records that the file carries the ruling on the units path
   only (`FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:332` (`on the units path only`)). The experts now research every run on the units
-  path (see "Units path" above), and every expert's instructions carry the ontology's text, its
-  notations included
+  path (see "Units path" above), and every expert's instructions carry the ontology's brief text (its
+  notations' forms and fields)
   (`src/specimen_digitization/field_research/prompts/__init__.py:65-67` (`from specimen_digitization.ontology import render`);
   `tests/test_ontology.py::test_the_first_pass_text_keeps_what_cuts_and_reads_a_unit_and_leaves_out_what_writes_a_value`).
   So the ruling reaches every run the experts research.
