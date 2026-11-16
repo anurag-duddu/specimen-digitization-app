@@ -9,8 +9,7 @@ path it is ambiguous, each label's parts named in its reason and their texts its
 person on each label that writes a part (step.field_parts, step._field_value, step._settlement). Parts on
 one label settle as today.
 
-Every test that builds a run runs on both paths (conftest.py). The old path's readings are its own, with no
-units, and it keeps main's result; so does every case of "as today" on both paths, compared with the same
+so does every case of "as today", compared with the same
 run whose units carry no role."""
 
 from __future__ import annotations
@@ -116,7 +115,7 @@ def marked_on_both_labels(run, key):
 
 @pytest.mark.parametrize("answer", GENUS_ANSWERS, ids=GENUS_ANSWERS)
 def test_a_genus_on_label_1_and_its_species_on_label_2_are_ambiguous_with_each_label_s_part(
-        tmp_path, monkeypatch, first_pass_path, answer):
+        tmp_path, monkeypatch, answer):
     """ "Aus" on label 1 and "bus" on label 2: on the units path the taxon is ambiguous, its reason
     naming each label's part, the parts its options, and a marked finding on each label; the old
     path keeps main's result (the genus settles on GBIF's decision; the expert's options stay
@@ -127,23 +126,15 @@ def test_a_genus_on_label_1_and_its_species_on_label_2_are_ambiguous_with_each_l
     settle(rig, Scripted({"taxon": script()}), tools=Genus(rig.blobs))
     run = rig.specimen.run
     taxon = run.fields["taxon"]
-    if first_pass_path == "old":
-        if answer == "one-part":
-            assert (taxon.state, taxon.literal, taxon.normalized) == (ValueState.SUPPORTED, "Danaus", GENUS_NAME)
-        else:
-            assert (taxon.state, taxon.reason) == (ValueState.AMBIGUOUS, f"{explanation} Options: Danaus; plexippus.")
-        assert findings(run, "taxon") == []
-        return
     assert (taxon.state, taxon.literal) == (ValueState.AMBIGUOUS, None)
     assert taxon.reason == ("The field's parts are on different labels: label 1 writes genus Danaus; label 2 "
         f"writes species plexippus; a person decides how they assemble. {explanation} Options: Danaus; plexippus.")
     marked_on_both_labels(run, "taxon")
 
 
-def test_two_genera_on_two_labels_are_ambiguous_with_both(tmp_path, monkeypatch, first_pass_path):
+def test_two_genera_on_two_labels_are_ambiguous_with_both(tmp_path, monkeypatch):
     """Label 1 writes the genus "Danaus", label 2 the genus "Bombus", and the expert answers label
-    1's: on the units path the taxon is ambiguous with both, marked on both labels; the old path
-    keeps main's result, label 1's genus settled."""
+    1's: on the units path the taxon is ambiguous with both, marked on both labels."""
     rig = two_labels(tmp_path, monkeypatch, TEXT.replace("taxon: Danaus plexippus", GENUS), "Bombus", TAXON)
     with_roles(rig, 0, {"Danaus": ("genus", ["taxon"])})
     with_roles(rig, 1, {"Bombus": ("genus", ["taxon"])})
@@ -151,9 +142,6 @@ def test_two_genera_on_two_labels_are_ambiguous_with_both(tmp_path, monkeypatch,
         tools=Genus(rig.blobs))
     run = rig.specimen.run
     taxon = run.fields["taxon"]
-    if first_pass_path == "old":
-        assert (taxon.state, taxon.literal) == (ValueState.SUPPORTED, "Danaus")
-        return
     assert (taxon.state, taxon.literal) == (ValueState.AMBIGUOUS, None)
     assert taxon.reason == ("The field's parts are on different labels: label 1 writes genus Danaus; label 2 "
         "writes genus Bombus; a person decides how they assemble. Settled. Options: Danaus; Bombus.")
@@ -170,11 +158,10 @@ DATE_ANSWERS = {
 
 @pytest.mark.parametrize("answer", DATE_ANSWERS, ids=DATE_ANSWERS)
 def test_a_day_and_month_on_label_1_and_the_year_on_label_2_are_ambiguous_with_each_label_s_parts(
-        tmp_path, monkeypatch, first_pass_path, answer):
+        tmp_path, monkeypatch, answer):
     """ "6 Sept" on label 1 and "1946" on label 2, the expert answering one label's part as the date:
     on the units path the date is ambiguous, its reason naming each label's parts, marked on both
-    labels; the old path keeps main's result: label 1's "6 Sept" settles, label 2's "1946" is
-    refused as a text the other label does not write."""
+    labels."""
     literal, reading = DATE_ANSWERS[answer]
     rig = two_labels(tmp_path, monkeypatch, TEXT.replace("date_visited_from: 2020-06-01", DATE), "1946", DATES)
     with_roles(rig, 0, {"6": ("day", ["date_visited_from"]), "Sept": ("month", ["date_visited_from"])})
@@ -182,14 +169,6 @@ def test_a_day_and_month_on_label_1_and_the_year_on_label_2_are_ambiguous_with_e
     settle(rig, Scripted({"date_visited_from": answering(resolved(literal, reading=reading))}))
     run = rig.specimen.run
     date = run.fields["date_visited_from"]
-    if first_pass_path == "old":
-        if answer == "label-1-part":
-            assert (date.state, date.literal) == (ValueState.SUPPORTED, "6 Sept")
-        else:
-            assert (date.state, date.reason) == (ValueState.AMBIGUOUS,
-                "The labels differ, and no approved source confirms them as one value. Settled.")
-        assert findings(run, "date_visited_from") == []
-        return
     assert (date.state, date.literal) == (ValueState.AMBIGUOUS, None)
     assert date.reason == ("The field's parts are on different labels: label 1 writes day 6, month Sept; label 2 "
         "writes year 1946; a person decides how they assemble. Settled. Options: 6; Sept; 1946.")
@@ -253,7 +232,7 @@ AS_TODAY = {
 @pytest.mark.parametrize("case", AS_TODAY, ids=AS_TODAY)
 def test_parts_one_label_writes_whole_settle_as_today_on_both_paths(tmp_path, monkeypatch, case):
     """Label 1 writes "Danaus plexippus" and the expert answers it: the run is the same, with the
-    units' roles or without them, on both paths."""
+    units' roles or without them."""
     second, roles = AS_TODAY[case]
     given = [("taxon", name, LABEL["taxon"], WHOLE) for name in ("1A", "1B")]
     given_roles = outcome_of(tmp_path / "roles", monkeypatch, TEXT, second, given, taxon_on(LABEL["taxon"]), roles,
@@ -288,34 +267,7 @@ def test_a_genus_alone_on_one_label_settles_as_today_on_both_paths(tmp_path, mon
         outcome_of(tmp_path / "none", monkeypatch, first, "Mossy forest", TAXON, script, {}, Genus))
 
 
-def test_an_old_path_run_whose_record_carries_units_with_roles_keeps_main_s_result(tmp_path, monkeypatch,
-        first_pass_path):
-    """The units-path gate: an old-path run is decided on its readings alone (step.run_readings
-    attaches no units to them), so even units with the roles of the named case in its record leave
-    the genus settled as main settles it."""
-    if first_pass_path == "units":
-        pytest.skip("the old path's gate")
-    rig = two_labels(tmp_path, monkeypatch, TEXT.replace("taxon: Danaus plexippus", GENUS), "plexippus", TAXON)
-    run = rig.specimen.run
-    entries = []
-    for number, region in enumerate(run.regions):
-        units = alignment_units(region.id, [o for o in run.observations if o.region_id == region.id])
-        named = {"Danaus": "genus", "plexippus": "species"}
-        entries.append(units.model_copy(update={"units": [unit.model_copy(update={
-            "role": next((named[span.text] for span in unit.readers.values() if span.text in named), ""),
-            "fields": ["taxon"] if any(span.text in named for span in unit.readers.values()) else []})
-            for unit in units.units]}))
-    store_reading_units(run, entries)
-    settle(rig, Scripted({"taxon": taxon_on("Danaus", value=GENUS_NAME, authority_id=GENUS_KEY, literal="Danaus")}),
-        tools=Genus(rig.blobs))
-    taxon = run.fields["taxon"]
-    assert (taxon.state, taxon.literal) == (ValueState.SUPPORTED, "Danaus")
-    assert not [f for f in run.findings if f.reason_code.endswith(":parts_on_labels")]
-
-
-# ---- WP 2.3c's re-ask -------------------------------------------------------------------------------
-
-def test_a_field_marked_by_this_rule_is_not_put_back_to_its_expert(tmp_path, monkeypatch, first_pass_path):
+def test_a_field_marked_by_this_rule_is_not_put_back_to_its_expert(tmp_path, monkeypatch):
     """The re-ask puts back only a value its expert settled that a check of the stage marks
     (reask.to_ask): a field left ambiguous because its parts are on different labels is never one."""
     rig = two_labels(tmp_path, monkeypatch, TEXT.replace("taxon: Danaus plexippus", GENUS), "plexippus", TAXON)
@@ -325,9 +277,8 @@ def test_a_field_marked_by_this_rule_is_not_put_back_to_its_expert(tmp_path, mon
         tools=Genus(rig.blobs))
     decisions = {}
     apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
-    if first_pass_path == "units":
-        assert decisions["taxon"]["rule"] == field_step.PARTS
-        assert run.fields["taxon"].state == ValueState.AMBIGUOUS
+    assert decisions["taxon"]["rule"] == field_step.PARTS
+    assert run.fields["taxon"].state == ValueState.AMBIGUOUS
     assert "taxon" not in reask.to_ask(run, run, decisions, outcomes)
 
 
@@ -483,16 +434,15 @@ def test_the_units_document_carries_each_unit_s_role():
     assert "role" not in document["2"][0]
 
 
-def test_the_taxon_and_date_experts_carry_the_rule_s_instruction_on_the_units_path_only():
+def test_the_taxon_and_date_experts_carry_the_rule_s_instruction():
     from specimen_digitization import ontology
     from specimen_digitization.field_research.prompts import instructions
 
     [rule] = [rule for rule in ontology.ontology().rules if rule.id == "parts_on_different_labels"]
     for key in ("taxon", "date_visited_from", "date_visited_to", "date_identified"):
-        assert rule.instruction in instructions(key, units=True)
-        assert rule.instruction not in instructions(key)
+        assert rule.instruction in instructions(key)
     for key in ("country", "province_state", "precise_location", "collectors"):
-        assert rule.instruction not in instructions(key, units=True)
+        assert rule.instruction not in instructions(key)
 
 
 def test_build_tasks_is_unchanged_by_roles(tmp_path, monkeypatch):

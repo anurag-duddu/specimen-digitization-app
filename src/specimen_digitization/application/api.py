@@ -5,7 +5,6 @@ import asyncio
 import hashlib
 import hmac
 import io
-import os
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
 
@@ -17,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import Field
 from PIL import Image, UnidentifiedImageError
 
-from .reading_units import first_pass_path
+from .reading_units import UNITS
 from .domain import (
     Asset,
     AuditEvent,
@@ -1441,7 +1440,7 @@ def create_app(
             id=doc["specimen_id"],
             scope=p.scope,
             batch_id=doc["batch_id"],
-            run=Run(profile=profile, first_pass_path=first_pass_path(os.environ)),
+            run=Run(profile=profile, first_pass_path=UNITS),
             asset=Asset(
                 sensitive=doc.get("sensitive", True),
                 id=doc["asset_id"],
@@ -2146,6 +2145,19 @@ def create_app(
             transcript = next(
                 (t for t in s.run.transcripts if t.region_id == body.target_id), None
             )
+            from .domain import Transcript
+            from .workflow import MOVED_ATTEMPTS
+
+            if (transcript is None and MOVED_ATTEMPTS in s.run.dependencies
+                    and "adjudicate" not in s.run.completed_steps
+                    and any(r.id == body.target_id for r in s.run.regions)):
+                # A run moved to the units path (workflow.move_to_units) holds no machine
+                # transcript until adjudicate makes it again; a blocked one would otherwise
+                # leave the person no edit to make. The person's decision is the label's
+                # transcript, which adjudicate applies again.
+                transcript = Transcript(region_id=body.target_id, alternatives=[], resolved=False,
+                    observation_ids=[o.id for o in s.run.observations if o.region_id == body.target_id])
+                s.run.transcripts.append(transcript)
             if transcript is None:
                 raise ValueError("Unknown region")
             text = body.after.get("text")
@@ -2174,16 +2186,26 @@ def create_app(
             superseded = s.run.dependencies.pop("human_review_field_locks", {})
             audit_after = {**body.after, "region_id": body.target_id,
                 "superseded_research_fields": sorted(superseded)}
+            # So does it supersede the field decisions a move to the units path carried
+            # (workflow.end_move_carries), as on a run with no carry.
+            from .workflow import end_move_carries
+
+            ended = end_move_carries(s)
+            if ended:
+                audit_after["superseded_carried_fields"] = ended
             invalidate_authorities(s.run)
             transcript.text = text
             transcript.resolved = state == "supported"
             transcript.value_state = ValueState(state)
             transcript.actor = user
             transcript.reason = body.reason
-            if s.run.first_pass_path == "units":
+            if s.run.first_pass_path == UNITS:
                 # The label's units follow its text source (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md
                 # section 3): the person's text after an edit; the readings again after an
                 # abstention that follows an edit. An abstention on the readings' units keeps them.
+                # A run the old first pass processed holds no units: the edit resumes it, and the
+                # workflow moves it to the units path (workflow.move_to_units), whose adjudicate
+                # gives the label its units from this decision.
                 from .first_pass import source_units
                 from .reading_units import PERSON
                 from .workflow import store_reading_units
@@ -2662,7 +2684,7 @@ def create_app(
         old = s.run.model_copy(deep=True)
         s.previous_runs.append(old)
         s.run = Run(
-            first_pass_path=first_pass_path(os.environ),
+            first_pass_path=UNITS,
             profile=old.profile,
             profile_snapshot=old.profile_snapshot,
             profile_rules=old.profile_rules,
@@ -2726,7 +2748,7 @@ def create_app(
             raise ValueError("Published profile unavailable: " + resolution.reason)
         s.previous_runs.append(s.run)
         s.run = Run(
-            first_pass_path=first_pass_path(os.environ),
+            first_pass_path=UNITS,
             profile=s.run.profile,
             classification_selection=ManualSelection(
                 collection_id=body.profile_collection_id,
@@ -2878,7 +2900,7 @@ def create_app(
                     from .human_field_carry import prepare, install, keep_regions
                     next_run = Run(profile=s.run.profile,
                         classification_selection=s.run.classification_selection,
-                        first_pass_path=first_pass_path(os.environ))
+                        first_pass_path=UNITS)
                     action_event = AuditEvent(actor=user, action=body.action, reason=body.reason)
                     carries = prepare(repository, s, next_run.id, action_event, blobs)
                     keep_regions(action_event, s.run, next_run)

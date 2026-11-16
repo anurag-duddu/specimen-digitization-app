@@ -1,4 +1,8 @@
-"""The LLM first-pass call (stage 6): docs/execution/golive/HARNESS.md section 3."""
+"""The LLM first-pass call (stage 6): docs/execution/golive/HARNESS.md section 3. Since WP 1.8
+the first pass is the units path's (first_pass.first_pass_units_direct; test_first_pass_units.py
+holds its units); these tests hold what every first-pass call shares: the readings it is bound
+to, its blocks, its call record, its retry and its caps, the model child, the alignment's
+differences, and g19_pick, which the integrity check applies to records already written."""
 
 import hashlib
 import json
@@ -24,11 +28,10 @@ from specimen_digitization.application.domain import (
     StageCostReservations,
 )
 from specimen_digitization.application.first_pass import (
-    DifferenceVerdict,
-    FirstPassOutput,
-    build_request,
-    output_problems,
+    alignment_units,
+    build_units_request,
     reading_differences,
+    reading_segments,
 )
 from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.storage import LocalBlobs
@@ -77,130 +80,6 @@ def test_differences_are_exact_spans_and_ignore_whitespace():
     assert reading_differences("E Slope, Elev. 6400", "ESlope, Elev.6400") == []
 
 
-def test_request_names_readers_by_letter_with_verbatim_texts():
-    readings = [reading("handwriting-qwen", QWEN), reading("handwriting-muse", MUSE)]
-
-    request, letters = build_request(readings, reading_differences(QWEN, MUSE))
-
-    assert list(letters) == ["A", "B"] and letters["B"] is readings[1]
-    assert QWEN in request and MUSE in request
-    assert (
-        '2. Reader A: "Epipocous" (in line "Epipocous") | Reader B: "Epipsocus"'
-        in request
-    )
-    assert "qwen" not in request.lower() and "muse" not in request.lower()
-
-
-def test_the_request_states_g19_and_asks_nothing_about_materiality():
-    # G19 in the model's terms; the code decides what is material (the
-    # coordinator's reading, 12:31Z on 2026-09-25).
-    readings = [reading("handwriting-qwen", QWEN), reading("handwriting-muse", MUSE)]
-
-    request, _ = build_request(readings, reading_differences(QWEN, MUSE))
-
-    assert (
-        "Choose a reader only if the image supports that reader's text at every "
-        "difference that is more than capitalization. Otherwise answer null: that "
-        "is how material ambiguity goes to human review."
-    ) in request
-    assert "material" not in request.replace("material ambiguity", "")
-    assert set(DifferenceVerdict.model_fields) == {"number", "supported"}
-
-
-def test_output_problems_demand_one_verdict_per_difference_and_known_letters():
-    output = FirstPassOutput(
-        selected_reader="C",
-        verdicts=[{"number": 1, "supported": "B"}],
-        rationale="r",
-        reader_notes={"A": "a"},
-    )
-
-    assert output_problems(output, {"A": 0, "B": 1}, 2) == [
-        "selected_reader must be one of ['A', 'B'] or null",
-        "give exactly one verdict for each difference 1 to 2",
-        "give one note for each reader ['A', 'B']",
-    ]
-
-
-def answer(**update):
-    return FirstPassOutput(
-        **{
-            "selected_reader": "A",
-            "verdicts": [],
-            "rationale": "r",
-            "reader_notes": {"A": "a", "B": "b"},
-            **update,
-        }
-    )
-
-
-@pytest.mark.parametrize(
-    "verdicts",
-    [
-        [],
-        [{"number": 1, "supported": "A"}],
-        [{"number": 1, "supported": "B"}, {"number": 2, "supported": "neither"}],
-        [{"number": 7, "supported": "nobody"}],
-    ],
-    ids=[
-        "none",
-        "one for a difference not listed",
-        "two",
-        "a number and letter unknown",
-    ],
-)
-def test_verdicts_are_ignored_when_no_difference_is_listed(verdicts):
-    # Nothing is numbered, so a verdict is for a difference that does not exist;
-    # first_pass_direct reads verdicts 1..len(differences) only, none here.
-    assert output_problems(answer(verdicts=verdicts), {"A": 0, "B": 1}, 0) == []
-
-
-def test_a_call_with_no_difference_still_needs_its_pick_and_its_notes():
-    output = answer(
-        selected_reader="C",
-        verdicts=[{"number": 1, "supported": "A"}],
-        reader_notes={"A": "a"},
-    )
-
-    assert output_problems(output, {"A": 0, "B": 1}, 0) == [
-        "selected_reader must be one of ['A', 'B'] or null",
-        "give one note for each reader ['A', 'B']",
-    ]
-
-
-@pytest.mark.parametrize(
-    "verdicts",
-    [
-        [],
-        [{"number": 2, "supported": "A"}],
-        [{"number": 1, "supported": "A"}, {"number": 1, "supported": "A"}],
-        [{"number": 1, "supported": "A"}, {"number": 2, "supported": "A"}],
-    ],
-    ids=[
-        "a verdict missing",
-        "the wrong number",
-        "a number twice",
-        "a phantom verdict",
-    ],
-)
-def test_a_listed_difference_still_demands_exactly_its_own_verdict(verdicts):
-    assert output_problems(answer(verdicts=verdicts), {"A": 0, "B": 1}, 1) == [
-        "give exactly one verdict for each difference 1 to 1"
-    ]
-
-
-def test_a_listed_difference_is_met_by_its_verdict_and_its_letter_is_checked():
-    letters = {"A": 0, "B": 1}
-
-    assert (
-        output_problems(answer(verdicts=[{"number": 1, "supported": "B"}]), letters, 1)
-        == []
-    )
-    assert output_problems(
-        answer(verdicts=[{"number": 1, "supported": "C"}]), letters, 1
-    ) == ["each verdict's supported must be one of ['A', 'B', 'neither', 'uncertain']"]
-
-
 def test_first_pass_cost_reservation_is_one_key_for_every_region():
     reservations = StageCostReservations(
         version="stage-cost-reservations-v1", cost_micros={"first_pass": 900}
@@ -213,27 +92,34 @@ ROUTE = HuggingFaceInferenceRoute(
     "fp-test", "transcription_first_pass", "vendor/vision", "novita"
 )
 PROMPT = ResolvedPrompt(
-    name=PromptName.DISAGREEMENT_ADJUDICATION,
-    text="Compare the candidate transcripts against the supplied image.",
+    name=PromptName.FIRST_PASS_UNITS,
+    text="Cut the label into reading units.",
     requested_label="test",
     served_label=None,
     version=None,
     resolution_reason="fixture",
 )
+# QWEN and MUSE as reading_segments cuts them: five segments, the readers differing in the first
+# three. A valid units answer, and one that leaves segments 2 to 5 out.
 VALID = {
-    "selected_reader": "B",
-    "verdicts": [
-        {"number": 1, "supported": "B"},
-        {"number": 2, "supported": "B"},
-        {"number": 3, "supported": "B"},
-    ],
-    "rationale": "The image shows Epipsocus.",
-    "reader_notes": {"A": "misread", "B": "matches"},
+    "units": [
+        {"first": 1, "image": "B"},
+        {"first": 2, "image": "B", "means": "the genus Epipsocus", "fields": ["taxon"]},
+        {"first": 3, "image": "uncertain", "note": "The image may show sp.1 or Sp. 1."},
+        {"first": 4, "last": 5, "image": "A"},
+    ]
 }
-INCOMPLETE = dict(VALID, verdicts=VALID["verdicts"][:1])
+INCOMPLETE = {"units": [{"first": 1, "image": "B"}]}
 PINNED = {"model_id": ROUTE.model_id, "provider": ROUTE.provider}
 PROMPTS = {PROMPT.name.value: PROMPT.model_dump(mode="json")}
 DEPENDENCIES = {"routes": {ROUTE.route_id: PINNED}, "prompts": PROMPTS}
+
+
+def sent_texts(messages):
+    """The text parts of a request's first message: its instructions aside, the request."""
+    return [item for part in messages[0].parts
+            for item in (part.content if isinstance(part.content, list) else [part.content])
+            if isinstance(item, str)]
 
 
 def pinned_route(route_id):
@@ -254,11 +140,13 @@ def direct_first_pass(
     approved=True,
     crop=b"PNG",
     infos=None,
+    units=None,
 ):
-    """first_pass_direct against a fake provider that gives these answers in turn:
+    """first_pass_units_direct against a fake provider that gives these answers in turn:
     an answer sent as its tool call, or a function of the output tool's name that
     returns the provider's whole response. `infos` collects what each request
-    carried besides its messages."""
+    carried besides its messages, and `units` (a list) receives the label's units.
+    Returns the decision and the readings."""
 
     def respond(messages, info):
         calls.append(messages)
@@ -291,35 +179,39 @@ def direct_first_pass(
     run = Run(
         profile=profile or Profile(first_pass_route=ROUTE.route_id),
         dependencies=DEPENDENCIES if dependencies is None else dependencies,
+        first_pass_path="units",
     )
     if readings is None:
         readings = [
             reading("handwriting-qwen", QWEN),
             reading("handwriting-muse", MUSE),
         ]
-    decision = first_pass_module.first_pass_direct(
+    decision, found = first_pass_module.first_pass_units_direct(
         SimpleNamespace(blobs=LocalBlobs(tmp_path)),
         SimpleNamespace(asset=SimpleNamespace(id="asset-1"), run=run),
         REGION,
         readings,
     )
+    if units is not None:
+        units.append(found)
     return decision, readings
 
 
-def test_first_pass_records_the_decision_by_reading_and_its_own_call(
+def test_first_pass_records_a_decision_that_names_no_reading_and_its_own_call(
     monkeypatch, tmp_path
 ):
     calls = []
     decision, (first, second) = direct_first_pass(monkeypatch, tmp_path, calls, VALID)
 
     assert decision.region_id == REGION.id == decision.call.region_id
-    assert decision.selected_observation_id == second.id
-    assert decision.notes == {first.id: "misread", second.id: "matches"}
-    # The code decides materiality: difference 3 is capitalization alone.
+    assert decision.selected_observation_id is None and decision.notes == {}
+    assert decision.rationale == first_pass_module.UNITS_RATIONALE
+    # The alignment's differences, each `uncertain`; the code decides materiality:
+    # difference 3 is capitalization alone.
     assert [(d.number, d.verdict, d.material) for d in decision.differences] == [
-        (1, second.id, True),
-        (2, second.id, True),
-        (3, second.id, False),
+        (1, "uncertain", True),
+        (2, "uncertain", True),
+        (3, "uncertain", False),
     ]
     assert decision.differences[1].spans[first.id].text == "Epipocous"
     call = decision.call
@@ -331,57 +223,12 @@ def test_first_pass_records_the_decision_by_reading_and_its_own_call(
     raw = json.loads(blobs.get(call.raw_ref))
     assert raw[-1]["model_name"] == call.provider_model_id
     assert len(calls) == 1 and calls[0][0].instructions == PROMPT.text
-    assert any("Reader A:" in str(part.content) for part in calls[0][0].parts)
+    request, _ = build_units_request([first, second], reading_segments([QWEN, MUSE]))
+    assert request in sent_texts(calls[0])
     # The crop's digest, as for every observation; the request's on its own (S5).
     crop = blobs.get(call.input_crop_ref)
     assert crop == b"PNG" and call.input_sha256 == hashlib.sha256(crop).hexdigest()
-    request, _ = build_request([first, second], reading_differences(QWEN, MUSE))
     assert call.request_sha256 == hashlib.sha256(request.encode()).hexdigest()
-
-
-@pytest.mark.parametrize(
-    "selected,supported,expected",
-    [
-        ("B", ["uncertain", "B", "B"], None),
-        ("B", ["neither", "B", "B"], None),
-        ("B", ["A", "B", "B"], None),
-        ("B", ["B", "B", "uncertain"], "B"),
-        ("A", ["A", "A", "B"], "A"),
-        (None, ["B", "B", "B"], None),
-    ],
-    ids=[
-        "a material difference left uncertain",
-        "a material difference left neither",
-        "material verdicts split between the readers",
-        "capitalization alone left uncertain",
-        "every material difference supports the pick",
-        "the model picks no reading",
-    ],
-)
-def test_a_pick_stands_only_when_every_material_difference_supports_it(
-    monkeypatch, tmp_path, selected, supported, expected
-):
-    # G19 as the coordinator read it (12:31Z on 2026-09-25): otherwise there is no
-    # reading, with no retry and no block (the 12:32Z confirmation); the model's
-    # pick stays on record.
-    answer = dict(
-        VALID,
-        selected_reader=selected,
-        verdicts=[{"number": n, "supported": s} for n, s in enumerate(supported, 1)],
-    )
-    calls = []
-
-    decision, (first, second) = direct_first_pass(monkeypatch, tmp_path, calls, answer)
-
-    ids = {"A": first.id, "B": second.id}
-    assert len(calls) == 1
-    assert decision.selected_observation_id == ids.get(expected)
-    assert [d.verdict for d in decision.differences] == [
-        ids.get(s, s) for s in supported
-    ]
-    assert decision.rationale == VALID["rationale"]
-    raw = json.loads(LocalBlobs(tmp_path).get(decision.call.raw_ref))
-    assert json.loads(raw[-1]["parts"][0]["args"])["selected_reader"] == selected
 
 
 @pytest.mark.parametrize(
@@ -417,16 +264,16 @@ def test_a_reading_that_records_the_runs_asset_is_bound(monkeypatch, tmp_path):
 
     decision, _ = direct_first_pass(monkeypatch, tmp_path, [], VALID, readings=readings)
 
-    assert decision.selected_observation_id == readings[1].id
+    assert decision.call.completion_state == "validated_output"
 
 
 def test_an_incomplete_answer_is_retried_once_with_the_problem(monkeypatch, tmp_path):
     calls = []
     decision, _ = direct_first_pass(monkeypatch, tmp_path, calls, INCOMPLETE, VALID)
 
-    assert len(calls) == 2 and decision.rationale == VALID["rationale"]
+    assert len(calls) == 2 and decision.rationale == first_pass_module.UNITS_RATIONALE
     retry = calls[1][-1].parts[-1]
-    assert retry.content == "give exactly one verdict for each difference 1 to 3"
+    assert retry.content == "the units must end at segment 5, the last"
 
 
 def test_an_answer_that_stays_invalid_is_a_known_malformed_response(
@@ -441,102 +288,12 @@ def test_an_answer_that_stays_invalid_is_a_known_malformed_response(
     assert failure.value.outcome_unknown is False
 
 
-def test_a_phantom_verdict_for_a_listed_difference_is_still_malformed(
-    monkeypatch, tmp_path
-):
-    # The count-0 rule does not weaken a real difference's check: a fourth
-    # verdict for three listed differences is retried once, then malformed.
-    phantom = dict(
-        VALID, verdicts=[*VALID["verdicts"], {"number": 4, "supported": "B"}]
-    )
-    calls = []
-    with pytest.raises(AdapterFailure) as failure:
-        direct_first_pass(monkeypatch, tmp_path, calls, phantom)
-
-    assert len(calls) == 2 and failure.value.status == LookupStatus.MALFORMED
-    retried, _ = direct_first_pass(monkeypatch, tmp_path, [], phantom, VALID)
-    assert retried.selected_observation_id is not None
-
-
-def whitespace_pair():
-    return [reading("handwriting-qwen", COMPACT), reading("handwriting-muse", SPACED)]
-
-
-NO_DIFFERENCE = {
-    "selected_reader": "A",
-    "verdicts": [],
-    "rationale": "The same characters, spaced differently.",
-    "reader_notes": {"A": "compact", "B": "spaced"},
-}
-PHANTOM_VERDICT = dict(NO_DIFFERENCE, verdicts=[{"number": 1, "supported": "A"}])
-
-
-def test_a_phantom_verdict_does_not_fail_a_call_with_no_difference_to_judge(
-    monkeypatch, tmp_path
-):
-    # The pilot's position 10, R1: the readers differ only in whitespace, so no
-    # difference is listed; the model's verdict for a difference that does not
-    # exist failed validation twice and blocked the run as
-    # model_malformed_response. Scripted: the same phantom answer twice.
-    first, second = whitespace_pair()
-    assert reading_differences(first.literal_text, second.literal_text) == []
-    calls = []
-
-    decision, _ = direct_first_pass(
-        monkeypatch,
-        tmp_path,
-        calls,
-        PHANTOM_VERDICT,
-        PHANTOM_VERDICT,
-        readings=[first, second],
-    )
-
-    assert len(calls) == 1, "no output retry is spent on it"
-    request = next(
-        str(part.content)
-        for part in calls[0][0].parts
-        if "Reader A:" in str(part.content)
-    )
-    assert "The transcripts differ only in whitespace." in request
-    assert decision.call.completion_state == "validated_output"
-    assert decision.differences == []
-    assert decision.selected_observation_id == first.id
-    assert decision.notes == {first.id: "compact", second.id: "spaced"}
-    assert decision.rationale == NO_DIFFERENCE["rationale"]
-    # What the model said stays in the call's raw responses, unread.
-    raw = json.loads(LocalBlobs(tmp_path).get(decision.call.raw_ref))
-    assert json.loads(raw[-1]["parts"][0]["args"])["verdicts"] == [
-        {"number": 1, "supported": "A"}
-    ]
-
-
-@pytest.mark.parametrize("selected,index", [("A", 0), ("B", 1), (None, None)])
-def test_a_call_with_no_difference_and_no_verdicts_is_accepted_with_the_models_pick(
-    monkeypatch, tmp_path, selected, index
-):
-    readings = whitespace_pair()
-    calls = []
-
-    decision, _ = direct_first_pass(
-        monkeypatch,
-        tmp_path,
-        calls,
-        dict(NO_DIFFERENCE, selected_reader=selected),
-        readings=readings,
-    )
-
-    assert len(calls) == 1 and decision.differences == []
-    assert decision.selected_observation_id == (
-        None if index is None else readings[index].id
-    )
-
-
 @pytest.mark.parametrize(
     "stop,requests,kept,tokens",
     [
         (
             lambda tool: ModelResponse(
-                parts=[ToolCallPart(tool, '{"selected_reader": "B", "verd')],
+                parts=[ToolCallPart(tool, '{"units": [{"first": 1, "ima')],
                 finish_reason="length",
                 usage=RequestUsage(input_tokens=1_200, output_tokens=4_096),
             ),
@@ -557,17 +314,19 @@ def test_a_call_with_no_difference_and_no_verdicts_is_accepted_with_the_models_p
     ],
     ids=["an answer cut off at its output cap", "a token total past 16,000"],
 )
-def test_a_first_pass_stopped_by_its_cap_selects_no_reading(
+def test_a_first_pass_stopped_by_its_cap_gets_the_alignments_units(
     monkeypatch, tmp_path, stop, requests, kept, tokens
 ):
-    # No answer within its caps is no reading, so G19 sends the raw readings on
-    # (PLAN section 1: "can rely on raw ... if LLM decided transcript output fails").
-    calls = []
+    # No answer within its caps: the label gets the alignment's units and the
+    # decision names no reading (PLAN section 1: "can rely on raw ... if LLM
+    # decided transcript output fails").
+    calls, units = [], []
 
-    decision, (first, second) = direct_first_pass(monkeypatch, tmp_path, calls, stop)
+    decision, (first, second) = direct_first_pass(monkeypatch, tmp_path, calls, stop, units=units)
 
     assert len(calls) == requests
     assert decision.selected_observation_id is None
+    assert units == [alignment_units(REGION.id, [first, second])]
     assert decision.rationale == first_pass_module.CAP_RATIONALE
     assert [(d.verdict, d.material) for d in decision.differences] == [
         ("uncertain", True),
@@ -748,8 +507,10 @@ def first_pass_child(payload):
 
 
 def invoke_first_pass(tmp_path, readings, effect):
+    """model_runtime.invoke_model's first pass: the decision and the label's units."""
     run = Run(
-        profile=Profile(first_pass_route=ROUTE.route_id), dependencies=DEPENDENCIES
+        profile=Profile(first_pass_route=ROUTE.route_id), dependencies=DEPENDENCIES,
+        first_pass_path="units",
     )
     return model_runtime.invoke_model(
         SimpleNamespace(blobs=LocalBlobs(tmp_path / "blobs"), model_effect=effect),
@@ -765,9 +526,11 @@ def test_the_first_pass_crosses_the_model_child_and_back(monkeypatch, tmp_path):
     monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
     readings = [reading("handwriting-qwen", QWEN), reading("handwriting-muse", MUSE)]
 
-    decision = invoke_first_pass(tmp_path, readings, first_pass_child)
+    decision, units = invoke_first_pass(tmp_path, readings, first_pass_child)
 
-    assert decision.selected_observation_id == readings[1].id
+    assert decision.selected_observation_id is None and units.label == REGION.id
+    # Each unit's image is the text of the reader it names (reading_units.ReadingUnit).
+    assert [unit.image for unit in units.units] == ["VI-24-68-7", "Epipsocus", "uncertain", "♀ terminalia"]
     call = decision.call
     assert (call.route_id, call.input_asset_id) == (ROUTE.route_id, ASSET.id)
     assert call.completion_state == "validated_output"
@@ -780,12 +543,13 @@ def test_the_first_pass_crosses_the_model_child_and_back(monkeypatch, tmp_path):
 def test_a_call_returned_for_another_route_or_asset_is_refused(
     monkeypatch, tmp_path, field, value
 ):
-    decision, readings = direct_first_pass(monkeypatch, tmp_path, [], VALID)
+    units = []
+    decision, readings = direct_first_pass(monkeypatch, tmp_path, [], VALID, units=units)
     call = decision.call.model_copy(update={field: value})
     forged = decision.model_copy(update={"call": call})
     body = {
         "status": "completed",
-        "value": {"decision": forged.model_dump(mode="json")},
+        "value": {"decision": forged.model_dump(mode="json"), "units": units[0].model_dump(mode="json")},
     }
     result = SimpleNamespace(
         status="completed", cleanup_complete=True, value=json.dumps(body).encode()
@@ -817,36 +581,6 @@ READER_C = "VI-24-68-7\nEpipsocus\nsp.1\n♀ terminalia"
 )
 def test_two_readings_keep_the_pairwise_differences(first, second):
     assert reading_differences_among([first, second]) == reading_differences(first, second)
-
-
-# The task sentence until 2026-10-25, when the first pass's pick became advice
-# to the field harness (the owner: "Harness can decide as it goes out and
-# learns more than what the raw transcriptions are capable of").
-TASK_BEFORE_ADVICE = (
-    "For each numbered difference, look at the image and say which reader's "
-    "text the visual evidence supports: the reader's letter, neither, or "
-    "uncertain. Then choose the reader whose raw transcript the lookups should "
-    "run against. Choose a reader only if the image supports that reader's text "
-    "at every difference that is more than capitalization. Otherwise answer "
-    "null: that is how material ambiguity goes to human review. Add one short "
-    "note per reader."
-)
-
-
-def test_the_request_for_two_readings_is_byte_for_byte_the_one_before_reader_c():
-    # SHA-256 of the request first_pass_direct built for these readings at
-    # origin/main 8f748c2f8, before the first pass took more than two readings.
-    # Only the task sentence has changed since (2026-10-25: its pick is advice).
-    readings = [reading("handwriting-qwen", QWEN), reading("handwriting-muse", MUSE)]
-
-    request, letters = build_request(readings, reading_differences_among([QWEN, MUSE]))
-
-    assert list(letters) == ["A", "B"]
-    assert request.count(first_pass_module._TASK) == 1
-    before = request.replace(first_pass_module._TASK, TASK_BEFORE_ADVICE)
-    assert hashlib.sha256(before.encode()).hexdigest() == (
-        "b9757ca6d5000039cb137c906f831b81704c8d4837561714a2309f7d99353dc8"  # pragma: allowlist secret
-    )
 
 
 @pytest.mark.parametrize(
@@ -921,20 +655,6 @@ def test_a_difference_grows_until_every_reader_is_aligned_at_its_ends():
     ]
 
 
-def test_the_request_lists_every_reader_by_letter():
-    readings = [reading(route, text) for route, text in zip(THREE_ROUTES, (QWEN, MUSE, READER_C))]
-
-    request, letters = build_request(readings, reading_differences_among([QWEN, MUSE, READER_C]))
-
-    assert list(letters) == ["A", "B", "C"] and letters["C"] is readings[2]
-    assert "Reader C:\n<<<\n" + READER_C + "\n>>>" in request
-    assert (
-        '2. Reader A: "Epipocous" (in line "Epipocous") | Reader B: "Epipsocus" '
-        '(in line "Epipsocus") | Reader C: "Epipsocus" (in line "Epipsocus")'
-    ) in request
-    assert "nemotron" not in request.lower()
-
-
 def difference(spans, verdict):
     texts = dict(zip("ABC", spans))
     return FirstPassDifference(
@@ -992,25 +712,12 @@ def test_capitalization_alone_never_blocks_a_pick_of_three():
     assert not item.material and g19_pick("A", [item]) == "A"
 
 
-@pytest.mark.parametrize(
-    "verdicts,expected",
-    [
-        (["B", "B", "C"], "C"),  # Every material difference supports C's text.
-        (["C", "C", "uncertain"], "C"),  # The third is capitalization alone.
-        (["B", "A", "C"], None),  # At difference 2, A's text is not C's.
-    ],
-)
-def test_the_first_pass_takes_three_readings_and_judges_each_reader_by_its_text(
-    monkeypatch, tmp_path, verdicts, expected
+def test_the_first_pass_takes_three_readings_and_lists_each_readers_text_at_each_difference(
+    monkeypatch, tmp_path
 ):
     readings = [reading(route, text) for route, text in zip(THREE_ROUTES, (QWEN, MUSE, READER_C))]
-    answer = {
-        "selected_reader": "C",
-        "verdicts": [{"number": n, "supported": s} for n, s in enumerate(verdicts, 1)],
-        "rationale": "The image shows Epipsocus.",
-        "reader_notes": {"A": "misread", "B": "close", "C": "matches"},
-    }
-    calls = []
+    answer = {"units": [*VALID["units"][:2], {"first": 3, "image": "C"}, VALID["units"][3]]}
+    calls, units = [], []
 
     decision, _ = direct_first_pass(
         monkeypatch,
@@ -1019,17 +726,18 @@ def test_the_first_pass_takes_three_readings_and_judges_each_reader_by_its_text(
         answer,
         readings=readings,
         profile=Profile(routes=THREE_ROUTES, first_pass_route=ROUTE.route_id),
+        units=units,
     )
 
-    ids = {letter: r.id for letter, r in zip("ABC", readings)}
+    ids = [r.id for r in readings]
+    request, _ = build_units_request(readings, reading_segments([QWEN, MUSE, READER_C]))
     assert len(calls) == 1
-    assert any("Reader C:" in str(part.content) for part in calls[0][0].parts)
-    assert decision.selected_observation_id == ids.get(expected)
-    assert decision.notes == {ids["A"]: "misread", ids["B"]: "close", ids["C"]: "matches"}
-    assert [set(d.spans) for d in decision.differences] == [set(ids.values())] * 3
+    assert request in sent_texts(calls[0]) and "readers A, B and C" in request
+    assert decision.selected_observation_id is None
+    assert [set(d.spans) for d in decision.differences] == [set(ids)] * 3
     assert [d.material for d in decision.differences] == [True, True, False]
-    assert [d.verdict for d in decision.differences] == [ids.get(v, v) for v in verdicts]
-    request, _ = build_request(readings, reading_differences_among([QWEN, MUSE, READER_C]))
+    assert {d.verdict for d in decision.differences} == {"uncertain"}
+    assert [unit.image for unit in units[0].units] == ["VI-24-68-7", "Epipsocus", "sp.1", "♀ terminalia"]
     assert decision.call.request_sha256 == hashlib.sha256(request.encode()).hexdigest()
 
 
@@ -1046,15 +754,16 @@ def test_the_first_pass_refuses_three_readings_out_of_route_order(monkeypatch, t
 def test_two_of_three_readings_in_route_order_are_compared(monkeypatch, tmp_path):
     # Reader B gave up: A and C, still in route order, are the label's readings.
     a, c = reading(THREE_ROUTES[0], QWEN), reading(THREE_ROUTES[2], READER_C)
-    answer = dict(VALID, verdicts=VALID["verdicts"][:2], reader_notes={"A": "a", "B": "b"})
+    units = []
 
     decision, _ = direct_first_pass(
-        monkeypatch, tmp_path, [], answer, readings=[a, c],
-        profile=Profile(routes=THREE_ROUTES, first_pass_route=ROUTE.route_id),
+        monkeypatch, tmp_path, [], VALID, readings=[a, c],
+        profile=Profile(routes=THREE_ROUTES, first_pass_route=ROUTE.route_id), units=units,
     )
 
-    assert decision.selected_observation_id == c.id
+    assert decision.selected_observation_id is None
     assert [set(d.spans) for d in decision.differences] == [{a.id, c.id}] * 2
+    assert {key for unit in units[0].units for key in unit.readers} == {a.id, c.id}
 
 
 def test_the_synthetic_first_pass_lists_every_reading_at_every_difference(tmp_path):

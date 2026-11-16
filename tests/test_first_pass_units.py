@@ -1,5 +1,5 @@
-"""Work package 1.2 of docs/execution/units/PLAN.md: the units path of application/first_pass.py
-and its switch, reading_units.first_pass_path."""
+"""Work package 1.2 of docs/execution/units/PLAN.md: the units path of application/first_pass.py,
+since WP 1.8 the only first pass: every new run records it (Run.first_pass_path)."""
 
 from __future__ import annotations
 
@@ -27,14 +27,10 @@ from specimen_digitization.application.domain import (
 )
 from specimen_digitization.application.first_pass import (
     CAP_RATIONALE,
-    OLD,
-    SETTING,
-    UNITS,
     UNITS_RATIONALE,
     UnitsOutput,
     alignment_units,
     build_units_request,
-    first_pass_path,
     first_readers_spelling,
     reading_segments,
     units_from_output,
@@ -46,6 +42,7 @@ from specimen_digitization.application.production import ProductionAdapters
 from specimen_digitization.application.reading_units import (
     NOT_VISIBLE,
     UNCERTAIN,
+    UNITS,
     ReadingUnit,
     ReadingUnits,
     UnitText,
@@ -106,20 +103,7 @@ def output(**changes) -> UnitsOutput:
     return UnitsOutput.model_validate({**ANSWER, **changes})
 
 
-# ------------------------------------------------------------------------------ the switch
-
-
-@pytest.mark.parametrize("environ,path", [({}, OLD), ({SETTING: ""}, OLD), ({SETTING: "off"}, OLD),
-                                          ({SETTING: "on"}, UNITS)])
-def test_the_switch_is_off_unless_it_says_on(environ, path):
-    assert first_pass_path(environ) == path
-
-
-@pytest.mark.parametrize("value", ["true", "ON", "units", "secret-value"])
-def test_a_mistyped_switch_raises_naming_the_setting_never_its_value(value):
-    with pytest.raises(ValueError) as error:
-        first_pass_path({SETTING: value})
-    assert SETTING in str(error.value) and value not in str(error.value)
+# ------------------------------------------------------------------------------ the path
 
 
 def test_a_run_on_the_old_path_stores_no_path_and_one_on_the_units_path_does():
@@ -129,15 +113,18 @@ def test_a_run_on_the_old_path_stores_no_path_and_one_on_the_units_path_does():
         Run(first_pass_path="on")
 
 
-def test_the_units_prompt_is_pinned_on_the_units_path_and_only_there(tmp_path):
+def test_every_run_pins_the_units_prompt_and_no_prompt_of_the_old_first_pass(tmp_path):
+    """pin_dependencies pins every PromptName for a run of either recorded path: the units
+    prompt among them, and none of the old first pass's prompts, which WP 1.8 removed."""
     adapters = ProductionAdapters(LocalBlobs(tmp_path))
     old = adapters.pin_dependencies(Run(profile=Profile(first_pass_route="first-pass-glm")))
     units = adapters.pin_dependencies(
         Run(profile=Profile(first_pass_route="first-pass-glm"), first_pass_path="units")
     )
 
-    assert PromptName.FIRST_PASS_UNITS.value not in old["prompts"]
-    assert set(old["prompts"]) == {name.value for name in PromptName} - {"first-pass-units"}
+    assert set(units["prompts"]) == set(old["prompts"]) == {name.value for name in PromptName}
+    assert PromptName.FIRST_PASS_UNITS.value in units["prompts"]
+    assert not {"transcription-disagreement-adjudication", "field-harness"} & set(units["prompts"])
     pinned = ResolvedPrompt.model_validate(units["prompts"]["first-pass-units"])
     # The pinned text holds the brief render, then the rules about reading a label (WP 2.2).
     from specimen_digitization import ontology
@@ -145,15 +132,11 @@ def test_the_units_prompt_is_pinned_on_the_units_path_and_only_there(tmp_path):
     assert ontology.render(brief=True) + "\n" + ontology.render_instructions("first_pass") in pinned.text
     assert pinned.text.endswith(ontology.render_instructions("first_pass"))
     assert "Specimen ontology, version 2.0." in pinned.text
-    # The readers' and the organiser's prompts carry the ontology's rules for them on the units
-    # path only (prompts.with_rules); every other prompt is the old path's.
+    # The readers' and the organiser's prompts carry the ontology's rules for them
+    # (prompts.with_rules).
     ruled = {PromptName.LITERAL_TRANSCRIPTION.value: "reader", PromptName.STRUCTURED_EXTRACTION.value: "organiser"}
-    assert {k: v for k, v in units["prompts"].items() if k != "first-pass-units" and k not in ruled} == {
-        k: v for k, v in old["prompts"].items() if k not in ruled}
     for name, model in ruled.items():
-        served, carried = old["prompts"][name], units["prompts"][name]
-        assert carried == {**served, "text": served["text"] + "\n\n" + ontology.render_instructions(model).strip()}
-        assert "specimen ontology" not in served["text"].lower()
+        assert units["prompts"][name]["text"].endswith("\n\n" + ontology.render_instructions(model).strip())
 
 
 # The units prompt's image line, with the wording measured in the WP 1.5 gap analysis (off-repo:
@@ -904,40 +887,12 @@ def test_every_units_request_sends_temperature_zero_and_low_reasoning_and_the_ca
     }
 
 
-def test_the_old_path_s_requests_carry_no_temperature(monkeypatch, tmp_path):
-    sent = offline_provider(monkeypatch, GLM_ROUTE, [INCOMPLETE, VALID])
-    monkeypatch.setenv("HF_TOKEN", "synthetic-test-credential")
-    monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
-    monkeypatch.setattr(workflow_module, "crop_bytes", lambda *args: png(60, 40))
-    prices = published_registry().resolve("insects").profile.processing.price_list
-    run = Run(
-        profile=Profile(
-            first_pass_route=GLM_ROUTE.route_id,
-            execution=ExecutionPolicy(price_list=prices.model_dump(mode="json")),
-        ),
-        dependencies=pinned_route(GLM_ROUTE.route_id),
-    )
-    readings = [reading("handwriting-qwen", QWEN), reading("handwriting-muse", MUSE)]
-
-    decision = first_pass_module.first_pass_direct(
-        SimpleNamespace(blobs=LocalBlobs(tmp_path)),
-        SimpleNamespace(asset=SimpleNamespace(id="asset-1"), run=run),
-        REGION,
-        readings,
-    )
-
-    assert len(sent) == 2
-    assert all("temperature" not in body for body in sent)
-    assert [body["reasoning_effort"] for body in sent] == ["medium", "medium"]
-    assert decision.call.parameters == {"extra_body": {"reasoning_effort": "medium"}, "max_tokens": 4_096}
-
-
 # ------------------------------------------------------------- the workflow, synthetic adapters
 
 
 def start_run(tmp_path, adapters):
     """A specimen created through the API's intake, its run replaced by a fresh one that keeps
-    the intake run's path (test_first_pass_workflow.start keeps no path)."""
+    the intake run's path, the units path."""
     from test_application import client, intake
 
     from specimen_digitization.application.api import SYNTHETIC_COLLECTION, SYNTHETIC_ORG
@@ -950,21 +905,15 @@ def start_run(tmp_path, adapters):
     scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
     principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
     specimen = repo.get(scope, row["specimen_id"])
-    recorded = getattr(specimen.run, "first_pass_path", None)
-    specimen.run = Run(profile=specimen.run.profile,
-                       **({"first_pass_path": recorded} if recorded is not None else {}))
+    specimen.run = Run(profile=specimen.run.profile, first_pass_path=specimen.run.first_pass_path)
     repo.save(principal, specimen, specimen.version, "new-run", digest({"new": True}))
     return Workflow(repo, adapters.blobs, adapters), principal, specimen.id
 
 
-def drained(tmp_path, monkeypatch, *, switch="on", alternate="taxon: different", readers=None):
+def drained(tmp_path, monkeypatch, *, alternate="taxon: different", readers=None):
     from specimen_digitization.application.api import SYNTHETIC_TEXT
     from specimen_digitization.application.workflow import SyntheticAdapters
 
-    if switch is None:
-        monkeypatch.delenv(SETTING, raising=False)
-    else:
-        monkeypatch.setenv(SETTING, switch)
     adapters = SyntheticAdapters(LocalBlobs(tmp_path / "blobs"), SYNTHETIC_TEXT, alternate)
     calls = []
     first_pass_units = getattr(adapters, "first_pass_units", None)
@@ -974,49 +923,19 @@ def drained(tmp_path, monkeypatch, *, switch="on", alternate="taxon: different",
     return workflow, principal, ident, calls
 
 
-def test_a_run_keeps_the_path_recorded_at_its_creation(tmp_path, monkeypatch):
-    workflow, principal, ident, _ = drained(tmp_path, monkeypatch, switch="on")
+def test_a_run_drains_on_the_units_path_recorded_at_its_creation(tmp_path, monkeypatch):
+    workflow, principal, ident, calls = drained(tmp_path, monkeypatch)
     assert workflow.repository.get(principal.scope, ident).run.first_pass_path == UNITS
-    # The switch turned off after the run was created: the run keeps its path.
-    monkeypatch.setenv(SETTING, "off")
     specimen = workflow.drain(principal, ident)
-    assert specimen.run.first_pass_path == UNITS
-    assert specimen.run.reading_units and specimen.run.first_pass_decisions
-
-
-def test_a_run_created_on_the_old_path_stays_there(tmp_path, monkeypatch):
-    workflow, principal, ident, calls = drained(tmp_path, monkeypatch, switch=None)
-    monkeypatch.setenv(SETTING, "on")
-
-    run = workflow.drain(principal, ident).run
-
-    # The stored run names no path and holds no units.
-    assert getattr(run, "first_pass_path", OLD) == OLD and run.reading_units == [] and calls == []
-    assert "first_pass_path" not in run.model_dump(mode="json")
-
-
-def test_a_run_drains_on_its_path_with_the_switch_readers_made_to_fail(tmp_path, monkeypatch):
-    """With reading_units.first_pass_path and first_pass.first_pass_path made to fail after
-    the run's creation, and the switch off, the run drains on its units path."""
-    from specimen_digitization.application import reading_units
-
-    workflow, principal, ident, calls = drained(tmp_path, monkeypatch, switch="on")
-
-    def read(environ):
-        raise AssertionError("the switch was read after the run's creation")
-
-    monkeypatch.setattr(reading_units, "first_pass_path", read)
-    monkeypatch.setattr(first_pass_module, "first_pass_path", read)
-    monkeypatch.setenv(SETTING, "off")
-    run = workflow.drain(principal, ident).run
-
-    assert run.first_pass_path == UNITS and calls == [run.regions[0].id] and run.reading_units
+    run = specimen.run
+    assert run.first_pass_path == UNITS and calls == [run.regions[0].id]
+    assert run.reading_units and run.first_pass_decisions
 
 
 def test_a_failed_first_pin_then_a_retry_keeps_the_recorded_path(tmp_path, monkeypatch):
     from specimen_digitization.application.storage import digest
 
-    workflow, principal, ident, calls = drained(tmp_path, monkeypatch, switch="on")
+    workflow, principal, ident, calls = drained(tmp_path, monkeypatch)
     adapters, failed = workflow.adapters, []
 
     def pin_once(run):
@@ -1029,8 +948,7 @@ def test_a_failed_first_pin_then_a_retry_keeps_the_recorded_path(tmp_path, monke
     blocked = workflow.step(principal, ident)
     assert blocked.run.blocker == "pinned_model_route_unavailable"
     assert "pin_dependencies" not in blocked.run.completed_steps and failed == [UNITS]
-    # The switch turns off; the run resumes with its blocker cleared and its stage set.
-    monkeypatch.setenv(SETTING, "off")
+    # The run resumes with its blocker cleared and its stage set.
     blocked.run.blocker, blocked.run.stage = None, "pin_dependencies"
     workflow.repository.save(principal, blocked, blocked.version, "resume", digest({"resume": 1}))
     run = workflow.drain(principal, ident).run
@@ -1039,9 +957,8 @@ def test_a_failed_first_pin_then_a_retry_keeps_the_recorded_path(tmp_path, monke
     assert calls == [run.regions[0].id] and run.reading_units
 
 
-@pytest.mark.parametrize("switch,path", [("on", UNITS), ("off", OLD), (None, OLD)])
-def test_the_api_records_the_switch_when_it_creates_a_run(tmp_path, monkeypatch, switch, path):
-    """The intake's run and a region review's new run each take the switch's path at their
+def test_the_api_records_the_units_path_when_it_creates_a_run(tmp_path):
+    """The intake's run and a region review's new run each record the units path at their
     creation."""
     from test_application import HEADERS, PREFIX, client, intake
 
@@ -1050,23 +967,17 @@ def test_the_api_records_the_switch_when_it_creates_a_run(tmp_path, monkeypatch,
     from specimen_digitization.application.storage import SQLiteRepository
     from specimen_digitization.application.workflow import SyntheticAdapters, Workflow
 
-    flipped = {"on": "off", "off": "on", None: "on"}[switch]
-    if switch is None:
-        monkeypatch.delenv(SETTING, raising=False)
-    else:
-        monkeypatch.setenv(SETTING, switch)
     http = client(tmp_path)
     row = intake(http)
     repo = SQLiteRepository(tmp_path / "state.sqlite3")
     scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
     created = repo.get(scope, row["specimen_id"])
-    assert getattr(created.run, "first_pass_path", OLD) == path
+    assert created.run.first_pass_path == UNITS
 
     adapters = SyntheticAdapters(LocalBlobs(tmp_path / "blobs"), SYNTHETIC_TEXT)
     principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
     drained = Workflow(repo, adapters.blobs, adapters).drain(principal, row["specimen_id"])
-    # The region review makes a new run, which records the switch as it is then.
-    monkeypatch.setenv(SETTING, flipped)
+    # The region review makes a new run, which records the units path too.
     response = http.post(
         PREFIX + f"/specimens/{row['specimen_id']}/regions",
         headers=dict(HEADERS, **{"Idempotency-Key": "regions-1"}),
@@ -1079,8 +990,7 @@ def test_the_api_records_the_switch_when_it_creates_a_run(tmp_path, monkeypatch,
     assert response.status_code == 200, response.text
     reviewed = repo.get(scope, row["specimen_id"])
     assert reviewed.run.id != drained.run.id
-    assert reviewed.run.first_pass_path == {"on": UNITS, "off": OLD}[flipped]
-    assert getattr(drained.run, "first_pass_path", OLD) == path
+    assert reviewed.run.first_pass_path == drained.run.first_pass_path == UNITS
 
 
 def run_spellings(tree):
@@ -1123,19 +1033,19 @@ def run_spellings(tree):
 
 def unrecorded_runs(source: str) -> list[tuple[int, str]]:
     """Of the calls run_spellings detects in a module's source: each construction without
-    first_pass_path=first_pass_path(os.environ), and each model_validate, model_validate_json
+    first_pass_path=UNITS (reading_units.UNITS), and each model_validate, model_validate_json
     or model_construct call."""
     import ast
 
     missing = []
     for line, kind, node in run_spellings(ast.parse(source)):
         keyword = next((k for k in node.keywords if k.arg == "first_pass_path"), None)
-        if kind != "construction" or keyword is None or ast.unparse(keyword.value) != "first_pass_path(os.environ)":
+        if kind != "construction" or keyword is None or ast.unparse(keyword.value) != "UNITS":
             missing.append((line, kind))
     return missing
 
 
-def test_the_run_calls_the_guard_detects_in_src_record_the_switch():
+def test_the_run_calls_the_guard_detects_in_src_record_the_units_path():
     """In src, run_spellings detects calls in api.py, bulk_intake.py and source_import.py, and
     unrecorded_runs reports none of them."""
     import ast
@@ -1161,32 +1071,20 @@ def test_the_run_calls_the_guard_detects_in_src_record_the_switch():
     "from .domain import Run\nrun = Run.model_validate({})\n",
     "from .domain import Run\nrun = Run.model_construct()\n",
     "from .domain import Run as R\nrun = R.model_validate_json('{}')\n",
-    "from .domain import Run\nrun = Run(profile=p, first_pass_path='units')\n",
+    "from .domain import Run\nrun = Run(profile=p, first_pass_path=OLD)\n",
     "from .domain import Run\nrun = Run(**fields)\n",
 ], ids=["bare", "module attribute", "module alias", "dotted module", "class alias", "model_validate",
-        "model_construct", "aliased model_validate_json", "a fixed path", "keywords unpacked"])
-def test_the_guard_reports_each_probe_that_builds_a_run_without_the_switch(source):
+        "model_construct", "aliased model_validate_json", "the old path", "keywords unpacked"])
+def test_the_guard_reports_each_probe_that_builds_a_run_without_the_units_path(source):
     """unrecorded_runs reports each probe."""
     assert unrecorded_runs(source)
 
 
-def test_the_guard_accepts_a_run_that_records_the_switch():
-    source = ("import os\nfrom .domain import Run as PipelineRun\nfrom . import domain\n"
-              "a = PipelineRun(profile=p, first_pass_path=first_pass_path(os.environ))\n"
-              "b = domain.Run(first_pass_path=first_pass_path(os.environ))\n")
+def test_the_guard_accepts_a_run_that_records_the_units_path():
+    source = ("from .domain import Run as PipelineRun\nfrom . import domain\n"
+              "a = PipelineRun(profile=p, first_pass_path=UNITS)\n"
+              "b = domain.Run(first_pass_path=UNITS)\n")
     assert unrecorded_runs(source) == []
-
-
-def test_a_mistyped_switch_stops_the_api_and_intake_configuration():
-    from test_api_runtime import config_env
-
-    from specimen_digitization.application.runtime_config import RuntimeConfig
-
-    for value in ("", "off", "on"):
-        RuntimeConfig.from_env(dict(config_env(), **{SETTING: value}))
-    with pytest.raises(ValueError) as error:
-        RuntimeConfig.from_env(dict(config_env(), **{SETTING: "secret-value"}))
-    assert SETTING in str(error.value) and "secret-value" not in str(error.value)
 
 
 def test_the_units_path_cuts_differing_readings_and_stores_the_units(tmp_path, monkeypatch):
@@ -1224,18 +1122,6 @@ def test_the_units_path_calls_the_first_pass_on_agreed_readings_too(tmp_path, mo
     assert transcript.decision_kind == "identical_readings" and transcript.resolved
     assert transcript.first_pass_call == decision.call
     assert run.reading_units[0].label == region.id
-
-
-def test_the_old_path_calls_no_first_pass_on_agreed_readings(tmp_path, monkeypatch):
-    from specimen_digitization.application.api import SYNTHETIC_TEXT
-
-    workflow, principal, ident, calls = drained(tmp_path, monkeypatch, switch="off",
-                                                alternate=SYNTHETIC_TEXT)
-    run = workflow.drain(principal, ident).run
-
-    # No first pass on agreed readings on the old path.
-    assert calls == [] and run.first_pass_decisions == [] and run.reading_units == []
-    assert not any(step.startswith("first_pass:") for step in run.completed_steps)
 
 
 def test_a_label_with_one_reading_gets_the_alignments_units_without_a_call(tmp_path, monkeypatch):
@@ -1398,7 +1284,6 @@ def test_the_units_cross_the_model_child_to_the_parent_and_the_stored_run(tmp_pa
         first_pass_units = ProductionAdapters.first_pass_units
 
     monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
-    monkeypatch.setenv(SETTING, "on")
     adapters = ChildUnits(LocalBlobs(tmp_path / "blobs"))
     workflow, principal, ident = start(tmp_path, adapters)
 
@@ -1473,137 +1358,6 @@ def test_the_parent_validates_and_returns_the_units(tmp_path, monkeypatch):
                             "units": units.model_dump(mode="json")})
 
     assert got == (decision, units)
-
-
-# ------------------------------------------------------- the old path: main's stored record bytes
-
-# Computed on main 4172ab824 by frozen_old_path_run: the stored bytes' SHA-256 and the
-# projection writes' digest.
-MAIN_OLD_PATH_STORED = "sha256:c2d19314b753550c1513f33cb7a0374acaa269328a50ff72e16cfbf905e18edd"
-MAIN_OLD_PATH_WRITES = "sha256:b69b17c8e43d5da547cae29e4bc80b50de8717ea290e92355da8232ddcc210b6"
-
-
-def frozen_old_path_run(tmp_path, monkeypatch, *, switch=None, unicode_version="15.0.0"):
-    """A synthetic old-path run (switch unset or off) with differing readings: ids and clocks
-    fixed as scripts/ci/export_general_api_contract_fixtures.py fixes them, its PNG seam, and
-    reading_evidence's Unicode version set to `unicode_version`."""
-    import importlib.util
-    import itertools
-    import unicodedata
-    from datetime import datetime, timezone
-    from pathlib import Path
-    from uuid import UUID
-
-    from specimen_digitization.application import (
-        api,
-        domain,
-        provider_circuit,
-        reading_evidence,
-        review_risk,
-        search,
-    )
-
-    path = Path(__file__).resolve().parents[1] / "scripts/ci/export_general_api_contract_fixtures.py"
-    spec = importlib.util.spec_from_file_location("old_path_exporter", path)
-    exporter = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(exporter)
-    monkeypatch.setattr(reading_evidence, "unicodedata",
-                        SimpleNamespace(name=unicodedata.name, unidata_version=unicode_version))
-
-    fixed = datetime(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc)
-
-    class FixedDatetime(datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return fixed if tz else fixed.replace(tzinfo=None)
-
-    for module in (domain, api, workflow_module, search, review_risk):
-        monkeypatch.setattr(module, "datetime", FixedDatetime, raising=False)
-    ids = (UUID(int=n) for n in itertools.count(100))
-    circuit = (UUID(int=n) for n in itertools.count(5000))
-    monkeypatch.setattr(domain, "uuid4", lambda: next(ids))
-    monkeypatch.setattr(provider_circuit, "uuid4", lambda: next(circuit))
-    original = workflow_module.Workflow.__init__
-
-    def deterministic(self, *args, **kwargs):
-        kwargs["clock"] = lambda: fixed
-        kwargs["monotonic"] = lambda: 100.0
-        original(self, *args, **kwargs)
-
-    monkeypatch.setattr(workflow_module.Workflow, "__init__", deterministic)
-    from test_first_pass_workflow import start
-
-    from specimen_digitization.application.api import SYNTHETIC_TEXT
-    from specimen_digitization.application.workflow import SyntheticAdapters
-
-    if switch is None:
-        monkeypatch.delenv(SETTING, raising=False)
-    else:
-        monkeypatch.setenv(SETTING, switch)
-    adapters = SyntheticAdapters(LocalBlobs(tmp_path / "blobs"), SYNTHETIC_TEXT, "taxon: different")
-    with exporter._portable_png_encoder():
-        workflow, principal, ident = start(tmp_path, adapters)
-        return workflow.drain(principal, ident)
-
-
-def old_path_pins(specimen) -> tuple[str, str]:
-    import hashlib
-
-    from test_reading_units import locate
-
-    from specimen_digitization.application.active_graph import pack
-    from specimen_digitization.application.projection import writes
-    from specimen_digitization.application.storage import digest
-
-    stored = json.dumps(pack(specimen.model_copy(deep=True), None), ensure_ascii=False,
-                        separators=(",", ":"))
-    rows = [[w.operation, w.variables, w.key] for w in writes(specimen, locate, lambda ref: 1, "worker-uid")]
-    return ("sha256:" + hashlib.sha256(stored.encode()).hexdigest(), "sha256:" + digest(rows))
-
-
-def test_the_unicode_version_reaches_the_old_path_record_only_through_reading_metadata(
-    tmp_path, monkeypatch
-):
-    """Two Unicode versions give stored records whose differing leaves are each observation's
-    reading_metadata blob_ref and sha256, and equal projection writes."""
-    from specimen_digitization.application.active_graph import pack
-
-    def stored(version):
-        with monkeypatch.context() as patch:
-            specimen = frozen_old_path_run(tmp_path / version, patch, unicode_version=version)
-        return specimen, pack(specimen.model_copy(deep=True), None)
-
-    (old, old_stored), (new, new_stored) = stored("14.0.0"), stored("15.0.0")
-
-    def leaves(value, path=()):
-        if isinstance(value, dict):
-            for key, item in value.items():
-                yield from leaves(item, (*path, key))
-        elif isinstance(value, list):
-            for index, item in enumerate(value):
-                yield from leaves(item, (*path, index))
-        else:
-            yield path, value
-
-    one, two = dict(leaves(old_stored)), dict(leaves(new_stored))
-    differing = {path for path in one.keys() | two.keys() if one.get(path) != two.get(path)}
-    readings = {o.id for o in old.run.observations}
-    assert differing and {(path[-2], path[-1]) for path in differing} == {
-        (ident, key) for ident in readings for key in ("blob_ref", "sha256")
-    }
-    assert all("reading_metadata" in path for path in differing)
-    assert old_path_pins(old)[1] == old_path_pins(new)[1]
-
-
-@pytest.mark.parametrize("switch", [None, "off"], ids=["unset", "off"])
-def test_an_old_path_run_stores_main_s_bytes(tmp_path, monkeypatch, switch):
-    specimen = frozen_old_path_run(tmp_path, monkeypatch, switch=switch)
-    run = specimen.run
-
-    assert getattr(run, "first_pass_path", OLD) == OLD and run.reading_units == []
-    assert any(step.startswith("first_pass:") for step in run.completed_steps)
-    assert old_path_pins(specimen) == (MAIN_OLD_PATH_STORED, MAIN_OLD_PATH_WRITES)
-
 
 
 # -------------------------------------------------------------- integrity and the projection
@@ -1813,9 +1567,8 @@ def given_up(workflow):
     workflow.adapters.first_pass_units = malformed
 
 
-@pytest.mark.parametrize("case", ["units, differing", "units, agreed", "units, one reader",
-                                  "units, given up", "old, differing"])
-def test_the_versions_five_runs_project_pass_the_mirrored_connector_checks(
+@pytest.mark.parametrize("case", ["differing", "agreed", "one reader", "given up"])
+def test_the_versions_four_runs_project_pass_the_mirrored_connector_checks(
     tmp_path, monkeypatch, case
 ):
     from test_reading_units import locate
@@ -1824,8 +1577,7 @@ def test_the_versions_five_runs_project_pass_the_mirrored_connector_checks(
     from specimen_digitization.application.projection import writes
 
     alternate = SYNTHETIC_TEXT if "agreed" in case else "taxon: different"
-    workflow, principal, ident, _ = drained(tmp_path, monkeypatch, alternate=alternate,
-                                            switch="off" if case.startswith("old") else "on")
+    workflow, principal, ident, _ = drained(tmp_path, monkeypatch, alternate=alternate)
     if "one reader" in case:
         one_reader(workflow)
     if "given up" in case:
@@ -2021,7 +1773,6 @@ def test_an_abstention_after_an_edit_of_readings_with_no_text_leaves_the_label_w
     and the run drains with its integrity held."""
     from specimen_digitization.application.workflow import SyntheticAdapters
 
-    monkeypatch.setenv(SETTING, "on")
     adapters = SyntheticAdapters(LocalBlobs(tmp_path / "blobs"), " ", " ")
     workflow, principal, ident = start_run(tmp_path, adapters)
     specimen = workflow.drain(principal, ident)
@@ -2034,29 +1785,6 @@ def test_an_abstention_after_an_edit_of_readings_with_no_text_leaves_the_label_w
     assert workflow.repository.get(principal.scope, ident).run.reading_units == []
     run = workflow.drain(principal, ident).run
     assert run.blocker != "evidence_integrity_failure"
-
-
-def test_an_old_path_record_with_units_keeps_them_through_a_person_s_edit_and_approval(tmp_path, monkeypatch):
-    """Codex 8 of PR #425's review: integrity holds a person's units only on the units path. An
-    old-path record carrying the readings' units keeps them through a person's edit (the
-    decision regenerates units only on the units path), and integrity holds and its approval
-    leaves no integrity blocker."""
-    from specimen_digitization.application.integrity import verify_evidence
-
-    workflow, principal, ident, _ = drained(tmp_path, monkeypatch, switch="off")
-    specimen = workflow.drain(principal, ident)
-    (region,) = specimen.run.regions
-    units = alignment_units(region.id, [o for o in specimen.run.observations if o.region_id == region.id])
-    store_reading_units(specimen.run, [units])
-    workflow.repository.save(principal, specimen, specimen.version, "units", "units")
-    decide(workflow, principal, ident, region.id, {"text": "taxon: as a person reads it", "state": "supported"},
-           "edit-1")
-    edited = workflow.repository.get(principal.scope, ident)
-    assert (edited.run.first_pass_path, edited.run.reading_units) == (OLD, [units])
-    verify_evidence(edited, workflow.blobs)
-    workflow.drain(principal, ident)
-    approve(workflow, principal, ident, "approve-1")
-    assert workflow.repository.get(principal.scope, ident).run.blocker != "evidence_integrity_failure"
 
 
 def test_integrity_holds_a_label_s_units_to_its_text_source(tmp_path, monkeypatch):

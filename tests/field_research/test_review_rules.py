@@ -3,11 +3,11 @@ typed on 2026-11-14: "4 shouldn't be flagged. It should be caught and handled. G
 at the user it is to help by being in in autonomy as much as possible." and "Harness needs to work and do its
 magic".
 
-(i) unresolved_transcription keeps main's rule on both paths. WP 2.R tried dropping it on the units path for a
+(i) unresolved_transcription keeps main's rule. WP 2.R tried dropping it on the units path for a
 label whose readers' differences decide no field, then for one whose readers differ only in letter case or spacing,
 and removed both (the coordinator's decision on #441's second review): the last form dropped 4 labels of the stored
 runs, on drawn slides, finished no specimen, and each review round found an input where such a difference decides a
-field. The inputs stay below as regressions, the reason kept on both paths.
+field. The inputs stay below as regressions, the reason kept.
 
 (ii) mandatory_unresolved is not raised for a field settled absent as not on the label (owner decision A,
 docs/execution/golive/FIELD_RESEARCH.md, "Fields the label does not state") only where its expert answered
@@ -19,10 +19,7 @@ checked each field the list leaves out against its sources and adds none (contra
 the rule is today's; its named cases are test_step's
 test_the_listed_fields_a_label_does_not_state_clear_as_not_on_the_label (a field the label does not write,
 cleared, no reason) and test_a_field_whose_line_the_label_writes_never_clears_as_not_on_the_label (a field whose
-reading writes its text, answered label_lacks_value, keeps the reason); the fields left out are pinned below.
-
-Every test runs on both first-pass paths (conftest.py). On the old path, live in production until WP 1.8, each
-test asserts origin/main's result."""
+reading writes its text, answered label_lacks_value, keeps the reason); the fields left out are pinned below."""
 
 from __future__ import annotations
 
@@ -60,12 +57,11 @@ NOTE_A, NOTE_B = "head 4 legs", "head + legs"
 
 def second_label_read(monkeypatch, *texts):
     """build_rig's specimen with a second label its readers read as `texts`, in route order; "" for a reader
-    that read nothing, which extraction_readings leaves out (test_first_pass_advice's helper, which also takes
-    make_specimen's `first_pass`, so that a first pass given up on runs on it too)."""
+    that read nothing, which extraction_readings leaves out (test_first_pass_advice's helper)."""
     original = rig_module.make_specimen
 
-    def make(blobs, first=TEXT, other=None, *, first_pass=True):
-        specimen = original(blobs, first, other, first_pass=first_pass)
+    def make(blobs, first=TEXT, other=None):
+        specimen = original(blobs, first, other)
         run = specimen.run
         output = io.BytesIO()
         Image.new("RGB", (100, 100), "white").save(output, format="JPEG", quality=95)
@@ -82,9 +78,6 @@ def second_label_read(monkeypatch, *texts):
                 input_asset_id=specimen.asset.id, input_crop_ref=region.crop_ref, literal_text=text,
                 raw_ref=blobs.put(raw), raw_sha256=hashlib.sha256(raw).hexdigest()))
             run.completed_steps.append(f"transcribe:{region.id}:{route}")
-        if len(set(texts)) > 1 and first_pass and rig_module.PATH == "old":
-            # Its first pass picked no reading, as make_specimen's.
-            run.completed_steps.append(f"first_pass:{region.id}")
         return specimen
     monkeypatch.setattr(rig_module, "make_specimen", make)
 
@@ -114,20 +107,20 @@ def noted(tmp_path, monkeypatch, *texts, refused=False):
     ("IV-25\n1948", "IV-25\n1949"),
     ("IV-25\n1948\nMt. Apo", "IV-25\n1948\nMT. APO"),
 ], ids=["letter-case-or-spacing", "a-note-no-field-draws", "the-year-beside-IV-25", "Mt-Apo-MT-APO"])
-def test_a_second_label_whose_readers_differ_keeps_the_reason(tmp_path, monkeypatch, first_pass_path, texts):
+def test_a_second_label_whose_readers_differ_keeps_the_reason(tmp_path, monkeypatch, texts):
     """The inputs of WP 2.R's tried narrowings: readers that differ only in letter case or spacing ("Sp. 22" /
     "sp. 22"); on a note no field draws (105526329's "head 4 legs" / "head + legs"); on a year beside the date
     "IV-25" (Codex on #441's first review); and in the case of "Mt. Apo" / "MT. APO" below it, which
     date_lines reads as a unit after the year in one reading only (Codex on #441's second review). The label
-    keeps unresolved_transcription on both paths, as on main."""
+    keeps unresolved_transcription, as on main."""
     rig, run = noted(tmp_path, monkeypatch, *texts)
     region = second_region(run)
     assert transcription(run, region) in run.reasons and run.disposition == Disposition.REVIEW
 
 
-def test_a_label_whose_readers_differ_on_a_fields_literal_keeps_the_reason(tmp_path, first_pass_path):
+def test_a_label_whose_readers_differ_on_a_fields_literal_keeps_the_reason(tmp_path):
     """1A writes "J. Smith", 1B "J. Smyth"; the collectors' expert settles 1A's text, which the readers do not
-    agree on. The label keeps unresolved_transcription on both paths, and the collectors their own reason
+    agree on. The label keeps unresolved_transcription, and the collectors their own reason
     (test_step's test_on_a_label_with_no_decided_transcript_the_way_out_is_a_transcription_decision)."""
     rig = build_rig(tmp_path, TEXT, SMYTH, candidates=every_field(*SMITH_OR_SMYTH))
     run = rig.specimen.run
@@ -137,7 +130,7 @@ def test_a_label_whose_readers_differ_on_a_fields_literal_keeps_the_reason(tmp_p
         [transcription(run, region), "mandatory_unresolved:collectors"])
 
 
-def test_a_label_whose_first_pass_was_given_up_keeps_the_reason(tmp_path, monkeypatch, first_pass_path):
+def test_a_label_whose_first_pass_was_given_up_keeps_the_reason(tmp_path, monkeypatch):
     """The letter-case labels above, with the first pass refused on every attempt and given up: the second
     label keeps unresolved_transcription on both paths (HARNESS.md, a given-up label goes to review however its
     fields settle)."""
@@ -147,9 +140,9 @@ def test_a_label_whose_first_pass_was_given_up_keeps_the_reason(tmp_path, monkey
     assert transcription(run, region) in run.reasons and run.disposition == Disposition.REVIEW
 
 
-def test_a_label_one_reader_read_keeps_the_reason(tmp_path, monkeypatch, first_pass_path):
+def test_a_label_one_reader_read_keeps_the_reason(tmp_path, monkeypatch):
     """The second label's other reader read nothing (wp15c's pair arm, where one reader returned nothing on
-    seven labels): the label keeps unresolved_transcription on both paths."""
+    seven labels): the label keeps unresolved_transcription."""
     rig, run = noted(tmp_path, monkeypatch, NOTE_A, "")
     region = second_region(run)
     assert [r.text for r in field_step.run_readings(run) if r.region_id == region] == [NOTE_A]
@@ -158,12 +151,11 @@ def test_a_label_one_reader_read_keeps_the_reason(tmp_path, monkeypatch, first_p
 
 @pytest.mark.parametrize("texts", [("Malaise trap\nslide 2", "slide 2"), ("Malaise trap\nslide 2", "Malaise trep\nslide 2"),
     ("Malaise trap\nslide 2", "MALAISE TRAP\nslide 2")], ids=["a-line-one-reader-lacks", "trap-trep", "letter-case"])
-def test_a_label_whose_readers_write_a_cleared_fields_text_keeps_the_reason(tmp_path, monkeypatch,
-        first_pass_path, texts):
+def test_a_label_whose_readers_write_a_cleared_fields_text_keeps_the_reason(tmp_path, monkeypatch, texts):
     """G51's input on #441's first review: the second label writes "Malaise trap", which one reader leaves
     out, misreads as "Malaise trep" or writes in capitals, and the collecting method clears as not on the
     label. Its label's reason is the only one that sends that field to a person: the label keeps
-    unresolved_transcription on both paths."""
+    unresolved_transcription."""
     second_label_read(monkeypatch, *texts)
     rig = build_rig(tmp_path, label_with(collection_method=None), candidates=every_field())
     run = rig.specimen.run
@@ -192,8 +184,7 @@ def test_the_not_on_label_list_is_unchanged_by_wp_2r():
 
 
 @pytest.mark.parametrize("key", LEFT_OUT)
-def test_a_field_left_off_the_list_keeps_its_reason_when_the_label_does_not_write_it(tmp_path, key,
-        first_pass_path):
+def test_a_field_left_off_the_list_keeps_its_reason_when_the_label_does_not_write_it(tmp_path, key):
     """Its line is off the label, the organiser gives no candidate for it and its expert answers
     label_lacks_value: on both paths no not-on-the-label row clears it. Each but Date Visited To is not present
     and keeps mandatory_unresolved; Date Visited To is derived from the settled Date Visited From (G44), so it
@@ -216,11 +207,10 @@ def test_a_field_left_off_the_list_keeps_its_reason_when_the_label_does_not_writ
     assert f"mandatory_unresolved:{key}" in run.reasons and run.disposition == Disposition.REVIEW
 
 
-def test_a_field_that_waits_for_its_source_is_never_settled_absent(tmp_path, first_pass_path):
+def test_a_field_that_waits_for_its_source_is_never_settled_absent(tmp_path):
     """Date Visited To follows Date Visited From (G44), which the readers write differently and which stays
     held. On the units path the To date waits (WP 2.3b, ontology_checks.waiting_fields): unknown, no
-    not-on-the-label row and no reason of its own, its source's reason routing the record. On the old path it
-    is not present with its own reason, as on main."""
+    not-on-the-label row and no reason of its own, its source's reason routing the record."""
     first, second = (label_with(date_visited_from=date) for date in ("2020-06-01", "2020-06-07"))
     rig = build_rig(tmp_path, first, second, candidates=every_field(
         ("date_visited_from", "1A", "2020-06-01", "date_visited_from: 2020-06-01"),
@@ -234,8 +224,5 @@ def test_a_field_that_waits_for_its_source_is_never_settled_absent(tmp_path, fir
     rows = {item.id: item for item in run.evidence}
     assert not [i for i in to.evidence_ids if rows[i].locator == field_step.NOT_ON_LABEL_CHECK]
     assert "mandatory_unresolved:date_visited_from" in run.reasons
-    if first_pass_path == "units":
-        assert "date_visited_to" in ontology_checks.waiting_fields(run)
-        assert to.state == ValueState.UNKNOWN and "mandatory_unresolved:date_visited_to" not in run.reasons
-    else:
-        assert to.state == ValueState.NOT_PRESENT and "mandatory_unresolved:date_visited_to" in run.reasons
+    assert "date_visited_to" in ontology_checks.waiting_fields(run)
+    assert to.state == ValueState.UNKNOWN and "mandatory_unresolved:date_visited_to" not in run.reasons

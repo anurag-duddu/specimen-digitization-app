@@ -141,8 +141,7 @@ def resolved(literal, *names):
         explanation="Read from the label."))
 
 
-@pytest.mark.parametrize("decided", [False, True], ids=["no-reading-decided", "decided-transcript"])
-def test_a_locality_after_another_fields_text_settles_and_that_field_goes_to_review(tmp_path, decided):
+def test_a_locality_after_another_fields_text_settles_and_that_field_goes_to_review(tmp_path):
     """e98a924c on 616ae010 (run 629f91eb): the organiser filed the whole
     first line "CNHM. E Slope Mt." as the collection code, its expert kept
     that candidate, and the precise location's expert read "E Slope Mt." /
@@ -150,10 +149,10 @@ def test_a_locality_after_another_fields_text_settles_and_that_field_goes_to_rev
     Slope Mt." and neither holds the other. Now the locality settles and
     the collection code, which runs into it, goes to review. On 616ae010
     the locality goes to review and the code settles."""
-    rig = build_rig(tmp_path, CNHM_A, CNHM_B, decided=decided, candidates=CODE_LINE)
+    rig = build_rig(tmp_path, CNHM_A, CNHM_B, candidates=CODE_LINE)
     run = rig.specimen.run
-    settle(rig, Scripted({**NO_PLACES, "collection_code": resolved("CNHM. E Slope Mt.", *(["1A"] if decided else [])),
-        "precise_location": resolved(TWO_LINES, *(["1A"] if decided else []))}))
+    settle(rig, Scripted({**NO_PLACES, "collection_code": resolved("CNHM. E Slope Mt."),
+        "precise_location": resolved(TWO_LINES)}))
     locality, code = run.fields["precise_location"], run.fields["collection_code"]
     assert (locality.state, locality.literal) == (ValueState.SUPPORTED, TWO_LINES)
     assert field_checks(run, {"precise_location"}) == []

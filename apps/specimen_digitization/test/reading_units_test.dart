@@ -1,7 +1,8 @@
 // The app's reader of a run's reading units (docs/execution/units/PLAN.md,
 // WP 1.1). The record with units is the one the server's workspace route
 // returned in tests/test_reading_units.py; the record without them is the
-// shared API contract corpus, which main's server wrote.
+// workspace response main's server wrote for a run of the old first pass,
+// frozen from the shared API contract corpus by WP 1.8 part B.
 
 import 'dart:convert';
 import 'dart:io';
@@ -36,7 +37,13 @@ Json get corpus => readJson('../../tests/fixtures/general_api_contracts.json');
 
 /// The workspace body main's server returned, without units.
 Json get workspaceBody => Json.from(
-  jsonDecode(corpus['responses']['workspace']['body_utf8'] as String) as Map,
+  jsonDecode(
+        readJson(
+              '../../tests/fixtures/old_path_workspace.json',
+            )['workspace']['body_utf8']
+            as String,
+      )
+      as Map,
 );
 
 /// [text]'s code points from [start] to [end], as the server indexes them.

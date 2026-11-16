@@ -230,7 +230,7 @@ class CountingAdapters(ProductionLikeAdapters):
 
 
 def test_retry_after_allowance_increase_keeps_completed_paid_work(tmp_path):
-    from specimen_digitization.application.first_pass import synthetic_decision
+    from specimen_digitization.application.first_pass import synthetic_units
 
     class ThreeLabels(CountingAdapters):
         def __init__(self, *args):
@@ -249,13 +249,13 @@ def test_retry_after_allowance_increase_keeps_completed_paid_work(tmp_path):
             self.readings += 1
             return super().transcribe(specimen, region, route)
 
-        def first_pass(self, specimen, region, readings):
+        def first_pass_units(self, specimen, region, readings):
             self.comparisons += 1
-            decision = synthetic_decision(self.blobs, region, readings)
+            decision, units = synthetic_units(self.blobs, region, readings)
             return decision.model_copy(update={"call": decision.call.model_copy(update={
                 "route_id": specimen.run.profile.first_pass_route,
                 "input_tokens": 1_000, "output_tokens": 40,
-            })})
+            })}), units
 
     app, repository = lab(tmp_path, adapters=ThreeLabels)
     seed(repository, 0)

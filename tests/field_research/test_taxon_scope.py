@@ -6,9 +6,7 @@
   rule host_is_no_taxon): the units-wp15c cases "Host Thomomys" and "Ex. Canis familiaris".
 - GBIF succeeds only on its accepted record inside class Insecta, the collection's higher taxon
   (application.lookup.row_one, homonym_conflict; the rule taxon_in_collection_scope), on the
-  stored answers of units-wp15c's runs (tests/fixtures/gbif_wp15c_match_bodies.json).
-
-Every test that builds a run runs on both paths (conftest.py); the old path keeps main's result."""
+  stored answers of units-wp15c's runs (tests/fixtures/gbif_wp15c_match_bodies.json)."""
 
 from __future__ import annotations
 
@@ -67,11 +65,10 @@ def taxon_reasons(run):
 
 @pytest.mark.parametrize("code", ["sp. 30 \N{FEMALE SIGN}", "Sp.30 \N{FEMALE SIGN}", "sp. 22"])
 def test_a_code_with_no_genus_the_organiser_gave_no_value_clears_unmatched_on_the_units_path(
-        tmp_path, first_pass_path, code):
+        tmp_path, code):
     """units-wp15c's 105526321, 105526322 and 105526326: the organiser left the taxon without a
     value or a candidate, its expert asked GBIF the code and answered sources_cannot_resolve quoting
-    it, and no label writes a genus. On the units path the taxon clears as written, unmatched; the
-    old path keeps main's result, unresolved with the code as its text."""
+    it, and no label writes a genus. On the units path the taxon clears as written, unmatched."""
     rig = build_rig(tmp_path, without_the_taxon_line(code))
     run = rig.specimen.run
     [task] = [task for task in field_step.build_tasks(run)[1] if task.key == "taxon"]
@@ -79,15 +76,11 @@ def test_a_code_with_no_genus_the_organiser_gave_no_value_clears_unmatched_on_th
     settle(rig, Scripted({"taxon": cannot_resolve(code, asks=[code])}), tools=NoGenus(rig.blobs))
     taxon = run.fields["taxon"]
     evidence = {item.id: item for item in run.evidence}
-    if first_pass_path == "units":
-        assert (taxon.state, taxon.literal, taxon.normalized, taxon.authority_id, taxon.layer) == (
-            ValueState.SUPPORTED, code, None, None, "settled")
-        assert taxon.reason == field_step.UNMATCHED
-        assert field_step.taxon_unmatched(taxon, evidence, run.lookups, run=run)
-        assert taxon_reasons(run) == []
-    else:
-        assert (taxon.state, taxon.literal) == (ValueState.UNRESOLVED, code)
-        assert taxon_reasons(run) == list(TAXON_REASONS)
+    assert (taxon.state, taxon.literal, taxon.normalized, taxon.authority_id, taxon.layer) == (
+        ValueState.SUPPORTED, code, None, None, "settled")
+    assert taxon.reason == field_step.UNMATCHED
+    assert field_step.taxon_unmatched(taxon, evidence, run.lookups, run=run)
+    assert taxon_reasons(run) == []
 
 
 def naming(text):
@@ -104,10 +97,10 @@ def naming(text):
 
 
 def test_readers_writing_the_code_differently_settle_on_the_text_the_image_names(
-        tmp_path, monkeypatch, first_pass_path):
+        tmp_path, monkeypatch):
     """units-wp15c's 105526321: 2A writes "sp. 30 <female sign>", 2B "Sp.30 <female sign>", the
     image names 2A's text, and the expert quotes 2B's. On the units path the taxon clears unmatched
-    on the text the image names; the old path keeps main's result."""
+    on the text the image names."""
     monkeypatch.setattr(test_step, "seen_units", naming("sp. 30"))
     rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"),
         without_the_taxon_line("Sp.30 \N{FEMALE SIGN}"), candidates=[*COLLECTORS, *IRN])
@@ -115,16 +108,12 @@ def test_readers_writing_the_code_differently_settle_on_the_text_the_image_names
     settle(rig, Scripted({"taxon": cannot_resolve("Sp.30 \N{FEMALE SIGN}", asks=["Sp.30 \N{FEMALE SIGN}"],
         reading="1B")}), tools=NoGenus(rig.blobs))
     taxon = run.fields["taxon"]
-    if first_pass_path == "units":
-        assert (taxon.state, taxon.literal, taxon.reason) == (
-            ValueState.SUPPORTED, "sp. 30 \N{FEMALE SIGN}", field_step.UNMATCHED)
-        assert taxon_reasons(run) == []
-    else:
-        assert (taxon.state, taxon.literal) == (ValueState.UNRESOLVED, "Sp.30 \N{FEMALE SIGN}")
-        assert taxon_reasons(run) == list(TAXON_REASONS)
+    assert (taxon.state, taxon.literal, taxon.reason) == (
+        ValueState.SUPPORTED, "sp. 30 \N{FEMALE SIGN}", field_step.UNMATCHED)
+    assert taxon_reasons(run) == []
 
 
-def test_a_code_the_image_does_not_name_stays_unresolved_on_both_paths(tmp_path, monkeypatch, first_pass_path):
+def test_a_code_the_image_does_not_name_stays_unresolved(tmp_path, monkeypatch):
     """Rule 4 of the spec's section 4: readers agreeing alone back a text, the image or a source
     clears it. Where the readers spell the code differently and the image names neither, the
     taxon stays unresolved, as on main."""
@@ -140,7 +129,7 @@ def test_a_code_the_image_does_not_name_stays_unresolved_on_both_paths(tmp_path,
     assert not any(words)
 
 
-def test_a_code_below_a_genus_keeps_main_s_result_on_both_paths(tmp_path):
+def test_a_code_below_a_genus_keeps_main_s_result(tmp_path):
     """units-wp15c's 105526328: "Epipsocus" with "Sp. 1" on the line below names a genus, so owner
     decision B does not apply; the taxon stays unresolved."""
     rig = build_rig(tmp_path, without_the_taxon_line("Epipsocus\nSp. 1"))
@@ -150,7 +139,7 @@ def test_a_code_below_a_genus_keeps_main_s_result_on_both_paths(tmp_path):
     assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
-def test_a_code_the_expert_does_not_quote_never_clears_on_either_path(tmp_path):
+def test_a_code_the_expert_does_not_quote_never_clears(tmp_path):
     """The code comes from the expert's own answer only when it quotes a code with no genus: an
     answer quoting another text leaves the taxon unresolved, as on main."""
     rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"))
@@ -162,10 +151,10 @@ def test_a_code_the_expert_does_not_quote_never_clears_on_either_path(tmp_path):
 
 
 def test_a_code_the_organiser_left_with_no_value_but_its_candidates_clears_unmatched_on_the_units_path(
-        tmp_path, monkeypatch, first_pass_path):
+        tmp_path, monkeypatch):
     """units-wp15c's r1/pair 105526326: the organiser left the taxon without a value, its candidates
     3A's "sp. 22" and 3B's "Sp. 22", and the image names 3A's text. On the units path the taxon clears
-    unmatched on that text; the old path keeps main's result."""
+    unmatched on that text."""
     monkeypatch.setattr(test_step, "seen_units", naming("sp."))
     rig = build_rig(tmp_path, without_the_taxon_line("sp. 22"), without_the_taxon_line("Sp. 22"),
         candidates=[*COLLECTORS, *IRN, ("taxon", "1A", "sp. 22", "sp. 22"), ("taxon", "1B", "Sp. 22", "Sp. 22")])
@@ -174,15 +163,11 @@ def test_a_code_the_organiser_left_with_no_value_but_its_candidates_clears_unmat
     assert task.current.literal is None and len(task.candidates) == 2
     settle(rig, Scripted({"taxon": cannot_resolve("sp. 22", asks=["sp. 22", "Sp. 22"])}), tools=NoGenus(rig.blobs))
     taxon = run.fields["taxon"]
-    if first_pass_path == "units":
-        assert (taxon.state, taxon.literal, taxon.reason) == (ValueState.SUPPORTED, "sp. 22", field_step.UNMATCHED)
-        assert taxon_reasons(run) == []
-    else:
-        assert (taxon.state, taxon.literal) == (ValueState.UNRESOLVED, "sp. 22")
-        assert taxon_reasons(run) == list(TAXON_REASONS)
+    assert (taxon.state, taxon.literal, taxon.reason) == (ValueState.SUPPORTED, "sp. 22", field_step.UNMATCHED)
+    assert taxon_reasons(run) == []
 
 
-def test_two_labels_settling_two_spellings_of_the_code_never_clear_on_either_path(tmp_path, monkeypatch):
+def test_two_labels_settling_two_spellings_of_the_code_never_clear(tmp_path, monkeypatch):
     """Label 1's readers write "sp. 30 <female sign>", label 2's "Sp.30 <female sign>", the organiser's
     candidate on each label its readers' text, and each label cleared on its own text: the labels give
     two texts, so the taxon stays unresolved."""
@@ -199,10 +184,9 @@ def test_two_labels_settling_two_spellings_of_the_code_never_clear_on_either_pat
     assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
-def test_a_code_the_organiser_gave_with_no_candidate_clears_unmatched_on_the_units_path(tmp_path, first_pass_path):
+def test_a_code_the_organiser_gave_with_no_candidate_clears_unmatched_on_the_units_path(tmp_path):
     """units-wp15c's r2/pair 105526324: the organiser's value is the code "Sp 22", unresolved, with no
-    candidate row. On the units path the label settles the code the expert quotes; the old path keeps
-    main's result."""
+    candidate row. On the units path the label settles the code the expert quotes."""
     rig = build_rig(tmp_path, without_the_taxon_line("Sp 22"))
     run = rig.specimen.run
     run.fields["taxon"] = FieldValue(state=ValueState.UNRESOLVED, literal="Sp 22")
@@ -210,15 +194,11 @@ def test_a_code_the_organiser_gave_with_no_candidate_clears_unmatched_on_the_uni
     assert (task.current.literal, task.candidates) == ("Sp 22", ())
     settle(rig, Scripted({"taxon": cannot_resolve("Sp 22", asks=["Sp 22"])}), tools=NoGenus(rig.blobs))
     taxon = run.fields["taxon"]
-    if first_pass_path == "units":
-        assert (taxon.state, taxon.literal, taxon.reason) == (ValueState.SUPPORTED, "Sp 22", field_step.UNMATCHED)
-        assert taxon_reasons(run) == []
-    else:
-        assert (taxon.state, taxon.literal) == (ValueState.UNRESOLVED, "Sp 22")
-        assert taxon_reasons(run) == list(TAXON_REASONS)
+    assert (taxon.state, taxon.literal, taxon.reason) == (ValueState.SUPPORTED, "Sp 22", field_step.UNMATCHED)
+    assert taxon_reasons(run) == []
 
 
-def test_a_label_settling_another_code_than_the_one_quoted_never_clears_on_either_path(tmp_path):
+def test_a_label_settling_another_code_than_the_one_quoted_never_clears(tmp_path):
     """The label writes "sp.30" and, on the next line, "sp. 39"; the organiser's verbatims give "sp. 39",
     the one text the label settles, cleared; the expert quotes "Sp. 30", which no reading writes as it
     is. The settled text is another code, so the taxon stays unresolved."""
@@ -231,7 +211,7 @@ def test_a_label_settling_another_code_than_the_one_quoted_never_clears_on_eithe
     assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
-def test_a_taxon_the_labels_do_not_write_still_goes_to_review_on_both_paths(tmp_path):
+def test_a_taxon_the_labels_do_not_write_still_goes_to_review(tmp_path):
     """The rules' instructions have the expert answer label_lacks_value where the labels write only a
     host: the taxon is then not present, and as a mandatory field it keeps both review reasons
     (PRD.md:494, :503)."""
@@ -244,7 +224,7 @@ def test_a_taxon_the_labels_do_not_write_still_goes_to_review_on_both_paths(tmp_
 
 
 @pytest.mark.parametrize("second", ["Epipsocus\ndet. E. L. Mockford", "Epipsocus", "epipsocus"])
-def test_a_code_beside_a_genus_on_another_label_never_clears_on_either_path(tmp_path, monkeypatch, second):
+def test_a_code_beside_a_genus_on_another_label_never_clears(tmp_path, monkeypatch, second):
     """Codex's round 1, finding 2, G51's P1 and Codex's round 2, finding 1 (the genus in lower case):
     label 1 writes "sp. 30 <female sign>" alone, label 2 a genus; the organiser gives the taxon no
     value, and the expert asks GBIF the code only and quotes it. A word that may be a genus on any
@@ -259,20 +239,19 @@ def test_a_code_beside_a_genus_on_another_label_never_clears_on_either_path(tmp_
     assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
-def test_words_the_specimen_accounts_for_do_not_hold_the_code_back_on_the_units_path(tmp_path, first_pass_path):
+def test_words_the_specimen_accounts_for_do_not_hold_the_code_back_on_the_units_path(tmp_path):
     """Below the code, words that begin with a capital and are no genus: the notation "CNHM.", a
     catalogue number with its prefix, a slide code's Roman month written with spaces, and "Wings" (a
-    word of checks.NOT_GENERA). The taxon clears unmatched on the units path, as main keeps it
-    unresolved on the old path."""
+    word of checks.NOT_GENERA). The taxon clears unmatched on the units path."""
     rig = build_rig(tmp_path, without_the_taxon_line("sp. 22\nCNHM.\nFMNHINS 4486784\nIX -3- 66-10\nWings"))
     run = rig.specimen.run
     settle(rig, Scripted({"taxon": cannot_resolve("sp. 22", asks=["sp. 22"])}), tools=NoGenus(rig.blobs))
-    expected = ValueState.SUPPORTED if first_pass_path == "units" else ValueState.UNRESOLVED
+    expected = ValueState.SUPPORTED
     assert (run.fields["taxon"].state, run.fields["taxon"].literal) == (expected, "sp. 22")
 
 
 def test_another_reader_s_spelling_of_a_settled_field_s_text_does_not_hold_the_code_back_on_the_units_path(
-        tmp_path, monkeypatch, first_pass_path):
+        tmp_path, monkeypatch):
     """Reader 1B writes the habitat "Synthetic Grassland" where 1A writes "Synthetic grassland", the
     habitat settled on 1A's text: 1B's "Grassland" lies in a unit whose other reader's text the habitat
     holds, so it is accounted for, and the code clears unmatched on the units path."""
@@ -283,7 +262,7 @@ def test_another_reader_s_spelling_of_a_settled_field_s_text_does_not_hold_the_c
     run = rig.specimen.run
     settle(rig, Scripted({"taxon": cannot_resolve("sp. 22", asks=["sp. 22"])}), tools=NoGenus(rig.blobs))
     assert run.fields["habitat"].literal == "Synthetic grassland"
-    expected = ValueState.SUPPORTED if first_pass_path == "units" else ValueState.UNRESOLVED
+    expected = ValueState.SUPPORTED
     assert run.fields["taxon"].state == expected
 
 
@@ -307,8 +286,8 @@ def as_one_unit(text):
 
 @pytest.mark.parametrize("second", ["Epipsocus det. Mockford", "Epipsocus\ndet. Mockford", "Epipsocus \N{FEMALE SIGN}",
     "Epipsocus\nCNHM", "Epipsocus\N{FEMALE SIGN}", "C. pipiens"])
-def test_a_genus_sharing_a_unit_with_notation_text_never_clears_on_either_path(
-        tmp_path, monkeypatch, first_pass_path, second):
+def test_a_genus_sharing_a_unit_with_notation_text_never_clears(
+        tmp_path, monkeypatch, second):
     """G51's round 2 and the coordinator's ruling: label 2, cut as one unit, writes a genus beside a
     notation's text ("det.", a sex sign, "CNHM", glued or not), or an epithet beside an abbreviated
     genus. A word only partly inside accounted text is not accounted for, and a unit carries coverage
@@ -317,10 +296,9 @@ def test_a_genus_sharing_a_unit_with_notation_text_never_clears_on_either_path(
     test_step.a_second_label(monkeypatch, second)
     rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"))
     run = rig.specimen.run
-    if first_pass_path == "units":
-        [cut] = {tuple(tuple(span.text for span in unit.readers.values()) for unit in reading.units.units)
-            for reading in field_step.run_readings(run) if reading.region_id == run.regions[1].id}
-        assert cut == ((second, second),)
+    [cut] = {tuple(tuple(span.text for span in unit.readers.values()) for unit in reading.units.units)
+        for reading in field_step.run_readings(run) if reading.region_id == run.regions[1].id}
+    assert cut == ((second, second),)
     settle(rig, Scripted({"taxon": cannot_resolve("sp. 30 \N{FEMALE SIGN}", asks=["sp. 30 \N{FEMALE SIGN}"])}),
         tools=NoGenus(rig.blobs))
     assert run.fields["taxon"].state == ValueState.UNRESOLVED
@@ -357,11 +335,10 @@ def test_a_reader_s_covered_text_carries_only_to_the_same_words_at_its_unit(tmp_
 
 
 def test_the_organiser_s_code_beside_a_genus_on_another_label_never_clears_on_the_units_path(
-        tmp_path, monkeypatch, first_pass_path):
+        tmp_path, monkeypatch):
     """G51's P1b and the coordinator's ruling on it: the organiser's value and candidates are label 1's
     "sp. 30 <female sign>", label 2 writes "Epipsocus" with its determiner. On the units path owner
-    decision B's organiser branch declines too (step._genus_on_a_label); the old path keeps main's
-    result, the code cleared unmatched."""
+    decision B's organiser branch declines too (step._genus_on_a_label)."""
     test_step.a_second_label(monkeypatch, "Epipsocus\ndet. E. L. Mockford")
     rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"), candidates=[*COLLECTORS,
         *(("taxon", name, "sp. 30 \N{FEMALE SIGN}", "sp. 30 \N{FEMALE SIGN}") for name in ("1A", "1B"))])
@@ -370,31 +347,27 @@ def test_the_organiser_s_code_beside_a_genus_on_another_label_never_clears_on_th
     assert task.current.literal == "sp. 30 \N{FEMALE SIGN}" and len(task.candidates) == 2
     settle(rig, Scripted({"taxon": cannot_resolve("sp. 30 \N{FEMALE SIGN}", asks=["sp. 30 \N{FEMALE SIGN}"])}),
         tools=NoGenus(rig.blobs))
-    if first_pass_path == "units":
-        assert run.fields["taxon"].state == ValueState.UNRESOLVED
-        assert taxon_reasons(run) == list(TAXON_REASONS)
-    else:
-        assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
-        assert taxon_reasons(run) == []
+    assert run.fields["taxon"].state == ValueState.UNRESOLVED
+    assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
 def test_the_organiser_s_code_beside_another_spelling_on_another_label_never_clears_on_the_units_path(
-        tmp_path, monkeypatch, first_pass_path):
+        tmp_path, monkeypatch):
     """The coordinator's ruling on P1b, its second condition: the organiser's value and candidates are
     label 1's "sp. 30 <female sign>", and label 2 writes "Sp.30 <female sign>". On the units path every
     label whose readings write the code must be among the labels that settle, whichever branch reaches
-    owner decision B; the old path keeps main's result."""
+    owner decision B."""
     test_step.a_second_label(monkeypatch, "Sp.30 \N{FEMALE SIGN}")
     rig = build_rig(tmp_path, without_the_taxon_line("sp. 30 \N{FEMALE SIGN}"), candidates=[*COLLECTORS,
         *(("taxon", name, "sp. 30 \N{FEMALE SIGN}", "sp. 30 \N{FEMALE SIGN}") for name in ("1A", "1B"))])
     run = rig.specimen.run
     settle(rig, Scripted({"taxon": cannot_resolve("sp. 30 \N{FEMALE SIGN}", asks=["sp. 30 \N{FEMALE SIGN}"])}),
         tools=NoGenus(rig.blobs))
-    expected = ValueState.UNRESOLVED if first_pass_path == "units" else ValueState.SUPPORTED
+    expected = ValueState.UNRESOLVED
     assert run.fields["taxon"].state == expected
 
 
-def test_an_unsettled_field_s_text_accounts_for_nothing(tmp_path, monkeypatch, first_pass_path):
+def test_an_unsettled_field_s_text_accounts_for_nothing(tmp_path, monkeypatch):
     """The habitat's expert finds no habitat, so its line, which the organiser's row still cites, is no
     settled field's occurrence: its words may be a genus and hold the code back on the units path."""
     words = test_step.genus_words(monkeypatch)
@@ -404,10 +377,7 @@ def test_an_unsettled_field_s_text_accounts_for_nothing(tmp_path, monkeypatch, f
         "habitat": answering(FieldAnswer(outcome="label_lacks_value", explanation="No habitat."))}),
         tools=NoGenus(rig.blobs))
     assert run.fields["habitat"].state == ValueState.NOT_PRESENT
-    if first_pass_path == "units":
-        assert set(words) == {"Synthetic"} and run.fields["taxon"].state == ValueState.UNRESOLVED
-    else:
-        assert run.fields["taxon"].state == ValueState.UNRESOLVED
+    assert set(words) == {"Synthetic"} and run.fields["taxon"].state == ValueState.UNRESOLVED
 
 
 def test_a_word_only_partly_inside_a_settled_field_s_occurrence_is_not_accounted_for(tmp_path):
@@ -466,7 +436,7 @@ def test_a_verbatim_or_a_row_with_no_offsets_accounts_only_for_its_own_label(tmp
     assert field_step._genus_on_a_label(run, [r for r in readings if r.region_id != run.regions[0].id]) == "Aedes"
 
 
-def test_another_field_s_text_accounts_only_for_the_label_its_provenance_cites(tmp_path, monkeypatch, first_pass_path):
+def test_another_field_s_text_accounts_only_for_the_label_its_provenance_cites(tmp_path, monkeypatch):
     """Codex's round 2, finding 2: label 2 writes "Aedes" as the identification and label 3 "Aedes",
     settled as the collection code from label 3 alone. The collection code accounts for label 3's
     word only, so label 2's genus holds owner decision B back: the taxon stays unresolved."""
@@ -484,7 +454,7 @@ def test_another_field_s_text_accounts_only_for_the_label_its_provenance_cites(t
     assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
-def test_a_second_label_writing_another_spelling_of_the_code_holds_it_back_on_either_path(tmp_path, monkeypatch):
+def test_a_second_label_writing_another_spelling_of_the_code_holds_it_back(tmp_path, monkeypatch):
     """G51's P2: label 1 writes "sp. 30 <female sign>", label 2 "Sp.30 <female sign>", no organiser
     candidate. Label 2 writes the code but settles no text of it: the taxon stays unresolved."""
     test_step.a_second_label(monkeypatch, "Sp.30 \N{FEMALE SIGN}")
@@ -496,7 +466,7 @@ def test_a_second_label_writing_another_spelling_of_the_code_holds_it_back_on_ei
     assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
-def test_a_code_a_person_settled_as_another_field_never_clears_as_the_taxon_on_either_path(tmp_path, first_pass_path):
+def test_a_code_a_person_settled_as_another_field_never_clears_as_the_taxon(tmp_path):
     """Codex's round 1, finding 3: a person settled the label's "sp. 30 <female sign>" as the collection
     code. Owner decision B's value is guarded as a resolved answer is (step._taken): the taxon stays
     unresolved, the reason naming the collection code."""
@@ -511,8 +481,7 @@ def test_a_code_a_person_settled_as_another_field_never_clears_as_the_taxon_on_e
     settle(rig, Scripted({"taxon": cannot_resolve("sp. 30 \N{FEMALE SIGN}", asks=["sp. 30 \N{FEMALE SIGN}"])}),
         tools=NoGenus(rig.blobs))
     assert run.fields["taxon"].state == ValueState.UNRESOLVED
-    assert run.fields["taxon"].reason.startswith(field_step.TAKEN.format(other="Collection Code")) == (
-        first_pass_path == "units")
+    assert run.fields["taxon"].reason.startswith(field_step.TAKEN.format(other="Collection Code"))
     assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
@@ -556,25 +525,20 @@ def deciding(literal, name):
     ("from Vulpes vulpes", "Vulpes vulpes", "Vulpes vulpes (Linnaeus, 1758)"),
 ], ids=["Host", "Ex.", "ex", "on", "from"])
 def test_a_name_written_after_a_host_marker_is_never_the_taxon_on_the_units_path(
-        tmp_path, first_pass_path, line, literal, name):
+        tmp_path, line, literal, name):
     """units-wp15c's 105526459 ("Host Thomomys") and 105526596 ("Ex. Canis familiaris"), with GBIF
-    deciding the name: on the units path the answer is refused and the taxon is left for a person;
-    the old path keeps main's result, the host settled as the taxon."""
+    deciding the name: the answer is refused and the taxon is left for a person."""
     rig = build_rig(tmp_path, without_the_taxon_line(line))
     run = rig.specimen.run
     settle(rig, Scripted({"taxon": deciding(literal, name)}), tools=HostGbif(rig.blobs, {literal: name}))
     taxon = run.fields["taxon"]
-    if first_pass_path == "units":
-        assert taxon.state == ValueState.UNRESOLVED
-        assert taxon.reason.startswith("The label writes this name as the host the specimen was taken from")
-        assert taxon_reasons(run) == list(TAXON_REASONS)
-    else:
-        assert (taxon.state, taxon.literal, taxon.normalized) == (ValueState.SUPPORTED, literal, name)
-        assert taxon_reasons(run) == []
+    assert taxon.state == ValueState.UNRESOLVED
+    assert taxon.reason.startswith("The label writes this name as the host the specimen was taken from")
+    assert taxon_reasons(run) == list(TAXON_REASONS)
 
 
 def test_an_organiser_candidate_written_after_a_host_marker_is_never_the_taxon_on_the_units_path(
-        tmp_path, first_pass_path):
+        tmp_path):
     """The organiser's candidate "Thomomys", quoted from "Host Thomomys": the answer naming it (its
     candidate basis) is refused on the units path, as text read from the transcript is."""
     rig = build_rig(tmp_path, without_the_taxon_line("Host Thomomys"), candidates=[*COLLECTORS,
@@ -583,14 +547,11 @@ def test_an_organiser_candidate_written_after_a_host_marker_is_never_the_taxon_o
     name = "Thomomys Wied-Neuwied, 1839"
     settle(rig, Scripted({"taxon": deciding("Thomomys", name)}), tools=HostGbif(rig.blobs, {"Thomomys": name}))
     taxon = run.fields["taxon"]
-    if first_pass_path == "units":
-        assert taxon.state == ValueState.UNRESOLVED
-        assert taxon.reason.startswith("The label writes this name as the host the specimen was taken from")
-    else:
-        assert (taxon.state, taxon.normalized) == (ValueState.SUPPORTED, name)
+    assert taxon.state == ValueState.UNRESOLVED
+    assert taxon.reason.startswith("The label writes this name as the host the specimen was taken from")
 
 
-def test_another_field_s_text_after_a_marker_settles_on_both_paths(tmp_path):
+def test_another_field_s_text_after_a_marker_settles(tmp_path):
     """The host marker is the taxon's rule only: a habitat written "on oak bark" settles as written."""
     rig = build_rig(tmp_path, TEXT.replace("habitat: " + LABEL["habitat"], "habitat: on oak bark"))
     run = rig.specimen.run
@@ -599,14 +560,14 @@ def test_another_field_s_text_after_a_marker_settles_on_both_paths(tmp_path):
 
 
 @pytest.mark.parametrize("line", ["Mex. Danaus plexippus", "Hosts Danaus plexippus", "Upon Danaus plexippus"])
-def test_a_name_after_a_word_that_only_ends_in_a_marker_settles_on_both_paths(tmp_path, line):
+def test_a_name_after_a_word_that_only_ends_in_a_marker_settles(tmp_path, line):
     rig = build_rig(tmp_path, without_the_taxon_line(line))
     run = rig.specimen.run
     settle(rig, Scripted({"taxon": deciding("Danaus plexippus", test_step.GBIF_NAME)}), tools=FakeSources(rig.blobs))
     assert (run.fields["taxon"].state, run.fields["taxon"].literal) == (ValueState.SUPPORTED, "Danaus plexippus")
 
 
-def test_a_name_another_label_writes_inside_a_host_s_longer_name_settles_on_both_paths(tmp_path, monkeypatch):
+def test_a_name_another_label_writes_inside_a_host_s_longer_name_settles(tmp_path, monkeypatch):
     """Codex's round 1, finding 1: the specimen's "Musca", GBIF deciding it, beside another label writing
     "Host Muscardinus avellanarius": "Musca" is not written there as a whole name, so it settles."""
     test_step.a_second_label(monkeypatch, "Host Muscardinus avellanarius")
@@ -617,24 +578,21 @@ def test_a_name_another_label_writes_inside_a_host_s_longer_name_settles_on_both
     assert (run.fields["taxon"].state, run.fields["taxon"].normalized) == (ValueState.SUPPORTED, name)
 
 
-def test_a_name_after_a_marker_earlier_on_its_line_is_never_the_taxon_on_the_units_path(tmp_path, first_pass_path):
+def test_a_name_after_a_marker_earlier_on_its_line_is_never_the_taxon_on_the_units_path(tmp_path):
     """Codex's round 1, finding 4: "from nest of Formica rufa", the organiser's candidate "Formica rufa"
     and GBIF deciding it. Nothing shows the nest's ant is the specimen: on the units path the answer is
-    refused; the old path keeps main's result."""
+    refused."""
     rig = build_rig(tmp_path, without_the_taxon_line("from nest of Formica rufa"), candidates=[*COLLECTORS,
         *(("taxon", name, "Formica rufa", "from nest of Formica rufa") for name in ("1A", "1B"))])
     run = rig.specimen.run
     name = "Formica rufa Linnaeus, 1761"
     settle(rig, Scripted({"taxon": deciding("Formica rufa", name)}), tools=HostGbif(rig.blobs, {"Formica rufa": name}))
     taxon = run.fields["taxon"]
-    if first_pass_path == "units":
-        assert taxon.state == ValueState.UNRESOLVED
-        assert taxon.reason.startswith("The label writes this name as the host the specimen was taken from")
-    else:
-        assert (taxon.state, taxon.normalized) == (ValueState.SUPPORTED, name)
+    assert taxon.state == ValueState.UNRESOLVED
+    assert taxon.reason.startswith("The label writes this name as the host the specimen was taken from")
 
 
-def test_a_name_before_a_marker_on_its_line_settles_on_both_paths(tmp_path):
+def test_a_name_before_a_marker_on_its_line_settles(tmp_path):
     """The coordinator's ruling on finding 4: "Aus bus on Quercus" settles "Aus bus"."""
     rig = build_rig(tmp_path, without_the_taxon_line("Aus bus on Quercus"))
     run = rig.specimen.run

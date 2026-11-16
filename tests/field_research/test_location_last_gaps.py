@@ -301,10 +301,11 @@ def d10333ff_readings(second=LABEL_3B):
         Reading("3B", "label3", "obs3b", "raw_reading", second))
 
 
-def test_a_non_preferred_readers_text_nothing_backs_is_only_a_possibility():
-    """d10333ff's label 1: its first pass preferred 1A; 1B's "BONITELL" is a
-    possibility nothing on the labels backs. Another label's reading that
-    writes it would back it (the owner, 2026-10-25)."""
+def test_a_readers_text_nothing_backs_is_only_a_possibility():
+    """d10333ff's label 1: 1B's "BONITELL" is a possibility nothing on the
+    labels backs (1A, the label's decided transcript, does not write it).
+    Another label's reading that writes it would back it (the owner,
+    2026-10-25)."""
     readings = d10333ff_readings()
     assert agreement.only_a_possibility("BONITELL", readings[1], readings)
     assert not agreement.only_a_possibility("ILLINOIS", readings[0], readings)
@@ -378,115 +379,6 @@ def test_three_readers_dispute_a_text_only_when_every_other_reader_does():
     assert not agreement.set_aside("Panama", readings, taxon)
 
 
-def two_label_rig(tmp_path, *, first, second, candidates):
-    """build_rig's run with two labels: label 1's readers write `first` (two
-    texts; the first pass decided 1A's), label 2's write `second` (two
-    texts, whose first pass chose no reading, as one reaching its token cap
-    does: no decided transcript)."""
-    if test_step.PATH == "units":
-        pytest.skip("label 1's first pass picks reader 1A of readers that differ; the units path's first pass "
-            "picks no reader")
-    original = test_step.make_specimen
-
-    def make(blobs, text=TEXT, other=None, *, first_pass=True):
-        specimen = original(blobs, *first, first_pass=first_pass)
-        run = specimen.run
-        output = io.BytesIO()
-        Image.new("RGB", (100, 100), "white").save(output, format="JPEG", quality=95)
-        region = Region(asset_id=specimen.asset.id, x=0, y=50, width=100, height=50, order=1,
-            method="synthetic_fixture_region", version="1")
-        crop_png = region_png(Image.open(io.BytesIO(output.getvalue())), region)
-        region.crop_ref = blobs.put(crop_png)
-        run.regions.append(region)
-        crop = hashlib.sha256(crop_png).hexdigest()
-        for route, written in zip(run.profile.routes, second, strict=True):
-            raw = ("SYNTHETIC FIXTURE " + route + "\n" + written).encode()
-            run.observations.append(Observation(region_id=region.id, route_id=route, model_id="synthetic-" + route,
-                provider="synthetic", prompt_version="prompt:" + route, input_sha256=crop,
-                input_asset_id=specimen.asset.id, input_crop_ref=region.crop_ref, literal_text=written,
-                raw_ref=blobs.put(raw), raw_sha256=hashlib.sha256(raw).hexdigest()))
-            run.completed_steps.append(f"transcribe:{region.id}:{route}")
-        if len(set(second)) > 1:
-            run.completed_steps.append(f"first_pass:{region.id}")
-        return specimen
-
-    blobs = LocalBlobs(tmp_path / "blobs")
-    repository = SQLiteRepository(tmp_path / "records.sqlite")
-    clock = SimpleNamespace(now=datetime(2026, 10, 18, 5, tzinfo=timezone.utc))
-    workflow = Workflow(repository, blobs, SyntheticAdapters(blobs, TEXT), clock=lambda: clock.now)
-    principal = worker_principal()
-    created = repository.create(principal, make(blobs), "intake", "intake")
-    adjudicated = workflow.step(principal, created.id)  # adjudicate
-    run = adjudicated.run
-    [transcript] = [t for t in run.transcripts if t.region_id == run.regions[0].id]
-    chosen = next(o for o in run.observations if o.region_id == run.regions[0].id)
-    transcript.text, transcript.resolved, transcript.selected_observation_id = chosen.literal_text, True, chosen.id
-    repository.save(principal, adjudicated, adjudicated.version, "first-pass", "first-pass")
-    parsed = workflow.step(principal, created.id)  # parse
-    assert workflow.next_step(parsed.run) == "plan"
-    raw = b"organiser response"
-    apply_candidates(parsed.run, parsed.asset.id, ExtractionOutput(candidates=[
-        ExtractionCandidate(field_key=key, reading=name, literal=literal, source_excerpt=quote)
-        for key, name, literal, quote in candidates]), blobs.put(raw), hashlib.sha256(raw).hexdigest())
-    parsed = repository.save(principal, parsed, parsed.version, "organiser", "organiser")
-    return SimpleNamespace(blobs=blobs, repository=repository, workflow=workflow, principal=principal,
-        specimen=parsed, clock=clock)
-
-
-EDGAR_1A = label_with(**NO_PLACE_LINES) + "\n" + DECIDED_1A
-EDGAR_1B = label_with(**NO_PLACE_LINES) + "\n" + RAW_1B
-EDGAR_CANDIDATES = [*COLLECTORS, ("country", "1A", "ILLINOIS", "ILLINOIS"), ("country", "1B", "BONITELL", "BONITELL"),
-    ("country", "2A", "Panama", "Panama"), ("province_state", "1A", "ILLINOIS", "ILLINOIS"),
-    ("county", "1A", "Edgar county", "Edgar county")]
-TAXON_2B = ("taxon", "2B", "Panorpa", "Panorpa")
-EDGAR_EXPERTS = {
-    "country": expert(("wikidata", "Illinois"), ("wikidata", "Panama"), answer=several("ILLINOIS", "Panama")),
-    "province_state": expert(("wikidata", "Illinois"), answer=settled_on("ILLINOIS", "Illinois", "wikidata:Q1204")),
-    "county": expert(("wikidata", "Edgar County, Illinois, United States"),
-        answer=settled_on("Edgar county", "Edgar County", "wikidata:Q484124")),
-    "city": answering(LACKS), "precise_location": answering(LACKS), "taxon": answering(LACKS)}
-
-
-def edgar(tmp_path, second=(LABEL_3A, LABEL_3B), candidates=(*EDGAR_CANDIDATES, TAXON_2B)):
-    rig = two_label_rig(tmp_path, first=(EDGAR_1A, EDGAR_1B), second=second,
-        candidates=list(candidates))
-    run = rig.specimen.run
-    readings = field_step.run_readings(run)
-    assert [(r.name, r.input_source) for r in readings] == [("1A", "decided_transcript"), ("1B", "raw_reading"),
-        ("2A", "raw_reading"), ("2B", "raw_reading")]
-    settle(rig, Scripted(EDGAR_EXPERTS), tools=Answers(rig.blobs))
-    return run
-
-
-def test_an_undecided_labels_disputed_country_no_longer_holds_back_the_derived_country(tmp_path):
-    """d10333ff on 2026-10-17 and 2026-10-18 (runs a75b4e51, 1427d6ba and
-    8a91d868): label 1 settles Illinois and Edgar County; its decided
-    reading writes "ILLINOIS" on the country line, its other reader
-    "BONITELL"; the determination label, with no decided transcript, has
-    2A's "Panama" where 2B writes "Panorpa", 2B's taxon. The country expert
-    answered several_possibilities ("ILLINOIS", "Panama"). Now the country
-    is derived from the settled places. On d5a6502d it stays ambiguous."""
-    run = edgar(tmp_path)
-    assert run.fields["province_state"].authority_id == "wikidata:Q1204"
-    assert run.fields["county"].authority_id == "wikidata:Q484124"
-    nation = run.fields["country"]
-    assert (nation.state, nation.layer, nation.parsed) == (ValueState.SUPPORTED, "derived", "United States")
-    assert not [reason for reason in run.reasons if reason.endswith(":country")]
-
-
-@pytest.mark.parametrize(("second", "taxon"), [
-    # Both readers of the determination label write "Panama": the label says it.
-    (("Panama\n30. IA\n1. octubre del 2021", "Panama\nsp. ?\n[unreadable] det. 2021"), True),
-    # 2B's "Panorpa" is no field's text: two readings of one word, not another field's.
-    ((LABEL_3A, LABEL_3B), False),
-], ids=["both-readers-write-it", "other-words-no-fields"])
-def test_a_country_text_its_label_does_not_dispute_still_holds_the_country_for_review(
-        tmp_path, second, taxon):
-    run = edgar(tmp_path, second, (*EDGAR_CANDIDATES, *((TAXON_2B,) if taxon else ())))
-    assert run.fields["county"].authority_id == "wikidata:Q484124"
-    assert run.fields["country"].state == ValueState.AMBIGUOUS
-
-
 # ---- a precise location written over consecutive lines (gap 3) -------------
 
 MCKINLEY = "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.\n6-Sept-1946, Elev.6400"
@@ -505,9 +397,13 @@ def test_a_run_of_whole_words_over_consecutive_lines():
     assert agreement.written_runs("city", MCKINLEY, MCKINLEY_LINES) == []
 
 
-def two_readers_of(first, second, *, decided=False):
-    return (Reading("2A", "label2", "obs2a", "decided_transcript" if decided else "raw_reading", first),
-        Reading("2B", "label2", "obs2b", "raw_reading", second))
+def two_readers_of(first, second, *, image=None):
+    """Label 2's two readers, with the label's units (test_first_pass_advice.with_units), the image
+    naming reader `image`'s text (an observation id) where their texts differ, else uncertain there."""
+    from test_first_pass_advice import with_units
+
+    return with_units((Reading("2A", "label2", "obs2a", "raw_reading", first),
+        Reading("2B", "label2", "obs2b", "raw_reading", second)), {"label2": image})
 
 
 def test_a_space_for_a_line_break_is_the_text_the_readings_write():
@@ -551,11 +447,11 @@ def apo_task(key="precise_location"):
 
 
 def test_the_organisers_two_lines_joined_in_their_order_settle_the_precise_location():
-    """2b02009d on 2026-10-18 (run 95361b46): label 3's decided transcript
-    (3A) writes "Seliban Riv." over "Mt. Apo", and the organiser split it into
-    two candidates. The expert's "Seliban Riv.\\nMt. Apo" was refused, as it
-    extends the candidate "Seliban Riv." (on d5a6502d, NOT_CANDIDATE)."""
-    readings = two_readers_of(APO_3A, APO_3B, decided=True)
+    """2b02009d on 2026-10-18 (run 95361b46): label 3's reader 3A writes "Seliban Riv." over
+    "Mt. Apo", 3B "Mi. Apo", and the organiser split it into two candidates. With the image naming
+    3A's text where they differ, the expert's "Seliban Riv.\\nMt. Apo" settles; it was refused, as
+    it extends the candidate "Seliban Riv." (on d5a6502d, NOT_CANDIDATE)."""
+    readings = two_readers_of(APO_3A, APO_3B, image="obs2a")
     common = dict(named=[readings[0]], value=None, authority_id=None, cited=[], received=[])
     assert agreement.refusal(apo_task(), readings, literal=APO_3A, **common) is None
     assert agreement.literal_basis(apo_task(), readings, APO_3A, [readings[0]]) == agreement.TRANSCRIPT
@@ -570,7 +466,7 @@ def test_the_organisers_two_lines_joined_in_their_order_settle_the_precise_locat
     ("city", APO_3A),
 ], ids=["cuts-a-candidate", "piece-of-a-candidate", "city-over-two-lines"])
 def test_a_literal_over_lines_still_cuts_no_candidate_and_only_a_locality_runs_over_lines(key, literal):
-    readings = two_readers_of(APO_3A, APO_3B, decided=True)
+    readings = two_readers_of(APO_3A, APO_3B)
     refused = agreement.literal_refusal(apo_task(key), readings, literal=literal, named=[readings[0]])
     assert refused is not None and refused.reason == agreement.NOT_CANDIDATE
 
@@ -614,32 +510,6 @@ APO_A = label_with(**NO_PLACE_LINES) + "\n" + APO_3A
 APO_B = label_with(**NO_PLACE_LINES) + "\n" + APO_3B
 APO_CANDIDATES = [*COLLECTORS, *(("precise_location", reader, literal, literal)
     for reader, literal in (("1A", "Seliban Riv."), ("1A", "Mt. Apo"), ("1B", "Seliban Riv."), ("1B", "Mi. Apo")))]
-
-
-@pytest.mark.parametrize(("key", "literal", "settles"), [
-    ("precise_location", APO_3A, True),
-    # The run cuts the organiser's "Mt. Apo"; a city never runs over lines.
-    ("precise_location", "Seliban Riv.\nMt.", False),
-    ("city", APO_3A, False),
-], ids=["the-two-lines", "cuts-a-candidate", "a-city-over-two-lines"])
-def test_the_decided_readings_two_candidate_lines_settle_through_the_step(tmp_path, key, literal, settles):
-    """2b02009d through the step: the decided reading writes the locality
-    over two lines, which the organiser gave as two candidates, and the
-    answer joins them in their order. On d5a6502d it is unresolved
-    (NOT_CANDIDATE)."""
-    rig = build_rig(tmp_path, APO_A, APO_B, decided=True, candidates=APO_CANDIDATES)
-    run = rig.specimen.run
-    scripts = {**NO_PLACES, "precise_location": answering(LACKS)}
-    scripts[key] = answering(FieldAnswer(outcome="resolved", literal=literal, reading_names=["1A"],
-        explanation="The locality's two lines."))
-    settle(rig, Scripted(scripts))
-    value = run.fields[key]
-    if settles:
-        assert (value.state, value.literal, value.input_source) == (ValueState.SUPPORTED, APO_3A, "decided_transcript")
-        assert field_checks(run, {key}) == []
-        verify_evidence(rig.specimen, rig.blobs)
-    else:
-        assert value.state != ValueState.SUPPORTED
 
 
 def test_readers_who_write_the_two_lines_differently_still_go_to_review():

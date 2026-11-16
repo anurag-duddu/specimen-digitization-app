@@ -122,10 +122,13 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                     require(observation.input_asset_id == asset.id)
                 if observation.input_crop_ref is not None:
                     read(observation.input_crop_ref, observation.input_sha256)
-            from .first_pass import UNITS, g19_pick
-            from .reading_units import problems as unit_problems
+            from .first_pass import g19_pick
+            from .reading_units import UNITS, problems as unit_problems
 
             decisions = {d.region_id: d for d in run.first_pass_decisions}
+            # A run's recorded path: a run the old first pass processed (removed in WP 1.8,
+            # docs/execution/units/PLAN.md) keeps that path's checks below until it is moved
+            # to the units path (workflow.move_to_units).
             units_path = run.first_pass_path == UNITS
             # Units path: decisions select no reading and give `uncertain` verdicts; the
             # transcripts' verdicts are `uncertain`.

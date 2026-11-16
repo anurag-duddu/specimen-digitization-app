@@ -10,10 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts/ops"))
 sys.path.insert(0, str(ROOT / "scripts/ci"))
-sys.path.insert(0, str(ROOT / "scripts/release"))
 import deploy as D  # noqa: E402
-import deploy_api  # noqa: E402
-import deploy_intake  # noqa: E402
 import iam as G  # noqa: E402
 import runtime_settings as S  # noqa: E402
 
@@ -89,21 +86,6 @@ def test_only_worker_turns_the_research_harness_on():
     assert SETTING == "SPECIMEN_RESEARCH_HARNESS" and worker[SETTING] == "fields"
     assert research_harness_enabled(worker) is True and research_harness_mode(worker) == "fields"
     assert all(SETTING not in S.ROLES[role]["env"] for role in ("api", "sam"))
-
-
-def test_the_processes_that_create_runs_carry_the_first_pass_units_switch_on():
-    """WP 1.8 part A: the API and the intake job, the processes that create runs, carry "on", in
-    the settings and in the environments the release deploys (deploy_api.api_env,
-    deploy_intake.job_env); the worker and SAM carry no setting (the worker follows the path a
-    run recorded)."""
-    from specimen_digitization.application.reading_units import SETTING, UNITS, first_pass_path
-
-    api = D.role_env("api", CHECKPOINT)
-    assert SETTING == "SPECIMEN_FIRST_PASS_UNITS" and api[SETTING] == "on"
-    assert S.INTAKE["env"][SETTING] == "on" and first_pass_path(api) == UNITS
-    assert deploy_api.api_env()[SETTING] == deploy_intake.job_env()[SETTING] == "on"
-    assert first_pass_path(deploy_intake.job_env()) == UNITS
-    assert all(SETTING not in S.ROLES[role]["env"] for role in ("worker", "sam"))
 
 
 def test_the_api_and_the_worker_carry_the_same_nvidia_option():

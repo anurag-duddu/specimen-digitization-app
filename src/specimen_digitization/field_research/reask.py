@@ -1,4 +1,4 @@
-"""The units path's one re-ask before a mark (docs/execution/units/PLAN.md, WP 2.3c; spec
+"""The one re-ask before a mark (docs/execution/units/PLAN.md, WP 2.3c; spec
 docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4, "The check stage").
 
 The owner typed on 2026-11-14: "4 shouldn't be flagged. It should be caught and handled. Goal isn't
@@ -25,8 +25,7 @@ A field is re-asked at most once per attempt: `again` runs once per attempt (ste
 asks each field once, and never asks a field whose outcome a re-ask gave (FieldOutcome.reasked). A
 field a retry does not research again (step.build_tasks leaves a settled field as it is) is not
 re-asked. The re-asks share the run's meter and run within the time research leaves (`seconds`);
-one that fails, runs out of time or cannot be paid for keeps the field's earlier answer. Nothing
-here runs on the old path.
+one that fails, runs out of time or cannot be paid for keeps the field's earlier answer.
 """
 
 from __future__ import annotations
@@ -135,14 +134,14 @@ def to_ask(run, copy, decisions: Mapping[str, Mapping[str, str]], outcomes: Sequ
 async def again(run, profile, prepared, outcomes: Sequence[FieldOutcome], *, resolver: FieldResolver,
         tools: SourceTools, calls: list, blobs=None, asset_id: str | None = None,
         seconds: float | None = None) -> tuple[list[FieldOutcome], list]:
-    """This attempt's outcomes after the units path's one re-ask (module docstring), and the lookups
-    of the re-asks whose answers were not kept (step.apply_outcomes' `unused`). The lookups of a kept
-    answer join `calls`. The outcomes as they are on the old path, when nothing is to be asked, or
-    when a trial application fails."""
+    """This attempt's outcomes after the one re-ask (module docstring), and the lookups of the
+    re-asks whose answers were not kept (step.apply_outcomes' `unused`). The lookups of a kept
+    answer join `calls`. The outcomes as they are when no time is left, when nothing is to be
+    asked, or when a trial application fails."""
     from . import step
 
     outcomes = list(outcomes)
-    if not step.units_path(run) or (seconds is not None and seconds <= 0):
+    if seconds is not None and seconds <= 0:
         return outcomes, []
     readings, tasks, context = prepared
     tasks_by_key = {task.key: task for task in tasks}

@@ -214,7 +214,6 @@ def parse_date(
     part: Literal["start", "end"] | None = None,
     reading_names: Sequence[str] | None = None,
     field: str | None = None,
-    units: bool = False,
 ) -> DateCheck:
     """Every reading a date literal's notation allows (G24, G29; HARNESS.md section 8).
 
@@ -245,30 +244,29 @@ def parse_date(
     (`coll_may_name_a_collector_or_a_collection`). A reading counts only where the
     literal stands as a token of its own
     (`date_lines.places`); a literal found only inside longer tokens is no date
-    (`literal_inside_a_longer_token`). On the units path (`units`), a literal that any
+    (`literal_inside_a_longer_token`). A literal that any
     reading writes inside a slide code, as the ontology's notation reads one, is no date
     (`in_a_code`, the rule code_is_no_date), even where that reading glues a letter or a
-    digit to its edge: reading B's "VI-23-48-4" beside reading A's "I-23-48". On the units
-    path, too, a Roman month written with a digit one for an I (digit_one_month: "1X-14-46")
+    digit to its edge: reading B's "VI-23-48-4" beside reading A's "I-23-48". A Roman
+    month written with a digit one for an I (digit_one_month: "1X-14-46")
     is read as that month where the parser then reads a date (the ontology's notation
     roman_month), the note DIGIT_ONE saying so, and the literal stays as written.
     """
     if not literal or not literal.strip():
         return DateCheck(literal, LookupStatus.POLICY, notes=(NOT_IN_SOURCE,), part=part)
-    if units and (read := digit_one_month(literal)) is not None:
+    if (read := digit_one_month(literal)) is not None:
         # The ontology's notation roman_month: a digit one written for the I of a Roman month,
         # read as I where the date parser then reads a date, in every reading that holds the
         # literal; the check keeps the literal as written. Otherwise the literal is read as
         # written, below.
         found = parse_date(read, reading_texts=[text.replace(literal, read) for text in reading_texts],
-            date_rules=date_rules, year_literal=year_literal, part=part, reading_names=reading_names, field=field,
-            units=True)
+            date_rules=date_rules, year_literal=year_literal, part=part, reading_names=reading_names, field=field)
         if found.readings:
             return replace(found, literal=literal, notes=(*found.notes, DIGIT_ONE))
     names = list(reading_names) if reading_names is not None else [
         str(number) for number in range(1, len(reading_texts) + 1)]
     named = list(zip(names, reading_texts, strict=True))
-    if units and any(in_a_code(literal, text) for _, text in named):
+    if any(in_a_code(literal, text) for _, text in named):
         return DateCheck(literal, LookupStatus.NO_MATCH, notes=(SLIDE_CODE,), part=part)
     texts = [(name, text) for name, text in named if date_lines.places(literal, text)]
     if not texts:

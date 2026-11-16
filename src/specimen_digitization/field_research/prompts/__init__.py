@@ -41,72 +41,30 @@ FIELD_LABELS = {
 _ROOT = Path(__file__).parent
 
 
-def parse_replacements(text: str) -> dict[str, tuple[tuple[str, str], ...]]:
-    """units.txt's form: for each file named on a "== <file>" line, each "<<< " line's text
-    with the ">>> " line's text after it, in order; a ">>>" line alone is the empty text
-    (the line is left out, _read). Empty lines and "#" lines are skipped; any other line, a
-    "<<< " line before a file or after another "<<< " line, a ">>> " or ">>>" line with no
-    "<<< " line before it, or a "<<< " line last, is refused."""
-    found: dict[str, list[tuple[str, str]]] = {}
-    name, old = None, None
-    for line in text.splitlines():
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("== ") and old is None:
-            name = line[3:]
-        elif line.startswith("<<< ") and name is not None and old is None:
-            old = line[4:]
-        elif (line.startswith(">>> ") or line == ">>>") and old is not None:
-            found.setdefault(name, []).append((old, line[4:]))
-            old = None
-        else:
-            raise ValueError(f"units.txt cannot read the line {line[:40]!r}")
-    if old is not None:
-        raise ValueError("units.txt ends with a text and nothing to replace it")
-    return {name: tuple(pairs) for name, pairs in found.items()}
+def _read(name: str) -> str:
+    """A file of this folder, stripped."""
+    return (_ROOT / name).read_text(encoding="utf-8").strip()
 
 
 @cache
-def units_replacements() -> dict[str, tuple[tuple[str, str], ...]]:
-    """units.txt (parse_replacements): for each file of this folder, the texts the units
-    path replaces in it, each with the text that stands in its place, in the file's order."""
-    return parse_replacements((_ROOT / "units.txt").read_text(encoding="utf-8"))
-
-
-def _read(name: str, units: bool) -> str:
-    """A file of this folder, stripped; on the units path with its replacements made, each
-    text found in it exactly once (units_replacements). A text replaced by the empty text is
-    a whole line of the file, left out with its line break."""
-    text = (_ROOT / name).read_text(encoding="utf-8").strip()
-    for old, new in units_replacements().get(name, ()) if units else ():
-        if text.count(old) != 1 or (not new and f"\n{old}\n" not in f"\n{text}\n"):
-            raise ValueError(f"{name} must hold each text units.txt replaces once, a text it leaves out as a line")
-        text = text.replace(old, new) if new else f"\n{text}\n".replace(f"\n{old}\n", "\n")[1:-1]
-    return text
-
-
-@cache
-def instructions(key: str, units: bool = False) -> str:
-    """The expert's whole instructions for one field; an unknown field is refused. With
-    `units` (a run whose first-pass path is units): the texts units.txt names replaced,
-    and, between the shared rules and the brief, the specimen ontology's brief text
-    (ontology.render(brief=True), as the units path's first pass carries it), then the
-    instructions of the ontology's rules that name this field
-    (ontology.render_instructions("expert", key)), when any does: every request an
-    expert sends carries its instructions, which budget.input_token_bound counts against
-    budget.DEFAULT_MAX_INPUT_TOKENS."""
+def instructions(key: str) -> str:
+    """The expert's whole instructions for one field; an unknown field is refused: the shared
+    rules, then the specimen ontology's brief text (ontology.render(brief=True), as the first
+    pass carries it), then the instructions of the ontology's rules that name this field
+    (ontology.render_instructions("expert", key)), when any does, then the field's brief.
+    Every request an expert sends carries its instructions, which budget.input_token_bound
+    counts against budget.DEFAULT_MAX_INPUT_TOKENS."""
     if key not in FIELD_TOOLS or key not in FIELD_LABELS:
         raise KeyError(f"no field brief for {key!r}")
-    common = _read("common.txt", units)
+    common = _read("common.txt")
     for marker, line in ((RANGE_MARKER, range_line()), (UNIT_MARKER, unit_line())):
         if common.count(marker) != 1:
             raise ValueError(f"common.txt must hold the marker {marker!r} once")
         common = common.replace(marker, line)
-    brief = _read(f"{key}.txt", units)
-    if units:
-        from specimen_digitization.ontology import render, render_instructions
+    brief = _read(f"{key}.txt")
+    from specimen_digitization.ontology import render, render_instructions
 
-        common += "\n\n" + render(brief=True).strip()
-        if rules := render_instructions("expert", key).strip():
-            common += "\n\n" + rules
+    common += "\n\n" + render(brief=True).strip()
+    if rules := render_instructions("expert", key).strip():
+        common += "\n\n" + rules
     return common + "\n\n" + brief + "\n"

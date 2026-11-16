@@ -2,9 +2,10 @@
 
 test_organiser_raw_reading_evidence pins the graph builder and the contract; this module runs the same shape
 through the production composer with the real validator and the real publication, as
-test_organiser_handover_composer does for the decided label. Label 0 is decided by the first pass (as there). Label
-1 is a label the first pass never decided (two readers that differ on one line, a first-pass decision that selects
-neither: ``resolved`` false, both readings raw, the shape of specimens 1, 4, 6 and 9). The ordinary extractor here is
+test_organiser_handover_composer does for the decided label. Label 0 is decided, its two readers agreeing (as
+there). Label 1 is a label with no decided transcript (two readers that differ on one line, a first-pass decision
+that selects neither, as every first pass's since WP 1.8: ``resolved`` false, both readings raw, the shape of
+specimens 1, 4, 6 and 9). The ordinary extractor here is
 the real ``apply_candidates`` fed scripted candidates that name a reading (1A, 2A, 2B ...): not a model. The
 specialist is the same overlay as in the decided-label module (it reads the v5 hand-over sentences out of its pinned
 text). It proves what the real validators and publication accept and refuse; it does not show that a real model
@@ -21,7 +22,6 @@ import production_e2e_support as support
 import test_organiser_handover_composer as base
 import test_unkeyed_label_review as review
 from specimen_digitization.application.domain import Observation, Region
-from specimen_digitization.application.first_pass import synthetic_decision
 from specimen_digitization.application.harness import ExtractionCandidate, ExtractionOutput, apply_candidates
 from specimen_digitization.application.production import SqlConnectRepository, actor_uid
 from specimen_digitization.application.workflow import OperationalBlock, SyntheticAdapters, Workflow
@@ -101,12 +101,11 @@ def make_rig(tmp_path, monkeypatch, answers=ANSWERS, reader_b=READER_B):
     ordinary = Workflow(repository, blobs, Adapters(blobs, DECIDED_LABEL, answers))
     token = actor_uid.set(WORKER)
     principal = worker_principal()
-    specimen = specimen_before_adjudication(blobs, first_pass=True)
+    specimen = specimen_before_adjudication(blobs)
     run, first = specimen.run, specimen.run.regions[0]
     region = Region(asset_id=specimen.asset.id, x=0, y=0, width=first.width, height=first.height, order=1,
         method="synthetic_fixture_region", version="1", crop_ref=first.crop_ref)
     run.regions.append(region)
-    readings = []
     for route, text in zip(run.profile.routes, (READER_A, reader_b)):
         raw = ("SYNTHETIC FIXTURE " + route + "\n" + text).encode()
         reading = Observation(region_id=region.id, route_id=route, model_id="synthetic-" + route,
@@ -115,13 +114,9 @@ def make_rig(tmp_path, monkeypatch, answers=ANSWERS, reader_b=READER_B):
             input_crop_ref=region.crop_ref, literal_text=text, raw_ref=blobs.put(raw),
             raw_sha256=hashlib.sha256(raw).hexdigest())
         run.observations.append(reading)
-        readings.append(reading)
     run.completed_steps += [f"transcribe:{region.id}:{route}" for route in run.profile.routes]
-    # The first pass declined to choose between the two readings of label 1: its decision selects neither.
-    decision = synthetic_decision(blobs, region, readings)
-    run.first_pass_decisions.append(decision.model_copy(update={"selected_observation_id": None,
-        "differences": [item.model_copy(update={"verdict": "uncertain"}) for item in decision.differences]}))
-    run.completed_steps.append(f"first_pass:{region.id}")
+    # Label 1's first pass: its decision selects neither reading.
+    support.first_pass_done(blobs, run, region)
     created = repository.create(principal, specimen, "e2e-intake", "e2e-intake")
     rig = type("Rig", (), dict(fake=fake, backend=backend, repository=repository, ordinary=ordinary,
         principal=principal, specimen_id=created.id, research_blobs=ImmutableFileBlobs(tmp_path / "research"),

@@ -17,7 +17,10 @@
 # the commit that adds the entry, its path from the repository's root;
 # "insects.py:<lines> at 7a09445a2"
 # is the deleted module, at main 7a09445a2, where the plan's WP 1.0 row gives
-# its path (docs/execution/units/PLAN.md:98).
+# its path (docs/execution/units/PLAN.md:98); and
+# "src/specimen_digitization/field_research/prompts/common.txt:<lines> at d83f4d6f1"
+# is that file at main d83f4d6f1, where it still held its label notations: WP 1.8
+# gave it the units path's text, and its notations are this file's.
 #
 # Version 2.0 (plan WP 2.1, 2026-11-14) adds the rules: the relations and checks
 # of the spec's sections 4 and 5, each with its Darwin Core term and how it is
@@ -44,14 +47,14 @@
 # code (ontology.Ontology.advice): letter case aside, except in a word in angle
 # brackets; a space in a form matches any white space, a line break too, or
 # none; a form's final period is optional only where `periods_optional` is
-# true (common.txt:40, "with or without periods"); a form that begins or ends
+# true (common.txt:40 at d83f4d6f1, "with or without periods"); a form that begins or ends
 # with a letter, a digit or a word in angle brackets matches only at a word's
 # edge. A word in angle brackets stands for what the label writes there
 # (common.txt:4): <n> a number; <d>, <dd>, <d1>, <d2>, <mm>, <a>, <b> a day's
 # or a month's one or two digits; <yy> a two-digit year; <yyyy> a four-digit
 # year; <Roman month> a Roman numeral I to XII in capitals; <letter> one
 # letter. A match inside a longer match is dropped, so no part of a slide code
-# is read as a date (common.txt:48), and a unit holding an open question
+# is read as a date (common.txt:48 at d83f4d6f1), and a unit holding an open question
 # carries no field and no reading.
 
 version: "2.0"
@@ -359,8 +362,8 @@ notations:
     source:
       - insects.py:28 at 7a09445a2
       - insects.py:94 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:36
-      - src/specimen_digitization/field_research/prompts/common.txt:27
+      - src/specimen_digitization/field_research/prompts/common.txt:36 at d83f4d6f1
+      - src/specimen_digitization/field_research/prompts/common.txt:27 at d83f4d6f1
   - id: philippine_islands
     written: [Philippine Islands]
     readings: ["the Philippines"]
@@ -374,15 +377,15 @@ notations:
     source:
       - insects.py:29 at 7a09445a2
       - insects.py:96 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:36
+      - src/specimen_digitization/field_research/prompts/common.txt:36 at d83f4d6f1
   - id: new_south_wales_abbreviation
     written: ["N.S.W."]
     readings: ["New South Wales: a place abbreviation, looked up by its expansion"]
     fields: [country, province_state, county, city, precise_location]
     note: As for a place's name, the sources decide which level it is.
     source:
-      - src/specimen_digitization/field_research/prompts/common.txt:27
-      - src/specimen_digitization/field_research/prompts/common.txt:36
+      - src/specimen_digitization/field_research/prompts/common.txt:27 at d83f4d6f1
+      - src/specimen_digitization/field_research/prompts/common.txt:36 at d83f4d6f1
       - src/specimen_digitization/field_research/prompts/county.txt:5
   - id: province
     written: ["Prov."]
@@ -391,22 +394,22 @@ notations:
     note: Look it up with the word written out ("Davao Province" for "Davao, Prov.").
     source:
       - insects.py:30-34 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:27
-      - src/specimen_digitization/field_research/prompts/common.txt:37
+      - src/specimen_digitization/field_research/prompts/common.txt:27 at d83f4d6f1
+      - src/specimen_digitization/field_research/prompts/common.txt:37 at d83f4d6f1
   - id: department
     written: ["Dept."]
     readings: ["department, a word of the province's name, not the name"]
     fields: [province_state]
     source:
       - insects.py:35-39 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:37
+      - src/specimen_digitization/field_research/prompts/common.txt:37 at d83f4d6f1
   - id: county_word
     written: ["Co."]
     readings: ["county, a word of the county's name, not the name"]
     fields: [county]
     note: Look it up with the word written out ("<County> County" for "<County> Co.").
     source:
-      - src/specimen_digitization/field_research/prompts/common.txt:36
+      - src/specimen_digitization/field_research/prompts/common.txt:36 at d83f4d6f1
       - src/specimen_digitization/field_research/prompts/county.txt:8
       - src/specimen_digitization/field_research/prompts/county.txt:12
   - id: mount
@@ -415,7 +418,7 @@ notations:
     fields: [precise_location]
     source:
       - insects.py:40 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:38
+      - src/specimen_digitization/field_research/prompts/common.txt:38 at d83f4d6f1
       - src/specimen_digitization/field_research/prompts/city.txt:6
   - id: mts_abbreviation
     written: ["Mts."]
@@ -423,7 +426,7 @@ notations:
     fields: [country, province_state, county, city, precise_location]
     note: As for a place's name, the sources decide which level it is.
     source:
-      - src/specimen_digitization/field_research/prompts/common.txt:36
+      - src/specimen_digitization/field_research/prompts/common.txt:36 at d83f4d6f1
       - src/specimen_digitization/field_research/prompts/county.txt:5
   # Its fields resolved in version 2.0 (formerly the question island_fields, from
   # PR #421's review, point 7): insects.py gave precise_location, county and
@@ -437,7 +440,7 @@ notations:
       holds an island's level: the precise location keeps it as written.
     source:
       - insects.py:41-43 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:38
+      - src/specimen_digitization/field_research/prompts/common.txt:38 at d83f4d6f1
       - src/specimen_digitization/field_research/prompts/province_state.txt:7
       - src/specimen_digitization/field_research/prompts/city.txt:6
       - docs/product-requirements/PRD.md:785-786
@@ -449,28 +452,28 @@ notations:
     fields: [precise_location]
     source:
       - insects.py:44 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:38
+      - src/specimen_digitization/field_research/prompts/common.txt:38 at d83f4d6f1
   - id: direction
     written: ["E. slope", "W. side"]
     readings: ["a direction qualifying the place that follows"]
     fields: [precise_location]
     source:
       - insects.py:45-49 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:38
+      - src/specimen_digitization/field_research/prompts/common.txt:38 at d83f4d6f1
   - id: collected_by
     written: ["leg.", "coll.", "Coll."]
     readings: ["collected by, marking the collectors"]
     fields: [collectors]
     source:
       - insects.py:50-52 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:39
+      - src/specimen_digitization/field_research/prompts/common.txt:39 at d83f4d6f1
   - id: determined_by
     written: ["det."]
     readings: ["determined by, marking who identified the specimen"]
     fields: [identified_by_irn]
     source:
       - insects.py:53-57 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:39
+      - src/specimen_digitization/field_research/prompts/common.txt:39 at d83f4d6f1
   # field_research/written.py decides the capital "M" exception in code (_a_name,
   # written.py:451-462; _counts_sexes, written.py:465-494; the unit decision,
   # written.py:523-528). WP 2.2 checked this entry against those lines: a capital
@@ -483,7 +486,7 @@ notations:
     note: The unit decides the field.
     source:
       - insects.py:58-62 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:44
+      - src/specimen_digitization/field_research/prompts/common.txt:44 at d83f4d6f1
       - src/specimen_digitization/field_research/prompts/elevation_from_m.txt:8
       - src/specimen_digitization/field_research/written.py:451-462
       - src/specimen_digitization/field_research/written.py:465-494
@@ -497,7 +500,7 @@ notations:
     note: The unit decides the field.
     source:
       - insects.py:58-62 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:44
+      - src/specimen_digitization/field_research/prompts/common.txt:44 at d83f4d6f1
       - src/specimen_digitization/field_research/prompts/elevation_from_ft.txt:8
   - id: elevation_heading
     written: ["alt.", "el."]
@@ -505,7 +508,7 @@ notations:
     fields: [elevation_from_m, elevation_to_m, elevation_from_ft, elevation_to_ft]
     source:
       - insects.py:58-62 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:44
+      - src/specimen_digitization/field_research/prompts/common.txt:44 at d83f4d6f1
       - src/specimen_digitization/field_research/prompts/elevation_from_m.txt:9
   - id: approximate
     written: ["ca.", "c."]
@@ -513,7 +516,7 @@ notations:
     fields: [elevation_from_m, elevation_from_ft, date_visited_from]
     source:
       - insects.py:63-67 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:44
+      - src/specimen_digitization/field_research/prompts/common.txt:44 at d83f4d6f1
   # The second reading (plan WP 2.4, the coordinator's ruling of 2026-11-15 on the 2.6 gate
   # forecast): the readers of pilot slide 105526325 write "1X-14-46" where the reference
   # truth reads the label's "IX-14-46" as 1946-09-14 (the source lines below). On the units
@@ -526,7 +529,7 @@ notations:
     fields: [date_visited_from, date_visited_to, date_identified]
     source:
       - insects.py:68-72 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:40
+      - src/specimen_digitization/field_research/prompts/common.txt:40 at d83f4d6f1
       - tests/fixtures/field_model_pilot_rows.json:163-167
       - tests/fixtures/field_model_pilot_rows.json:193
       - src/specimen_digitization/field_research/checks.py:55-75
@@ -542,7 +545,7 @@ notations:
       are examples.
     source:
       - insects.py:73-77 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:40
+      - src/specimen_digitization/field_research/prompts/common.txt:40 at d83f4d6f1
   - id: numeric_date
     written: ["<a>-<b>-<yy>", "<a>.<b>.<yy>", "<a>/<b>/<yy>"]
     readings: ["month <a>, day <b>", "day <a>, month <b>"]
@@ -550,13 +553,13 @@ notations:
     note: Settled only when a part over 12 fixes day against month; otherwise both readings stand until evidence decides.
     source:
       - insects.py:78-82 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:41
+      - src/specimen_digitization/field_research/prompts/common.txt:41 at d83f4d6f1
   - id: date_range
     written: ["<d1>-<d2>.<Roman month>.<yyyy>", "<Roman month>-<Roman month>.<yy>", "<d1>.<Roman month>-<d2>.<Roman month>.<yyyy>"]
     readings: ["a range: its first date is the start and its second the end"]
     fields: [date_visited_from, date_visited_to]
     source:
-      - src/specimen_digitization/field_research/prompts/common.txt:42
+      - src/specimen_digitization/field_research/prompts/common.txt:42 at d83f4d6f1
       - src/specimen_digitization/field_research/prompts/date_visited_from.txt:16
       - src/specimen_digitization/field_research/prompts/date_visited_to.txt:6
   - id: two_digit_year
@@ -565,14 +568,14 @@ notations:
     fields: [date_visited_from, date_visited_to, date_identified]
     source:
       - insects.py:83-87 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:43
+      - src/specimen_digitization/field_research/prompts/common.txt:43 at d83f4d6f1
   - id: uncertain
     written: ["?"]
     readings: ["the value before it is uncertain as written"]
     fields: []
     source:
       - insects.py:88 at 7a09445a2
-      - src/specimen_digitization/field_research/prompts/common.txt:47
+      - src/specimen_digitization/field_research/prompts/common.txt:47 at d83f4d6f1
   - id: slide_code
     written: ["<Roman month>-<dd>-<yy>-<n>", "<mm>-<dd>-<yy>-<n><letter>"]
     readings: ["a slide or preparation code: a month, a day, a two-digit year and a slide number joined by hyphens; never a date, nor is any part of it"]
@@ -580,7 +583,7 @@ notations:
     # No field takes a slide code: go-live gate G45.
     note: No field takes a slide code.
     source:
-      - src/specimen_digitization/field_research/prompts/common.txt:48
+      - src/specimen_digitization/field_research/prompts/common.txt:48 at d83f4d6f1
       - src/specimen_digitization/field_research/prompts/collection_code.txt:6
       - src/specimen_digitization/field_research/prompts/fmnh_ins_number.txt:6
       - src/specimen_digitization/field_research/prompts/collectors.txt:8
@@ -685,7 +688,7 @@ questions:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:142
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:328-330
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:334
-      - src/specimen_digitization/field_research/prompts/common.txt:48
+      - src/specimen_digitization/field_research/prompts/common.txt:48 at d83f4d6f1
       - src/specimen_digitization/field_research/prompts/fmnh_ins_number.txt:3
       - src/specimen_digitization/field_research/prompts/collection_code.txt:4
       - tests/fixtures/field_model_pilot_rows.json:75-87
@@ -746,7 +749,7 @@ rules:
     note: >-
       Moved to `not yet` in WP 2.1's review round 4 (the coordinator's ruling),
       as today's check broke it on one input: lies_in matches a parent by name
-      (agreement.py:2637-2641), so a county Fulton in the US state Georgia
+      (agreement.py:2150-2154), so a county Fulton in the US state Georgia
       passes under the country Georgia. WP 2.3a's check stage
       (field_research/ontology_checks.py) marks it, on the units path only,
       and the case today's check already met stays refused, as today: the
@@ -777,8 +780,8 @@ rules:
     source:
       - docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md:242-246
       - docs/execution/units/PLAN.md:127
-      - src/specimen_digitization/field_research/agreement.py:2637-2641
-      - src/specimen_digitization/field_research/agreement.py:2772-2796
+      - src/specimen_digitization/field_research/agreement.py:2150-2154
+      - src/specimen_digitization/field_research/agreement.py:2285-2309
       - src/specimen_digitization/field_research/ontology_checks.py:154-201
       - src/specimen_digitization/field_research/ontology_checks.py:320-362
   - id: place_chain
@@ -899,7 +902,7 @@ rules:
       - docs/execution/units/PLAN.md:127
       - src/specimen_digitization/field_research/checks.py:236-237
       - src/specimen_digitization/field_research/checks.py:259-269
-      - src/specimen_digitization/field_research/prompts/common.txt:48
+      - src/specimen_digitization/field_research/prompts/common.txt:48 at d83f4d6f1
   - id: label_type_routing
     statement: >-
       A label's type (locality, determination, code) and a unit's fields, the
