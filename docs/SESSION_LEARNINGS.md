@@ -26357,7 +26357,7 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 
 ## 2026-11-15 - WP 1.8 part A of the reading-units program: the units path switched on in production
 
-- Task: WP 1.8 part A of `docs/execution/units/PLAN.md` (row 1.8; brief `~/specimen-golive/units-program/brief_wp18a_switch_on.md`, off-repo). Branch `claude/wp18a-switch-on`, worktree `.claude/worktrees/wp18a-switch-on`, from main d83f4d6f1.
+- Task: WP 1.8 part A of `docs/execution/units/PLAN.md` (row 1.8; brief `~/specimen-golive/units-program/brief_wp18a_switch_on.md`, off-repo). Branch `claude/wp18a-switch-on`, worktree `.claude/worktrees/wp18a-switch-on`, from main d83f4d6f1; PR #445.
 - Authority: the owner's answer of 2026-11-15, after the WP 2.6 measurement, to "Switch the new reading process on in production?": "Yes, switch it on" (relayed in the brief, not first-hand here). It supersedes row 1.8's "After the 1.5 gate".
 - Outcome:
   - `scripts/ci/runtime_settings.py:114` sets `SPECIMEN_FIRST_PASS_UNITS` to `on` for the API. The intake job takes the API's environment: `INTAKE["env"]` copies it (`:129`), and the release deploys the job with `deploy_intake.job_env()`, which is `deploy_api.api_env()` with the intake's tracing. The worker and SAM carry no setting; the worker follows the path a run recorded.
