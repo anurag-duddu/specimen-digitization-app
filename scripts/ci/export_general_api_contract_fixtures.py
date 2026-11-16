@@ -375,7 +375,7 @@ def _export_fixture_bytes(root: Path, reverse_reads: bool) -> bytes:
             'after': {'selection_id': selection}, 'idempotency_key': 'i11-candidate-0'}]}
         with TestClient(app, raise_server_exceptions=False) as client:
             retain('review_batch', client.post(PREFIX + '/decisions:batch', json=request,
-                headers=headers('7651ca196a03f7cc18d5625844ca3b2fdc68a62d7b19c691c3b222ad40a77aa8')))
+                headers=headers('566f148df7add8b7e8dd54295d86489bb2511f40c76353c4d6605642e65c8222')))
             retain('review_readback', client.get(
                 PREFIX + f'/specimens/{S}/workspace', headers=headers('i11-review-readback')))
     return (json.dumps(corpus, sort_keys=True, indent=2, ensure_ascii=False) + '\n').encode('utf-8')

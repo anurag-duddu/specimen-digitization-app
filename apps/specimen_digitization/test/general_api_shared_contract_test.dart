@@ -323,7 +323,7 @@ void assertCorpus(Json fixture) {
       'error' => 'i11-stale',
       'upload_complete' => 'i11-complete',
       _ =>
-        '7651ca196a03f7cc18d5625844ca3b2fdc68a62d7b19c691c3b222ad40a77aa8', // pragma: allowlist secret -- Synthetic candidate request idempotency SHA-256.
+        '566f148df7add8b7e8dd54295d86489bb2511f40c76353c4d6605642e65c8222', // pragma: allowlist secret -- Synthetic candidate request idempotency SHA-256.
     };
     strictRaw(captured['headers'], {'Idempotency-Key': key}, '$name.headers');
     final expected = switch (name) {
@@ -449,7 +449,7 @@ void main() {
       expect(jsonDecode(q.body), candidateBody);
       expect(
         q.headers['Idempotency-Key'],
-        '7651ca196a03f7cc18d5625844ca3b2fdc68a62d7b19c691c3b222ad40a77aa8', // pragma: allowlist secret -- Synthetic candidate request idempotency SHA-256.
+        '566f148df7add8b7e8dd54295d86489bb2511f40c76353c4d6605642e65c8222', // pragma: allowlist secret -- Synthetic candidate request idempotency SHA-256.
       );
       phase = 2;
       return response('review_batch');
@@ -703,7 +703,7 @@ void main() {
     final decision = Json.from(sent['decisions'][0]);
     expect(
       sends.single.headers['Idempotency-Key'],
-      '7651ca196a03f7cc18d5625844ca3b2fdc68a62d7b19c691c3b222ad40a77aa8', // pragma: allowlist secret -- Synthetic candidate request idempotency SHA-256.
+      '566f148df7add8b7e8dd54295d86489bb2511f40c76353c4d6605642e65c8222', // pragma: allowlist secret -- Synthetic candidate request idempotency SHA-256.
     );
     expect(sent['reason'], 'I11 retained source reviewed');
     expect(decision['specimen_id'], s);

@@ -90,7 +90,7 @@ REQUESTS = {
     'upload_complete': ('/uploads/' + U + '/complete', 'i11-complete', {'expected_revision': 3}),
     'review_batch': ('/decisions:batch',
         # pragma: allowlist nextline secret -- Synthetic candidate request idempotency SHA-256.
-        '7651ca196a03f7cc18d5625844ca3b2fdc68a62d7b19c691c3b222ad40a77aa8',
+        '566f148df7add8b7e8dd54295d86489bb2511f40c76353c4d6605642e65c8222',
         {'reason': 'I11 retained source reviewed', 'decisions': [{
             'specimen_id': S, 'expected_revision': 23, 'base_record_version_id': R + ':23',
             'kind': 'research_candidate', 'target_id': 'country',
