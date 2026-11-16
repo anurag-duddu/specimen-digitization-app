@@ -167,8 +167,8 @@ fields:
     label: Precise Location
     darwin_core: verbatimLocality
     holds: >-
-      The locality as the label writes it: the most specific place text, such
-      as "E. slope Mt. <Mountain>, nr. <Town>".
+      The label's whole locality as written: every line of its locality text, such as
+      "E. slope Mt. <Mountain>, nr. <Town>" over "<Province>, <Country>".
     note: Darwin Core's locality is its interpretation and may equal it.
     source:
       - src/specimen_digitization/field_research/prompts/precise_location.txt:1
@@ -262,13 +262,13 @@ fields:
     darwin_core: verbatimEventDate
     holds: >-
       Text transcribed exactly as written: a non-standard collection-event
-      date or time expression, such as "Avril 1917", "Summer 1914", "am",
+      date or time expression, such as "Avril <yyyy>", "Summer <yyyy>", "am",
       "pm", "sunrise" or "daylight".
-    # The brief's first line says the museum has not confirmed what the field
-    # holds; the PRD records the collection manager's answer of 2026-10-07, and
-    # WP 1.7 replaces the brief's sentence. No document of this repository names
-    # its Darwin Core term: verbatimEventDate is Darwin Core's term for an
-    # event's date and time as written.
+    # The brief's first line states this, the collection manager's answer of
+    # 2026-10-07 as the PRD records it; WP 1.7's change to the brief landed
+    # after the program's closeout. No document of this repository names its
+    # Darwin Core term: verbatimEventDate is Darwin Core's term for an event's
+    # date and time as written.
     source:
       - src/specimen_digitization/field_research/prompts/verbatim_dts.txt:1
       - docs/product-requirements/PRD.md:1224

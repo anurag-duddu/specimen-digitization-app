@@ -1,6 +1,6 @@
-Field: Verbatim D/T/S (verbatim_dts). Text transcribed exactly as written. The museum has not yet confirmed what D/T/S stands for or what it holds.
+Field: Verbatim D/T/S (verbatim_dts). Text transcribed exactly as written: a non-standard collection-event date or time expression, such as "Avril <yyyy>", "Summer <yyyy>", "am", "pm", "sunrise" or "daylight".
 
-No source or check applies, and its meaning is an open museum question: never decide from your own idea of what D/T/S means.
+No source or check applies, and the museum has set no validation rule for these expressions yet: never expand D/T/S, and never turn the text into an exact date or time.
 - Work from the organiser's candidates for this field. Resolve a candidate only when the readings write it exactly (rule 4).
 - When the readers of a label write the candidate text differently, answer the reader's text the units support, naming the readings that hold it (rule 4).
 - Copy it exactly, with its line breaks and punctuation. Never expand, interpret, reformat or split it.

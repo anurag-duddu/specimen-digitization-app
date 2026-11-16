@@ -1075,3 +1075,14 @@ def test_no_rendered_text_carries_the_code_tables():
     rendered = [ontology.render(), ontology.render(brief=True), ontology.render_rules(), *every_instruction().values()]
     for text in rendered:
         assert "mamsl" not in text and "depto" not in text and "year-monthname" not in text
+
+
+def test_each_fields_brief_opens_with_what_the_file_says_it_holds():
+    """Each field's brief opens with its display name, its key and what the file says it holds, the brief's
+    first line being the field's cited source: the two cannot drift apart. WP 1.7 found the Verbatim D/T/S
+    brief still calling the field's meaning unconfirmed after the PRD's answer (PRD.md:1224), and the
+    Precise Location entry still describing the brief's text before it took every locality line."""
+    prompts = ROOT / "src/specimen_digitization/field_research/prompts"
+    for entry in ontology.ontology().fields:
+        first_line = (prompts / f"{entry.key}.txt").read_text(encoding="utf-8").split("\n", 1)[0]
+        assert first_line == f"Field: {entry.label} ({entry.key}). {entry.holds}", entry.key

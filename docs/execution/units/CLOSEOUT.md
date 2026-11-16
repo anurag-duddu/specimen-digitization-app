@@ -48,7 +48,7 @@ removed by WP 1.8 part B, commit d7363cb4 of PR #446, the last commit to touch e
 | `confirmed_against_image`, `_confirms`, `_preferred_spelling`, `Label.preference` and its values, `_preference` (:220) | Removed | None of the names is under `src/` |
 | `first_pass_followed`, `first_pass_overridden`, `first_pass_absent`, `first_pass_conflict`, `first_pass_code`, `_first_pass_preference`, `FIRST_PASS_RULES` (:221) | Removed from `src/`; under `tests/` one line keeps an old code, in a test that the move drops it | `tests/test_old_path_migration.py:422` |
 | `first_pass_given_up`, `GIVEN_UP`, `give_up`, `given_up_regions` (:222) | Kept | `application/first_pass.py:64`, `:919` |
-| `common.txt` rule 4 and its first-pass paragraph; the five tool-less briefs' first-pass sentences; `verbatim_dts.txt:1,3` (:223) | Rewritten: `common.txt` and the five briefs name no first pass. Left: `verbatim_dts.txt:1` and `:3` still say the museum has not confirmed what D/T/S holds; WP 1.7's prompt change is not on main (carried, section 5) | `field_research/prompts/common.txt`; `field_research/prompts/verbatim_dts.txt:1`, `:3`; the PRD's answer is `docs/product-requirements/PRD.md:1224` |
+| `common.txt` rule 4 and its first-pass paragraph; the five tool-less briefs' first-pass sentences; `verbatim_dts.txt:1,3` (:223) | Rewritten: `common.txt` and the five briefs name no first pass. `verbatim_dts.txt:1` and `:3` give the PRD's answer since WP 1.7's change landed after the closeout (`tests/test_ontology.py::test_each_fields_brief_opens_with_what_the_file_says_it_holds`) | `field_research/prompts/common.txt`; `field_research/prompts/verbatim_dts.txt:1`, `:3`; the PRD's answer is `docs/product-requirements/PRD.md:1224` |
 | `harness.apply_candidates` and the organiser call (:224) | Kept; WP 2.5 kept the organiser call (PR #443) | `application/harness.py:78`; `PLAN.md:224` |
 | `FieldAnswer.literal`; `ACROSS_LINES` (:225) | Kept | `field_research/contracts.py:223`; `field_research/agreement.py:479` |
 | `prompt__field_harness`, `PromptName.FIELD_HARNESS`, `_FIELD_HARNESS_DEFAULT` (:226) | Removed; the Logfire prompt was deleted with the owner's variables key | None of the names is under `src/` or `tests/`; the log, line 525 |
@@ -130,9 +130,12 @@ the one conflicting elevation for a person?" he answered "Yes, run it" (the log,
   (`:256`); it is at `field_research/agreement.py:285` and `:812`. Its line 332 says the file
   carries the LEWIS ruling "on the units path only"; the experts now research every run on the
   units path (`field_research/step.py:211-213`), so that qualifier no longer separates any run.
-- **WP 1.7's prompt change.** `field_research/prompts/verbatim_dts.txt:1` and `:3` still say the
-  museum has not confirmed what D/T/S holds; `PLAN.md` row 1.7 replaces that sentence with the PRD's
-  answer (`docs/product-requirements/PRD.md:1224`), pinned by a test.
+- **WP 1.7's prompt change** landed after the closeout, in PR #448:
+  `field_research/prompts/verbatim_dts.txt:1` and `:3` now give the PRD's answer
+  (`docs/product-requirements/PRD.md:1224`), with year placeholders as every brief's examples have.
+  `tests/test_ontology.py::test_each_fields_brief_opens_with_what_the_file_says_it_holds` pins each
+  brief's first line to what the ontology says the field holds; it also found the Precise Location
+  entry still describing its brief's text before the brief took every locality line, now matched.
 - **SAM cold starts.** When the one-instance SAM service is still loading, a segmentation attempt
   fails and is booked at its reservation, 182321 micros with no usage (the log, line 464:
   2026-11-16 05:17-05:18Z, run 7b052445).

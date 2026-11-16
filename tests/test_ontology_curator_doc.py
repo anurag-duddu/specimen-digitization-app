@@ -50,7 +50,7 @@ CITED_TEXT = {
     'key: elevation_from_ft +8': 'd85131',
     'key: collection_code +4': '8c95e4',
     "Darwin Core's locality is its interpretation and may equal it. +1": '87c56e',
-    "The brief's first line says the museum has not confirmed +5": 'b5a6e1',
+    "The brief's first line states this +5": '1d607d',
     'The EMu Parties record number (IRN) +1': '9cf43b',
     "The museum's Darwin Core mapping resolves +3": '427dad',
     'The fields a kind of unit could belong to +3': 'f35854',

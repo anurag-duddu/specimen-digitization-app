@@ -191,7 +191,7 @@ system fills the field from other fields, where the file has one.
 | `province_state` | Province/State | `stateProvince` | The first-level administrative unit (province, state or department) where the specimen was collected, as the labels write it. | `place_parents_derived` |
 | `county` | County | `county` | The country's second-level administrative unit where the specimen was collected, as the labels write it: a county, or whatever unit the country's local government holds at that level instead (a municipio, where that is the second level). | `place_parents_derived` |
 | `city` | City | `municipality` | The city, town or municipality the labels name as the collecting place. | No |
-| `precise_location` | Precise Location | `verbatimLocality` | The locality as the label writes it: the most specific place text, such as "E. slope Mt. `<Mountain>`, nr. `<Town>`". | No |
+| `precise_location` | Precise Location | `verbatimLocality` | The label's whole locality as written: every line of its locality text, such as "E. slope Mt. `<Mountain>`, nr. `<Town>`" over "`<Province>`, `<Country>`". | No |
 | `elevation_from_m` | Elevation From (m) | `minimumElevationInMeters` | The lower, or only, elevation the label writes in metres. | `elevation_conversion` |
 | `elevation_to_m` | Elevation To (m) | `maximumElevationInMeters` | The upper end of an elevation range the label writes in metres. | `elevation_conversion` |
 | `elevation_from_ft` | Elevation From (ft) | `verbatimElevation` | The lower, or only, elevation the label writes in feet. | `elevation_conversion`; also inferred by `elevation_unit_feet` |
@@ -201,7 +201,7 @@ system fills the field from other fields, where the file has one.
 | `date_visited_from` | Date Visited From | `eventDate` | The date the specimen was collected, or the first date of a written collecting range, at the precision written. | No |
 | `date_visited_to` | Date Visited To | `eventDate` | The last date of collecting, only when the label writes a range or an end date, at the precision written. | `end_date_from_one_date` |
 | `collectors` | Collectors | `recordedBy` | The people who collected the specimen, exactly as the label writes them. | No |
-| `verbatim_dts` | Verbatim D/T/S | `verbatimEventDate` | Text transcribed exactly as written: a non-standard collection-event date or time expression, such as "Avril 1917", "Summer 1914", "am", "pm", "sunrise" or "daylight". | No |
+| `verbatim_dts` | Verbatim D/T/S | `verbatimEventDate` | Text transcribed exactly as written: a non-standard collection-event date or time expression, such as "Avril `<yyyy>`", "Summer `<yyyy>`", "am", "pm", "sunrise" or "daylight". | No |
 | `taxon` | Taxon | `scientificName` | The scientific name the labels give the specimen, at the rank written. | No |
 | `identified_by_irn` | Identified by IRN | `identifiedBy` | The EMu Parties record number (IRN) of the person who identified the specimen. | No |
 | `date_identified` | Date Identified | `dateIdentified` | The date the specimen was identified (determined), at the precision written. | No |
@@ -216,7 +216,7 @@ system fills the field from other fields, where the file has one.
   (`specimen.yaml:190-197` (`key: elevation_from_ft`)).
 - **Verbatim D/T/S**: no document of the repository names this field's Darwin Core term. The file
   uses verbatimEventDate, Darwin Core's term for an event's date and time as written
-  (`specimen.yaml:267-271` (`The brief's first line says the museum has not confirmed`)).
+  (`specimen.yaml:267-271` (`The brief's first line states this`)).
 - **Identified by IRN**: "The museum's Darwin Core mapping resolves the identifier's Parties
   reference to the name it publishes as identifiedBy; its public archive maps no identifiedByID."
   (`specimen.yaml:289-291` (`The museum's Darwin Core mapping resolves`)).

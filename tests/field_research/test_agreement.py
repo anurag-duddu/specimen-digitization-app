@@ -685,7 +685,7 @@ def test_text_from_the_transcript_beside_another_kinds_text_settles(tmp_path):
 @pytest.mark.parametrize(("key", "settles"), [
     # A collection code read from the transcript where the organiser placed the date.
     ("collection_code", False),
-    # Verbatim D/T/S may hold the date: its meaning is an open museum question.
+    # Verbatim D/T/S may hold the date: the museum has set no rule against it (PRD.md:1224).
     ("verbatim_dts", True),
 ])
 def test_text_the_organiser_placed_in_another_field(tmp_path, key, settles):

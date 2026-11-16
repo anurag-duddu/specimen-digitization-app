@@ -4,7 +4,7 @@ field (ontology.render_instructions("expert", key)) and the field's brief.
 
 WP 1.3 to 2.4 of docs/execution/units/PLAN.md gave the units path these instructions as the old
 path's with the texts a file of replacements (prompts/units.txt) named. The
-instructions are byte for byte the units path's on main d83f4d6f1 (MAIN)."""
+instructions are byte for byte the units path's on main d83f4d6f1 (MAIN), but verbatim_dts's (WP 1.7)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from specimen_digitization.field_research.prompts import instructions
 from specimen_digitization.ontology import render, render_instructions
 
 # Each field's instructions on the units path on main d83f4d6f1 (instructions(key, units=True)
-# there), as the sha256 of their UTF-8 bytes.
+# there), as the sha256 of their UTF-8 bytes; verbatim_dts's since its brief took the PRD's answer (WP 1.7).
 MAIN = {
     'taxon': "sha256:b34fd9b30faba7ff37ba33144206a8bc57ed8414df0cfd9c61565d901fbc96f7",
     'country': "sha256:5374054c21c53756da3e579d71425eb5b27136ad81eabcd059f78f2ea68675be",
@@ -37,7 +37,7 @@ MAIN = {
     'collection_code': "sha256:27e9950e9407223f3e6563a3b94fbe8dc000fd46a33b51cc043a39af6e15c161",
     'habitat': "sha256:8844565ed36b13ce827cef55ff014550baac53d037ec56158f839dbd90dd20e8",
     'collection_method': "sha256:e3c8ad333b32c9b727f931db2500d0d43af0fa737073b00bf6f8967d4e221aa5",
-    'verbatim_dts': "sha256:19da03e87645d450bd7279fa779ee8eca407ce75d60f3a75b23a4fea7412e0dc",
+    'verbatim_dts': "sha256:a667ea32eee99494dfec46883dd1f93e11ced0aa42a765e2dcbe6b3fa475e3ea",
     'identified_by_irn': "sha256:a49fc2b103c5a02408b8713705ff53f61977b686af2063d6c2f227ec26092483",
 }
 TOOL_LESS = {key for key, tools in FIELD_TOOLS.items() if not tools} - {"identified_by_irn"}
