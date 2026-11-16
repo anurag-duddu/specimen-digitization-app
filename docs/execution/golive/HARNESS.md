@@ -479,9 +479,9 @@ level's system prompt to be visible in Logfire.
 text (TRN-001, TRN-008), identical readings included, gets one external,
 billable step `first_pass:{region_id}` (section 3) after its transcribe steps
 and before `adjudicate`; a run that already passed `adjudicate` is never given
-one (`Workflow.next_step`). A region with one reading, or none with text, gets
-the alignment's units at `adjudicate`, with no call, and so does a region whose
-first pass was given up on (below). A decision for another region, one that
+one (`Workflow.next_step`). A region with one reading gets the alignment's
+units at `adjudicate`, with no call, and so does a region whose first pass was
+given up on (below); a region whose readings hold no text gets no units. A decision for another region, one that
 names a reading, a verdict other than `uncertain`, `material` flags that differ
 from the spans, or units of another label, or units that fail
 `reading_units.problems` against the region's readings, blocks as
