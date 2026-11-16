@@ -47,17 +47,21 @@ from specimen_digitization.field_research.contracts import (
     SourceCandidate,
 )
 from specimen_digitization.field_research.experts import EXHAUSTED, INPUT_PREFIX, make_resolver
+from test_first_pass_advice import with_units
+
+# The readings below carry their label's units as the workflow gives them (with_units: the
+# alignment's, the image naming the text where every reader of the label wrote the same).
 
 PILOT_DATES = {
     "version": "date-rules-v1", "two_digit_year_century": 1900, "roman_numeral_months": True,
 }
-READINGS = (
+READINGS = with_units((
     Reading("1A", "region-1", "obs-1a", "decided_transcript",
             "Epipsocus sp. 1\nP.I. Mindanao, Davao\n4-5-48 coll. F. G. Werner"),
     Reading("1B", "region-1", "obs-1b", "raw_reading",
             "Epipsocus sp. 1\nP.I. Mindanao Davao\n4-5-48 coll. F.G. Werner"),
     Reading("2A", "region-2", "obs-2a", "raw_reading", "alt. 1500 ft\nca. 1200 m"),
-)
+))
 CONTEXT = {
     "country": FieldValue(state=ValueState.SUPPORTED, literal="P.I."),
     "city": FieldValue(state=ValueState.AMBIGUOUS,
@@ -344,7 +348,7 @@ def test_a_taxon_resolves_only_on_the_candidate_gbif_decided_for_its_literal(rec
     ("Epipsocus sp.", "Epipsocus", None),  # G25: a genus-level identification, at genus rank
 ])
 def test_a_taxon_resolves_only_on_gbifs_answer_for_the_whole_name_its_literal_writes(literal, query, says):
-    readings = (Reading("1A", "region-1", "obs-1a", "decided_transcript", literal + "\nleg. F. G. Werner"),)
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "decided_transcript", literal + "\nleg. F. G. Werner"),))
     found = SourceAnswer("gbif", query, LookupStatus.SUCCESS, (SourceCandidate("Decided name", "gbif:7"),),
                          Evidence(id="ev-gbif-7", kind="authority", source="gbif", locator="gbif:7",
                                   excerpt="Decided name"), note="success")
@@ -390,8 +394,8 @@ SAN_PEDRO = SourceAnswer("geolocate", "San Pedro, Guatemala", LookupStatus.SUCCE
      dict(authority_id="geolocate:1", source_evidence_ids=["ev-town"])),
 ])
 def test_a_resolved_literal_is_a_whole_candidate_never_a_piece_of_a_reading(key, written, piece, received, rest):
-    readings = tuple(Reading(name, "region-1", f"obs-{name}", "raw_reading", f"{written}\nleg. F. G. Werner")
-                     for name in ("1A", "1B"))
+    readings = with_units(tuple(Reading(name, "region-1", f"obs-{name}", "raw_reading", f"{written}\nleg. F. G. Werner")
+                     for name in ("1A", "1B")))
     made = experts._Expert(task(key, candidates=offered(("1A", written), ("1B", written))), readings,
                            FakeTools(), PILOT_DATES)
     if received is not None:
@@ -411,8 +415,8 @@ def test_an_expert_that_shortens_the_name_after_the_whole_name_retry_goes_to_rev
     label writes; the retry asks for the whole name, and an answer that
     shortens the literal to that part instead is sent back too."""
     tri = "Danaus plexippus megalippe"
-    readings = (Reading("1A", "r1", "o1a", "decided_transcript", tri + "\nleg. F. G. Werner"),
-                Reading("1B", "r1", "o1b", "raw_reading", tri + "\nleg. F. G. Werner"))
+    readings = with_units((Reading("1A", "r1", "o1a", "decided_transcript", tri + "\nleg. F. G. Werner"),
+                Reading("1B", "r1", "o1b", "raw_reading", tri + "\nleg. F. G. Werner")))
     field = task("taxon", current=FieldValue(state=ValueState.SUPPORTED, literal=tri),
                  candidates=offered(("1A", tri), ("1B", tri)))
     first = dict(outcome="resolved", literal=tri, reading_names=["1A"], value="Danaus plexippus (Linnaeus, 1758)",
@@ -434,8 +438,8 @@ def test_a_taxon_candidate_whose_quote_writes_a_longer_name_is_sent_back():
     """The third review's N3 at the expert: both readers' candidate is the
     binomial, quoting the trinomial line, and GBIF was asked the binomial."""
     tri = "Danaus plexippus megalippe"
-    readings = tuple(Reading(name, "r1", f"o{name}", "raw_reading", tri + "\nleg. F. G. Werner")
-                     for name in ("1A", "1B"))
+    readings = with_units(tuple(Reading(name, "r1", f"o{name}", "raw_reading", tri + "\nleg. F. G. Werner")
+                     for name in ("1A", "1B")))
     cut = task("taxon", candidates=[Candidate(name, tri, "Danaus plexippus", f"ev-{name}") for name in ("1A", "1B")])
     made = experts._Expert(cut, readings, FakeTools(), PILOT_DATES)
     made.calls.append(experts._Call("gbif", DANAUS.query, DANAUS.status, DANAUS))
@@ -450,7 +454,7 @@ def test_a_taxon_candidate_whose_quote_writes_a_longer_name_is_sent_back():
     # A keyed line's candidate quotes its key and the same name: it settles.
     keyed = task("taxon", candidates=[Candidate(name, "taxon: Danaus plexippus", "Danaus plexippus", f"ev-{name}")
                                       for name in ("1A", "1B")])
-    plain = tuple(Reading(name, "r1", f"o{name}", "raw_reading", "taxon: Danaus plexippus") for name in ("1A", "1B"))
+    plain = with_units(tuple(Reading(name, "r1", f"o{name}", "raw_reading", "taxon: Danaus plexippus") for name in ("1A", "1B")))
     assert agreement.literal_refusal(keyed, plain, literal="Danaus plexippus", named=plain) is None
 
 
@@ -459,14 +463,14 @@ def test_a_code_candidate_whose_quote_writes_a_genus_before_it_is_a_piece_of_the
     "Epipsocus" with "sp. 1" on the next line, cuts the genus off its name."""
     code = "sp. 1 \N{FEMALE SIGN}"
     for written in ("Epipsocus " + code, "Epipsocus\n" + code):
-        readings = tuple(Reading(name, "r1", f"o{name}", "raw_reading", written) for name in ("1A", "1B"))
+        readings = with_units(tuple(Reading(name, "r1", f"o{name}", "raw_reading", written) for name in ("1A", "1B")))
         cut = task("taxon", candidates=[Candidate(name, written, code, f"ev-{name}") for name in ("1A", "1B")])
         refused = agreement.literal_refusal(cut, readings, literal=code, named=readings)
         assert refused is not None and refused.reason == agreement.PART_OF_NAME
         assert "writes the longer name 'Epipsocus'" in refused.retry
     # The code on a line of its own, below a line with no genus at its end, settles.
     alone = "Mossy forest 6400'\n" + code
-    readings = tuple(Reading(name, "r1", f"o{name}", "raw_reading", alone) for name in ("1A", "1B"))
+    readings = with_units(tuple(Reading(name, "r1", f"o{name}", "raw_reading", alone) for name in ("1A", "1B")))
     own = task("taxon", candidates=[Candidate(name, alone, code, f"ev-{name}") for name in ("1A", "1B")])
     assert agreement.literal_refusal(own, readings, literal=code, named=readings) is None
 
@@ -530,13 +534,20 @@ def test_one_reading_of_an_ambiguous_date_is_sent_back_and_both_go_to_review():
     assert outcome.answer.options == ["1948-04-05", "1948-05-04"]
 
 
+# READINGS with label 2 read by two readers who agree: a label one reader read backs nothing (the
+# rule's point 3), so the checks on a value below are made where readers agree.
+AGREED_LABEL_2 = with_units((*READINGS[:2],
+    Reading("2A", "region-2", "obs-2a", "raw_reading", "alt. 1500 ft\nca. 1200 m"),
+    Reading("2B", "region-2", "obs-2b", "raw_reading", "alt. 1500 ft\nca. 1200 m")))
+
+
 def test_a_resolved_value_comes_from_a_check_that_settles_the_literal():
     script = Script(
         call("parse_elevation", literal="1500 ft"),
         dict(outcome="resolved", literal="1500 ft", reading_names=["2A"], value="1500"),
     )
 
-    outcome = resolve(script, task("elevation_from_ft", candidates=offered(("2A", "1500 ft"))))
+    outcome = resolve_on(AGREED_LABEL_2, script, task("elevation_from_ft", candidates=offered(("2A", "1500 ft"))))
 
     assert tool_returns(script.seen[1][0])[0]["status"] == "success"
     assert outcome.failure is None and outcome.answer.value == "1500"
@@ -659,7 +670,7 @@ def test_a_budget_that_cannot_fit_a_call_fails_the_field():
 
 def test_a_request_over_the_input_bound_fails_the_field_as_too_large_not_as_the_cost_limit():
     script = Script(dict(outcome="label_lacks_value"))
-    huge = (Reading("9A", "region-9", "obs-9a", "raw_reading", "x" * 200_000),)
+    huge = with_units((Reading("9A", "region-9", "obs-9a", "raw_reading", "x" * 200_000),))
     resolver = make_resolver(model_factory=script.model, meter=meter(), date_rules=PILOT_DATES)
 
     outcome = asyncio.run(resolver(task("habitat"), READINGS + huge, CONTEXT, tools=FakeTools()))
@@ -809,7 +820,7 @@ def test_field_initialization_uses_the_original_deadline(
 # replaced the expert's own answer).
 
 # 105526321's labels as its readers wrote them in that run (sex sign left out).
-MCKINLEY = (
+MCKINLEY = with_units((
     Reading("1A", "region-1", "obs-1a", "decided_transcript", "FMNHINS\n4486784"),
     Reading("1B", "region-1", "obs-1b", "raw_reading", "FMNHINS\n4486784"),
     Reading("2A", "region-2", "obs-2a", "decided_transcript",
@@ -818,7 +829,7 @@ MCKINLEY = (
     Reading("2B", "region-2", "obs-2b", "raw_reading",
             "10-6-78-1a\nE.slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.\nF.G. Wermer\n"
             "3 Sept. '46\nMossy forest 6400'\nSp.30"),
-)
+))
 # The organiser's city for 105526321: the mountain.
 MCKINLEY_CITY = FieldTask(
     key="city", mandatory=True, current=FieldValue(state=ValueState.SUPPORTED, literal="Mt. McKinley"),
@@ -997,8 +1008,8 @@ def test_tool_results_tell_an_expert_near_its_limits_to_answer_now():
 
 
 # 105526330's label 2 (decided reading) as its reader wrote it in that run.
-LABEL_330 = (Reading("2A", "region-2", "obs-2a", "decided_transcript",
-                     "IV-29-68-2\nYepocapa,4800 ft.\nChimaltenago\nGuatemala,IV-25\n1948, R.D. Mitchell"),)
+LABEL_330 = with_units((Reading("2A", "region-2", "obs-2a", "decided_transcript",
+                     "IV-29-68-2\nYepocapa,4800 ft.\nChimaltenago\nGuatemala,IV-25\n1948, R.D. Mitchell"),))
 
 
 def test_a_repeated_check_is_answered_from_its_first_call(monkeypatch):
@@ -1084,28 +1095,20 @@ def test_the_briefs_answer_label_lacks_value_for_a_value_the_label_does_not_writ
 
 
 @pytest.mark.parametrize("key", ["collectors", "collection_code", "habitat", "collection_method", "verbatim_dts"])
-def test_the_briefs_of_fields_no_source_checks_follow_the_first_pass_unless_another_label_writes_the_text(key):
-    """In this branch's real run of 105526321, its verbatim D/T/S expert
-    answered several_possibilities between 2A ("3 sept. '46"), the reading the
-    first pass preferred, and 2B ("3 Sept. '46"). Its brief now has it follow
-    the first pass's preferred reader unless another label of the specimen,
-    two or more of whose readers agree, writes the other reader's text where
-    the first pass did not confirm its pick, and answer several_possibilities
-    when the first pass preferred no reader and nothing backs one (the owner,
-    2026-10-25). No brief calls another reader's text "evidence only"."""
+def test_the_briefs_of_fields_no_source_checks_answer_the_text_the_units_support(key):
+    """In this branch's real run of 105526321, its verbatim D/T/S expert answered
+    several_possibilities between 2A's "3 sept. '46" and 2B's "3 Sept. '46". The brief of each
+    field no source checks has its expert answer the reader's text the units support, naming the
+    readings that hold it, and answer several_possibilities only where it finds no text to
+    answer (rule 4; WP 1.3's rework of the five briefs). No brief names the first pass's
+    preferred reader or calls another reader's text "evidence only"."""
     from specimen_digitization.field_research.prompts import FIELD_LABELS, instructions
 
     brief = instructions(key).split(f"Field: {FIELD_LABELS[key]} ({key})", 1)[1]
-    [line] = [line for line in brief.splitlines() if "first pass preferred (input_source decided_transcript)" in line]
-    # Another label backs a reader's text only when two or more of its
-    # readers agree, and never against a pick the first pass confirmed at
-    # that difference (the coordinator's decision of 2026-10-25 on #414).
-    assert "another label of this specimen, read by two or more readers who agree, writes one reader's" in line
-    assert ("unless the first pass's verdict at that difference (first_pass) names the reader it preferred: "
-            "then answer several_possibilities with both") in line
-    [neither] = [line for line in brief.splitlines() if "several_possibilities with each reader's text" in line]
-    assert "the first pass preferred no reader" in neither
-    assert "evidence only" not in instructions(key) and "that names" not in brief
+    assert len([line for line in brief.splitlines() if " the units support, naming the readings that hold " in line]) == 1
+    [neither] = [line for line in brief.splitlines() if "several_possibilities, with each reader's text" in line]
+    assert "only where you find no " in neither
+    assert "first pass" not in brief and "preferred" not in brief and "evidence only" not in instructions(key)
 
 
 # Real names and words the briefs once gave as examples. In this branch's
@@ -1132,8 +1135,15 @@ def test_no_brief_gives_an_example_a_model_could_take_for_label_text():
     def letter_rule(line: str) -> bool:
         return line.startswith("- A place abbreviation") or "whose words its letters fit in order" in line
 
+    from specimen_digitization.ontology import render, render_instructions
+
     for key in FIELD_TOOLS:
-        text = "\n".join(line for line in instructions(key).splitlines() if not letter_rule(line))
+        # The ontology's text and its rules hold the label notations from their sources
+        # (ontology/specimen.yaml), which name real places by design; the shared rules and the
+        # briefs give patterns.
+        written = instructions(key).replace(render(brief=True).strip(), "").replace(
+            render_instructions("expert", key).strip(), "")
+        text = "\n".join(line for line in written.splitlines() if not letter_rule(line))
         assert [name for name in REAL_EXAMPLES if re.search(rf"\b{name}\b", text)] == [], key
         assert not re.search(r"\b(18|19|20)\d\d\b", text), key  # a year
         assert not re.search(r"\b[IVX]+-\d+-\d+-\d+", text), key  # a slide code
@@ -1494,10 +1504,13 @@ def test_every_field_has_a_brief():
     from specimen_digitization.field_research.prompts import FIELD_LABELS, instructions
 
     assert set(FIELD_LABELS) == set(FIELD_TOOLS)
+    from specimen_digitization.ontology import render
+
     for key, label in FIELD_LABELS.items():
         text = instructions(key)
         assert f"Field: {label} ({key})" in text
-        assert text.isascii()
+        # The shared rules and the brief are ASCII; the ontology's text writes the sex marks.
+        assert text.replace(render(brief=True).strip(), "").isascii()
         brief = text.split(f"Field: {label} ({key})", 1)[1]
         assert len(brief.splitlines()) <= 25
 
@@ -1551,10 +1564,10 @@ def test_answers_that_break_a_rule_are_sent_back(key, given, says):
 
 # Readers that disagree (G19, G20, G27; the review's B1).
 
-DISAGREEING = (
+DISAGREEING = with_units((
     Reading("1A", "region-1", "obs-1a", "raw_reading", "Chimaltenago, Guat.\nleg. J. Smith"),
     Reading("1B", "region-1", "obs-1b", "raw_reading", "Chimaltenango, Guat.\nleg. J. Smyth"),
-)
+))
 
 
 def disagreeing(key: str, literals, answers=()) -> experts._Expert:
@@ -1590,7 +1603,7 @@ def town(name: str, evidence_id: str) -> SourceAnswer:
 def test_a_pick_between_readers_with_no_source_is_sent_back():
     made = disagreeing("collectors", [("1A", "J. Smith"), ("1B", "J. Smyth")])
 
-    with pytest.raises(ModelRetry, match="readers disagree on this field"):
+    with pytest.raises(ModelRetry, match="does not settle one reader.s text"):
         made.validate(answer(outcome="resolved", literal="J. Smith", reading_names=["1A"]))
 
 
@@ -1604,23 +1617,23 @@ def nothing(name: str, evidence_id: str, status=LookupStatus.NO_MATCH) -> Source
 
 @pytest.mark.parametrize(("answers", "cited", "says"), [
     # G27's example with no lookup at all.
-    ((), [], "readers disagree on this field"),
+    ((), [], "does not settle one reader.s text"),
     # Getty TGN confirms 1B's text, and finds nothing for 1A's (G20).
     ((place("Chimaltenango", "ev-b"), nothing("Chimaltenago", "ev-a")), ["ev-b"], None),
     # 1A's text was never asked about: a missing lookup is not a no-match (the second review's B1).
-    ((place("Chimaltenango", "ev-b"),), ["ev-b"], "readers disagree on this field"),
+    ((place("Chimaltenango", "ev-b"),), ["ev-b"], "does not settle one reader.s text"),
     # A timeout is not a no-match either.
     ((place("Chimaltenango", "ev-b"), nothing("Chimaltenago", "ev-a", LookupStatus.TIMEOUT)), ["ev-b"],
-     "readers disagree on this field"),
+     "does not settle one reader.s text"),
     # A success answer about 1A's text, whatever it names, is not "found nothing".
     ((place("Chimaltenango", "ev-b"), nothing("Chimaltenago", "ev-a"),
       SourceAnswer("geolocate", "Chimaltenago, Guatemala", LookupStatus.SUCCESS,
                    (SourceCandidate("Chimaltenango", "geolocate:Chimaltenango"),),
                    Evidence(id="ev-c", kind="authority", source="geolocate", locator="geolocate:Chimaltenango",
-                            excerpt="Chimaltenango"))), ["ev-b"], "readers disagree on this field"),
+                            excerpt="Chimaltenango"))), ["ev-b"], "does not settle one reader.s text"),
     # A source confirms each reader's text: nothing decides between them.
     ((place("Chimaltenango", "ev-b"), place("Chimaltenago", "ev-a")), ["ev-b"],
-     "readers disagree on this field"),
+     "does not settle one reader.s text"),
     # The confirming answer must be cited.
     ((place("Chimaltenango", "ev-b"), nothing("Chimaltenago", "ev-a")), [], "Cite the evidence_id"),
 ])
@@ -1639,8 +1652,8 @@ def test_a_place_the_readers_disagree_on_settles_only_on_a_source_confirming_one
 def test_readers_that_differ_disagree_whatever_state_the_organiser_gave_the_field():
     """The organiser left the city supported on 1A's text, yet 1B writes
     another: only GEOLocate's answer for 1A's text is not enough (B1)."""
-    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "San Pedro, Guat."),
-                Reading("1B", "region-1", "obs-1b", "raw_reading", "San Pablo, Guat."))
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "raw_reading", "San Pedro, Guat."),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", "San Pablo, Guat.")))
     field = task("city", current=FieldValue(state=ValueState.SUPPORTED, literal="San Pedro"),
                  candidates=offered(("1A", "San Pedro"), ("1B", "San Pablo")))
     made = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
@@ -1648,7 +1661,7 @@ def test_readers_that_differ_disagree_whatever_state_the_organiser_gave_the_fiel
     given = answer(outcome="resolved", literal="San Pedro", reading_names=["1A"], authority_id="geolocate:1",
                    source_evidence_ids=["ev-town"])
 
-    with pytest.raises(ModelRetry, match="readers disagree on this field"):
+    with pytest.raises(ModelRetry, match="does not settle one reader.s text"):
         made.validate(given)
     # Once TGN finds nothing for 1B's text, GEOLocate's answer settles it (G20).
     missing = nothing("San Pablo", "ev-none")
@@ -1679,8 +1692,8 @@ def test_readers_that_differ_on_a_town_written_with_a_comma_settle_on_its_lookup
     """1A writes "Yepocapa," and 1B "Yepocapo,": GEOLocate confirms Yepocapa
     and Getty TGN finds nothing for Yepocapo (G20), so 1A's text settles,
     with GEOLocate's name as the value."""
-    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Mun. Yepocapa, Chimaltenango"),
-                Reading("1B", "region-1", "obs-1b", "raw_reading", "Mun. Yepocapo, Chimaltenango"))
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "raw_reading", "Mun. Yepocapa, Chimaltenango"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", "Mun. Yepocapo, Chimaltenango")))
     field = task("city", current=FieldValue(state=ValueState.AMBIGUOUS),
                  candidates=offered(("1A", "Yepocapa,"), ("1B", "Yepocapo,")))
     made = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
@@ -1700,11 +1713,11 @@ def test_readers_that_differ_on_a_town_written_with_a_comma_settle_on_its_lookup
     # Another candidate than the town both texts are confirmed as: a municipality TGN gives.
     ("city", "tgn:yepocapa-municipality", "which a source confirms as the same place"),
     # Only a place: the same lookup settles no collectors between readers that differ.
-    ("collectors", None, "readers disagree on this field"),
+    ("collectors", None, "does not settle one reader.s text"),
 ])
 def test_readers_whose_texts_match_the_place_confirming_both_by_its_comparison_key_settle_on_it(key, authority, says):
-    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Mun. Yepocapa, Chimaltenango"),
-                Reading("1B", "region-1", "obs-1b", "raw_reading", "Mun. Yepocapa Chimaltenango"))
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "raw_reading", "Mun. Yepocapa, Chimaltenango"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", "Mun. Yepocapa Chimaltenango")))
     field = task(key, current=FieldValue(state=ValueState.AMBIGUOUS),
                  candidates=offered(("1A", "Yepocapa,"), ("1B", "Yepocapa")))
     made = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
@@ -1726,28 +1739,30 @@ def test_readers_whose_texts_match_the_place_confirming_both_by_its_comparison_k
         made.validate(given)
 
 
-def test_a_taxons_readers_that_differ_settle_on_one_confirmed_reader_only():
-    """Only a place's readers settle on one source confirming each: two
-    readers of a taxon that GBIF both settle as one usage still disagree."""
-    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Danaus plexippus"),
-                Reading("1B", "region-1", "obs-1b", "raw_reading", "Danaus plexippus (Linnaeus, 1758)"))
+def test_a_taxons_readers_are_never_one_candidate_through_one_gbif_usage():
+    """Only a place's texts that a source confirms as one place are one candidate (the rule's
+    point 1): GBIF confirming both readers' taxon texts as one usage does not merge them. The
+    text both readers write (1B inside its longer name) is backed by readers agreeing alone, so
+    it settles marked; 1B's longer name has no backing (the rule's points 3 and 4)."""
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "raw_reading", "Danaus plexippus"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", "Danaus plexippus (Linnaeus, 1758)")))
     field = task("taxon", current=FieldValue(state=ValueState.AMBIGUOUS), candidates=offered(
         ("1A", "Danaus plexippus"), ("1B", "Danaus plexippus (Linnaeus, 1758)")))
     with_author = SourceAnswer("gbif", "Danaus plexippus (Linnaeus, 1758)", LookupStatus.SUCCESS,
                                DANAUS.candidates, DANAUS.evidence.model_copy(update={"id": "ev-author"}))
-    refused = agreement.refusal(field, readings, literal="Danaus plexippus", named=readings[:1],
-                                value="Danaus plexippus (Linnaeus, 1758)", authority_id="5133088",
-                                cited=[DANAUS], received=[DANAUS, with_author])
-    assert refused is not None and refused.reason == agreement.DIFFER
+    [label] = agreement.labels(field, readings, [DANAUS, with_author]).values()
+    assert (label.settled, label.cleared, label.why) == (frozenset({"Danaus plexippus"}), False, agreement.TEXT_ONLY)
+    assert sorted((sorted(c.texts), sorted(c.backings)) for c in label.candidates) == [
+        (["Danaus plexippus"], [agreement.TEXT]), (["Danaus plexippus (Linnaeus, 1758)"], [])]
 
 
 SACATEPEQUEZ = "Sacatep" + chr(0xE9) + "quez"  # As GEOLocate writes it.
-TWO_LABELS = (
+TWO_LABELS = with_units((
     Reading("1A", "region-1", "obs-1a", "raw_reading", "Chimaltenango, Guat."),
     Reading("1B", "region-1", "obs-1b", "raw_reading", "Chimaltenango, Guat."),
     Reading("2A", "region-2", "obs-2a", "raw_reading", "Sacatepequez"),
     Reading("2B", "region-2", "obs-2b", "raw_reading", "Sacatepequez"),
-)
+))
 
 
 @pytest.mark.parametrize("second", [
@@ -1785,10 +1800,10 @@ def test_a_field_on_two_labels_settles_only_when_both_settle_to_one_value(second
 def test_labels_that_write_one_name_differently_settle_on_one_gbif_usage():
     """G32's "same GBIF usage": label 1 writes the name, label 2 the name with
     its author; GBIF's decision for the name is the same usage for both."""
-    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Danaus plexippus"),
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "raw_reading", "Danaus plexippus"),
                 Reading("1B", "region-1", "obs-1b", "raw_reading", "Danaus plexippus"),
                 Reading("2A", "region-2", "obs-2a", "raw_reading", "Danaus plexippus (Linnaeus, 1758)"),
-                Reading("2B", "region-2", "obs-2b", "raw_reading", "Danaus plexippus (Linnaeus, 1758)"))
+                Reading("2B", "region-2", "obs-2b", "raw_reading", "Danaus plexippus (Linnaeus, 1758)")))
     field = task("taxon", current=FieldValue(state=ValueState.AMBIGUOUS), candidates=offered(
         ("1A", "Danaus plexippus"), ("1B", "Danaus plexippus"),
         ("2A", "Danaus plexippus (Linnaeus, 1758)"), ("2B", "Danaus plexippus (Linnaeus, 1758)")))
@@ -1799,6 +1814,36 @@ def test_labels_that_write_one_name_differently_settle_on_one_gbif_usage():
     # Another usage than GBIF's decision for both labels does not settle them.
     assert agreement.refusal(field, readings, authority_id="5133099", **settles).differ
 
+
+
+@pytest.mark.parametrize(("key", "first", "second", "settles"), [
+    # Two labels write different collecting dates: a conflict.
+    ("date_visited_from", "3 Sept. 1946", "4 Sept. 1946", False),
+    # Two labels write different countries: a conflict.
+    ("country", "Mexico", "Guat.", False),
+    # Two labels write one country differently, and the source confirms both texts as it.
+    ("country", "Guatemala", "Guat.", True),
+])
+def test_two_labels_writing_one_field_differently_settle_only_through_a_source_confirming_both(
+        key, first, second, settles):
+    """WP 2.1's rule one_collecting_event (ontology/specimen.yaml), G32: an answer that settles the
+    field on label 1's text is refused (LABELS_DIFFER) unless a source confirms each label's text as
+    the same place or name. Getty TGN knows Guatemala and Mexico, each a nation."""
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "raw_reading", first),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", first),
+                Reading("2A", "region-2", "obs-2a", "raw_reading", second),
+                Reading("2B", "region-2", "obs-2b", "raw_reading", second)))
+    field = task(key, current=FieldValue(state=ValueState.AMBIGUOUS), candidates=offered(
+        ("1A", first), ("1B", first), ("2A", second), ("2B", second)))
+    guatemala = tgn("Guatemala", "ev-gt", ("Guatemala", "tgn:7005493", NATION))
+    mexico = tgn("Mexico", "ev-mx", ("Mexico", "tgn:7005560", NATION))
+    cited = {"Guatemala": [guatemala], "Mexico": [mexico]}.get(first, [])
+    refused = agreement.refusal(field, readings, literal=first, named=readings[:2], value=None,
+        authority_id=cited[0].candidates[0].authority_id if cited else None, cited=cited,
+        received=[guatemala, mexico] if cited else [])
+    assert (refused is None) is settles
+    if not settles:
+        assert refused.reason == agreement.LABELS_DIFFER
 
 # A place value settles on the one candidate at its field's level (P1). The
 # kinds are as the recorded pilot answers give them.
@@ -1846,8 +1891,8 @@ DAVAO = tgn("Davao", "ev-davao-tgn",
 ])
 def test_a_place_settles_on_the_one_candidate_at_its_fields_level(key, literal, received, value, authority,
                                                                   settles):
-    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", f"{literal}\nleg. J. Smith"),
-                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith"))
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "raw_reading", f"{literal}\nleg. J. Smith"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith")))
     made = experts._Expert(task(key, candidates=offered(("1A", literal), ("1B", literal))), readings,
                            FakeTools(), PILOT_DATES)
     made.calls.append(experts._Call(received.source_id, received.query, received.status, received))
@@ -1889,8 +1934,8 @@ def test_readers_that_differ_settle_on_an_ambiguous_answer_with_one_candidate_at
     """105526329's province: 2A writes Chimaltenango, 2B Chimaltenago. TGN's
     answer for Chimaltenango is ambiguous between the department and its
     town, and has nothing for Chimaltenago: the department settles it (G20)."""
-    readings = (Reading("2A", "region-2", "obs-2a", "raw_reading", "Chimaltenango, Guatemala"),
-                Reading("2B", "region-2", "obs-2b", "raw_reading", "Chimaltenago, Guatemala"))
+    readings = with_units((Reading("2A", "region-2", "obs-2a", "raw_reading", "Chimaltenango, Guatemala"),
+                Reading("2B", "region-2", "obs-2b", "raw_reading", "Chimaltenago, Guatemala")))
     field = task("province_state", current=FieldValue(state=ValueState.AMBIGUOUS),
                  candidates=offered(("2A", "Chimaltenango"), ("2B", "Chimaltenago")))
     made = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
@@ -1937,8 +1982,8 @@ def test_a_place_settles_only_on_a_lookup_of_the_labels_own_text(key, literal, r
                                                                   settles):
     # A province is written beside its country, which its department lies in.
     text = f"{literal}, Guatemala\nleg. J. Smith" if key == "province_state" else f"{literal}\nleg. J. Smith"
-    readings = (Reading("1A", "region-1", "obs-1a", "decided_transcript", text),
-                Reading("1B", "region-1", "obs-1b", "raw_reading", text))
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "decided_transcript", text),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", text)))
     made = experts._Expert(task(key, candidates=offered(("1A", literal), ("1B", literal))), readings,
                            FakeTools(), PILOT_DATES)
     made.calls.append(experts._Call(received.source_id, received.query, received.status, received))
@@ -2001,8 +2046,8 @@ def answered(source: str, query: str, evidence_id: str, name: str, kind: str | N
     ("country", "IRAN", answered("tgn", "Ireland", "ev-1", "Ireland", NATION), False),
 ])
 def test_a_place_abbreviation_settles_on_a_lookup_of_an_expansion_its_letters_fit(key, literal, received, settles):
-    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", f"{literal}\nleg. J. Smith"),
-                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith"))
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "raw_reading", f"{literal}\nleg. J. Smith"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith")))
     made = experts._Expert(task(key, candidates=offered(("1A", literal), ("1B", literal))), readings,
                            FakeTools(), PILOT_DATES)
     made.calls.append(experts._Call(received.source_id, received.query, received.status, received))
@@ -2073,8 +2118,8 @@ PACIFIC_ISLANDS = answered("tgn", "Pacific Islands", "ev-pac", "Pacific Islands"
 ])
 def test_an_abbreviation_two_of_whose_expansions_are_found_as_different_places_settles_nothing(
         literal, settling, other, rival):
-    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", f"{literal}\nleg. J. Smith"),
-                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith"))
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "raw_reading", f"{literal}\nleg. J. Smith"),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", f"{literal}\nleg. J. Smith")))
     made = experts._Expert(task("country", candidates=offered(("1A", literal), ("1B", literal))), readings,
                            FakeTools(), PILOT_DATES)
     for found in (settling, other):
@@ -2111,7 +2156,7 @@ def test_the_labels_own_text_found_as_another_place_is_a_rival(own, rival):
     """The review of #295: rival_expansion no longer leaves the label's own
     text out. Its answer counts when it has exactly one candidate at the
     field's level, another place than the expansion's."""
-    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", "Ga.\nleg. J. Smith"),)
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "raw_reading", "Ga.\nleg. J. Smith"),))
     made = experts._Expert(task("country", candidates=offered(("1A", "Ga."))), readings, FakeTools(), PILOT_DATES)
     for found in (GEORGIA, own):
         made.calls.append(experts._Call(found.source_id, found.query, found.status, found))
@@ -2178,8 +2223,8 @@ def test_readers_that_differ_in_lower_case_settle_on_the_lookup_of_their_name():
     no reading decided. TGN, asked "Chimaltenango", has the department and its
     town, and nothing for "Chimaltenago": 3A's text settles (G20), case and
     the comma aside."""
-    readings = (Reading("3A", "region-3", "obs-3a", "raw_reading", "Mun. Yepocapa, chimaltenango,"),
-                Reading("3B", "region-3", "obs-3b", "raw_reading", "Mun. Yepocapa, chimaltenago,"))
+    readings = with_units((Reading("3A", "region-3", "obs-3a", "raw_reading", "Mun. Yepocapa, chimaltenango,"),
+                Reading("3B", "region-3", "obs-3b", "raw_reading", "Mun. Yepocapa, chimaltenago,")))
     field = task("province_state", current=FieldValue(state=ValueState.AMBIGUOUS),
                  candidates=offered(("3A", "chimaltenango,"), ("3B", "chimaltenago,")))
     made = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
@@ -2191,18 +2236,13 @@ def test_readers_that_differ_in_lower_case_settle_on_the_lookup_of_their_name():
     assert made.validate(given).value == "Chimaltenango"
 
 
-def test_a_source_that_confirms_the_other_reader_exactly_overrides_the_preferred_near_spelling():
-    """105526330's province: 2A, the reading the first pass preferred, writes
-    "Chimaltenago", its other reader "Chimaltenango", and TGN knows only the
-    second and has nothing for the first. A source confirms exactly one
-    reader's text and rules out the other's, so the label settles on 2B's
-    text against the first pass's preference (the owner, 2026-10-25); 2A's
-    spelling is sent back for it. When TGN was not asked 2A's text, the label
-    follows the first pass and 2A's spelling settles on the one-letter bound,
-    as G19 settled it whichever lookups were made until then (G19 refused
-    2B's spelling)."""
-    readings = (Reading("2A", "region-2", "obs-2a", "decided_transcript", "Chimaltenago, Guatemala"),
-                Reading("2B", "region-2", "obs-2b", "raw_reading", "Chimaltenango, Guatemala"))
+def test_a_source_that_confirms_one_reader_exactly_settles_on_its_text_where_the_image_names_neither():
+    """105526330's province: 2A writes "Chimaltenago", its other reader "Chimaltenango", and TGN
+    knows only the second and has nothing for the first. The two texts one letter apart are one
+    candidate (the rule's point 1); the image names neither, so its literal is the text the
+    source confirmed exactly, cleared: 2A's spelling is sent back for it."""
+    readings = with_units((Reading("2A", "region-2", "obs-2a", "decided_transcript", "Chimaltenago, Guatemala"),
+                Reading("2B", "region-2", "obs-2b", "raw_reading", "Chimaltenango, Guatemala")))
     field = task("province_state", current=FieldValue(state=ValueState.SUPPORTED, literal="Chimaltenago"),
                  candidates=offered(("2A", "Chimaltenago"), ("2B", "Chimaltenango")))
     made = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
@@ -2216,16 +2256,15 @@ def test_a_source_that_confirms_the_other_reader_exactly_overrides_the_preferred
         made.validate(answer(outcome="resolved", literal="Chimaltenago", reading_names=["2A"],
                              value="Chimaltenango", **sourced))
     [label] = agreement.labels(field, readings, [CHIMALTENANGO, nothing("Chimaltenago", "ev-none")]).values()
-    assert (label.settled, label.basis, label.preference) == (
-        frozenset({"Chimaltenango"}), agreement.BY_SOURCE, agreement.OVERRIDDEN)
-    # Not asked about 2A's text, TGN rules nothing out: the label follows the
-    # first pass, and 2A's spelling settles on the one-letter bound (G27, G34).
-    followed = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
-    followed.calls.append(experts._Call(CHIMALTENANGO.source_id, CHIMALTENANGO.query, CHIMALTENANGO.status,
-                                        CHIMALTENANGO))
-    kept = followed.validate(answer(outcome="resolved", literal="Chimaltenago", reading_names=["2A"],
-                                    value="Chimaltenango", **sourced))
-    assert (kept.literal, kept.value) == ("Chimaltenago", "Chimaltenango")
+    assert (label.settled, label.basis, label.cleared) == (frozenset({"Chimaltenango"}), agreement.BY_SOURCE, True)
+    # Not asked about 2A's text, TGN rules nothing out: no text has a SOURCE backing (the rule's
+    # point 3) and the image names neither, so the label does not settle (point 6).
+    unasked = experts._Expert(field, readings, FakeTools(), PILOT_DATES)
+    unasked.calls.append(experts._Call(CHIMALTENANGO.source_id, CHIMALTENANGO.query, CHIMALTENANGO.status,
+                                       CHIMALTENANGO))
+    with pytest.raises(ModelRetry, match="does not settle one reader's text"):
+        unasked.validate(answer(outcome="resolved", literal="Chimaltenago", reading_names=["2A"],
+                                value="Chimaltenango", **sourced))
     assert agreement.place_basis(field, "Chimaltenago", "Chimaltenango", "tgn:1000565",
                                  [CHIMALTENANGO]) == agreement.NEAR_SPELLING
 
@@ -2233,27 +2272,26 @@ def test_a_source_that_confirms_the_other_reader_exactly_overrides_the_preferred
 def test_a_place_resolves_only_on_a_place_sources_candidate():
     made = expert("city", [town("Davao", "ev-davao")])
 
-    with pytest.raises(ModelRetry, match="place source's success or ambiguous answer"):
+    with pytest.raises(ModelRetry, match="Cite the evidence_id of the source answer that confirms 'Davao'"):
         made.validate(answer(outcome="resolved", literal="Davao", reading_names=["1A"]))
     accepted = made.validate(answer(outcome="resolved", literal="Davao", reading_names=["1A"],
                                     authority_id="geolocate:Davao", source_evidence_ids=["ev-davao"]))
     assert accepted.authority_id == "geolocate:Davao"
 
 
-def test_readers_that_agree_take_the_spelling_of_the_reader_the_first_pass_preferred():
-    """1A, the reader the first pass preferred for label 1, writes "F. G.
-    Werner"; reader 1B writes "F.G. Werner". Spacing aside they agree, on
-    1A's spelling (until 2026-10-25, G19's decided transcript refused 1B)."""
+def test_readers_that_agree_take_the_first_readers_spelling():
+    """1A writes "F. G. Werner"; reader 1B writes "F.G. Werner". Spacing aside they agree, on
+    the first reader's spelling (agreement._spelled)."""
     made = expert("collectors")
 
-    with pytest.raises(ModelRetry, match="agree on 'F. G. Werner'"):
+    with pytest.raises(ModelRetry, match="the evidence settles on 'F. G. Werner'"):
         made.validate(answer(outcome="resolved", literal="F.G. Werner", reading_names=["1B"]))
     assert made.validate(answer(outcome="resolved", literal="F. G. Werner",
                                 reading_names=["1A"])).literal == "F. G. Werner"
 
 
 def test_a_resolved_elevation_in_its_own_unit_is_accepted():
-    made = expert("elevation_from_ft")
+    made = experts._Expert(task("elevation_from_ft"), AGREED_LABEL_2, FakeTools(), PILOT_DATES)
 
     accepted = made.validate(answer(outcome="resolved", literal="1500", reading_names=["2a"]))
 
@@ -2262,16 +2300,16 @@ def test_a_resolved_elevation_in_its_own_unit_is_accepted():
 
 # -- dates split over lines, and ranges (the pilot's 105526330) ----------------------------------
 
-SPLIT_READINGS = (
+SPLIT_READINGS = with_units((
     Reading("1A", "region-1", "obs-1a", "decided_transcript",
             "IV-29-68-2\nYepocapa,4800 ft.\nChimaltenago\nGuatemala,IV-25\n1948, R.D. Mitchell"),
     Reading("1B", "region-1", "obs-1b", "raw_reading",
             "IV-29-68-a\nYepocapa, 4800 ft.\nChimaltenango\nGuatemala, IV-25\n1948, R.D. Mitchell"),
-)
-RANGE_READINGS = (
+))
+RANGE_READINGS = with_units((
     Reading("1A", "region-1", "obs-1a", "decided_transcript", "Davao\n3-5.IX.1946\nH. Hoogstraal"),
     Reading("1B", "region-1", "obs-1b", "raw_reading", "Davao\n3-5.IX.1946\nH. Hoogstraal"),
-)
+))
 
 
 def resolve_date_on(readings, script, key, literal):
@@ -2298,14 +2336,14 @@ def test_the_pilots_split_date_resolves_on_the_whole_literal_the_check_read():
     assert outcome.answer.value == "1948-04-25"
 
 
-BARE_YEAR_READINGS = (
+BARE_YEAR_READINGS = with_units((
     Reading("1A", "region-1", "obs-1a", "decided_transcript", "Yepocapa,4800 ft.\nGuatemala,IV-25\n1948\nR.D. Mitchell"),
     Reading("1B", "region-1", "obs-1b", "raw_reading", "Yepocapa, 4800 ft.\nGuatemala, IV-25\n1948\nR.D. Mitchell"),
-)
-DISAGREEING_READINGS = (
+))
+DISAGREEING_READINGS = with_units((
     Reading("1A", "region-1", "obs-1a", "decided_transcript", "Guatemala,IV-25\n1948\nR.D. Mitchell"),
     Reading("1B", "region-1", "obs-1b", "raw_reading", "Guatemala, IV-25\n1949\nR.D. Mitchell"),
-)
+))
 
 
 def test_a_day_and_month_alone_resolve_with_a_year_alone_on_the_next_line():
@@ -2388,8 +2426,8 @@ def recorded_answers(tmp_path, *lookups) -> list[SourceAnswer]:
 def county_expert(text: str, literal: str, received) -> experts._Expert:
     """A county expert on one label two readers write as `text`, the
     organiser offering `literal` from both, that received these answers."""
-    readings = (Reading("1A", "region-1", "obs-1a", "raw_reading", text),
-                Reading("1B", "region-1", "obs-1b", "raw_reading", text))
+    readings = with_units((Reading("1A", "region-1", "obs-1a", "raw_reading", text),
+                Reading("1B", "region-1", "obs-1b", "raw_reading", text)))
     made = experts._Expert(task("county", candidates=offered(("1A", literal), ("1B", literal))), readings,
                            FakeTools(), PILOT_DATES)
     for found in received:

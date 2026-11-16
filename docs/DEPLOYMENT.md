@@ -462,6 +462,11 @@ popup messages between two loopback origins
 in an isolated browser profile. It uses invented authorization values and no
 provider account. This catches cross-origin Window interop failures that VM
 widget tests cannot exercise; it is not live provider acceptance.
+Chrome gets a minute to publish its debugging endpoint, because its first
+launch on a fresh CI machine can take more than 20 s, and a launch that fails
+is retried once with a new profile. A failed launch prints the last
+16,384 characters of Chrome's own output, and a passing run reports the
+attempts and the time to the endpoint in its `chromeLaunch` field.
 
 It runs the same Dart formatting and route checks the `Flutter checks and web
 build` job runs, so a branch that passes here passes those two in CI. On a

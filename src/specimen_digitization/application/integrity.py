@@ -122,10 +122,13 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                     require(observation.input_asset_id == asset.id)
                 if observation.input_crop_ref is not None:
                     read(observation.input_crop_ref, observation.input_sha256)
-            from .first_pass import UNITS, g19_pick
-            from .reading_units import problems as unit_problems
+            from .first_pass import g19_pick
+            from .reading_units import UNITS, problems as unit_problems
 
             decisions = {d.region_id: d for d in run.first_pass_decisions}
+            # A run's recorded path: a run the old first pass processed (removed in WP 1.8,
+            # docs/execution/units/PLAN.md) keeps that path's checks below until it is moved
+            # to the units path (workflow.move_to_units).
             units_path = run.first_pass_path == UNITS
             # Units path: decisions select no reading and give `uncertain` verdicts; the
             # transcripts' verdicts are `uncertain`.
@@ -141,14 +144,24 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
             ))
             held = {entry.label for entry in run.reading_units}
             require(len(held) == len(run.reading_units))
+            from .first_pass import person_decided
+            from .reading_units import PERSON
+
             for entry in run.reading_units:
-                # Checked with `problems` against the observations of the entry's region.
+                # Checked with `problems` against the entry's region's text source: on the units
+                # path a person's transcript (first_pass.person_decided), keyed PERSON, else its
+                # observations.
                 require(entry.label in regions)
-                texts = {
-                    o.id: o.literal_text
-                    for o in run.observations
-                    if o.region_id == entry.label
-                }
+                transcript = next((t for t in run.transcripts if t.region_id == entry.label), None)
+                texts = (
+                    {PERSON: transcript.text}
+                    if units_path and transcript is not None and person_decided(transcript)
+                    else {
+                        o.id: o.literal_text
+                        for o in run.observations
+                        if o.region_id == entry.label
+                    }
+                )
                 require(not unit_problems(entry, texts))
             if units_path and "adjudicate" in run.completed_steps:
                 # Once adjudicate has run: an entry for each region whose observations hold text.

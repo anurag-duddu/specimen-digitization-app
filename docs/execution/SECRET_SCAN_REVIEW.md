@@ -600,3 +600,52 @@ earlier exception, the `.gitleaksignore` entries, `.secrets.baseline` and
 `.pre-commit-config.yaml` are unchanged. Gitleaks scans only the added lines of a staged
 diff, so a staged edit that does not touch line 23 never reaches it; test with line 23
 in the diff.
+
+## 2026-11-16 shared-wire fixture idempotency key: the reviewed value replaced
+
+The `Idempotency-Key` request header of the `review_batch` request in the ordinary
+synthetic HTTP journey (`tests/fixtures/general_api_contracts.json` line 23) is a
+deterministic test key, not a credential: the app derives it as the SHA-256 of its review
+request (`apps/specimen_digitization/lib/src/api_repository_review.dart`, `batchKey`: the
+scope, specimen id, revision, record version id, reason and entry keys), and the exporter
+records the request with that key. WP 1.8 of `docs/execution/units/PLAN.md` (pull request
+#446) makes the units path the only first pass, so the corpus's synthetic run takes the
+units first pass and reaches its review at revision 23, not 21; the key covers the revision,
+so it changed. The new value is a 64-hex SHA-256 that begins `566f148d` and ends `8222` (the
+complete value is on that line and in the exact entry in `.gitleaks.toml`). Its scanner
+identifier, the SHA-1 detect-secrets records, recomputed: `bcce9340d476573373a5fd32b10175d538004bbb`.
+
+Owner decision, 2026-11-16, in the coordinator's Claude Code session 861fdd86, answered with
+the next-step box button. The coordinator's question (verbatim): "Record the new test value
+as a reviewed false alarm, replacing the Oct 17 one?" The owner's answer (verbatim):
+
+> Yes, replace it
+
+It supersedes the 2026-10-17 ruling above, which allowed one exact entry for the old value
+(`7651ca19` ... `a77aa8`, identifier `5d876c14b2eb6b173d3dd0d4715df50b4cb352a4`); that section
+stays as the record of the old value. Each entry stays a single exact entry for the one new
+value; no pattern is widened and no other scanner entry changes.
+
+Changed, every place the value or its identifier is:
+- `tests/fixtures/general_api_contracts.json` line 23, the header, regenerated with
+  `scripts/ci/export_general_api_contract_fixtures.py --output` under CPython 3.12 (as CI runs
+  it) and checked with `--check`; the regeneration also changes line 71, the `review_readback`
+  response's `run.dependencies.human_review_research_report.request_key`, which follows from the
+  key and is no finding of either scanner.
+- `scripts/ci/export_general_api_contract_fixtures.py` line 378, the literal the exporter
+  sends.
+- `tests/test_general_api_contract_fixtures.py` line 93, and
+  `apps/specimen_digitization/test/general_api_shared_contract_test.dart` lines 326, 452 and
+  706, the literals the tests assert, each under its detect-secrets pragma.
+- `.gitleaks.toml` line 637, the `.secrets.baseline` `hashed_secret` line entry: the new
+  identifier in place of the old.
+- `.gitleaks.toml` line 646, the anchored `"Idempotency-Key": "<value>"` line entry for the
+  fixture path: the new value in place of the old; its block's description names both
+  decisions.
+- `.secrets.baseline` line 7917, the `hashed_secret` of the fixture's one finding (line 23,
+  Hex High Entropy String), `is_secret: false`: the new identifier in place of the old.
+
+Controls run on the change: the staged pre-commit hooks, gitleaks and detect-secrets among
+them, pass; pre-commit's gitleaks run over the fixture alone reports nothing with the new
+value and `generic-api-key` at line 23 with the old value put back; detect-secrets 1.5.0 reports
+the fixture's one finding, line 23, with identifier `bcce9340d476573373a5fd32b10175d538004bbb`.

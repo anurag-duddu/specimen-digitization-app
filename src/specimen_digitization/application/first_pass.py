@@ -1,17 +1,12 @@
-"""The LLM first pass (stage 6): which reader's raw transcript it prefers.
+"""The LLM first pass (stage 6): a label's reading units.
 
-In the owner's words (docs/execution/golive/PLAN.md section 1): "LLM does first
-pass at which final RAW transcript should run against (it should also give at a
-VLM level what was returned to the harness)". It never writes text: the decided
-transcript is the selected reading verbatim. Since 2026-10-25 its pick is advice
-to the field harness, which may settle a field on any reader's text: "There an
-LLM opinion that's put in front along with actual Raw transcription per model to
-the harness if needed as then harness does its thing per field and settles as
-written or derived and so on" (the owner). Spec: docs/execution/golive/HARNESS.md
-section 3.
-
-first_pass_units_direct, below, is the units path's call (docs/execution/units/PLAN.md,
-WP 1.2).
+first_pass_units_direct cuts one label's readings into reading units and judges the image at
+each unit (docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 3). It
+settles nothing: its decision names no reading, and each of the alignment's differences carries
+the verdict uncertain (_unpicked). A call stopped at its caps gives alignment_units, as does the
+workflow for a label with one reading or with a first pass given up on. WP 1.8 of
+docs/execution/units/PLAN.md removed the old first pass, which preferred a reader; g19_pick and
+supports stay for the integrity check of the runs it wrote (integrity.verify_evidence).
 """
 
 from __future__ import annotations
@@ -23,11 +18,12 @@ import os
 import re
 import string
 import time
+import unicodedata
 from types import SimpleNamespace
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, ValidationError
 from pydantic_ai import Agent, BinaryContent, ModelRetry
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.messages import ModelMessagesTypeAdapter
@@ -46,13 +42,10 @@ from .domain import (
     ReadingSpan,
     RunFinding,
 )
-from .reading_units import (  # noqa: F401 - OLD, SETTING, first_pass_path: the path's names here too
+from .reading_units import (
     NOT_VISIBLE,
-    OLD,
-    SETTING,
+    PERSON,
     UNCERTAIN,
-    UNITS,
-    first_pass_path,
     ReadingUnit,
     ReadingUnits,
     UnitText,
@@ -61,25 +54,8 @@ from .reading_units import (  # noqa: F401 - OLD, SETTING, first_pass_path: the 
 )
 
 _TOKEN = re.compile(r"\w+|[^\w\s]")
-UNRESOLVED_VERDICTS = frozenset({"neither", "uncertain"})
-# The texts a first pass has written for "no reader" in place of JSON null.
-NULL_TEXTS = frozenset({"null", "none", ""})
 SYNTHETIC_RATIONALE = "Synthetic fixture: no visual evidence."
-_PREAMBLE = (
-    "Independent readers transcribed the attached label image. Their raw "
-    "transcripts follow, unchanged."
-)
-_TASK = (
-    "For each numbered difference, look at the image and say which reader's "
-    "text the visual evidence supports: the reader's letter, neither, or "
-    "uncertain. Then choose the reader whose raw transcript the image supports, "
-    "as advice to the field harness. Choose a reader only if the image supports "
-    "that reader's text at every difference that is more than capitalization. Otherwise answer "
-    "null: that is how material ambiguity goes to human review. Add one short "
-    "note per reader."
-)
-# A first pass stopped by its caps selects no reading, so G19 sends the raw
-# readings on (PLAN section 1; HARNESS.md section 3).
+# A first pass stopped by its caps selects no reading, and its label gets alignment_units.
 CAP_RATIONALE = (
     "The first pass reached its token cap before an answer; no reading was selected."
 )
@@ -268,92 +244,6 @@ def reading_differences_among(texts) -> list[tuple[ReadingSpan, ...]]:
     return differences
 
 
-def _line(text: str, offset: int) -> str:
-    end = text.find("\n", offset)
-    return text[text.rfind("\n", 0, offset) + 1 : len(text) if end < 0 else end]
-
-
-def build_request(
-    readings: list[Observation], differences: list[tuple[ReadingSpan, ...]]
-) -> tuple[str, dict[str, Observation]]:
-    """The user message: readers by letter only (A, B, C ...), their raw texts,
-    the differences with one span per reader. The letters run to Z, so the
-    message can name 26 readers; a profile names at most 8
-    (review_risk.MAX_LABEL_READINGS), the budget of the label risk measure."""
-    letters = dict(zip(string.ascii_uppercase, readings))
-    lines = [_PREAMBLE, ""]
-    for letter, reading in letters.items():
-        lines += [f"Reader {letter}:", "<<<", reading.literal_text, ">>>", ""]
-    lines.append(
-        "The transcripts differ at these points:"
-        if differences
-        else "The transcripts differ only in whitespace."
-    )
-    for number, spans in enumerate(differences, 1):
-        parts = [
-            f'Reader {letter}: "{span.text}" '
-            f'(in line "{_line(reading.literal_text, span.start)}")'
-            for (letter, reading), span in zip(letters.items(), spans)
-        ]
-        lines.append(f"{number}. " + " | ".join(parts))
-    return "\n".join([*lines, "", _TASK]), letters
-
-
-class DifferenceVerdict(BaseModel):
-    number: int = Field(description="The difference's number as listed.")
-    supported: str = Field(
-        description="The letter of the reader whose text the image supports here, "
-        "'neither' when the image shows something else, or 'uncertain'."
-    )
-
-
-class FirstPassOutput(BaseModel):
-    selected_reader: str | None = Field(
-        description="The letter of the reader whose raw transcript the image "
-        "supports, as advice to the field harness, which may settle a field on "
-        "another reader's text; null unless the image supports that reader's "
-        "text at every difference that is more than capitalization."
-    )
-    verdicts: list[DifferenceVerdict]
-    rationale: str = Field(min_length=1)
-    reader_notes: dict[str, str] = Field(
-        description="One short note per reader letter."
-    )
-
-    @field_validator("selected_reader", mode="before")
-    @classmethod
-    def _null_written_as_text(cls, value):
-        """A pick written as the text "null", "None" or "" is no pick (null).
-
-        GLM-5.3-Flash on Novita writes the JSON null this field asks for as a
-        string, and writes it again on the output retry, so the whole answer was
-        refused as malformed (HARNESS.md section 3, "A first pass's null written
-        as text"). Such a value names no reader, so it never selects a reading.
-        """
-        if isinstance(value, str) and value.strip().lower() in NULL_TEXTS:
-            return None
-        return value
-
-
-def output_problems(output: FirstPassOutput, letters, count: int) -> list[str]:
-    """Why an answer cannot be used, phrased for the model's one output retry."""
-    problems = []
-    if output.selected_reader is not None and output.selected_reader not in letters:
-        problems.append(f"selected_reader must be one of {sorted(letters)} or null")
-    # With no difference listed (the readings differ only in whitespace) there is
-    # nothing to judge: a verdict is for a difference that does not exist, and
-    # first_pass_direct reads verdicts 1..len(differences) only, so none here.
-    verdicts = output.verdicts if count else []
-    if sorted(v.number for v in verdicts) != list(range(1, count + 1)):
-        problems.append(f"give exactly one verdict for each difference 1 to {count}")
-    allowed = {*letters, *UNRESOLVED_VERDICTS}
-    if any(v.supported not in allowed for v in verdicts):
-        problems.append(f"each verdict's supported must be one of {sorted(allowed)}")
-    if set(output.reader_notes) != set(letters):
-        problems.append(f"give one note for each reader {sorted(letters)}")
-    return problems
-
-
 def is_material(spans) -> bool:
     """More than capitalization: the spans differ once lower-cased, so a spelling
     variant stays material. The code decides it, not the model (the coordinator's
@@ -381,7 +271,8 @@ def supports(difference, selected: str | None) -> bool:
 def g19_pick(selected: str | None, differences) -> str | None:
     """The picked reading, or None when a material difference does not support
     it: material ambiguity returns no reading (G19; the coordinator's 12:31Z
-    reading; HARNESS.md section 3)."""
+    reading; HARNESS.md section 3). The integrity check of a stored run reads it
+    (integrity.verify_evidence): the old first pass's records hold picks."""
     if any(
         is_material(d.spans.values()) and not supports(d, selected) for d in differences
     ):
@@ -393,7 +284,7 @@ class InputBoundModel(WrapperModel):
     """Sends a request only when its input cannot exceed the route's bound, so
     the call never spends past its reservation (lane_reservations). A first
     request over the bound blocks the step; a retry over it stops the call at
-    its cap, which selects no reading (G19)."""
+    its cap, which gives the label alignment_units (first_pass_units_direct)."""
 
     def __init__(self, wrapped, bound: int, rule: dict | None):
         super().__init__(wrapped)
@@ -413,17 +304,17 @@ class InputBoundModel(WrapperModel):
         )
 
 
-def _prepared(adapter, specimen, region, readings, prompt_name: PromptName):
-    """The checks first_pass_direct and first_pass_units_direct make before they send
-    anything, and what they send with: the pinned route's model (bounded by its input and
-    output caps), the pinned prompt and the crop."""
+def _prepared(adapter, specimen, region, readings):
+    """The checks first_pass_units_direct makes before it sends anything, and what it sends
+    with: the pinned route's model (bounded by its input and output caps), the pinned prompt
+    (prompt__first_pass_units) and the crop."""
     from .lane_reservations import image_rule
     from .workflow import OperationalBlock, crop_bytes
 
     if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
         raise OperationalBlock("provider_data_policy_and_spending_approval_required")
     if not 2 <= len(readings) <= len(string.ascii_uppercase):
-        # Two or more readings, one reader letter each (build_request): this
+        # Two or more readings, one reader letter each (build_units_request): this
         # call could letter 26. A profile names at most 8 readers, so a label
         # never has more (review_risk.MAX_LABEL_READINGS).
         raise OperationalBlock("first_pass_reading_count_unsupported")
@@ -455,7 +346,9 @@ def _prepared(adapter, specimen, region, readings, prompt_name: PromptName):
     }:
         raise OperationalBlock("pinned_model_route_unavailable")
     try:
-        prompt = ResolvedPrompt.model_validate(run.dependencies["prompts"][prompt_name.value])
+        prompt = ResolvedPrompt.model_validate(
+            run.dependencies["prompts"][PromptName.FIRST_PASS_UNITS.value]
+        )
     except (KeyError, ValueError) as exc:
         raise OperationalBlock("pinned_prompt_unavailable") from exc
     image = crop_bytes(adapter.blobs, specimen, region)
@@ -548,58 +441,6 @@ def _call_record(adapter, specimen, region, prepared, agent, request, called) ->
         raw_sha256=hashlib.sha256(raw).hexdigest(),
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
-    )
-
-
-def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
-    """Run the first pass for one region in the isolated model child."""
-    prepared = _prepared(
-        adapter, specimen, region, readings, PromptName.DISAGREEMENT_ADJUDICATION
-    )
-    differences = reading_differences_among([r.literal_text for r in readings])
-    request, letters = build_request(readings, differences)
-    agent = _agent(prepared, "first_pass_", FirstPassOutput)
-
-    @agent.output_validator
-    def complete(output: FirstPassOutput) -> FirstPassOutput:
-        if problems := output_problems(output, letters, len(differences)):
-            raise ModelRetry("; ".join(problems))
-        return output
-
-    called = _called(agent, prepared, request)
-    result = called[0]
-    ids = {letter: reading.id for letter, reading in letters.items()}
-    spans = [dict(zip(ids.values(), group)) for group in differences]
-    if result is None:
-        # No answer: every difference stays open, and G19 decides (HARNESS.md 3).
-        picked, rationale, notes = None, CAP_RATIONALE, {}
-        verdicts = ["uncertain"] * len(spans)
-    else:
-        output = result.output
-        picked, rationale = ids.get(output.selected_reader), output.rationale
-        notes = {ids[letter]: note for letter, note in output.reader_notes.items()}
-        supported = {verdict.number: verdict.supported for verdict in output.verdicts}
-        verdicts = [
-            ids.get(supported[n], supported[n]) for n in range(1, len(spans) + 1)
-        ]
-    decided = [
-        FirstPassDifference(
-            number=number,
-            spans=pair,
-            verdict=verdict,
-            material=is_material(pair.values()),
-        )
-        for number, (pair, verdict) in enumerate(zip(spans, verdicts), 1)
-    ]
-    return FirstPassDecision(
-        region_id=region.id,
-        # A pick a material difference does not support is no reading (G19;
-        # the coordinator's 12:31Z reading).
-        selected_observation_id=g19_pick(picked, decided),
-        rationale=rationale,
-        notes=notes,
-        differences=decided,
-        call=_call_record(adapter, specimen, region, prepared, agent, request, called),
     )
 
 
@@ -726,6 +567,22 @@ def alignment_units(region_id: str, readings) -> ReadingUnits | None:
     )
 
 
+def person_decided(transcript) -> bool:
+    """Whether a person decided the label's text: a person's transcription decision
+    (Transcript.actor) left it resolved with text."""
+    return bool(getattr(transcript, "actor", None) and transcript.resolved and transcript.text)
+
+
+def source_units(run, region_id: str) -> ReadingUnits | None:
+    """A label's units from its current text source, by alignment_units (each image
+    uncertain): a person's transcript (person_decided), keyed PERSON, else the region's
+    readings. None when that source holds no text."""
+    transcript = next((t for t in run.transcripts if t.region_id == region_id), None)
+    if transcript is not None and person_decided(transcript):
+        return alignment_units(region_id, [SimpleNamespace(id=PERSON, literal_text=transcript.text)])
+    return alignment_units(region_id, [o for o in run.observations if o.region_id == region_id])
+
+
 _UNITS_TASK = (
     "Group segments 1 to {count} into reading units: each unit is one segment or several "
     "consecutive ones, and every segment belongs to exactly one unit, in order. Give each unit's "
@@ -825,8 +682,51 @@ def _plain(text: str) -> str:
     return "".join(character for character in text.casefold() if character.isalnum())
 
 
+def _capitals_and_spacing(text: str) -> str:
+    """A text without its capital letters and spacing: NFC, every space and line break
+    removed, str.lower(). Unlike casefold, str.lower() leaves "\u00df", "\u017f" and "\u03c2" as
+    they are, so two texts equal here differ in capital letters and spacing alone."""
+    return "".join(unicodedata.normalize("NFC", text).split()).lower()
+
+
+# What a unit's image says when it names no reader's text; never a text to substitute.
+_MARKERS = frozenset({UNCERTAIN, NOT_VISIBLE})
+
+
+def first_readers_spelling(named: str, spans) -> str:
+    """The text a unit's image stores where the model names the text `named`.
+
+    The first reader's text here, in reader order, replaces it when both hold: its
+    agreement key equals the named text's (field_research/agreement.py: NFC, casefolded,
+    white space removed, the key the settlement compares texts by), and the two are equal
+    after NFC, removing white space and str.lower() (_capitals_and_spacing), that is, they
+    differ in capital letters and spacing alone. The stored text's capitals and spaces are
+    then the first reader's, not the named reader's. Texts that differ in a character stay
+    apart although casefold folds them to one key: "Weissenburg" and "Wei\u00dfenburg"
+    ("\u00df" casefolds to "ss"), "Preussen" and "Preu\u017f\u017fen". A text that is exactly
+    UNCERTAIN or NOT_VISIBLE takes no part, as the named text or as the first reader's.
+    In every other case the named text is returned as it is."""
+    # Imported where used, as application/api.py and location_reassessment_authorization.py
+    # import field_research.
+    from ..field_research.agreement import agreement_key
+
+    key, plain = agreement_key(named), _capitals_and_spacing(named)
+    first = next(
+        (
+            span.text
+            for span in spans
+            if agreement_key(span.text) == key and _capitals_and_spacing(span.text) == plain
+        ),
+        named,
+    )
+    return named if named in _MARKERS or first in _MARKERS else first
+
+
 def units_from_output(region_id: str, output: UnitsOutput, letters, segments) -> ReadingUnits:
-    """The label's units from an answer units_output_problems accepted."""
+    """The label's units from an answer units_output_problems accepted. Where a unit's
+    image names a reader, the unit's image is first_readers_spelling of that reader's text:
+    the first reader's text where the two differ in capitals and spacing alone and neither
+    is exactly UNCERTAIN or NOT_VISIBLE, else the named reader's."""
     readings = list(letters.values())
     units = []
     for number, answer in enumerate(output.units, 1):
@@ -837,7 +737,7 @@ def units_from_output(region_id: str, output: UnitsOutput, letters, segments) ->
         ]
         image = answer.image
         if image in letters:
-            image = spans[list(letters).index(image)].text
+            image = first_readers_spelling(spans[list(letters).index(image)].text, spans)
         means = answer.means.strip()
         if _plain(means) in {_plain(span.text) for span in spans}:
             # A meaning equal to a reader's text here (_plain) is left empty.
@@ -852,8 +752,10 @@ def units_from_output(region_id: str, output: UnitsOutput, letters, segments) ->
     return ReadingUnits(label=region_id, units=units)
 
 
-# Request options first_pass_units_direct's agent sends over the route's own (_agent).
-UNITS_REQUEST_OPTIONS = {"reasoning_effort": "low"}
+# Request options first_pass_units_direct's agent sends over the route's own (_agent):
+# reasoning_effort low, and temperature 0, which the field experts' model settings send too
+# (field_research/experts.py, MODEL_SETTINGS; they send no reasoning effort).
+UNITS_REQUEST_OPTIONS = {"reasoning_effort": "low", "temperature": 0}
 
 
 # _unpicked's decision selects no reading and gives each difference the verdict uncertain.
@@ -885,7 +787,7 @@ def first_pass_units_direct(adapter, specimen, region, readings):
     the _unpicked decision."""
     from .workflow import OperationalBlock
 
-    prepared = _prepared(adapter, specimen, region, readings, PromptName.FIRST_PASS_UNITS)
+    prepared = _prepared(adapter, specimen, region, readings)
     segments = reading_segments([r.literal_text for r in readings])
     if not segments:
         # No segment: no reading holds text.
@@ -1043,15 +945,15 @@ def _region(finding) -> str:
     return finding.reason_code.split(":")[1]
 
 
-def adjudication_record(readings, texts, resolved, decision, *, keep_call=False):
+def adjudication_record(readings, texts, resolved, decision):
     """The region's transcript text, whether it is resolved, and its first-pass
-    fields: identical readings keep the existing rule; differing readings take
-    the first pass's selected reading verbatim, or no text. With `keep_call`,
-    identical readings with a decision also record its call."""
+    fields: identical readings keep the existing rule, and record the call of a
+    decision they have; differing readings take the decision's selected reading
+    verbatim (a first pass's names none, _unpicked), or no text."""
     if len(readings) > 1 and len(texts) == 1:
         selected, notes = readings[0].id if resolved else None, {}
         record = {"decision_kind": "identical_readings"}
-        if keep_call and decision is not None:
+        if decision is not None:
             record["first_pass_call"] = decision.call
     elif len(texts) > 1 and decision is not None:
         selected, notes = decision.selected_observation_id, decision.notes

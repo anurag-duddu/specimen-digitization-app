@@ -26,6 +26,36 @@ String exactUtf16Span(String source, int start, int end) {
   return source.substring(start, end);
 }
 
+/// The UTF-16 offset of code point [codePoint] of [source].
+///
+/// A reading unit's `start` and `end` are Python string indices, which count
+/// code points (`application/reading_units.py`, `UnitText`); a Dart `String`
+/// is indexed by UTF-16 code units, so each character above U+FFFF (an emoji)
+/// before the offset moves it by one. The code points are `String.runes`'s:
+/// a surrogate pair is one and a lone surrogate is one.
+int utf16OffsetOfCodePoint(String source, int codePoint) {
+  if (codePoint < 0) {
+    throw const FormatException('Span outside retained reading');
+  }
+  final RuneIterator runes = source.runes.iterator;
+  int offset = 0;
+  for (int seen = 0; seen < codePoint; seen++) {
+    if (!runes.moveNext()) {
+      throw const FormatException('Span outside retained reading');
+    }
+    offset += runes.currentSize;
+  }
+  return offset;
+}
+
+/// The text of [source] from code point [start] to code point [end], sliced
+/// by [exactUtf16Span] after converting both offsets.
+String exactCodePointSpan(String source, int start, int end) => exactUtf16Span(
+  source,
+  utf16OffsetOfCodePoint(source, start),
+  utf16OffsetOfCodePoint(source, end),
+);
+
 /// One comparison between two retained readings of a label.
 ///
 /// A label read by three models has a comparison for each pair, so the two

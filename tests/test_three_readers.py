@@ -47,9 +47,9 @@ class Readers(SyntheticAdapters):
             raise ReadingStopped("synthetic_reader_stopped")
         return super().transcribe(specimen, region, route)
 
-    def first_pass(self, specimen, region, readings):
+    def first_pass_units(self, specimen, region, readings):
         self.first_passes.append([r.route_id for r in readings])
-        return super().first_pass(specimen, region, readings)
+        return super().first_pass_units(specimen, region, readings)
 
 
 def processed(tmp_path, adapters):
@@ -78,7 +78,7 @@ def by_route(work):
     return {o["route_id"]: o["id"] for o in work["observations"]}
 
 
-def test_three_readers_that_agree_resolve_the_label_with_no_first_pass(tmp_path):
+def test_three_readers_that_agree_resolve_the_label_beside_its_first_pass(tmp_path):
     adapters = Readers(LocalBlobs(tmp_path / "blobs"))
 
     work, artifact = processed(tmp_path, adapters)
@@ -88,7 +88,8 @@ def test_three_readers_that_agree_resolve_the_label_with_no_first_pass(tmp_path)
     assert (run["stage"], run["blocker"]) == ("finalized", None)
     assert run["profile"]["routes"] == list(THREE)
     assert [o["route_id"] for o in work["observations"]] == list(THREE)
-    assert adapters.first_passes == []
+    # The units path's first pass reads every label with two or more readings.
+    assert adapters.first_passes == [list(THREE)]
     (transcript,) = run["transcripts"]
     assert transcript["resolved"] and transcript["decision_kind"] == "identical_readings"
     assert transcript["text"] == SYNTHETIC_TEXT
@@ -167,7 +168,7 @@ def test_a_label_left_with_two_of_three_readings_is_measured_on_that_pair(tmp_pa
     assert transcript["alignment_status"] == "agreement"
     assert "comparisons" not in transcript
     assert "comparisons" not in artifact and artifact["status"] == "agreement"
-    assert adapters.first_passes == []
+    assert adapters.first_passes == [list(THREE[:2])]
     # Readings from two distinct routes and models: the label is still
     # independently read (policy.py, field_research/step.py).
     assert not [r for r in run["reasons"] if r.startswith("independent_observations_missing")]

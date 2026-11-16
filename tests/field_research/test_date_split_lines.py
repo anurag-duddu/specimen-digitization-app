@@ -702,10 +702,33 @@ def run_with(start: FieldValue, end: FieldValue):
      ("3-5.IX, 1946", False), ("VIII-IX, 1946", False), ("IV-25 1948", True)],
 )
 def test_a_range_s_start_is_not_copied_to_its_end(literal, copied):
-    start = FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed="1946-09-03", layer="settled")
+    start = FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed="1946-09-03", layer="settled",
+        precision="day")
     run = run_with(start, FieldValue(state=ValueState.NOT_PRESENT))
 
     filled = derive.fill(run, eligible=["date_visited_to"], asset_id=None)
 
     assert (filled == ["date_visited_to"]) is copied
-    assert (run.fields["date_visited_to"].state == ValueState.SUPPORTED) is copied
+    end = run.fields["date_visited_to"]
+    assert (end.state == ValueState.SUPPORTED) is copied
+    if copied:
+        # The end is the start's date at the start's precision (G44).
+        assert (end.parsed, end.precision, end.layer, end.derived_from) == (
+            "1946-09-03", "day", "derived", ["date_visited_from"])
+
+
+@pytest.mark.parametrize(("literal", "parsed", "precision"), [
+    ("3 Sept. 1946", "1946-09-03", "day"),
+    ("XI.'46", "1946-11", "month"),
+    ("1946", "1946", "year"),
+])
+def test_one_collecting_date_is_its_own_end_at_its_precision(literal, parsed, precision):
+    """WP 2.1's rule end_date_from_one_date (ontology/specimen.yaml): a partial date stays partial."""
+    start = FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed=parsed, layer="settled",
+        precision=precision, century_rule="1900" if "'" in literal else None)
+    run = run_with(start, FieldValue(state=ValueState.NOT_PRESENT))
+
+    assert derive.fill(run, eligible=["date_visited_to"], asset_id=None) == ["date_visited_to"]
+    end = run.fields["date_visited_to"]
+    assert (end.state, end.parsed, end.precision, end.century_rule) == (
+        ValueState.SUPPORTED, parsed, precision, start.century_rule)

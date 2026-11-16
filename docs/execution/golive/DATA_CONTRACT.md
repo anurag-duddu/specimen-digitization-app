@@ -186,7 +186,7 @@ region.
 | `PipelineRun` | `traceId` (32 lowercase hex, recorded once) |
 | `LabelRegion` | `domainRegionId` (the domain's region id: SAM's, a corrected one, or `new-{microseconds}` for a region a person added; the row's own id is per run, section 5) |
 | `ModelObservation` | `routeId`, `unreadableSpans: [String!]` |
-| `TranscriptionVersion` | `regionId` (CONTRACTS.md 185), `decisionKind` (`identical_readings`, `first_pass` or `human`), `selectedObservationId` (the reading the first pass preferred: advice to the harness, which may settle a field on another reader's text when evidence backs it; null only when no reading was selected), `firstPassObservationId` (the first pass's model call), `rationale`. `unresolved` follows the one rule in section 4.2. `readingUnits` (the label's reading units, section 4.2; null on a row written without them) |
+| `TranscriptionVersion` | `regionId` (CONTRACTS.md 185), `decisionKind` (`identical_readings`, `first_pass` or `human`), `selectedObservationId` (the label's decided reading: the first of readings that agree, or, on a record the old first pass wrote before WP 1.8, the reading it preferred; null when no reading was selected, as on every `first_pass` decision since WP 1.8), `firstPassObservationId` (the first pass's model call), `rationale`. `unresolved` follows the one rule in section 4.2. `readingUnits` (the label's reading units, section 4.2; null on a row written without them) |
 | `FieldCandidate` | `inputSource` (`decided_transcript` or `raw_reading`), `sourceTranscriptionId`, `sourceObservationId` |
 | `ResolvedField` | `fieldGroup` (`mandatory` or `optional`) |
 | `ValidationFinding` | `evidenceIds: [UUID!]` (the evidence behind the finding, all of the record version's run) |
@@ -260,7 +260,9 @@ units keeps its bytes (`tests/test_reading_units.py`). `ReadingUnits` is
 keys of `FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md` section 3: `id`
 (`<label>:<n>`, from 1 in reading order), `label`, `lines` (first and last,
 from 1), `readers` (per reading its `text`, `start` and `end`, Python string
-indices, so code points; every unit of a label names the same readings),
+indices, so code points; every unit of a label names the same readings; on a
+label whose transcript a person decided, the one key `person`,
+`reading_units.PERSON`, for the person's text),
 `image` (one reader's text, `uncertain` or `not visible`), `means`, `role`
 (empty, `genus`, `species`, `author`, `day`, `month` or `year`), `fields` and
 `note` (`application/reading_units.py`). The writer sends a label's entry as
@@ -270,15 +272,16 @@ entry joins the decision's content, so other units are another version (section
 exactly as before. The active graph's compact row keeps `reading_units` as an
 empty list, like the other per-label lists (`active_graph.run_summary`).
 
-**The first pass's path** (work package 1.2): `Run.first_pass_path`, `old` or
-`units`, set from `SPECIMEN_FIRST_PASS_UNITS` (`reading_units.first_pass_path`:
-`on` gives `units`; `off`, empty or unset give `old`) by the `Run(...)` calls in
-`application/api.py` (intake, region review, classification review, reprocess),
-`application/bulk_intake.py` and `application/source_import.py`
-(`test_the_run_calls_the_guard_detects_in_src_record_the_switch`). The stored record omits it
-when `old` (`test_an_old_path_run_stores_main_s_bytes`). A run created with the
-switch on writes units after the switch is turned off
-(`test_a_run_keeps_the_path_recorded_at_its_creation`). On the units path
+**The first pass's path** (work package 1.2; since WP 1.8 the units path is the
+only first pass): `Run.first_pass_path`, `old` or `units`. Every new run
+records `units`: the `Run(...)` calls in `application/api.py` (intake, region
+review, classification review, reprocess), `application/bulk_intake.py` and
+`application/source_import.py` pass `first_pass_path=UNITS`
+(`test_the_run_calls_the_guard_detects_in_src_record_the_units_path`), and a
+run drains on that path (`test_a_run_drains_on_the_units_path_recorded_at_its_creation`).
+The stored record omits the key when `old`, so a run stored before the path
+existed, or by the old first pass, reads as `old`; such a run is moved to the
+units path when it is reopened (`workflow.move_to_units`; HARNESS.md section 4).
 `Workflow.next_step` schedules the first pass for a label with two readings or
 more and some text, agreed readings included; its decision names no reading and
 its differences stay `uncertain` (`first_pass._unpicked`); a label with one
@@ -293,20 +296,40 @@ this section), so without a person's decision its units are on the run and the
 workspace route and not in the normalized projection
 (`test_units_of_a_label_with_no_transcription_version_are_on_the_run_and_the_workspace_only`).
 A person's supported edit of such a label gives it a `human` version, which the
-reviewer's save writes with `AppendTranscriptionVersionV3` carrying the units as
-stored, the machine readings' units until work package 1.3
-(`test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_with_its_units`).
-Main before this package (work package 1.1 included) loads `Run.reading_units`
-but not `Run.first_pass_path` (`Record` refuses an unknown key), so the rollback
-boundary is the path field, in the run and in its previous runs. The rule: turn
-the switch on once this runtime serves the API, the intake job and the worker;
-to roll back past it, turn the switch off first and wait until the records the
-older runtime would load name no units path.
+reviewer's save writes with `AppendTranscriptionVersionV3` carrying the label's
+units (`test_a_person_s_edit_of_a_label_with_no_version_projects_a_human_version_with_its_units`).
+On the units path a person's transcription decision regenerates the label's units
+from its text source (work package 1.3; `application/api.py`, `first_pass.source_units`,
+each image `uncertain`): an edit gives units of the person's text, keyed `person`;
+an abstention after an edit gives the readings' alignment again, or no units
+when the readings hold no text; an abstention on the readings' units keeps them
+(`test_a_person_s_edit_regenerates_the_label_s_units_from_the_person_s_text`,
+`test_an_abstention_after_an_edit_regenerates_the_units_from_the_readings_and_one_before_keeps_them`,
+`test_an_abstention_after_an_edit_of_readings_with_no_text_leaves_the_label_without_units`).
+On a units-path run the integrity check holds a label's units to that text source
+(`integrity.verify_evidence`); a record the old first pass wrote keeps that
+path's checks, and a person's edit of one moves it to the units path
+(`test_an_edit_of_a_completed_old_path_run_completes_it_on_the_units_path`).
+From `fc5a14b6` (work package 1.2's review fixes), merged to main by `e1f672dc` (PR
+#424), until work package 1.8 part A, the runtime settings set
+`SPECIMEN_FIRST_PASS_UNITS` to `off` for the API, whose settings the intake job
+takes, so the deployed runtimes created old-path runs and no production record a person
+edited under work package 1.2 holds the readings' units on a units-path run (work
+package 1.8 part A's read-only query, 2026-11-16 03:03Z: the 33 active production
+runs are all on the old path, and all finalized). Part A (PR #445) set it to `on`,
+released by runtime release run 43804096899. Part B removed the setting, with
+`reading_units.first_pass_path` and the check in `RuntimeConfig.from_env`, when it
+removed the old first pass: every new run records `units` in code. Main before
+work package 1.2 loads `Run.reading_units` but not `Run.first_pass_path` (`Record`
+refuses an unknown key), so a runtime from before it cannot load the records this
+one writes.
 
 **The unresolved rule** is the one definition of unresolved used everywhere. A
 region's decision is unresolved when no reading was selected (G19: material
 ambiguity means no pick; the harness then runs on each raw reading, and every
-reading is a `raw_reading` handoff). The first pass selects a reading only when
+reading is a `raw_reading` handoff). Since WP 1.8 the first pass selects no
+reading, so its decisions are unresolved; on a record the old first pass wrote,
+it selected a reading only when
 every material difference's verdict supports it (names it or, with more than
 two readings, a reading with the same text there, lower-cased): a material
 difference whose verdict is `neither` or `uncertain` means no pick, and "material" means more
@@ -349,14 +372,15 @@ run, not in SQL.
 - `input_source`, `source_region_id` and `source_observation_id`. A field's
   literal traces to the decided transcript or to the raw reading it came from
   (G20, G27; agreed with S4):
-  - If the first pass picked a reading, the verbatim is that reading. `literal`
+  - If the label has a decided transcript (readers that agree; on a record
+    the old first pass wrote, also its pick), the verbatim is that reading. `literal`
     and `input_source` stay on the decided transcript even when the harness
     falls back to the raw readings and a lookup confirms one of them. The
     confirmed reading appears only as the settled value's provenance: the
     `ToolCall` that ran on it (`input_source` `raw_reading`, its observation),
     that call's evidence, and `normalized`, which is then that reading's exact
     literal.
-  - If the first pass picked none, the field uses the verbatim map below.
+  - If it has none, the field uses the verbatim map below.
 - `verbatim_by_observation: dict[str, str]`, `input_source_by_observation:
   dict[str, Literal["decided_transcript", "raw_reading"]]` and
   `settled_observation_ids: list[str]` (G27, G28, G32; agreed with S4). The

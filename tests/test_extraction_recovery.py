@@ -673,7 +673,7 @@ def test_every_unknown_outcome_this_code_saves_at_a_first_pass_has_a_kind(tmp_pa
         def broken(specimen, region, readings):
             raise RuntimeError("a defect in the parent")
 
-        adapters.first_pass = broken
+        adapters.first_pass_units = broken
 
     run = workflow.drain(principal, ident).run
     step = comparison_step(run)

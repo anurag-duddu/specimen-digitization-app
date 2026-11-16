@@ -113,16 +113,13 @@ handover runs field research instead of the six specialists:
    such fields whose organiser value was supported added USD 0.0014 to
    0.0021 per specimen. The
    briefs of those fields (collectors, collection code, habitat, collection
-   method, verbatim D/T/S) say that when a label's readers differ the
-   expert resolves with the text of another label of the specimen, two or
-   more of whose readers agree on it, unless the first pass's verdict at
-   that difference names the reader it preferred (then several_possibilities
-   with both); otherwise with the text of the reader the first pass
-   preferred; and answers several_possibilities when the first pass
-   preferred no reader and no other label writes one reader's text (since
-   2026-10-25, the first pass's pick is advice: step 5; until then they said
-   a decided transcript decided its label), as the agreement rules of step 5
-   let it: in this change's first real runs the verbatim D/T/S
+   method, verbatim D/T/S) say, since WP 1.8, that the expert resolves with
+   the text the readings write also where the readers write it differently,
+   answering the reader's text the units support, and answers
+   several_possibilities only where it finds no text to answer (habitat.txt;
+   before 2026-10-25 they said a decided transcript decided its label, and
+   until WP 1.8 they followed the old first pass's preferred reader), as the
+   agreement rules of step 5 let it: in this change's first real runs the verbatim D/T/S
    experts of 105526321 and 105526326 answered several_possibilities
    between their decided reading's text and the other reader's ("3 sept.
    '46" and "3 Sept. '46"; "IX - 14 - 46" and "IX-14-46"). The habitat
@@ -451,9 +448,7 @@ handover runs field research instead of the six specialists:
      between its candidates, so "Seliban Riv." over "near Mt. Apo" beside
      the candidate "Mt. Apo" is refused, as "near Mt. Apo" on one line is. A
      line holding no candidate may join them. Those candidates are
-     then parts of it, not rival texts of the label (`agreement.labels`),
-     and where the label's first pass preferred no reader every reader must write
-     it, line breaks, letter case and spacing aside. Every other check holds
+     then parts of it, not rival texts of the label (`agreement.labels`). Every other check holds
      as on one line: it holds no date, elevation or range of them
      (`_holds_another_kind`), and every reading it names writes it. Every
      other field, the place fields among them, keeps its literal on one
@@ -533,23 +528,12 @@ handover runs field research instead of the six specialists:
      reading's text from the line above the literal on stands in for a
      candidate's quote (`agreement._longer_written`, `checks.longer_name`),
      so "Danaus plexippus" on a line that writes "Danaus plexippus
-     megalippe", or "sp. 1" below "Epipsocus", never settles it. On a label
-     whose first pass preferred no reader, each reader then writes the text as it
-     writes it, letter case and spacing aside (`agreement.agreeing_runs`),
-     beside any text the organiser found for it there; a reader that writes
-     it nowhere and has none is unread, its text for the field unknown, so
-     no lookup can have covered it and the label does not settle ("Not
-     every reader of the label writes this text.": 105526328's "Yepocapa,
-     Mun.", which its other reader writes "Mum."). Nor does it settle when
-     its readers write different text around it (PR #300's review): the
-     comma- or semicolon-separated part of each reader's line that holds
-     the text, else the whole line (`agreement.holding_clauses`), must be
-     the same in every reader, letter case and spacing aside, as a
-     candidate's whole text would be. So 1A "trap" beside 1B "light trap",
-     "Yepocapa" beside "near Yepocapa", "forest" beside "cloud forest" and
-     "IV-24-48" beside "IV-24-48 to V-2-48" go to review as readers that
-     differ, while "Yepocapa" in "Yepocapa, Mun." beside "Yepocapa, Mum."
-     agrees. A decided reading that
+     megalippe", or "sp. 1" below "Epipsocus", never settles it. A label's
+     readers settle on it by step 5's rule, over the label's units (since WP
+     1.8; until then, on a label whose old first pass preferred no reader,
+     every reader had to write the text and its clause alike: 105526328's
+     "Yepocapa, Mun.", which its other reader writes "Mum.", and 1A "trap"
+     beside 1B "light trap"). A decided reading that
      writes the text beside another candidate of the organiser's for the
      field writes two texts and settles neither. Such a value is marked:
      the label rows field research writes for it cite the literal's first
@@ -597,7 +581,7 @@ handover runs field research instead of the six specialists:
      them) are one kind, so a town inside the locality is no conflict; the
      dates are one, the elevations one, collectors and determiner one; any
      other field is a kind of its own; and verbatim D/T/S shares text with
-     any field, as what it holds is an open museum question. So
+     any field; the museum has set no validation rule for it yet. So
      105526329's precise location "Yepocapa, 4800ft.", read from the
      transcript, goes to review beside the elevation "4800ft." (the brief
      leaves elevations out of the locality), while "Volcan Barva" beside
@@ -767,10 +751,10 @@ handover runs field research instead of the six specialists:
      when the label marks its genus as doubtful (`checks.genus_in_doubt`,
      through `agreement._genus_in_doubt`): wherever the quote of a candidate
      of that literal, the text of a reading the answer names, or, unless
-     the answer names the reader the first pass preferred for its label,
-     the text of any of its readers writes the literal (every reader is
-     then the label's text: 1A's "cf. Epipsocus sp. 1" holds back an answer
-     that names only 1B's "Epipsocus sp. 1"):
+     the answer names the label's decided transcript (its readers' one
+     text, or a person's), the text of any of its readers writes the
+     literal (every reader is then the label's text: 1A's "cf. Epipsocus
+     sp. 1" holds back an answer that names only 1B's "Epipsocus sp. 1"):
      - a qualifier of the doubt signs' list (below, under B), in any case
        except "vic", with or without its periods, stands in the
        whitespace-separated part holding the literal's first word
@@ -806,10 +790,12 @@ handover runs field research instead of the six specialists:
      candidate that writes more than its number ("ca. 1200 m", "300-450 m")
      is the literal, and a number the elevation check returned for exactly
      that literal is the value (the briefs name which end).
-   - **The first pass's pick is advice (owner, 2026-10-25).** The reading
-     the first pass preferred for a label (G19's decided transcript, still
-     `input_source` decided_transcript on the wire) no longer binds the
-     label's text. The owner's words: "I wouldn't call it as evidence. It's
+   - **No reader is preferred (owner, 2026-10-25; WP 1.8).** The first pass
+     names no reading (the units path, since WP 1.8 the only one:
+     `docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md`),
+     and a label's decided transcript (`input_source` decided_transcript on
+     the wire) is its readers' one text when they all agree, or a person's.
+     The owner's words: "I wouldn't call it as evidence. It's
      raw transcription per model that can be leveraged if harness wants to
      think of possibilities LLM may have missed on its interpretation.
      Evidence is settlement which can be actual match from the lookups raw
@@ -825,34 +811,36 @@ handover runs field research instead of the six specialists:
      it goes and does lookups will settle it. As matches could be close to
      raw but not exact. Or it might be something else in context and
      corroborated with other fields etc. so many possibilities". Every rule
-     here reads the readings the answer names, whichever reader wrote them
-     (`agreement._deciding` and NOT_DECIDED are gone, and so is the step's
-     decided-reading substitution in `_misfit`). Each expert's request
-     carries, per label the first pass compared, the reader it preferred
-     (or null), its rationale, its note on each reader and each material
-     difference with its verdict (`first_pass`, by label number;
-     `step.first_pass_advice`). Another reader's text is a possibility, or
-     raw transcription; evidence is what settles a field: a source's match,
-     readers that agree, another label of the specimen that writes it.
+     here reads the readings the answer names, whichever reader wrote them. Each expert's request carries each label's reading units,
+     with the text the image shows at each unit where the first pass named
+     one (`Reading.units`), and the labels whose transcript a person decided
+     (`person_decided`). Another reader's text is a possibility, or raw
+     transcription; evidence is what settles a field. The old first pass,
+     which preferred a reader as advice to the experts, its request key
+     `first_pass` and its findings were removed in WP 1.8.
    - **Readers and labels that disagree (G20, G27, G32).** Whatever state the
      organiser gave the field, each label that writes it settles on its own
-     (`agreement.labels`), on its own evidence first, then on another
-     label's, then on the first pass's advice: a label whose
-     readers each write the same text, letter case
-     and spacing aside, on the spelling of the reader the first pass
-     preferred, else its first reader's (readers that differ
-     only so agree, the coordinator's ruling of 2026-10-09: texts compare
-     after NFC, casefolding and removing every space and line break,
+     (`agreement.labels`), by the settlement rule of the spec's section 4
+     (`agreement.labels_by_rule`). A label whose transcript a person decided
+     (`Transcript.actor`) settles on the person's text, cleared, with no
+     other reader's text overriding it, not even on a source's exact match,
+     because the person saw the image (the coordinator's ruling of
+     2026-10-25; lookups still work on the person's text; an answer naming
+     another reader of such a label is sent back naming the person's
+     reading, `PERSON_DECIDED`). Any other label's candidates are its
+     readers' texts for the field, grouped letter case and spacing aside
+     (the coordinator's ruling of 2026-10-09: texts compare after NFC,
+     casefolding and removing every space and line break,
      `agreement.agreement_key`, so "shrubs" and "Shrubs", "sp. 30" and
      "Sp.30", "Mt." and "MT." agree, while "Mun." and "Mum." or "1200 m"
-     and "1200 m." do not; the answer's literal is then the preferred
-     reader's text, else the first reader's, 2A before 2B, and an answer
-     giving another reader's spelling is sent back); a label whose readers
-     differ (or where one writes nothing), whichever reader the first pass
-     preferred, when the expert asked the field's approved sources about
-     every distinct text its readers write, exactly one is confirmed by an
-     answer about it, and every other has a captured no_match answer
-     about it and no success or ambiguous one. An error, a timeout or a text
+     and "1200 m." do not). A candidate is backed by the image (IMAGE: the
+     first pass's units name its text), by the field's approved sources
+     (SOURCE) or by readers that agree on it, on this label or another
+     (TEXT). A source backs a text when the expert asked the field's
+     approved sources about every distinct text the label's readers write,
+     exactly one is confirmed by an answer about it, and every other has a
+     captured no_match answer about it and no success or ambiguous one.
+     An error, a timeout or a text
      never asked about is not a no-match; a later gazetteer reply that step
      4 says is still read as no match is one. For a place field, a text its
      gazetteers found only as another kind of place than the field's counts
@@ -879,47 +867,20 @@ handover runs field research instead of the six specialists:
      other field keeps the one-confirmed rule. The answer then gives one
      reader's text as its literal with that authority_id and cites the
      answer that confirms it, and each reader's text stays in the value's
-     lineage. Else a label whose readers differ settles on the one text of
-     its readers, letter case and spacing aside, that another label of the
-     specimen settled on with two or more readers that agree on it
-     (`agreement.MIN_BACKING_READERS`: a label one reader read backs
-     nothing). **Against an image-confirmed pick** (the coordinator's
-     decision of 2026-10-25 on #414's first review): a source's exact
-     confirmation (the rule above) overrides the reader the first pass
-     preferred anywhere, also where that reader writes nothing for the
-     field; another label's agreement, or a place's near spelling (below),
-     overrides it only where the first pass's verdict at that difference does
-     not name the preferred reader (`agreement.confirmed_against_image`:
-     the material difference whose span covers the other reader's text;
-     none covering it reads as uncertain). Where the verdict names it, the
-     label does not settle either way: the expert is told to answer
-     several_possibilities with both texts (`FIRST_PASS_CONFLICT`), the
-     field is ambiguous, and the step records a warning
-     `first_pass_conflict:<field>:<region>` (design point 6 above: what
-     leaves several possibilities goes to Needs human review). G19 lets a pick stand only where every material
-     difference's verdict supports it, so with a pick a recorded verdict
-     always names it where the readers' texts differ: in practice another
-     label and a near spelling settle only labels the first pass preferred no
-     reader of. A transcript a person decided (`Transcript.actor`) binds its
-     label's text, with no other reader's text overriding it, not even on a
-     source's exact match, because the person saw the image (the
-     coordinator's ruling of 2026-10-25; lookups still work on the person's
-     text; the experts' request lists such labels under `person_decided`, and
-     an answer naming another reader of one is sent back naming the person's
-     reading, `PERSON_DECIDED`). Else a label whose first pass preferred a reader settles on
-     that reader's one candidate literal, or, when that reader has several
-     texts for the field (the organiser's, and the answer's text read from
-     the transcript: 48a71d53's "Mindanao," and "Davao Prov."), only through
-     the field's approved sources as above, on one of them; a label whose
-     preferred reader writes nothing for the field takes no part unless the
-     answer names one of its readers. Any other label does not settle. For
-     each label whose readers differ and that settles, the step records
-     whether it followed the first pass's preference, overrode it or had
-     none: one info finding per label, rule `first_pass_preference`, reason
-     code `first_pass_<followed|overridden|absent>:<field>:<region>`, citing
-     the value's label rows of that label (`step._first_pass_preference`;
-     a finding never routes the record; a field left unsettled by a
-     conflict goes to review on its own state, `mandatory_unresolved`). An answer confirms a text as
+     lineage. Another label of the specimen backs a text (TEXT) when two or
+     more of its readers agree on it (`agreement.MIN_BACKING_READERS`: a
+     label one reader read backs nothing). Exactly one backed candidate settles the label: cleared
+     with an IMAGE or a SOURCE backing, else marked for a person
+     (`text_only`); among rival backed candidates the best backed settles,
+     marked (`conflict`), and when none of them has an IMAGE or a SOURCE
+     backing, or two rank first alike, the label does not settle and their
+     texts are a person's options. For each label that settles, the step
+     records a finding, rule `field_settlement`: an info finding
+     `cleared:<field>:<label>`, or a warning `marked:<field>:<label>:<why>`
+     whose code is one of the run's reasons too (`step._settlement`,
+     `step.marked_reasons`). The old first pass's findings
+     (`first_pass_<followed|overridden|absent|conflict>`) were removed in
+     WP 1.8. An answer confirms a text as
      GBIF's decided candidate for the whole name it writes (a success
      answer), as the one candidate at a place field's level when it has that
      name (a success or ambiguous answer; see Places), or, for precise
@@ -953,8 +914,7 @@ handover runs field research instead of the six specialists:
      text one letter from the one candidate at the field's level of an answer
      asked that candidate's name is confirmed (`agreement._by_source`,
      identities' `near`; the one-letter bound of G34 is unchanged), every
-     other text still ruled out, and not against an image-confirmed pick
-     (above). The field settles
+     other text still ruled out. The field settles
      when every label settles on the same literal, which is then the answer's literal
      (citing the confirming answer when a source settled a label), or, for
      labels (or a place's readers, above) that settle on different literals,
@@ -963,12 +923,9 @@ handover runs field research instead of the six specialists:
      one of them and it cites the answer confirming it. Anything else goes
      to review, with each reader's candidate row still cited. So a field with no approved source (collectors,
      habitat, collection method, collection code, verbatim D/T/S), or only
-     deterministic checks, goes to review when the readers of a label differ
-     by more than letter case or spacing, the first pass preferred no reader
-     and no other label of the specimen, two or more of whose readers agree,
-     writes one reader's text; or when such a label writes another reader's
-     text than the one the first pass preferred and confirmed at that
-     difference. This
+     deterministic checks, settles a label whose readers differ on the text
+     the image names (cleared) or on the one text readers or another label
+     back (marked), rival backings as above. This
      follows the native harness's G20 and G32 rules
      (`research_harness/evidence.py`); it is stricter than
      `application/field_resolution.py`, which clears readers that differ when
@@ -1334,21 +1291,26 @@ handover runs field research instead of the six specialists:
      recorded capture: Costa Rica's Limon "CR-L", Honduras's Yoro "HN-YO",
      the Philippines' Davao "PH-DVC", each feature under them inside that
      country (`test_ngas_unit_codes_start_with_the_iso_country_code`).
-   - **105526330's province.** The reading the first pass preferred writes
-     "Chimaltenago" and Getty TGN knows only "Chimaltenango". Until
-     2026-10-25 an answer that took the other reader's "Chimaltenango" as its
-     literal was refused (G19). Since the real-run measurement of 2026-10-25
-     (t1-329), where the first pass confirmed "Chimaltenago" against the
-     image, TGN's exact match of the other reader's one-letter correction
-     keeps the preferred spelling as the literal and gives the department as
-     its value through that near spelling (`agreement._preferred_spelling`:
-     `near_spelling` and `first_pass_followed`, the reason naming the reader
-     whose text matched), and a county is never another reader's spelling of
+   - **105526330's province.** Reader 1A writes "Chimaltenago", 1B
+     "Chimaltenango", and Getty TGN knows only "Chimaltenango". Until
+     2026-10-25 an answer that took 1B's "Chimaltenango" as its literal was
+     refused (G19). In the real-run measurement of 2026-10-25 (t1-329) the
+     first pass saw "Chimaltenago" in the image. By the settlement rule
+     (`agreement.labels_by_rule`, points 1 and 4), where the first pass's
+     units name 1A's "Chimaltenago" and TGN confirms 1B's "Chimaltenango",
+     one letter from it, by its own name, the two texts are one candidate:
+     the label settles cleared on the image's spelling as the literal, with
+     the department as its value through that near spelling (`Label.matched`;
+     a `near_spelling` warning; the value's reason names reader 1B's
+     "Chimaltenango"), and an answer with 1B's text is sent back to give
+     "Chimaltenago" (`test_first_pass_advice.py`,
+     `test_a_source_confirming_the_other_readers_one_letter_correction_keeps_the_images_spelling`).
+     A county is never another reader's spelling of
      the settled province (`step._province_spelling`), nor any field
      another reader's spelling, one letter off on the same label, of text a
      field of another kind settled (`step._spelled_alike` in `_taken`).
-     Where both readers write "Chimaltenago", or the first pass preferred it
-     and nothing backs the other reader's text, an answer that
+     Where both readers write "Chimaltenago", or the image names it and
+     nothing backs the other reader's text, an answer that
      keeps "Chimaltenago" as the literal, as written (G27), and takes TGN's
      department Chimaltenango, one letter from it, as the value, passes the
      expert's check, and the step settles it with a `near_spelling`
@@ -1982,6 +1944,27 @@ this one, gets its own entry.
   means a reading failed: catalogue number, country, the two collecting
   dates and collectors; and the taxon, which follows B. Province or state,
   verbatim D/T/S and identified-by IRN keep today's behaviour.
+- WP 2.R of the reading-units program (2026-11-15) checked each field the
+  list leaves out against its sources and added none
+  (`tests/field_research/test_review_rules.py` pins them). The owner's answer
+  named no fields (the schema session's record of it, the same file). The
+  catalogue number is one a person finds on the label and its barcode (PRD.md
+  12.4, "How a person resolves each group today": "The label and its
+  barcode"), a barcode label each drawn slide of the reference set holds
+  (`docs/execution/units/PLAN.md` section 1). PRD.md
+  12.4's table of v1 keys from v2 parts fills a country and a province with
+  no condition, a county only "where the country has one" and a city "when
+  there is one"; a country or a province the label does not write is filled
+  by derivation from settled fields (`prompts/country.txt:9`,
+  `prompts/province_state.txt:11`; G37), as Date Visited To is from Date
+  Visited From (G44). Verbatim D/T/S
+  holds a date with no exact day or a time of day (PRD.md 12.4, the
+  collection manager's answer of 2026-10-07), and the row's checks find its
+  text only through what the organiser found for it (`step._organiser_texts`):
+  in units-wp15c's four runs that was nothing on 105526327, whose label
+  writes the month "XI.46". For the collecting date and the
+  collectors no source settles that their absence clears, so they keep
+  today's result.
 
 **When a listed field clears as not on the label.** Only when all of these
 hold (`step.mark_not_on_label`, after the derived values, so a derivable
@@ -2356,12 +2339,9 @@ all of these hold:
   reader's "Sp.30" beside "sp. 30", never "sp. 39"). This compares the
   organiser's candidates. Readers of a label with no decided transcript
   whose codes differ never settle (the readers' rule below), unless they
-  differ only in letter case or spacing. On a label
-  whose first pass preferred a reader, the rule refuses another reader's
-  different code only when the organiser gives that reader's text as a
-  candidate; where it gives none, the preferred reader's code clears
-  alone, as the preferred reading settles a label when nothing backs
-  another reader's text (#284; advice since 2026-10-25, step 5);
+  differ only in letter case or spacing (until WP 1.8, a label whose old
+  first pass preferred a reader cleared that reader's code alone where
+  nothing backed another reader's);
 - the label names no genus for that code (`checks.label_names_no_genus`):
   this is judged on every reading's text, not on the organiser's literal.
   Wherever any reading writes the code, no token beside it may be a genus
@@ -2522,11 +2502,7 @@ all of these hold:
   105526324's unreadable label, whose readers list the span and write
   "[unreadable]", holds back the "sp 22" another of its labels writes;
 - the readers settle on the literal by the rule for readers that disagree
-  (step 5 above): with no successful lookup, that is readers that each
-  write that text, letter case and spacing aside, another label's text,
-  or the reader the first pass preferred when nothing backs another
-  reader's text, the preferred reader (else the first reader) writing it
-  exactly;
+  (step 5 above: the settlement rule, `agreement.labels_by_rule`);
 - the value meets the agreement rules every resolved answer meets
   (`agreement.refusal`): among them, no candidate of it may quote a longer
   name around it, and no text may mark the literal's first word as a
@@ -2572,11 +2548,17 @@ not, before it answers for a morphocode):
   initials to them), when the expert likewise makes no GBIF lookup but of
   the code itself.
 
-Each still clears as unmatched
-(`test_a_genus_the_label_checks_do_not_read_clears_when_the_expert_makes_no_lookup`
-for "sim. Epipsocus", "NR Epipsocus" and "C.F Epipsocus" above
-"V-4-67-1", and for "Epipsocus" above "wings + head" or "legs" and "R.D.
-Epipsocus" right above the code). Where the expert does look the genus up, as its brief says,
+Until WP 1.8 each still cleared as unmatched on the old path. Since WP 2.T
+neither clears on the units path, since WP 1.8 the only one. There, rule B, by either of its branches, declines while any label of the
+specimen writes a word that may be a genus. Such a word is any run of
+letters, of any case, other than a `checks.NOT_GENERA` word or a Roman
+numeral I to XII, that no single span holds whole. The spans are a
+settled field's occurrence where its provenance places it, a whole
+notation token, a code with no genus, a catalogue number with its prefix,
+or a keyed line's key; a unit's span carries to another reader there only
+when that reader writes the same words, each at most one character apart
+(`step._genus_on_a_label`; the same test on the units path, and
+`tests/field_research/test_taxon_scope.py`). Where the expert does look the genus up, as its brief says,
 the GBIF guard refuses rule B, since that query is not the code
 (`step._gbif_asked_another_name`;
 `test_the_real_resolver_looking_the_genus_up_as_its_brief_says_keeps_the_taxon_in_review`
@@ -2611,6 +2593,19 @@ On a label with no decided transcript, a reviewer's field correction leaves
 `unresolved_transcription:<region>` in place, even after approval (the
 corrected value has no raw reading behind it): the way out is a transcription
 decision, which reruns field research and pays for it again.
+
+WP 2.R of the reading-units program (2026-11-15) tried narrowing
+`unresolved_transcription` on the units path and removed it: first for a
+label whose readers' differences no field's rows or text touched, then for one
+whose readers differ only in letter case or spacing. Review found a difference
+of each kind that decides a field: a year on the next line decides the date
+"IV-25" ("1948" against "1949"), and "Mt. Apo" against "MT. APO" below it
+changes whether that year is read with the date (`date_lines`). Main's rule
+in `step.scientific_reasons` stands on both paths: a label with no transcript,
+or one unresolved or without text, is `unresolved_transcription` when no field
+is drawn from it, or a field drawn from it, its work done, is not supported, or
+is neither grounded in a reader's raw reading nor derived; and a label the
+first pass gave up on is so however its fields settle.
 
 A field cleared as not on the label, or a taxon cleared as unmatched, is
 reopened like any other field with Correct value: the reviewer's value is
@@ -2672,11 +2667,12 @@ spending authorization and does not apply archived answers to a live record.
 Two kinds of country alternative no longer hold that derivation back (the
 third rerun of 2026-10-18, `agreement.set_aside`, `agreement.confirmed_place`):
 - text no reading a field may settle on writes. Every reading that writes it
-  is either another reader of a label whose first pass preferred a reader
-  that does not write it, with no reading of another label writing it (a
-  possibility nothing backs, `agreement.only_a_possibility`; until
-  2026-10-25 `agreement.evidence_only`, G19), or one of the two readers of a
-  label whose first pass preferred no reader where the
+  is either another reader of a label whose decided transcript (its
+  readers' one text, or a person's) does not write it, with no reading of
+  another label writing it (a possibility nothing backs,
+  `agreement.only_a_possibility`; until 2026-10-25 `agreement.evidence_only`,
+  G19), or one of the two readers of a label with no decided transcript
+  where the
   other reader writes other words at that very point (`agreement.disputed`):
   each run of the text lies wholly inside the token differences of the two
   readings (`application.first_pass.reading_differences`, the differences

@@ -142,6 +142,7 @@ def build_rig(tmp_path, monkeypatch, texts=REGION_TEXTS):
                 input_crop_ref=region.crop_ref, literal_text=text, raw_ref=blobs.put(raw),
                 raw_sha256=hashlib.sha256(raw).hexdigest()))
         run.completed_steps += [f"transcribe:{region.id}:{route}" for route in run.profile.routes]
+        support.first_pass_done(blobs, run, region)
     created = repository.create(principal, specimen, "e2e-intake", "e2e-intake")
     rig = SimpleNamespace(fake=fake, backend=backend, repository=repository, ordinary=ordinary,
         principal=principal, specimen_id=created.id, research_blobs=ImmutableFileBlobs(tmp_path / "research"),

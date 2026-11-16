@@ -73,22 +73,25 @@ def first_pass_trace(monkeypatch, tmp_path, capfire):
         "routes": {ROUTE.route_id: PINNED},
         "prompts": {prompt.name.value: prompt.model_dump(mode="json")},
     }
-    # The same line on both readings keeps their three differences (VALID's).
+    # The same line on both readings keeps their three differences (VALID's) and
+    # adds two segments, which VALID's last unit takes in.
     readings = [
         reading("handwriting-qwen", QWEN + "\nleg. " + LABEL_CANARY),
         reading("handwriting-muse", MUSE + "\nleg. " + LABEL_CANARY),
     ]
-    answer = dict(VALID, rationale="The image shows Epipsocus. " + ANSWER_CANARY)
-    calls = []
+    *first, last = VALID["units"]
+    answer = {"units": [*first[:2], dict(first[2], note="The image shows Sp. 1. " + ANSWER_CANARY),
+                        dict(last, last=7)]}
+    calls, units = [], []
 
-    decision, (_, second) = direct_first_pass(
+    decision, _ = direct_first_pass(
         monkeypatch, tmp_path, calls, answer,
-        readings=readings, dependencies=dependencies, crop=CROP,
+        readings=readings, dependencies=dependencies, crop=CROP, units=units,
     )
 
     # The call ran with the canaries in it, so their absence is the setting's.
-    assert decision.selected_observation_id == second.id
-    assert ANSWER_CANARY in decision.rationale
+    assert decision.call.completion_state == "validated_output"
+    assert ANSWER_CANARY in units[0].units[2].note
     [messages] = calls
     assert messages[0].instructions.endswith(PROMPT_CANARY)
     sent = [part.content for part in messages[0].parts]
@@ -96,7 +99,7 @@ def first_pass_trace(monkeypatch, tmp_path, capfire):
     assert any(getattr(item, "data", None) == CROP for item in sent[0])
     spans = capfire.exporter.exported_spans_as_dict()
     names = [span["name"] for span in spans]
-    assert "invoke_agent first_pass_" + ROUTE.route_id.replace("-", "_") in names
+    assert "invoke_agent first_pass_units_" + ROUTE.route_id.replace("-", "_") in names
     assert any(name.startswith("chat ") for name in names)
     logs = capfire.log_exporter.exported_logs_as_dicts()
     return json.dumps({"spans": spans, "logs": logs}, default=str)

@@ -29,7 +29,7 @@ from specimen_digitization.application.domain import (
     Region,
     Scope,
 )
-from specimen_digitization.application.first_pass import synthetic_decision
+from specimen_digitization.application.first_pass import synthetic_units
 from specimen_digitization.application.lane_reservations import (
     call_micros,
     step_reservation,
@@ -136,7 +136,7 @@ class DisagreeingReaders(ProductionLikeAdapters):
             for order in range(self.regions)
         ]
 
-    def first_pass(self, specimen, region, readings):
+    def first_pass_units(self, specimen, region, readings):
         run = specimen.run
         route = run.profile.first_pass_route
         self.pins.append(run.dependencies["routes"].get(route))
@@ -147,11 +147,11 @@ class DisagreeingReaders(ProductionLikeAdapters):
         if self.fail:
             self.fail -= 1
             raise AdapterFailure("first_pass_rate_limited", LookupStatus.RATE_LIMITED)
-        decision = synthetic_decision(self.blobs, region, readings)
+        decision, units = synthetic_units(self.blobs, region, readings)
         call = decision.call.model_copy(
             update={"route_id": route, **GLM, "input_tokens": 1_200, "output_tokens": 300}
         )
-        return decision.model_copy(update={"call": call})
+        return decision.model_copy(update={"call": call}), units
 
 
 def start(tmp_path, adapters, registry=None):

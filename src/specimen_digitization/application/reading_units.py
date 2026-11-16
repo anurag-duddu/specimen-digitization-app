@@ -20,22 +20,24 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # What the image shows at a unit when it names no reader's text (section 3, `image`).
 UNCERTAIN = "uncertain"
 NOT_VISIBLE = "not visible"
+# The key of a person's transcript among the readers of its label's units, when a person
+# decided the label's text (application/api.py, a transcription decision).
+PERSON = "person"
 
-SETTING = "SPECIMEN_FIRST_PASS_UNITS"
+# The first-pass path a run records (domain.Run.first_pass_path). Every new run records UNITS.
+# A run the old first pass processed, which WP 1.8 of docs/execution/units/PLAN.md removed,
+# holds OLD, the default of a stored run without the key, until it is reopened and moved to
+# the units path (workflow.move_to_units).
 OLD, UNITS = "old", "units"
 
-
-def first_pass_path(environ) -> str:
-    """"units" when SPECIMEN_FIRST_PASS_UNITS is "on"; "old" when it is "off", empty or unset;
-    another value raises a ValueError that names the setting and not the value."""
-    value = environ.get(SETTING, "")
-    if value in ("", "off"):
-        return OLD
-    if value == "on":
-        return UNITS
-    raise ValueError(f"{SETTING} must be on or off")
-
 Line = Annotated[int, Field(ge=1)]
+
+# The roles of a field's parts (section 3, `role`), by field: a scientific name's, which only the
+# taxon holds, and a date's, which the three date fields share (plan WP 2.4).
+NAME_ROLES = ("genus", "species", "author")
+DATE_ROLES = ("day", "month", "year")
+PART_ROLES = {"taxon": NAME_ROLES, "date_visited_from": DATE_ROLES, "date_visited_to": DATE_ROLES,
+    "date_identified": DATE_ROLES}
 
 
 class _Record(BaseModel):

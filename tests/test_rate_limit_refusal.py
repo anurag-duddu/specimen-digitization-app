@@ -128,13 +128,13 @@ class ChildLab(DisagreeingReaders):
             return ProductionAdapters.transcribe(self, specimen, region, route)
         return super().transcribe(specimen, region, route)
 
-    def first_pass(self, specimen, region, readings):
+    def first_pass_units(self, specimen, region, readings):
         if self.child_first_passes:
             self.child_first_passes -= 1
             self.exposure.append(specimen.run.usage.reserved_cost_micros)
             self.overrun(specimen, "first_pass:" + region.id)
-            return ProductionAdapters.first_pass(self, specimen, region, readings)
-        return super().first_pass(specimen, region, readings)
+            return ProductionAdapters.first_pass_units(self, specimen, region, readings)
+        return super().first_pass_units(specimen, region, readings)
 
 
 class ChildOrganiser(ChildLab):

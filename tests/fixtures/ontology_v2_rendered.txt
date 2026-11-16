@@ -1,4 +1,4 @@
-Specimen ontology, version 1.0. Its frame is the Darwin Core conceptual model of specimen data (https://dwc.tdwg.org/cm/, version 2026-10-13).
+Specimen ontology, version 2.0. Its frame is the Darwin Core conceptual model of specimen data (https://dwc.tdwg.org/cm/, version 2026-10-13).
 
 Things the labels describe (examples on labels; the Darwin Core class and terms):
 - Specimen: the slide, its catalogue number, the institution that holds it (in Darwin Core, MaterialEntity; catalogNumber, institutionCode).
@@ -17,7 +17,7 @@ The profile's 20 fields (key, display name, Darwin Core term: what it holds):
 - province_state (Province/State), stateProvince: The first-level administrative unit (province, state or department) where the specimen was collected, as the labels write it.
 - county (County), county: The country's second-level administrative unit where the specimen was collected, as the labels write it: a county, or whatever unit the country's local government holds at that level instead (a municipio, where that is the second level).
 - city (City), municipality: The city, town or municipality the labels name as the collecting place.
-- precise_location (Precise Location), verbatimLocality: The locality as the label writes it: the most specific place text, such as "E. slope Mt. <Mountain>, nr. <Town>". Darwin Core's locality is its interpretation and may equal it.
+- precise_location (Precise Location), verbatimLocality: The label's whole locality as written: every line of its locality text, such as "E. slope Mt. <Mountain>, nr. <Town>" over "<Province>, <Country>". Darwin Core's locality is its interpretation and may equal it.
 - elevation_from_m (Elevation From (m)), minimumElevationInMeters: The lower, or only, elevation the label writes in metres.
 - elevation_to_m (Elevation To (m)), maximumElevationInMeters: The upper end of an elevation range the label writes in metres.
 - elevation_from_ft (Elevation From (ft)), verbatimElevation: The lower, or only, elevation the label writes in feet. The four elevation fields map to verbatimElevation, as written, and to minimumElevationInMeters and maximumElevationInMeters; an elevation in feet is the verbatimElevation ("4800 ft.").
@@ -27,7 +27,7 @@ The profile's 20 fields (key, display name, Darwin Core term: what it holds):
 - date_visited_from (Date Visited From), eventDate: The date the specimen was collected, or the first date of a written collecting range, at the precision written.
 - date_visited_to (Date Visited To), eventDate: The last date of collecting, only when the label writes a range or an end date, at the precision written.
 - collectors (Collectors), recordedBy: The people who collected the specimen, exactly as the label writes them.
-- verbatim_dts (Verbatim D/T/S), verbatimEventDate: Text transcribed exactly as written: a non-standard collection-event date or time expression, such as "Avril 1917", "Summer 1914", "am", "pm", "sunrise" or "daylight".
+- verbatim_dts (Verbatim D/T/S), verbatimEventDate: Text transcribed exactly as written: a non-standard collection-event date or time expression, such as "Avril <yyyy>", "Summer <yyyy>", "am", "pm", "sunrise" or "daylight".
 - taxon (Taxon), scientificName: The scientific name the labels give the specimen, at the rank written.
 - identified_by_irn (Identified by IRN), identifiedBy: The EMu Parties record number (IRN) of the person who identified the specimen. The museum's Darwin Core mapping resolves the identifier's Parties reference to the name it publishes as identifiedBy; its public archive maps no identifiedByID.
 - date_identified (Date Identified), dateIdentified: The date the specimen was identified (determined), at the precision written.
@@ -47,7 +47,7 @@ Copy every literal exactly as the reading has it, character for character; a lit
 - "Co.": county, a word of the county's name, not the name [county]. Look it up with the word written out ("<County> County" for "<County> Co.").
 - "Mt.": mount, part of the place's name [precise_location].
 - "Mts.": a place abbreviation: when you know what it stands for, look up its expansion [country, province_state, county, city, precise_location]. As for a place's name, the sources decide which level it is.
-- "Is.": island or islands [precise_location, county, province_state].
+- "Is.": island or islands [precise_location]. An island is neither a province nor a city, and no field of the profile holds an island's level: the precise location keeps it as written.
 - "nr.": near [precise_location].
 - "E. slope", "W. side": a direction qualifying the place that follows [precise_location].
 - "leg.", "coll.", "Coll.": collected by, marking the collectors [collectors].
@@ -56,17 +56,19 @@ Copy every literal exactly as the reading has it, character for character; a lit
 - "<n> ft.", "<n>'": feet, the unit of an elevation [elevation_from_ft, elevation_to_ft]. The unit decides the field.
 - "alt.", "el.": the heading of an elevation [elevation_from_m, elevation_to_m, elevation_from_ft, elevation_to_ft].
 - "ca.", "c.": about: the value is approximate [elevation_from_m, elevation_from_ft, date_visited_from].
-- "<d>.<Roman month>.<yyyy>", "<Roman month>-<d>-<yy>", "<yyyy>.<Roman month>.<d>": the month, January to December, in any position of the date, when the profile allows Roman months [date_visited_from, date_visited_to, date_identified].
+- "<d>.<Roman month>.<yyyy>", "<Roman month>-<d>-<yy>", "<yyyy>.<Roman month>.<d>": the month, January to December, in any position of the date, when the profile allows Roman months; or the same, a 1 written for an I (1X: IX) [date_visited_from, date_visited_to, date_identified].
 - "Jan.", "Feb.", "Mar.", "Apr.", "Jun.", "Jul.", "Aug.", "Sep.", "Sept.", "Oct.", "Nov.", "Dec.", "ene.", "janv.", "Mai", "Okt.", "agosto": the month [date_visited_from, date_visited_to, date_identified]. A month may be written by name in English, Spanish, French, German, Portuguese, Italian or Latin, abbreviated or not, with or without periods, and a day may carry an ordinal ("3rd", "1er"); the forms listed are examples.
 - "<a>-<b>-<yy>", "<a>.<b>.<yy>", "<a>/<b>/<yy>": month <a>, day <b>; or day <a>, month <b> [date_visited_from, date_visited_to, date_identified]. Settled only when a part over 12 fixes day against month; otherwise both readings stand until evidence decides.
 - "<d1>-<d2>.<Roman month>.<yyyy>", "<Roman month>-<Roman month>.<yy>", "<d1>.<Roman month>-<d2>.<Roman month>.<yyyy>": a range: its first date is the start and its second the end [date_visited_from, date_visited_to].
 - "'<yy>", "-<yy>": the year 19<yy>, under the profile's century rule [date_visited_from, date_visited_to, date_identified].
 - "?": the value before it is uncertain as written [no field].
 - "<Roman month>-<dd>-<yy>-<n>", "<mm>-<dd>-<yy>-<n><letter>": a slide or preparation code: a month, a day, a two-digit year and a slide number joined by hyphens; never a date, nor is any part of it [no field]. No field takes a slide code.
+- "LEWIS COLLECTION": the printed heading of the Lewis Collection's label templates; it is the Collection Code, copied as written [collection_code].
+- "CNHM.": Chicago Natural History Museum, the Field Museum's name from 1943 to 1966: the institution, never a collector, and no field of its own [no field]. Written on a locality line, it is part of the precise location as written.
+- "sp. <n>": a morphocode, a species number: after a genus, a genus-level identification; with no genus on any label, it names no scientific taxon [taxon].
+- "Host", "ex.", "on", "from": before a name, the specimen's host (associatedTaxa), never its taxon [no field].
+- "♀": female: the specimen's sex, which no field of the profile holds [no field].
+- "♂": male: the specimen's sex, which no field of the profile holds [no field].
 
-Open questions that wait for the owner's reading; until then a unit holding one carries no field.
-- "CNHM.": What is "CNHM." on these labels, and does it fill a field?
-- "Sp.30 ♀": Where does "Sp.30 ♀" go, and does it fill a field?
+Meanings no source settles yet; a unit holding one carries no field.
 - "P-95-81-16": What is "P-95-81-16", and does it fill a field?
-Open questions about a notation above, whose entry stands until the owner's reading:
-- "Is.": Which fields can "Is." (island or islands) belong to?

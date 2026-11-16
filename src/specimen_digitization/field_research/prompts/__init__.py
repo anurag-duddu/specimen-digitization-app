@@ -41,15 +41,30 @@ FIELD_LABELS = {
 _ROOT = Path(__file__).parent
 
 
+def _read(name: str) -> str:
+    """A file of this folder, stripped."""
+    return (_ROOT / name).read_text(encoding="utf-8").strip()
+
+
 @cache
 def instructions(key: str) -> str:
-    """The expert's whole instructions for one field; an unknown field is refused."""
+    """The expert's whole instructions for one field; an unknown field is refused: the shared
+    rules, then the specimen ontology's brief text (ontology.render(brief=True), as the first
+    pass carries it), then the instructions of the ontology's rules that name this field
+    (ontology.render_instructions("expert", key)), when any does, then the field's brief.
+    Every request an expert sends carries its instructions, which budget.input_token_bound
+    counts against budget.DEFAULT_MAX_INPUT_TOKENS."""
     if key not in FIELD_TOOLS or key not in FIELD_LABELS:
         raise KeyError(f"no field brief for {key!r}")
-    common = (_ROOT / "common.txt").read_text(encoding="utf-8").strip()
+    common = _read("common.txt")
     for marker, line in ((RANGE_MARKER, range_line()), (UNIT_MARKER, unit_line())):
         if common.count(marker) != 1:
             raise ValueError(f"common.txt must hold the marker {marker!r} once")
         common = common.replace(marker, line)
-    brief = (_ROOT / f"{key}.txt").read_text(encoding="utf-8").strip()
+    brief = _read(f"{key}.txt")
+    from specimen_digitization.ontology import render, render_instructions
+
+    common += "\n\n" + render(brief=True).strip()
+    if rules := render_instructions("expert", key).strip():
+        common += "\n\n" + rules
     return common + "\n\n" + brief + "\n"

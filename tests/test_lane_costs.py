@@ -313,10 +313,17 @@ def test_the_workflow_records_every_reading_and_segmentation(tmp_path):
     assert by_step["segment"]["kind"] == "service"
     assert by_step["segment"]["outcome"] == "completed"
     assert by_step["segment"]["cost_micros"] >= 1  # At least the request.
-    readings = [call for call in run.paid_calls if call["kind"] == "model"]
+    readings = [call for call in run.paid_calls
+                if call["kind"] == "model" and call["step"].startswith("transcribe:")]
     assert sorted(call["route_id"] for call in readings) == [
         "handwriting-muse",
         "handwriting-qwen",
+    ]
+    # The label's first pass (the lab's synthetic one, test_lane_profile.ProductionLikeAdapters),
+    # which reports no tokens, so it costs nothing.
+    first_passes = [call for call in run.paid_calls if call["step"].startswith("first_pass:")]
+    assert [(call["kind"], call["route_id"], call["cost_micros"]) for call in first_passes] == [
+        ("model", "first-pass-glm", 0)
     ]
     assert {call["route_id"]: call["cost_micros"] for call in readings} == {
         "handwriting-qwen": 550,

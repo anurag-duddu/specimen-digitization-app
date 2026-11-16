@@ -17,7 +17,7 @@ from specimen_digitization.application.tenant_budget import (
 )
 from specimen_digitization.application.workflow import FIELD_RESEARCH, requeue_completed_field_research
 
-from test_step import COLLECTION, ONE_REQUEST, ORG, Scripted, build_rig, mounted, seed_program
+from test_step import COLLECTION, ONE_REQUEST, ORG, Scripted, build_rig, mounted, research_paid, seed_program
 
 
 @pytest.fixture
@@ -46,7 +46,7 @@ def test_a_low_monthly_cap_caps_the_step_and_sends_what_does_not_fit_to_review(r
     run = rig.workflow.step(rig.principal, rig.specimen.id).run
     [meter] = state.meters
     assert meter.cap_micros == 25_000 and ONE_REQUEST < 25_000
-    [paid] = run.paid_calls
+    [paid] = research_paid(run)
     assert paid["reserved_micros"] == 25_000 and paid["cost_micros"] == meter.spent_micros <= 25_000
     assert (run.stage, run.disposition, run.blocker) == ("finalized", Disposition.REVIEW, None)
     # The cap's ledger reserved the headroom and settled to what the experts spent.

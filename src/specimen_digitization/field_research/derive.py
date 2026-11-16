@@ -15,6 +15,12 @@ value the field holds (policy.py 82-98), and it has no G44 rule. Each value
 here is its own layer ("derived"), names the fields it comes from and cites one
 "derived" evidence item whose excerpt states the value, the rule and its input;
 the input fields' evidence supports it.
+
+The rule each derived value follows is read from the specimen ontology
+(ontology/specimen.yaml): the rules marked `derives`, each with the fields it
+fills (DERIVED_RULES; plan WP 2.3b). The check stage names that rule in the
+value's reason (ontology_checks.basis). What fill derives, and the evidence
+and records it writes, do not depend on the file.
 """
 
 from __future__ import annotations
@@ -26,12 +32,18 @@ from collections.abc import Iterable, Mapping, Sequence
 from specimen_digitization.application.derivations import RULES as ELEVATION_RULES
 from specimen_digitization.application.derivations import UNITS, elevation_derivations, settled_value
 from specimen_digitization.application.domain import Evidence, FieldValue, ValueState
+from specimen_digitization.ontology import ontology
 
 from .agreement import place_name
 from .date_lines import written_range
 from .contracts import SourceAnswer, SourceCandidate, PlaceRef
 
 RULES_VERSION = "field-research-derivations-v1"
+# The ontology rule each field fill derives follows, by field: a place from a settled place's
+# parents (place_parents_derived), an elevation from a stated one (elevation_conversion), the end
+# of a single collecting date (end_date_from_one_date), as the file's rules marked `derives` name
+# their fields.
+DERIVED_RULES = {key: rule.id for rule in ontology().rules if rule.derives for key in rule.fields}
 SOURCE = "field_research"
 ELEVATIONS = tuple(key for pair in UNITS.values() for key in pair)
 # A field the label leaves out: nothing stated, nothing settled.

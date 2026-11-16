@@ -205,6 +205,11 @@ def test_refresh_without_a_worker_job_starts_nothing():
 
 # ---- the shared-cost allocation's meter (PR 3) --------------------------------
 
+# The month the GROUPS fixture rows are in. Without it the range defaults to the current UTC
+# month, and the 2026-10 rows outside it make the report invalid.
+FIXTURE_MONTH = {"from": "2026-10", "to": "2026-10"}
+
+
 def metered(latest, groups=GROUPS):
     repository = Mock(spec=["cost_totals", "cost_allocation_status"])
     repository.cost_totals.return_value = {"collections": COLLECTIONS, "groups": groups}
@@ -224,7 +229,7 @@ def test_the_meter_names_the_last_allocated_billing_day_and_whether_it_lags(days
     repository = metered(latest)
     http, _ = client([membership("admin")], repository=repository)
     with http:
-        response = http.get(f"/v1/organizations/{ORG}/costs", headers=HEADERS)
+        response = http.get(f"/v1/organizations/{ORG}/costs", params=FIXTURE_MONTH, headers=HEADERS)
     assert response.status_code == 200, response.text
     assert response.json()["meter"] == {"allocated_through": day.isoformat(), "allocation_status": status}
     repository.cost_allocation_status.assert_called_once_with(ORG)
@@ -233,7 +238,7 @@ def test_the_meter_names_the_last_allocated_billing_day_and_whether_it_lags(days
 def test_an_organization_never_allocated_says_so():
     http, _ = client([membership("admin")], repository=metered(None))
     with http:
-        response = http.get(f"/v1/organizations/{ORG}/costs", headers=HEADERS)
+        response = http.get(f"/v1/organizations/{ORG}/costs", params=FIXTURE_MONTH, headers=HEADERS)
     assert response.json()["meter"] == {"allocated_through": None, "allocation_status": "never_run"}
 
 
@@ -266,5 +271,5 @@ def test_an_unreadable_allocation_status_is_unavailable():
     repository.cost_allocation_status.side_effect = OperationalBlock("cost_meter_unavailable")
     http, _ = client([membership("admin")], repository=repository)
     with http:
-        response = http.get(f"/v1/organizations/{ORG}/costs", headers=HEADERS)
+        response = http.get(f"/v1/organizations/{ORG}/costs", params=FIXTURE_MONTH, headers=HEADERS)
     assert response.status_code == 503 and response.json()["error"]["message"] == "cost_meter_unavailable"

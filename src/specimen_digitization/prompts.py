@@ -12,8 +12,6 @@ from pydantic import BaseModel, ConfigDict, Field
 class PromptName(StrEnum):
     LITERAL_TRANSCRIPTION = "literal-label-transcription"
     STRUCTURED_EXTRACTION = "structured-field-extraction"
-    DISAGREEMENT_ADJUDICATION = "transcription-disagreement-adjudication"
-    FIELD_HARNESS = "field-harness"
     FIRST_PASS_UNITS = "first-pass-units"
 
 
@@ -105,57 +103,6 @@ Organise what the readings state into field-value candidates:
 Return the requested structured output.
 """.strip()
 
-_DISAGREEMENT_ADJUDICATION_DEFAULT = """
-You are the transcription adjudicator for {{collection_name}} using collection
-profile {{collection_profile_id}} and output schema {{schema_version}}.
-
-You work with biodiversity data. The supplied image is one label of a
-natural-history specimen from {{collection_name}}, with handwritten or typed
-collecting data: the locality, elevation, collecting date, collector, taxon
-name, and catalogue and slide codes. Independent machine readers transcribed
-it; compare their candidate transcripts against the image.
-
-Resolve a value only when the visual evidence supports it. Prefer a reader only
-when the image supports that reader's text at every material difference.
-Preserve unresolved differences explicitly and route material ambiguity to
-human review. Never choose a candidate merely because it is more fluent: labels
-abbreviate, misspell and use old or foreign place names, and a name is read as
-written, not as you expect it.
-
-Your preferred reader is advice to a field harness that settles each field with
-lookups against biodiversity sources and may overrule you with any reader's
-text, so say in your notes what you saw at each difference. Return the
-requested structured output.
-""".strip()
-
-
-# No agent reads this prompt: production.pin_dependencies resolves and pins it
-# with every run's prompts, and field research's experts take their
-# instructions from field_research/prompts. Logfire shows it beside the others,
-# so its text follows the design (2026-10-25: the first pass's pick is advice).
-_FIELD_HARNESS_DEFAULT = """
-You are the field harness for {{collection_name}} using collection profile
-{{collection_profile_id}} and output schema {{schema_version}}.
-
-Everything transcribed on the specimen is your context for every field: every
-label, every reading and every field. Each reading is one model's raw
-transcription of its label. The first pass's preferred reading is advice from a
-model that saw the label image: follow it when nothing backs another reader's
-text. Another reader's text is a possibility it may have missed, which your
-lookups may confirm. Evidence is what settles a field: a source's match,
-readers that agree, another label of the specimen that writes the text. For
-every field of the profile, give its literal exactly as each reading has it,
-and leave a field out for a reading that does not have it.
-
-Work through every reading a notation allows. Keep looking things up with the
-tools each field names, and keep weighing the evidence, until a field settles
-or you have shown that it cannot. The tools and the specimen's evidence settle
-values. A field the label leaves out is filled only by derivation from settled
-fields, with its authority and evidence. You never decide a value yourself and
-never draw a conclusion without evidence. Never invent, complete, correct,
-expand or translate a literal. Return the requested structured output.
-""".strip()
-
 _FIRST_PASS_UNITS_DEFAULT = """
 You are the first pass for {{collection_name}} using collection profile
 {{collection_profile_id}} and output schema {{schema_version}}.
@@ -172,8 +119,13 @@ what it qualifies. A unit may cross a line, but never joins pieces of two
 fields' values. For each unit:
 - image: the letter of the reader whose text the image shows there, even when
   that reader alone wrote it; where all readers wrote the same and the image
-  shows it, the first reader's letter. "uncertain" only where the image does
-  not decide between differing texts; "not visible" where nothing is legible.
+  shows it, the first reader's letter. Where the readers' texts differ only in
+  capital letters or in spaces and the image shows that text, the letter of the
+  first reader who wrote it, unless the image plainly shows another reader's
+  capitals or spaces. Where they differ in a character, compare that
+  character's strokes in the image with each reader's text and give the reader
+  they fit; "uncertain" only where the strokes fit two differing texts equally
+  or fit none; "not visible" where nothing is legible.
   Never prefer a text because it reads more fluently: labels abbreviate,
   misspell and use old or foreign place names.
 - means: your interpretation, if any: an expansion ("P.I.": Philippine
@@ -183,8 +135,9 @@ fields' values. For each unit:
   that part of a value alone.
 - fields: the field keys the unit could belong to, most likely first; none
   for a unit that holds an open question below.
-- note: one short sentence, only for what the other keys do not say, such as
-  a mark one reader alone saw; never to restate the image or the meaning.
+- note: a remark for the experts, one short sentence, only for what the other
+  keys do not say, such as a mark one reader alone saw; never to restate the
+  image or the meaning, and never to argue against a name every reader wrote.
 
 You settle nothing: each field's expert decides with lookups. Return the
 requested structured output.
@@ -205,18 +158,6 @@ PROMPT_VARIABLES = {
         default=_STRUCTURED_EXTRACTION_DEFAULT,
         inputs_type=CollectionPromptInputs,
     ),
-    PromptName.DISAGREEMENT_ADJUDICATION: logfire.template_var(
-        name="prompt__transcription_disagreement_adjudication",
-        type=str,
-        default=_DISAGREEMENT_ADJUDICATION_DEFAULT,
-        inputs_type=CollectionPromptInputs,
-    ),
-    PromptName.FIELD_HARNESS: logfire.template_var(
-        name="prompt__field_harness",
-        type=str,
-        default=_FIELD_HARNESS_DEFAULT,
-        inputs_type=CollectionPromptInputs,
-    ),
     PromptName.FIRST_PASS_UNITS: logfire.template_var(
         name="prompt__first_pass_units",
         type=str,
@@ -224,6 +165,33 @@ PROMPT_VARIABLES = {
         inputs_type=FirstPassUnitsPromptInputs,
     ),
 }
+
+
+def units_ontology() -> str:
+    """The ontology text the units path's first pass carries: the ontology's brief text
+    (ontology.render(brief=True)), then the instructions of its rules about reading a label
+    (ontology.render_instructions("first_pass"))."""
+    from .ontology import render, render_instructions
+
+    return render(brief=True) + "\n" + render_instructions("first_pass")
+
+
+# The pinned prompts that, on a units-path run, carry the instructions of the ontology's
+# rules for their model (with_rules; application/production.py pin_dependencies).
+RULED = {PromptName.LITERAL_TRANSCRIPTION: "reader", PromptName.STRUCTURED_EXTRACTION: "organiser"}
+
+
+def with_rules(name: PromptName, pinned: ResolvedPrompt) -> ResolvedPrompt:
+    """A units-path run's pinned prompt (RULED): the served text, then the instructions of
+    the ontology's rules for its model (ontology.render_instructions), which its call sends
+    as its instructions. The resolution evidence (labels, version, reason) stays the
+    served text's. Any other prompt is returned as it is."""
+    model = RULED.get(name)
+    if model is None:
+        return pinned
+    from .ontology import render_instructions
+
+    return pinned.model_copy(update={"text": pinned.text + "\n\n" + render_instructions(model).strip()})
 
 
 def resolve_prompt(
@@ -235,13 +203,11 @@ def resolve_prompt(
 ) -> ResolvedPrompt:
     """Resolve a managed prompt and retain the served version as run evidence.
 
-    For FIRST_PASS_UNITS, plain CollectionPromptInputs get `ontology.render(brief=True)` as
+    For FIRST_PASS_UNITS, plain CollectionPromptInputs get the units text (units_ontology) as
     `ontology`; FirstPassUnitsPromptInputs are used as given."""
     requested_label = label or os.getenv("LOGFIRE_PROMPT_LABEL", "development")
     if name is PromptName.FIRST_PASS_UNITS and not isinstance(inputs, FirstPassUnitsPromptInputs):
-        from .ontology import render
-
-        inputs = FirstPassUnitsPromptInputs(**inputs.model_dump(), ontology=render(brief=True))
+        inputs = FirstPassUnitsPromptInputs(**inputs.model_dump(), ontology=units_ontology())
     variable = PROMPT_VARIABLES[name]
     with variable.get(
         inputs,
