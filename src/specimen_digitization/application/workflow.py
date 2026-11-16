@@ -295,16 +295,18 @@ def end_move_carries(specimen: Specimen) -> list[str]:
 
 def _field_decided_since_edit(repository, specimen: Specimen) -> bool:
     """Whether the record's audit, in order, the part history compaction moved to earlier
-    versions (storage.compact_history) included, holds a person's field decision after its
-    latest transcript decision: the only decisions move_carries can carry. Without one the
-    move reads no proofs."""
+    versions (storage.compact_history) included, holds a person's field decision after the
+    active run's latest transcript decision (one whose ``before.run_id`` is the run's, as
+    move_carries counts only the run's own): the only decisions move_carries can carry. Without
+    one, the move reads no proofs unless the run already holds a carry (Workflow._move)."""
     current, parts = specimen, [specimen.audit]
     while current.audit_offset:
         current = repository.version(specimen.scope, specimen.id, current.history_through_revision)
         parts.append(current.audit)
-    actions = [event.action for part in reversed(parts) for event in part]
-    edited = max((index for index, action in enumerate(actions) if action == "review_transcription"), default=-1)
-    return "review_field" in actions[edited + 1:]
+    events = [event for part in reversed(parts) for event in part]
+    edited = max((index for index, event in enumerate(events) if event.action == "review_transcription"
+        and event.before.get("run_id") == specimen.run.id), default=-1)
+    return any(event.action == "review_field" for event in events[edited + 1:])
 
 
 def moves_to_units(run: Run) -> bool:
@@ -1077,6 +1079,10 @@ class Workflow:
             if step == "pin_dependencies":
                 retained_carries = copy.deepcopy(run.dependencies.get(CARRY_KEY, {}))
                 retained_regions = copy.deepcopy(run.dependencies.get(CARRY_REGIONS))
+                # A run's one move to the units path counts its steps' attempts from the move
+                # (attempts_used); the pins never replace that count, as a history restore
+                # keeps it (history_restore.restored_specimen).
+                retained_count = copy.deepcopy(run.dependencies.get(MOVED_ATTEMPTS))
                 pinned = (
                     self.adapters.pin_dependencies(run)
                     if hasattr(self.adapters, "pin_dependencies")
@@ -1095,6 +1101,8 @@ class Workflow:
                     run.dependencies[CARRY_KEY] = retained_carries
                 if retained_regions is not None:
                     run.dependencies[CARRY_REGIONS] = retained_regions
+                if retained_count is not None:
+                    run.dependencies[MOVED_ATTEMPTS] = retained_count
                 if self.classifier is not None and hasattr(self.classifier, "pin"):
                     run.dependencies["classifier"] = self.classifier.pin(run)
                 run.dependencies["authority_pins"] = self.authority_pins()

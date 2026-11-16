@@ -79,12 +79,12 @@ def decide(case, field):
         "evidence_ids": [evidence], "reason": "The person reads it on the label"}, f"decide-{field}")
 
 
-def edit(case, text):
+def edit(case, text, key="edit"):
     current = case.workspace().json()
     return post(case, f"/specimens/{case.current.id}/decisions", {
         "base_record_version_id": f"{current['active_run_id']}:{current['revision']}", "kind": "transcription",
         "target_id": current["run"]["regions"][0]["id"], "after": {"text": text, "state": "supported"},
-        "reason": "The person reads the label"}, "edit")
+        "reason": "The person reads the label"}, key)
 
 
 def moves(current):
@@ -384,3 +384,124 @@ def test_a_restore_of_the_run_before_its_move_does_not_refill_its_allowance(case
     assert (run.first_pass_path, run.stage, run.blocker) == (UNITS, "finalized", None)
     assert len(adapters.labels) == cap and run.attempts[step] == attempts
     assert run.dependencies["attempts_at_units_move"] == count
+
+
+# ---- Fix round 3 (Codex's and G51's reviews of 14d6ff9a). Each test failed on 14d6ff9a, except
+# test_a_record_over_the_proof_bound_can_block_after_adjudicate, which states a block HARNESS.md
+# section 4 now names, and the control of test_a_restored_earlier_run_carries_its_field_decision.
+
+def restore(case, revision, key):
+    current = case.workspace().json()
+    response = post(case, f"/specimens/{case.current.id}/history:restore", {
+        "base_record_version_id": f"{current['active_run_id']}:{current['revision']}",
+        "source_revision": revision, "reset_to_initial": False, "reason": "Restore an earlier revision"}, key)
+    assert response.status_code == 200, response.text
+    return response
+
+
+def test_the_pins_keep_the_moves_count_of_attempts(case):
+    """Codex's sequence of round 3, through HTTP: the run moves and its first pass fails on every
+    attempt of its fresh allowance; the person restores a revision of the run from before its
+    pins were made and resumes it, which pins it again (Workflow._step, pin_dependencies); then
+    restores the revision from before the move and resumes. The pins keep the move's count of
+    attempts, so the second move refills nothing: no further first-pass call."""
+    from datetime import datetime, timedelta, timezone
+
+    from test_old_path_migration import FailingFirstPass
+
+    old_path(case)
+    before_move, run_id = case.current.version, case.current.run.id
+    token = actor_uid.set(ACTORS[0])
+    try:
+        unpinned = next(revision for revision in range(1, before_move)
+            if (version := case.repository.version(case.current.scope, case.current.id, revision)).run.id == run_id
+            and "pin_dependencies" not in version.run.completed_steps)
+    finally:
+        actor_uid.reset(token)
+    adapters = FailingFirstPass(case.blobs)
+    clock = {"now": datetime.now(timezone.utc)}
+
+    def later():
+        clock["now"] += timedelta(hours=2)
+        return clock["now"]
+
+    case.workflow = Workflow(case.repository, case.blobs, adapters, profile_registry=case.registry, clock=later)
+    assert post(case, "/runs/{active_run_id}/actions", {"action": "resume", "reason": "Reopen"}, "resume").status_code == 200
+    run = _drive(case, lambda s: False).run
+    step, cap = f"first_pass:{run.regions[0].id}", run.profile.execution.max_attempts
+    assert len(adapters.labels) == cap
+    attempts, count = run.attempts[step], run.dependencies["attempts_at_units_move"]
+
+    restore(case, unpinned, "restore-unpinned")
+    assert post(case, "/runs/{active_run_id}/actions", {"action": "resume", "reason": "Reopen"}, "resume-2").status_code == 200
+    assert "pin_dependencies" in step_once(case).run.completed_steps
+
+    restore(case, before_move, "restore-before-move")
+    assert post(case, "/runs/{active_run_id}/actions", {"action": "resume", "reason": "Reopen"}, "resume-3").status_code == 200
+    run = _drive(case, lambda s: False).run
+    assert run.first_pass_path == UNITS and run.stage == "finalized"
+    assert (len(adapters.labels), run.attempts[step]) == (cap, attempts)
+    assert run.dependencies["attempts_at_units_move"] == count
+
+
+@pytest.mark.parametrize("edited", [True, False], ids=["new-run-edited", "control-new-run-not-edited"])
+def test_a_restored_earlier_run_carries_its_field_decision(case, edited):
+    """G51's input of round 3: country decided on old-path run A ("Person Land"); Start new run
+    makes B, carrying it; the person edits B's transcript; the person restores A as it was when
+    the decision was saved and resumes it. B's edit is another run's transcript decision, which
+    does not replace A's field decision (workflow._field_decided_since_edit counts only the
+    run's own), so A's move carries it. The control: B not edited."""
+    old_path(case)
+    assert decide(case, "country").status_code == 200
+    token = actor_uid.set(ACTORS[0])
+    try:
+        decided = case.repository.get(case.current.scope, case.current.id).version
+    finally:
+        actor_uid.reset(token)
+    run_a = case.current.run.id
+    assert case.reprocess(key="new-run").status_code == 200
+    run_b = _drive(case, lambda s: False).run
+    assert run_b.id != run_a and set(run_b.dependencies[KEY]) == {"country"}
+    if edited:
+        assert edit(case, "country: Edited on the new run").status_code == 200
+
+    def latest_run_version(scope, ident, run_id, through):
+        """The synthetic proof session answers no GetLatestRetainedRunSnapshot: read it from its
+        snapshots, the run's latest retained revision through ``through``."""
+        found = None
+        for revision in sorted(case.session.snapshots):
+            if revision <= through and (version := case.repository.version(scope, ident, revision)).run.id == run_id:
+                found = version
+        return found
+
+    case.repository.latest_run_version = latest_run_version
+    restore(case, decided, "restore-a")
+    assert post(case, "/runs/{active_run_id}/actions", {"action": "resume", "reason": "Reopen A"}, "resume-a").status_code == 200
+
+    current = _drive(case, lambda s: False)
+    run = current.run
+    assert run.id == run_a
+    assert (run.first_pass_path, run.stage, run.blocker) == (UNITS, "finalized", None)
+    assert run.fields["country"].literal == VALUE and set(run.dependencies[KEY]) == {"country"}
+    assert proved(case, current) == {"country"}
+
+
+def test_a_record_over_the_proof_bound_can_block_after_adjudicate(case):
+    """G51's input of round 3: the transcript edited, then 23 field decisions, then a resume. The
+    move reads the proofs and carries them; adjudicate runs (the edited label needs no units
+    call); a later step's check of the carries cannot read them within the bound, and the run
+    blocks moved, after adjudicate, the values kept. A transcript edit is the way out."""
+    old_path(case)
+    assert edit(case, "country: Edited Land").status_code == 200
+    many_decisions(case, 23)
+    response = post(case, "/runs/{active_run_id}/actions", {"action": "resume", "reason": "Reopen"}, "resume")
+    assert response.status_code == 200, response.text
+    blocked = _drive(case, lambda s: False).run
+    assert (blocked.first_pass_path, blocked.stage, blocked.blocker) == (
+        UNITS, "processing_blocked", "preserved_human_field_provenance_unavailable")
+    assert "adjudicate" in blocked.completed_steps and blocked.dependencies[KEY]
+
+    assert edit(case, "country: Edited again", "edit-again").status_code == 200
+    current = _drive(case, lambda s: False)
+    assert (current.run.first_pass_path, current.run.stage, current.run.blocker) == (UNITS, "finalized", None)
+    assert current.run.fields["country"].literal == "Edited again"

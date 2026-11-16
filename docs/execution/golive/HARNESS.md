@@ -509,7 +509,8 @@ of `max_attempts`, counted from the move (`workflow.attempts_used`): the move
 records the attempts of those steps once per run
 (`run.dependencies["attempts_at_units_move"]`), and a history restore keeps that
 record as it keeps the run's attempts, so a run restored to a revision from
-before its move and moved again gets no second allowance. `run.attempts` keeps
+before its move and moved again gets no second allowance. The pins
+(`pin_dependencies`) keep the record as they keep a carry. `run.attempts` keeps
 counting, so each attempt's cost-ledger key `step:attempt`
 (`tenant_budget.recorded_micros`, `lane_costs.record_step`) is new. Its old
 first-pass decisions, machine transcripts and findings (rule
@@ -545,20 +546,22 @@ their attempts and costs stay. What becomes of a person's input:
   run made is not ended so: on main too, a transcript edit on such a run blocks it
   (`preserved_human_field_provenance_unavailable`), which this change leaves as it
   is.
-- When the record's audit has no field decision after its latest transcript
-  decision, the move has nothing to carry and reads no proofs
-  (`workflow._field_decided_since_edit`). A field decision the move must carry and
-  the record cannot prove (the synthetic app's local repository holds no save
-  audits; a proof read that fails; a record whose proofs the proof reader cannot
-  read within its bound, `storage.REVIEW_PROOF_READS`, about 24 review decisions),
-  or that the run no longer holds as it was saved, blocks the run
+- When the record's audit has no field decision after the run's own latest
+  transcript decision, the move has nothing to carry and reads no proofs unless
+  the run already holds a carry (`workflow._field_decided_since_edit`; a transcript
+  decision of another run, such as one a history restore put aside, does not
+  count). A field decision the move must carry and the record cannot prove (the
+  synthetic app's local repository holds no save audits; a proof read that fails;
+  a record whose proofs the proof reader cannot read within its bound,
+  `storage.REVIEW_PROOF_READS`, about 24 review decisions), or that the run no
+  longer holds as it was saved, blocks the run
   (`preserved_human_field_provenance_unavailable`) with the person's values kept:
-  unmoved when the move cannot read the proofs, or moved, before `adjudicate`,
-  when a later step's check of the carries cannot, the record having grown. A
-  resume tries again. A transcript edit is the way out: it replaces those
-  decisions, as on any run; on a moved run before `adjudicate`, which holds no
-  machine transcript, the edit gives the label its transcript (`application/api.py`,
-  kind transcription).
+  unmoved when the move cannot read the proofs, or moved, before or after
+  `adjudicate`, when a later step's check of the carries cannot, the record
+  having grown. A resume tries again. A transcript edit is the way out: it
+  replaces those decisions, as on any run; on a moved run before `adjudicate`,
+  which holds no machine transcript, the edit gives the label its transcript
+  (`application/api.py`, kind transcription).
 - Research-candidate selections (`human_review_field_locks`) are not carried; as
   Start new run refuses to drop them, the move blocks the run unmoved. A
   transcript edit drops them first (`application/api.py`, kind transcription),
