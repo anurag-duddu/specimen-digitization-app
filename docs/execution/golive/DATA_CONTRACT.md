@@ -308,8 +308,9 @@ when the readings hold no text; an abstention on the readings' units keeps them
 On a units-path run the integrity check holds a label's units to that text source
 (`integrity.verify_evidence`); on an old-path run, to the readings
 (`test_an_old_path_record_with_units_keeps_them_through_a_person_s_edit_and_approval`).
-From `427957877` (work package 1.2) until work package 1.8 part A, the runtime settings
-set `SPECIMEN_FIRST_PASS_UNITS` to `off` for the API, whose settings the intake job
+From `fc5a14b6` (work package 1.2's review fixes), merged to main by `e1f672dc` (PR
+#424), until work package 1.8 part A, the runtime settings set
+`SPECIMEN_FIRST_PASS_UNITS` to `off` for the API, whose settings the intake job
 takes, so the deployed runtimes created old-path runs and no production record a person
 edited under work package 1.2 holds the readings' units on a units-path run; none needs
 a migration (work package 1.8 part A's read-only query, 2026-11-16 03:03Z: the 33
