@@ -4,7 +4,7 @@ field (ontology.render_instructions("expert", key)) and the field's brief.
 
 WP 1.3 to 2.4 of docs/execution/units/PLAN.md gave the units path these instructions as the old
 path's with the texts a file of replacements (prompts/units.txt) named. The
-instructions are byte for byte the units path's on main d83f4d6f1 (MAIN)."""
+instructions are byte for byte the units path's on main d83f4d6f1 (MAIN), but verbatim_dts's (WP 1.7)."""
 
 from __future__ import annotations
 

@@ -130,7 +130,7 @@ the one conflicting elevation for a person?" he answered "Yes, run it" (the log,
   (`:256`); it is at `field_research/agreement.py:285` and `:812`. Its line 332 says the file
   carries the LEWIS ruling "on the units path only"; the experts now research every run on the
   units path (`field_research/step.py:211-213`), so that qualifier no longer separates any run.
-- **WP 1.7's prompt change** landed after the closeout, on 2026-11-16:
+- **WP 1.7's prompt change** landed after the closeout, in PR #448:
   `field_research/prompts/verbatim_dts.txt:1` and `:3` now give the PRD's answer
   (`docs/product-requirements/PRD.md:1224`), with year placeholders as every brief's examples have.
   `tests/test_ontology.py::test_each_fields_brief_opens_with_what_the_file_says_it_holds` pins each
