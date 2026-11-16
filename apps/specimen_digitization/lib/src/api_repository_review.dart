@@ -493,6 +493,7 @@ mixin _ApiRepositoryReview on _ApiRepositoryScopes {
             textOf(error['message'], 'The review decision was refused.'),
             code: error['code'] as String,
             status: error['status'] is int ? error['status'] as int : null,
+            fromServer: true,
           );
           refused++;
           break;

@@ -107,7 +107,7 @@ class _ApiRepositoryBase {
       if (_accessFailure != null) throw _accessFailure!;
       if (_rechecking || (_hasVerifiedSession && _verifiedUserId != userId)) {
         throw const ApiFailure(
-          'Collection access must be verified before continuing.',
+          "This account's access has not been checked yet. Check access again.",
           code: 'access_not_verified',
           status: 403,
         );
@@ -167,7 +167,7 @@ class _ApiRepositoryBase {
     } catch (_) {
       throw _deny(
         const ApiFailure(
-          'Your sign-in could not be refreshed. Check your connection or sign in again.',
+          'The sign-in could not be refreshed. Check the connection, or sign in again.',
           code: 'unauthenticated',
           status: 401,
         ),
@@ -178,7 +178,7 @@ class _ApiRepositoryBase {
     if (bearer == null || bearer.isEmpty) {
       throw _deny(
         const ApiFailure(
-          'Your session expired. Sign in again.',
+          'The session expired. Sign in again.',
           code: 'unauthenticated',
           status: 401,
         ),
@@ -211,7 +211,7 @@ class _ApiRepositoryBase {
       if (check == null || check.isEmpty) {
         throw _deny(
           const ApiFailure(
-            'App verification is unavailable. Retry or contact your administrator. Collection access has not been verified.',
+            'App verification is unavailable. Reload the app, or ask an administrator to check App Check.',
             code: 'app_check_unavailable',
             status: 403,
           ),
@@ -333,6 +333,7 @@ class _ApiRepositoryBase {
           'The service returned an unreadable response. Retry or contact your administrator.',
           code: 'invalid_response',
           status: response.statusCode,
+          fromServer: true,
         );
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -351,6 +352,7 @@ class _ApiRepositoryBase {
           details: error['details'] is Map
               ? Map<String, dynamic>.from(error['details'])
               : const {},
+          fromServer: true,
         );
       }
       return result;
@@ -467,7 +469,7 @@ class _ApiRepositoryBase {
           await response.stream.listen(null).cancel();
           throw _deny(
             ApiFailure(
-              'Evidence access was denied. Check your account and collection access.',
+              'Evidence access was denied. Check access again, or ask an administrator.',
               code: 'access_denied',
               status: response.statusCode,
             ),

@@ -37,7 +37,7 @@ mixin _ApiRepositoryScopes on _ApiRepositoryBase {
                         (row['permissions'] as List).any((p) => !nonempty(p)))),
           )) {
         throw const ApiFailure(
-          'The server could not verify your account and collection roles. Sign in again or contact your administrator.',
+          "The server could not confirm this account's collection roles. Sign in again, or ask an administrator.",
           code: 'invalid_session',
           status: 403,
         );
@@ -57,7 +57,7 @@ mixin _ApiRepositoryScopes on _ApiRepositoryBase {
         (m) => !keys.add('${m['organization_id']}/${m['collection_id']}'),
       )) {
         throw const ApiFailure(
-          'The server returned conflicting collection roles. Ask your administrator.',
+          'The server returned conflicting collection roles. Ask an administrator to correct them.',
           code: 'invalid_session',
           status: 403,
         );
@@ -92,7 +92,7 @@ mixin _ApiRepositoryScopes on _ApiRepositoryBase {
         ),
       )) {
         throw const ApiFailure(
-          'An assigned collection is unavailable. Ask your administrator to check collection access.',
+          'An assigned collection is unavailable. Ask an administrator to check collection access.',
           code: 'invalid_collections',
           status: 403,
         );
@@ -132,7 +132,7 @@ mixin _ApiRepositoryScopes on _ApiRepositoryBase {
         _rechecking = false;
         _deny(
           const ApiFailure(
-            'Collection access could not be verified. Check access again.',
+            'The access check stopped. Check access again, or ask an administrator.',
             code: 'access_not_verified',
             status: 403,
           ),
@@ -380,7 +380,7 @@ mixin _ApiRepositoryScopes on _ApiRepositoryBase {
         if (response.statusCode == 401 || response.statusCode == 403) {
           throw _deny(
             ApiFailure(
-              'Source image access was denied. Check your account and collection access.',
+              'Source image access was denied. Check access again, or ask an administrator.',
               code: 'access_denied',
               status: response.statusCode,
             ),

@@ -47,6 +47,7 @@ mixin _ApiRepositoryIntake on _ApiRepositoryBase {
           'This preview is not available. Retry after the photo saves.',
           code: 'preview_unavailable',
           status: response.statusCode,
+          fromServer: true,
         ),
         epoch,
         userId,
