@@ -629,8 +629,9 @@ value; no pattern is widened and no other scanner entry changes.
 Changed, every place the value or its identifier is:
 - `tests/fixtures/general_api_contracts.json` line 23, the header, regenerated with
   `scripts/ci/export_general_api_contract_fixtures.py --output` under CPython 3.12 (as CI runs
-  it) and checked with `--check`; the regeneration also changes line 71, the `review_batch`
-  response's `request_key`, which follows from the key and is no finding of either scanner.
+  it) and checked with `--check`; the regeneration also changes line 71, the `review_readback`
+  response's `run.dependencies.human_review_research_report.request_key`, which follows from the
+  key and is no finding of either scanner.
 - `scripts/ci/export_general_api_contract_fixtures.py` line 378, the literal the exporter
   sends.
 - `tests/test_general_api_contract_fixtures.py` line 93, and

@@ -29,15 +29,16 @@ TEST = re.compile(r"`(tests/[\w/]+\.py)::(\w+)`")
 # re-read and the fingerprint is renewed; a range that only moved keeps its fingerprint. A single line that is
 # its own cited text, such as "- id: cnhm", is pinned by that text alone.
 CITED_TEXT = {
+    'A source "<path>:<lines>" is a file of this repository +8': 'c72613',
+    'the organiser, which proposes every field +1': 'f07299',
     'Version 1.0 held no meaning the engineer invented +8': '872e39',
-    'A source "<path>:<lines>" is a file of this repository +5': '53f72a',
     'Version 2.0 (plan WP 2.1, 2026-11-14) +1': '266fa6',
     'Version 2.0 also resolves the meanings +2': '8fcb50',
     'Version 2.0 also resolves the meanings +5': 'b18bfc',
     'Each resolved meaning is a notation or a rule +4': 'aa0d94',
-    "forms are matched in a unit's text +13": 'afde7e',
+    "forms are matched in a unit's text +13": '4ec887',
     'A word in angle brackets stands for what the label writes there +5': '1e2fdb',
-    'A match inside a longer match is dropped +3': '62da07',
+    'A match inside a longer match is dropped +3': 'db233d',
     'frame: +5': 'f7aad8',
     'things: +41': 'b209d1',
     'id: locality +3': '424690',
@@ -194,7 +195,7 @@ def citation_problems() -> list[str]:
             problems.append(f"page line {at}: {path}:{first}-{last}: past the file's {len(lines)} lines")
         elif text and text not in lines[first - 1]:
             now = sits(lines, text) if file == ontology.PATH else []
-            span = f"{now[0]}" if first == last else f"{now[0]}-{now[0] + last - first}" if now else ""
+            span = "" if not now else f"{now[0]}" if first == last else f"{now[0]}-{now[0] + last - first}"
             where = (f"; it now sits at line {now[0]}, cite {path}:{span}" if len(now) == 1
                      else f"; it sits at lines {', '.join(map(str, now))}" if now else "")
             problems.append(f"page line {at}: {path}:{first}: does not hold {text!r}{where}")
