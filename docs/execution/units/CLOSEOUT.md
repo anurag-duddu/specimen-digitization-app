@@ -77,9 +77,12 @@ the old first pass processed is moved to it when it is reopened, before a step i
 (`application/workflow.py:320` `move_to_units`, called through `Workflow._move` at `:745`). The
 move keeps a person's transcription decisions and carries a person's field decisions made after
 the latest transcript decision (`application/workflow.py:320-336`, `:671-680`). Its tests are
-`tests/test_old_path_migration.py` and `tests/test_old_path_migration_carry.py`. Its Data release
-(run 43911184657) and Runtime release (run 43911184486) succeeded. PR #446's "Left" list is
-carried in section 5.
+`tests/test_old_path_migration.py` and `tests/test_old_path_migration_carry.py`. Its release (the
+off-repo record `~/specimen-golive/units-program/release_446.txt`): the Data release (run
+43911184657) and the Runtime release (run 43911184486) succeeded, and the API's `/version` gave
+c431da22. The CI/CD run 43911184649 failed on its first attempt, so Hosting still gave be1d45167
+when that record was written; the run was then started again. PR #446's "Left" list is carried in
+section 5.
 
 Row 1.8 put the switch-on "After the 1.5 gate". That gate was not met (section 1); the owner's
 answer of 2026-11-15 replaced the condition (`PLAN.md` section 8).
