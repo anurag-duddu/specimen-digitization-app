@@ -41,6 +41,15 @@ def restored_specimen(base, source, *, accounting=None):
     matching.append(source.run)
     result.run.usage = authoritative.usage.model_copy(deep=True)
     result.run.attempts = dict(authoritative.attempts)
+    # A run moved to the units path counts the attempts of each step it ran again from its
+    # one move (workflow.attempts_used): that count is kept as its attempts are, so a
+    # restored revision of the run before its move does not refill the allowance.
+    from .workflow import MOVED_ATTEMPTS
+
+    if MOVED_ATTEMPTS in authoritative.dependencies:
+        result.run.dependencies[MOVED_ATTEMPTS] = dict(authoritative.dependencies[MOVED_ATTEMPTS])
+    else:
+        result.run.dependencies.pop(MOVED_ATTEMPTS, None)
     result.run.paid_calls = deepcopy(authoritative.paid_calls)
     result.run.program_allowance = deepcopy(authoritative.program_allowance)
     result.run.dead_letter = any(run.dead_letter for run in matching)

@@ -173,9 +173,10 @@ def completed_on_the_units_path(specimen, blobs, labels):
 
 def test_an_edit_of_a_completed_old_path_run_completes_it_on_the_units_path(tmp_path):
     """The person's transcript edit resumes the run (application/api.py, kind transcription); the
-    workflow moves it to the units path before its next step, the units first pass runs on the
-    label, adjudicate applies the person's decision again, and the label's units are the
-    person's text (first_pass.source_units)."""
+    workflow moves it to the units path before its next step. The label's text source is the
+    person's text, so it gets no units call (Workflow.next_step, fix round 2): adjudicate applies
+    the person's decision again, and the label's units are the person's text
+    (first_pass.source_units)."""
     repository, blobs, ident = stored(tmp_path)
     the_stored_old_path_run(repository.get(SCOPE, ident).run)
     adapters = Calls(blobs)
@@ -190,10 +191,18 @@ def test_an_edit_of_a_completed_old_path_run_completes_it_on_the_units_path(tmp_
     assert response.status_code == 200, response.text
 
     specimen = repository.get(SCOPE, ident)
-    run, region, transcript = completed_on_the_units_path(specimen, blobs, adapters.labels)
+    run = specimen.run
+    (region,) = run.regions
+    assert run.first_pass_path == UNITS and run.model_dump(mode="json")["first_pass_path"] == UNITS
+    assert (run.stage, run.blocker) == ("finalized", None)
+    assert adapters.labels == [] and run.first_pass_decisions == []
+    assert f"first_pass:{region.id}" not in run.completed_steps
+    assert run.completed_steps.index("adjudicate") < run.completed_steps.index("parse")
+    [transcript] = run.transcripts
     assert (transcript.actor, transcript.text, transcript.resolved) == (REVIEWER, text, True)
     assert run.reading_units == [alignment_units(region.id, [SimpleNamespace(id=PERSON, literal_text=text)])]
     assert run.disposition is not None
+    verify_evidence(specimen, blobs)
 
 
 def test_a_restored_old_path_run_resumed_completes_on_the_units_path(tmp_path):
@@ -262,8 +271,9 @@ def test_the_move_pins_the_units_prompt_reschedules_from_the_first_pass_and_reco
     unit_prompt = PromptName.FIRST_PASS_UNITS.value
     assert run.dependencies["prompts"][unit_prompt] == pinned_prompt(run, PromptName.FIRST_PASS_UNITS)
     assert {key: value for key, value in run.dependencies["prompts"].items() if key != unit_prompt} == pins["prompts"]
+    # The move records the attempts of the steps it runs again (here none), once per run.
     assert {key: value for key, value in run.dependencies.items() if key != "prompts"} == {
-        key: value for key, value in pins.items() if key != "prompts"}
+        **{key: value for key, value in pins.items() if key != "prompts"}, "attempts_at_units_move": {}}
     # Every step from the first pass on runs again; the readings' steps stay.
     assert run.completed_steps == ["pin_dependencies", "classify", "quality_check", "segment", "transcribe:r:a",
         "transcribe:r:b"]
@@ -275,7 +285,7 @@ def test_the_move_pins_the_units_prompt_reschedules_from_the_first_pass_and_reco
 def test_a_move_of_a_run_that_pins_no_prompts_pins_none():
     run = old_path_run(dependencies={"adapter": "SyntheticAdapters", "synthetic": True})
     assert move_to_units(run) is True
-    assert run.dependencies == {"adapter": "SyntheticAdapters", "synthetic": True}
+    assert run.dependencies == {"adapter": "SyntheticAdapters", "synthetic": True, "attempts_at_units_move": {}}
 
 
 @pytest.mark.parametrize("changes", [{"first_pass_path": UNITS},
@@ -325,8 +335,12 @@ def test_the_workflow_moves_a_reopened_run_before_it_picks_its_step(tmp_path, mo
     assert adapters.labels == [region.id]
 
 
-# ---- What the move keeps, carries and drops (fix round 1 of PR #446: Codex's and G51's
-# reviews of dbaeace10). Each test failed on dbaeace10.
+# ---- What the move keeps, carries and drops (fix rounds 1 and 2 of PR #446: Codex's and G51's
+# reviews of dbaeace10 and 3ff7459a). Each test failed on the head its round reviewed, except
+# test_a_persons_decision_on_one_of_two_labels_stays_on_that_label and
+# test_an_abstention_on_an_old_path_label_stays_after_the_move, which passed on dbaeace10 too and
+# were added for two mutants of adjudicate (one person's decision on every label; a person's
+# decision dropped).
 
 def decide(http, ident, kind, target, after, key, reason="The person reads the label"):
     current = workspace(http, ident)
@@ -433,14 +447,15 @@ class FailingFirstPass(Calls):
 def test_every_state_the_move_saves_passes_the_integrity_check(tmp_path):
     """The move keeps a person's transcripts with their text, state, name and reason, and drops
     the old first pass's machine transcripts, which adjudicate makes again: the run it saves
-    before adjudicate (here its first pass failed and waits to be retried) passes the integrity
-    check, so a reviewer's approval then blocks nothing."""
+    before adjudicate (here a person's abstention, whose label's text source is still its
+    readings, and a first pass that failed and waits to be retried) passes the integrity check,
+    so a reviewer's approval then blocks nothing."""
     repository, blobs, ident = stored(tmp_path)
     adapters = FailingFirstPass(blobs)
     http = app(repository, adapters)
     region = repository.get(SCOPE, ident).run.regions[0].id
-    text = "taxon: as a person reads it"
-    assert decide(http, ident, "transcription", region, {"text": text, "state": "supported"}, "edit").status_code == 200
+    assert decide(http, ident, "transcription", region, {"text": None, "state": "unreadable"},
+        "abstain").status_code == 200
 
     specimen = repository.get(SCOPE, ident)
     run = specimen.run
@@ -450,7 +465,30 @@ def test_every_state_the_move_saves_passes_the_integrity_check(tmp_path):
     assert repository.get(SCOPE, ident).run.blocker != "evidence_integrity_failure"
     [transcript] = run.transcripts
     assert (transcript.actor, transcript.text, transcript.differences, transcript.first_pass_call) == (
-        REVIEWER, text, [], None)
+        REVIEWER, None, [], None)
+
+
+@pytest.mark.parametrize("adapters", [Calls, TwoLabels], ids=["one-label", "two-labels"])
+def test_every_save_after_a_persons_edit_passes_the_integrity_check(tmp_path, adapters):
+    """Codex's input of round 2: a person's edit of an old-path label, then the run's steps. Every
+    revision the run saves passes the integrity check. The edited label gets no units call (its
+    text source is the person's text, Workflow.next_step), so no save holds the readings' units
+    on a label whose transcript a person wrote; another label's first pass runs."""
+    repository, blobs, ident = stored(tmp_path, SyntheticAdapters if adapters is Calls else TwoLabels)
+    made = adapters(blobs)
+    http = app(repository, made)
+    regions = repository.get(SCOPE, ident).run.regions
+    text = "country: Edited Land"
+    response = decide(http, ident, "transcription", regions[-1].id, {"text": text, "state": "supported"}, "edit")
+    assert response.status_code == 200, response.text
+
+    final = repository.get(SCOPE, ident)
+    edited = response.json()["revision"]
+    for revision in range(edited, final.version + 1):
+        verify_evidence(repository.version(SCOPE, ident, revision), blobs)
+    assert (final.run.first_pass_path, final.run.stage, final.run.blocker) == (UNITS, "finalized", None)
+    assert made.labels == [region.id for region in regions[:-1]]
+    assert final.run.fields["country"].literal == "Edited Land"
 
 
 def test_a_persons_decision_on_one_of_two_labels_stays_on_that_label(tmp_path):
@@ -467,7 +505,7 @@ def test_a_persons_decision_on_one_of_two_labels_stays_on_that_label(tmp_path):
     specimen = repository.get(SCOPE, ident)
     run = specimen.run
     assert (run.first_pass_path, run.stage, run.blocker) == (UNITS, "finalized", None)
-    assert sorted(adapters.labels) == sorted([first.id, second.id])
+    assert adapters.labels == [first.id]
     transcripts = {t.region_id: t for t in run.transcripts}
     assert (transcripts[second.id].actor, transcripts[second.id].text) == (REVIEWER, text)
     assert transcripts[first.id].actor is None and transcripts[first.id].selected_observation_id is None

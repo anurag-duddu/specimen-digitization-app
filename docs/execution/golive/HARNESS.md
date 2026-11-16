@@ -481,7 +481,10 @@ billable step `first_pass:{region_id}` (section 3) after its transcribe steps
 and before `adjudicate`; a run that already passed `adjudicate` is never given
 one (`Workflow.next_step`). A region with one reading gets the alignment's
 units at `adjudicate`, with no call, and so does a region whose first pass was
-given up on (below); a region whose readings hold no text gets no units. A decision for another region, one that
+given up on (below); a region whose readings hold no text gets no units. A region
+whose text a person wrote, which a run moved to the units path keeps (below), gets
+no call either: its text source is the person's text, which `adjudicate` cuts into
+its units (`first_pass.source_units`). A decision for another region, one that
 names a reading, a verdict other than `uncertain`, `material` flags that differ
 from the spans, or units of another label, or units that fail
 `reading_units.problems` against the region's readings, blocks as
@@ -500,43 +503,69 @@ or edited), `Workflow._step` moves it to the units path before it picks its
 step (`Workflow._move`, `workflow.move_to_units`): the units prompt is pinned
 beside the run's other pins, where it pins prompts (`production.pinned_prompt`);
 the first pass and every step after it are scheduled again, so the units first
-pass runs before `parse`, each with a fresh allowance of `max_attempts` counted
-from the move (`workflow.attempts_used`; `run.attempts` keeps counting, so each
-attempt's cost-ledger key `step:attempt`, `tenant_budget.recorded_micros` and
-`lane_costs.record_step`, is new); and its recorded path becomes `units`. Its
-old first-pass decisions, machine transcripts and findings (rule
+pass runs before `parse` on each label whose text no person wrote; and its
+recorded path becomes `units`. Each step it runs again gets one fresh allowance
+of `max_attempts`, counted from the move (`workflow.attempts_used`): the move
+records the attempts of those steps once per run
+(`run.dependencies["attempts_at_units_move"]`), and a history restore keeps that
+record as it keeps the run's attempts, so a run restored to a revision from
+before its move and moved again gets no second allowance. `run.attempts` keeps
+counting, so each attempt's cost-ledger key `step:attempt`
+(`tenant_budget.recorded_micros`, `lane_costs.record_step`) is new. Its old
+first-pass decisions, machine transcripts and findings (rule
 `first_pass_preference`), its lookups and its disposition go; its readings and
 their attempts and costs stay. What becomes of a person's input:
 
 - Transcript edits and abstentions (`review_transcription`) stay. The move keeps
   each such transcript with the person's text, state, name and reason, and
   `adjudicate` applies it again to its label's new transcript; the label's units
-  are then the person's text (`first_pass.source_units`), or after an abstention
-  its readings'.
-- Field decisions (`review_field`) are carried across the move as Start new run
-  (`reprocess`) carries them to a new run (`human_field_carry`):
-  `workflow.move_carries` makes each carry as `human_field_carry.prepare` makes
-  a new run's, from that module's own parts, which are unchanged (its source
-  digest is pinned on native research jobs, `human_field_carry.contract_pin`).
-  The carry's transition is the move's audit event, a `reprocess` of the run into
-  itself (its source and target run are the run; the app's history shows it as
-  "Requested reprocessing"), since `human_field_carry.verify` proves a transition
-  from a reprocess event and the server's save audit of the save that holds it;
-  the carries are read from the record as saved. `parse` keeps the field, field
-  research never researches or changes it, and the lookup leaves a carried taxon
-  as the person saved it. A field a new run already carries stays carried as it
-  is. A field decision saved before the run's latest transcript decision is not
-  carried: that edit made the run parse again, which replaces it, as on any run.
-  A decision the record cannot prove (the synthetic app's local repository holds
-  no save audits) or no longer holds as it was saved blocks the run unmoved
-  (`preserved_human_field_provenance_unavailable`), the person's value kept.
+  are then the person's text (`first_pass.source_units`, no units call), or after
+  an abstention its readings' (the units call runs).
+- A field decision (`review_field`) saved after the run's latest transcript
+  decision is carried across the move as Start new run (`reprocess`) carries one
+  to a new run (`human_field_carry`): `workflow.move_carries` makes each carry as
+  `human_field_carry.prepare` makes a new run's, from that module's own parts,
+  which are unchanged (its source digest is pinned on native research jobs,
+  `human_field_carry.contract_pin`). The carry's transition is the move's audit
+  event, a `reprocess` of the run into itself (its source and target run are the
+  run; the app's history shows it as "Requested reprocessing", by the worker,
+  with the reason "Moved to the current reading process when reopened. Fields a
+  person decided were kept."), since `human_field_carry.verify` proves a
+  transition from a reprocess event and the server's save audit of the save that
+  holds it; the carries are read from the record as saved. `parse` keeps the
+  field, field research never researches or changes it, and the lookup leaves a
+  carried taxon as the person saved it. A field a new run already carries stays
+  carried as it is.
+- A field decision saved before the run's latest transcript decision is replaced
+  by the re-parse that edit started, as on any run, and is not carried. A person's
+  transcript decision on a moved run ends the move's carries in the same way
+  (`workflow.end_move_carries`, called by the edit in `application/api.py`): each
+  carried field goes back to the value the person saved until the re-parse
+  replaces it, and the carry's manifest entry and evidence go. A carry Start new
+  run made is not ended so: on main too, a transcript edit on such a run blocks it
+  (`preserved_human_field_provenance_unavailable`), which this change leaves as it
+  is.
+- When the record's audit has no field decision after its latest transcript
+  decision, the move has nothing to carry and reads no proofs
+  (`workflow._field_decided_since_edit`). A field decision the move must carry and
+  the record cannot prove (the synthetic app's local repository holds no save
+  audits; a proof read that fails; a record whose proofs the proof reader cannot
+  read within its bound, `storage.REVIEW_PROOF_READS`, about 24 review decisions),
+  or that the run no longer holds as it was saved, blocks the run
+  (`preserved_human_field_provenance_unavailable`) with the person's values kept:
+  unmoved when the move cannot read the proofs, or moved, before `adjudicate`,
+  when a later step's check of the carries cannot, the record having grown. A
+  resume tries again. A transcript edit is the way out: it replaces those
+  decisions, as on any run; on a moved run before `adjudicate`, which holds no
+  machine transcript, the edit gives the label its transcript (`application/api.py`,
+  kind transcription).
 - Research-candidate selections (`human_review_field_locks`) are not carried; as
   Start new run refuses to drop them, the move blocks the run unmoved. A
   transcript edit drops them first (`application/api.py`, kind transcription),
   and the run then moves.
 - Authority and taxonomy selections (`review_authority_resolution`,
-  `review_taxonomy_resolution`) go, as on a new run: the field is looked up or
-  researched again.
+  `review_taxonomy_resolution`) are dropped by any reopen, as Start new run drops
+  them: the field is looked up or researched again.
 - An approval (`review_approve`) goes: the fields are settled again, so the record
   waits for a person's approval again (field research marks a carried field
   `preserved_human_decision:<field>` until then). There is no reject decision.
@@ -548,11 +577,13 @@ their attempts and costs stay. What becomes of a person's input:
 
 A finalized, paused, cancelled or blocked run steps nowhere and is not moved,
 and an evidence-pilot run, whose lane runs no first pass, is never moved. Every
-state the move saves passes the integrity check below. Tests:
-`tests/test_old_path_migration.py`, on a finalized run recorded in the shape the
-old path stored one (its module docstring says which), in the synthetic app; and
-`tests/test_old_path_migration_carry.py`, the carries, on the named repository
-over synthetic proof rows (`tests/test_human_field_carry_api.py`'s).
+revision the move and the steps after it save passes the integrity check below:
+the move keeps a person's transcripts and drops the machine ones `adjudicate`
+makes again, and a label whose text a person wrote gets no units from its
+readings. Tests: `tests/test_old_path_migration.py`, on a finalized run recorded
+in the shape the old path stored one (its module docstring says which), in the
+synthetic app; and `tests/test_old_path_migration_carry.py`, the carries, on the
+named repository over synthetic proof rows (`tests/test_human_field_carry_api.py`'s).
 
 **Recorded** on the region's `Transcript` (DATA_CONTRACT 4.2): `decision_kind`
 `first_pass`, `selected_observation_id` none, `text` none, `first_pass_call`

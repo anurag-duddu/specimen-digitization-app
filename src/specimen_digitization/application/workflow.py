@@ -208,13 +208,15 @@ def move_carries(repository, specimen: Specimen, event: AuditEvent, blobs) -> di
     digest is pinned on native research jobs (human_field_carry.contract_pin). The move stays
     in its run, so the transition's source and target are the run itself;
     human_field_carry.verify proves a transition from a reprocess event alone, so ``event`` is
-    one. Unlike reprocess, the move
-    keeps a person's transcript decisions (adjudicate applies them again), so they refuse
-    nothing, and it carries a field decision only when it was saved after the run's latest
-    transcript decision: that edit made the run parse again, which replaced it, as on any run. A
-    field a new run's reprocess carried already stays carried as it is; an authority or taxonomy
-    selection is not carried, as reprocess carries none. Raises ValueError when a decision
-    cannot be proved or the run no longer holds it as saved, so the move never drops one."""
+    one. Unlike reprocess, the move keeps a person's transcript decisions (adjudicate applies
+    them again), so they refuse nothing.
+
+    What the move does with a person's field input: a field decision saved after the run's
+    latest transcript decision is carried; one saved before it is not, since that edit made the
+    run parse again, which replaces it, as on any run; a field a new run's reprocess carried
+    already stays carried as it is; an authority or taxonomy selection is dropped, as reprocess
+    drops one. Raises ValueError when a decision to carry cannot be proved or the run no longer
+    holds it as saved: the move then blocks the run unmoved, so that value is kept."""
     from .human_field_carry import (
         KEY,
         CarryTransition,
@@ -265,14 +267,44 @@ def move_carries(repository, specimen: Specimen, event: AuditEvent, blobs) -> di
     return result
 
 
-def _field_decided(repository, specimen: Specimen) -> bool:
-    """Whether the record's audit, the part history compaction moved to earlier versions
-    (storage.compact_history) included, holds a person's field decision."""
-    current, events = specimen, list(specimen.audit)
+def end_move_carries(specimen: Specimen) -> list[str]:
+    """A person's transcript decision ends the carries a move made (move_carries): the edit
+    makes the run parse again, which replaces the field decisions saved before it, as on a
+    units-path run with no carry (application/api.py, kind transcription). Each such field is
+    put back as the person saved it, until parse replaces it, and its manifest entry and carry
+    evidence go: human_field_carry.verify, which refuses a carry over a later transcript
+    decision, then has nothing of them to prove. A carry a new run's reprocess made stays.
+    Returns the fields whose carries ended."""
+    from .human_field_carry import KEY, evidence_id, manifests
+
+    run = specimen.run
+    carried = manifests(specimen)
+    ended = sorted(key for key, carry in carried.items()
+        if carry.transitions[-1].source_run_id == carry.transitions[-1].target_run_id == run.id)
+    if not ended:
+        return []
+    gone = {evidence_id(carried[key]) for key in ended}
+    run.evidence = [item for item in run.evidence if item.id not in gone]
+    for key in ended:
+        run.fields[key] = carried[key].origin_field.model_copy(deep=True)
+        run.dependencies[KEY].pop(key)
+    if not run.dependencies[KEY]:
+        run.dependencies.pop(KEY)
+    return ended
+
+
+def _field_decided_since_edit(repository, specimen: Specimen) -> bool:
+    """Whether the record's audit, in order, the part history compaction moved to earlier
+    versions (storage.compact_history) included, holds a person's field decision after its
+    latest transcript decision: the only decisions move_carries can carry. Without one the
+    move reads no proofs."""
+    current, parts = specimen, [specimen.audit]
     while current.audit_offset:
         current = repository.version(specimen.scope, specimen.id, current.history_through_revision)
-        events += current.audit
-    return any(event.action == "review_field" for event in events)
+        parts.append(current.audit)
+    actions = [event.action for part in reversed(parts) for event in part]
+    edited = max((index for index, action in enumerate(actions) if action == "review_transcription"), default=-1)
+    return "review_field" in actions[edited + 1:]
 
 
 def moves_to_units(run: Run) -> bool:
@@ -309,9 +341,11 @@ def move_to_units(run: Run) -> bool:
         from .production import pinned_prompt
 
         prompts[PromptName.FIRST_PASS_UNITS.value] = pinned_prompt(run, PromptName.FIRST_PASS_UNITS)
-    moved = {step: count for step, count in sorted(run.attempts.items()) if runs_again(step) and count}
-    if moved:
-        run.dependencies[MOVED_ATTEMPTS] = moved
+    # One allowance per run: a run moved before, restored to a revision from before its move
+    # (history_restore keeps the count as it keeps the attempts), keeps the count it has.
+    run.dependencies.setdefault(MOVED_ATTEMPTS, {
+        step: count for step, count in sorted(run.attempts.items()) if runs_again(step) and count
+    })
     run.dependencies.pop("location_reassessment", None)
     run.completed_steps = [step for step in run.completed_steps if not runs_again(step)]
     run.transcripts = [
@@ -633,21 +667,26 @@ class Workflow:
             return self._step(principal, specimen_id)
 
     def _move(self, principal: Principal, specimen: Specimen, revision: int, base: Specimen) -> Specimen | None:
-        """Move the run to the units path (move_to_units), carrying a person's field decisions
-        across the steps it runs again as reprocess carries them to a new run (move_carries,
-        read from ``base``, the record as saved; its audit event, a reprocess of the run into
-        itself, is the carry's transition). Its save is the step's next one. A decision that
-        cannot be carried, and a research selection, which reprocess refuses too, block the
-        run unmoved: a person's field is never dropped. Returns the blocked record, else None."""
+        """Move the run to the units path (move_to_units), carrying the person's field decisions
+        saved after its latest transcript decision across the steps it runs again, as reprocess
+        carries them to a new run (move_carries, read from ``base``, the record as saved; its
+        audit event, a reprocess of the run into itself, is the carry's transition). Its save
+        is the step's next one. A field decision saved before that transcript decision is
+        replaced by the re-parse, and an authority or taxonomy selection is dropped
+        (move_carries). A field decision the record cannot prove, and a research selection,
+        which reprocess refuses too, block the run unmoved, its values kept. Proofs are read
+        only when there is a decision to carry (_field_decided_since_edit) or a carry to keep.
+        Returns the blocked record, else None."""
         from .human_field_carry import KEY as CARRY_KEY, install
 
         run, carries = specimen.run, {}
         try:
             if run.dependencies.get("human_review_field_locks"):
                 raise ValueError("research selections are not carried")
-            if run.dependencies.get(CARRY_KEY) or _field_decided(self.repository, base):
+            if run.dependencies.get(CARRY_KEY) or _field_decided_since_edit(self.repository, base):
+                # Shown to curators in the record's history (the app's audit_history.dart).
                 event = AuditEvent(actor=principal.user_id, action="reprocess", reason=(
-                    "The run moved to the units path when it was reopened, its fields a person decided carried"))
+                    "Moved to the current reading process when reopened. Fields a person decided were kept."))
                 carries = move_carries(self.repository, base, event, self.blobs)
         except (ValueError, AttributeError, KeyError, OSError):
             run.blocker = "preserved_human_field_provenance_unavailable"
@@ -1507,15 +1546,16 @@ class Workflow:
                         # (human_field_carry) stays as the person saved it, as field
                         # research never changes one (field_research.step.human_keys).
                         carried = "taxon" in (run.dependencies.get(CARRY_KEY) or {})
-                        field = run.fields["taxon"].model_copy(deep=True) if carried else run.fields["taxon"]
-                        field.evidence_ids.append(evidence.id)
-                        if outcome.candidates:
-                            field.normalized = outcome.candidates[0].get(
-                                "scientificName"
-                            )
-                            field.authority_id = str(
-                                outcome.candidates[0].get("key", "")
-                            )
+                        if not carried:
+                            field = run.fields["taxon"]
+                            field.evidence_ids.append(evidence.id)
+                            if outcome.candidates:
+                                field.normalized = outcome.candidates[0].get(
+                                    "scientificName"
+                                )
+                                field.authority_id = str(
+                                    outcome.candidates[0].get("key", "")
+                                )
                 else:
                     run.lookups.append(
                         Lookup(
@@ -2304,11 +2344,18 @@ class Workflow:
                     return key
         if "adjudicate" not in run.completed_steps:
             # A label with two readings or more, some of them with text, gets the LLM first
-            # pass; any other label with text gets alignment_units at adjudicate.
+            # pass; any other label with text gets alignment_units at adjudicate. A label whose
+            # text a person wrote, which a run moved to the units path keeps (move_to_units),
+            # gets no call: its text source is the person's text, which adjudicate cuts into
+            # its units (first_pass.source_units).
+            from .first_pass import person_decided
+
+            written = {t.region_id for t in run.transcripts if person_decided(t)}
             for region in run.regions:
                 readings = [o for o in run.observations if o.region_id == region.id]
                 key = f"first_pass:{region.id}"
-                due = len(readings) > 1 and any(o.literal_text.strip() for o in readings)
+                due = (len(readings) > 1 and any(o.literal_text.strip() for o in readings)
+                    and region.id not in written)
                 if due and key not in run.completed_steps:
                     return key
         for step in (

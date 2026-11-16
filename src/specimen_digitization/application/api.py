@@ -2145,6 +2145,19 @@ def create_app(
             transcript = next(
                 (t for t in s.run.transcripts if t.region_id == body.target_id), None
             )
+            from .domain import Transcript
+            from .workflow import MOVED_ATTEMPTS
+
+            if (transcript is None and MOVED_ATTEMPTS in s.run.dependencies
+                    and "adjudicate" not in s.run.completed_steps
+                    and any(r.id == body.target_id for r in s.run.regions)):
+                # A run moved to the units path (workflow.move_to_units) holds no machine
+                # transcript until adjudicate makes it again; a blocked one would otherwise
+                # leave the person no edit to make. The person's decision is the label's
+                # transcript, which adjudicate applies again.
+                transcript = Transcript(region_id=body.target_id, alternatives=[], resolved=False,
+                    observation_ids=[o.id for o in s.run.observations if o.region_id == body.target_id])
+                s.run.transcripts.append(transcript)
             if transcript is None:
                 raise ValueError("Unknown region")
             text = body.after.get("text")
@@ -2173,6 +2186,13 @@ def create_app(
             superseded = s.run.dependencies.pop("human_review_field_locks", {})
             audit_after = {**body.after, "region_id": body.target_id,
                 "superseded_research_fields": sorted(superseded)}
+            # So does it supersede the field decisions a move to the units path carried
+            # (workflow.end_move_carries), as on a run with no carry.
+            from .workflow import end_move_carries
+
+            ended = end_move_carries(s)
+            if ended:
+                audit_after["superseded_carried_fields"] = ended
             invalidate_authorities(s.run)
             transcript.text = text
             transcript.resolved = state == "supported"
