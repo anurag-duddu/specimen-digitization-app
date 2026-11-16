@@ -308,13 +308,18 @@ when the readings hold no text; an abstention on the readings' units keeps them
 On a units-path run the integrity check holds a label's units to that text source
 (`integrity.verify_evidence`); on an old-path run, to the readings
 (`test_an_old_path_record_with_units_keeps_them_through_a_person_s_edit_and_approval`).
-The deployed runtimes create old-path runs: the runtime settings set
-`SPECIMEN_FIRST_PASS_UNITS` to `off` for the API (`scripts/ci/runtime_settings.py:112`,
-since `427957877`), whose settings the intake job takes (`:127`), and
+From `427957877` (work package 1.2) until work package 1.8 part A, the runtime settings
+set `SPECIMEN_FIRST_PASS_UNITS` to `off` for the API, whose settings the intake job
+takes, so the deployed runtimes created old-path runs and no production record a person
+edited under work package 1.2 holds the readings' units on a units-path run; none needs
+a migration (work package 1.8 part A's read-only query, 2026-11-16 03:03Z: the 33
+active production runs are all on the old path, and all finalized). Work package 1.8
+part A sets it to `on` (`scripts/ci/runtime_settings.py:114`; the intake job takes it
+at `:129`), so once that change is released the API and the intake job create
+units-path runs
+(`test_the_processes_that_create_runs_carry_the_first_pass_units_switch_on`).
 `RuntimeConfig.from_env` refuses a value other than `on`, `off` or empty
-(`application/runtime_config.py:125-128`); so no production record a person edited
-under work package 1.2 holds the readings' units on a units-path run, and none needs a
-migration.
+(`application/runtime_config.py:125-128`).
 Main before this package (work package 1.1 included) loads `Run.reading_units`
 but not `Run.first_pass_path` (`Record` refuses an unknown key), so the rollback
 boundary is the path field, in the run and in its previous runs. The rule: turn
