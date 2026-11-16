@@ -282,7 +282,8 @@ def test_each_ledger_settles_to_what_the_steps_cost(tmp_path):
         assert ledger(repository, key).read()["reserved_total_micros"] == LAB_TOTAL == program_total(repository)
     entries = ledger(repository, ORGANIZATION).read()["ordinary_effects"]
     settled = sorted(entry["settled_micros"] for entry in entries.values() if entry["settled_micros"] is not None)
-    assert settled == [550, 900] and len(entries) == 3
+    # The label's first pass (the lab's synthetic one, which reports no tokens) settles to 0.
+    assert settled == [0, 550, 900] and len(entries) == 4
     records = run.dependencies[RECORD]
     assert set(records) == {f"{c['step']}:{c['attempt']}" for c in run.paid_calls}
     reserved = {f"{c['step']}:{c['attempt']}": c["reserved_micros"] for c in run.paid_calls}

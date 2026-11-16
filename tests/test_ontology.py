@@ -420,8 +420,12 @@ def test_a_question_is_about_units_or_about_one_notation_of_the_file(change, mes
         ontology.parse(data)
 
 
+# common.txt at main d83f4d6f1 (48 lines there), before WP 1.8 gave it the units path's text.
+COMMON_AT = " at d83f4d6f1"
+
+
 def _cited(source: str) -> tuple[Path, str]:
-    path, _, lines = source.removesuffix(MOVED_AT).rpartition(":")
+    path, _, lines = source.removesuffix(MOVED_AT).removesuffix(COMMON_AT).rpartition(":")
     return ROOT / path, lines
 
 
@@ -445,6 +449,10 @@ def test_every_source_names_a_file_and_lines_it_has():
             # The Insects knowledge module this change deletes, at main 7a09445a2
             # (120 lines there).
             assert source.startswith("insects.py:") and last <= 120, source
+            continue
+        if source.endswith(COMMON_AT):
+            assert source.startswith("src/specimen_digitization/field_research/prompts/common.txt:"), source
+            assert last <= 48, source
             continue
         assert path.is_file(), source
         assert last <= len(path.read_text(encoding="utf-8").splitlines()), source
@@ -649,11 +657,11 @@ CODE_RULE_TESTS = {
         f"{STAGE}::test_a_retry_adds_the_date_sentence_once",
     ),
     "code_is_no_date": (
-        f"{STAGE}::test_a_date_one_reader_writes_inside_a_slide_code_is_no_date_on_the_units_path",
+        f"{STAGE}::test_a_date_one_reader_writes_inside_a_slide_code_is_no_date",
         f"{STAGE}::test_a_literal_is_in_a_code_only_inside_a_match_of_the_ontology_s_slide_code",
-        f"{STAGE}::test_a_date_punctuation_separates_from_a_slide_code_is_a_date_on_both_paths",
+        f"{STAGE}::test_a_date_punctuation_separates_from_a_slide_code_is_a_date",
         f"{STAGE}::test_the_code_veto_takes_each_occurrence_of_the_literal",
-        f"{STAGE}::test_the_date_experts_check_gives_no_date_inside_a_code_and_its_value_is_refused_on_the_units_path",
+        f"{STAGE}::test_the_date_experts_check_gives_no_date_inside_a_code_and_its_value_is_refused",
         "tests/field_research/test_checks.py::test_a_date_inside_a_code_in_any_reading_is_no_date",
     ),
     "label_type_routing": (
@@ -680,7 +688,7 @@ CODE_RULE_TESTS = {
         f"{EXTENT}::test_a_town_only_locality_is_not_cleared_as_not_on_the_label_on_the_units_path",
         f"{EXTENT}::test_a_precise_location_that_is_the_towns_text_is_not_cleared_on_the_units_path",
         f"{EXTENT}::test_a_municipio_line_beside_the_settled_town_stands_on_the_units_path",
-        f"{EXTENT}::test_a_units_path_run_cleared_as_not_on_the_label_by_older_code_goes_to_a_person_on_refinalize",
+        f"{EXTENT}::test_a_precise_location_older_code_cleared_as_not_on_the_label_is_refinalized_by_its_runs_path",
         f"{EXTENT}::test_a_precise_location_holding_an_elevation_is_refused_when_no_elevation_settled",
         f"{EXTENT}::test_the_review_rounds_elevation_inputs_are_refused_as_a_precise_location_on_both_paths",
         f"{EXTENT}::test_105526329s_whole_locality_with_its_settled_elevation_settles_on_the_units_path",
@@ -713,12 +721,12 @@ CODE_RULE_TESTS = {
     ),
     "host_is_no_taxon": (
         f"{TAXON}::test_a_name_written_after_a_host_marker_is_never_the_taxon_on_the_units_path",
-        f"{TAXON}::test_a_name_after_a_word_that_only_ends_in_a_marker_settles_on_both_paths",
+        f"{TAXON}::test_a_name_after_a_word_that_only_ends_in_a_marker_settles",
         f"{TAXON}::test_the_host_markers_are_the_ontology_s_notation",
         f"{TAXON}::test_a_host_is_a_whole_name_after_a_whole_word_marker_earlier_on_its_line",
-        f"{TAXON}::test_a_name_another_label_writes_inside_a_host_s_longer_name_settles_on_both_paths",
+        f"{TAXON}::test_a_name_another_label_writes_inside_a_host_s_longer_name_settles",
         f"{TAXON}::test_a_name_after_a_marker_earlier_on_its_line_is_never_the_taxon_on_the_units_path",
-        f"{TAXON}::test_a_name_before_a_marker_on_its_line_settles_on_both_paths",
+        f"{TAXON}::test_a_name_before_a_marker_on_its_line_settles",
     ),
     # WP 2.4 (tests/field_research/test_parts_on_labels.py): the PLAN row's named cases on both paths, the parts
     # one label writes whole settling as today, and the condition itself.

@@ -338,10 +338,10 @@ def _export_fixture_bytes(root: Path, reverse_reads: bool) -> bytes:
                      ('list', '/specimens', {'collection_id': api.SYNTHETIC_COLLECTION})]
             for name, path, params in reversed(reads) if reverse_reads else reads:
                 retain(name, client.get(PREFIX + path, headers=headers('i11-read'), params=params))
-            request = {'expected_revision': 20, 'base_record_version_id': R + ':20',
+            request = {'expected_revision': 22, 'base_record_version_id': R + ':22',
                        'kind': 'approve', 'reason': 'I11 synthetic reviewed',
                        'target_id': '', 'after': {'confirmed': True}, 'evidence_ids': []}
-            stale = {**request, 'expected_revision': 19, 'base_record_version_id': R + ':19'}
+            stale = {**request, 'expected_revision': 21, 'base_record_version_id': R + ':21'}
             retain('error', client.post(PREFIX + f'/specimens/{S}/decisions',
                                        headers=headers('i11-stale'), json=stale))
             retain('error_readback', client.get(
@@ -370,7 +370,7 @@ def _export_fixture_bytes(root: Path, reverse_reads: bool) -> bytes:
         selection = research.candidates['country'].selection_id
         corpus['selection_id'] = selection
         request = {'reason': 'I11 retained source reviewed', 'decisions': [{
-            'specimen_id': S, 'expected_revision': 21, 'base_record_version_id': R + ':21',
+            'specimen_id': S, 'expected_revision': 23, 'base_record_version_id': R + ':23',
             'kind': 'research_candidate', 'target_id': 'country',
             'after': {'selection_id': selection}, 'idempotency_key': 'i11-candidate-0'}]}
         with TestClient(app, raise_server_exceptions=False) as client:

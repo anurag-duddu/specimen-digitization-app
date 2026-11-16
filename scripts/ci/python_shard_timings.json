@@ -748,10 +748,6 @@
       "sha256": "854c12764f2a4c4180aababb8d3712154cd7f2233fed68c18e5ca58d92723c47"
     },
     {
-      "path": "tests/research_harness/test_taxonomy_automatic_publication.py",
-      "sha256": "f29015bf83a3cffa2a513c98f04c2dc2806626afddf457d6d8fdf92856f961cc"
-    },
-    {
       "path": "tests/research_harness/test_taxonomy_prompt_v6.py",
       "sha256": "f1a0cbd8027e8f94796a23d33ab80e21e9372936521ac9653916d252ceb48d55"
     },
@@ -1078,10 +1074,6 @@
     {
       "path": "tests/test_first_pass_given_up.py",
       "sha256": "aafd1e4692a85371935db05d931aeaec32b6c011295f27266330e08c7b053dc1"
-    },
-    {
-      "path": "tests/test_first_pass_null_text.py",
-      "sha256": "dec0463464a756c39acdba5eea78f3c53a67044be518d3eded0b0473ed2dc871"
     },
     {
       "path": "tests/test_first_pass_privacy.py",
@@ -2074,7 +2066,6 @@
     "tests/research_harness/test_taxon_input_reconciliation.py": 0.27764686299968844,
     "tests/research_harness/test_taxonomy_acceptance_boundary.py": 0.03548707799993167,
     "tests/research_harness/test_taxonomy_authority_outcomes.py": 0.09674183199996378,
-    "tests/research_harness/test_taxonomy_automatic_publication.py": 110.27512499700003,
     "tests/research_harness/test_taxonomy_prompt_v6.py": 0.0750274959999615,
     "tests/research_harness/test_taxonomy_prompt_v7.py": 0.0029258550000008654,
     "tests/research_harness/test_taxonomy_reader_negatives.py": 0.04896021699977382,
@@ -2157,7 +2148,6 @@
     "tests/test_first_pass.py": 2.2444652840002846,
     "tests/test_first_pass_bound.py": 0.07831319700005679,
     "tests/test_first_pass_given_up.py": 68.2321146870006,
-    "tests/test_first_pass_null_text.py": 0.044328328000460715,
     "tests/test_first_pass_privacy.py": 0.09293104100009941,
     "tests/test_first_pass_reasoning_bound.py": 0.03950473899988083,
     "tests/test_first_pass_stuck_recovery.py": 41.5934119690001,

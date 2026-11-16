@@ -137,11 +137,11 @@ Json uploadLiteral(int revision, int offset) => {
 };
 Map<String, Json> get rawTable => <String, Json>{
   'list': {
-    'items': [recordLiteral(20, 'needs_human_review', [])],
+    'items': [recordLiteral(22, 'needs_human_review', [])],
     'next_cursor': null,
     'cutoff': '2026-01-02T03:04:05+00:00',
   },
-  'workspace': workspaceLiteral(20, 'needs_human_review', actions),
+  'workspace': workspaceLiteral(22, 'needs_human_review', actions),
   'error': {
     'error': {
       'code': 'revision_or_idempotency_conflict',
@@ -149,10 +149,10 @@ Map<String, Json> get rawTable => <String, Json>{
       'retryable': false,
       'details': {},
       'message': 'Stale revision',
-      'request_id': '00000000-0000-0000-0000-00000000008e',
+      'request_id': '00000000-0000-0000-0000-000000000090',
     },
   },
-  'error_readback': workspaceLiteral(20, 'needs_human_review', actions),
+  'error_readback': workspaceLiteral(22, 'needs_human_review', actions),
   'upload': uploadLiteral(2, 20),
   'upload_tail': uploadLiteral(3, 28948),
   'upload_current': uploadLiteral(3, 28948),
@@ -161,8 +161,8 @@ Map<String, Json> get rawTable => <String, Json>{
     'status': 'running',
     'stage': 'ingested',
   },
-  'action': workspaceLiteral(21, 'cleared', actions),
-  'action_readback': workspaceLiteral(21, 'cleared', actions),
+  'action': workspaceLiteral(23, 'cleared', actions),
+  'action_readback': workspaceLiteral(23, 'cleared', actions),
   'review_batch': {
     'requested': 1,
     'applied': 1,
@@ -175,14 +175,14 @@ Map<String, Json> get rawTable => <String, Json>{
         'kind': 'research_candidate',
         'idempotency_key': 'i11-candidate-0',
         'outcome': 'applied',
-        'revision': 22,
-        'record_version_id': '$r:22',
+        'revision': 24,
+        'record_version_id': '$r:24',
         'disposition': 'needs_human_review',
       },
     ],
   },
   'review_readback': workspaceLiteral(
-    22,
+    24,
     'needs_human_review',
     actions.where((a) => a != 'reprocess').toList(),
     'Philippines',
@@ -273,9 +273,9 @@ void assertRawEnvelope(String name, Json captured) {
 }
 
 const approveBody = {
-  'expected_revision': 20,
+  'expected_revision': 22,
   'reason': 'I11 synthetic reviewed',
-  'base_record_version_id': '$r:20',
+  'base_record_version_id': '$r:22',
   'kind': 'approve',
   'target_id': '',
   'after': {'confirmed': true},
@@ -286,8 +286,8 @@ const candidateBody = {
   'decisions': [
     {
       'specimen_id': s,
-      'expected_revision': 21,
-      'base_record_version_id': '$r:21',
+      'expected_revision': 23,
+      'base_record_version_id': '$r:23',
       'kind': 'research_candidate',
       'target_id': 'country',
       'after': {'selection_id': selection},
@@ -330,8 +330,8 @@ void assertCorpus(Json fixture) {
       'action' => approveBody,
       'error' => {
         ...approveBody,
-        'expected_revision': 19,
-        'base_record_version_id': '$r:19',
+        'expected_revision': 21,
+        'base_record_version_id': '$r:21',
       },
       'upload_complete' => {'expected_revision': 3},
       _ => candidateBody,
@@ -405,7 +405,7 @@ void main() {
       expect(entry['status'], 'completed');
       expect(entry['stage'], 'finalized');
     }
-    pin(Specimen(body('action')), 21, 'cleared');
+    pin(Specimen(body('action')), 23, 'cleared');
     final ack = body('review_batch');
     expect(ack['requested'], 1);
     expect(ack['applied'], 1);
@@ -414,9 +414,9 @@ void main() {
     final row = Json.from(ack['results'][0]);
     expect(row['index'], 0);
     expect(row['specimen_id'], s);
-    expect(row['revision'], 22);
+    expect(row['revision'], 24);
     expect(row['revision'], isA<int>());
-    expect(row['record_version_id'], '$r:22');
+    expect(row['record_version_id'], '$r:24');
     expect(row['kind'], 'research_candidate');
     expect(row['outcome'], 'applied');
     expect(row['disposition'], 'needs_human_review');
@@ -459,7 +459,7 @@ void main() {
       'kind': 'approve',
       'reason': 'I11 synthetic reviewed',
     }, 'i11-approve');
-    pin(approved, 21, 'cleared');
+    pin(approved, 23, 'cleared');
     final next = await repo.reviewCandidateBatch(
       scope,
       approved,
@@ -474,7 +474,7 @@ void main() {
       'i11-candidate',
     );
     expect(next.saved, 1);
-    pin(next.specimen, 22, 'needs_human_review');
+    pin(next.specimen, 24, 'needs_human_review');
     expect(calls, [
       'GET $root/specimens/$s/workspace',
       'POST $root/specimens/$s/decisions',
@@ -494,7 +494,7 @@ void main() {
     });
     final page = await repo.specimenPage(scope);
     final item = page.items.single;
-    pin(item, 20, 'needs_human_review');
+    pin(item, 22, 'needs_human_review');
     expect(item.data['available_actions'], isEmpty);
     final eligibility = BulkSelectionEligibility(
       requested: [item],
@@ -521,8 +521,8 @@ void main() {
       return response('action');
     });
     final original = await repo.specimen(scope, s);
-    pin(original, 20, 'needs_human_review');
-    expect(original.data['latest_record_version_id'], '$r:20');
+    pin(original, 22, 'needs_human_review');
+    expect(original.data['latest_record_version_id'], '$r:22');
     expect(original.data['available_actions'], actions);
     expect(
       original.fields.singleWhere(
@@ -534,17 +534,17 @@ void main() {
       'kind': 'approve',
       'reason': 'I11 synthetic reviewed',
     }, 'i11-approve');
-    pin(approved, 21, 'cleared');
+    pin(approved, 23, 'cleared');
     expect(posts, hasLength(1));
     final sent = jsonDecode(posts.single.body) as Json;
-    expect(sent['expected_revision'], 20);
-    expect(sent['base_record_version_id'], '$r:20');
+    expect(sent['expected_revision'], 22);
+    expect(sent['base_record_version_id'], '$r:22');
     expect(sent['kind'], 'approve');
     expect(posts.single.headers['Idempotency-Key'], 'i11-approve');
     expect(sent, {
-      'expected_revision': 20,
+      'expected_revision': 22,
       'reason': 'I11 synthetic reviewed',
-      'base_record_version_id': '$r:20',
+      'base_record_version_id': '$r:22',
       'kind': 'approve',
       'target_id': '',
       'after': {'confirmed': true},
@@ -572,9 +572,9 @@ void main() {
     final original = await repo.specimen(scope, s);
     final stale = Specimen({
       ...original.data,
-      'revision': 19,
-      'record_version_id': '$r:19',
-      'latest_record_version_id': '$r:19',
+      'revision': 21,
+      'record_version_id': '$r:21',
+      'latest_record_version_id': '$r:21',
     });
     await expectLater(
       repo.review(scope, stale, {
@@ -593,13 +593,13 @@ void main() {
     expect(reads, 1);
     expect(jsonDecode(posts.single.body), {
       ...approveBody,
-      'expected_revision': 19,
-      'base_record_version_id': '$r:19',
+      'expected_revision': 21,
+      'base_record_version_id': '$r:21',
     });
     expect(posts.single.headers['Idempotency-Key'], 'i11-stale');
     expect(posts.single.url.path, '$root/specimens/$s/decisions');
     final reconciled = await repo.specimen(scope, s);
-    pin(reconciled, 20, 'needs_human_review');
+    pin(reconciled, 22, 'needs_human_review');
     expect(reads, 2);
     expect(posts, hasLength(1));
   });
@@ -674,7 +674,7 @@ void main() {
       return response('review_batch');
     });
     final original = await repo.specimen(scope, s);
-    pin(original, 21, 'cleared');
+    pin(original, 23, 'cleared');
     // Independent selection receipt; the exporter never supplies expectations.
     const selection =
         '70c2cd77f73f5180e59ce357a83eec7c625e495f52a5e4bcb98627731c48b1e8'; // pragma: allowlist secret -- Synthetic retained candidate selection SHA-256.
@@ -694,7 +694,7 @@ void main() {
     );
     expect(result.saved, 1);
     expect(result.stopped, false);
-    pin(result.specimen, 22, 'needs_human_review');
+    pin(result.specimen, 24, 'needs_human_review');
     expect(
       result.specimen.data['available_actions'],
       actions.where((v) => v != 'reprocess').toList(),
@@ -707,8 +707,8 @@ void main() {
     );
     expect(sent['reason'], 'I11 retained source reviewed');
     expect(decision['specimen_id'], s);
-    expect(decision['expected_revision'], 21);
-    expect(decision['base_record_version_id'], '$r:21');
+    expect(decision['expected_revision'], 23);
+    expect(decision['base_record_version_id'], '$r:23');
     expect(decision['kind'], 'research_candidate');
     expect(decision['target_id'], 'country');
     expect(decision['after'], {'selection_id': selection});
@@ -805,8 +805,8 @@ void main() {
       ...server,
       'latest_record_version_id': server['record_version_id'],
     }..remove('record_version_id');
-    pin(Specimen(server), 20, 'needs_human_review');
-    pin(Specimen(alias), 20, 'needs_human_review');
+    pin(Specimen(server), 22, 'needs_human_review');
+    pin(Specimen(alias), 22, 'needs_human_review');
     final missing = {...alias}..remove('latest_record_version_id');
     expect(Specimen(missing).recordVersionId, '');
     expect(
@@ -859,13 +859,13 @@ void main() {
       );
     });
     final item = await repo.specimen(scope, s);
-    pin(item, 20, 'needs_human_review');
+    pin(item, 22, 'needs_human_review');
     expect(item.data['future_key'], {'nested': true});
     final approved = await repo.review(scope, item, {
       'kind': 'approve',
       'reason': 'I11 synthetic reviewed',
     }, 'i11-approve');
-    pin(approved, 21, 'cleared');
+    pin(approved, 23, 'cleared');
     expect(posts, 1);
     expect(approved.data['future_key'], {'nested': true});
   });
@@ -900,7 +900,7 @@ void main() {
       }, 'i11-approve'),
       throwsA(isA<ApiFailure>().having((e) => e.conflict, 'conflict', true)),
     );
-    pin(item, 20, 'needs_human_review');
+    pin(item, 22, 'needs_human_review');
     expect(posts, 1);
     expect(reads, 1);
   });
@@ -916,13 +916,13 @@ void main() {
     });
     final item = Specimen({
       ...body('workspace'),
-      'latest_record_version_id': '$r:20',
+      'latest_record_version_id': '$r:22',
     });
     final approved = await repo.review(scope, item, {
       'kind': 'approve',
       'reason': 'I11 synthetic reviewed',
     }, 'i11-approve');
-    pin(approved, 21, 'cleared');
+    pin(approved, 23, 'cleared');
     expect(calls, [
       'POST $root/specimens/$s/decisions',
       'GET $root/specimens/$s/workspace',
@@ -1078,10 +1078,10 @@ void main() {
         final sent = jsonDecode(q.body) as Json;
         final row = sent['decisions'][0] as Map;
         expect(row['after'], {'selection_id': selection});
-        expect(row['expected_revision'], mode == 'conflict' ? 20 : 21);
+        expect(row['expected_revision'], mode == 'conflict' ? 22 : 23);
         expect(
           row['base_record_version_id'],
-          mode == 'conflict' ? '$r:20' : '$r:21',
+          mode == 'conflict' ? '$r:22' : '$r:23',
         );
         if (mode == 'conflict') return response('error');
         // Controller creates keys. The mock echoes that actual key, as the API does.
@@ -1103,7 +1103,7 @@ void main() {
       await controller.openSpecimen(s);
       pin(
         controller.selected!,
-        mode == 'conflict' ? 20 : 21,
+        mode == 'conflict' ? 22 : 23,
         mode == 'conflict' ? 'needs_human_review' : 'cleared',
       );
       final outcome = await controller.mutateBatch([
@@ -1112,7 +1112,7 @@ void main() {
       if (mode == 'exact') {
         expect(outcome.saved, 1);
         expect(outcome.requiresReconciliation, isFalse);
-        pin(outcome.confirmed!, 22, 'needs_human_review');
+        pin(outcome.confirmed!, 24, 'needs_human_review');
         expect(
           outcome.confirmed!.fields.singleWhere(
             (f) => f['field_key'] == 'country',
@@ -1132,10 +1132,10 @@ void main() {
       expect(outcome.saved, known ? 1 : 0);
       expect(outcome.confirmed, isNull);
       expect(outcome.requiresReconciliation, isTrue);
-      expect(outcome.acknowledgement?.recordVersionId, known ? '$r:22' : null);
+      expect(outcome.acknowledgement?.recordVersionId, known ? '$r:24' : null);
       pin(
         controller.selected!,
-        mode == 'conflict' ? 20 : 21,
+        mode == 'conflict' ? 22 : 23,
         mode == 'conflict' ? 'needs_human_review' : 'cleared',
       );
       // An identical retry must preserve the choice, per-entry key and HTTP key.
@@ -1165,7 +1165,7 @@ void main() {
       expect(detailPaths, everyElement('$root/specimens/$s/workspace'));
       pin(
         controller.selected!,
-        mode == 'conflict' ? 20 : 22,
+        mode == 'conflict' ? 22 : 24,
         'needs_human_review',
       );
       if (mode == 'conflict') {

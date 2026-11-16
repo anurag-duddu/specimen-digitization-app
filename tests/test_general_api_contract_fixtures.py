@@ -54,25 +54,25 @@ def upload(revision, offset):
 
 # Independently authored required keys. Additional unknown server keys are legal.
 TABLE = {
-    'list': {'items': [record(20, 'needs_human_review', [])], 'next_cursor': None,
+    'list': {'items': [record(22, 'needs_human_review', [])], 'next_cursor': None,
              'cutoff': '2026-01-02T03:04:05+00:00'},
-    'workspace': workspace(20, 'needs_human_review', ACTIONS),
+    'workspace': workspace(22, 'needs_human_review', ACTIONS),
     'error': {'error': {'code': 'revision_or_idempotency_conflict',
                       'category': 'conflict', 'retryable': False, 'details': {},
                       'message': 'Stale revision',
-                      'request_id': '00000000-0000-0000-0000-00000000008e'}},
-    'error_readback': workspace(20, 'needs_human_review', ACTIONS),
+                      'request_id': '00000000-0000-0000-0000-000000000090'}},
+    'error_readback': workspace(22, 'needs_human_review', ACTIONS),
     'upload': upload(2, 20), 'upload_tail': upload(3, 28948),
     'upload_current': upload(3, 28948),
     'upload_complete': {**record(1, None, ACTIONS), 'status': 'running', 'stage': 'ingested'},
-    'action': workspace(21, 'cleared', ACTIONS),
-    'action_readback': workspace(21, 'cleared', ACTIONS),
+    'action': workspace(23, 'cleared', ACTIONS),
+    'action_readback': workspace(23, 'cleared', ACTIONS),
     'review_batch': {'requested': 1, 'applied': 1, 'refused': 0, 'skipped': 0,
         'results': [{'index': 0, 'specimen_id': S, 'kind': 'research_candidate',
                     'idempotency_key': 'i11-candidate-0', 'outcome': 'applied',
-                    'revision': 22, 'record_version_id': R + ':22',
+                    'revision': 24, 'record_version_id': R + ':24',
                     'disposition': 'needs_human_review'}]},
-    'review_readback': workspace(22, 'needs_human_review',
+    'review_readback': workspace(24, 'needs_human_review',
                                 [a for a in ACTIONS if a != 'reprocess'], 'Philippines'),
 }
 GROUPS = {'list': ['list'], 'workspace': ['workspace'],
@@ -80,19 +80,19 @@ GROUPS = {'list': ['list'], 'workspace': ['workspace'],
           'upload': ['upload', 'upload_tail', 'upload_current', 'upload_complete'],
           'action': ['action', 'action_readback'],
           'review_batch': ['review_batch', 'review_readback']}
-APPROVE = {'expected_revision': 20, 'base_record_version_id': R + ':20',
+APPROVE = {'expected_revision': 22, 'base_record_version_id': R + ':22',
            'kind': 'approve', 'reason': 'I11 synthetic reviewed', 'target_id': '',
            'after': {'confirmed': True}, 'evidence_ids': []}
 REQUESTS = {
     'action': ('/specimens/' + S + '/decisions', 'i11-approve', APPROVE),
     'error': ('/specimens/' + S + '/decisions', 'i11-stale',
-              {**APPROVE, 'expected_revision': 19, 'base_record_version_id': R + ':19'}),
+              {**APPROVE, 'expected_revision': 21, 'base_record_version_id': R + ':21'}),
     'upload_complete': ('/uploads/' + U + '/complete', 'i11-complete', {'expected_revision': 3}),
     'review_batch': ('/decisions:batch',
         # pragma: allowlist nextline secret -- Synthetic candidate request idempotency SHA-256.
         '7651ca196a03f7cc18d5625844ca3b2fdc68a62d7b19c691c3b222ad40a77aa8',
         {'reason': 'I11 retained source reviewed', 'decisions': [{
-            'specimen_id': S, 'expected_revision': 21, 'base_record_version_id': R + ':21',
+            'specimen_id': S, 'expected_revision': 23, 'base_record_version_id': R + ':23',
             'kind': 'research_candidate', 'target_id': 'country',
             'after': {'selection_id': SELECTION}, 'idempotency_key': 'i11-candidate-0'}]}),
 }
@@ -187,7 +187,7 @@ def generated(tmp_path_factory):
     from specimen_digitization.application.storage import SQLiteRepository
     repository = SQLiteRepository(root / 'state.sqlite3')
     scope = domain.Scope(organization_id=api.SYNTHETIC_ORG, collection_id=api.SYNTHETIC_COLLECTION)
-    for revision, stage in [(7, 'transcribe'), (19, 'finalize'), (20, 'finalized')]:
+    for revision, stage in [(7, 'transcribe'), (11, 'first_pass'), (21, 'finalize'), (22, 'finalized')]:
         assert repository.version(scope, S, revision).run.stage == stage
     return wire
 
