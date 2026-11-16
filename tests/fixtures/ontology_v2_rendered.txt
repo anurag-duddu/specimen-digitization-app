@@ -17,7 +17,7 @@ The profile's 20 fields (key, display name, Darwin Core term: what it holds):
 - province_state (Province/State), stateProvince: The first-level administrative unit (province, state or department) where the specimen was collected, as the labels write it.
 - county (County), county: The country's second-level administrative unit where the specimen was collected, as the labels write it: a county, or whatever unit the country's local government holds at that level instead (a municipio, where that is the second level).
 - city (City), municipality: The city, town or municipality the labels name as the collecting place.
-- precise_location (Precise Location), verbatimLocality: The locality as the label writes it: the most specific place text, such as "E. slope Mt. <Mountain>, nr. <Town>". Darwin Core's locality is its interpretation and may equal it.
+- precise_location (Precise Location), verbatimLocality: The label's whole locality as written: every line of its locality text, such as "E. slope Mt. <Mountain>, nr. <Town>" over "<Province>, <Country>". Darwin Core's locality is its interpretation and may equal it.
 - elevation_from_m (Elevation From (m)), minimumElevationInMeters: The lower, or only, elevation the label writes in metres.
 - elevation_to_m (Elevation To (m)), maximumElevationInMeters: The upper end of an elevation range the label writes in metres.
 - elevation_from_ft (Elevation From (ft)), verbatimElevation: The lower, or only, elevation the label writes in feet. The four elevation fields map to verbatimElevation, as written, and to minimumElevationInMeters and maximumElevationInMeters; an elevation in feet is the verbatimElevation ("4800 ft.").
@@ -27,7 +27,7 @@ The profile's 20 fields (key, display name, Darwin Core term: what it holds):
 - date_visited_from (Date Visited From), eventDate: The date the specimen was collected, or the first date of a written collecting range, at the precision written.
 - date_visited_to (Date Visited To), eventDate: The last date of collecting, only when the label writes a range or an end date, at the precision written.
 - collectors (Collectors), recordedBy: The people who collected the specimen, exactly as the label writes them.
-- verbatim_dts (Verbatim D/T/S), verbatimEventDate: Text transcribed exactly as written: a non-standard collection-event date or time expression, such as "Avril 1917", "Summer 1914", "am", "pm", "sunrise" or "daylight".
+- verbatim_dts (Verbatim D/T/S), verbatimEventDate: Text transcribed exactly as written: a non-standard collection-event date or time expression, such as "Avril <yyyy>", "Summer <yyyy>", "am", "pm", "sunrise" or "daylight".
 - taxon (Taxon), scientificName: The scientific name the labels give the specimen, at the rank written.
 - identified_by_irn (Identified by IRN), identifiedBy: The EMu Parties record number (IRN) of the person who identified the specimen. The museum's Darwin Core mapping resolves the identifier's Parties reference to the name it publishes as identifiedBy; its public archive maps no identifiedByID.
 - date_identified (Date Identified), dateIdentified: The date the specimen was identified (determined), at the precision written.

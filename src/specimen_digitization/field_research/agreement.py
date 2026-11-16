@@ -2122,8 +2122,8 @@ def _sourced_refusal(task: FieldTask, found: Mapping[str, Label], settled: froze
 # Fields of one kind may share text: places nest (a town inside the precise
 # location), a date or an elevation is a range's end or a unit's copy, and a
 # determiner may be a collector. Verbatim D/T/S may share any field's text,
-# as what it holds is an open museum question. Any other field is a kind of
-# its own.
+# as the museum has set no validation rule yet for its date and time
+# expressions (PRD.md:1224). Any other field is a kind of its own.
 FIELD_KINDS = {
     **dict.fromkeys(("country", "province_state", "county", "city", "precise_location"), "place"),
     **dict.fromkeys(("date_visited_from", "date_visited_to", "date_identified"), "date"),

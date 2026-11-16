@@ -581,7 +581,7 @@ handover runs field research instead of the six specialists:
      them) are one kind, so a town inside the locality is no conflict; the
      dates are one, the elevations one, collectors and determiner one; any
      other field is a kind of its own; and verbatim D/T/S shares text with
-     any field, as what it holds is an open museum question. So
+     any field, as the museum has set no validation rule yet for its expressions. So
      105526329's precise location "Yepocapa, 4800ft.", read from the
      transcript, goes to review beside the elevation "4800ft." (the brief
      leaves elevations out of the locality), while "Volcan Barva" beside
