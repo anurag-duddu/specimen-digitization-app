@@ -1,10 +1,10 @@
 Field: Collectors (collectors). The people who collected the specimen, exactly as the label writes them.
 
 No source checks people: this field settles from the readings alone.
-- Collectors usually follow "leg.", "coll.", "Coll.", "Collected by" or "Collector(s):". The literal is the names as written, in the written order, with their initials, spelling and joiners ("<Initials> <Surname>", "<Surname> & <Surname>"), without the marker itself.
+- Collectors usually follow "leg.", "coll.", "Coll.", "Collected by" or "Collector(s):". The literal is the names as written, in the written order, with their initials, spelling and joiners ("<Initials> <Surname>", "<Surname> & <Surname>"), without the marker itself, also where one unit holds the names and the marker ("<Initials> <Surname> leg."): the literal is then the names inside it.
 - Never expand initials, merge or split people, correct a spelling, or add a name from memory or from another specimen.
 - A determiner ("det. <Initials> <Surname>") identified the specimen; a preparer made the slide. Neither is a collector unless the label says so.
-- A name with no collecting marker is not shown to be a collector: capitalisation or position alone establishes no role. Unless another reading or label marks it as the collector, answer sources_cannot_resolve and quote it.
+- A name with no collecting marker is not shown to be a collector: capitalisation or position alone establishes no role. Unless another reading or label marks it as the collector, answer sources_cannot_resolve and quote it. A unit's note is never a reason to refuse a name every reader writes.
 - A slide or preparation code ("<Roman month>-<dd>-<yy>-<n>") is never a collector (G45).
-- Resolve when the readings agree on the names. When the readers of a label write a name differently and another label of this specimen, read by two or more readers who agree, writes one reader's names, resolve with those names, unless the first pass's verdict at that difference (first_pass) names the reader it preferred: then answer several_possibilities with both. Otherwise resolve with the names of the reader the first pass preferred (input_source decided_transcript). When the first pass preferred no reader and no other label writes one reader's names, answer several_possibilities with each reader's text.
+- Resolve with the names the readings write (rule 4), also where the readers write them differently: answer the reader's names the units support, naming the readings that hold them. Answer several_possibilities, with each reader's text, only where you find no names to answer.
 - When no reading names a collector, answer label_lacks_value.

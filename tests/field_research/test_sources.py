@@ -446,8 +446,10 @@ async def test_geolocate_settles_only_a_city_never_a_part_it_was_given(tmp_path,
     assert answer.status is LookupStatus.SUCCESS
     [one] = answer.candidates
     text = f"Guatemala\n{key}: {literal}\nleg. J. Smith"
-    readings = (Reading("1A", "r1", "o1a", "decided_transcript", text),
-                Reading("1B", "r1", "o1b", "raw_reading", text))
+    from test_first_pass_advice import with_units
+
+    readings = with_units((Reading("1A", "r1", "o1a", "decided_transcript", text),
+                Reading("1B", "r1", "o1b", "raw_reading", text)))
     task = FieldTask(key, True, FieldValue(state=ValueState.SUPPORTED, literal=literal),
                      (Candidate("1A", f"{key}: {literal}", literal, "ev-1a"),), FIELD_TOOLS[key])
     refused = agreement.refusal(task, readings, literal=literal, named=[readings[0]], value=one.name,

@@ -8,7 +8,9 @@ import time
 from PIL import Image
 import pytest
 
-from specimen_digitization.application.api import SYNTHETIC_TEXT
+from specimen_digitization.application.api import SYNTHETIC_COLLECTION, SYNTHETIC_ORG, SYNTHETIC_TEXT
+from specimen_digitization.application.domain import Scope
+from specimen_digitization.application.storage import SQLiteRepository
 from specimen_digitization.application.workflow import OperationalBlock, SyntheticAdapters
 
 import lab_lane
@@ -100,7 +102,14 @@ def test_a_blocked_segmentation_gets_the_reviewer_boxes_for_the_slide(tmp_path):
     [action] = actions
     assert action["action"] == "reviewed_region" and BLOCK in action["reason"]
     snapshot = evidence["snapshot"]
-    assert snapshot["previous_runs"][-1]["blocker"] == BLOCK
+    # The blocked run is kept as a previous run. The units path's run (its reading units and
+    # first-pass decisions) takes the record past 128 KiB, so the latest save offloads that
+    # previous run to the version before it (storage.compact_history, storage.py:281), where
+    # it is read back.
+    scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+    repository = SQLiteRepository(tmp_path / "state" / "state.sqlite3")
+    retained = repository.version(scope, snapshot["id"], snapshot["history_through_revision"])
+    assert snapshot["previous_runs"] == [] and retained.previous_runs[-1].blocker == BLOCK
     boxes = [(r["x"], r["width"], r["height"]) for r in snapshot["run"]["regions"]]
     assert boxes == [(0, 303, 295), (552, 338, 295)]  # 0-0.34 and 0.62-1.0 of 890 px
     assert len(snapshot["run"]["observations"]) == 4  # two readers per label

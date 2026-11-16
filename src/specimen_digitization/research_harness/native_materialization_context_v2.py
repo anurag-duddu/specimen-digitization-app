@@ -17,7 +17,7 @@ from specimen_digitization.application.projection import _first_pass, _reading, 
 from specimen_digitization.application.storage import digest as graph_digest
 from .accepted_output import AcceptedCheckpointProofV1
 from .canonical_projection_v2 import (
-    CanonicalLineageContextV2, ConsumedCanonicalSourceV2, NativePriorSnapshotProofV2,
+    TRANSCRIPTION_VERSIONS, CanonicalLineageContextV2, ConsumedCanonicalSourceV2, NativePriorSnapshotProofV2,
     NativeRawSourceAssetProofV2, NativeTranscriptionDecisionProofV2, _checkpoint,
     _prior_snapshot, _source_lineage,
 )
@@ -212,6 +212,7 @@ def _transcription_contexts(prior, native_inputs, scope, projection_services, re
         # it joins the decision's rows, and the readers' rows below stay the
         # independent members. Both come from the observations query.
         operation_groups = {"AppendTranscriptionVersionV2":"transcriptions",
+            "AppendTranscriptionVersionV3":"transcriptions",
             "AppendHarnessInputV1":"handoffs", "AppendReadingComparisonV1":"comparisons",
             "AppendModelObservationV2":"observations"}
         for write in decision_writes:
@@ -237,7 +238,7 @@ def _transcription_contexts(prior, native_inputs, scope, projection_services, re
         region_id = _region_row(prior.run.id, transcript.region_id)
         region = _one(groups["regions"], lambda row: row.get("id") == region_id,
             "canonical_native_transcription_region_unavailable")
-        version = _one(decision, lambda row: row["operation"] == "AppendTranscriptionVersionV2",
+        version = _one(decision, lambda row: row["operation"] in TRANSCRIPTION_VERSIONS,
             "canonical_native_transcription_version_ambiguous")["variables"]["id"]
         proofs.append(NativeTranscriptionDecisionProofV2(region_id=transcript.region_id,
             transcription_version_id=UUID(version),

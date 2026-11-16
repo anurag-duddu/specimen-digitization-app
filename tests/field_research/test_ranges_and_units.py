@@ -443,7 +443,9 @@ def test_no_word_of_another_kind_is_a_unit_a_month_or_a_joiner():
 
 def test_the_briefs_say_what_the_rules_read():
     """The shared brief's range and unit lines and the locality brief name
-    the new rules, as patterns."""
+    the new rules, as patterns. The locality brief takes the label's whole
+    locality, an elevation written on its lines included (the rule
+    precise_location_extent, WP 2.2), so it names no elevation to send back."""
     from specimen_digitization.field_research.prompts import instructions
 
     range_line, unit_line = written.range_line(), written.unit_line()
@@ -451,8 +453,9 @@ def test_the_briefs_say_what_the_rules_read():
     assert "a distance, a count or an hour beside an elevation or a date makes no range" in range_line
     assert 'A capital "M" is no unit before a number ("M <n>", "M. <n>")' in unit_line
     locality = instructions("precise_location")
-    assert '"<n> m upstream of <Place>"' in locality and '"<Place>, alt. <n>"' in locality
-    assert '"<Place>, <n> m, N slope"' in locality and '("km <n>", "Hill <n>")' in locality
+    assert '"<n> m upstream of <Place>"' in locality and '("km <n>", "Hill <n>")' in locality
+    assert '"<Town>, <n> ft."' in locality
+    assert '"<Place>, alt. <n>"' not in locality and '"<Place>, <n> m, N slope"' not in locality
 
 
 # ---- Codex's review of 77fdaeba ------------------------------------------------

@@ -120,8 +120,12 @@ The code declares these Logfire prompt variables:
 |---|---|
 | Literal label transcription | `prompt__literal_label_transcription` |
 | Structured field extraction | `prompt__structured_field_extraction` |
-| Disagreement adjudication | `prompt__transcription_disagreement_adjudication` |
-| Field harness (declared for visibility; the field experts read the files under `field_research/prompts/`) | `prompt__field_harness` |
+| First pass (reading units) | `prompt__first_pass_units` |
+
+The field experts read the files under `field_research/prompts/`, not a managed
+prompt. WP 1.8 removed `prompt__transcription_disagreement_adjudication`, the
+old first pass's instructions, and `prompt__field_harness`, which no agent read;
+the code no longer declares them, and a Logfire copy of either is unused.
 
 Each has a safe code fallback, typed inputs, and resolution evidence. Create the
 matching prompts in Logfire, then use `development`, `candidate`, and

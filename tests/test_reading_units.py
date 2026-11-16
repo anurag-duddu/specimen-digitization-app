@@ -42,7 +42,9 @@ from specimen_digitization.application.storage import LocalBlobs, SQLiteReposito
 from specimen_digitization.application.workflow import SyntheticAdapters
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTRACTS = ROOT / "tests/fixtures/general_api_contracts.json"
+# The workspace response main's server returned for a run of the old first pass, frozen when WP 1.8
+# part B regenerated tests/fixtures/general_api_contracts.json (whose run now takes the units path).
+OLD_WORKSPACE = ROOT / "tests/fixtures/old_path_workspace.json"
 # The units of one label as the workspace route returns them; the app's reader test reads it.
 WORKSPACE_FIXTURE = ROOT / "tests/fixtures/reading_units_workspace.json"
 REGENERATE = "Regenerate tests/fixtures/reading_units_workspace.json from this test's workspace body"
@@ -195,7 +197,8 @@ def test_a_run_holds_one_entry_of_units_per_label():
 # ---------------------------------------------------------------------------- old runs: main's bytes
 
 # Pins computed on main e2faa1316 (before this change) from the stored run main's code wrote into
-# general_api_contracts.json's workspace response, as the run of the specimen below. Each is
+# general_api_contracts.json's workspace response (since WP 1.8 part B, OLD_WORKSPACE), as the run of
+# the specimen below. Each is
 # written "sha256:<hex>", as PR #422 writes its digests.
 MAIN_STORED_SHA256 = "sha256:4da6079f9b4a9a4d090e6c648f33e1bcfa53ef8a4c1180b331b33c110a733476"
 MAIN_SNAPSHOT_DIGEST = "sha256:d9fa82359146af5cacaa126b90d2cfeb71883f7b64189ddc88a41dc57ab6a9c6"
@@ -210,9 +213,8 @@ def hex_of(pin: str) -> str:
 
 
 def stored_from_main() -> tuple[dict, Specimen]:
-    """A stored run main's code wrote (the contract corpus is unchanged by this change)."""
-    corpus = json.loads(CONTRACTS.read_text())
-    body = json.loads(corpus["responses"]["workspace"]["body_utf8"])
+    """A stored run main's code wrote, as its workspace response returned it (OLD_WORKSPACE)."""
+    body = json.loads(json.loads(OLD_WORKSPACE.read_text())["workspace"]["body_utf8"])
     specimen = Specimen(
         id=body["specimen_id"],
         scope=Scope(organization_id=body["organization_id"], collection_id=body["collection_id"]),

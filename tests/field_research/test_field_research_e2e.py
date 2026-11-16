@@ -83,7 +83,8 @@ class CloudBlobs(GenerationBlobs):
 
 def slide_sized(specimen, blobs):
     """The record's image as the pilot's slides are (1,780 x 590 px JPEG, about
-    300 KB), its one region the right-hand label, as segmentation leaves it."""
+    300 KB), its one region the right-hand label, as segmentation leaves it; the
+    readers and the first pass saw that label's crop."""
     rng = random.Random(7)
     small = Image.frombytes("RGB", (445, 148), rng.randbytes(445 * 148 * 3))
     output = io.BytesIO()
@@ -96,7 +97,8 @@ def slide_sized(specimen, blobs):
     region.x, region.y, region.width, region.height = 890, 0, 890, 590
     crop_png = region_png(Image.open(io.BytesIO(image)), region)
     region.crop_ref = blobs.put(crop_png)
-    for observation in specimen.run.observations:
+    calls = [decision.call for decision in specimen.run.first_pass_decisions]
+    for observation in [*specimen.run.observations, *calls]:
         observation.input_sha256 = hashlib.sha256(crop_png).hexdigest()
         observation.input_crop_ref = region.crop_ref
     return len(image)
@@ -231,11 +233,13 @@ def test_field_research_reaches_the_final_queue_in_one_step(rig, caplog):
         "GetReceipt", "GetSnapshot", "SaveSpecimenV3", "GetReceipt", "GetSnapshot", "SaveSpecimenV3"]
     assert all(name.startswith("Append") for name in sequence[10:-1])
     assert sequence[-1] == "UpsertCostEntriesV1"
+    # On the units path (Run.first_pass_path) each field's settlement is a finding
+    # (step._settlement), and the collectors' text one more literal row.
     assert dict(calls) == {"GetSpecimen": 1, "GetSnapshot": 3, "TenantBudgetCapsV1": 2, "GetReceipt": 2,
-        "SaveSpecimenV3": 2, "AppendSourceAssetV2": 10, "AppendEvidenceItemV2": 11, "AppendToolCallV1": 5,
-        "AppendFieldCandidateV2": 16, "AppendCandidateEvidenceV2": 24, "AppendRecordVersionV2": 1,
-        "AppendResolvedFieldV2": 20, "UpsertCostEntriesV1": 1}
-    assert len(sequence) == 6 + 2 + 2 + 87 + 1
+        "SaveSpecimenV3": 2, "AppendSourceAssetV2": 11, "AppendEvidenceItemV2": 12, "AppendToolCallV1": 5,
+        "AppendFieldCandidateV2": 16, "AppendCandidateEvidenceV2": 25, "AppendRecordVersionV2": 1,
+        "AppendResolvedFieldV2": 20, "AppendValidationFindingV2": 16, "UpsertCostEntriesV1": 1}
+    assert len(sequence) == 6 + 2 + 2 + 106 + 1
     assert not NATIVE_OPERATIONS & set(calls)
     assert not [r for r in caplog.records if "Projection" in r.getMessage()]
 
@@ -280,14 +284,22 @@ LATENCY = 0.05
 
 async def asks_everything(task, readings, tools):
     """test_step's expert, then every approved source of the field asked twice
-    more (the value and a variant), as a hard record's expert does."""
+    more (the value and a variant), as a hard record's expert does. An answer that
+    cites no source cites the sources' answers to the value itself: the units path's
+    rule (agreement.labels_by_rule) settles a field whose source confirms the label's
+    text on that source, and refuses an answer that does not cite it."""
     outcome = await default_script(task, readings, tools)
     asked = LABEL_VALUES.get(task.key, task.key)
+    confirming = []
     for source in task.tools:
         for query in (asked, asked + " variant"):
             answer = await tools.lookup(source, query, field_key=task.key)
             if answer.evidence is not None:
                 outcome.evidence.append(answer.evidence)
+                if query == asked:
+                    confirming.append(answer.evidence.id)
+    if outcome.answer.outcome == "resolved" and not outcome.answer.source_evidence_ids and confirming:
+        outcome.answer = outcome.answer.model_copy(update={"source_evidence_ids": confirming})
     return outcome
 
 

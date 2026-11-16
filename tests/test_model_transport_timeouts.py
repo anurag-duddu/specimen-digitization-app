@@ -27,7 +27,7 @@ from specimen_digitization.model_gateway import (
 
 
 class Pick(BaseModel):
-    selected_reader: int
+    reader: int
 
 
 @pytest.fixture
@@ -63,7 +63,7 @@ def muse_agent(monkeypatch):
                         "role": "assistant", "content": None, "tool_calls": [{
                             "id": "synthetic-tool", "type": "function", "function": {
                                 "name": body["tools"][0]["function"]["name"],
-                                "arguments": '{"selected_reader":"invalid"}',
+                                "arguments": '{"reader":"invalid"}',
                             },
                         }],
                     }}],

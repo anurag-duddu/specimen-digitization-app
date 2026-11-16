@@ -17,6 +17,7 @@ from specimen_digitization.field_research.location_reassessment import (
 )
 from specimen_digitization.field_research.step import _LocationProposal, _location_readers_agree, build_tasks
 
+from test_first_pass_advice import with_units
 from test_step import FakeSources, LiveIllinoisSources, Scripted, TGN_PLACES, build_rig, mounted, settle
 
 
@@ -355,13 +356,13 @@ class CapturedLocationSources(LiveIllinoisSources):
         return answer
 
 
-def captured_location_run(tmp_path, *, state="ILLINOIS", other_state=None, decided=False):
+def captured_location_run(tmp_path, *, state="ILLINOIS", other_state=None):
     text = f"{state}\nClark County\nBloomington"
     candidates = [(key, "1A", literal, literal)
         for key, literal in (("country", "Bloomington"), ("province_state", "Clark County"),
             ("city", "Bloomington"), ("precise_location", "Bloomington"))]
     other = f"{other_state or state}\nclark county\n[unreadable] 69"
-    rig = build_rig(tmp_path, text, other=other, decided=decided, candidates=candidates)
+    rig = build_rig(tmp_path, text, other=other, candidates=candidates)
     run = rig.specimen.run
     run.fields["country"] = FieldValue(state=ValueState.SUPPORTED, parsed="PH",
         layer="derived", derived_from=["city"])
@@ -495,15 +496,6 @@ def test_cross_field_reader_placement_cannot_hide_an_unqueried_alternative(tmp_p
         for key in ("country", "province_state", "county"))
 
 
-def test_decided_transcript_still_authorizes_captured_location_reconciliation(tmp_path, monkeypatch):
-    rig = captured_location_run(tmp_path, other_state="INDIANA", decided=True)
-    _, done, _, _, _ = execute(rig, monkeypatch,
-        sources=CapturedLocationSources, script=captured_location_script())
-    assert done.run.fields["province_state"].authority_id == "wikidata:Q1204"
-    assert done.run.fields["county"].authority_id == "wikidata:Q110532"
-    assert done.run.fields["country"].parsed == "United States"
-
-
 @pytest.mark.parametrize("captured_no_match", [False, True])
 @pytest.mark.parametrize("other_level_namesake", [False, True])
 def test_reconciliation_uses_existing_g20_captured_no_match_rule(tmp_path, captured_no_match, other_level_namesake):
@@ -542,13 +534,19 @@ def test_reconciliation_uses_existing_g20_captured_no_match_rule(tmp_path, captu
 
 
 @pytest.mark.parametrize("other_label_names_place", [False, True])
-def test_transcript_projection_keeps_other_labels_place_alternatives(tmp_path, other_label_names_place):
+def test_transcript_projection_takes_no_alternative_from_another_labels_one_reader(tmp_path,
+        other_label_names_place):
+    """Label 2's one reader writes "INDIANA" (or "A moth"): a label one reader read backs nothing
+    (the rule's point 3), and a label none of whose candidates has a backing is no evidence against
+    a text another label backs (agreement._disagreement_by_rule), so label 1's readers agree on
+    "ILLINOIS" either way. Two readers of label 2 writing "INDIANA" hold the move back
+    (test_projection_keeps_target_fields_other_label_alternatives)."""
     rig = captured_location_run(tmp_path)
     source = CapturedLocationSources(rig.blobs)._answer("wikidata", "ILLINOIS")
     town = CapturedLocationSources(rig.blobs)._answer("wikidata", "Bloomington")
-    readings = (Reading("1A", "label-1", "observation-1A", "raw_reading", "ILLINOIS\nBloomington"),
+    readings = with_units((Reading("1A", "label-1", "observation-1A", "raw_reading", "ILLINOIS\nBloomington"),
         Reading("1B", "label-1", "observation-1B", "raw_reading", "ILLINOIS\n[unreadable]"),
-        Reading("2A", "label-2", "observation-2A", "raw_reading", "INDIANA" if other_label_names_place else "A moth"))
+        Reading("2A", "label-2", "observation-2A", "raw_reading", "INDIANA" if other_label_names_place else "A moth")))
     verbatims = {"observation-1A": "ILLINOIS", "observation-1B": "ILLINOIS"}
     candidates = [Candidate("1A", "Bloomington", "Bloomington", "literal-town")]
     if other_label_names_place:
@@ -559,7 +557,7 @@ def test_transcript_projection_keeps_other_labels_place_alternatives(tmp_path, o
     proposal = _LocationProposal("province_state", "ILLINOIS", ("1A", "1B"), "city", "country",
         source, source.candidates[0])
     assert _location_readers_agree(proposal, {"city": task}, readings,
-        {"country": [source], "city": [town]}) is not other_label_names_place
+        {"country": [source], "city": [town]}) is True
 
 
 @pytest.mark.parametrize("owner_candidates", ["ILLINOIS", "Bloomington"])
@@ -568,9 +566,9 @@ def test_projection_keeps_target_fields_other_label_alternatives(tmp_path, owner
     rig = captured_location_run(tmp_path)
     source = CapturedLocationSources(rig.blobs)._answer("wikidata", "ILLINOIS")
     town = CapturedLocationSources(rig.blobs)._answer("wikidata", "Bloomington")
-    readings = tuple(Reading(name, region, name, "raw_reading", text) for name, region, text in (
+    readings = with_units(tuple(Reading(name, region, name, "raw_reading", text) for name, region, text in (
         ("1A", "label-1", "ILLINOIS\nBloomington"), ("1B", "label-1", "ILLINOIS\n[unreadable]"),
-        ("2A", "label-2", "INDIANA"), ("2B", "label-2", "INDIANA")))
+        ("2A", "label-2", "INDIANA"), ("2B", "label-2", "INDIANA"))))
     owner = FieldTask("city", False, FieldValue(literal="ILLINOIS",
         verbatim_by_observation={"1A": "ILLINOIS", "1B": "ILLINOIS"}),
         tuple(Candidate(name, owner_candidates, owner_candidates, "owner-row")
@@ -593,8 +591,8 @@ def test_same_label_target_alternative_needs_grounded_other_level_proof(tmp_path
     source = sources._answer("wikidata", "ILLINOIS")
     town = sources._answer("wikidata", "Bloomington")
     literal = "Clark County" if proof == "other_level" else "INDIANA"
-    readings = tuple(Reading(name, "label", name, "raw_reading", f"ILLINOIS\n{literal}\nBloomington")
-        for name in ("1A", "1B"))
+    readings = with_units(tuple(Reading(name, "label", name, "raw_reading", f"ILLINOIS\n{literal}\nBloomington")
+        for name in ("1A", "1B")))
     owner = FieldTask("city", False, FieldValue(literal="ILLINOIS",
         verbatim_by_observation={"1A": "ILLINOIS", "1B": "ILLINOIS"}),
         (Candidate("1A", "Bloomington", "Bloomington", "owner-row"),), ("wikidata",))
@@ -624,7 +622,7 @@ def test_same_label_target_alternative_needs_grounded_other_level_proof(tmp_path
 def test_existing_county_unit_rule_only_classifies_an_unambiguous_state_fragment(tmp_path, literal, is_county_unit):
     rig = captured_location_run(tmp_path)
     source = CapturedLocationSources(rig.blobs)._answer("wikidata", "ILLINOIS")
-    readings = tuple(Reading(name, "label", name, "raw_reading", f"ILLINOIS\n{literal}") for name in ("1A", "1B"))
+    readings = with_units(tuple(Reading(name, "label", name, "raw_reading", f"ILLINOIS\n{literal}") for name in ("1A", "1B")))
     owner = FieldTask("country", False, FieldValue(),
         tuple(Candidate(name, "ILLINOIS", "ILLINOIS", "state-text") for name in ("1A", "1B")), ("wikidata",))
     target = FieldTask("province_state", False, FieldValue(),

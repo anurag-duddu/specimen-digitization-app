@@ -26,7 +26,7 @@ from specimen_digitization.application.domain import (
     Scope,
     Specimen,
 )
-from specimen_digitization.application.first_pass import synthetic_decision
+from specimen_digitization.application.first_pass import synthetic_units
 from specimen_digitization.application.lane import queue
 from specimen_digitization.application.storage import (
     LocalBlobs,
@@ -79,11 +79,11 @@ class Readers(SyntheticAdapters):
             raise RuntimeError(DROPPED)
         return super().transcribe(specimen, region, route)
 
-    def first_pass(self, specimen, region, readings):
+    def first_pass_units(self, specimen, region, readings):
         self.calls.append("first_pass")
         if self.drop == "first_pass":
             raise RuntimeError(DROPPED)
-        return synthetic_decision(self.blobs, region, readings)
+        return synthetic_units(self.blobs, region, readings)
 
 
 def blocked_run(root, drop, *, synthetic=False):
@@ -645,18 +645,18 @@ def stopped_mid_comparison(root):
     (unknown outcome, the attempt's kind "unanswered") and the lease has ended."""
 
     class Stopping(Readers):
-        def first_pass(self, specimen, region, readings):
+        def first_pass_units(self, specimen, region, readings):
             self.calls.append("first_pass")
             raise WorkerStopped()
 
 
-    original = Readers.first_pass
-    Readers.first_pass = Stopping.first_pass
+    original = Readers.first_pass_units
+    Readers.first_pass_units = Stopping.first_pass_units
     try:
         with pytest.raises(WorkerStopped):
             blocked_run(root, None, synthetic=True)
     finally:
-        Readers.first_pass = original
+        Readers.first_pass_units = original
     repo = SQLiteRepository(root / "state.sqlite3")
     blobs = LocalBlobs(root / "blobs")
     [specimen] = repo.list(SCOPE)

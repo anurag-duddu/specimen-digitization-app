@@ -6,8 +6,7 @@ lookups, not its messages, so each conversation here is rebuilt: its lookups, gr
 first with the NGA lookup that timed out), two answers the checks refuse, each with as long an
 explanation as an answer may give, then the request for its answer once its turns are used up.
 That the rebuilt conversation fits shows nothing about the refused production request, which was
-larger. Every test here runs once: this module's first_pass_path fixture replaces conftest.py's,
-as no run is built."""
+larger."""
 
 from __future__ import annotations
 
@@ -41,11 +40,6 @@ SLIDES = ("105526325", "105526324")
 # each request here (main 7f412f91d: 47,817 and 47,445). WP 2.4's second reading of the ontology's notation
 # roman_month ("the same, a 1 written for an I (1X: IX)") adds 44 bytes (main 44aeb6863: 47,929 and 47,557).
 LARGEST = {"105526325": 47_973, "105526324": 47_601}
-
-
-@pytest.fixture(autouse=True)
-def first_pass_path():
-    return "units"
 
 
 def loaded(slide):

@@ -219,9 +219,9 @@ def test_a_marked_code_in_a_finding_marks_the_field_too():
     assert cells(fields, findings=findings)["country"] == ("primary", "marked_right")
 
 
-def test_todays_finding_codes_mark_nothing():
+def test_a_finding_code_other_than_a_marked_one_marks_nothing():
     fields = {"country": supported("P.I.", parsed="Philippines")}
-    findings = [{"code": "first_pass_conflict:country", "field": "country"}]
+    findings = [{"code": "cleared:country:L2", "field": "country"}]
     assert cells(fields, findings=findings)["country"] == ("primary", "cleared_right")
 
 

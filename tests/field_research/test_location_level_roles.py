@@ -232,8 +232,7 @@ COUNTRY = expert(("wikidata", "Philippine Islands"),
 
 
 @pytest.mark.parametrize("decided", [True, False], ids=["decided-transcript", "no-reading-decided"])
-def test_the_province_settles_beside_an_island_its_sources_hold_at_no_provinces_level(tmp_path, decided,
-        first_pass_path):
+def test_the_province_settles_beside_an_island_its_sources_hold_at_no_provinces_level(tmp_path, decided):
     """48a71d53 on 2026-10-17 (its label's decided transcript is 2A's; or,
     here, its readers differ on the collector and no reading is decided):
     the province's expert settled "Davao Prov." on
@@ -243,7 +242,7 @@ def test_the_province_settles_beside_an_island_its_sources_hold_at_no_provinces_
     "Mindanao," is ruled out for the province, which settles, and the county,
     whose only text is the province's, is not on the label. On c38f4fd4 the
     province is ambiguous (DIFFER) and the county ambiguous too."""
-    rig = (build_rig(tmp_path, DAVAO, candidates=DAVAO_CANDIDATES, decided=True) if decided
+    rig = (build_rig(tmp_path, DAVAO, candidates=DAVAO_CANDIDATES) if decided
         else build_rig(tmp_path, DAVAO, DAVAO.replace("J. Smith", "J. Smlth"), candidates=DAVAO_CANDIDATES))
     run = rig.specimen.run
     assert [r.input_source for r in field_step.run_readings(run)] == (
@@ -256,13 +255,10 @@ def test_the_province_settles_beside_an_island_its_sources_hold_at_no_provinces_
     province = run.fields["province_state"]
     assert (province.state, province.literal, province.normalized, province.authority_id) == (
         ValueState.SUPPORTED, "Davao Prov.", "Davao", "wikidata:Q15095071")
-    if first_pass_path == "units":
-        # The rule (agreement.labels_by_rule): the image names "Mindanao," where both readers
-        # write it, so that candidate has a backing too, and the sourced province is marked.
-        assert reasons_for(run, "province_state") == [f"marked:province_state:{run.regions[0].id}:conflict"]
-        assert province.reason.endswith("Marked for a person: another text has backing too: 'Mindanao'.")
-    else:
-        assert not reasons_for(run, "province_state")
+    # The rule (agreement.labels_by_rule): the image names "Mindanao," where both readers
+    # write it, so that candidate has a backing too, and the sourced province is marked.
+    assert reasons_for(run, "province_state") == [f"marked:province_state:{run.regions[0].id}:conflict"]
+    assert province.reason.endswith("Marked for a person: another text has backing too: 'Mindanao'.")
     county = run.fields["county"]
     assert (county.state, county.literal, county.authority_id) == (ValueState.NOT_PRESENT, None, None)
     assert county.reason.startswith(field_step.PLACE_ABOVE_NOT_ON_LABEL.format(
@@ -270,11 +266,11 @@ def test_the_province_settles_beside_an_island_its_sources_hold_at_no_provinces_
     assert "county" in cleared_as_not_on_label(run) and not reasons_for(run, "county")
 
 
-def test_the_province_stays_for_review_when_the_island_is_also_a_province(tmp_path, first_pass_path):
+def test_the_province_stays_for_review_when_the_island_is_also_a_province(tmp_path):
     """The same label, where a gazetteer also holds a first-level unit
     "Mindanao": the readers' two texts are both provinces, and the field
     goes to review as before."""
-    rig = build_rig(tmp_path, DAVAO, candidates=DAVAO_CANDIDATES, decided=True)
+    rig = build_rig(tmp_path, DAVAO, candidates=DAVAO_CANDIDATES)
     run = rig.specimen.run
     province = [*ANSWERS[("nga", "Mindanao")], ("Mindanao", "nga:adm1", "A.ADM1", (PH_CODE,), None)]
     settle(rig, Scripted({"country": COUNTRY,
@@ -284,13 +280,10 @@ def test_the_province_stays_for_review_when_the_island_is_also_a_province(tmp_pa
         "city": answering(LACKS), "precise_location": answering(LACKS)}),
         tools=Stored(rig.blobs, {("nga", "Mindanao"): province}))
     assert run.fields["province_state"].state == ValueState.AMBIGUOUS
-    if first_pass_path == "units":
-        # The image names both texts where both readers write them, and no source backs one:
-        # the two tie on the rule's rank.
-        assert run.fields["province_state"].reason == (
-            agreement.TIED + " Settled. Options: Davao Prov.; Mindanao.")
-    else:
-        assert run.fields["province_state"].reason.startswith(agreement.DIFFER)
+    # The image names both texts where both readers write them, and no source backs one:
+    # the two tie on the rule's rank.
+    assert run.fields["province_state"].reason == (
+        agreement.TIED + " Settled. Options: Davao Prov.; Mindanao.")
     # No place above settled: the county keeps its expert's answer.
     assert run.fields["county"].state == ValueState.AMBIGUOUS
 

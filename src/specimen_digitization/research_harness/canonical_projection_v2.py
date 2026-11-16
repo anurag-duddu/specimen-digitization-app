@@ -27,6 +27,11 @@ from .evidence import validate_assembly, validate_resolution
 from .native_canonical import CANONICAL_KEYS, RESEARCH_KEYS, CanonicalIdentityV1, canonical_value_v1, strict_history_scope_v1
 from .publication import NativeDependencyBasis, _native_checkpoint
 
+# A label's decided transcription version as the projection writes it (projection._first_pass):
+# V3 when the label has reading units, V2 when it has none (a label whose readings hold no text,
+# and every label of a run the old first pass recorded).
+TRANSCRIPTION_VERSIONS = frozenset({"AppendTranscriptionVersionV2", "AppendTranscriptionVersionV3"})
+
 CONTRACT = "canonical-value-lineage/v2"
 
 
@@ -402,7 +407,7 @@ def _decided_source(run, region_id, observation_id, context):
     expected_rows = tuple({"operation": row.operation, "variables": {**outer, **row.variables}} for row in expected)
     if proof.decision_rows != expected_rows:
         unavailable("canonical_lineage_transcription_decision_unproved")
-    versions = [row["variables"] for row in expected_rows if row["operation"] == "AppendTranscriptionVersionV2"]
+    versions = [row["variables"] for row in expected_rows if row["operation"] in TRANSCRIPTION_VERSIONS]
     if (len(versions) != 1 or versions[0]["id"] != str(proof.transcription_version_id)
             or versions[0]["unresolved"] is not False):
         unavailable("canonical_lineage_selected_transcription_unproved")

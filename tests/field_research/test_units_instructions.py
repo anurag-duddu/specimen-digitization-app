@@ -1,20 +1,14 @@
-"""Work package 1.3 of docs/execution/units/PLAN.md: the field experts' instructions on the
-units path (prompts.instructions(key, units=True)) and the old path's, unchanged.
+"""The field experts' instructions (prompts.instructions): the shared rules, the specimen
+ontology's brief text (ontology.render(brief=True)), the instructions of its rules that name the
+field (ontology.render_instructions("expert", key)) and the field's brief.
 
-The units path's text is the old path's with each text units.txt names replaced (common.txt's
-first_pass line, its rule 4 and a sentence of its literal's line; a line of each of the five
-tool-less briefs; the line of each of the four place briefs on readings that disagree; two lines of the
-collectors brief and the literal's line of the country brief; from WP 2.2, common.txt's two date
-notation lines, which the ontology's text gives, and three lines of the precise location brief) or left
-out (common.txt's label notations that the ontology's text gives too), and, between the shared rules and
-the brief, the specimen ontology's brief text (ontology.render(brief=True)) and, from WP 2.2, the
-instructions of its rules that name the field (ontology.render_instructions("expert", key)). Every test
-here runs once: this module's first_pass_path fixture replaces conftest.py's, as no run is built."""
+WP 1.3 to 2.4 of docs/execution/units/PLAN.md gave the units path these instructions as the old
+path's with the texts a file of replacements (prompts/units.txt) named. The
+instructions are byte for byte the units path's on main d83f4d6f1 (MAIN)."""
 
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 
 import pytest
 
@@ -22,86 +16,48 @@ from specimen_digitization.field_research.contracts import FIELD_TOOLS
 from specimen_digitization.field_research.prompts import instructions
 from specimen_digitization.ontology import render, render_instructions
 
-
-def units_replacements():
-    from specimen_digitization.field_research.prompts import units_replacements
-
-    return units_replacements()
-
-
-def parse_replacements(text):
-    from specimen_digitization.field_research.prompts import parse_replacements
-
-    return parse_replacements(text)
-
-
-@pytest.fixture(autouse=True)
-def first_pass_path():
-    return "old"
-
-
-# Each field's instructions on main c348f8a1a, as the sha256 of their UTF-8 bytes.
+# Each field's instructions on the units path on main d83f4d6f1 (instructions(key, units=True)
+# there), as the sha256 of their UTF-8 bytes.
 MAIN = {
-    'taxon': "sha256:497fdf585680d65670282d0a45da3198f56547f5b8d08d9603433b8cea2be453",
-    'country': "sha256:07a59e12a355229044ff2c411afb473f757471d280c2323cc31255cf241e926b",
-    'province_state': "sha256:a3ffea8bbe16cfe1895d45273985e4328afcc753ffc06a8347441480874df40d",
-    'county': "sha256:a0187d6fe4fccb2543e7ef1e8d1844f62e86cf7df5cf9c5d8433926c1cba2904",
-    'city': "sha256:e0dc10f94fdd2f5e443d9b2224d6ccd2e79bb6bdad952910c3827b18c21ffce3",
-    'precise_location': "sha256:33d76dc43f148315d22d29c2b95cc2081610e028f1aceafcd5c0c51cd0f24b79",
-    'date_visited_from': "sha256:777dd08d13322cba0ad7562eb6f3aaf593400b8f024e458f60063e9a0f553b92",
-    'date_visited_to': "sha256:ef25b2bdf18ae3dd1414142afaff8e30fd5abc74555f38240bea24ba855b3cd2",
-    'date_identified': "sha256:7662095ab3a8db9cff2fe21af3800dc573252bdb45cff89155e4a0be623f0275",
-    'elevation_from_m': "sha256:b35375e89749a36ee6f6d9991ac02e50d14883bc76a1e4634826ea93fd6cfd03",
-    'elevation_to_m': "sha256:cccc9796085c712c25d9c0e500b302a2fa81cbf82957715a77538956f50eb969",
-    'elevation_from_ft': "sha256:8ff88fb0f35ad15a24dfcd3bec2ef28d191656a55ad38a16124ced14c17af526",
-    'elevation_to_ft': "sha256:97f866685b7b68868b62e3e2e888d618bafc32dd17ee7f8eb67a1a45aeb741cf",
-    'fmnh_ins_number': "sha256:8adce428d2b8df70339246771fd2aa5bb97dc5ecbca0585c22ebc42206317606",
-    'collectors': "sha256:ad9016683ef34c383c5a8e7302a90997a8515c721285462f254e7228d12a16e1",
-    'collection_code': "sha256:3d50983870f2ba591e5030e53c926150e3a846d68ff1a12bcccd1fcbf7ff4bce",
-    'habitat': "sha256:0107a1f9d32fd2514f7070f490d725762424d4dc61cb575bc3481173705041c4",
-    'collection_method': "sha256:91783252963d7896fdcfd65735e42b18340e99bf9848a6cfa8589802f09493ad",
-    'verbatim_dts': "sha256:91855f36a996b6f8391da14f1f7a316cdcdb8a57a70c5fe6229b50141397ef07",
-    'identified_by_irn': "sha256:cc808e1bddd2f36a09f0d4bb7c1ae378bcc1034c03dc9d6e3e69c5e3ec134651",
+    'taxon': "sha256:b34fd9b30faba7ff37ba33144206a8bc57ed8414df0cfd9c61565d901fbc96f7",
+    'country': "sha256:5374054c21c53756da3e579d71425eb5b27136ad81eabcd059f78f2ea68675be",
+    'province_state': "sha256:ba24c741170f17170b81b920d3b305339ca9ce87c2c1ad2ad8445ae6fce15ea8",
+    'county': "sha256:c73352f1c9cc9ea3318eca667270d51ccae8113c904960b81337ef2b4ef66f04",
+    'city': "sha256:eaa419ceedb7ae52a82f73cad6ac348e10bb41bec90380a55cca16e7b750b474",
+    'precise_location': "sha256:357d8fcca1b7de341523c3bf539e9edc45ef000494c86429fc535f6e14ee4dee",
+    'date_visited_from': "sha256:72a2baf0daed149e7a4157af60573724d69e3665c9aa1c090ba97a8129222314",
+    'date_visited_to': "sha256:6a5db82852a032e42a7e21720df0f3aa41cafe6085fc80c61f5699d5a9c0f221",
+    'date_identified': "sha256:fcac37a83b49a1648a3e0ee2afe04da4e905786e2054a32af30dd8670fdc5b3a",
+    'elevation_from_m': "sha256:aec657103c3ca11e83490eff534a2dadeba433f4369ede931339aa2489769b40",
+    'elevation_to_m': "sha256:d3ff2536cb0f2567b4a0b87b8d9ea9d953c397b94a903ee740f272a05766b56a",
+    'elevation_from_ft': "sha256:2dac43c894f1ea81e7d16264dbef53590e8a275846a704a8fffce7e276c43633",
+    'elevation_to_ft': "sha256:a9f964c9c903fff7ad262b3e7b3c04e8ef85d763089a15cc349554a0d6e256ca",
+    'fmnh_ins_number': "sha256:da01681d168299baafa34ff2117eab96265a734d57cf75624f9be772d8230cb3",
+    'collectors': "sha256:e1b9b9928944865f9526e7ecb60f1447ff188ed210d43d33dbebea04a61b318d",
+    'collection_code': "sha256:27e9950e9407223f3e6563a3b94fbe8dc000fd46a33b51cc043a39af6e15c161",
+    'habitat': "sha256:8844565ed36b13ce827cef55ff014550baac53d037ec56158f839dbd90dd20e8",
+    'collection_method': "sha256:e3c8ad333b32c9b727f931db2500d0d43af0fa737073b00bf6f8967d4e221aa5",
+    'verbatim_dts': "sha256:19da03e87645d450bd7279fa779ee8eca407ce75d60f3a75b23a4fea7412e0dc",
+    'identified_by_irn': "sha256:a49fc2b103c5a02408b8713705ff53f61977b686af2063d6c2f227ec26092483",
 }
 TOOL_LESS = {key for key, tools in FIELD_TOOLS.items() if not tools} - {"identified_by_irn"}
 PLACES = ("country", "province_state", "county", "city")
 
 
-def test_the_old_paths_instructions_are_main_s():
+def test_the_instructions_are_the_units_paths_on_main():
     assert {key: "sha256:" + hashlib.sha256(instructions(key).encode()).hexdigest() for key in FIELD_TOOLS} == MAIN
 
 
-def test_units_txt_replaces_texts_of_common_txt_the_tool_less_place_precise_location_and_date_briefs_only():
-    """WP 2.4 adds the two collecting-date briefs (a year that starts the next line)."""
-    assert TOOL_LESS == {"collectors", "collection_code", "habitat", "collection_method", "verbatim_dts"}
-    assert set(units_replacements()) == {"common.txt", "precise_location.txt", "date_visited_from.txt",
-        "date_visited_to.txt", *(f"{key}.txt" for key in (*TOOL_LESS, *PLACES))}
-
-
 @pytest.mark.parametrize("key", FIELD_TOOLS)
-def test_the_units_paths_instructions_are_the_old_ones_with_units_txt_s_texts_and_the_ontology(key):
+def test_the_ontology_and_the_fields_rules_stand_once_right_before_the_brief(key):
     """The ontology stands once, then the rules that name the field (none for some fields), right
-    before the brief; taking them out gives the old path's instructions with each text units.txt
-    names in its place: each text it names stands once in the old ones and its replacement once in
-    the units path's, and a text it replaces by nothing is a whole line of the old ones, left out."""
-    old, new = instructions(key), instructions(key, units=True)
+    before the brief."""
+    text = instructions(key)
     rendered = render(brief=True).strip()
     rules = render_instructions("expert", key).strip()
     added = rendered + ("\n\n" + rules if rules else "")
-    brief = new[new.rindex("\n\nField: "):]
-    assert new.count(rendered) == 1 and new.endswith(added + brief)
-    without = new.replace("\n\n" + added, "", 1)
-    done = old
-    for name in ("common.txt", f"{key}.txt"):
-        for old_text, new_text in units_replacements().get(name, ()):
-            assert old.count(old_text) == 1
-            if new_text:
-                assert without.count(new_text) == 1
-                done = done.replace(old_text, new_text)
-            else:
-                assert done.count(f"\n{old_text}\n") == 1 and old_text not in without
-                done = done.replace(f"\n{old_text}\n", "\n")
-    assert done == without
+    brief = text[text.rindex("\n\nField: "):]
+    assert text.count(rendered) == 1 and text.endswith(added + brief)
 
 
 # The owner's reading of 2026-11-13 (spec section 5): a printed "LEWIS COLLECTION" heading is the
@@ -112,45 +68,30 @@ LEWIS_LINE = (
 
 
 @pytest.mark.parametrize("key", FIELD_TOOLS)
-def test_the_lewis_heading_ruling_is_in_every_units_path_instruction_once_and_in_no_old_path_one(key):
-    """The shared briefs (common.txt, collection_code.txt) stay main's: the old path's text names no Lewis."""
-    assert instructions(key, units=True).count(LEWIS_LINE) == 1
-    assert "lewis" not in instructions(key).lower()
-    assert "lewis" not in instructions(key, units=True).lower().replace(LEWIS_LINE.lower(), "")
+def test_the_lewis_heading_ruling_is_in_every_instruction_once(key):
+    """Only the ontology's brief text names Lewis: the shared rules and the briefs do not."""
+    assert instructions(key).count(LEWIS_LINE) == 1
+    assert "lewis" not in instructions(key).lower().replace(LEWIS_LINE.lower(), "")
 
 
 @pytest.mark.parametrize("key", FIELD_TOOLS)
-def test_the_units_paths_instructions_name_no_first_pass_preference(key):
-    """The units path's request carries the units and no first pass opinion
-    (experts.units_document)."""
-    text = instructions(key, units=True)
+def test_the_instructions_name_no_first_pass_preference(key):
+    """The request carries the units and no first pass opinion (experts.units_document)."""
+    text = instructions(key)
     for word in ("first pass", "first_pass", "preferred", "decided_transcript"):
         assert word not in text
     assert "- units, when present:" in text
 
 
-# prompts/units.txt as WP 1.3's rework (gap report items 2(a), 3 and 4), WP 2.2 (the two date
-# notation lines; the precise location brief's three lines) and WP 2.4 (the date briefs' sentence on a
-# year that starts the next line) leave it, as the sha256 of its bytes.
-UNITS_TXT = "sha256:5e0926c7f18bdd1f706136b45a89aaecd0f9c41958dd4f8cb632cbf6524bd297"
 # Rule 4 on the units path: what the code decides, said once to every expert.
 RULE = ("The code decides from the image judgements, the source answers your lookups returned and the readers' "
     "agreement whether a value is cleared, marked for a person to check, or left open, and it refuses an answer it cannot "
     "settle, saying why.")
 
 
-def test_units_txt_is_pinned():
-    """Codex rounds 6 (V3) and 7 (W1 to W3), and WP 1.3's rework: units.txt says what an expert
-    needs, no definitions of the backings."""
-    from specimen_digitization.field_research import prompts
-
-    path = Path(prompts.__file__).with_name("units.txt")
-    assert "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest() == UNITS_TXT
-
-
 @pytest.mark.parametrize("key", FIELD_TOOLS)
-def test_the_units_paths_instructions_state_the_rule_and_define_no_backing(key):
-    text = instructions(key, units=True)
+def test_the_instructions_state_the_rule_and_define_no_backing(key):
+    text = instructions(key)
     assert text.count(RULE) == 1
     for definition in ("Image: the unit holding it", "Source: you asked your sources", "Text: two or more readers",
             "where 2A writes", "Each unit gives every reader's text", "the source answers you cite and",
@@ -158,38 +99,12 @@ def test_the_units_paths_instructions_state_the_rule_and_define_no_backing(key):
         assert definition not in text
 
 
-@pytest.mark.parametrize(("text", "found"), [
-    ("", {}),
-    ("# a comment\n\n== a.txt\n<<< x\n>>> y\n", {"a.txt": (("x", "y"),)}),
-    ("== a.txt\n<<< x\n>>> y\n<<< z\n>>> w\n== b.txt\n<<< u\n>>> \n",
-        {"a.txt": (("x", "y"), ("z", "w")), "b.txt": (("u", ""),)}),
-    ("== a.txt\n<<< x\n>>>\n", {"a.txt": (("x", ""),)}),
-], ids=["empty", "one", "two-files", "left-out"])
-def test_units_txt_s_form_is_read(text, found):
-    assert parse_replacements(text) == found
-
-
-@pytest.mark.parametrize("text", [
-    "<<< x\n>>> y\n",
-    "== a.txt\n>>> y\n",
-    "== a.txt\n<<< x\n<<< z\n>>> y\n",
-    "== a.txt\n<<< x\n",
-    "== a.txt\n<<< x\n== b.txt\n>>> y\n",
-    "== a.txt\nx\n",
-    "== a.txt\n <<< x\n>>> y\n",
-], ids=["text-before-a-file", "replacement-alone", "two-texts", "text-last", "file-between", "no-form",
-    "indented"])
-def test_units_txt_refuses_a_line_out_of_its_form(text):
-    with pytest.raises(ValueError):
-        parse_replacements(text)
-
-
-# What a place brief says on the units path where the readings differ (Codex round 7, W3; WP 1.3's
-# rework, gap report item 2(a)).
+# What a place brief says where the readings differ (Codex round 7, W3; WP 1.3's rework, gap
+# report item 2(a)).
 DIFFER_SAYS = ("When the readings differ, answer the reader's text your lookups and the units support, naming the "
     "readings that hold it and citing the source answers. Answer several_possibilities, with each reader's text, "
     "only where you find no text to answer.")
-# Each place brief's own line on the old path, which the units path replaces.
+# Each place brief's line on readings that disagree before WP 1.3, which DIFFER_SAYS replaced.
 DISAGREE = {
     "country": "- When readings name different countries, or a source finds several countries for the text, answer "
         "several_possibilities.",
@@ -201,22 +116,21 @@ DISAGREE = {
 
 
 @pytest.mark.parametrize("key", FIELD_TOOLS)
-def test_a_place_brief_says_what_to_answer_where_the_readings_differ_on_the_units_path_only(key):
-    """W3: the four place briefs' line on readings that disagree stands on the old path
-    (test_the_old_paths_instructions_are_main_s); on the units path it says to answer the text
-    the lookups and the units support, keeping the brief's own clause on a source that leaves
-    several places."""
-    old, new = instructions(key), instructions(key, units=True)
+def test_a_place_brief_says_what_to_answer_where_the_readings_differ(key):
+    """W3: each of the four place briefs says to answer the text the lookups and the units
+    support, keeping its own clause on a source that leaves several places; the line it replaced
+    stands nowhere."""
+    text = instructions(key)
     if key not in PLACES:
-        assert DIFFER_SAYS not in new
+        assert DIFFER_SAYS not in text
         return
     clause = DISAGREE[key][DISAGREE[key].index(", or a source ") + len(", or "):]
-    assert old.count(DISAGREE[key]) == 1 and DISAGREE[key] not in new
-    assert new.count(f"- {DIFFER_SAYS} When {clause}") == 1
+    assert DISAGREE[key] not in text
+    assert text.count(f"- {DIFFER_SAYS} When {clause}") == 1
 
 
-# Each common.txt label notation the units path leaves out, with the ontology's text that gives it
-# (ontology.render(brief=True), which the units path's instructions carry).
+# Each label notation WP 1.3's rework left out of common.txt, with the ontology's text that gives it
+# (ontology.render(brief=True), which the instructions carry).
 LEFT_OUT = {
     '- "Prov.", "Dept.": province, department; a word of the unit\'s name, not the name itself.':
         ('- "Prov.": province', '- "Dept.": department'),
@@ -240,19 +154,19 @@ LEFT_OUT = {
 }
 
 
-def test_the_units_path_leaves_out_only_label_notations_the_ontologys_text_gives():
-    """Gap report item 3: the units path's request stays under the input bound
-    (budget.DEFAULT_MAX_INPUT_TOKENS); the label notation lines it leaves out of common.txt are
-    each given by the ontology's text it carries."""
-    left = [old for old, new in units_replacements()["common.txt"] if not new]
-    assert left == list(LEFT_OUT)
+@pytest.mark.parametrize("key", FIELD_TOOLS)
+def test_the_label_notations_left_out_of_the_shared_rules_are_the_ontologys_text(key):
+    """Gap report item 3: the request stays under the input bound (budget.DEFAULT_MAX_INPUT_TOKENS);
+    each label notation line left out of common.txt stands in no instructions, and the ontology's
+    text they carry gives what it said."""
+    text = instructions(key)
     rendered = render(brief=True)
     for line, gives in LEFT_OUT.items():
-        assert all(text in rendered for text in gives), line
-    assert not [new for name, pairs in units_replacements().items() if name != "common.txt" for _, new in pairs if not new]
+        assert line not in text
+        assert all(given in rendered for given in gives), line
 
 
-# Gap report items 2(a) and 4: what the units path's instructions say an expert answers.
+# Gap report items 2(a) and 4: what the instructions say an expert answers.
 ANSWERS = (
     "Whenever a reader writes a text for this field, answer with the literal exactly as a reader wrote it, the "
     "readings that hold it, and the source answers you cite.",
@@ -269,24 +183,23 @@ COUNTRY_INSIDE = ('also where one unit holds more than the country ("<Place>, <N
 
 
 @pytest.mark.parametrize("key", FIELD_TOOLS)
-def test_the_units_path_says_to_answer_the_text_the_readings_write(key):
-    """Rule 4 on the units path: answer a reader's text; readers that differ only in letter case
-    or spacing agree; two or more readers' one text is an answer; several_possibilities only
-    where no text is found. The collectors brief takes the names inside a unit and never
-    refuses for a unit's note; the country brief takes the country's own text inside a unit.
-    None of it stands on the old path."""
-    old, new = instructions(key), instructions(key, units=True)
+def test_the_instructions_say_to_answer_the_text_the_readings_write(key):
+    """Rule 4: answer a reader's text; readers that differ only in letter case or spacing agree;
+    two or more readers' one text is an answer; several_possibilities only where no text is
+    found. The collectors brief takes the names inside a unit and never refuses for a unit's
+    note; the country brief takes the country's own text inside a unit."""
+    text = instructions(key)
     for sentence in ANSWERS:
-        assert new.count(sentence) == 1 and sentence not in old
+        assert text.count(sentence) == 1
     for sentence, field in ((NOTE, "collectors"), (NAMES_INSIDE, "collectors"), (COUNTRY_INSIDE, "country")):
-        assert new.count(sentence) == (key == field) and sentence not in old
+        assert text.count(sentence) == (key == field)
 
 
 # ---- WP 2.2: the ontology's rules and Precise Location's whole locality -------------------------
 
-# common.txt's two date notation lines the units path replaces, each with the ontology's text that
-# gives what it said (ontology.render(brief=True)), and the line in its place, which keeps what is
-# the date check's own (parse_date, day_month_order_ambiguous).
+# The starts of common.txt's two date notation lines WP 2.2 replaced, each with the ontology's text
+# that gives what it said (ontology.render(brief=True)), and the lines in their place, which keep what
+# is the date check's own (parse_date, day_month_order_ambiguous).
 DATE_LINES = {
     "- A Roman numeral I to XII in a date is the month": ("the month, January to December, in any position of the date",
         "A month may be written by name in English, Spanish, French, German, Portuguese, Italian or Latin",
@@ -300,38 +213,33 @@ DATE_SAYS = ("- parse_date reads each date notation of the specimen ontology bel
 
 
 @pytest.mark.parametrize("key", FIELD_TOOLS)
-def test_the_units_path_replaces_the_two_date_notation_lines_by_the_date_checks_own_words(key):
-    """The units path's expert request stays under budget.DEFAULT_MAX_INPUT_TOKENS with the rules
-    added (test_units_request_size.py): common.txt's two date notation lines give way to one line
-    each on the date check, and the ontology's text the units path carries gives what they said."""
-    old, new = instructions(key), instructions(key, units=True)
-    replaced = [old_text for old_text, _ in units_replacements()["common.txt"]
-        if old_text.startswith(tuple(DATE_LINES))]
-    assert len(replaced) == 2
-    for line in replaced:
-        assert old.count(line) == 1 and line not in new
+def test_the_two_date_notation_lines_are_the_date_checks_own_words(key):
+    """The expert request stays under budget.DEFAULT_MAX_INPUT_TOKENS with the rules added
+    (test_units_request_size.py): one line each on the date check stands in place of common.txt's
+    two date notation lines, and the ontology's text the instructions carry gives what they said."""
+    text = instructions(key)
+    assert not [line for line in text.splitlines() if line.startswith(tuple(DATE_LINES))]
     for says in DATE_SAYS:
-        assert new.count(says) == 1 and says not in old
+        assert text.count(says) == 1
     rendered = render(brief=True)
     for gives in DATE_LINES.values():
-        assert all(text in rendered for text in gives)
+        assert all(given in rendered for given in gives)
 
 
 @pytest.mark.parametrize("key", FIELD_TOOLS)
-def test_each_expert_receives_the_rules_that_name_its_field_on_the_units_path_only(key):
-    """ontology.render_instructions("expert", key), pinned in tests/test_ontology.py, stands once
-    in the units path's instructions and never in the old path's."""
+def test_each_expert_receives_the_rules_that_name_its_field(key):
+    """ontology.render_instructions("expert", key), pinned in tests/test_ontology.py: each rule that
+    names the field stands once, and no other rule."""
     from specimen_digitization import ontology
 
-    old, new = instructions(key), instructions(key, units=True)
+    text = instructions(key)
     rules = [rule for rule in ontology.ontology().rules if key in rule.fields]
     for rule in ontology.ontology().rules:
-        assert rule.instruction not in old
-        assert new.count(rule.instruction) == (rule in rules)
-    assert ("The specimen ontology's rules for this field:" in new) == bool(rules)
+        assert text.count(rule.instruction) == (rule in rules)
+    assert ("The specimen ontology's rules for this field:" in text) == bool(rules)
 
 
-# The precise location brief on the units path (prompts/units.txt): the label's whole locality.
+# The precise location brief (prompts/precise_location.txt, from WP 2.2): the label's whole locality.
 WHOLE_LOCALITY = (
     "Field: Precise Location (precise_location). The label's whole locality as written: every line of its locality "
     'text, such as "E. slope Mt. <Mountain>, nr. <Town>" over "<Province>, <Country>".',
@@ -343,7 +251,7 @@ WHOLE_LOCALITY = (
     "- A locality that names nothing finer than its town is still this field: its lines as written. Answer "
     "label_lacks_value only when no reading writes a locality.",
 )
-# What main's brief says that the rule precise_location_extent contradicts (its note).
+# What the brief said before WP 2.2 that the rule precise_location_extent contradicts (its note).
 CUT_SHORT = (
     "Leave out what belongs to other fields: country, province, county or city written as such, dates, collectors "
     "and elevations.",
@@ -351,12 +259,11 @@ CUT_SHORT = (
 )
 
 
-def test_the_precise_location_brief_takes_the_whole_locality_on_the_units_path_only():
-    old, new = instructions("precise_location"), instructions("precise_location", units=True)
+def test_the_precise_location_brief_takes_the_whole_locality():
+    whole = instructions("precise_location")
     for text in WHOLE_LOCALITY:
-        assert new.count(text) == 1 and text not in old
-    for text in CUT_SHORT:
-        assert old.count(text) == 1 and text not in new
+        assert whole.count(text) == 1
     for key in FIELD_TOOLS:
+        assert not any(text in instructions(key) for text in CUT_SHORT)
         if key != "precise_location":
-            assert not any(text in instructions(key, units=True) for text in WHOLE_LOCALITY)
+            assert not any(text in instructions(key) for text in WHOLE_LOCALITY)

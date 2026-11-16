@@ -69,16 +69,20 @@ def test_a_whole_pilot_slide_as_the_crop_is_sent_with_each_answer_capped(
         infos=infos,
     )
 
-    assert decision.selected_observation_id == second.id
+    assert decision.call.completion_state == "validated_output"
     [info] = infos
     assert info.model_settings["max_tokens"] == 4_096
-    assert decision.call.parameters == {"max_tokens": 4_096}
+    # The units request's options (first_pass.UNITS_REQUEST_OPTIONS) beside the cap.
+    assert decision.call.parameters == {
+        "extra_body": {"reasoning_effort": "low", "temperature": 0},
+        "max_tokens": 4_096,
+    }
     size = request_input_tokens(
         calls[0], info.model_request_parameters, {"pixels_per_token": 28}
     )
-    # About a sixth of the 32,768 bound: the crop, the readings, the prompt
-    # and the answer's schema, counted a token a byte.
-    assert 4_000 < size < 32_768 // 5
+    # About an eighth of the 32,768 bound: the crop, the readings' segments,
+    # the prompt and the answer's schema, counted a token a byte.
+    assert 3_000 < size < 32_768 // 5
 
 
 def test_each_answer_is_capped_at_the_routes_output_bound(monkeypatch, tmp_path):
@@ -121,9 +125,10 @@ def test_an_input_that_could_exceed_its_bound_is_refused_before_any_request(
 
 def test_a_retry_that_could_exceed_its_bound_is_not_sent(monkeypatch, tmp_path):
     # The first answer is incomplete and 40,000 bytes long, so the retry, which
-    # resends it, could pass 32,768 tokens: it stops at its cap, no reading.
+    # resends it, could pass 32,768 tokens: it stops at its cap, with the
+    # alignment's units and no reading.
     calls = []
-    long = dict(INCOMPLETE, rationale="x" * 40_000)
+    long = {"units": [dict(INCOMPLETE["units"][0], note="x" * 40_000)]}
 
     decision, _ = direct_first_pass(
         monkeypatch, tmp_path, calls, long, VALID, profile=priced(), crop=png(60, 40)

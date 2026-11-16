@@ -106,49 +106,22 @@ def not_on_label_fields(profile_id: str, version: str) -> frozenset[str]:
 
 
 @dataclass(frozen=True)
-class FirstPassAdvice:
-    """The first pass's opinion of one label whose readers differ, as the
-    field experts receive it (owner, 2026-10-25: "There an LLM opinion that's
-    put in front along with actual Raw transcription per model to the harness
-    if needed as then harness does its thing per field and settles as written
-    or derived and so on"). Advice from a model that saw the label image,
-    never a field's evidence: the reader it preferred (None when it preferred
-    none), its rationale, its note on each reader, and each material
-    difference with the reader whose text it judged the image supports there
-    ("neither" or "uncertain" when none), all by reader name: each
-    difference's "texts" and "verdict", and its "spans", the (start, end)
-    offsets of each reader's text there, which the agreement rules read
-    (agreement.confirmed_against_image) and the experts are not sent. With
-    `person_decided`, a person decided the label's transcript
-    (Transcript.actor): its decided reading then binds the label's text, as
-    the person saw the image (agreement.labels), and the experts are not
-    sent it as the first pass's opinion."""
-
-    preferred: str | None
-    rationale: str
-    reader_notes: Mapping[str, str]
-    differences: tuple[Mapping[str, object], ...]
-    person_decided: bool = False
-
-
-@dataclass(frozen=True)
 class Reading:
     """One reader's text of one label, named as the organiser names it (1A, 1B, 2A).
 
-    `input_source` keeps its wire value: "decided_transcript" marks the reading
-    the first pass preferred for its label, which is advice to the harness,
-    not a constraint (owner, 2026-10-25). `first_pass` is the first pass's
-    opinion of the reading's label (the same for each of its readings), or
-    None when the label had none; it takes no part in comparing readings.
-    `units` is the reading units of the reading's label on a run whose
-    first-pass path is units (step.run_readings), None on the old path."""
+    `input_source` keeps its wire value: "decided_transcript" marks the label's
+    decided transcript (organiser.extraction_readings: the text of readings that
+    agree, or a person's). `person_decided` marks the decided transcript a person
+    decided (Transcript.actor), which binds its label's text (agreement.labels).
+    `units` is the reading units of the reading's label (step.run_readings), None
+    for a label that has none. Neither takes part in comparing readings."""
 
     name: str
     region_id: str
     observation_id: str
     input_source: Literal["decided_transcript", "raw_reading"]
     text: str
-    first_pass: FirstPassAdvice | None = field(default=None, compare=False)
+    person_decided: bool = field(default=False, compare=False)
     units: ReadingUnits | None = field(default=None, compare=False)
 
 

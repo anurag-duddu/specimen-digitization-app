@@ -315,16 +315,18 @@ def test_a_variant_reading_reserves_from_the_nemotron_row(tmp_path, monkeypatch)
     step = f"transcribe:{region.id}:handwriting-nemotron"
     run = specimen.run
 
-    # The pinned reading prompt and its answer's schema, in bytes, plus framing.
-    assert reading_prompt_tokens(run) == 2_513
+    # The pinned reading prompt and its answer's schema, in bytes, plus framing. Since WP 1.8
+    # every run pins the reading prompt with the ontology's rules for readers (prompts.with_rules,
+    # production.pinned_prompt), which only a units-path run pinned before: 2,513 then.
+    assert reading_prompt_tokens(run) == 3_415
     # The crop under Nemotron's rule: 250 x 157 patches of 32 pixels, capped at
     # 3,328, plus 250 + 157 separators and 256 of slack: 3,991 tokens.
-    # Request 1: 3,991 + 2,513 = 6,504 in, 4,096 out:
-    #   ceil((6,504 x 200,000 + 4,096 x 500,000) / 10^6) = ceil(3,348.8) = 3,349.
+    # Request 1: 3,991 + 3,415 = 7,406 in, 4,096 out:
+    #   ceil((7,406 x 200,000 + 4,096 x 500,000) / 10^6) = ceil(3,529.2) = 3,530.
     # Request 2 (the retry adds the answer, the feedback and framing):
-    #   6,504 + 4,096 + 8,192 + 256 = 19,048 in:
-    #   ceil((19,048 x 200,000 + 4,096 x 500,000) / 10^6) = ceil(5,857.6) = 5,858.
-    assert reading_reservation(run, step, 1) == 3_349 + 5_858 == 9_207
+    #   7,406 + 4,096 + 8,192 + 256 = 19,950 in:
+    #   ceil((19,950 x 200,000 + 4,096 x 500,000) / 10^6) = 6,038.
+    assert reading_reservation(run, step, 1) == 3_530 + 6_038 == 9_568
     # Below the reader floor, which the published allowance sets for this route.
     assert step_reservation(run, step) == 20_000
 
@@ -596,22 +598,20 @@ def most_labels(routes, max_tokens, max_calls, readings_agree):
         labels += 1
 
 
-@pytest.mark.parametrize("readings_agree", [False, True], ids=["first pass", "no first pass"])
+@pytest.mark.parametrize("readings_agree", [False, True], ids=["readings differ", "readings agree"])
 def test_a_third_reader_fits_as_many_labels_per_slide_within_the_raised_limits(readings_agree):
     two = ("handwriting-qwen", "handwriting-muse")
     three = (*two, "handwriting-nemotron")
-    # A label is one step per reader, plus a first pass when its readings differ.
-    assert len(label_steps(three, 1, readings_agree)) == 3 + (not readings_agree)
+    # A label is one step per reader plus its first pass, whether its readings agree or not:
+    # since WP 1.8 the units path's first pass reads every label with two readings or more.
+    assert len(label_steps(three, 1, readings_agree)) == 3 + 1
 
     published = most_labels(two, 480_000, 96, readings_agree)
     variant = most_labels(three, THREE_READER_LIMITS["max_tokens"],
         THREE_READER_LIMITS["max_external_calls"], readings_agree)
 
-    # The published limits fit 8 labels that need a first pass, or 13 whose
-    # readings agree (tokens bind first); three readers fit 10 or 13.
-    assert (published, variant) == ((8, 10) if not readings_agree else (13, 13))
+    # The published limits fit 8 labels; three readers fit 10.
+    assert (published, variant) == (8, 10)
     assert most_labels(three, 480_000, 96, readings_agree) < published
-    # Scaling by (readers + 1) / (published readers + 1) would fit fewer labels
-    # whose readings agree (12 of 13): x 3/2 is what keeps both.
-    four_thirds = most_labels(three, 640_000, 128, readings_agree)
-    assert four_thirds >= published if not readings_agree else four_thirds == 12 < published
+    # Scaling by (readers + 1) / (published readers + 1) fits at least as many as published.
+    assert most_labels(three, 640_000, 128, readings_agree) >= published

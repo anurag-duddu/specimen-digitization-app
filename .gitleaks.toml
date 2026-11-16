@@ -634,16 +634,16 @@ regexes = [
   '''^\s*"hashed_secret": "07a4593b6f7f875bb650c2263406d4da24c2345a",?\s*$''', # pragma: allowlist secret (published SHA-256 pin of an approved engine download)
   '''^\s*"hashed_secret": "f92babbd4bddd1527d1656e2d319924beae14f7b",?\s*$''', # pragma: allowlist secret (published SHA-256 pin of an approved engine download)
   '''^\s*"hashed_secret": "13685940fb69a045ed2a0b5800962f51155d0948",?\s*$''', # pragma: allowlist secret (published SHA-256 pin of an approved engine download)
-  '''^\s*"hashed_secret": "5d876c14b2eb6b173d3dd0d4715df50b4cb352a4",?\s*$''', # pragma: allowlist secret (synthetic shared-wire fixture value)
+  '''^\s*"hashed_secret": "bcce9340d476573373a5fd32b10175d538004bbb",?\s*$''', # pragma: allowlist secret (synthetic shared-wire fixture value)
 ]
 
 [[rules.allowlists]]
-description = "Exact synthetic idempotency key of the shared-wire HTTP journey in tests/fixtures/general_api_contracts.json; not a credential; reviewed false alarm by owner decision 2026-10-17; see SECRET_SCAN_REVIEW.md"
+description = "Exact synthetic idempotency key of the shared-wire HTTP journey in tests/fixtures/general_api_contracts.json; not a credential; reviewed false alarm by owner decisions 2026-10-17 and 2026-11-16 (value replaced); see SECRET_SCAN_REVIEW.md"
 condition = "AND"
 paths = ['''^tests/fixtures/general_api_contracts\.json$''']
 regexTarget = "line"
 regexes = [
-  '''^\s*"Idempotency-Key": "7651ca196a03f7cc18d5625844ca3b2fdc68a62d7b19c691c3b222ad40a77aa8",?\s*$''', # pragma: allowlist secret (synthetic shared-wire fixture idempotency key)
+  '''^\s*"Idempotency-Key": "566f148df7add8b7e8dd54295d86489bb2511f40c76353c4d6605642e65c8222",?\s*$''', # pragma: allowlist secret (synthetic shared-wire fixture idempotency key)
 ]
 
 [[rules.allowlists]]
