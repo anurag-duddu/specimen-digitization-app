@@ -123,7 +123,7 @@ def can_reassess_locations(run: Run, protected=(), *, specimen=None) -> bool:
         or run.blocker is not None
         or has_active_lease(run)
         or "evidence_pilot" in run.dependencies
-        or (run.attempts.get(FIELD_RESEARCH, 0) >= run.profile.execution.max_attempts
+        or (attempts_used(run, FIELD_RESEARCH) >= run.profile.execution.max_attempts
             and authorization_for(run, specimen) is None)
     ):
         return False
@@ -166,7 +166,7 @@ def requeue_completed_field_research(run: Run) -> bool:
         or run.disposition != Disposition.REVIEW
         or run.blocker is not None
         or run.dependencies.get("human_review_field_locks")
-        or run.attempts.get(FIELD_RESEARCH, 0) >= run.profile.execution.max_attempts
+        or attempts_used(run, FIELD_RESEARCH) >= run.profile.execution.max_attempts
     ):
         return False
     unsettled = {ValueState.UNRESOLVED, ValueState.AMBIGUOUS, ValueState.UNKNOWN}
@@ -180,23 +180,128 @@ def requeue_completed_field_research(run: Run) -> bool:
 # pass on, in next_step's order.
 AFTER_READINGS = frozenset({"adjudicate", "parse", "plan", "lookup", FIELD_RESEARCH, FIELD_RECHECK,
     "resolve", "normalize", "validate", "finalize"})
+# Each step move_to_units runs again, with its attempts at the move: its allowance of
+# max_attempts counts from the move (attempts_used), while run.attempts keeps counting, so
+# every attempt's cost-ledger key, step:attempt (tenant_budget.recorded_micros,
+# lane_costs.record_step), stays its own.
+MOVED_ATTEMPTS = "attempts_at_units_move"
+# The removed old first pass's findings (rule first_pass_preference, origin/main d83f4d6f1
+# field_research/step.py:3041-3104), which nothing writes or replaces now.
+OLD_FINDINGS = "first_pass_preference"
+
+
+def runs_again(step: str) -> bool:
+    """Whether move_to_units schedules ``step`` again."""
+    return step in AFTER_READINGS or step.startswith(("first_pass:", "authority:"))
+
+
+def attempts_used(run: Run, step: str) -> int:
+    """The step's attempts that count against max_attempts: those since the run moved to the
+    units path (move_to_units), else all of them."""
+    return run.attempts.get(step, 0) - run.dependencies.get(MOVED_ATTEMPTS, {}).get(step, 0)
+
+
+def move_carries(repository, specimen: Specimen, event: AuditEvent, blobs) -> dict:
+    """The carries of the active run's field decisions across its move to the units path
+    (Workflow._move), made as human_field_carry.prepare makes a new run's for reprocess, from
+    that module's own parts, and recorded on ``event``. The module is unchanged: its source
+    digest is pinned on native research jobs (human_field_carry.contract_pin). The move stays
+    in its run, so the transition's source and target are the run itself;
+    human_field_carry.verify proves a transition from a reprocess event alone, so ``event`` is
+    one. Unlike reprocess, the move
+    keeps a person's transcript decisions (adjudicate applies them again), so they refuse
+    nothing, and it carries a field decision only when it was saved after the run's latest
+    transcript decision: that edit made the run parse again, which replaced it, as on any run. A
+    field a new run's reprocess carried already stays carried as it is; an authority or taxonomy
+    selection is not carried, as reprocess carries none. Raises ValueError when a decision
+    cannot be proved or the run no longer holds it as saved, so the move never drops one."""
+    from .human_field_carry import (
+        KEY,
+        CarryTransition,
+        HumanFieldCarryV1,
+        _evidence,
+        _fail,
+        _latest,
+        _pass,
+        _proofs,
+        _source,
+        manifests,
+        verify,
+    )
+
+    repository, blobs = _pass(repository, blobs)
+    run = specimen.run
+    proofs = _proofs(repository, specimen)
+    existing = manifests(specimen)
+    if existing:
+        verify(repository, specimen, blobs, proofs=proofs)
+    edited = max((p.resulting_revision for p in proofs if p.event.action == "review_transcription"
+        and repository.version(specimen.scope, specimen.id, p.resulting_revision).run.id == run.id), default=0)
+    latest = _latest(repository, specimen, [p for p in proofs if p.event.action != "review_transcription"])
+    result, source = {}, None
+    for key, (_, proof, original) in latest.items():
+        if (key in existing or original.run.id != run.id or proof.event.action != "review_field"
+                or proof.resulting_revision <= edited):
+            continue
+        field = original.run.fields.get(key)
+        if field is None or not proof.event.reason.strip():
+            _fail()
+        declared = {k: proof.event.after[k] for k in FieldValue.model_fields if k in proof.event.after}
+        if FieldValue.model_validate(declared) != field or run.fields.get(key) != field:
+            _fail()
+        source = source or _source(repository, specimen, blobs)
+        if _source(repository, original, blobs) != source:
+            _fail()
+        _evidence(original, field, blobs)
+        result[key] = HumanFieldCarryV1(organization_id=specimen.scope.organization_id,
+            collection_id=specimen.scope.collection_id, specimen_id=specimen.id, field_key=key,
+            origin_run_id=run.id, origin_event_id=proof.event.id, origin_revision=proof.resulting_revision,
+            origin_field=field.model_copy(deep=True), source_identity=source,
+            transitions=(CarryTransition(event_id=event.id, actor=event.actor, reason=event.reason,
+                source_run_id=run.id, source_revision=specimen.version, target_run_id=run.id),))
+    event.before = {"source_run_id": run.id, "source_revision": specimen.version}
+    event.after = {"target_run_id": run.id,
+        KEY: {k: digest(v.model_dump(mode="json")) for k, v in sorted(result.items())}}
+    return result
+
+
+def _field_decided(repository, specimen: Specimen) -> bool:
+    """Whether the record's audit, the part history compaction moved to earlier versions
+    (storage.compact_history) included, holds a person's field decision."""
+    current, events = specimen, list(specimen.audit)
+    while current.audit_offset:
+        current = repository.version(specimen.scope, specimen.id, current.history_through_revision)
+        events += current.audit
+    return any(event.action == "review_field" for event in events)
+
+
+def moves_to_units(run: Run) -> bool:
+    """Whether the run is one move_to_units moves: recorded on the old path, and not the
+    evidence pilot's (its lane runs no first pass, application/evidence_pilot.py)."""
+    from .reading_units import OLD
+
+    return run.first_pass_path == OLD and "evidence_pilot" not in run.dependencies
 
 
 def move_to_units(run: Run) -> bool:
     """Move a run that the old first pass processed onto the units path, when it is reopened
-    (docs/execution/units/PLAN.md, WP 1.8): Workflow._step calls it before it picks a step.
-    The run's pinned prompts gain prompt__first_pass_units (production.pinned_prompt), where
-    the run pins prompts; its first pass and every step after it are to run again, so the
-    units path's first pass runs before parse; and its recorded path becomes units. Its old
-    first-pass decisions and its lookups go, since those steps run again, and so does a
-    person's approval: the run is researched again. Its readings, their attempts and costs,
-    and a person's transcription decisions stay (adjudicate applies those again).
+    (docs/execution/units/PLAN.md, WP 1.8): Workflow._step calls it (Workflow._move) before
+    it picks a step. The run's pinned prompts gain prompt__first_pass_units
+    (production.pinned_prompt), where the run pins prompts; its first pass and every step
+    after it are to run again, so the units path's first pass runs before parse, each with a
+    fresh allowance of attempts (attempts_used); and its recorded path becomes units. Its old
+    first-pass decisions, transcripts and findings (OLD_FINDINGS), its lookups, a location
+    reassessment it was queued for (its fields are all researched again), a person's approval
+    and its disposition go. Its readings, their attempts and costs, and a person's
+    transcription decisions stay: each such transcript is kept with the person's text,
+    state, name and reason, which adjudicate applies again. A person's field decisions are
+    carried by Workflow._move (human_field_carry).
 
-    True when the run moved. A run on the units path, and the evidence pilot's (its lane runs
-    no first pass, application/evidence_pilot.py), stay as they are."""
-    from .reading_units import OLD, UNITS
+    True when the run moved. A run on the units path, and the evidence pilot's, stay as
+    they are."""
+    from .reading_units import UNITS
 
-    if run.first_pass_path != OLD or "evidence_pilot" in run.dependencies:
+    if not moves_to_units(run):
         return False
     prompts = run.dependencies.get("prompts")
     if isinstance(prompts, dict):
@@ -204,11 +309,19 @@ def move_to_units(run: Run) -> bool:
         from .production import pinned_prompt
 
         prompts[PromptName.FIRST_PASS_UNITS.value] = pinned_prompt(run, PromptName.FIRST_PASS_UNITS)
-    run.completed_steps = [
-        step
-        for step in run.completed_steps
-        if step not in AFTER_READINGS and not step.startswith(("first_pass:", "authority:"))
+    moved = {step: count for step, count in sorted(run.attempts.items()) if runs_again(step) and count}
+    if moved:
+        run.dependencies[MOVED_ATTEMPTS] = moved
+    run.dependencies.pop("location_reassessment", None)
+    run.completed_steps = [step for step in run.completed_steps if not runs_again(step)]
+    run.transcripts = [
+        Transcript(region_id=t.region_id, text=t.text, observation_ids=t.observation_ids,
+            alternatives=t.alternatives, resolved=t.resolved, value_state=t.value_state,
+            actor=t.actor, reason=t.reason)
+        for t in run.transcripts
+        if t.actor is not None
     ]
+    run.findings = [finding for finding in run.findings if finding.rule_id != OLD_FINDINGS]
     run.first_pass_decisions = []
     run.lookups = []
     run.human_approved = False
@@ -435,9 +548,6 @@ class PipelineAdapters(Protocol):
     def transcribe(
         self, specimen: Specimen, region: Region, route: str
     ) -> Observation: ...
-    def first_pass(
-        self, specimen: Specimen, region: Region, readings: list[Observation]
-    ) -> FirstPassDecision: ...
     def first_pass_units(
         self, specimen: Specimen, region: Region, readings: list[Observation]
     ) -> tuple[FirstPassDecision, ReadingUnits]: ...
@@ -522,6 +632,37 @@ class Workflow:
         ):
             return self._step(principal, specimen_id)
 
+    def _move(self, principal: Principal, specimen: Specimen, revision: int, base: Specimen) -> Specimen | None:
+        """Move the run to the units path (move_to_units), carrying a person's field decisions
+        across the steps it runs again as reprocess carries them to a new run (move_carries,
+        read from ``base``, the record as saved; its audit event, a reprocess of the run into
+        itself, is the carry's transition). Its save is the step's next one. A decision that
+        cannot be carried, and a research selection, which reprocess refuses too, block the
+        run unmoved: a person's field is never dropped. Returns the blocked record, else None."""
+        from .human_field_carry import KEY as CARRY_KEY, install
+
+        run, carries = specimen.run, {}
+        try:
+            if run.dependencies.get("human_review_field_locks"):
+                raise ValueError("research selections are not carried")
+            if run.dependencies.get(CARRY_KEY) or _field_decided(self.repository, base):
+                event = AuditEvent(actor=principal.user_id, action="reprocess", reason=(
+                    "The run moved to the units path when it was reopened, its fields a person decided carried"))
+                carries = move_carries(self.repository, base, event, self.blobs)
+        except (ValueError, AttributeError, KeyError, OSError):
+            run.blocker = "preserved_human_field_provenance_unavailable"
+            run.stage = "processing_blocked"
+            return self.repository.save(principal, specimen, revision,
+                f"human-carry-block:{revision}", digest({"human_carry_block": revision}))
+        move_to_units(run)
+        if carries:
+            # install sets the carries' manifest whole: a new run's carries stay beside them.
+            carried = dict(run.dependencies.get(CARRY_KEY) or {})
+            install(specimen, carries, self.blobs)
+            run.dependencies[CARRY_KEY] = dict(sorted({**carried, **run.dependencies[CARRY_KEY]}.items()))
+            specimen.audit.append(event)
+        return None
+
     def _step(self, principal: Principal, specimen_id: str) -> Specimen:
         specimen = self.repository.get(principal.scope, specimen_id)
         run = specimen.run
@@ -543,6 +684,8 @@ class Workflow:
                 run.stage = "processing_blocked"
                 return self.repository.save(principal, specimen, revision,
                     f"human-carry-block:{revision}", digest({"human_carry_block": revision}))
+        # The record as saved, which a move's carries are proved against (Workflow._move).
+        base = specimen.model_copy(deep=True) if moves_to_units(run) else None
         if self.admission is not None:
             self.admission.admit(specimen)
         if run.stage == "retry_scheduled":
@@ -557,7 +700,10 @@ class Workflow:
                 run.next_retry_at = None
         # A run the old first pass processed, reopened: its steps from the first pass on run
         # again on the units path.
-        move_to_units(run)
+        if base is not None:
+            blocked = self._move(principal, specimen, revision, base)
+            if blocked is not None:
+                return blocked
         step = self.next_step(run)
         if (
             step == "plan"
@@ -615,7 +761,7 @@ class Workflow:
             )
         if (
             (ordinary_first_pass or ordinary_extraction)
-            and run.attempts.get(step, 0) >= run.profile.execution.max_attempts
+            and attempts_used(run, step) >= run.profile.execution.max_attempts
         ):
             # Its attempts are used up, as the saved intent of the last one
             # records. Its result was then lost (the active graph's size limit
@@ -710,7 +856,7 @@ class Workflow:
         from .location_reassessment_authorization import authorized_queued_attempt
 
         issue = None
-        if (step == FIELD_RESEARCH and run.attempts.get(step, 0) >= policy.max_attempts
+        if (step == FIELD_RESEARCH and attempts_used(run, step) >= policy.max_attempts
                 and not authorized_queued_attempt(specimen)):
             issue = ATTEMPTS_USED
         elif run.usage.steps >= policy.max_steps:
@@ -1357,7 +1503,11 @@ class Workflow:
                             digest=outcome.digest,
                         )
                         run.evidence.append(evidence)
-                        field = run.fields["taxon"]
+                        # A person's taxon decision a new run or a move carries
+                        # (human_field_carry) stays as the person saved it, as field
+                        # research never changes one (field_research.step.human_keys).
+                        carried = "taxon" in (run.dependencies.get(CARRY_KEY) or {})
+                        field = run.fields["taxon"].model_copy(deep=True) if carried else run.fields["taxon"]
                         field.evidence_ids.append(evidence.id)
                         if outcome.candidates:
                             field.normalized = outcome.candidates[0].get(
@@ -2058,7 +2208,7 @@ class Workflow:
         The run holds no lease while it waits, and ``step`` returns it unchanged
         until ``next_retry_at``.
         """
-        if run.attempts.get(step, 0) < run.profile.execution.max_attempts:
+        if attempts_used(run, step) < run.profile.execution.max_attempts:
             delay = retry_delay(
                 run.attempts.get(step, 1),
                 provider_seconds,
@@ -2083,7 +2233,7 @@ class Workflow:
         return (
             reader_failure_is_recoverable(run, step)
             and failure_is_retryable(run, step, failure.status)
-            and run.attempts.get(step, 0) >= run.profile.execution.max_attempts
+            and attempts_used(run, step) >= run.profile.execution.max_attempts
         )
 
     @staticmethod
@@ -2115,7 +2265,7 @@ class Workflow:
                 failure.status == LookupStatus.MALFORMED
                 or (
                     failure_is_retryable(run, step, failure.status)
-                    and run.attempts.get(step, 0) >= run.profile.execution.max_attempts
+                    and attempts_used(run, step) >= run.profile.execution.max_attempts
                 )
             )
         )
@@ -2139,7 +2289,7 @@ class Workflow:
             return True
         return failure.status == LookupStatus.MALFORMED or (
             failure_is_retryable(run, step, failure.status)
-            and run.attempts.get(step, 0) >= run.profile.execution.max_attempts
+            and attempts_used(run, step) >= run.profile.execution.max_attempts
         )
 
     @staticmethod

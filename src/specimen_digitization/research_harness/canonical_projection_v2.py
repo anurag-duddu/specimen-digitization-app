@@ -27,8 +27,9 @@ from .evidence import validate_assembly, validate_resolution
 from .native_canonical import CANONICAL_KEYS, RESEARCH_KEYS, CanonicalIdentityV1, canonical_value_v1, strict_history_scope_v1
 from .publication import NativeDependencyBasis, _native_checkpoint
 
-# A label's decided transcription version as the projection writes it: V3 when the label has
-# reading units (projection._first_pass), which every run's labels have on the units path.
+# A label's decided transcription version as the projection writes it (projection._first_pass):
+# V3 when the label has reading units, V2 when it has none (a label whose readings hold no text,
+# and every label of a run the old first pass recorded).
 TRANSCRIPTION_VERSIONS = frozenset({"AppendTranscriptionVersionV2", "AppendTranscriptionVersionV3"})
 
 CONTRACT = "canonical-value-lineage/v2"

@@ -301,10 +301,11 @@ def d10333ff_readings(second=LABEL_3B):
         Reading("3B", "label3", "obs3b", "raw_reading", second))
 
 
-def test_a_non_preferred_readers_text_nothing_backs_is_only_a_possibility():
-    """d10333ff's label 1: its first pass preferred 1A; 1B's "BONITELL" is a
-    possibility nothing on the labels backs. Another label's reading that
-    writes it would back it (the owner, 2026-10-25)."""
+def test_a_readers_text_nothing_backs_is_only_a_possibility():
+    """d10333ff's label 1: 1B's "BONITELL" is a possibility nothing on the
+    labels backs (1A, the label's decided transcript, does not write it).
+    Another label's reading that writes it would back it (the owner,
+    2026-10-25)."""
     readings = d10333ff_readings()
     assert agreement.only_a_possibility("BONITELL", readings[1], readings)
     assert not agreement.only_a_possibility("ILLINOIS", readings[0], readings)

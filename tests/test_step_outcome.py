@@ -12,6 +12,7 @@ from specimen_digitization.application.api import (
 )
 from specimen_digitization.application.domain import Principal, Run, Scope
 from specimen_digitization.application.integrity import EvidenceIntegrityError
+from specimen_digitization.application.reading_units import UNITS
 from specimen_digitization.application.storage import (
     LocalBlobs,
     SQLiteRepository,
@@ -42,7 +43,7 @@ def drain_to_parse_failure(tmp_path, monkeypatch, phase_error, *, carry=False, *
     scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
     principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
     specimen = repo.get(scope, row["specimen_id"])
-    specimen.run = Run(profile=specimen.run.profile)
+    specimen.run = Run(profile=specimen.run.profile, first_pass_path=UNITS)  # A new run records units.
     if carry:
         # A person's preserved field (human_field_carry), checked by the tests'
         # stand-ins for its proof.
@@ -176,7 +177,7 @@ def test_a_retried_parse_keeps_one_evidence_row_per_parsed_line(tmp_path, failur
     scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
     principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
     specimen = repo.get(scope, row["specimen_id"])
-    specimen.run = Run(profile=specimen.run.profile)
+    specimen.run = Run(profile=specimen.run.profile, first_pass_path=UNITS)  # A new run records units.
     repo.save(principal, specimen, specimen.version, "new-run", digest({"new": True}))
     adapters = FlakyExtraction(blobs, failures)
     now = [datetime.now(timezone.utc)]

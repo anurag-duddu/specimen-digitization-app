@@ -257,17 +257,15 @@ def test_readers_that_differ_in_punctuation_or_a_letter_still_disagree(key, firs
     assert refused is not None and refused.reason == agreement.DIFFER
 
 
-def test_readers_that_agree_settle_on_the_spelling_of_the_reader_the_first_pass_preferred():
-    """105526330's precise location: 2A, the reading the first pass preferred,
-    writes "Yepocapa,4800 ft.", 2B "Yepocapa, 4800 ft.". Spacing aside they
-    agree, on 2A's spelling; 2B's spelling is sent back for it (until
-    2026-10-25 as NOT_DECIDED, G19's binding). On the units path, which
-    prefers no reader, they agree on the spelling the image names, else the
-    first reader's (agreement._spelled): cleared where the image names one,
-    marked where it is uncertain. There each candidate holds the elevation
-    "4800 ft.", which a precise location keeps only beside the elevation field's
-    same literal from its label (WP 2.3b, the rule precise_location_extent): it
-    is given here, so the spelling decides."""
+def test_readers_that_agree_settle_on_the_spelling_the_image_names_else_the_first_readers():
+    """105526330's precise location: 2A writes "Yepocapa,4800 ft.", 2B
+    "Yepocapa, 4800 ft.". Spacing aside they agree. The units path prefers no
+    reader: they agree on the spelling the image names, else the first
+    reader's (agreement._spelled), cleared where the image names one, marked
+    where it is uncertain, and the other spelling is sent back. Each candidate
+    holds the elevation "4800 ft.", which a precise location keeps only beside
+    the elevation field's same literal from its label (WP 2.3b, the rule
+    precise_location_extent): it is given here, so the spelling decides."""
     readings = (Reading("2A", "region-2", "obs-2A", "decided_transcript", "Yepocapa,4800 ft.\nIV-25 1948"),
         Reading("2B", "region-2", "obs-2B", "raw_reading", "Yepocapa, 4800 ft.\nIV-25 1948"))
     task = FieldTask("precise_location", False, FieldValue(state=ValueState.AMBIGUOUS),

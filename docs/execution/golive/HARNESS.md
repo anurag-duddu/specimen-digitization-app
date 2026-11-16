@@ -493,21 +493,66 @@ took (`Run.first_pass_path`): every new run records `units`
 (`reading_units.UNITS`; the API's intake and region review, bulk intake and the
 source import create runs so), and a run stored without the key is a run the old
 first pass processed (`reading_units.OLD`). When such a run is reopened (a
-person's transcript edit, a resume, a retry or a reconcile makes it step again;
-a history restore runs nothing, so a restored run moves when it is next resumed
+person's transcript edit, a field decision that reopens it at `lookup`, a
+resume, a retry, a location reassessment or a reconcile makes it step again; a
+history restore runs nothing, so a restored run moves when it is next resumed
 or edited), `Workflow._step` moves it to the units path before it picks its
-step (`workflow.move_to_units`): the units prompt is pinned beside the run's
-other pins, where it pins prompts (`production.pinned_prompt`); the first pass
-and every step after it are scheduled again, so the units first pass runs
-before `parse`; its old first-pass decisions and lookups, a person's approval
-and its disposition go; and its recorded path becomes `units`. Its readings,
-their attempts and costs, and a person's transcription decisions stay:
-`adjudicate` applies each such decision again to its label's new transcript,
-and the label's units are then the person's text (`first_pass.source_units`).
+step (`Workflow._move`, `workflow.move_to_units`): the units prompt is pinned
+beside the run's other pins, where it pins prompts (`production.pinned_prompt`);
+the first pass and every step after it are scheduled again, so the units first
+pass runs before `parse`, each with a fresh allowance of `max_attempts` counted
+from the move (`workflow.attempts_used`; `run.attempts` keeps counting, so each
+attempt's cost-ledger key `step:attempt`, `tenant_budget.recorded_micros` and
+`lane_costs.record_step`, is new); and its recorded path becomes `units`. Its
+old first-pass decisions, machine transcripts and findings (rule
+`first_pass_preference`), its lookups and its disposition go; its readings and
+their attempts and costs stay. What becomes of a person's input:
+
+- Transcript edits and abstentions (`review_transcription`) stay. The move keeps
+  each such transcript with the person's text, state, name and reason, and
+  `adjudicate` applies it again to its label's new transcript; the label's units
+  are then the person's text (`first_pass.source_units`), or after an abstention
+  its readings'.
+- Field decisions (`review_field`) are carried across the move as Start new run
+  (`reprocess`) carries them to a new run (`human_field_carry`):
+  `workflow.move_carries` makes each carry as `human_field_carry.prepare` makes
+  a new run's, from that module's own parts, which are unchanged (its source
+  digest is pinned on native research jobs, `human_field_carry.contract_pin`).
+  The carry's transition is the move's audit event, a `reprocess` of the run into
+  itself (its source and target run are the run; the app's history shows it as
+  "Requested reprocessing"), since `human_field_carry.verify` proves a transition
+  from a reprocess event and the server's save audit of the save that holds it;
+  the carries are read from the record as saved. `parse` keeps the field, field
+  research never researches or changes it, and the lookup leaves a carried taxon
+  as the person saved it. A field a new run already carries stays carried as it
+  is. A field decision saved before the run's latest transcript decision is not
+  carried: that edit made the run parse again, which replaces it, as on any run.
+  A decision the record cannot prove (the synthetic app's local repository holds
+  no save audits) or no longer holds as it was saved blocks the run unmoved
+  (`preserved_human_field_provenance_unavailable`), the person's value kept.
+- Research-candidate selections (`human_review_field_locks`) are not carried; as
+  Start new run refuses to drop them, the move blocks the run unmoved. A
+  transcript edit drops them first (`application/api.py`, kind transcription),
+  and the run then moves.
+- Authority and taxonomy selections (`review_authority_resolution`,
+  `review_taxonomy_resolution`) go, as on a new run: the field is looked up or
+  researched again.
+- An approval (`review_approve`) goes: the fields are settled again, so the record
+  waits for a person's approval again (field research marks a carried field
+  `preserved_human_decision:<field>` until then). There is no reject decision.
+- A location reassessment the run was queued for goes, since every field is
+  researched again; a person's location decisions are carried as above.
+- Coverage (`review_coverage`), a capability deferral, reading metadata and a
+  reconcile stay: the move does not touch them. A regions decision, a
+  classification and Start new run make a new run, which records `units`.
+
 A finalized, paused, cancelled or blocked run steps nowhere and is not moved,
-and an evidence-pilot run, whose lane runs no first pass, is never moved.
-Tests: `tests/test_old_path_migration.py`, on a finalized run recorded in the
-shape the old path stored one (its module docstring says which).
+and an evidence-pilot run, whose lane runs no first pass, is never moved. Every
+state the move saves passes the integrity check below. Tests:
+`tests/test_old_path_migration.py`, on a finalized run recorded in the shape the
+old path stored one (its module docstring says which), in the synthetic app; and
+`tests/test_old_path_migration_carry.py`, the carries, on the named repository
+over synthetic proof rows (`tests/test_human_field_carry_api.py`'s).
 
 **Recorded** on the region's `Transcript` (DATA_CONTRACT 4.2): `decision_kind`
 `first_pass`, `selected_observation_id` none, `text` none, `first_pass_call`
@@ -1572,13 +1617,17 @@ with S3 on 2026-09-25).
 ## 12. The harness's instructions: the managed prompt and the knowledge (stage 7, part 7)
 
 G29, G36, G37 and G40; PLAN's G29 row makes each subcollection's harness
-knowledge part of its profile. The harness agent's instructions (section 11)
-are the pinned managed prompt `field-harness` followed by the harness knowledge
-the profile names by id and version (`harness_knowledge.instructions_for`). A
-knowledge id or version the code does not have is refused.
+knowledge part of its profile. The harness agent of section 11
+(`field_harness.run_harness`) takes its instructions from its caller, and no
+step of the pipeline calls it now: field research (FIELD_RESEARCH.md) researches
+the fields. Its managed prompt `field-harness`, a Logfire template variable
+with its default in code, was removed in WP 1.8 (`docs/execution/units/PLAN.md`,
+section 5's `prompt__field_harness` row); its Logfire variable is unused. The
+harness knowledge module (`harness_knowledge`, `instructions_for`) went when
+WP 1.0 moved the Insects knowledge into the specimen ontology
+(`ontology/specimen.yaml`, commit e37ad89a).
 
-**The prompt** is a managed prompt like the other three: a Logfire template
-variable with its default in code, pinned on the run. It states:
+**The prompt**, until WP 1.8, stated:
 - G40: everything transcribed on the specimen is context for every field;
   keep looking things up and weighing the evidence until a field settles or is
   shown not to;
@@ -1588,8 +1637,9 @@ variable with its default in code, pinned on the run. It states:
 - G36: no conclusion without evidence;
 - the copy rule: never invent, complete, correct, expand or translate a literal.
 
-**The Insects knowledge** (`harness_knowledge/insects.py`, id `insects`, version
-`insects-harness-knowledge-v1`) is the pilot's. S3's profile names it. It lists
+**The Insects knowledge** (until WP 1.0 `harness_knowledge/insects.py`, id
+`insects`, version `insects-harness-knowledge-v1`; now the specimen ontology's) is
+the pilot's. It lists
 the label notations and every reading each allows, each with the fields it can
 belong to:
 - "P.I.", "Guat.", "Prov.", "Dept.", "Mt.", "Is.", "nr." and the directions

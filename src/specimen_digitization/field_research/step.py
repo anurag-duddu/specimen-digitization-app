@@ -88,7 +88,7 @@ from specimen_digitization.application.organiser import (
 )
 from specimen_digitization.application.policy import PLACEHOLDERS
 from specimen_digitization.application.reliability import AdapterFailure
-from specimen_digitization.application.workflow import FIELD_RESEARCH, OperationalBlock
+from specimen_digitization.application.workflow import FIELD_RESEARCH, OperationalBlock, attempts_used
 
 from . import derive
 from .budget import BudgetExhausted
@@ -172,13 +172,14 @@ MODEL_TIMEOUT_SECONDS = 120
 def last_attempt(run) -> bool:
     """Whether this is the step's last allowed attempt. The workflow counts an
     attempt (run.attempts[STEP]) before the step runs, and schedule_retry
-    retries only while that count is below the run's max_attempts."""
-    return run.attempts.get(STEP, 0) >= run.profile.execution.max_attempts
+    retries only while that count, counted from the run's move to the units path
+    when it moved (workflow.attempts_used), is below the run's max_attempts."""
+    return attempts_used(run, STEP) >= run.profile.execution.max_attempts
 
 
 def _attempts(run) -> str:
-    """The step's attempts so far, in words: "3 attempts"."""
-    attempts = run.attempts.get(STEP, 0)
+    """The step's attempts so far (workflow.attempts_used), in words: "3 attempts"."""
+    attempts = attempts_used(run, STEP)
     return f"{attempts} attempt{'s' if attempts != 1 else ''}"
 
 
