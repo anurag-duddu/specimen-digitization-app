@@ -223,7 +223,7 @@ def units_document(readings: Sequence[Reading]) -> dict[str, list[dict[str, Any]
         group = [r for r in readings if r.region_id == reading.region_id]
         names: dict[str, str] = {}
         for item in group:
-            if item.input_source == "decided_transcript" and item.first_pass is not None and item.first_pass.person_decided:
+            if item.person_decided:
                 names[PERSON] = item.name
             names.setdefault(item.observation_id, item.name)
         units = []
@@ -257,9 +257,6 @@ class _Expert:
     ) -> None:
         self.task = task
         self.readings = tuple(readings)
-        # The units path (step.run_readings): the request carries the units and the
-        # instructions are the units path's.
-        self.units = any(r.units is not None for r in self.readings)
         self.by_label = {_label(r.name): r for r in self.readings}
         self.texts = [r.text for r in self.readings]
         self.tools = tools
@@ -291,7 +288,7 @@ class _Expert:
                 f"Expert for {FIELD_LABELS[key]}. Settles it from the label readings "
                 "and its approved sources."
             ),
-            instructions=instructions(key, units=self.units),
+            instructions=instructions(key),
             output_type=FieldAnswer,
             retries={"tools": 1, "output": 2},
             model_settings=ModelSettings(**MODEL_SETTINGS),
@@ -351,47 +348,21 @@ class _Expert:
                 {"reading": c.reading, "quote": c.quote, "literal": c.literal}
                 for c in task.candidates
             ],
-            # On the units path each reading's name and text only: its instructions name
-            # neither region_id nor input_source (a person's reading is in person_decided).
-            "readings": [
-                {"name": r.name, "text": r.text} if self.units else {
-                    "name": r.name,
-                    "region_id": r.region_id,
-                    "input_source": r.input_source,
-                    "text": r.text,
-                }
-                for r in self.readings
-            ],
+            # Each reading's name and text only: the instructions name neither region_id nor
+            # input_source (a person's reading is in person_decided).
+            "readings": [{"name": r.name, "text": r.text} for r in self.readings],
             "other_fields": others,
         }
-        # The first pass's opinion of each label it compared, by label number
-        # (owner, 2026-10-25): advice beside the raw transcriptions, never a
-        # field's evidence. Left out when no label has one.
-        advice = {}
-        for reading in self.readings:
-            given = reading.first_pass
-            if given is not None and not given.person_decided and reading.name[:-1] not in advice:
-                advice[reading.name[:-1]] = {
-                    "preferred": given.preferred,
-                    "rationale": given.rationale,
-                    "reader_notes": dict(given.reader_notes),
-                    "differences": [{"texts": dict(difference["texts"]), "verdict": difference["verdict"]}
-                        for difference in given.differences],
-                }
-        if advice:
-            document["first_pass"] = advice
         # The labels whose transcript a person decided, with the reading that
         # holds it: that reading's text is the label's (agreement.labels).
-        persons = {r.name[:-1]: r.name for r in self.readings
-            if r.first_pass is not None and r.first_pass.person_decided and r.input_source == "decided_transcript"}
+        persons = {r.name[:-1]: r.name for r in self.readings if r.person_decided}
         if persons:
             document["person_decided"] = persons
-        if self.units:
-            document["units"] = units_document(self.readings)
+        document["units"] = units_document(self.readings)
         sent = INPUT_PREFIX + json.dumps(document, ensure_ascii=False, separators=(",", ":"))
-        # The units path's one re-ask (field_research/reask.py): the check the expert's earlier
-        # answer failed, after the input.
-        return f"{sent}\n\n{REASK_PREFIX}{task.reask}" if self.units and task.reask else sent
+        # The one re-ask (field_research/reask.py): the check the expert's earlier answer failed,
+        # after the input.
+        return f"{sent}\n\n{REASK_PREFIX}{task.reask}" if task.reask else sent
 
     # Tools -------------------------------------------------------------------
 
@@ -456,8 +427,8 @@ class _Expert:
             return {**refused, "status": str(LookupStatus.PROVIDER), "note": note}
         call.status, call.answer = answer.status, answer
         view = _candidate_view(answer)
-        if self.units and self.task.reask:
-            # The units path's one re-ask (field_research/reask.py, plan WP 2.3c) stays under the input
+        if self.task.reask:
+            # The one re-ask (field_research/reask.py, plan WP 2.3c) stays under the input
             # bound with its sentence: in its requests a lookup's answer does not repeat the source and
             # the query its call already carries.
             del view["source"], view["query"]
@@ -473,8 +444,7 @@ class _Expert:
         return await self._once(("parse_date", literal, year_literal), lambda: self._check(
             checks.parse_date(literal, reading_texts=self.texts, date_rules=self.date_rules,
                               year_literal=year_literal, part=checks.DATE_PART.get(self.task.key),
-                              field=self.task.key, reading_names=[r.name for r in self.readings],
-                              units=self.units)))
+                              field=self.task.key, reading_names=[r.name for r in self.readings])))
 
     async def parse_elevation(self, literal: str) -> dict[str, Any]:
         """Read a written elevation: its number or range, its unit and any approximate marker.
@@ -521,15 +491,14 @@ class _Expert:
         return values
 
     def validate(self, answer: FieldAnswer) -> FieldAnswer:
-        """The answer the checks let stand (_validate), or a refusal the expert is told. On the
-        units path each refusal's check and the answer's literal are kept (`rejected`): when every
-        answer is refused, the outcome keeps them (FieldOutcome.rejected); nothing here sends them
-        to a model."""
+        """The answer the checks let stand (_validate), or a refusal the expert is told. Each
+        refusal's check and the answer's literal are kept (`rejected`): when every answer is
+        refused, the outcome keeps them (FieldOutcome.rejected); nothing here sends them to a
+        model."""
         try:
             return self._validate(answer)
         except ModelRetry as refused:
-            if self.units:
-                self.rejected.append((getattr(refused, "check", "other"), answer.literal))
+            self.rejected.append((getattr(refused, "check", "other"), answer.literal))
             raise
 
     def _validate(self, answer: FieldAnswer) -> FieldAnswer:
@@ -571,13 +540,13 @@ class _Expert:
         return answer.model_copy(update={"reading_names": canonical})
 
     def _without_role(self, answer: FieldAnswer) -> FieldAnswer:
-        """On the units path, a collectors literal without the collected_by marker at its edge, as
+        """A collectors literal without the collected_by marker at its edge, as
         the step settles it (ontology_checks.without_role; step._role_markers), and its value too
         when it was the literal; the marker alone is refused (agreement.ROLE_ONLY). The answer as it
         is otherwise."""
         from .ontology_checks import ROLE_FIELD, without_role
 
-        role = without_role(answer.literal) if self.units and self.task.key == ROLE_FIELD else None
+        role = without_role(answer.literal) if self.task.key == ROLE_FIELD else None
         if role is None or not role.name:
             return answer
         return answer.model_copy(update={"literal": role.name,
@@ -926,9 +895,8 @@ def make_resolver(
     failure of the model fails it as a model_error.
     """
     for key in FIELD_TOOLS:
-        # Every brief loads before the first record, not mid-run, on either path.
+        # Every brief loads before the first record, not mid-run.
         instructions(key)
-        instructions(key, units=True)
     limits = UsageLimits(request_limit=request_limit, tool_calls_limit=tool_calls_limit)
 
     async def resolve(

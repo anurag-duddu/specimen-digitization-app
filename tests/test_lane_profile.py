@@ -324,6 +324,20 @@ class ProductionLikeAdapters(SyntheticAdapters):
             update={"input_sha256": hashlib.sha256(crop).hexdigest()}
         )
 
+    def first_pass_units(self, specimen, region, readings):
+        """The synthetic first pass (first_pass.synthetic_units), whose call read the region's
+        crop on the profile's first-pass route, as ProductionAdapters' first pass does: since
+        WP 1.8 every label with two or more readings gets one."""
+        from specimen_digitization.application.first_pass import synthetic_units
+
+        decision, units = synthetic_units(self.blobs, region, readings)
+        crop = crop_bytes(self.blobs, specimen, region)
+        call = decision.call.model_copy(update={
+            "route_id": specimen.run.profile.first_pass_route,
+            "input_sha256": hashlib.sha256(crop).hexdigest(),
+        })
+        return decision.model_copy(update={"call": call}), units
+
 
 def test_emulator_runs_with_production_readers_pass_parse(tmp_path):
     from test_lane_costs import seed_synthetic_ledger

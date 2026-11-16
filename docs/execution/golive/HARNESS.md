@@ -36,52 +36,41 @@ returned to the harness)". G7 runs it on a Hugging Face model; G19 and G20
 decide what follows. This section is the call; section 4 schedules it and
 records its decision.
 
-**Its pick is advice** (owner, 2026-10-25): "There an LLM opinion that's put
-in front along with actual Raw transcription per model to the harness if
-needed as then harness does its thing per field and settles as written or
-derived and so on", and "Harness can decide as it goes out and learns more
-than what the raw transcriptions are capable of". Each field expert receives,
-per label it compared, the reader it preferred (or none), its rationale, its
-note on each reader and each material difference with its verdict, and the
-harness settles a field on any reader's text that evidence supports: a
-source's match, readers that agree, another label of the specimen that
-writes it; on the preferred reader's text when nothing supports another
-(FIELD_RESEARCH.md step 5). Where its verdict at a difference names the
-reader it preferred, only a source's exact match overrides it; another
-label's agreement or a near spelling there leaves the field for a person
-(`first_pass_conflict`; the coordinator's decision of 2026-10-25 on #414's
-first review).
+**It names no reading** (WP 1.8 of `docs/execution/units/PLAN.md`). Since WP
+1.8 the first pass is the units path's alone
+(`docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md`;
+`first_pass.first_pass_units_direct`): it cuts each label into reading units
+and says, per unit, which reader's text the image shows there, or `uncertain`,
+or `not visible`; it never picks a reading. The owner's words on the earlier
+pick (2026-10-25) still say why: "There an LLM opinion that's put in front
+along with actual Raw transcription per model to the harness if needed as then
+harness does its thing per field and settles as written or derived and so on",
+and "Harness can decide as it goes out and learns more than what the raw
+transcriptions are capable of". Each field expert receives the label's units
+beside the raw readings, and the harness settles a field by the settlement
+rule (the spec's section 4; FIELD_RESEARCH.md step 5): the image, a source and
+readers that agree each back a text. The old first pass, which picked a reader
+as advice to the harness (`FirstPassOutput.selected_reader`, its verdicts and
+the prompt `transcription-disagreement-adjudication`), was removed in WP 1.8;
+a run it processed is moved to the units path when it is reopened (section 4).
 
-**Input.** The crop the readers saw, each reading's raw transcript verbatim, and
-the numbered differences between the readings from a deterministic token
-alignment; a difference in whitespace alone is not listed. Readers appear as
-Reader A, B, … in the profile's route order, never by model or route name.
-Two or more readings are taken. The first pass itself letters up to 26
-readers (one letter each; more block as `first_pass_reading_count_unsupported`),
-but a profile may name at most 8 readers, the label risk budget
-(`review_risk.MAX_LABEL_READINGS`, enforced when the profile is validated), so
-a label never has more than 8 readings. With more than two, each later
-reading is aligned with the first as two readings are, and each listed
-difference gives one span per reader, an empty one at the right offset where
-a reader has nothing there (`first_pass.reading_differences_among`; the
-NVIDIA option's reader C, `docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md`).
-For two readings the request is unchanged by that; only its task sentence
-changed since, on 2026-10-25 (below).
-Instructions are the pinned managed prompt
-`transcription-disagreement-adjudication`. Its code default
-(`prompts._DISAGREEMENT_ADJUDICATION_DEFAULT`, served when Logfire serves no
-managed version) has given it biodiversity context since 2026-10-25 (the
-owner: "The LLM system Prompt is to be working with biodiversity data and
-context should be around it"): one natural-history specimen label's
-collecting data, judged against the image, and its pick as advice to a field
-harness that settles each field with lookups against biodiversity sources and
-may overrule it, so its notes say what it saw. It keeps "Never choose a
-candidate merely because it is more fluent", and its "route material
-ambiguity to human review" is expressed by returning no reading and recording
-the unresolved differences, and G19 then decides the route. The request asks
-for the reader whose raw transcript the image supports, as advice to the
-field harness (until 2026-10-25, the one "the lookups should run against").
-The request states that rule in the model's terms (**G19 in code**, below).
+**Input.** The crop the readers saw and the readings, cut into numbered
+segments at the spaces and line breaks they share, a range kept whole
+(`first_pass.reading_segments`, `build_units_request`); readers whose texts
+differ in whitespace alone share their segments. Readers appear as Reader A,
+B, … in the profile's route order, never by model or route name. The first
+pass letters up to 26 readers (one letter each; more block as
+`first_pass_reading_count_unsupported`), but a profile may name at most 8
+readers, the label risk budget (`review_risk.MAX_LABEL_READINGS`, enforced
+when the profile is validated), so a label never has more than 8 readings.
+Instructions are the pinned managed prompt `first-pass-units` (Logfire
+`prompt__first_pass_units`). Its code default
+(`prompts._FIRST_PASS_UNITS_DEFAULT`, served when Logfire serves no managed
+version) keeps the biodiversity context the owner asked for on 2026-10-25 ("The
+LLM system Prompt is to be working with biodiversity data and context should be
+around it": "You work with biodiversity data.") and "Never prefer a text
+because it reads more fluently", and carries the specimen ontology's brief text
+and its rules about reading a label (`prompts.units_ontology`).
 
 **Input binding** (the steward's review of #97, 2026-09-25). The readings must
 be the region's own: each names the region and, when it records an input asset,
@@ -99,43 +88,45 @@ and, like every billable step, 16,000 of the run's tokens. Each region's
 request from the crop, with 20,000 micro-dollars as its floor, and the call
 reserves the sum of its two requests. The same PR names the pilot's first-pass
 route; until then no lane run has a first pass. Its circuit is the first-pass
-route's provider.
+route's provider. Every request sends low reasoning and temperature 0
+(`first_pass.UNITS_REQUEST_OPTIONS`) over the route's own request options, and
+the call records them with its parameters.
 
 **A cap hit.** A first pass stopped by its caps, its token total or an answer
-cut off at its output cap (see **Failures**), returns no answer, so it selects
-no reading. The owner's pipeline "can rely on raw for a final check if LLM
-decided transcript output fails" (PLAN section 1), and G19 sends each reader's
-raw reading to the harness. The decision records every difference as uncertain.
-Its call keeps the provider's usage up to the stop and the responses kept before
-it (`completion_state` `usage_limit`); Pydantic AI counts a response past the
-token total but does not keep it.
+cut off at its output cap (see **Failures**), returns no answer: the label gets
+the alignment's units (`first_pass.alignment_units`, each image `uncertain`)
+and the decision names no reading, each difference `uncertain`
+(`first_pass.CAP_RATIONALE`). The owner's pipeline "can rely on raw for a final
+check if LLM decided transcript output fails" (PLAN section 1): each reader's
+raw reading goes to the harness. The call keeps the provider's usage up to the
+stop and the responses kept before it (`completion_state` `usage_limit`);
+Pydantic AI counts a response past the token total but does not keep it.
 
-**Output**, validated before it is used: the selected reader or none; for every
-numbered difference exactly one verdict (a reader, `neither`, or `uncertain`); a
-rationale; one note per reader. The first pass never writes text: the decided
-transcript is the selected reading's literal text, verbatim. No merging, no
-rewriting. The call's own provenance is an `Observation` (route, model,
-provider, prompt version, the crop's digest as `input_sha256` like every
-observation's, the text request's digest as `request_sha256`, raw responses,
-tokens, latency, finish state) whose `literal_text` is empty.
+**Output**, validated before it is used (`first_pass.units_output_problems`,
+then `reading_units.problems` on the label's units): units that cover the
+segments once each and in order, each unit's image a reader's letter (a reader
+that wrote text there), `uncertain` or `not visible`, and its fields field
+keys; one output retry names the check that failed. The first pass never writes
+text, and its decision names no reading: it lists the alignment's differences
+(`first_pass.reading_differences_among`), each with every reading's span and
+the verdict `uncertain` (`first_pass.UNITS_RATIONALE`). The call's own
+provenance is an `Observation` (route, model, provider, prompt version, the
+crop's digest as `input_sha256` like every observation's, the text request's
+digest as `request_sha256`, raw responses, tokens, latency, finish state) whose
+`literal_text` is empty.
 
-**G19 in code** (the coordinator's reading of the prompt and G19, 12:31Z on
-2026-09-25). A difference is material unless it is capitalization alone, and the
-code decides it: a difference whose spans are equal once lower-cased is not
-material, so a spelling variant such as "Straße" against "Strasse" stays
-material (the coordinator's ruling at 14:05Z, which reads 12:31Z's "case-folded"
-as lower-cased). The model is not asked. A pick stands only when every material
-difference's verdict supports the picked reader, which is the prompt's "Resolve
-a value only when the visual evidence supports it" with no merging. A verdict
-supports the picked reader when it names that reader, or, with more than two
-readers, a reader whose span at that difference is the picked reader's text
-once lower-cased (`first_pass.supports`); with two readers a material
-difference's two spans always differ, so only the picked reader's own verdict
-supports it. A material difference left `neither` or `uncertain`, or supported
-by a reader whose text there differs, means no reading, and every reading
-becomes a `raw_reading` handoff (G19). That is
-neither a retry nor a block (the coordinator's confirmation at 12:32Z): the
-model's pick stays in the call's raw response and its rationale.
+**Materiality, and G19 on records already written** (the coordinator's reading
+of the prompt and G19, 12:31Z on 2026-09-25). A difference is material unless
+it is capitalization alone, and the code decides it: a difference whose spans
+are equal once lower-cased is not material, so a spelling variant such as
+"Straße" against "Strasse" stays material (the coordinator's ruling at 14:05Z,
+which reads 12:31Z's "case-folded" as lower-cased). The model is not asked. A
+new decision picks no reading, so G19's pick rule decides nothing on a new
+run; `first_pass.g19_pick` keeps it for the records the old first pass wrote,
+whose picks the evidence check holds to it (section 4, **Checked at
+finalize**): a pick stood only when every material difference's verdict
+supported the picked reader (`first_pass.supports`), and otherwise every
+reading became a `raw_reading` handoff.
 
 **Failures** (G6, QUE-005, PRD section 15). For the first pass, the organiser
 and the legacy extraction call (a reader's are below): a rate limit or another
@@ -476,22 +467,6 @@ from the lines in any other way is still malformed.
 `docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md` ("How a reader's
 answer is read") has the rule and the recorded answers.
 
-**A first pass's null written as text** (2026-10-18). An answer whose
-`selected_reader` is the text "null", "None" or "" (in any case, with spaces
-around it ignored) picks no reader, as JSON null does; it is not malformed.
-GLM-5.3-Flash on Novita writes the null the schema asks for that way. In
-Logfire, from 2026-10-12 03:00 to 2026-10-18 14:45 UTC, 16 traces hold a
-first-pass run that ended "Exceeded maximum output retries", and each of the 16
-holds an answer whose `selected_reader` is the string "null"; three more traces
-hold one in a run that did not end so. The retries mostly wrote "null" again
-(once "None", once ""), so each of those runs failed as
-`model_malformed_response`, with no verdicts recorded for its label. Such an
-answer is now used: its verdicts, rationale and notes are recorded, and it
-selects no reading (G19), from its first request. Any other text that is not a
-reader's letter ("a", "C", "neither") is still refused and gets the output
-retry. The raw response keeps the text as it was sent. Tests:
-`tests/test_first_pass_null_text.py`.
-
 **Tracing.** The agent carries no instrumentation override; it inherits the
 lane's global setting (content on, binary off in approved-content mode, S3 T5).
 The pinned managed prompt reaches the call's span through Pydantic AI's
@@ -500,37 +475,57 @@ level's system prompt to be visible in Logfire.
 
 ## 4. The first pass in the workflow, and what each region records
 
-**When.** A region whose readings are all identical keeps today's behaviour
-(the `adjudicate` step in `workflow.py`) and is recorded with `decision_kind`
-`identical_readings`, the first reading as the decided transcript when the
-region resolves. Every other region with at least two stored readings (TRN-001,
-TRN-008) gets one external, billable step `first_pass:{region_id}` (section 3)
-after its transcribe steps and before `adjudicate`; a run that already passed
-`adjudicate` is never given one. A decision for another region, one naming a
-reading the region does not have in its pick or a verdict, one whose `material`
-flags differ from its spans, or one whose pick a material difference does not
-support (G19; the coordinator's 12:31Z reading) blocks as
+**When.** Every region with at least two stored readings, one of them with
+text (TRN-001, TRN-008), identical readings included, gets one external,
+billable step `first_pass:{region_id}` (section 3) after its transcribe steps
+and before `adjudicate`; a run that already passed `adjudicate` is never given
+one (`Workflow.next_step`). A region with one reading, or none with text, gets
+the alignment's units at `adjudicate`, with no call, and so does a region whose
+first pass was given up on (below). A decision for another region, one that
+names a reading, a verdict other than `uncertain`, `material` flags that differ
+from the spans, or units of another label, or units that fail
+`reading_units.problems` against the region's readings, blocks as
 `first_pass_contract_invalid`. A call that comes back naming another route or
 another asset is refused as `external_outcome_unknown`, as a reading's is.
 
+**A run of the old first pass, reopened** (WP 1.8). A run records the path it
+took (`Run.first_pass_path`): every new run records `units`
+(`reading_units.UNITS`; the API's intake and region review, bulk intake and the
+source import create runs so), and a run stored without the key is a run the old
+first pass processed (`reading_units.OLD`). When such a run is reopened (a
+person's transcript edit, a resume, a retry or a reconcile makes it step again;
+a history restore runs nothing, so a restored run moves when it is next resumed
+or edited), `Workflow._step` moves it to the units path before it picks its
+step (`workflow.move_to_units`): the units prompt is pinned beside the run's
+other pins, where it pins prompts (`production.pinned_prompt`); the first pass
+and every step after it are scheduled again, so the units first pass runs
+before `parse`; its old first-pass decisions and lookups, a person's approval
+and its disposition go; and its recorded path becomes `units`. Its readings,
+their attempts and costs, and a person's transcription decisions stay:
+`adjudicate` applies each such decision again to its label's new transcript,
+and the label's units are then the person's text (`first_pass.source_units`).
+A finalized, paused, cancelled or blocked run steps nowhere and is not moved,
+and an evidence-pilot run, whose lane runs no first pass, is never moved.
+Tests: `tests/test_old_path_migration.py`, on a finalized run recorded in the
+shape the old path stored one (its module docstring says which).
+
 **Recorded** on the region's `Transcript` (DATA_CONTRACT 4.2): `decision_kind`
-`first_pass`, `selected_observation_id`, `text` (the selected reading verbatim,
-or none), `first_pass_call` (the call's provenance), `reason` (the rationale),
-`differences` (every verdict with each reading's span), and `handoffs`, one per
-reading: the selected reading as `decided_transcript`, the others as
-`raw_reading` (the harness's fallback until 2026-10-25; since then these are
-wire values only: every reading is raw transcription the harness may settle
-on, and the selected one is the first pass's advice); with no selection every
-reading is a `raw_reading` (G19). `resolved` is true exactly when a reading
-was selected; a
-difference left `neither` or `uncertain` stays on the record for the harness and
-the queue decision (G19, G20). The disagreement score and the alignment fields
-of stage 5 are unchanged for two readings. With more, every pair is aligned in
-route order: the alignment fields report the least-agreeing pair, a pair that
-cannot be measured leaves the region unmeasured, and `comparisons` keeps every
-pair (`reading_evidence.label_comparison`). The run keeps each region's decision in
-`first_pass_decisions`. Synthetic runs use a fixture that selects no reading;
-its call names the input the readers saw.
+`first_pass`, `selected_observation_id` none, `text` none, `first_pass_call`
+(the call's provenance), `reason` (the rationale), `differences` (each with
+every reading's span and the verdict `uncertain`), and `handoffs`, one per
+reading, each a `raw_reading`; `resolved` is false. A region whose readings are
+all identical keeps the rule it had (the `adjudicate` step in `workflow.py`):
+`decision_kind` `identical_readings`, the first reading as the
+`decided_transcript` when the region resolves, and its first pass's call
+recorded beside it. The label's units are kept on the run
+(`Run.reading_units`). The disagreement score and the alignment fields of stage
+5 are unchanged for two readings. With more, every pair is aligned in route
+order: the alignment fields report the least-agreeing pair, a pair that cannot
+be measured leaves the region unmeasured, and `comparisons` keeps every pair
+(`reading_evidence.label_comparison`). The run keeps each region's decision in
+`first_pass_decisions`. Synthetic runs use a fixture
+(`first_pass.synthetic_units`) whose units are the alignment's; its call names
+the input the readers saw.
 
 **Checked at finalize** (the steward's reviews of #98). The evidence check
 (`integrity.py`) verifies each first-pass call's raw responses, region and input
@@ -538,9 +533,17 @@ its call names the input the readers saw.
 one no reviewer's decision has changed, must have text that is none or one of
 its region's readings, verbatim, and none when a machine kind selected nothing.
 A machine-selected reading must be one of the region's readings, with `text` its
-literal. A region the run holds a first-pass decision for is recorded as
-`first_pass`, with the pick and call that decision records, and a pick G19
-allows.
+literal. On a run of the units path every decision names no reading with each
+verdict `uncertain`, a region with a decision is recorded as `first_pass` or
+`identical_readings` with that decision's call, each label's units pass
+`reading_units.problems` against its text source (a person's transcript, keyed
+`person`, else its readings), and once `adjudicate` has run every region whose
+readings hold text has units. A record the old first pass wrote keeps that
+path's checks: a region it holds a decision for is recorded as `first_pass`,
+with the pick and call that decision records, and a pick G19 allows
+(`first_pass.g19_pick`). The records already written load, show in history and
+review, and pass this check (the 181 records of two stored runs' states, checked
+for WP 1.8).
 
 **The extraction call is the organiser** (owner, 2026-10-03, relayed by the
 coordinator, replacing the earlier rule that this call received the decided text

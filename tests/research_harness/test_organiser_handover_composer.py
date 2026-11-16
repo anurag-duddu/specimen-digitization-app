@@ -56,8 +56,9 @@ from production_e2e_support import (
     worker_principal,
 )
 
-# Region 0 is decided by the first pass (the second reader misreads one letter of the habitat line);
-# region 1 is two agreeing readers. Both hold plain lines, no `field_key:` prefix. The collector's line
+# Regions 0 and 1 are each two agreeing readers, so each has a decided transcript (identical
+# readings: since WP 1.8 the first pass names no reading, and a region its readers disagree on
+# has none). Both hold plain lines, no `field_key:` prefix. The collector's line
 # ends with a sex sign (U+2642, which the recorded labels carry) and its name has an accented letter: the
 # extractor quotes the whole region, so its evidence row holds non-ASCII text, and the value that cites that
 # row, itself non-ASCII, must still publish.
@@ -77,7 +78,7 @@ STORED = (
     ("collection_code", "1200 ft\nlight trap", 1),
 )
 GROUNDED = ("fmnh_ins_number", "collectors", "collection_method", "habitat")
-RESOLVED_FROM_ASSEMBLY = GROUNDED  # the first pass qualified the decided habitat reading
+RESOLVED_FROM_ASSEMBLY = GROUNDED  # each read from its region's decided transcript
 ELIGIBLE = {"fmnh_ins_number", "collection_code", "habitat", "collection_method", "collectors"}
 
 
@@ -183,8 +184,8 @@ def refusals(monkeypatch):
 
 
 def build_rig(tmp_path, monkeypatch, stored=STORED, texts=REGION_TEXTS, rows="whole_region"):
-    # specimen_before_adjudication reads the module's LABEL_TEXT for region 0's readings and, with first_pass,
-    # has the second reader misread 'grassland' and the first pass decide for the first reader.
+    # specimen_before_adjudication reads the module's LABEL_TEXT for region 0's readings, both readers
+    # agreeing.
     monkeypatch.setattr(support, "LABEL_TEXT", texts[0])
     backend = SqliteStateBackend(tmp_path / "research-state.sqlite")
     members = {WORKER: [{"organization_id": ORG, "collection_id": COLLECTION, "role": "operator",
@@ -196,7 +197,7 @@ def build_rig(tmp_path, monkeypatch, stored=STORED, texts=REGION_TEXTS, rows="wh
     ordinary = Workflow(repository, blobs, ExtractorAdapters(blobs, texts[0], stored, rows))
     token = actor_uid.set(WORKER)
     principal = worker_principal()
-    specimen = specimen_before_adjudication(blobs, first_pass=True)
+    specimen = specimen_before_adjudication(blobs)
     run, first = specimen.run, specimen.run.regions[0]
     for order, text in enumerate(texts[1:], start=1):
         region = Region(asset_id=specimen.asset.id, x=0, y=0, width=first.width, height=first.height, order=order,
@@ -210,6 +211,7 @@ def build_rig(tmp_path, monkeypatch, stored=STORED, texts=REGION_TEXTS, rows="wh
                 input_crop_ref=region.crop_ref, literal_text=text, raw_ref=blobs.put(raw),
                 raw_sha256=hashlib.sha256(raw).hexdigest()))
         run.completed_steps += [f"transcribe:{region.id}:{route}" for route in run.profile.routes]
+        support.first_pass_done(blobs, run, region)
     created = repository.create(principal, specimen, "e2e-intake", "e2e-intake")
     rig = SimpleNamespace(fake=fake, backend=backend, repository=repository, ordinary=ordinary,
         principal=principal, specimen_id=created.id, research_blobs=ImmutableFileBlobs(tmp_path / "research"),
@@ -297,8 +299,8 @@ def supported(request, candidate):
     if not readings:
         readings = {row.observation_id: row.observation_text for row in request.fragments
             if row.region_id == candidate.region_id}
-    # A decided label has a retained first-pass selection; unresolved labels
-    # still require every raw reader to state the same literal.
+    # A decided label has a decided reading; unresolved labels still
+    # require every raw reader to state the same literal.
     return bool(readings) and all(candidate.literal in text for text in readings.values())
 
 

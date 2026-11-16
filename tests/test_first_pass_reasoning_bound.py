@@ -8,10 +8,11 @@ honours the OpenAI-style `reasoning_effort` request field for this model. In
 the 2026-10-18 probes no first pass sent with "medium" or "low" stopped at the
 cap, and scored against reference readings "medium" decided the most labels
 rightly (HARNESS.md section 5, "The first pass's reasoning bound"). The route
-sends `reasoning_effort: medium` in every request, through the gateway's model
-settings, and the first pass records it with the call's parameters. These tests
-drive the real gateway and `first_pass_direct` over an offline HTTP transport:
-no live model request is made.
+carries `reasoning_effort: medium` as its request option, through the gateway's
+model settings. The units path's first pass, since WP 1.8 the only one, sends its
+own options over it (first_pass.UNITS_REQUEST_OPTIONS: low reasoning and
+temperature 0; test_first_pass_units.py tests its requests). These tests drive
+the real gateway over an offline HTTP transport: no live model request is made.
 """
 
 import io
@@ -26,18 +27,11 @@ from huggingface_hub.inference._providers._common import (
 from huggingface_hub.utils import _http as hf_http
 from PIL import Image
 
-from specimen_digitization.application import first_pass as first_pass_module
-from specimen_digitization.application import workflow as workflow_module
-from specimen_digitization.application.collection_profiles import published_registry
-from specimen_digitization.application.domain import ExecutionPolicy, Profile, Run
-from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.model_gateway import (
     HUGGINGFACE_ROUTES,
     INITIAL_HUGGINGFACE_ROUTES,
     HuggingFaceModelGateway,
 )
-
-from test_first_pass import INCOMPLETE, MUSE, QWEN, REGION, VALID, pinned_route, reading
 
 ROUTE = HUGGINGFACE_ROUTES["first-pass-glm"]
 BOUND = {"reasoning_effort": "medium"}
@@ -96,41 +90,6 @@ def test_the_first_pass_route_asks_novita_for_medium_reasoning():
     # Only the first pass's route carries a request option.
     for route_id in (*INITIAL_HUGGINGFACE_ROUTES, "harness-deepseek"):
         assert HUGGINGFACE_ROUTES[route_id].request_options == ()
-
-
-def test_every_first_pass_request_carries_the_bound_and_the_call_records_it(
-    monkeypatch, tmp_path
-):
-    # The first answer is refused (one verdict of three), so the output retry
-    # is a second request: both carry the bound.
-    sent = offline_provider(monkeypatch, ROUTE, [INCOMPLETE, VALID])
-    monkeypatch.setenv("HF_TOKEN", "synthetic-test-credential")
-    monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
-    monkeypatch.setattr(workflow_module, "crop_bytes", lambda *args: png(60, 40))
-    prices = published_registry().resolve("insects").profile.processing.price_list
-    run = Run(
-        profile=Profile(
-            first_pass_route=ROUTE.route_id,
-            execution=ExecutionPolicy(price_list=prices.model_dump(mode="json")),
-        ),
-        dependencies=pinned_route(ROUTE.route_id),
-    )
-    readings = [reading("handwriting-qwen", QWEN), reading("handwriting-muse", MUSE)]
-
-    from types import SimpleNamespace
-
-    decision = first_pass_module.first_pass_direct(
-        SimpleNamespace(blobs=LocalBlobs(tmp_path)),
-        SimpleNamespace(asset=SimpleNamespace(id="asset-1"), run=run),
-        REGION,
-        readings,
-    )
-
-    assert len(sent) == 2
-    assert [body["reasoning_effort"] for body in sent] == ["medium", "medium"]
-    assert [body["max_tokens"] for body in sent] == [4_096, 4_096]
-    assert decision.selected_observation_id == readings[1].id
-    assert decision.call.parameters == {"extra_body": BOUND, "max_tokens": 4_096}
 
 
 @pytest.mark.parametrize("route_id", sorted(INITIAL_HUGGINGFACE_ROUTES))

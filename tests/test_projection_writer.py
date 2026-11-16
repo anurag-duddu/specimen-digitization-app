@@ -216,7 +216,7 @@ def test_a_runs_profile_rows_are_first_written_with_the_pin_of_their_profile(tmp
     are recorded, and the first write of each key is the one the connector keeps."""
     import hashlib
 
-    from test_first_pass_workflow import ChoosingAdapters, start
+    from test_first_pass_workflow import DisagreeingAdapters, start
 
     from specimen_digitization.application.projection import Blob, writes
     from specimen_digitization.application.storage import digest
@@ -238,7 +238,7 @@ def test_a_runs_profile_rows_are_first_written_with_the_pin_of_their_profile(tmp
                 first.setdefault(write.key, write)
             return saved
 
-    adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda readings: readings[1].id)
+    adapters = DisagreeingAdapters(LocalBlobs(tmp_path / "blobs"))
     workflow, principal, specimen_id = start(tmp_path, adapters)
     workflow.repository = Recording(tmp_path / "state.sqlite3")
     run = workflow.drain(principal, specimen_id).run

@@ -4,8 +4,7 @@ docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4 on
 an expert's literal maps to the units that cover it (agreement.literal_places, covering_units,
 image_names), and the given-up check (step.scientific_reasons).
 
-Every test here runs once, on the units path: this module's first_pass_path fixture replaces
-conftest.py's. A step-level test builds its run with test_step.build_rig, whose first pass names
+A step-level test builds its run with test_step.build_rig, whose first pass names
 in the image the text at each unit where every reader wrote the same text (test_step.seen_units);
 a test sets label 1's images otherwise where it says so."""
 
@@ -79,12 +78,6 @@ from specimen_digitization.field_research.contracts import (
     FieldTask,
     Reading,
 )
-
-
-@pytest.fixture(autouse=True)
-def first_pass_path(monkeypatch):
-    monkeypatch.setattr(rig_module, "PATH", "units")
-    return "units"
 
 
 def images(rig, image):
@@ -447,11 +440,8 @@ def two_labels_case(key, first, second):
 
 def person_case():
     """A person transcribed label 1 as 1A's "dry  shrubs" (two spaces); the answer is 1B's text."""
-    from specimen_digitization.field_research.contracts import FirstPassAdvice
-
-    advice = FirstPassAdvice(preferred="1A", rationale="", reader_notes={}, differences=(), person_decided=True)
-    readings = with_units((Reading("1A", "r1", "o1a", "decided_transcript", "habitat: dry  shrubs", first_pass=advice),
-        Reading("1B", "r1", "o1b", "raw_reading", "habitat: dry  shurbs", first_pass=advice)))
+    readings = with_units((Reading("1A", "r1", "o1a", "decided_transcript", "habitat: dry  shrubs",
+        person_decided=True), Reading("1B", "r1", "o1b", "raw_reading", "habitat: dry  shurbs")))
     task = task_of("habitat", readings, lambda text: text.split(": ")[1])
     return retry_case(task, readings, "dry  shurbs", [readings[1]])
 
@@ -460,12 +450,9 @@ def person_two_labels_case():
     """Codex round 9 (Y1): label 1's one reading 1A writes "dry  forest" (two spaces); a person
     transcribed label 2 as 2A's "dry   forest" (three spaces), and 2B writes "bog"; each is a
     whole-field candidate, and the answer is 2B's."""
-    from specimen_digitization.field_research.contracts import FirstPassAdvice
-
-    advice = FirstPassAdvice(preferred="2A", rationale="", reader_notes={}, differences=(), person_decided=True)
     readings = with_units((Reading("1A", "r1", "o1a", "raw_reading", "dry  forest"),
-        Reading("2A", "r2", "o2a", "decided_transcript", "dry   forest", first_pass=advice),
-        Reading("2B", "r2", "o2b", "raw_reading", "bog", first_pass=advice)))
+        Reading("2A", "r2", "o2a", "decided_transcript", "dry   forest", person_decided=True),
+        Reading("2B", "r2", "o2b", "raw_reading", "bog")))
     task = FieldTask("habitat", True, FieldValue(), tuple(Candidate(reading.name, reading.text, reading.text,
         f"ev-{reading.name}") for reading in readings), FIELD_TOOLS["habitat"])
     return retry_case(task, readings, "bog", [readings[2]])
@@ -824,14 +811,11 @@ def test_a_reader_with_no_text_for_the_field_writes_its_own_text_at_the_place_an
 
 # ---- what the experts receive ---------------------------------------------------------------------
 
-@pytest.mark.parametrize("units", [True, False], ids=["units", "readings-without-units"])
-def test_the_expert_takes_the_units_path_s_instructions_and_request(tmp_path, units):
-    """The real resolver's model request, for the habitat: on the units path (readings with
-    their label's units) the units path's instructions (prompts.instructions(key, units=True))
-    and a request that carries the units (experts.units_document); for readings without units,
-    the old path's instructions and no units."""
+def test_the_expert_takes_its_instructions_and_a_request_with_the_units(tmp_path):
+    """The real resolver's model request, for the habitat: the expert's instructions
+    (prompts.instructions) and a request that carries the readings' units
+    (experts.units_document)."""
     import json
-    from dataclasses import replace
 
     from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart
     from pydantic_ai.models.function import FunctionModel
@@ -843,8 +827,6 @@ def test_the_expert_takes_the_units_path_s_instructions_and_request(tmp_path, un
 
     rig = build_rig(tmp_path)
     readings = field_step.run_readings(rig.specimen.run)
-    if not units:
-        readings = tuple(replace(reading, units=None) for reading in readings)
     [task] = [task for task in field_step.build_tasks(rig.specimen.run)[1] if task.key == "habitat"]
     seen = []
 
@@ -859,11 +841,8 @@ def test_the_expert_takes_the_units_path_s_instructions_and_request(tmp_path, un
     asyncio.run(resolver(task, readings, {}, tools=FakeSources(rig.blobs)))
     [(given, [prompt])] = seen[:1]
     document = json.loads(prompt.removeprefix(INPUT_PREFIX))
-    assert given == instructions("habitat", units=units).strip()
-    if units:
-        assert document["units"] == experts.units_document(readings) and list(document["units"]) == ["1"]
-    else:
-        assert "units" not in document
+    assert given == instructions("habitat").strip()
+    assert document["units"] == experts.units_document(readings) and list(document["units"]) == ["1"]
 
 
 def test_a_persons_label_s_units_reach_the_experts_under_the_person_s_reading(tmp_path):

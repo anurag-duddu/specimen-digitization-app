@@ -26,6 +26,7 @@ from pydantic_ai.messages import ModelRequest, ModelResponse, ToolCallPart, Tool
 from pydantic_ai.models.function import FunctionModel
 
 from specimen_digitization.application.collection_profiles import published_registry
+from specimen_digitization.application.reading_units import UNITS
 from specimen_digitization.application.domain import (
     Asset, Disposition, Evidence, ExecutionPolicy, FieldValue, Lookup, LookupStatus, Observation,
     Profile, Region, Run, Specimen, ValueState,
@@ -82,16 +83,10 @@ RESEARCHED = {key for key, tools in FIELD_TOOLS.items() if tools}
 # Every field gets its expert but the identified-by IRN, which no source supplies.
 EXPERTS = NO_TOOLS | RESEARCHED
 TODAY = date(2026, 10, 8)
-# The first-pass path of the runs make_specimen builds; conftest.py sets it for each run of
-# the suite.
-PATH = "old"
-
-
-def make_specimen(blobs, text=TEXT, other=None, *, first_pass=True):
-    """A non-sensitive specimen at adjudicate: one label, two readers, which agree
-    unless `other` is the second reader's text, on the first-pass path PATH. On
-    the old path, without `first_pass` a label whose readers differ is still at
-    its first pass; on the units path every label with two readers is."""
+def make_specimen(blobs, text=TEXT, other=None):
+    """A non-sensitive specimen at its first pass: one label, two readers, which agree
+    unless `other` is the second reader's text, on the units path (Run.first_pass_path),
+    as every new run is."""
     published = published_registry().profiles[0]
     output = io.BytesIO()
     Image.new("RGB", (100, 100), "white").save(output, format="JPEG", quality=95)
@@ -104,7 +99,7 @@ def make_specimen(blobs, text=TEXT, other=None, *, first_pass=True):
         method="synthetic_fixture_region", version="1")
     crop_png = region_png(Image.open(io.BytesIO(image)), region)
     region.crop_ref = blobs.put(crop_png)
-    specimen = Specimen(scope=worker_principal().scope, asset=asset, run=Run(regions=[region], first_pass_path=PATH))
+    specimen = Specimen(scope=worker_principal().scope, asset=asset, run=Run(regions=[region], first_pass_path=UNITS))
     run = specimen.run
     language = bind_profile_rules(specimen, published, published_risk_registry())
     run.profile_snapshot = published.model_dump(mode="json")
@@ -134,9 +129,6 @@ def make_specimen(blobs, text=TEXT, other=None, *, first_pass=True):
             raw_sha256=hashlib.sha256(raw).hexdigest()))
     run.completed_steps = ["pin_dependencies", "classify", "quality_check", "segment"] + [
         f"transcribe:{region.id}:{route}" for route in run.profile.routes]
-    if len(set(texts)) > 1 and first_pass and PATH == "old":
-        # The first pass picked no reading (its synthetic fixture never does).
-        run.completed_steps.append(f"first_pass:{region.id}")
     run.stage = "running"
     return specimen
 
@@ -168,8 +160,7 @@ def seen_units(units):
 class SeeingFirstPass(SyntheticAdapters):
     """The synthetic adapters, whose units-path first pass is the synthetic one
     (first_pass.synthetic_units) with the image naming the text at each unit where every
-    reader wrote the same text (seen_units). The old path's first pass is the synthetic
-    one."""
+    reader wrote the same text (seen_units)."""
 
     def first_pass_units(self, specimen, region, readings):
         from specimen_digitization.application.first_pass import synthetic_units
@@ -179,7 +170,7 @@ class SeeingFirstPass(SyntheticAdapters):
 
 
 class RefusedFirstPass(SyntheticAdapters):
-    """A first pass the provider refuses with HTTP 429 on every attempt, on either path."""
+    """A first pass the provider refuses with HTTP 429 on every attempt."""
 
     def first_pass(self, specimen, region, readings):
         raise AdapterFailure("model_rate_limited", LookupStatus.RATE_LIMITED, refused=True)
@@ -187,47 +178,33 @@ class RefusedFirstPass(SyntheticAdapters):
     first_pass_units = first_pass
 
 
-def build_rig(tmp_path, text=TEXT, other=None, *, decided=False, candidates=COLLECTORS,
-        refused=False):
-    """The run at the plan handover after adjudicate, parse and the organiser's
-    `candidates` ((field, reading, literal, quote)). With `other` the second
-    reader differs; `decided` then has the first pass pick reader 1A, whose
-    text becomes the label's transcript (G19); otherwise no reading is picked.
-    With `refused` the workflow runs the first pass, which is refused on every
-    attempt (each retry at its scheduled time) and given up on."""
-    if decided and other is not None and other != text and PATH == "units":
-        pytest.skip("`decided` has the old first pass pick reader 1A of readers that differ; the units path's "
-            "first pass picks no reader")
+def build_rig(tmp_path, text=TEXT, other=None, *, candidates=COLLECTORS, refused=False):
+    """The run at the plan handover after the first pass, adjudicate, parse and the organiser's
+    `candidates` ((field, reading, literal, quote)). With `other` the second reader differs. With
+    `refused` the workflow runs the first pass, which is refused on every attempt (each retry at
+    its scheduled time) and given up on."""
     blobs = LocalBlobs(tmp_path / "blobs")
     repository = SQLiteRepository(tmp_path / "records.sqlite")
     clock = SimpleNamespace(now=datetime(2026, 10, 8, 12, tzinfo=timezone.utc))
     adapters = (RefusedFirstPass if refused else SeeingFirstPass)(blobs, TEXT)
     workflow = Workflow(repository, blobs, adapters, clock=lambda: clock.now)
     principal = worker_principal()
-    specimen = make_specimen(blobs, text, other, first_pass=False) if refused else make_specimen(blobs, text, other)
-    if refused or PATH == "units":
-        # The published stage reservations, so the paid first pass can reserve.
-        execution = specimen.run.profile.execution
-        specimen.run.profile.execution = execution.model_copy(update={
-            "stage_cost_reservations": published_registry().profiles[0].processing.stage_cost_micros})
-    if PATH == "units":
-        # The synthetic first pass's call (first_pass.synthetic_decision) at the price of the
-        # profile's first-pass route.
-        prices = specimen.run.profile.execution.price_list
-        prices["models"]["synthetic-first-pass"] = prices["models"][specimen.run.profile.first_pass_route]
+    specimen = make_specimen(blobs, text, other)
+    # The published stage reservations, so the paid first pass can reserve.
+    execution = specimen.run.profile.execution
+    specimen.run.profile.execution = execution.model_copy(update={
+        "stage_cost_reservations": published_registry().profiles[0].processing.stage_cost_micros})
+    # The synthetic first pass's call (first_pass.synthetic_decision) at the price of the
+    # profile's first-pass route.
+    prices = specimen.run.profile.execution.price_list
+    prices["models"]["synthetic-first-pass"] = prices["models"][specimen.run.profile.first_pass_route]
     created = repository.create(principal, specimen, "intake", "intake")
     while workflow.next_step(repository.get(principal.scope, created.id).run).startswith("first_pass:"):
         attempted = workflow.step(principal, created.id).run
         assert attempted.stage != "processing_blocked", attempted.blocker
         if attempted.next_retry_at:
             clock.now = datetime.fromisoformat(attempted.next_retry_at)
-    adjudicated = workflow.step(principal, created.id)  # adjudicate
-    if decided:
-        [transcript] = adjudicated.run.transcripts
-        first = adjudicated.run.observations[0]
-        transcript.text, transcript.resolved = first.literal_text, True
-        transcript.selected_observation_id = first.id
-        repository.save(principal, adjudicated, adjudicated.version, "first-pass", "first-pass")
+    workflow.step(principal, created.id)  # adjudicate
     parsed = workflow.step(principal, created.id)  # parse
     assert workflow.next_step(parsed.run) == "plan"
     run = parsed.run
@@ -491,31 +468,19 @@ def test_the_organisers_supported_value_settles_only_on_its_experts_answer(tmp_p
     assert habitat.state == ValueState.NOT_PRESENT and habitat.literal is None
 
 
-def test_a_decided_transcript_settles_a_field_no_source_checks_beside_a_reader_that_differs():
-    """105526321's verbatim D/T/S: its decided reading 2A writes "3 sept. '46",
-    2B "3 Sept. '46". The decided reading's text settles (G19)."""
-    readings = (Reading("2A", "r2", "o2a", "decided_transcript", "F.G. Werner\n3 sept. '46"),
-        Reading("2B", "r2", "o2b", "raw_reading", "F.G. Wermer\n3 Sept. '46"))
-    task = FieldTask("verbatim_dts", False, FieldValue(state=ValueState.SUPPORTED, literal="3 sept. '46"),
-        (Candidate("2A", "3 sept. '46", "3 sept. '46", "ev-2a"),), FIELD_TOOLS["verbatim_dts"])
-    answer = FieldAnswer(outcome="resolved", literal="3 sept. '46", reading_names=["2A"],
-        explanation="The decided transcript decides.")
-    by_name = {reading.name: reading for reading in readings}
-    assert field_step._refusal(task, answer, readings=readings, by_name=by_name, sources=()) is None
+def test_another_label_whose_readers_agree_backs_a_text_one_reader_of_a_label_writes():
+    """The second review's note: label 1's reader 1A writes no collector,
+    its other reader 1B writes "leg. J. Smith", and both readers of label 2
+    write it. The expert's answer naming label 2 settles, and so, since
+    2026-10-25, does one naming 1B, whose text label 2 backs. Without label
+    2's text, 1B alone does not; and a 1B text label 2 does not write leaves
+    label 1 out of an answer naming label 2."""
+    from test_first_pass_advice import with_units
 
-
-def test_another_label_whose_readers_agree_backs_a_non_preferred_readers_text():
-    """The second review's note: label 1's preferred reader 1A writes no
-    collector, its other reader 1B writes "leg. J. Smith", and both readers of
-    label 2 write it. The expert's answer naming label 2 settles, and so,
-    since 2026-10-25, does one naming 1B, whose text label 2 corroborates
-    (until then G19 refused it). Without label 2's text, 1B alone does not;
-    and a 1B text label 2 does not write leaves label 1 out of an answer
-    naming label 2, as before."""
-    readings = (Reading("1A", "r1", "o1a", "decided_transcript", "Det. label\nno collector here"),
-        Reading("1B", "r1", "o1b", "raw_reading", "Det. label\nleg. J. Smith"),
-        Reading("2A", "r2", "o2a", "raw_reading", "Guatemala\nleg. J. Smith"),
+    label_1 = Reading("1A", "r1", "o1a", "raw_reading", "Det. label\nno collector here")
+    label_2 = (Reading("2A", "r2", "o2a", "raw_reading", "Guatemala\nleg. J. Smith"),
         Reading("2B", "r2", "o2b", "raw_reading", "Guatemala\nleg. J. Smith"))
+    readings = with_units((label_1, Reading("1B", "r1", "o1b", "raw_reading", "Det. label\nleg. J. Smith"), *label_2))
     task = FieldTask("collectors", True, FieldValue(state=ValueState.SUPPORTED, literal="J. Smith"),
         tuple(Candidate(name, "leg. J. Smith", "J. Smith", "ev-" + name) for name in ("1B", "2A", "2B")),
         FIELD_TOOLS["collectors"])
@@ -533,9 +498,9 @@ def test_another_label_whose_readers_agree_backs_a_non_preferred_readers_text():
     alone = FieldTask("collectors", True, task.current, task.candidates[:1], FIELD_TOOLS["collectors"])
     refused = field_step._refusal(alone, on_1b, readings=readings[:2], by_name=by_name, sources=())
     assert refused is not None and refused.reason == agreement.DIFFER
-    # A label whose preferred reader writes no collector takes no part when
-    # the answer names none of its readers, whatever its other reader writes.
-    smyth = (readings[0], Reading("1B", "r1", "o1b", "raw_reading", "Det. label\nleg. J. Smyth"), *readings[2:])
+    # A label one of whose readers writes no collector takes no part when the
+    # answer names none of its readers, whatever its other reader writes.
+    smyth = with_units((label_1, Reading("1B", "r1", "o1b", "raw_reading", "Det. label\nleg. J. Smyth"), *label_2))
     other = FieldTask("collectors", True, task.current,
         (Candidate("1B", "leg. J. Smyth", "J. Smyth", "ev-1B"), *task.candidates[1:]), FIELD_TOOLS["collectors"])
     assert field_step._refusal(other, answer, readings=smyth, by_name={r.name: r for r in smyth}, sources=()) is None
@@ -1394,7 +1359,7 @@ AGREEING_ALONE = ("fmnh_ins_number", "collection_code", "precise_location", "ele
     "collection_method", "date_visited_from", "collectors", "verbatim_dts", "date_identified")
 
 
-def test_a_label_whose_first_pass_was_given_up_goes_to_review_however_its_fields_settle(tmp_path, first_pass_path):
+def test_a_label_whose_first_pass_was_given_up_goes_to_review_however_its_fields_settle(tmp_path):
     """Specimen 105526323 (2026-10-11): the first pass was refused on every
     attempt. The workflow gives it up and goes on to field research, which
     settles every field, as the test above does for the same readers with a
@@ -1417,7 +1382,7 @@ def test_a_label_whose_first_pass_was_given_up_goes_to_review_however_its_fields
     city = run.fields["city"]
     assert (city.state, city.literal) == (ValueState.SUPPORTED, "San Pedro")
     assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
-    marked = [f"marked:{key}:{region}:text_only" for key in AGREEING_ALONE] if first_pass_path == "units" else []
+    marked = [f"marked:{key}:{region}:text_only" for key in AGREEING_ALONE]
     assert run.reasons == [f"unresolved_transcription:{region}", *marked]
     assert [(f.severity, f.reason_code) for f in run.findings if f.rule_id == "first_pass_given_up"] == [
         ("warning", f"first_pass_given_up:{region}:model_rate_limited")]
@@ -1480,13 +1445,9 @@ def test_a_taxon_the_readers_write_differently_needs_every_readers_name_looked_u
             lookups=[answer.taxonomy_lookup], model_calls=1)
     settle(rig, Scripted({"taxon": binomial_only}), tools=Subspecies(rig.blobs))
     taxon = run.fields["taxon"]
-    if PATH == "units":
-        assert (taxon.state, taxon.literal) == (ValueState.SUPPORTED, "Danaus plexippus")
-        assert run.disposition == Disposition.REVIEW
-        assert f"marked:taxon:{run.regions[0].id}:text_only" in run.reasons
-        return
-    assert (taxon.state, taxon.literal) == (ValueState.AMBIGUOUS, None)
-    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:taxon" in run.reasons
+    assert (taxon.state, taxon.literal) == (ValueState.SUPPORTED, "Danaus plexippus")
+    assert run.disposition == Disposition.REVIEW
+    assert f"marked:taxon:{run.regions[0].id}:text_only" in run.reasons
 
 
 class Gazetteer(FakeSources):
@@ -2106,50 +2067,18 @@ def test_a_place_never_clears_without_a_place_sources_candidate(rig):
         for key in ("city", "country", "county", "province_state")])
 
 
-SLOPE, SPACED = "E. slope Mt. McKinley", "E.slope Mt. McKinley"
-
-
-@pytest.mark.parametrize(("literal", "reading"), [(SLOPE, "1A"), (SPACED, "1B")])
-def test_readers_that_agree_settle_on_the_preferred_readers_spelling_through_the_step(tmp_path, literal, reading):
-    """As on 105526321's second label: the first pass preferred the reading
-    that writes "E. slope Mt. McKinley"; the other reader writes "E.slope".
-    Spacing aside they agree, on the preferred reader's spelling; the other
-    spelling is ambiguous for review (until 2026-10-25 G19 refused it as
-    NOT_DECIDED, unresolved)."""
-    garden = LABEL["precise_location"]
-    rig = build_rig(tmp_path, TEXT.replace(garden, SLOPE), TEXT.replace(garden, SPACED), decided=True,
-        candidates=[*COLLECTORS, ("precise_location", "1B", SPACED, "precise_location: " + SPACED)])
-    run = rig.specimen.run
-    assert [r.input_source for r in field_step.run_readings(run)] == ["decided_transcript", "raw_reading"]
-    settle(rig, Scripted({"precise_location": answering(resolved(literal, reading=reading))}))
-    place = run.fields["precise_location"]
-    if reading == "1B":
-        assert (place.state, place.literal) == (ValueState.AMBIGUOUS, None)
-        assert place.reason == agreement.DIFFER + " Settled."
-        assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:precise_location"])
-        return
-    assert (place.state, place.literal, place.input_source) == (ValueState.SUPPORTED, SLOPE, "decided_transcript")
-    assert cited_rows(run, "precise_location")["precise_location: " + SPACED] == "contradicts"
-    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
-
-
-def test_no_elevation_is_derived_from_a_unit_the_readings_disagree_on(rig, first_pass_path):
-    """Elevation To (ft) ambiguous: nothing is derived. The metre fields' experts answer that the label
-    lacks them: on the old path they settle absent; on the units path they wait for the held field (WP 2.3b,
+def test_no_elevation_is_derived_from_a_unit_the_readings_disagree_on(rig):
+    """Elevation To (ft) ambiguous: nothing is derived. on the units path they wait for the held field (WP 2.3b,
     the rule elevation_conversion: ontology_checks.wait_for_sources), never settled absent, and add no review
     reason of their own."""
     run = rig.specimen.run
     settle(rig, Scripted({"elevation_to_ft": answering(FieldAnswer(outcome="several_possibilities",
         options=["1500", "1600"], explanation="Two readings."))}))
     value = run.fields["elevation_from_m"]
-    if first_pass_path == "units":
-        # It adds no review reason of its own: its held source's routes the record (WP 2.3b's review round 1).
-        assert value.state == ValueState.UNKNOWN and value.reason.startswith("Waits for Elevation To (ft)")
-        assert "mandatory_unresolved:elevation_from_m" not in run.reasons
-        assert "mandatory_unresolved:elevation_to_ft" in run.reasons
-    else:
-        assert value.state == ValueState.NOT_PRESENT
-        assert "mandatory_unresolved:elevation_from_m" in run.reasons
+    # It adds no review reason of its own: its held source's routes the record (WP 2.3b's review round 1).
+    assert value.state == ValueState.UNKNOWN and value.reason.startswith("Waits for Elevation To (ft)")
+    assert "mandatory_unresolved:elevation_from_m" not in run.reasons
+    assert "mandatory_unresolved:elevation_to_ft" in run.reasons
 
 
 # ---- finalize_fields ---------------------------------------------------------
@@ -3237,11 +3166,10 @@ def unresolved(*keys):
 
 
 def cleared_absent():
-    """The fields of ABSENT that rule A clears where their experts find none and the city is
-    settled: all of them on the old path; on the units path all but the precise location, which
+    """on the units path all but the precise location, which
     rule A never clears there, as a label that names a town has one (the ontology's rule
     precise_location_extent; step.mark_not_on_label's condition 7, WP 2.2)."""
-    return set(ABSENT) - ({"precise_location"} if PATH == "units" else set())
+    return set(ABSENT) - ({"precise_location"})
 
 
 def lacking_outcome(*keys):
@@ -3317,15 +3245,13 @@ def forget_the_row(run):
 @pytest.mark.parametrize(("case", "other", "change", "kept"), [
     # A reader marked part of the label unreadable.
     ("unreadable span", None, None, ABSENT),
-    # The raw reader (not the decided one) writes an elevation: no elevation clears.
-    ("elevation in a reading", SPARSE + "\n1500 ft", None, ELEVATIONS),
     # The rows name the readings research saw; a reader added since makes them stale.
     ("stale row", None, add_a_reader, ABSENT),
     # A not-present value with no row never clears on a re-check.
     ("old value", None, forget_the_row, ("county",)),
-], ids=["unreadable-span", "elevation-in-a-reading", "stale-row", "old-value-under-refinalize"])
+], ids=["unreadable-span", "stale-row", "old-value-under-refinalize"])
 def test_a_listed_field_stays_in_review_when_the_label_or_its_record_is_in_doubt(tmp_path, case, other, change, kept):
-    rig = build_rig(tmp_path, SPARSE, other, decided=other is not None)
+    rig = build_rig(tmp_path, SPARSE, other)
     run = rig.specimen.run
     if case == "unreadable span":
         run.observations[1].unreadable_spans = ["0:3"]
@@ -3358,13 +3284,12 @@ NO_TOWN = answering(FieldAnswer(outcome="sources_cannot_resolve", explanation="N
     ("Yepocapa", NO_TOWN, ("city", "precise_location")),
 ], ids=["the-city-itself", "finer-than-the-city", "city-unresolved"])
 def test_a_precise_location_is_not_on_the_label_only_beside_a_settled_city_holding_its_text(
-        tmp_path, place, city, kept, first_pass_path):
+        tmp_path, place, city, kept):
     """A town-only label (105526328 to 105526330): the organiser gives the
     town's line, or a finer one, as the precise location too. On the units
     path rule A never clears the precise location (the ontology's rule
     precise_location_extent, WP 2.2): it stays for a person in each case."""
-    if first_pass_path == "units":
-        kept = tuple(dict.fromkeys((*kept, "precise_location")))
+    kept = tuple(dict.fromkeys((*kept, "precise_location")))
     text = GUATEMALAN_TOWN + ("" if place == "Yepocapa" else "\n" + place)
     quote = "city: Yepocapa" if place == "Yepocapa" else place
     rig = build_rig(tmp_path, text, candidates=[*COLLECTORS,
@@ -3554,30 +3479,12 @@ def test_a_municipio_line_beside_the_settled_town_and_department_clears_the_prec
     assert {key: run.fields[key].state for key in ("province_state", "city")} == dict.fromkeys(
         ("province_state", "city"), ValueState.SUPPORTED)
     place = run.fields["precise_location"]
-    if PATH == "units":
-        assert "precise_location" not in cleared_as_not_on_label(run) and not not_on_label_rows(run, "precise_location")
-        stands = {"label_lacks_value": (ValueState.NOT_PRESENT, None, {"rule": "A_declined:precise_location_extent"}),
-            "resolved": (ValueState.SUPPORTED, MUN_LINE, {}), "several_possibilities": (ValueState.AMBIGUOUS, None, {})}
-        assert (place.state, place.literal, decisions.get("precise_location", {})) == stands[answer.outcome]
-        assert (run.disposition, run.reasons) == ((Disposition.CLEARED, []) if answer.outcome == "resolved"
-            else (Disposition.REVIEW, unresolved("precise_location")))
-        return
-    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
-    assert decisions["precise_location"]["rule"] == "A_not_on_label"
-    assert "precise_location" in cleared_as_not_on_label(run)
-    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
-    [row] = not_on_label_rows(run, "precise_location")
-    if answer.outcome == "label_lacks_value":
-        assert place.reason.startswith(field_step.NOT_ON_LABEL_REASON)
-        assert "refusal" not in decisions["precise_location"]
-    else:
-        assert place.reason.startswith(field_step.NO_FINER_NOT_ON_LABEL.format(markers='"Mun."'))
-        assert decisions["precise_location"]["refusal"] == "admin_marker_only"
-        assert row.excerpt == field_step.not_on_label_excerpt("precise_location", field_step.run_readings(run),
-            markers=True)
-        assert json.loads(rig.blobs.get(row.raw_ref))["admin_markers"] == '"Mun."'
-        assert "transcript_literal:precise_location" not in [f.reason_code for f in run.findings]
-    verify_evidence(rig.specimen, rig.blobs)
+    assert "precise_location" not in cleared_as_not_on_label(run) and not not_on_label_rows(run, "precise_location")
+    stands = {"label_lacks_value": (ValueState.NOT_PRESENT, None, {"rule": "A_declined:precise_location_extent"}),
+        "resolved": (ValueState.SUPPORTED, MUN_LINE, {}), "several_possibilities": (ValueState.AMBIGUOUS, None, {})}
+    assert (place.state, place.literal, decisions.get("precise_location", {})) == stands[answer.outcome]
+    assert (run.disposition, run.reasons) == ((Disposition.CLEARED, []) if answer.outcome == "resolved"
+        else (Disposition.REVIEW, unresolved("precise_location")))
 
 
 @pytest.mark.parametrize("answer", list(MUN_ANSWERS.values())[1:], ids=list(MUN_ANSWERS)[1:])
@@ -3596,18 +3503,10 @@ def test_a_municipio_line_on_a_label_not_read_whole_goes_to_review(tmp_path, ans
     apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
     finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
     place = run.fields["precise_location"]
-    if PATH == "units":
-        # The marker check never runs on the units path (WP 2.2): the answer stands as given.
-        assert decisions.get("precise_location", {}) == {} and not not_on_label_rows(run, "precise_location")
-        assert (place.state, place.literal) == ((ValueState.SUPPORTED, MUN_LINE) if answer.outcome == "resolved"
-            else (ValueState.AMBIGUOUS, None))
-        return
-    assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
-    assert place.reason.startswith(field_step.NO_FINER_PLACE.format(markers='"Mun."'))
-    assert decisions["precise_location"] == {"refusal": "admin_marker_only",
-        "rule": "A_declined:label_not_read_whole"}
-    assert run.disposition == Disposition.REVIEW and "mandatory_unresolved:precise_location" in run.reasons
-    assert not not_on_label_rows(run, "precise_location")
+    # The marker check never runs on the units path (WP 2.2): the answer stands as given.
+    assert decisions.get("precise_location", {}) == {} and not not_on_label_rows(run, "precise_location")
+    assert (place.state, place.literal) == ((ValueState.SUPPORTED, MUN_LINE) if answer.outcome == "resolved"
+        else (ValueState.AMBIGUOUS, None))
 
 
 def test_a_municipio_line_stays_in_review_where_the_profile_does_not_list_the_precise_location(
@@ -3708,8 +3607,7 @@ def test_the_organisers_precise_location_that_only_marks_the_settled_county_is_n
     assert run.fields["precise_location"].state == ValueState.NOT_PRESENT
     # On the units path rule A never clears the precise location (precise_location_extent, WP 2.2).
     assert decisions["precise_location"]["rule"] == (
-        "A_declined:organiser_found_text" if kept else "A_declined:precise_location_extent" if PATH == "units"
-        else "A_not_on_label")
+        "A_declined:organiser_found_text" if kept else "A_declined:precise_location_extent")
 
 
 @pytest.mark.parametrize("line", ["Dist. Turrialba", "Distr. Turrialba", "Turrialba District", "Distrito Turrialba"])
@@ -3813,21 +3711,12 @@ def morphocoded(code):
     return TEXT.replace("taxon: Danaus plexippus", "taxon: " + code)
 
 
-# 105526321's second label: the first pass decided 2A's "sp. 30 <female sign>"; 2B writes "Sp.30 <female sign>".
-VARIANT = "Sp.30 \N{FEMALE SIGN}"
-
-
-@pytest.mark.parametrize(("asked", "other"), [(True, None), (False, None), (True, VARIANT)],
-    ids=["expert-asked-gbif", "step-adds-the-lookup", "decided-reading-beside-a-variant"])
-def test_a_taxon_that_names_no_genus_clears_as_written_and_unmatched(tmp_path, asked, other):
-    rig = build_rig(tmp_path, morphocoded(MORPHOCODE), other and morphocoded(other), decided=bool(other),
-        candidates=[*COLLECTORS, *([("taxon", "1B", other, "taxon: " + other)] if other else [])])
+@pytest.mark.parametrize("asked", [True, False], ids=["expert-asked-gbif", "step-adds-the-lookup"])
+def test_a_taxon_that_names_no_genus_clears_as_written_and_unmatched(tmp_path, asked):
+    rig = build_rig(tmp_path, morphocoded(MORPHOCODE), candidates=COLLECTORS)
     run = rig.specimen.run
     settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE, asks=[MORPHOCODE] if asked else [])}),
         tools=NoGenus(rig.blobs))
-    if other:
-        # The other reader's text is evidence only (G19), kept as contradicting it.
-        assert cited_rows(run, "taxon")["taxon: " + other] == "contradicts"
     taxon = run.fields["taxon"]
     assert (taxon.state, taxon.literal, taxon.parsed, taxon.normalized, taxon.authority_id, taxon.layer) == (
         ValueState.SUPPORTED, MORPHOCODE, MORPHOCODE, None, None, "settled")
@@ -3999,8 +3888,7 @@ PILOT_CODES = {
 
 @pytest.mark.parametrize("asked", [False, True], ids=["no-gbif-lookup", "gbif-no-match"])
 @pytest.mark.parametrize(("before", "code", "after"), PILOT_CODES.values(), ids=PILOT_CODES)
-def test_the_pilots_codes_with_no_genus_beside_them_still_clear_as_unmatched(tmp_path, before, code, after, asked,
-        first_pass_path, monkeypatch):
+def test_the_pilots_codes_with_no_genus_beside_them_still_clear_as_unmatched(tmp_path, before, code, after, asked, monkeypatch):
     """The expert quotes the code, with no GBIF lookup, or after GBIF's
     no-name answer for the code (no match, no candidates). On the units path a
     word of the lines around the code that no field holds ("shrubs", "mitchell"),
@@ -4012,7 +3900,7 @@ def test_the_pilots_codes_with_no_genus_beside_them_still_clear_as_unmatched(tmp
     words = genus_words(monkeypatch)
     settle(rig, Scripted({"taxon": cannot_resolve(code, asks=[code] if asked else [])}), tools=NoGenus(rig.blobs))
     taxon = run.fields["taxon"]
-    if first_pass_path == "units" and any(words):
+    if any(words):
         assert words[0] in before + after
         return held_back_by_a_word(run, words, words[0])
     assert (taxon.state, taxon.literal, taxon.reason) == (ValueState.SUPPORTED, code, field_step.UNMATCHED)
@@ -4215,13 +4103,12 @@ DOUBTFUL_BESIDE = {
 }
 
 
-@pytest.mark.parametrize("decided", [False, True], ids=["readers-agree", "decided-transcript"])
 @pytest.mark.parametrize(("written", "code", "quote"), DOUBTFUL_BESIDE.values(), ids=DOUBTFUL_BESIDE)
-def test_a_doubtful_genus_beside_the_code_keeps_the_taxon_in_review(tmp_path, written, code, quote, decided):
+def test_a_doubtful_genus_beside_the_code_keeps_the_taxon_in_review(tmp_path, written, code, quote):
     """The label check counts the word beside the code as a possible genus
     (checks.genus_beside), "?", brackets and "cf." aside."""
     text = TEXT.replace("taxon: Danaus plexippus", written)
-    rig = build_rig(tmp_path, text, text if decided else None, decided=decided,
+    rig = build_rig(tmp_path, text,
         candidates=[*COLLECTORS, *(("taxon", name, code, quote) for name in ("1A", "1B"))])
     run = rig.specimen.run
     settle(rig, Scripted({"taxon": cannot_resolve(code)}), tools=NoGenus(rig.blobs))
@@ -4385,21 +4272,18 @@ def test_the_real_resolver_looking_the_genus_up_as_its_brief_says_keeps_the_taxo
 
 @pytest.mark.parametrize("written", [*(line + "\nV-4-67-1\n" + SP1 for line in ("sim. Epipsocus", "NR Epipsocus",
     "C.F Epipsocus")), "Epipsocus\nwings + head\n" + SP1, "Epipsocus\nlegs\n" + SP1, "R.D. Epipsocus\n" + SP1])
-def test_a_genus_the_label_checks_do_not_read_clears_when_the_expert_makes_no_lookup(tmp_path, written,
-        first_pass_path, monkeypatch):
+def test_a_genus_the_label_checks_do_not_read_holds_the_code_back_when_the_expert_makes_no_lookup(tmp_path,
+        written, monkeypatch):
     """The documented remaining cases (FIELD_RESEARCH.md, "Two cases
     remain"): an expert that skips the lookup its brief asks for, quoting
-    the code, clears the taxon as unmatched, on the old path. On the units
-    path the genus the label writes holds it back (WP 2.T)."""
+    the code: the genus the label writes holds the taxon back (WP 2.T)."""
     rig = build_rig(tmp_path, TEXT.replace("taxon: Danaus plexippus", written),
         candidates=[*COLLECTORS, *(("taxon", name, SP1, SP1) for name in ("1A", "1B"))])
     run = rig.specimen.run
     words = genus_words(monkeypatch)
     settle(rig, Scripted({"taxon": cannot_resolve(SP1)}), tools=NoGenus(rig.blobs))
-    if first_pass_path == "units":
-        assert words and words[0] in written
-        return held_back_by_a_word(run, words, words[0])
-    assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
+    assert words and words[0] in written
+    held_back_by_a_word(run, words, words[0])
 
 
 def a_second_label(monkeypatch, text, spans=()):
@@ -4512,20 +4396,16 @@ def test_a_collectors_initials_are_no_qualifier_and_the_code_still_clears(tmp_pa
 
 
 @pytest.mark.parametrize("locality", ["Melbourne, Vic.", "Ballarat VIC"])
-def test_a_locality_in_victoria_is_no_qualifier_and_the_code_still_clears(tmp_path, locality, first_pass_path,
+def test_a_locality_in_victoria_is_no_qualifier_and_its_town_holds_the_code_back(tmp_path, locality,
         monkeypatch):
-    """"vic." counts in lower case only: "Vic." with a capital is Victoria,
-    so the morphocode label clears as unmatched under rule B, on the old path.
-    On the units path the locality's town, which no field holds, may be a
-    genus (WP 2.T)."""
+    """"vic." counts in lower case only: "Vic." with a capital is Victoria, no
+    qualifier; the locality's town, which no field holds, may be a genus, and
+    holds the morphocode back (WP 2.T)."""
     rig = build_rig(tmp_path, morphocoded(MORPHOCODE) + "\n" + locality)
     run = rig.specimen.run
     words = genus_words(monkeypatch)
     settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
-    if first_pass_path == "units":
-        return held_back_by_a_word(run, words, locality.split(",")[0].split()[0])
-    assert (run.fields["taxon"].state, run.fields["taxon"].reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
-    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    held_back_by_a_word(run, words, locality.split(",")[0].split()[0])
 
 
 # N3 of #289's sixth review: ordinary label words that hold a qualifier's
@@ -4548,21 +4428,15 @@ ORDINARY_LINES = {
 
 
 @pytest.mark.parametrize("line", ORDINARY_LINES.values(), ids=ORDINARY_LINES)
-def test_ordinary_label_words_are_no_doubt_sign_and_the_code_still_clears(tmp_path, line, first_pass_path, monkeypatch):
-    """The expert quotes the code with no lookup; the later pass
-    (taxon_unmatched) reads the label's places the same way. On the units
-    path a word of the line that no field holds may be a genus (WP 2.T)."""
+def test_ordinary_label_words_are_no_doubt_sign_and_hold_the_code_back(tmp_path, line, monkeypatch):
+    """The expert quotes the code with no lookup: a word of the line that no
+    field holds may be a genus, and holds the code back (WP 2.T)."""
     rig = build_rig(tmp_path, morphocoded(MORPHOCODE) + "\n" + line)
     run = rig.specimen.run
     words = genus_words(monkeypatch)
     settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE)}), tools=NoGenus(rig.blobs))
-    if first_pass_path == "units":
-        assert words and words[0] in line
-        return held_back_by_a_word(run, words, words[0])
-    taxon = run.fields["taxon"]
-    assert (taxon.state, taxon.reason) == (ValueState.SUPPORTED, field_step.UNMATCHED)
-    assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups, run=run)
-    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert words and words[0] in line
+    held_back_by_a_word(run, words, words[0])
 
 
 @pytest.mark.parametrize(("line", "city"), [
@@ -5011,17 +4885,12 @@ def test_a_stored_unmatched_taxon_whose_run_holds_a_gbif_lookup_of_a_genus_never
         run.lookups, run=run)
 
 
-@pytest.mark.parametrize(("other", "decided"), [("sp. 39", False), ("Sp.30", False), ("sp. 39", True)],
-    ids=["no-first-pass-pick", "no-pick-same-code", "decided-but-another-code"])
-def test_readers_that_write_different_morphocodes_stay_in_review(tmp_path, other, decided):
-    """1A writes "sp. 30" and 1B something else, and GBIF matches neither:
-    with no first-pass pick even the same code written differently stays,
-    and a decided reading never settles beside another reader's other code
-    that the organiser gives as a candidate."""
+@pytest.mark.parametrize("other", ["sp. 39", "Sp.30"], ids=["another-code", "the-same-code"])
+def test_readers_that_write_different_morphocodes_stay_in_review(tmp_path, other):
+    """1A writes "sp. 30" and 1B something else, and GBIF matches neither: even the same code
+    written differently stays."""
     taxa = [("taxon", "1A", "sp. 30", "taxon: sp. 30"), ("taxon", "1B", other, "taxon: " + other)]
-    # With a decided transcript the keyed-line parser gives 1A's candidates itself.
-    candidates = [*COLLECTORS, taxa[1]] if decided else every_field(*taxa)
-    rig = build_rig(tmp_path, morphocoded("sp. 30"), morphocoded(other), decided=decided, candidates=candidates)
+    rig = build_rig(tmp_path, morphocoded("sp. 30"), morphocoded(other), candidates=every_field(*taxa))
     run = rig.specimen.run
     settle(rig, Scripted({"taxon": cannot_resolve("sp. 30", asks=["sp. 30", other])}), tools=NoGenus(rig.blobs))
     taxon = run.fields["taxon"]
@@ -5030,19 +4899,6 @@ def test_readers_that_write_different_morphocodes_stay_in_review(tmp_path, other
     assert not field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
         run=run)
     assert not [item for item in run.evidence if item.locator == "check:taxon_no_genus"]
-
-
-def test_a_decided_readings_code_clears_alone_when_the_organiser_gives_no_other_readers_code(tmp_path):
-    """G19 as #284 applies it to every field (N4 of #289's review): 1A is the
-    decided transcript, 1B writes "sp. 39", and the organiser gives no
-    taxon candidate, so the keyed-line parser's "sp. 30" of the decided
-    reading is the only one, and the other reader's text is evidence only."""
-    rig = build_rig(tmp_path, morphocoded("sp. 30"), morphocoded("sp. 39"), decided=True)
-    run = rig.specimen.run
-    settle(rig, Scripted({"taxon": cannot_resolve("sp. 30", asks=["sp. 30"])}), tools=NoGenus(rig.blobs))
-    taxon = run.fields["taxon"]
-    assert (taxon.state, taxon.literal, taxon.input_source) == (ValueState.SUPPORTED, "sp. 30", "decided_transcript")
-    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
 
 
 def test_the_not_on_label_list_is_the_published_profiles_and_reaches_a_pinned_snapshot(rig):
@@ -5234,11 +5090,11 @@ def test_a_label_whose_coverage_is_not_confirmed_never_clears_a_field_as_not_on_
     assert not any(not_on_label_rows(run, key) for key in ABSENT)
 
 
-def test_readers_of_an_undecided_label_that_write_one_morphocode_settle_it(tmp_path, first_pass_path, monkeypatch):
-    """No first-pass pick (the readers differ on the habitat line), and both
-    write "sp. 30" with a female sign: B1 settles the taxon on that text, on
-    the old path. On the units path the habitat the readers differ on is left
-    unsettled, so its words are no settled field's and may be a genus (WP 2.T)."""
+def test_readers_of_an_undecided_label_that_write_one_morphocode_are_held_back_by_its_unsettled_words(
+        tmp_path, monkeypatch):
+    """The readers differ on the habitat line, and both write "sp. 30" with a
+    female sign: the habitat they differ on is left unsettled, so its words are
+    no settled field's and may be a genus, which holds the code back (WP 2.T)."""
     other = morphocoded(MORPHOCODE).replace("Synthetic grassland", "Synthetic grassIand")
     rig = build_rig(tmp_path, morphocoded(MORPHOCODE), other, candidates=every_field(
         *(("taxon", name, MORPHOCODE, "taxon: " + MORPHOCODE) for name in ("1A", "1B"))))
@@ -5246,15 +5102,8 @@ def test_readers_of_an_undecided_label_that_write_one_morphocode_settle_it(tmp_p
     assert {r.input_source for r in field_step.run_readings(run)} == {"raw_reading"}
     words = genus_words(monkeypatch)
     settle(rig, Scripted({"taxon": cannot_resolve(MORPHOCODE, asks=[MORPHOCODE])}), tools=NoGenus(rig.blobs))
-    if first_pass_path == "units":
-        assert run.fields["habitat"].state != ValueState.SUPPORTED
-        return held_back_by_a_word(run, words, words[0])
-    taxon = run.fields["taxon"]
-    assert (taxon.state, taxon.literal, taxon.input_source) == (ValueState.SUPPORTED, MORPHOCODE, "raw_reading")
-    assert set(taxon.verbatim_by_observation.values()) == {MORPHOCODE}
-    assert field_step.taxon_unmatched(taxon, {item.id: item for item in run.evidence}, run.lookups,
-        run=run)
-    assert not [reason for reason in run.reasons if "taxon" in reason]
+    assert run.fields["habitat"].state != ValueState.SUPPORTED
+    held_back_by_a_word(run, words, words[0])
 
 
 # ---- the fourth review's NB4: what the place rules say -----------------------

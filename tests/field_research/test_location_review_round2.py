@@ -70,7 +70,7 @@ def test_a_collector_that_runs_into_the_locality_is_told_so(tmp_path):
 
 # ---- 2. an unresolved value holds no text on the place line ----------------
 
-def test_the_country_experts_unresolved_canada_still_holds_the_places_back(tmp_path, first_pass_path):
+def test_the_country_experts_unresolved_canada_still_holds_the_places_back(tmp_path):
     """The other reader writes "Canada: Ill. Coles Co.", no candidate filed
     for it, and the country expert answers sources_cannot_resolve with the
     literal "Canada", which the field keeps. Its value settles nothing, so
@@ -82,11 +82,8 @@ def test_the_country_experts_unresolved_canada_still_holds_the_places_back(tmp_p
     country = expert(*COUNTRY_LOOKUPS, answer=lambda found: FieldAnswer(outcome="sources_cannot_resolve",
         literal="Canada", reading_names=["1B"], explanation="1B writes Canada, 1A USA."))
     run, decisions = coles(tmp_path, other, country=country)
-    if first_pass_path == "units":
-        assert (run.fields["country"].state, run.fields["country"].literal) == (ValueState.AMBIGUOUS, None)
-        assert run.fields["country"].reason.endswith(" Options: USA; Canada.")
-    else:
-        assert (run.fields["country"].state, run.fields["country"].literal) == (ValueState.UNRESOLVED, "Canada")
+    assert (run.fields["country"].state, run.fields["country"].literal) == (ValueState.AMBIGUOUS, None)
+    assert run.fields["country"].reason.endswith(" Options: USA; Canada.")
     assert decisions["province_state"].get("refusal") == "no_country"
     assert decisions["county"].get("refusal") == "no_country"
 

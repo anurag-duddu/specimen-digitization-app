@@ -100,7 +100,6 @@ from .contracts import (
     FieldOutcome,
     FieldResolver,
     FieldTask,
-    FirstPassAdvice,
     Reading,
     SourceAnswer,
     SourceTools,
@@ -208,70 +207,30 @@ def field_keys(profile: CollectionProfile) -> tuple[str, ...]:
 
 
 def units_path(run) -> bool:
-    """Whether the run's first-pass path is units (Run.first_pass_path, recorded when the
-    run was created): its experts take the reading units (Reading.units)."""
+    """Whether the run's recorded first-pass path is units (Run.first_pass_path). The workflow
+    researches a run on the units path only: it moves a run the old first pass processed onto
+    it before it picks a step (Workflow._step, workflow.move_to_units). The clearance rules
+    that a person's decision runs on a completed run, with no research (refinalize), read it:
+    a run of the old path keeps that path's date order and precise location rules there
+    (scientific_reasons, not_on_label)."""
     return getattr(run, "first_pass_path", "old") == "units"
 
 
 def run_readings(run) -> tuple[Reading, ...]:
-    """Every reading of every label, named as the organiser names them, each
-    with its label's first pass opinion (first_pass_advice) and, on the units
-    path, its label's reading units (Run.reading_units)."""
+    """Every reading of every label, named as the organiser names them, each with its label's
+    reading units (Run.reading_units); a label's decided transcript is person_decided when a
+    person decided the label's transcript (Transcript.actor)."""
     named = labelled(extraction_readings(run))
-    advice = first_pass_advice(run, named)
-    units = {entry.label: entry for entry in getattr(run, "reading_units", None) or ()} if units_path(run) else {}
+    persons = {transcript.region_id for transcript in getattr(run, "transcripts", None) or ()
+        if getattr(transcript, "actor", None)}
+    units = {entry.label: entry for entry in getattr(run, "reading_units", None) or ()}
     return tuple(
         Reading(name=name, region_id=item.region_id, observation_id=item.observation_id,
-            input_source=item.role, text=item.text, first_pass=advice.get(item.region_id),
+            input_source=item.role, text=item.text,
+            person_decided=item.role == "decided_transcript" and item.region_id in persons,
             units=units.get(item.region_id))
         for name, item in named.items()
     )
-
-
-def first_pass_advice(run, named: Mapping[str, object]) -> dict[str, FirstPassAdvice]:
-    """The first pass's opinion of each label it compared (a transcript whose
-    decision_kind is first_pass), by region, for the field experts (owner,
-    2026-10-25: "There an LLM opinion that's put in front along with actual
-    Raw transcription per model to the harness if needed"): the reading it
-    preferred (the label's decided_transcript reading, by name; None when it
-    preferred none), its rationale, its note on each reader and each
-    material difference with its verdict and each reader's span offsets,
-    readers named as `named` (the labelled extraction readings) names them.
-    A reader with no text is not among the readings, so it is left out. A
-    label whose transcript a person decided (Transcript.actor) gets no first
-    pass opinion, only `person_decided` and its decided reading: a person's
-    reading of the image binds the label's text (agreement.labels). On the
-    units path only that person's form is given: the experts take the units
-    in place of the first pass's opinion."""
-    found: dict[str, FirstPassAdvice] = {}
-    units = units_path(run)
-    for transcript in getattr(run, "transcripts", None) or ():
-        names: dict[str, str] = {}
-        preferred = None
-        for name, item in named.items():
-            if item.region_id != transcript.region_id:
-                continue
-            names.setdefault(item.observation_id, name)
-            if item.role == "decided_transcript" and preferred is None:
-                preferred = name
-        if getattr(transcript, "actor", None):
-            if preferred is not None:
-                found[transcript.region_id] = FirstPassAdvice(preferred=preferred, rationale="", reader_notes={},
-                    differences=(), person_decided=True)
-            continue
-        if units or transcript.decision_kind != "first_pass":
-            continue
-        notes = {names[h.observation_id]: h.note for h in transcript.handoffs if h.note and h.observation_id in names}
-        differences = tuple(
-            {"texts": {names[observation]: span.text for observation, span in difference.spans.items()
-                if observation in names},
-             "verdict": names.get(difference.verdict, difference.verdict),
-             "spans": {names[observation]: (span.start, span.end) for observation, span in difference.spans.items()
-                if observation in names}}
-            for difference in transcript.differences if difference.material)
-        found[transcript.region_id] = FirstPassAdvice(preferred=preferred, rationale=transcript.reason or "",
-            reader_notes=notes, differences=differences)
-    return found
 
 
 def human_keys(run) -> frozenset[str]:
@@ -342,8 +301,8 @@ def build_tasks(run, profile: CollectionProfile | None = None):
     One task per profile field, except a field a person decided and a field an
     earlier attempt already settled (a retry researches only the rest).
     ``context`` is every field's value as the organiser (or an earlier attempt)
-    left it. On the units path the collectors' candidates leave out the marker
-    of their role (_without_roles).
+    left it. The collectors' candidates leave out the marker of their role
+    (_without_roles).
     """
     from .location_reassessment import KEY as REASSESSMENT, active_keys, working_run
 
@@ -356,7 +315,7 @@ def build_tasks(run, profile: CollectionProfile | None = None):
     candidates = _candidates(run, readings)
     from .ontology_checks import ROLE_FIELD
 
-    if units_path(run) and ROLE_FIELD in candidates:
+    if ROLE_FIELD in candidates:
         candidates[ROLE_FIELD] = _without_roles(candidates[ROLE_FIELD])
     human = human_keys(run)
     tasks = []
@@ -519,15 +478,14 @@ def _literal_row(key: str, reading: Reading, literal: str, asset_id, blobs, *, t
         digest=hashlib.sha256(record).hexdigest() if blobs is not None else None)
 
 
-def _check_results(key: str, tools: Sequence[str], literal: str, *, texts: Sequence[str], date_rules,
-        units: bool = False):
+def _check_results(key: str, tools: Sequence[str], literal: str, *, texts: Sequence[str], date_rules):
     """The field's deterministic checks (CHECKS) among `tools`, each run on the literal, in
-    the order of `tools`; `units` on the units path (checks.parse_date)."""
+    the order of `tools`."""
     from . import checks
 
     runs = {
         "date_parser": lambda: checks.parse_date(literal, reading_texts=texts, date_rules=date_rules,
-            part=checks.DATE_PART.get(key), field=key, units=units),
+            part=checks.DATE_PART.get(key), field=key),
         "elevation_parser": lambda: checks.parse_elevation(literal, reading_texts=texts),
         "catalog_number_validator": lambda: checks.check_catalog_number(literal, reading_texts=texts),
     }
@@ -537,13 +495,13 @@ def _check_results(key: str, tools: Sequence[str], literal: str, *, texts: Seque
 
 
 def _check_row(key: str, tools: Sequence[str], literal: str, value: str, *, texts: Sequence[str],
-        date_rules, asset_id, blobs, units: bool = False) -> Evidence | None:
+        date_rules, asset_id, blobs) -> Evidence | None:
     """The evidence of a parsed value that differs from its literal: the field's
     deterministic check run again on the literal here, kept only when it settles
     the literal as that value (a check stores no evidence of its own). None when
     it does not, an ambiguous check included: the value then stays unsupported
     and the rules send it to review."""
-    for tool, result in _check_results(key, tools, literal, texts=texts, date_rules=date_rules, units=units):
+    for tool, result in _check_results(key, tools, literal, texts=texts, date_rules=date_rules):
         if result.status != LookupStatus.SUCCESS or value not in result.values:
             continue
         found = json.dumps(result.as_dict(), sort_keys=True, ensure_ascii=False)
@@ -632,7 +590,7 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
     other place fields (agreement.parents_refusal), or None. It is checked
     here, once every outcome is in: field research runs its fields at once,
     and the country must be known. For each reading the answer names,
-    whichever reader the first pass preferred, the other place fields are
+    whichever reader wrote it, the other place fields are
     those that reading writes (`places`), and one of them is settled for the
     reading when its value is supported, this attempt has done with it (it is
     not `pending`) and the reading writes its literal, compared as place
@@ -1093,7 +1051,6 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     by_name = {reading.name: reading for reading in readings}
     researched = {outcome.key for outcome in outcomes}
     human = human_keys(run)
-    units = units_path(run)
     claims: list[tuple[str, frozenset]] = []
     mine: dict[str, frozenset] = {}
     # Each claim's literal and labels, and each answer's literal and labels:
@@ -1116,10 +1073,10 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             claim_texts.append((outcome.key, value.literal, regions))
         literal = answer.literal
         names = answer.reading_names
-        if (units and outcome.key == "taxon" and answer.outcome == "sources_cannot_resolve" and value is not None
+        if (outcome.key == "taxon" and answer.outcome == "sources_cannot_resolve" and value is not None
                 and value.reason.startswith(UNMATCHED)):
-            # On the units path, owner decision B's value (_unmatched_taxon) settles text as a
-            # resolved answer does, so it is guarded as one (WP 2.T, round 1 of #438's review).
+            # Owner decision B's value (_unmatched_taxon) settles text as a resolved answer
+            # does, so it is guarded as one (WP 2.T, round 1 of #438's review).
             literal = value.literal
             observed = {value.source_observation_id, *value.settled_observation_ids, *value.verbatim_by_observation}
             names = [r.name for r in readings if r.observation_id in observed or r.region_id == value.source_region_id]
@@ -1134,8 +1091,8 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             mine[outcome.key] = frozenset((r.name, start, end) for r in readings if r.region_id in regions
                 for start, end in written_runs(outcome.key, r.text, literal))
             mine_texts[outcome.key] = (literal, regions)
-        elif units and task is not None and named and (below := year_below(task, readings, literal, named)):
-            # On the units path the year a date's literal takes from the next line (agreement.year_below)
+        elif task is not None and named and (below := year_below(task, readings, literal, named)):
+            # The year a date's literal takes from the next line (agreement.year_below)
             # is text the organiser gave no field: another field's settled text on it takes it, as text
             # read from the transcript is taken (plan WP 2.4, the coordinator's condition (e)).
             regions = {r.region_id for r in named}
@@ -1149,14 +1106,13 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             claim_texts.append((key, value.literal, _value_regions(value, readings, evidence)))
     taken: dict[str, Taken] = {}
     yielded: dict[str, str] = {}
-    units = units_path(run)
     for key, spans in mine.items():
         place = FIELD_KINDS.get(key) == "place"
         partial, other = [], None
         for (claimant, theirs), (_, their_text, their_regions) in zip(claims, claim_texts, strict=True):
             if claimant == key or may_share_text(key, claimant) or not _overlap(spans, theirs):
                 continue
-            if units and _keeps_an_elevation(key, *mine_texts[key], claimant, their_text, their_regions):
+            if _keeps_an_elevation(key, *mine_texts[key], claimant, their_text, their_regions):
                 continue
             if place and claimant in settled and _partly(spans, theirs):
                 partial.append(claimant)
@@ -1177,15 +1133,14 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
         # when its own text read from the transcript also met that place.
         if claimant not in taken or taken[claimant].other == key:
             taken[claimant] = Taken(key, partly=True)
-    if units:
-        # A date an earlier attempt settled on a year it took from the next line keeps that year: a
-        # field this attempt settles on text over it is taken, whatever its basis, as within one
-        # attempt (the coordinator's ruling on #444's round 1: whichever settled first).
-        for key, years in _borrowed_years(run, readings, evidence, researched, human).items():
-            for claimant, theirs in claims:
-                if (claimant in settled and claimant not in taken and claimant != key
-                        and not may_share_text(claimant, key) and _overlap(theirs, years)):
-                    taken[claimant] = Taken(key, year="theirs")
+    # A date an earlier attempt settled on a year it took from the next line keeps that year: a
+    # field this attempt settles on text over it is taken, whatever its basis, as within one
+    # attempt (the coordinator's ruling on #444's round 1: whichever settled first).
+    for key, years in _borrowed_years(run, readings, evidence, researched, human).items():
+        for claimant, theirs in claims:
+            if (claimant in settled and claimant not in taken and claimant != key
+                    and not may_share_text(claimant, key) and _overlap(theirs, years)):
+                taken[claimant] = Taken(key, year="theirs")
     return taken
 
 
@@ -1376,12 +1331,12 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
     if not named:
         return None
     transcript = literal_basis(task, tuple(by_name.values()), literal, named) == TRANSCRIPT
-    # On the units path the collectors' name is cited where its row locates it, without the marker
-    # of its role (the ontology's notation collected_by): the organiser's row may locate the
-    # name with the marker, and its line keeps the marker as evidence of the role.
+    # The collectors' name is cited where its row locates it, without the marker of its role
+    # (the ontology's notation collected_by): the organiser's row may locate the name with the
+    # marker, and its line keeps the marker as evidence of the role.
     from .ontology_checks import ROLE_FIELD, ROLE_NOTATION, plain_name, role_beside
 
-    named_only = units_path(run) and task.key == ROLE_FIELD
+    named_only = task.key == ROLE_FIELD
     relations: dict[str, str] = {}
     for reading in named:
         own = [e for e in task.current.evidence_ids if e in evidence and evidence[e].kind == "literal"
@@ -1417,7 +1372,7 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
         if not any(evidence[e].kind in {"authority", "authority_selection", "derived"}
                 and value in evidence[e].excerpt for e in cited):
             row = _check_row(task.key, task.tools, literal, value, texts=[r.text for r in by_name.values()],
-                date_rules=date_rules, asset_id=asset_id, blobs=blobs, units=units_path(run))
+                date_rules=date_rules, asset_id=asset_id, blobs=blobs)
             if row is not None:
                 run.evidence.append(row)
                 evidence[row.id] = row
@@ -1471,8 +1426,8 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         elevations=None) -> FieldValue:
     """The field's value from its outcome. ``decision`` collects, as codes,
     which of the step's checks refused a resolved answer ("refusal") and which
-    rule decided it ("rule"), for the field's trace (trace_fields). On the
-    units path a resolved or several_possibilities answer for a field whose
+    rule decided it ("rule"), for the field's trace (trace_fields). A
+    resolved or several_possibilities answer for a field whose
     parts lie on different labels (field_parts) is ambiguous, with each
     label's parts in its reason and their texts as its options (rule PARTS).
     ``received`` holds the source answers of every field, by field (_misfit);
@@ -1496,7 +1451,7 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
             decision["rule"] = "timed_out_on_last_attempt"
             reason = _timeout_reason(run)
         return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited, reason=reason)
-    if (units_path(run) and answer.outcome in ("resolved", "several_possibilities")
+    if (answer.outcome in ("resolved", "several_possibilities")
             and (parts := field_parts(task.key, readings))):
         # Spec section 4, "Parts on different labels" (plan WP 2.4): a field whose parts lie on
         # different labels settles neither on one label's part nor on a text no label writes,
@@ -1540,8 +1495,8 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
         return _unsettled(task, ValueState.NOT_PRESENT, cited=cited, reason=answer.explanation)
     if answer.outcome == "several_possibilities":
         options = [o for o in dict.fromkeys(answer.options) if o and o.strip()]
-        if units_path(run) and (union := _unsettled_options(task, readings, sources, answer=answer)):
-            # Units path, rule 6 (P7): where a label none of whose candidates has a backing is
+        if union := _unsettled_options(task, readings, sources, answer=answer):
+            # Rule 6 (P7): where a label none of whose candidates has a backing is
             # left, the options are its readers' texts and the answer's, as for
             # sources_cannot_resolve below.
             decision["rule"] = "rule_unsettled"
@@ -1559,9 +1514,8 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
             else "B_declined:" + (why[0] if why else "unknown"))
         if unmatched is not None:
             return unmatched
-    if units_path(run) and not outcome.fallback and (
-            options := _unsettled_options(task, readings, sources, answer=answer)):
-        # Units path, rule 6: an expert's sources_cannot_resolve on a label none of whose
+    if not outcome.fallback and (options := _unsettled_options(task, readings, sources, answer=answer)):
+        # Rule 6: an expert's sources_cannot_resolve on a label none of whose
         # candidates has a backing leaves the field ambiguous, its readers' texts the options,
         # as several_possibilities stores it. The resolver's fallback is no answer of the expert's.
         decision["rule"] = "rule_unsettled"
@@ -1569,13 +1523,13 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
             reason=answer.explanation + " Options: " + "; ".join(options) + ".")
     literal = answer.literal if answer.literal and any(answer.literal in r.text for r in readings) else current.literal
     reason = answer.explanation
-    if units_path(run) and outcome.fallback and outcome.rejected:
+    if outcome.fallback and outcome.rejected:
         reason = f"{reason} {_rejected_note(outcome.rejected)}"
     return _unsettled(task, ValueState.UNRESOLVED, literal=literal, cited=cited, reason=reason)
 
 
 def _rejected_note(rejected: Sequence[tuple[str, str | None]]) -> str:
-    """On the units path, the sentence an unresolved field's reason ends with when every answer
+    """The sentence an unresolved field's reason ends with when every answer
     its expert gave was refused by its checks (FieldOutcome.rejected, census cause H1): each
     refused literal with the check that refused it, in the order given. It changes no state,
     and the field's reason is never sent to a model."""
@@ -1813,7 +1767,7 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     if task.key in derive.ELEVATIONS and len(elevation_numbers([*offered, *given])) > 1:
         # The coordinator's ruling on #437's G51 review (precision): an expert whose options name more
         # than one elevation ("6400", "5000 ft.") is not settled by the rule on the one that alone
-        # carries a unit; the field stays held, as on the old path, unless a rule of the ontology
+        # carries a unit; the field stays held unless a rule of the ontology
         # settles it with every condition holding (ontology_checks.infer_feet's (iii)).
         return None
     found = labels(task, readings, answers, offered=offered + given)
@@ -1837,7 +1791,7 @@ def _by_rule(task, outcome: FieldOutcome, readings: Sequence[Reading], sources: 
     value = None
     if set(task.tools) & CHECKS:
         results = [result for _, result in _check_results(task.key, task.tools, literal,
-            texts=[reading.text for reading in readings], date_rules=date_rules, units=True)
+            texts=[reading.text for reading in readings], date_rules=date_rules)
             if result.status == LookupStatus.SUCCESS]
         if len(results) != 1:
             return None
@@ -2022,15 +1976,14 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
       the GBIF guard above refuses; these signs hold the taxon back when it
       does not;
     - the readers settle on the literal by B1's rule (agreement.labels):
-      each label that writes the taxon settles on its own on that one text.
-      With no successful lookup that is readers that each write exactly
-      that text, another label's text, or the reading the first pass
-      preferred for the label, when nothing supports another reader's text.
+      each label that writes the taxon settles on its own on that one text,
+      by the settlement rule (agreement.labels_by_rule).
     The value meets the agreement rules any resolved answer meets
     (agreement.refusal through _refusal: a whole candidate whose quote
-    writes no longer name around it, readers that agree). It names the
-    reader the first pass preferred where that reader writes the code, and
-    every reader that writes it on any other label. It is built as a settled answer is (_settled: the label rows and
+    writes no longer name around it, readers that agree). It names a
+    label's decided transcript (its readers' one text, or a person's) where
+    that transcript writes the code, and every reader that writes it on any
+    other label. It is built as a settled answer is (_settled: the label rows and
     the lineage), with the literal as written, no authority and the layer
     settled, and cites one check row naming GBIF's no-name lookup, which the
     run keeps (lookup.no_name_lookup: no request is made; the step adds it
@@ -2052,7 +2005,7 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
     a genus (_genus_on_a_label), every label whose readings write the code
     is among the labels that settle, and the value is guarded against text
     another kind of field holds as a resolved answer is (_taken). Every
-    other condition above holds there as it does on the old path."""
+    other condition above holds there too."""
     from specimen_digitization.application.lookup import no_name_lookup
 
     from .agreement import DECIDED, SOURCE_IDS, candidate_literal, labels, reader_literals, verbatim_runs
@@ -2060,10 +2013,10 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
 
     literal = task.current.literal
     code = morphocode(literal)
-    # The units path (WP 2.T): the experts take every unit, so where the organiser left no
-    # morphocode, or no candidate, the code is the one the expert's own answer quotes, and a
-    # label settles by the units' rule on the text offered to it (agreement.labels_by_rule).
-    expert = units_path(run) and outcome.answer is not None and (code is None or not task.candidates)
+    # WP 2.T: the experts take every unit, so where the organiser left no morphocode, or no
+    # candidate, the code is the one the expert's own answer quotes, and a label settles by the
+    # units' rule on the text offered to it (agreement.labels_by_rule).
+    expert = outcome.answer is not None and (code is None or not task.candidates)
     if expert and code is None:
         literal = outcome.answer.literal
         code = morphocode(literal)
@@ -2081,16 +2034,15 @@ def _unmatched_taxon(run, task, outcome: FieldOutcome, *, readings, by_name, evi
         return _declined(why, "code_label_unreadable")
     if _doubt_on_the_labels(run, readings):
         return _declined(why, "doubt_on_the_labels")
-    # On the units path, whichever branch reaches owner decision B (the coordinator's ruling on
-    # round 1 of #438's review, G51's P1b): no label may write a word that may be a genus, and every
-    # label whose readings write the code (checks.writes_code) is among the labels that settle.
-    units = units_path(run)
-    if units and _genus_on_a_label(run, readings) is not None:
+    # Whichever branch reaches owner decision B (the coordinator's ruling on round 1 of #438's
+    # review, G51's P1b): no label may write a word that may be a genus, and every label whose
+    # readings write the code (checks.writes_code) is among the labels that settle.
+    if _genus_on_a_label(run, readings) is not None:
         return _declined(why, "a_label_writes_a_genus")
     want = collapse(literal)
     tools = frozenset(task.tools) & SOURCE_IDS
     found = labels(task, readings, [a for a in sources if a.source_id in tools], offered=(literal,) if expert else ())
-    if units and not {r.region_id for r in readings if writes_code(r.text, code)} <= set(found):
+    if not {r.region_id for r in readings if writes_code(r.text, code)} <= set(found):
         return _declined(why, "readers_do_not_settle")
     if expert:
         # Every label that writes the code settles cleared (rule 4 of the spec's section 4), on
@@ -2587,9 +2539,9 @@ def _location_readers_agree(proposal: _LocationProposal, tasks_by_key: Mapping[s
             else:
                 verbatims[observation] = literal
     task = replace(task, candidates=tuple(candidates), current=FieldValue(verbatim_by_observation=verbatims))
-    common = dict(literal=proposal.literal, named=named,
-        authority_id=proposal.candidate.authority_id, cited=(source,), received=(*captured, source))
-    return (refusal(task, readings, value=proposal.candidate.name, **common) is None
+    common = dict(literal=proposal.literal, authority_id=proposal.candidate.authority_id, cited=(source,),
+        received=(*captured, source))
+    return (refusal(task, readings, value=proposal.candidate.name, named=named, **common) is None
         and _disagreement(task, readings, transcript=proposal.literal, **common) is None)
 
 
@@ -2748,10 +2700,10 @@ def _country_alternatives_are_lower_places(run, task, outcome, *, readings, rece
 
     Two kinds of alternative hold nothing back (the third rerun of 2026-10-18):
     - text that stands on no reading a field may settle on
-      (agreement.set_aside): the text of a label's other readers that the
-      reader its first pass preferred does not write and no other label
-      writes, or text the readers of a label whose first pass preferred no
-      reader dispute, each other reader writing
+      (agreement.set_aside): the text of a label's other readers that its
+      decided transcript (its readers' one text, or a person's) does not
+      write and no other label writes, or text the readers of a label with
+      no decided transcript dispute, each other reader writing
       another field's text at that very point (`claimed`, _claimed_texts).
       d10333ff's label 3, a determination label whose first pass reached its
       token cap in one run and chose no reading in the next two, has 3A
@@ -2833,9 +2785,9 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     check's parse gets a "derived" row when the check, run again on the
     literal, gives that value. A resolved answer the agreement rules refuse
     (agreement.refusal: a literal that is neither a whole candidate of the
-    readings it names nor whole words of one line of each, a pick between
-    readers that neither a source, another label nor the first pass's
-    preferred reading settles, a place no place source confirms), whose place does not
+    readings it names nor whole words of one line of each, readers that
+    differ where the settlement rule settles no text, a place no place
+    source confirms), whose place does not
     lie in the country and province settled for its reading (_misfit, after
     the places above it), or whose literal, read from the transcript, is
     text another kind of field's settled value claims (_taken, judged on
@@ -2843,19 +2795,15 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     unresolved instead; a place settled on initials that no place below it
     confirms is ambiguous (_corroborate, once every place is in). A literal
     read from the transcript that settles is marked so
-    (_from_the_transcript). On the old path a precise location whose answer
-    gives only an administrative marker beside the places settled is not
-    present (_no_finer_place, after _corroborate), and so is one settled on
-    only the text of a settled place field of the same reading
-    (_repeats_a_place); and so, on either path, is a county or a city left open whose every
-    text on the label is the text of a settled place above it
+    (_from_the_transcript). A county or a city left open whose every text
+    on the label is the text of a settled place above it is not present
     (_only_a_place_above).
     label_lacks_value: not present;
     sources_cannot_resolve: unresolved, except a taxon that names no genus,
     supported as written and unmatched (_unmatched_taxon); several_possibilities:
-    ambiguous, the options in the reason (on the units path first put to the rule,
-    _by_rule, and applied as a resolved answer where the rule settles one text). On the
-    units path a resolved or several_possibilities answer for a field whose parts lie on
+    ambiguous, the options in the reason (first put to the rule, _by_rule, and
+    applied as a resolved answer where the rule settles one text). A resolved or
+    several_possibilities answer for a field whose parts lie on
     different labels is ambiguous instead, each label's parts named, and marked on each
     of those labels (field_parts, _settlement); a
     failure: unresolved with a
@@ -2871,9 +2819,8 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     rerun of 2026-10-18 blamed Getty TGN for answers that had failed their
     checks). ``decisions`` collects, per
     field, the codes of the checks and rules that decided it (trace_fields).
-    Then, for each field researched in this attempt, how each label whose
-    readers differ settled it, against its first pass's preferred reader
-    (_first_pass_preference). On the units path a field derived from another
+    Then, for each field researched in this attempt, how each label settled
+    it (_settlement). A field derived from another
     that is settled absent while its source is held waits instead, right after
     the derivation (ontology_checks.wait_for_sources); a precise location keeps
     an elevation only beside the elevation field's same literal from its label
@@ -2905,25 +2852,22 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     received: dict[str, list[SourceAnswer]] = {}
     for call in calls:
         received.setdefault(call.field_key, []).append(call.answer)
-    outcomes = _across_lines(outcomes, by_name)
-    if units_path(run):
-        outcomes = _role_markers(outcomes)
+    outcomes = _role_markers(_across_lines(outcomes, by_name))
     outcomes = _reconcile_location_outcomes(run, tasks_by_key, outcomes, readings=readings,
         received=received, evidence=evidence, human=human)
-    # The units path, rules 4 and 5: an expert's several_possibilities answer put to the rule
-    # (_by_rule) is applied as a resolved answer; where it does not settle when applied, the
-    # expert's own answer is applied in its place (_apply_answers, `put`).
+    # Rules 4 and 5: an expert's several_possibilities answer put to the rule (_by_rule) is
+    # applied as a resolved answer; where it does not settle when applied, the expert's own
+    # answer is applied in its place (_apply_answers, `put`).
     put: dict[str, FieldOutcome] = {}
-    if units_path(run):
-        ruled = []
-        for outcome in outcomes:
-            task = tasks_by_key.get(outcome.key)
-            by_rule = (_by_rule(task, outcome, readings, received.get(outcome.key, ()), date_rules=profile.date_rules)
-                if task is not None and outcome.key not in human else None)
-            if by_rule is not None:
-                put[outcome.key] = outcome
-            ruled.append(by_rule or outcome)
-        outcomes = tuple(ruled)
+    ruled = []
+    for outcome in outcomes:
+        task = tasks_by_key.get(outcome.key)
+        by_rule = (_by_rule(task, outcome, readings, received.get(outcome.key, ()), date_rules=profile.date_rules)
+            if task is not None and outcome.key not in human else None)
+        if by_rule is not None:
+            put[outcome.key] = outcome
+        ruled.append(by_rule or outcome)
+    outcomes = tuple(ruled)
     # The places first, from the country down: a place below it settles only
     # inside the country (and province) settled before it (_misfit).
     ordered = sorted(outcomes, key=lambda o: PLACE_ORDER.index(o.key) if o.key in PLACE_ORDER else len(PLACE_ORDER))
@@ -2935,21 +2879,13 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     # first, on a copy of the run (_first_pass).
     first = _first_pass(run, tasks_by_key, ordered, **common)
     taken = _taken(run, tasks_by_key, ordered, readings, first)
-    # On the units path a precise location keeps an elevation only when an elevation field settles
-    # its text from that label (agreement.literal_refusal; the ontology's precise_location_extent):
-    # an elevation the guard on text another field holds takes (_taken) settles nothing.
+    # A precise location keeps an elevation only when an elevation field settles its text from
+    # that label (agreement.literal_refusal; the ontology's precise_location_extent): an
+    # elevation the guard on text another field holds takes (_taken) settles nothing.
     elevations = _settled_elevations(run, {key: value for key, value in first.items() if key not in taken},
-        readings, {outcome.key for outcome in ordered}, human) if units_path(run) else None
+        readings, {outcome.key for outcome in ordered}, human)
     applied, added = _apply_answers(run, tasks_by_key, ordered, taken=taken, evidence=evidence, blobs=blobs,
         decisions=decisions, elevations=elevations, **common)
-    # A precise location that gives only an administrative marker beside the
-    # places settled has no value on the label (_no_finer_place).
-    no_finer = _no_finer_place(run, profile, tasks_by_key, applied, added, readings, evidence=evidence,
-        decisions=decisions)
-    # A precise location settled on only a settled place's text is no finer
-    # locality: not present, as label_lacks_value makes it (_repeats_a_place).
-    repeated = _repeats_a_place(run, tasks_by_key, applied, added, readings, evidence=evidence,
-        decisions=decisions)
     # A county or a city whose every text is a settled place's above it names
     # no place of its own: not present, as label_lacks_value makes it
     # (_only_a_place_above).
@@ -2969,22 +2905,21 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
         run.fields["country"] = ambiguous_country
     for key in derived:
         decisions.setdefault(key, {})["rule"] = "derived"
-    if units_path(run):
-        # A field derived from another waits while its source is held, never settled absent
-        # (ontology_checks.wait_for_sources).
-        from .ontology_checks import wait_for_sources
+    # A field derived from another waits while its source is held, never settled absent
+    # (ontology_checks.wait_for_sources).
+    from .ontology_checks import infer_feet, stage, wait_for_sources
 
-        for key in wait_for_sources(run, eligible=eligible, readings=readings):
-            decisions.setdefault(key, {})["rule"] = "waits_for_source"
+    for key in wait_for_sources(run, eligible=eligible, readings=readings):
+        decisions.setdefault(key, {})["rule"] = "waits_for_source"
     # Last, so that a value derived above is never marked absent.
     declined: dict[str, str] = {}
     for key in mark_not_on_label(run, profile, tasks, outcomes, readings=readings, asset_id=asset_id, blobs=blobs,
-            why=declined, no_finer=no_finer, repeated=repeated, above=above):
+            why=declined, above=above):
         decisions.setdefault(key, {})["rule"] = "A_not_on_label"
     for key, code in declined.items():
         # A value derived above keeps "derived" (rule A declines it as present).
         decisions.setdefault(key, {}).setdefault("rule", "A_declined:" + code)
-    # A value settled on the answer of the units path's one re-ask says so (field_research/reask.py).
+    # A value settled on the answer of the one re-ask says so (field_research/reask.py).
     for outcome in outcomes:
         value = run.fields.get(outcome.key)
         if (outcome.reasked and outcome.key in tasks_by_key and outcome.key not in human and value is not None
@@ -3003,102 +2938,24 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             # The rule's settlement is recorded as the rule was given it (_by_rule).
             given = dict(offered=[text for text in (put[outcome.key].answer.literal, *put[outcome.key].answer.options)
                 if text]) if outcome.key in put else {}
-            (_settlement if units_path(run) else _first_pass_preference)(run, tasks_by_key[outcome.key], outcome,
-                readings=readings, by_name=by_name, sources=received.get(outcome.key, ()),
-                decision=decisions.get(outcome.key, {}), **given)
-    # The check stage, last, on the units path only: an inference whose rule's conditions all hold
-    # fills an open field, cleared, and derivation fills what it lets derive
-    # (ontology_checks.infer_feet); then the stage marks what fails a rule of the ontology among
-    # the values settled, inferred and derived above, and revises none (ontology_checks.stage).
-    if units_path(run):
-        from .ontology_checks import infer_feet, stage
-
-        inferred = infer_feet(run, readings=readings, eligible=eligible, asset_id=asset_id, blobs=blobs)
-        if inferred:
-            more = derive.fill(run, eligible=[key for key in eligible if key in derive.ELEVATIONS], asset_id=asset_id,
-                blobs=blobs, received=received)
-            for key in inferred:
-                decisions.setdefault(key, {})["rule"] = "inferred"
-            for key in more:
-                decisions.setdefault(key, {})["rule"] = "derived"
-            derived = [*derived, *more]
-        stage(run, readings=readings, received=received, researched=tasks_by_key, derived=derived, human=human,
-            blobs=blobs, decisions=decisions)
+            _settlement(run, tasks_by_key[outcome.key], outcome, readings=readings, by_name=by_name,
+                sources=received.get(outcome.key, ()), decision=decisions.get(outcome.key, {}), **given)
+    # The check stage, last: an inference whose rule's conditions all hold fills an open field,
+    # cleared, and derivation fills what it lets derive (ontology_checks.infer_feet); then the
+    # stage marks what fails a rule of the ontology among the values settled, inferred and
+    # derived above, and revises none (ontology_checks.stage).
+    inferred = infer_feet(run, readings=readings, eligible=eligible, asset_id=asset_id, blobs=blobs)
+    if inferred:
+        more = derive.fill(run, eligible=[key for key in eligible if key in derive.ELEVATIONS], asset_id=asset_id,
+            blobs=blobs, received=received)
+        for key in inferred:
+            decisions.setdefault(key, {})["rule"] = "inferred"
+        for key in more:
+            decisions.setdefault(key, {})["rule"] = "derived"
+        derived = [*derived, *more]
+    stage(run, readings=readings, received=received, researched=tasks_by_key, derived=derived, human=human,
+        blobs=blobs, decisions=decisions)
     return derived
-
-
-FIRST_PASS_RULES = "field-research-first-pass-advice-v1"
-
-
-def first_pass_code(status: str, key: str, region_id: str) -> str:
-    """The reason code of how a label whose readers differ settled a field,
-    against the reader its first pass preferred (agreement.Label.preference:
-    followed, overridden or absent), or why it did not (conflict):
-    `first_pass_<status>:<field>:<region>`."""
-    return f"first_pass_{status}:{key}:{region_id}"
-
-
-def _first_pass_preference(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
-        decision: Mapping[str, str]) -> None:
-    """Record how each label whose readers differ settled a value its
-    expert's resolved answer supports (agreement.labels: Label.preference):
-    one info finding per label (rule first_pass_preference), with the reason
-    code first_pass_code gives (`first_pass_followed`, `first_pass_overridden`:
-    another reader's text, which a source confirms or another label writes,
-    or `first_pass_absent`: the first pass preferred no reader), citing the
-    value's label rows of that label that support it, the readers whose text
-    it settled on. And, for a field left unsettled, one warning finding per
-    label that did not settle because only another label or a near spelling
-    opposed the first pass's image-confirmed pick (`first_pass_conflict`):
-    the field is unresolved, for a person to choose (the coordinator's
-    decision of 2026-10-25 on #414's review); the field's own state sends a
-    mandatory field to review. A RunFinding never routes the record: the
-    first pass's preference is advice (the owner, 2026-10-25). The field's
-    earlier such findings go first, so a field researched again keeps only
-    its latest; a value settled otherwise (location reconciliation,
-    derivation, a person) gets none."""
-    from .agreement import CONFLICT, SOURCE_IDS, TRANSCRIPT, labels, literal_basis
-
-    run.findings[:] = [finding for finding in run.findings
-        if not (finding.rule_id == "first_pass_preference" and finding.field_key == task.key)]
-    answer, value = outcome.answer, run.fields.get(task.key)
-    if value is None or decision.get("rule") == "location_reconciliation" or value.layer == "derived":
-        return
-    tools = frozenset(task.tools) & SOURCE_IDS
-    answers = [item for item in sources if item.source_id in tools]
-    literal = answer.literal if answer is not None and answer.outcome == "resolved" else None
-    named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and literal in by_name[n].text
-        ] if literal else []
-    transcript = literal if named and literal_basis(task, readings, literal, named) == TRANSCRIPT else None
-    found = labels(task, readings, answers, transcript=transcript, named=named)
-    rows = {item.id: item for item in run.evidence}
-    if value.state != ValueState.SUPPORTED:
-        for region, label in found.items():
-            if label.preference == CONFLICT:
-                run.findings.append(RunFinding(rule_id="first_pass_preference", rule_version=FIRST_PASS_RULES,
-                    severity="warning", field_key=task.key, reason_code=first_pass_code(CONFLICT, task.key, region),
-                    evidence_ids=[i for i in value.evidence_ids if (row := rows.get(i)) is not None
-                        and row.kind == "literal" and row.region_id == region]))
-        return
-    if not literal or value.literal != literal or value.layer not in ("settled", "verbatim"):
-        return
-    for region, label in found.items():
-        if label.preference in (None, CONFLICT):
-            continue
-        cited = [i for i in value.evidence_ids if value.evidence_relations.get(i) == "supports"
-            and (row := rows.get(i)) is not None and row.kind == "literal" and row.region_id == region]
-        if label.matched:
-            # The other reader's text the source confirmed: its row stays
-            # cited, and the reason says which reader's it was.
-            matched = {by_name[name].observation_id for name in label.matched_by if name in by_name}
-            cited += [i for i in value.evidence_ids if i not in cited and (row := rows.get(i)) is not None
-                and row.kind == "literal" and row.region_id == region and set(row.observation_ids) & matched]
-            note = (f"The source confirmed reader {', '.join(label.matched_by)}'s {label.matched!r}, one letter "
-                f"from the text the first pass confirmed, {value.literal!r}, which the label writes.")
-            value.reason = " ".join(part for part in (value.reason, note) if part)
-        run.findings.append(RunFinding(rule_id="first_pass_preference", rule_version=FIRST_PASS_RULES,
-            severity="info", field_key=task.key, reason_code=first_pass_code(label.preference, task.key, region),
-            evidence_ids=cited))
 
 
 # The units path's findings (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4): how each
@@ -3170,11 +3027,10 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
         return
     tools = frozenset(task.tools) & SOURCE_IDS
     answers = [item for item in sources if item.source_id in tools]
-    named = [by_name[n] for n in dict.fromkeys(answer.reading_names) if n in by_name and literal in by_name[n].text]
     # The answer's literal is offered to every label, whatever readings it names (agreement.refusal),
     # and, for an answer the rule settled from an expert's several_possibilities (_by_rule), its
     # options (`offered`), as the rule was given them.
-    found = labels(task, readings, answers, transcript=literal, named=named, offered=offered)
+    found = labels(task, readings, answers, transcript=literal, offered=offered)
     rows = {item.id: item for item in run.evidence}
     for region, label in found.items():
         if not label.settled or not (label.cleared or label.why):
@@ -3865,145 +3721,6 @@ def _admin_markers(run, texts: Sequence[str]) -> str | None:
     return ", ".join(f'"{marker}"' for marker in dict.fromkeys(shown))
 
 
-# Why a precise location whose answer, beside the places settled, cites only
-# an administrative marker has no value (_no_finer_place), and its reason
-# when it clears as not on the label (mark_not_on_label).
-NO_FINER_PLACE = ("The readings give no place finer than the places settled: beside them, they write only "
-    "the administrative marker {markers}.")
-NO_FINER_NOT_ON_LABEL = ("Not on the label: beside the places settled, the readings write only the "
-    "administrative marker {markers}, no finer place.")
-
-
-def _no_finer_place(run, profile: CollectionProfile, tasks_by_key: Mapping[str, FieldTask],
-        applied: Mapping[str, FieldOutcome], added: Mapping[str, Sequence[str]], readings: Sequence[Reading], *,
-        evidence: dict, decisions: dict[str, dict]) -> dict[str, str]:
-    """A precise location researched in this attempt whose expert's answer
-    (resolved, several_possibilities or sources_cannot_resolve; no failure,
-    not the resolver's fallback, not finalized without a model call) cites
-    texts each of which a reading writes, and that give nothing beyond the
-    places settled but an administrative marker next to the settled place
-    of its level, or readers that differ only in such a marker
-    (_admin_markers: 105526328's options "Yepocapa, Mun." and "Yepocapa,
-    Mum." beside the settled city "Yepocapa"), has no value on the label:
-    it is not present, its reason says why (NO_FINER_PLACE), and the rows
-    its settling added and the transcript_literal finding of a literal read
-    from the transcript are dropped. Only when the profile lets the precise
-    location clear as not on the label (not_on_label_keys); otherwise the
-    answer is applied as before this check: a resolved answer settles as
-    its text and may clear, and an unsettled one stays for review. Returns
-    {"precise_location": the markers as written} for rule A
-    (mark_not_on_label), or {}. Checked once every place is in. Never on the
-    units path, where the precise location is the label's locality as
-    written, a town-only locality and its marker included (the ontology's
-    rule precise_location_extent): the answer is applied as it is."""
-    key = "precise_location"
-    task, outcome = tasks_by_key.get(key), applied.get(key)
-    if (units_path(run) or task is None or outcome is None or key not in not_on_label_keys(profile) or outcome.failure is not None
-            or outcome.answer is None or outcome.fallback or outcome.finalized_without_model
-            or outcome.answer.outcome == "label_lacks_value"):
-        return {}
-    answer = outcome.answer
-    texts = [text for text in dict.fromkeys([answer.literal, *answer.options]) if text and text.strip()]
-    if not texts or not all(any(text in reading.text for reading in readings) for text in texts):
-        return {}
-    markers = _admin_markers(run, texts)
-    if markers is None:
-        return {}
-    dropped = set(added.get(key, ()))
-    run.evidence[:] = [item for item in run.evidence if item.id not in dropped]
-    for item_id in dropped:
-        evidence.pop(item_id, None)
-    run.findings[:] = [finding for finding in run.findings if finding.reason_code != transcript_code(key)]
-    cited = [e for e in answer.source_evidence_ids if e in evidence and evidence[e].kind != "literal"]
-    run.fields[key] = _unsettled(task, ValueState.NOT_PRESENT, cited=cited,
-        reason=f"{NO_FINER_PLACE.format(markers=markers)} {answer.explanation}")
-    decisions.setdefault(key, {})["refusal"] = "admin_marker_only"
-    return {key: markers}
-
-
-# Why a precise location whose settled literal is only the text of a settled
-# place field has no value (_repeats_a_place), and its reason when it clears
-# as not on the label (mark_not_on_label). The field is named as the app
-# names it (prompts.FIELD_LABELS).
-REPEATS_A_PLACE = ('The readings give no place finer than the places settled: "{literal}" is the text of the '
-    "{field} field.")
-REPEATS_NOT_ON_LABEL = ('Not on the label: beside the places settled, the readings write no finer place; '
-    '"{literal}" is the text of the {field} field.')
-
-
-def _repeats_a_place(run, tasks_by_key: Mapping[str, FieldTask], applied: Mapping[str, FieldOutcome],
-        added: Mapping[str, Sequence[str]], readings: Sequence[Reading], *, evidence: dict,
-        decisions: dict[str, dict]) -> dict[str, tuple[str, str]]:
-    """A precise location settled in this attempt on its expert's resolved
-    answer (supported, its literal the answer's) whose literal is only the
-    text of a settled city, county, province or state, or country of the
-    same reading: folded (georef_locality.fold: case, accents, punctuation
-    and spacing aside; every word kept, unit words and markers too), it is
-    that field's settled literal (_claims_text) where that literal stands as
-    whole tokens in a reading the answer names, on one of that field's
-    labels (_value_spans), or the verbatim that field keeps of such a
-    reading. Such text is no
-    locality more precise than the place fields, for which the precise
-    location's brief asks label_lacks_value, so the value is made what that
-    answer makes it: not present, citing the sources the answer cites, with
-    a reason that names the field holding the text (REPEATS_A_PLACE, the
-    city's before the county's, the province's and the country's), and the
-    rows its settling added and the transcript_literal finding of a literal
-    read from the transcript are dropped. Rule A then judges it as a field
-    whose expert found none (mark_not_on_label). Whatever the profile's
-    not-on-the-label list, as for label_lacks_value. A literal with any
-    word beyond the place's text ("nr. Yepocapa", "5 km N of Yepocapa", "E.
-    slope Mt. McKinley", "Yepocapa region", "Co. Chirripo", a hill beside the
-    county Chirripo) is left as it is, and so is a precise location whose
-    place did not settle; a marker beside a settled place is
-    _no_finer_place's. Returns {"precise_location": (the literal, the field)}
-    for rule A, or {}. Checked once every place is in. Never on the units
-    path, where a town-only locality is still the precise location (the
-    ontology's rule precise_location_extent): the value stands as settled."""
-    from specimen_digitization.application.georef_locality import fold
-
-    from .agreement import PLACE_ORDER
-    from .prompts import FIELD_LABELS
-
-    key = "precise_location"
-    task, outcome = tasks_by_key.get(key), applied.get(key)
-    value = run.fields.get(key)
-    if (units_path(run) or task is None or outcome is None or outcome.failure is not None or outcome.answer is None
-            or outcome.answer.outcome != "resolved" or value is None or value.state != ValueState.SUPPORTED
-            or not value.literal or value.literal != outcome.answer.literal):
-        return {}
-    answer = outcome.answer
-    wanted = fold(answer.literal)
-    named = [r for r in readings if r.name in answer.reading_names and answer.literal in r.text]
-    if not wanted or not named:
-        return {}
-    human = human_keys(run)
-    holder = None
-    for other in reversed(PLACE_ORDER):
-        place = run.fields.get(other)
-        if place is None or not _claims_text(other, place, human):
-            continue
-        texts = [place.verbatim_by_observation.get(r.observation_id) for r in named]
-        if _value_spans(place, named, evidence):
-            texts.append(place.literal)
-        if any(text and fold(text) == wanted for text in texts):
-            holder = other
-            break
-    if holder is None:
-        return {}
-    dropped = set(added.get(key, ()))
-    run.evidence[:] = [item for item in run.evidence if item.id not in dropped]
-    for item_id in dropped:
-        evidence.pop(item_id, None)
-    run.findings[:] = [finding for finding in run.findings if finding.reason_code != transcript_code(key)]
-    cited = [e for e in answer.source_evidence_ids if e in evidence and evidence[e].kind != "literal"]
-    field = FIELD_LABELS.get(holder, holder)
-    run.fields[key] = _unsettled(task, ValueState.NOT_PRESENT, cited=cited,
-        reason=f"{REPEATS_A_PLACE.format(literal=answer.literal, field=field)} {answer.explanation}")
-    decisions.setdefault(key, {})["refusal"] = "place_text_only"
-    return {key: (answer.literal, field)}
-
-
 # Why a county or a city whose every text on the label is the text of a
 # settled place above it has no value (_only_a_place_above), and its reason
 # when it clears as not on the label (mark_not_on_label). The place above is
@@ -4193,12 +3910,12 @@ def _only_a_place_above(run, tasks_by_key: Mapping[str, FieldTask], applied: Map
 def not_on_label_excerpt(key: str, readings: Sequence[Reading], *, markers: bool = False,
         place: bool = False, above: bool = False) -> str:
     """The excerpt of a field's not-on-the-label check row: the readings it
-    names, by name and observation. For a precise location whose readings
-    write only an administrative marker beside the places settled
-    (_no_finer_place), or whose settled literal is only a settled place's
-    text (`place`: _repeats_a_place), and for a county or a city whose every
-    text is a settled place's above it (`above`: _only_a_place_above), it
-    says so instead."""
+    names, by name and observation. For a county or a city whose every text
+    is a settled place's above it (`above`: _only_a_place_above), it says so
+    instead. The old first pass's research also wrote a precise location's
+    row, whose readings write only an administrative marker beside the places
+    settled (`markers`) or no finer place (`place`): not_on_label reads such a
+    row on a run of that path."""
     names = ", ".join(r.name for r in readings)
     said = (f"beside the places settled, the readings {names} write only an administrative marker" if markers
         else f"beside the places settled, the readings {names} write no finer place" if place
@@ -4211,21 +3928,16 @@ def not_on_label_excerpt(key: str, readings: Sequence[Reading], *, markers: bool
 def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask],
         outcomes: Sequence[FieldOutcome], *, readings: Sequence[Reading] | None = None,
         asset_id: str | None = None, blobs=None, why: dict[str, str] | None = None,
-        no_finer: Mapping[str, str] | None = None,
-        repeated: Mapping[str, tuple[str, str]] | None = None,
         above: Mapping[str, tuple[str, str]] | None = None) -> list[str]:
     """Owner decision A (2026-10-09): a field on the profile's list
     (not_on_label_keys) that a person has not decided, researched in this
     attempt, is marked "not on the label" when all of these hold:
     1. its expert answered label_lacks_value, with no failure, and the field
        was not finalized without a model call (a fallback answer is
-       sources_cannot_resolve, so it never qualifies); or, for a precise
-       location, its expert's answer gives only an administrative marker
-       beside the places settled (`no_finer`: _no_finer_place), or its
-       settled literal was only a settled place's text (`repeated`:
-       _repeats_a_place), and, for a county or a city, its every text was a
-       settled place's above it (`above`: _only_a_place_above), with no
-       failure and not finalized without a model call;
+       sources_cannot_resolve, so it never qualifies); or, for a county or a
+       city, its every text was a settled place's above it (`above`:
+       _only_a_place_above), with no failure and not finalized without a
+       model call;
     2. its value is still not present (a value derive.fill derived is kept);
     3. label coverage is confirmed, every label has two or more readings and
        every reading has text (_whole_label_read);
@@ -4251,19 +3963,14 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
        the places settled, they write only an administrative marker, or
        readers differ only in one (_admin_markers);
     6. for an elevation, no reading writes an elevation (_elevation_written);
-    7. for a precise location, a city or a county is supported, and the
-       run's first-pass path is old: on the units path a label that names a
-       town has a precise location, its locality as written (the ontology's
-       rule precise_location_extent), so it is never marked.
+    7. it is not the precise location: a label that names a town has a
+       precise location, its locality as written (the ontology's rule
+       precise_location_extent), so a precise location is never marked.
     The value then cites one check row (kind "derived", locator
     "check:not_on_label") naming every reading of the run, and its reason
-    starts "Not on the label:" (for a precise location in `no_finer`, the
-    row's excerpt and record and the reason say the readings write only an
-    administrative marker: NO_FINER_NOT_ON_LABEL; for one in `repeated`,
-    they say the readings write no finer place, the record and the reason
-    naming the field that holds its text: REPEATS_NOT_ON_LABEL; for a county
-    or a city in `above`, they say the readings write only a settled place's
-    text, the record and the reason naming that place's field:
+    starts "Not on the label:" (for a county or a city in `above`, the row's
+    excerpt and record and the reason say the readings write only a settled
+    place's text, the record and the reason naming that place's field:
     PLACE_ABOVE_NOT_ON_LABEL). The row has no
     observation_ids: one row may not cite readings of several labels
     (integrity.verify_evidence), so its excerpt and stored record name them
@@ -4276,12 +3983,9 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
     by_key = {o.key: o for o in outcomes if o.key in tasks_by_key}
     human = human_keys(run)
     why = {} if why is None else why
-    no_finer = {} if no_finer is None else no_finer
-    repeated = {} if repeated is None else repeated
     above = {} if above is None else above
     lacking = {key for key, o in by_key.items() if key not in human and o.failure is None and o.answer is not None
-        and (o.answer.outcome == "label_lacks_value" or key in no_finer or key in repeated or key in above)
-        and not o.finalized_without_model}
+        and (o.answer.outcome == "label_lacks_value" or key in above) and not o.finalized_without_model}
     rows = {item.id: item for item in run.evidence}
     for key in by_key:
         value = run.fields.get(key)
@@ -4325,30 +4029,22 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
             if elevation:
                 why[key] = "elevation_written"
                 continue
-        if key == "precise_location" and units_path(run):
+        if key == "precise_location":
             why[key] = "precise_location_extent"
             continue
-        if key == "precise_location" and not _place_settled_below_province(run):
-            why[key] = "no_city_or_county_settled"
-            continue
-        markers, repeats, held = no_finer.get(key), repeated.get(key), above.get(key)
+        held = above.get(key)
         record = json.dumps({"field_key": key, "check": "not_on_label", "readings": [
             {"name": r.name, "region_id": r.region_id, "observation_id": r.observation_id,
              "input_source": r.input_source} for r in readings],
-            **({"admin_markers": markers} if markers is not None else {}),
-            **({"place_field": repeats[1]} if repeats is not None else {}),
             **({"place_above": held[1]} if held is not None else {})}, sort_keys=True).encode()
         row = Evidence(kind="derived", asset_id=asset_id, source=SOURCE, locator=NOT_ON_LABEL_CHECK,
-            excerpt=not_on_label_excerpt(key, readings, markers=markers is not None, place=repeats is not None,
-                above=held is not None),
+            excerpt=not_on_label_excerpt(key, readings, above=held is not None),
             raw_ref=blobs.put(record) if blobs is not None else None,
             digest=hashlib.sha256(record).hexdigest() if blobs is not None else None)
         run.evidence.append(row)
         value.evidence_ids.append(row.id)
         value.evidence_relations[row.id] = "supports"
-        said = (NO_FINER_NOT_ON_LABEL.format(markers=markers) if markers is not None
-            else REPEATS_NOT_ON_LABEL.format(literal=repeats[0], field=repeats[1]) if repeats is not None
-            else PLACE_ABOVE_NOT_ON_LABEL.format(key=BELOW_A_PLACE[key], text=held[0], field=held[1])
+        said = (PLACE_ABOVE_NOT_ON_LABEL.format(key=BELOW_A_PLACE[key], text=held[0], field=held[1])
             if held is not None else NOT_ON_LABEL_REASON)
         value.reason = f"{said} {answer.explanation}".strip()
         marked.append(key)
@@ -4364,9 +4060,11 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
     a not-on-the-label check row whose readings are the run's current
     readings (not_on_label_excerpt; for a precise location, any of its three,
     and for a county or a city, either of its two);
-    and, for a precise location, a city or a county is still supported and
-    the run's path is old (mark_not_on_label's condition 7). An
-    older not-present value, with no such row, never clears."""
+    and, for a precise location, the run is one the old first pass's
+    research marked (units_path false), which marked a precise location only
+    while a city or a county was supported, and one still is: mark_not_on_label
+    never marks a precise location. An older not-present value, with no such
+    row, never clears."""
     if key not in allowed or value.state != ValueState.NOT_PRESENT:
         return False
     if any((value.literal, value.parsed, value.normalized, value.authority_id, value.authority_identity,
@@ -4389,9 +4087,9 @@ def not_on_label(key: str, value: FieldValue, run, evidence: Mapping[str, Eviden
 # ---- each field's trace ---------------------------------------------------
 
 # agreement's reasons for refusing a resolved answer, by constant name.
-REFUSALS = ("DIFFER", "LABELS_DIFFER", "FIRST_PASS_CONFLICT", "PERSON_DECIDED", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
+REFUSALS = ("DIFFER", "LABELS_DIFFER", "PERSON_DECIDED", "NOT_CANDIDATE", "PART_OF_NAME", "DOUBTFUL_GENUS",
     "HOST_NAME", "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
-    "NOT_EVERY_READER", "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "A_DISTANCE", "HOLDS_AN_ELEVATION",
+    "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "A_DISTANCE", "HOLDS_AN_ELEVATION",
     "HOLDS_A_DATE", "HOLDS_A_RANGE", "FIRST_LEVEL_TOO", "NO_PROVINCE", "IS_THE_PROVINCE", "ONE_READER",
     "TEXTS_CONTESTED", "TIED", "ROLE_ONLY")
 # A lookup's status as a field's trace names it. Logfire's default scrubber
@@ -4416,12 +4114,9 @@ def trace_fields(run, tasks: Sequence[FieldTask], outcomes: Sequence[FieldOutcom
     field key; the expert's outcome, its failure, whether the answer is the
     resolver's fallback and whether the field was finalized without a model
     call; the value's state and layer and the run's reason codes for it; the
-    check that refused a resolved answer (or, "admin_marker_only", found
-    that a precise location's answer gives no place: _no_finer_place; or,
-    "place_text_only", that its settled literal is only a settled place's
-    text: _repeats_a_place; or "place_above_text_only", that a county's or a
-    city's every text is a settled place's above it, when no check refused
-    its answer first: _only_a_place_above) and
+    check that refused a resolved answer (or "place_above_text_only", that a
+    county's or a city's every text is a settled place's above it, when no
+    check refused its answer first: _only_a_place_above) and
     the rule that decided the field (``decisions``: apply_outcomes); each
     lookup as source and status, the sources that answered and those that
     could not be reached. The literal, the value, the authority and the
@@ -4674,14 +4369,12 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
     if len(evidence) != len(run.evidence):
         raise EvidenceIntegrityError("evidence_integrity_failure")
     mandatory = frozenset(mandatory)
-    # On the units path a field that waits for a held source adds no reason of its own: its
-    # source's reason routes the record (WP 2.3b, ontology_checks.waiting_fields).
-    if units_path(run):
-        from .ontology_checks import waiting_fields
+    # A field that waits for a held source adds no reason of its own: its source's reason
+    # routes the record (WP 2.3b, ontology_checks.waiting_fields). Only research on the units
+    # path makes a field wait (ontology_checks.wait_for_sources).
+    from .ontology_checks import waiting_fields
 
-        waits = waiting_fields(run)
-    else:
-        waits = set()
+    waits = waiting_fields(run)
     for key in sorted(latest_work):
         if latest_work[key] not in TERMINAL or key in waits:
             continue
@@ -4774,7 +4467,8 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
             if units_path(run):
                 # The rule date_order (ontology_checks.determined_before): the determination is
                 # compared with the collecting date on the parts both have, so "1946" and
-                # "1946-09-06" agree.
+                # "1946-09-06" agree. A run of the old path, refinalized with no research,
+                # keeps that path's whole-date comparison.
                 from .ontology_checks import date_parts, determined_before
 
                 parts = [date_parts(run.fields.get(key)) for key in ("date_visited_from", "date_identified")]
@@ -4888,11 +4582,11 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
         run.stage, run.disposition, run.reasons = "processing_blocked", None, [run.blocker]
         return
     pending = decided or APPROVAL in run.reasons
-    if units_path(run):
-        # A field that waited for its source follows it once a person settles it (WP 2.3b).
-        from .ontology_checks import follow_sources
+    # A field that waited for its source follows it once a person settles it (WP 2.3b). Only
+    # research on the units path makes a field wait (ontology_checks.wait_for_sources).
+    from .ontology_checks import follow_sources
 
-        follow_sources(run, asset_id=run.regions[0].asset_id if run.regions else None, blobs=blobs)
+    follow_sources(run, asset_id=run.regions[0].asset_id if run.regions else None, blobs=blobs)
     finalize_fields(run, None, (), specimen=specimen, blobs=blobs, today=today)
     if pending and not run.human_approved:
         run.reasons = [*run.reasons, APPROVAL]
@@ -5197,8 +4891,6 @@ class FieldResearchStep:
         async with self.tools_factory(run, profile, blobs) as tools:
             outcomes = await research_fields(run, profile, resolver=resolver, tools=tools,
                 concurrency=self.concurrency, deadline_seconds=bound, prepared=prepared, calls=calls, span=span)
-            if not units_path(run):
-                return outcomes, []
             from .reask import again
 
             return await again(run, profile, prepared, outcomes, resolver=resolver, tools=tools, calls=calls,

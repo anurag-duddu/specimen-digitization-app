@@ -34,7 +34,8 @@ from specimen_digitization.application.domain import (
     Asset, FieldValue, LookupStatus, Observation, Principal, Profile, Region, Run, Scope, Specimen,
     ValueState,
 )
-from specimen_digitization.application.first_pass import synthetic_decision
+from specimen_digitization.application.first_pass import synthetic_units
+from specimen_digitization.application.reading_units import UNITS
 from specimen_digitization.application.profile_runtime import (
     bind_profile_rules, published_risk_registry,
 )
@@ -81,7 +82,7 @@ TABLE_KEYS = {
     "reading_comparison": ("id", "runId", "regionId", "leftObservationId", "rightObservationId", "algorithm",
         "ratio", "editDistance", "lengthBasis", "status", "reasons"),
     "transcription_version": ("id", "runId", "literalText", "spans", "alternatives", "unresolved", "regionId",
-        "decisionKind", "selectedObservationId", "firstPassObservationId", "rationale"),
+        "decisionKind", "selectedObservationId", "firstPassObservationId", "rationale", "readingUnits"),
     "harness_input": ("id", "runId", "transcriptionVersionId", "observationId", "role", "handedText", "note"),
     "evidence_item": ("id", "runId", "source", "sourceVersion", "adapterVersion", "query", "outcome",
         "locator", "responseSha256", "capturedAt", "rawAssetId"),
@@ -123,7 +124,8 @@ APPEND_TABLES = {
     "AppendSourceAssetV2": "source_asset", "AppendProfileVersionV2": "profile_version",
     "AppendPipelineRunV2": "pipeline_run", "AppendLabelRegionV2": "label_region",
     "AppendModelObservationV2": "model_observation", "AppendReadingComparisonV1": "reading_comparison",
-    "AppendTranscriptionVersionV2": "transcription_version", "AppendHarnessInputV1": "harness_input",
+    "AppendTranscriptionVersionV2": "transcription_version", "AppendTranscriptionVersionV3": "transcription_version",
+    "AppendHarnessInputV1": "harness_input",
     "AppendEvidenceItemV2": "evidence_item", "AppendToolCallV1": "tool_call",
     "AppendFieldCandidateV2": "field_candidate", "AppendCandidateEvidenceV2": "candidate_evidence",
     "AppendRecordVersionV2": "record_version", "AppendResolvedFieldV2": "resolved_field",
@@ -1190,16 +1192,44 @@ def worker_principal(role="operator", user_id=WORKER):
     return Principal(user_id=user_id, role=role, scope=Scope(organization_id=ORG, collection_id=COLLECTION))
 
 
+def seen_units(units):
+    """A label's units whose image names the text at each unit where every reader wrote the
+    same text and some text, uncertain elsewhere: a first pass that saw the image agree with
+    the readers that agree (as tests/field_research/test_step.seen_units)."""
+    return units.model_copy(update={"units": [
+        unit.model_copy(update={"image": next(iter(texts))})
+        if len(texts := {span.text for span in unit.readers.values()}) == 1 and "" not in texts else unit
+        for unit in units.units]})
+
+
+def first_pass_done(blobs, run, region):
+    """The label's first pass as the units path records it: the synthetic one
+    (first_pass.synthetic_units), its decision naming no reading, the label's
+    units with the image naming the text where its readers agree (seen_units),
+    and its step completed."""
+    from specimen_digitization.application.workflow import store_reading_units
+
+    readings = [o for o in run.observations if o.region_id == region.id]
+    decision, units = synthetic_units(blobs, region, readings)
+    run.first_pass_decisions = [*run.first_pass_decisions, decision]
+    store_reading_units(run, [seen_units(units)])
+    run.completed_steps.append(f"first_pass:{region.id}")
+
+
 def specimen_before_adjudication(blobs, *, first_pass=False):
     """A non-sensitive specimen whose two readers agree, at the ordinary adjudicate step.
 
-    Intake, classify, quality check, segmentation and both readings are done, as
-    the ordinary chain leaves them; classify pinned the published profile.
+    Intake, classify, quality check, segmentation, both readings and the label's
+    first pass are done, as the ordinary chain leaves them on the units path, which
+    every new run takes (Run.first_pass_path); classify pinned the published profile.
+    The first pass is the synthetic one (first_pass.synthetic_units): its decision
+    names no reading, and the label's units are the alignment's, the image naming
+    the text at each unit where both readers wrote the same text (seen_units).
 
     With ``first_pass`` the second reader misreads one letter of the habitat
-    line, and the first pass (also done) decided for the first reader's text:
-    the region's transcript is then decided by the first pass, not by two
-    agreeing readers, which writes the first pass's own model observation row.
+    line: the readers differ, so the region's transcript holds no decided text,
+    and it records the first pass's call, which writes the first pass's own model
+    observation row.
     """
     published = published_profile()
     output = io.BytesIO()
@@ -1216,7 +1246,7 @@ def specimen_before_adjudication(blobs, *, first_pass=False):
     region.crop_ref = blobs.put(crop_png)
     crop = hashlib.sha256(crop_png).hexdigest()
     specimen = Specimen(scope=Scope(organization_id=ORG, collection_id=COLLECTION), asset=asset,
-        run=Run(regions=[region]))
+        run=Run(regions=[region], first_pass_path=UNITS))
     run = specimen.run
     language = bind_profile_rules(specimen, published, published_risk_registry())
     run.profile_snapshot = published.model_dump(mode="json")
@@ -1244,13 +1274,7 @@ def specimen_before_adjudication(blobs, *, first_pass=False):
             raw_sha256=hashlib.sha256(raw).hexdigest()))
     run.completed_steps = ["pin_dependencies", "classify", "quality_check", "segment"] + [
         f"transcribe:{region.id}:{route}" for route in run.profile.routes]
-    if first_pass:
-        first, second = run.observations
-        decision = synthetic_decision(blobs, region, [first, second])
-        # The first pass supports the first reading on every difference.
-        run.first_pass_decisions = [decision.model_copy(update={"selected_observation_id": first.id,
-            "differences": [item.model_copy(update={"verdict": first.id}) for item in decision.differences]})]
-        run.completed_steps.append(f"first_pass:{region.id}")
+    first_pass_done(blobs, run, region)
     run.stage = "running"
     return specimen
 

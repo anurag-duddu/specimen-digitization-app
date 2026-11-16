@@ -2,7 +2,8 @@
 
 Production, 2026-10-17, the 11-record batch: 26 of the 32 model calls held at
 their full reservation had reported their tokens. Specimen 19f0f1f6's first
-pass answered twice, both times with `selected_reader` the string "null"
+pass (the old one, which WP 1.8 removed) answered twice, both times naming its
+reader as the string "null"
 (2,153 tokens in and 2,202 out, about 1,424 micro-dollars), and was held at
 318,670. The answers were billed and their tokens known: a call whose provider
 reported every request's tokens now costs what those tokens cost. A call whose
@@ -38,7 +39,7 @@ LIMITS = UsageLimits(request_limit=2, total_tokens_limit=16_000)
 
 
 class Pick(BaseModel):
-    selected_reader: int
+    reader: int
 
 
 def scripted(*answers):
@@ -55,7 +56,7 @@ def scripted(*answers):
             await asyncio.sleep(30)
         input_tokens, output_tokens = answer
         return ModelResponse(
-            parts=[ToolCallPart(info.output_tools[0].name, {"selected_reader": "null"})],
+            parts=[ToolCallPart(info.output_tools[0].name, {"reader": "null"})],
             usage=RequestUsage(input_tokens=input_tokens, output_tokens=output_tokens),
             finish_reason="stop",
         )
@@ -91,13 +92,13 @@ def test_a_call_that_could_still_send_a_request_stays_unknown():
 
 
 def answering(*answers):
-    """A model whose answers are `(selected_reader, input_tokens, output_tokens)`."""
+    """A model whose answers are `(reader, input_tokens, output_tokens)`."""
     queue = list(answers)
 
     def respond(messages, info):
         reader, input_tokens, output_tokens = queue.pop(0)
         return ModelResponse(
-            parts=[ToolCallPart(info.output_tools[0].name, {"selected_reader": reader})],
+            parts=[ToolCallPart(info.output_tools[0].name, {"reader": reader})],
             usage=RequestUsage(input_tokens=input_tokens, output_tokens=output_tokens),
             finish_reason="stop",
         )
@@ -142,7 +143,7 @@ def test_a_completed_call_whose_last_request_is_not_a_tool_return_stays_unknown(
 
     request = ModelRequest(parts=[UserPromptPart("x")])
     answer = ModelResponse(
-        parts=[ToolCallPart("final_result", {"selected_reader": "null"})],
+        parts=[ToolCallPart("final_result", {"reader": "null"})],
         usage=RequestUsage(input_tokens=1_076, output_tokens=1_101),
     )
     retry = ModelRequest(parts=[RetryPromptPart("invalid", tool_name="final_result")])

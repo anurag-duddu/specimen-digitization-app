@@ -40,9 +40,10 @@ def sam3_specimen(blobs):
     # A SAM 3 box inside the image, never the whole of it, and no stored crop.
     region.x, region.y, region.width, region.height = 8, 12, 70, 60
     region.method, region.version, region.crop_ref = "sam3", "sam3-fixture", None
-    # Each reader kept the crop it saw: the bytes crop_bytes cuts for the box.
+    # Each reader, and the first pass, kept the crop it saw: the bytes crop_bytes cuts for the box.
     crop = crop_bytes(blobs, specimen, region)
-    for reading in specimen.run.observations:
+    calls = [decision.call for decision in specimen.run.first_pass_decisions]
+    for reading in [*specimen.run.observations, *calls]:
         reading.input_crop_ref, reading.input_sha256 = blobs.put(crop), hashlib.sha256(crop).hexdigest()
     return specimen
 

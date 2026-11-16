@@ -1392,6 +1392,18 @@ class GcsBlobs:
         return verify_digest(data, checksum)
 
 
+def pinned_prompt(run, name: PromptName) -> dict:
+    """The prompt `name` as a run pins it (run.dependencies["prompts"]): resolved for the run's
+    profile (prompts.resolve_prompt), with the ontology's rules for its model where it is a
+    reader's or the organiser's (prompts.with_rules)."""
+    inputs = CollectionPromptInputs(
+        collection_profile_id=run.profile.id,
+        collection_name="Insects",
+        schema_version=run.profile.schema_version,
+    )
+    return with_rules(name, resolve_prompt(name, inputs)).model_dump(mode="json")
+
+
 class ProductionAdapters:
     def __init__(self, blobs, *, model_effect=None, sam3_expected=None):
         self.sam3_expected = sam3_expected or {}
@@ -1410,20 +1422,9 @@ class ProductionAdapters:
         self.authority_cost_reservations = {}
 
     def pin_dependencies(self, run):
-        inputs = CollectionPromptInputs(
-            collection_profile_id=run.profile.id,
-            collection_name="Insects",
-            schema_version=run.profile.schema_version,
-        )
-        # FIRST_PASS_UNITS is pinned on a units-path run only, and there the readers' and
-        # the organiser's prompts carry the ontology's rules for them (prompts.with_rules).
-        units = getattr(run, "first_pass_path", "old") == "units"
-        prompts = {
-            name.value: (with_rules(name, resolved) if units else resolved).model_dump(mode="json")
-            for name in PromptName
-            if units or name is not PromptName.FIRST_PASS_UNITS
-            for resolved in (resolve_prompt(name, inputs),)
-        }
+        # Every prompt, the readers' and the organiser's carrying the ontology's rules for
+        # them (prompts.with_rules).
+        prompts = {name.value: pinned_prompt(run, name) for name in PromptName}
         # A reader is pinned from the reader routes only (the initial pair and
         # the NVIDIA option's); a stage route named as a reader raises.
         routes = {
@@ -1488,20 +1489,10 @@ class ProductionAdapters:
 
         return invoke_model(self, specimen, "transcribe", region=region, route=route)
 
-    def first_pass(self, specimen, region, readings):
-        from .model_runtime import invoke_model
-
-        return invoke_model(
-            self, specimen, "first_pass", region=region, readings=readings
-        )
-
     def first_pass_units(self, specimen, region, readings):
-        """The units path's first pass in the model child; returns (decision, units). Refused
-        on an old-path run."""
+        """The first pass in the model child; returns (decision, units)."""
         from .model_runtime import invoke_model
 
-        if specimen.run.first_pass_path != "units":
-            raise OperationalBlock("first_pass_contract_invalid")
         return invoke_model(
             self, specimen, "first_pass", region=region, readings=readings
         )

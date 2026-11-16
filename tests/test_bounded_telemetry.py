@@ -405,8 +405,7 @@ def test_supported_sdk_options_disable_ambient_native_exporters_and_credentials(
 
 
 @pytest.mark.parametrize("prompt_name", [
-    "literal-label-transcription", "structured-field-extraction",
-    "transcription-disagreement-adjudication", "field-harness", "first-pass-units",
+    "literal-label-transcription", "structured-field-extraction", "first-pass-units",
 ])
 def test_bounded_prompt_resolution_uses_code_fallback_without_remote_provider(
     tmp_path, monkeypatch, capfire, prompt_name
@@ -464,8 +463,6 @@ def test_bounded_prompt_resolution_uses_code_fallback_without_remote_provider(
     defaults = {
         "literal-label-transcription": "_LITERAL_TRANSCRIPTION_DEFAULT",
         "structured-field-extraction": "_STRUCTURED_EXTRACTION_DEFAULT",
-        "transcription-disagreement-adjudication": "_DISAGREEMENT_ADJUDICATION_DEFAULT",
-        "field-harness": "_FIELD_HARNESS_DEFAULT",
         "first-pass-units": "_FIRST_PASS_UNITS_DEFAULT",
     }
     expected = getattr(prompts, defaults[prompt_name])

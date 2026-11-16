@@ -191,10 +191,10 @@ class LateReader(DisagreeingReaders):
             self.overran(specimen, f"transcribe:{region.id}:{route}")
         return super().transcribe(specimen, region, route)
 
-    def first_pass(self, specimen, region, readings):
+    def first_pass_units(self, specimen, region, readings):
         if self.late == "first_pass":
             self.overran(specimen, f"first_pass:{region.id}")
-        return super().first_pass(specimen, region, readings)
+        return super().first_pass_units(specimen, region, readings)
 
 
 class LateAnswer(DisagreeingReaders):
@@ -397,7 +397,7 @@ def test_four_regions_and_a_sam_retry_fit_the_run_cap(tmp_path, monkeypatch):
     adapters = ServedSam(
         LocalBlobs(tmp_path / "blobs"), ["timeout", "lab"], regions=4
     )
-    exposure = {name: [] for name in ("segment", "transcribe", "first_pass")}
+    exposure = {name: [] for name in ("segment", "transcribe", "first_pass_units")}
 
     def observe_dispatch(name):
         original = getattr(adapters, name)
@@ -451,7 +451,7 @@ def test_four_regions_and_a_sam_retry_fit_the_run_cap(tmp_path, monkeypatch):
     # Observe the real workflow after admission and before every paid dispatch.
     assert exposure["segment"] == [182_321, 364_642]
     assert exposure["transcribe"] == [384_642] * 8
-    assert exposure["first_pass"] == [683_312, 683_642, 683_972, 684_302]
+    assert exposure["first_pass_units"] == [683_312, 683_642, 683_972, 684_302]
     assert RUN_CAP == 1_000_000
     assert all(value <= RUN_CAP for values in exposure.values() for value in values)
     # This emulator's parse makes no paid call; a production parse still fits

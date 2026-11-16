@@ -103,12 +103,6 @@ def rig(tmp_path, monkeypatch):
     yield from build_rig(tmp_path)
 
 
-@pytest.fixture
-def first_pass_rig(tmp_path):
-    """The same specimen, its two readers disagreeing and the first pass deciding."""
-    yield from build_rig(tmp_path, first_pass=True)
-
-
 def compose(rig, *, environ=SWITCH_ON, geolocate=True):
     """The production composer with the three offline seams; a new worker process each call.
 
@@ -417,69 +411,6 @@ def test_the_run_reaches_its_final_queue(rig):
     assert not rig.fake.duplicates
 
 
-def first_pass_to_plan(workflow, rig):
-    """The ordinary chain on the first-pass specimen: adjudicate, then parse."""
-    with supervised():
-        adjudicated = workflow.step(rig.principal, rig.specimen_id)
-        parsed = workflow.step(rig.principal, rig.specimen_id)
-    [transcript] = adjudicated.run.transcripts
-    assert transcript.decision_kind == "first_pass" and transcript.resolved and transcript.text == LABEL_TEXT
-    assert transcript.first_pass_call is not None and len(transcript.observation_ids) == 2
-    assert rig.ordinary.next_step(parsed.run) == "plan"
-    return parsed
-
-
-def test_a_region_decided_by_the_first_pass_publishes(first_pass_rig):
-    """Two readers disagree on one letter and the first pass decides the region.
-
-    The ordinary projection then writes the first pass's own model observation
-    (a non-independent row, projection._first_pass) beside the transcription
-    version. The materialization inputs carry that row, and the native context
-    must take it as part of the decision it recomputes, as it takes the
-    transcription version and the handoffs. Before, the first publication held
-    with canonical_native_decision_operation_unproved: native_publication_requires_reconciliation.
-    """
-    rig = first_pass_rig
-    workflow = compose(rig)
-    parsed = first_pass_to_plan(workflow, rig)
-    with supervised():
-        specimen = workflow.step(rig.principal, rig.specimen_id)
-
-    # The decided region's rows as the ordinary projection saved them.
-    first_pass_rows = [row for row in rig.fake.tables["model_observation"].values()
-        if row["stepKey"].startswith("first_pass:")]
-    assert len(first_pass_rows) == 1 and first_pass_rows[0]["independent"] is False
-    [version] = [row for row in rig.fake.tables["transcription_version"].values()]
-    assert version["decisionKind"] == "first_pass" and version["firstPassObservationId"] == first_pass_rows[0]["id"]
-    assert version["literalText"] == LABEL_TEXT and version["unresolved"] is False
-    readers = [row for row in rig.fake.tables["model_observation"].values() if row["independent"]]
-    assert len(readers) == 2 and {row["literalText"] for row in readers} == {LABEL_TEXT,
-        LABEL_TEXT.replace("grassland", "grassIand")}
-
-    # Every research publication landed from the first-pass-decided transcript.
-    receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
-    changed = [row["causal_proof"]["changed_field"] for row in receipts]
-    assert len(changed) == len(set(changed)) == 19
-    assert set(changed) == {"taxon", "city", "country", "county", "precise_location",
-        "province_state", "collection_code", "collection_method", "fmnh_ins_number", "habitat",
-        "collectors", "identified_by_irn", *DATES_AND_ELEVATIONS}
-    published = rig.repository.get(rig.principal.scope, rig.specimen_id)
-    assert published.version == specimen.version == parsed.version + len(receipts)
-    assert published.run.fields["taxon"].normalized == GBIF_NAME
-    taxon = next(row for row in rig.fake.tables["evidence_item"].values() if row["source"] == "gbif")
-    [call] = [row for row in rig.fake.tables["tool_call"].values() if row["evidenceId"] == taxon["id"]]
-    assert call["inputSource"] == "decided_transcript"
-    # The label fields' lineage names the first pass's transcription version as its source.
-    sources = {row["researchFieldKey"]: row["readingSources"]
-        for row in rig.fake.tables["canonical_value_lineage_v2"].values() if row["readingSources"]}
-    assert set(sources) == {"precise_location", "collectors", "collection_code", "collection_method",
-        "fmnh_ins_number", "habitat", *DATES_AND_ELEVATIONS}
-    assert all(item["inputSource"] == "decided_transcript" and item["transcriptionVersionId"] == version["id"]
-        for items in sources.values() for item in items)
-    assert specimen.run.stage == "finalized" and specimen.run.disposition == "needs_human_review"
-    assert not rig.fake.duplicates
-
-
 class NoFence:
     """The drain's collection fence is not under test: one run is stepped."""
 
@@ -562,24 +493,6 @@ def test_a_publication_failure_with_no_code_logs_its_class_only(rig, caplog):
     [line] = native_worker_lines(caplog)
     assert line.startswith("native publication failed: ValueError at=") and " field=date_identified (record ..." in line
     assert "Synthetic teaching garden" not in caplog.text and "input_value" not in caplog.text
-
-
-def test_a_drifted_first_pass_observation_row_is_refused_and_logged(first_pass_rig, caplog):
-    """The first pass's row is checked column by column against the row the
-    projection writes, like every other decision row: a row the connector holds
-    with another text is not accepted as the decision's."""
-    rig = first_pass_rig
-    workflow = compose(rig, geolocate=False)
-    first_pass_to_plan(workflow, rig)
-    [row] = [row for row in rig.fake.tables["model_observation"].values() if row["stepKey"].startswith("first_pass:")]
-    row["literalText"] = "a text the first pass did not return"
-    with caplog.at_level(logging.WARNING, logger="specimen_digitization.research_harness.native_worker"), \
-            supervised(), pytest.raises(OperationalBlock, match="^native_publication_requires_reconciliation$"):
-        workflow.step(rig.principal, rig.specimen_id)
-    [line] = native_worker_lines(caplog)
-    assert line.startswith("native publication failed: PublicationUnavailable "
-        "code=canonical_native_row_write_normalization_unproved field=date_identified (record ...")
-    assert not rig.fake.receipts
 
 
 def test_with_the_switch_off_the_worker_keeps_the_ordinary_workflow(rig):

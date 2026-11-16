@@ -14,7 +14,7 @@ WP 2.3b adds, on the units path, two steps step.apply_outcomes runs before the s
   (foot_number), its reason "Basis: inferred, rule elevation_unit_feet: ..."; derive.fill then
   fills the elevation fields it lets derive.
 
-On the units path only (step.units_path), step.apply_outcomes runs `stage` last: after every
+step.apply_outcomes runs `stage` last: after every
 expert has answered, derivation has filled the open fields (derive.fill), the fields the label
 does not state are marked so (step.mark_not_on_label) and each label's settlement is recorded
 (step._settlement). The stage never revises a value. A failed check marks the field:

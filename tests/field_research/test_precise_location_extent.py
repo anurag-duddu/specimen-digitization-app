@@ -1,13 +1,11 @@
 """WP 2.2: Precise Location is the label's locality as written (the ontology's rule
-precise_location_extent), on the units path; the old path is unchanged.
+precise_location_extent), on the units path.
 
 The cases are the pilot labels the plan names, from tests/fixtures/field_model_pilot_rows.json:
 105526329's town-only locality, "Yepocapa, 4800 ft." over "Chimaltenango, Guatemala" (its truth
 row's precise location is the locality's lines as written, :325), 105526321's whole locality
 block, "E. slope Mt. McKinley" over "Davao Prov." over "Mindanao, P.I." (:30), and 105526328's
-municipio line (:268-289). Each test runs on both paths (conftest.py): on the units path a
-town-only locality is not cleared as not on the label, and on the old path each keeps
-origin/main's result. A precise location that holds an elevation is refused on both paths when no
+municipio line (:268-289). A precise location that holds an elevation is refused on both paths when no
 elevation field settled its elevation text from the label; WP 2.3b's acceptance on the units path
 (the coordinator's ruling of 2026-11-14) is tested in test_elevations_and_extent.py, and changes
 here only test_105526329s_whole_locality_with_its_settled_elevation_settles_on_the_units_path.
@@ -50,13 +48,13 @@ def label_readings(text, units):
 
 
 @pytest.mark.parametrize("literal", [YEPOCAPA, "Yepocapa, 4800 ft.", MCKINLEY_3300])
-def test_a_precise_location_holding_an_elevation_is_refused_when_no_elevation_settled(first_pass_path, literal):
+def test_a_precise_location_holding_an_elevation_is_refused_when_no_elevation_settled(literal):
     """agreement.literal_refusal on the precise location read from the transcript, with no elevation field's
     literal given: a locality that writes an elevation among its lines is refused for it (HOLDS_AN_ELEVATION)
-    on both paths, as on origin/main, so a person decides. WP 2.3b accepts it on the units path only when the
+   , as on origin/main, so a person decides. WP 2.3b accepts it on the units path only when the
     elevation field settled its elevation text from that label (test_elevations_and_extent.py)."""
     text = YEPOCAPA if literal.startswith("Yepocapa") else MCKINLEY_3300
-    readings = label_readings(text, first_pass_path == "units")
+    readings = label_readings(text, True)
     task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
 
     refused = agreement.literal_refusal(task, readings, literal=literal, named=readings)
@@ -75,13 +73,12 @@ ELEVATION_REVIEW_CASES = [
 
 
 @pytest.mark.parametrize("literal", ELEVATION_REVIEW_CASES)
-def test_the_review_rounds_elevation_inputs_are_refused_as_a_precise_location_on_both_paths(first_pass_path,
-        literal):
-    """Each is refused for an elevation it holds (agreement._holds_another_kind), on both paths, as on
+def test_the_review_rounds_elevation_inputs_are_refused_as_a_precise_location_on_both_paths(literal):
+    """Each is refused for an elevation it holds (agreement._holds_another_kind), as on
     origin/main, so no date, collector or elevation-only text settles as the precise location. WP 2.3b's rule
     accepts none of them, whatever elevation settled
     (test_elevations_and_extent.test_the_review_rounds_elevation_inputs_stay_refused_whatever_elevation_settled)."""
-    readings = label_readings(literal + "\nChimaltenango, Guatemala", first_pass_path == "units")
+    readings = label_readings(literal + "\nChimaltenango, Guatemala", True)
     task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
 
     refused = agreement.literal_refusal(task, readings, literal=literal, named=readings)
@@ -109,11 +106,8 @@ def settled_run(tmp_path, text, scripts):
     return rig, run, decisions
 
 
-def test_105526329s_whole_locality_with_its_settled_elevation_settles_on_the_units_path(tmp_path,
-        first_pass_path):
-    """105526329's two locality lines answered whole, its elevation settled from "4800 ft.": on the old path
-    the precise location goes to review as text the elevation field claims (step._taken), as on
-    origin/main. WP 2.3b changes the units path: the elevation text is the literal the elevation field
+def test_105526329s_whole_locality_with_its_settled_elevation_settles_on_the_units_path(tmp_path):
+    """WP 2.3b changes the units path: the elevation text is the literal the elevation field
     settled from that label, so the whole locality settles as written (the ontology's rule
     precise_location_extent)."""
     from test_step import resolved
@@ -123,14 +117,10 @@ def test_105526329s_whole_locality_with_its_settled_elevation_settles_on_the_uni
         "precise_location": whole(YEPOCAPA)})
     place = run.fields["precise_location"]
     assert run.fields["elevation_from_ft"].state == ValueState.SUPPORTED
-    if first_pass_path == "units":
-        assert (place.state, place.literal) == (ValueState.SUPPORTED, YEPOCAPA)
-    else:
-        assert (place.state, place.literal) == (ValueState.UNRESOLVED, None)
-        assert place.reason == field_step.TAKEN.format(other="Elevation From (ft)") + " Both readers write the locality."
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, YEPOCAPA)
 
 
-def test_105526321s_whole_locality_block_settles_as_written_on_both_paths(tmp_path, first_pass_path):
+def test_105526321s_whole_locality_block_settles_as_written_on_both_paths(tmp_path):
     """The whole block, its province and country lines included, read from the transcript: it
     settles as written on both paths (no check of either path cuts it)."""
     rig, run, _ = settled_run(tmp_path, MCKINLEY + "\n3 Sept. '46\nMossy forest 6400'\nF.G. Werner",
@@ -139,81 +129,92 @@ def test_105526321s_whole_locality_block_settles_as_written_on_both_paths(tmp_pa
     assert (place.state, place.literal) == (ValueState.SUPPORTED, MCKINLEY)
 
 
-def test_a_town_only_locality_is_not_cleared_as_not_on_the_label_on_the_units_path(tmp_path, first_pass_path):
-    """105526329's town settled and the precise location's expert finding none (as main's brief
-    asks for a town-only locality, precise_location.txt:12): on the old path rule A clears it as
-    not on the label (mark_not_on_label's condition 7), as on origin/main; on the units path the
+def test_a_town_only_locality_is_not_cleared_as_not_on_the_label_on_the_units_path(tmp_path):
+    """on the units path the
     label's locality is its precise location, so rule A declines it (precise_location_extent) and a
     person sees it."""
     rig, run, decisions = settled_run(tmp_path, YEPOCAPA, {**IN_YEPOCAPA})
     assert run.fields["city"].state == ValueState.SUPPORTED
     place = run.fields["precise_location"]
     assert place.state == ValueState.NOT_PRESENT
-    if first_pass_path == "units":
-        assert "precise_location" not in cleared_as_not_on_label(run)
-        assert not not_on_label_rows(run, "precise_location")
-        assert decisions["precise_location"]["rule"] == "A_declined:precise_location_extent"
-        assert "mandatory_unresolved:precise_location" in run.reasons
-    else:
-        assert "precise_location" in cleared_as_not_on_label(run)
-        assert decisions["precise_location"]["rule"] == "A_not_on_label"
+    assert "precise_location" not in cleared_as_not_on_label(run)
+    assert not not_on_label_rows(run, "precise_location")
+    assert decisions["precise_location"]["rule"] == "A_declined:precise_location_extent"
+    assert "mandatory_unresolved:precise_location" in run.reasons
 
 
-def test_a_precise_location_that_is_the_towns_text_is_not_cleared_on_the_units_path(tmp_path, first_pass_path):
-    """The expert answers the town alone, the settled city's text: on the old path it is no finer
-    locality and clears as not on the label (step._repeats_a_place), as on origin/main; on the units
+def test_a_precise_location_that_is_the_towns_text_is_not_cleared_on_the_units_path(tmp_path):
+    """on the units
     path a town-only locality is still a precise location, so the value stands as settled."""
     rig, run, decisions = settled_run(tmp_path, YEPOCAPA, {**IN_YEPOCAPA, "precise_location": whole("Yepocapa")})
     place = run.fields["precise_location"]
-    if first_pass_path == "units":
-        assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa")
-        assert "precise_location" not in cleared_as_not_on_label(run)
-    else:
-        assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
-        assert decisions["precise_location"] == {"refusal": "place_text_only", "rule": "A_not_on_label"}
-        assert "precise_location" in cleared_as_not_on_label(run)
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa")
+    assert "precise_location" not in cleared_as_not_on_label(run)
 
 
-def test_a_municipio_line_beside_the_settled_town_stands_on_the_units_path(tmp_path, first_pass_path):
+def test_a_municipio_line_beside_the_settled_town_stands_on_the_units_path(tmp_path):
     """105526328's locality (field_model_pilot_rows.json:268-289): the answer "Yepocapa, Mun." gives
-    only a marker beside the settled town. On the old path it clears as not on the label
-    (step._no_finer_place), as on origin/main; on the units path it stands as answered."""
+    only a marker beside the settled town. on the units path it stands as answered."""
     text = "Yepocapa, Mun.\nChimaltenango, Guatemala"
     rig, run, decisions = settled_run(tmp_path, text, {**IN_YEPOCAPA, "precise_location": whole("Yepocapa, Mun.")})
     place = run.fields["precise_location"]
-    if first_pass_path == "units":
-        assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa, Mun.")
-        assert "precise_location" not in cleared_as_not_on_label(run)
-    else:
-        assert (place.state, place.literal) == (ValueState.NOT_PRESENT, None)
-        assert decisions["precise_location"]["refusal"] == "admin_marker_only"
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, "Yepocapa, Mun.")
+    assert "precise_location" not in cleared_as_not_on_label(run)
 
 
 # ---- PR #435's review, round 1 (G51, B3 (b)): the units gate of step.not_on_label -------------------
 
-def test_a_units_path_run_cleared_as_not_on_the_label_by_older_code_goes_to_a_person_on_refinalize(tmp_path,
-        first_pass_path):
-    """G51's B3 (b): a stored precise location that the code before WP 2.2 cleared as not on the label (rule A,
-    its check row stored), refinalized: on the units path step.not_on_label no longer clears it, so the record
-    waits for a person; on the old path it stays cleared."""
+def older_codes_not_on_label_row(run, key, readings, blobs):
+    """The check row the code before WP 2.2 stored for a field it cleared as not on the label
+    (origin/main d83f4d6f1's step.mark_not_on_label: kind "derived", locator "check:not_on_label", the
+    readings' excerpt, its record in the blobs), cited by the field as support."""
+    import hashlib
+    import json
+
+    from specimen_digitization.application.domain import Evidence
+
+    record = json.dumps({"field_key": key, "check": "not_on_label", "readings": [
+        {"name": r.name, "region_id": r.region_id, "observation_id": r.observation_id,
+         "input_source": r.input_source} for r in readings]}, sort_keys=True).encode()
+    row = Evidence(kind="derived", asset_id=None, source=field_step.SOURCE, locator=field_step.NOT_ON_LABEL_CHECK,
+        excerpt=field_step.not_on_label_excerpt(key, readings), raw_ref=blobs.put(record),
+        digest=hashlib.sha256(record).hexdigest())
+    run.evidence.append(row)
+    value = run.fields[key]
+    value.evidence_ids.append(row.id)
+    value.evidence_relations[row.id] = "supports"
+
+
+@pytest.mark.parametrize(("path", "cleared"), [("units", False), ("old", True)])
+def test_a_precise_location_older_code_cleared_as_not_on_the_label_is_refinalized_by_its_runs_path(
+        tmp_path, path, cleared):
+    """G51's B3 (b): a stored precise location that the code before WP 2.2 cleared as not on the label
+    (rule A, its check row stored), refinalized. On a units-path run step.not_on_label no longer clears
+    it, so the record waits for a person. A record the old first pass wrote (its run's path "old", the
+    default of a run stored without the key) keeps the rule it was cleared by, while a city or a county
+    is settled: it stays cleared. mark_not_on_label never marks a precise location now
+    ("precise_location_extent")."""
     from specimen_digitization.field_research.contracts import FieldOutcome
 
     rig, run, decisions = settled_run(tmp_path, YEPOCAPA, {**IN_YEPOCAPA})
     readings = field_step.run_readings(run)
     tasks = [FieldTask("precise_location", True, run.fields["precise_location"], (), FIELD_TOOLS["precise_location"])]
-    path = run.first_pass_path
-    # The code before WP 2.2 marked it on either path (mark_not_on_label's condition 7 without the units gate).
-    run.first_pass_path = "old"
-    marked = field_step.mark_not_on_label(run, field_step.profile_of(run), tasks,
-        [FieldOutcome("precise_location", LACKS, model_calls=1)], readings=readings, blobs=rig.blobs)
-    run.first_pass_path = path
-    assert "precise_location" in marked and not_on_label_rows(run, "precise_location")
+    why: dict[str, str] = {}
+    assert field_step.mark_not_on_label(run, field_step.profile_of(run), tasks,
+        [FieldOutcome("precise_location", LACKS, model_calls=1)], readings=readings, blobs=rig.blobs, why=why) == []
+    assert why == {"precise_location": "precise_location_extent"}
+    older_codes_not_on_label_row(run, "precise_location", readings, rig.blobs)
+    assert not_on_label_rows(run, "precise_location")
+    if path == "old":
+        # As the old first pass stored a label its readers read alike: no first pass ran, so no
+        # decision, no call and no reading units (origin/main's first_pass.adjudication_record).
+        run.first_pass_decisions = []
+        run.reading_units = []
+        for transcript in run.transcripts:
+            transcript.first_pass_call = None
+        run.first_pass_path = path
 
     field_step.finalize_fields(run, None, [], specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
 
-    if first_pass_path == "units":
-        assert "precise_location" not in cleared_as_not_on_label(run)
-        assert "mandatory_unresolved:precise_location" in run.reasons
-    else:
-        assert "precise_location" in cleared_as_not_on_label(run)
-        assert "mandatory_unresolved:precise_location" not in run.reasons
+    assert ("precise_location" in cleared_as_not_on_label(run)) == cleared
+    assert ("mandatory_unresolved:precise_location" in run.reasons) != cleared

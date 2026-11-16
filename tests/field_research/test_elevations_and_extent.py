@@ -4,9 +4,7 @@ cut short (precise_location_extent), the country-only locality and derive.py's r
 ontology file (docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4,
 "The check stage"; field_research/ontology_checks.py).
 
-Every test runs on both first-pass paths (conftest.py). On the units path the change applies; on
-the old path, live in production until WP 1.8, each test asserts origin/main's result, so a gate
-that leaks fails here."""
+On the units path the change applies."""
 
 from __future__ import annotations
 
@@ -80,40 +78,35 @@ def state_of(run, key):
 
 # ---- 1. the elevation unit rule (elevation_unit_feet) ------------------------------------------
 
-def test_6400_with_b_s_foot_mark_and_the_philippines_cleared_settles_6400_ft_cleared(tmp_path, first_pass_path):
+def test_6400_with_b_s_foot_mark_and_the_philippines_cleared_settles_6400_ft_cleared(tmp_path):
     """The plan's case, 105526322's shape: reader A writes "Elev.6400", reader B "Elev.6400'", the
     Philippines cleared. 6400 m is above Mount Apo (2,954 m) and 6,400 ft (1,950.72 m) is not: on the units
     path the foot field settles 6400, cleared, its reason naming the rule, and derivation fills its
-    partners, each naming its rule. On the old path the field stays unresolved and its partners settle
-    absent, as on origin/main."""
+    partners, each naming its rule."""
     rig, run = settled_elevations(tmp_path, "Elev.6400", "Elev.6400'")
 
     assert state_of(run, "country")[:2] == (ValueState.SUPPORTED, "Philippines")
-    if first_pass_path == "units":
-        value = run.fields["elevation_from_ft"]
-        assert state_of(run, "elevation_from_ft") == (ValueState.SUPPORTED, "6400", "6400", "settled")
-        assert ontology_checks.cleared_country(run) is run.fields["country"]
-        assert value.reason.startswith("Basis: inferred, rule elevation_unit_feet: reader 1B writes 6400 with the "
-            "foot mark or ft at unit ")
-        assert "6400 m is above the highest point of Philippines, Mount Apo, 2954 m" in value.reason
-        assert "6400 ft (1950.7200 m) is not" in value.reason
-        assert not any(code.startswith("marked:elevation") for code in field_step.marked_reasons(run))
-        derived = {key: run.fields[key] for key in PARTNERS}
-        assert {key: (value.state, value.parsed, value.layer) for key, value in derived.items()} == {
-            "elevation_from_m": (ValueState.SUPPORTED, "1950.72", "derived"),
-            "elevation_to_m": (ValueState.SUPPORTED, "1950.72", "derived"),
-            "elevation_to_ft": (ValueState.SUPPORTED, "6400", "derived")}
-        assert all(value.reason.endswith("Basis: derived, rule elevation_conversion.") for value in derived.values())
-        rows = {item.id: item for item in run.evidence}
-        [inferred] = [rows[i] for i in value.evidence_ids if rows[i].locator == ontology_checks.INFERRED]
-        assert inferred.kind == "derived" and inferred.excerpt.startswith(
-            "elevation_from_ft = 6400: inferred as feet (rule elevation_unit_feet): reader 1B")
-        assert json.loads(rig.blobs.get(inferred.raw_ref))["highest_point"] == {
-            "country": "Q928", "point": "Q455963", "elevation_m": "2954"}
-        assert field_checks(run, ["elevation_from_ft"]) == []
-    else:
-        assert state_of(run, "elevation_from_ft")[0] == ValueState.UNRESOLVED
-        assert [run.fields[key].state for key in PARTNERS] == [ValueState.NOT_PRESENT] * 3
+    value = run.fields["elevation_from_ft"]
+    assert state_of(run, "elevation_from_ft") == (ValueState.SUPPORTED, "6400", "6400", "settled")
+    assert ontology_checks.cleared_country(run) is run.fields["country"]
+    assert value.reason.startswith("Basis: inferred, rule elevation_unit_feet: reader 1B writes 6400 with the "
+        "foot mark or ft at unit ")
+    assert "6400 m is above the highest point of Philippines, Mount Apo, 2954 m" in value.reason
+    assert "6400 ft (1950.7200 m) is not" in value.reason
+    assert not any(code.startswith("marked:elevation") for code in field_step.marked_reasons(run))
+    derived = {key: run.fields[key] for key in PARTNERS}
+    assert {key: (value.state, value.parsed, value.layer) for key, value in derived.items()} == {
+        "elevation_from_m": (ValueState.SUPPORTED, "1950.72", "derived"),
+        "elevation_to_m": (ValueState.SUPPORTED, "1950.72", "derived"),
+        "elevation_to_ft": (ValueState.SUPPORTED, "6400", "derived")}
+    assert all(value.reason.endswith("Basis: derived, rule elevation_conversion.") for value in derived.values())
+    rows = {item.id: item for item in run.evidence}
+    [inferred] = [rows[i] for i in value.evidence_ids if rows[i].locator == ontology_checks.INFERRED]
+    assert inferred.kind == "derived" and inferred.excerpt.startswith(
+        "elevation_from_ft = 6400: inferred as feet (rule elevation_unit_feet): reader 1B")
+    assert json.loads(rig.blobs.get(inferred.raw_ref))["highest_point"] == {
+        "country": "Q928", "point": "Q455963", "elevation_m": "2954"}
+    assert field_checks(run, ["elevation_from_ft"]) == []
 
 
 def mark_the_country(monkeypatch):
@@ -131,9 +124,9 @@ def mark_the_country(monkeypatch):
     monkeypatch.setattr(field_step, "_settlement", marked)
 
 
-def test_the_same_with_the_philippines_marked_stays_unresolved(tmp_path, monkeypatch, first_pass_path):
+def test_the_same_with_the_philippines_marked_stays_unresolved(tmp_path, monkeypatch):
     """The plan's case: the country must be cleared, not marked. With the Philippines settled marked, the
-    foot field stays unresolved on both paths."""
+    foot field stays unresolved."""
     mark_the_country(monkeypatch)
     rig, run = settled_elevations(tmp_path, "Elev.6400", "Elev.6400'")
 
@@ -142,15 +135,12 @@ def test_the_same_with_the_philippines_marked_stays_unresolved(tmp_path, monkeyp
     assert ontology_checks.cleared_country(run) is None
 
 
-def test_a_country_not_settled_from_the_label_or_with_no_cleared_label_is_not_cleared(tmp_path, first_pass_path):
+def test_a_country_not_settled_from_the_label_or_with_no_cleared_label_is_not_cleared(tmp_path):
     """cleared_country: the country settled from the label with a label's cleared finding; a derived
     country, or one whose cleared finding is missing, is not cleared, and nor is a check stage's marked
     country."""
     rig, run = settled_elevations(tmp_path, "Elev.6400", "Elev.6400'")
     country = run.fields["country"]
-    if first_pass_path == "old":
-        assert ontology_checks.cleared_country(run) is None  # the old path records no settlement
-        return
     assert ontology_checks.cleared_country(run) is country
     run.fields["country"] = country.model_copy(update={"layer": "derived"})
     assert ontology_checks.cleared_country(run) is None
@@ -165,7 +155,7 @@ def test_a_country_not_settled_from_the_label_or_with_no_cleared_label_is_not_cl
 
 @pytest.mark.parametrize(("written", "other"), [("Elev.6400", "Elev.6400"), ("Elev.6400", "Elev.6400 feet"),
     ("Trap '6400", "Trap '6400'")], ids=["no-mark", "feet-spelled-out", "codex-quoted-trap-number"])
-def test_6400_with_no_foot_mark_stays_unresolved(tmp_path, first_pass_path, written, other):
+def test_6400_with_no_foot_mark_stays_unresolved(tmp_path, written, other):
     """The plan's case: without (a), a reader's foot mark or "ft" at the unit, the field is unresolved on
     both paths: magnitude alone never decides. Condition (a) counts the mark and "ft" only, and only on the
     held field's own unit: Codex's round-1 input, "Trap '6400" against "Trap '6400'", a quoted number after
@@ -183,14 +173,14 @@ def test_6400_with_no_foot_mark_stays_unresolved(tmp_path, first_pass_path, writ
     ("2954", False),   # Mount Apo's height itself: (b) needs the number above it
     ("2000", False),   # possible in metres: (b) fails
 ])
-def test_conditions_b_and_c_bound_the_number(tmp_path, first_pass_path, number, inferred):
+def test_conditions_b_and_c_bound_the_number(tmp_path, number, inferred):
     """(b) the number read as metres is above the Philippines' highest point, Mount Apo, 2,954 m; (c) the
     number read as feet is not above it. Only on the units path, and only when both hold, the number
     settles in feet."""
     rig, run = settled_elevations(tmp_path, f"Elev.{number}", f"Elev.{number}'")
 
     found = state_of(run, "elevation_from_ft")
-    if inferred and first_pass_path == "units":
+    if inferred:
         assert found == (ValueState.SUPPORTED, number, number, "settled")
         assert run.fields["elevation_from_m"].parsed == str(
             (Decimal(number) * Decimal("0.3048")).quantize(Decimal("0.01")))
@@ -200,9 +190,9 @@ def test_conditions_b_and_c_bound_the_number(tmp_path, first_pass_path, number, 
 
 @pytest.mark.parametrize(("written", "other"), [("Elev. 6400", "Elev. 6400 m"), ("Elev. 6400'", "Elev. 6400 m")],
     ids=["bare-and-metres", "mark-and-metres"])
-def test_a_reader_who_writes_metres_keeps_today_s_unit_differs_path(tmp_path, first_pass_path, written, other):
+def test_a_reader_who_writes_metres_keeps_today_s_unit_differs_path(tmp_path, written, other):
     """The plan's case: a reader wrote "m". The foot field's answer of the number is refused as today
-    (UNIT_DIFFERS) on both paths, and nothing is inferred."""
+    (UNIT_DIFFERS), and nothing is inferred."""
     rig, run = settled_elevations(tmp_path, written, other,
         elevation_from_ft=answering(resolved("6400", reading="1B")))
 
@@ -210,7 +200,7 @@ def test_a_reader_who_writes_metres_keeps_today_s_unit_differs_path(tmp_path, fi
     assert (value.state, value.reason.split(" Settled.")[0]) == (ValueState.UNRESOLVED, agreement.UNIT_DIFFERS)
 
 
-def test_a_country_s_row_is_its_wikidata_item_s_else_its_name_s(tmp_path, first_pass_path):
+def test_a_country_s_row_is_its_wikidata_item_s_else_its_name_s(tmp_path):
     """highest_point: the table's row by the country's Wikidata item, else by its name (normalized, else
     parsed, else its literal); a country with neither has no row."""
     rig, run = settled_elevations(tmp_path, "Elev.6400", "Elev.6400'")
@@ -246,16 +236,16 @@ def g51_elevation_run(tmp_path, a, b, answer):
     (("Elev.6400", "\nCamp at 3300 ft."), ("Elev.6400'", "\nCamp at 3800 ft."), FieldAnswer(
         outcome="several_possibilities", options=["6400", "3300 ft.", "3800 ft."], explanation="Two elevations.")),
 ], ids=["collector-number", "camp-beside", "other-options"])
-def test_g51_s_inputs_stay_unresolved(tmp_path, first_pass_path, a, b, answer):
+def test_g51_s_inputs_stay_unresolved(tmp_path, a, b, answer):
     """The coordinator's ruling on G51's round 1 of PR #437: no other elevation text on any label, and options
-    that name no other number. Each stays held on both paths, its partners never derived."""
+    that name no other number. Each stays held, its partners never derived."""
     run = g51_elevation_run(tmp_path, a, b, answer)
 
     assert run.fields["elevation_from_ft"].state in (ValueState.AMBIGUOUS, ValueState.UNRESOLVED)
     assert all(run.fields[key].state != ValueState.SUPPORTED for key in PARTNERS)
 
 
-def test_a_failed_source_with_no_elevation_written_keeps_main_s_result(tmp_path, first_pass_path):
+def test_a_failed_source_with_no_elevation_written_keeps_main_s_result(tmp_path):
     """G51's round 1 (adopted): no reading writes an elevation, the foot field's expert times out. Its partners
     do not wait: on both paths they keep main's result, not present."""
     from test_step import failing
@@ -269,14 +259,11 @@ def test_a_failed_source_with_no_elevation_written_keeps_main_s_result(tmp_path,
     assert not [reason for reason in run.reasons if reason.startswith("mandatory_unresolved:elevation_from_m")]
 
 
-def test_a_number_on_two_units_or_another_held_elevation_is_not_inferred(tmp_path, first_pass_path):
+def test_a_number_on_two_units_or_another_held_elevation_is_not_inferred(tmp_path):
     """foot_number needs exactly one unit of the run's labels so written; infer_feet needs every other
     elevation field open. Each, broken on the 105526322 shape, leaves the field held."""
     rig, run = settled_elevations(tmp_path, "Elev.6400", "Elev.6400'")
     readings = field_step.run_readings(run)
-    if first_pass_path == "old":
-        assert ontology_checks.foot_number(run, readings, None) is None  # the old path stores no units
-        return
     found = ontology_checks.foot_number(run, readings, None)
     assert found is not None and found.number == "6400" and len(found.marked) == 1
     assert ontology_checks.foot_number(run, readings, FieldValue(literal="6401")) is None
@@ -342,7 +329,7 @@ def label_row(observation, start, end):
     (("Elev.6400", ""), None),                                 # a reader writes nothing there
     (("500 m N of Elev.6400", "500 m N of Elev.6400'"), None),  # more than one number, one a distance
 ])
-def test_condition_a_is_one_number_a_reader_marks_and_another_leaves_bare(first_pass_path, texts, marked):
+def test_condition_a_is_one_number_a_reader_marks_and_another_leaves_bare(texts, marked):
     """foot_number, condition (a): every reader of the unit writes one number, the same, at least one with
     the foot mark (straight, curly or a prime) or "ft" right after it, at least one with no unit, and none
     with another unit or as a distance."""
@@ -357,8 +344,7 @@ def test_condition_a_is_one_number_a_reader_marks_and_another_leaves_bare(first_
         assert ontology_checks.foot_number(run, readings, FieldValue(literal="6400 ft")) is None
 
 
-def test_condition_a_takes_a_unit_the_first_pass_routes_to_an_elevation_and_options_naming_no_other_number(
-        first_pass_path):
+def test_condition_a_takes_a_unit_the_first_pass_routes_to_an_elevation_and_options_naming_no_other_number():
     """G51's round 1, the coordinator's (i) and (iii): a unit with no heading binds when the first pass routes it to
     an elevation field, never to another; and where the expert gave options, they name this number only."""
     texts = ("3300, Davao Prov.", "3300', Davao Prov.")
@@ -372,7 +358,7 @@ def test_condition_a_takes_a_unit_the_first_pass_routes_to_an_elevation_and_opti
     assert ontology_checks.options_of(FieldValue(reason="Two. Options: 6400; 3300 ft.")) == ["6400", "3300 ft"]
 
 
-def test_condition_a_never_takes_a_unit_the_held_field_s_cited_rows_alone_place_the_number(first_pass_path):
+def test_condition_a_never_takes_a_unit_the_held_field_s_cited_rows_alone_place_the_number():
     """Codex's round 2 on PR #437 (the coordinator's ruling): the held field's cited label rows bind no unit. Its
     input: "No. 3456" against "No. 3456'", the unit routed only to the collection code, the held elevation citing
     rows that cover 3456 and listing the options "3456" and "3456'": nothing is inferred. A unit is the
@@ -394,11 +380,10 @@ def test_condition_a_never_takes_a_unit_the_held_field_s_cited_rows_alone_place_
 
 # ---- 2. dependent fields wait for their source ---------------------------------------------------
 
-def test_an_elevation_s_partners_wait_while_it_is_held(tmp_path, first_pass_path):
+def test_an_elevation_s_partners_wait_while_it_is_held(tmp_path):
     """105526324's shape: the foot field held (readers write "3300," and "3300'" and its expert gives two
     possibilities) in Guatemala, where 3300 m is below Tajumulco and nothing is inferred. On the units path
-    its partners wait, unknown, their reason naming it, never settled absent; on the old path they settle
-    absent, as on origin/main."""
+    its partners wait, unknown, their reason naming it, never settled absent."""
     places = dict(country="Guatemala", province_state=None, county=None, city=None)
     rig = build_rig(tmp_path, label_with(**places, elevation_from_ft="3300,"),
         label_with(**places, elevation_from_ft="3300'"))
@@ -409,47 +394,39 @@ def test_an_elevation_s_partners_wait_while_it_is_held(tmp_path, first_pass_path
         **dict.fromkeys(PARTNERS, answering(LACKS))}), tools=Gazetteer(rig.blobs))
 
     assert state_of(run, "elevation_from_ft")[0] in (ValueState.AMBIGUOUS, ValueState.UNRESOLVED)
-    if first_pass_path == "units":
-        for key in PARTNERS:
-            value = run.fields[key]
-            assert value.state == ValueState.UNKNOWN, key
-            assert value.reason.startswith("Waits for Elevation From (ft), which is not settled: this field follows it "
-                "(rule elevation_conversion), derived from it once it settles, or not present again where it then "
-                "cannot be, and is not settled absent before. ")
-    else:
-        assert [run.fields[key].state for key in PARTNERS] == [ValueState.NOT_PRESENT] * 3
+    for key in PARTNERS:
+        value = run.fields[key]
+        assert value.state == ValueState.UNKNOWN, key
+        assert value.reason.startswith("Waits for Elevation From (ft), which is not settled: this field follows it "
+            "(rule elevation_conversion), derived from it once it settles, or not present again where it then "
+            "cannot be, and is not settled absent before. ")
 
 
-def test_6400_with_no_mark_leaves_its_partners_waiting(tmp_path, first_pass_path):
-    """The no-mark case's partners: on the units path they wait for the foot field; on the old path they
-    settle absent."""
+def test_6400_with_no_mark_leaves_its_partners_waiting(tmp_path):
+    """The no-mark case's partners: on the units path they wait for the foot field."""
     rig, run = settled_elevations(tmp_path, "Elev.6400", "Elev.6400")
 
     states = [run.fields[key].state for key in PARTNERS]
-    assert states == ([ValueState.UNKNOWN] * 3 if first_pass_path == "units" else [ValueState.NOT_PRESENT] * 3)
+    assert states == ([ValueState.UNKNOWN] * 3)
 
 
-def test_105526325_s_held_date_leaves_date_visited_to_waiting(tmp_path, first_pass_path):
+def test_105526325_s_held_date_leaves_date_visited_to_waiting(tmp_path):
     """105526325's "1X-14-46": Date Visited From held (its expert cannot resolve it), Date Visited To's expert
     answering that the label lacks it. On the units path Date Visited To waits, its reason naming Date
-    Visited From; on the old path it settles absent, as on origin/main."""
+    Visited From."""
     rig = build_rig(tmp_path, label_with(date_visited_from="1X-14-46"))
     run = rig.specimen.run
     settle(rig, Scripted({"date_visited_from": answering(CANNOT), "date_visited_to": answering(LACKS)}))
 
     assert run.fields["date_visited_from"].state == ValueState.UNRESOLVED
     value = run.fields["date_visited_to"]
-    if first_pass_path == "units":
-        assert value.state == ValueState.UNKNOWN and not value.literal
-        assert value.reason.startswith("Waits for Date Visited From, which is not settled: this field follows it "
-            "(rule end_date_from_one_date)")
-    else:
-        assert value.state == ValueState.NOT_PRESENT
+    assert value.state == ValueState.UNKNOWN and not value.literal
+    assert value.reason.startswith("Waits for Date Visited From, which is not settled: this field follows it "
+        "(rule end_date_from_one_date)")
 
 
-def test_a_waiting_end_date_is_derived_once_its_start_settles(tmp_path, first_pass_path):
-    """Two attempts: the first leaves Date Visited From held, so Date Visited To waits (units path) or
-    settles absent (old path); the second settles the start, and derivation fills the end as today, on
+def test_a_waiting_end_date_is_derived_once_its_start_settles(tmp_path):
+    """the second settles the start, and derivation fills the end as today, on
     both paths."""
     rig = build_rig(tmp_path)
     run = rig.specimen.run
@@ -461,7 +438,7 @@ def test_a_waiting_end_date_is_derived_once_its_start_settles(tmp_path, first_pa
     assert (value.state, value.parsed, value.layer) == (ValueState.SUPPORTED, "2020-06-01", "derived")
 
 
-def test_a_field_settled_absent_beside_a_settled_source_does_not_wait(tmp_path, first_pass_path):
+def test_a_field_settled_absent_beside_a_settled_source_does_not_wait(tmp_path):
     """wait_for_sources: only a held source (ambiguous, unresolved or unknown) makes a field wait, and only
     a field settled absent with no text waits."""
     rig, run = settled_elevations(tmp_path, "Elev.6400", "Elev.6400")
@@ -508,29 +485,27 @@ def a_persons(value, **change):
         evidence_ids=list(value.evidence_ids))
 
 
-def test_a_waiting_field_adds_no_review_reason_of_its_own(tmp_path, first_pass_path):
+def test_a_waiting_field_adds_no_review_reason_of_its_own(tmp_path):
     """Codex's round 1, finding 2 (a): 105526325's held start date sends the record to a person; on the units
-    path the waiting end date adds no reason of its own (its source's routes it). On the old path the end
-    date settles absent and is its own reason, as on origin/main."""
+    path the waiting end date adds no reason of its own (its source's routes it)."""
     rig = build_rig(tmp_path, label_with(date_visited_from="1X-14-46"))
     run = rig.specimen.run
     settle(rig, Scripted({"date_visited_from": answering(CANNOT), "date_visited_to": answering(LACKS)}))
 
     assert "mandatory_unresolved:date_visited_from" in run.reasons
-    assert ("mandatory_unresolved:date_visited_to" in run.reasons) == (first_pass_path == "old")
-    assert ontology_checks.waiting_fields(run) == ({"date_visited_to"} if first_pass_path == "units" else set())
+    assert "mandatory_unresolved:date_visited_to" not in run.reasons
+    assert ontology_checks.waiting_fields(run) == ({"date_visited_to"})
     # Finalized again with its source still held (step.refinalize), it still waits.
     field_step.refinalize(run, today=TODAY)
     assert run.fields["date_visited_to"].state == (
-        ValueState.UNKNOWN if first_pass_path == "units" else ValueState.NOT_PRESENT)
-    assert ("mandatory_unresolved:date_visited_to" in run.reasons) == (first_pass_path == "old")
+        ValueState.UNKNOWN)
+    assert "mandatory_unresolved:date_visited_to" not in run.reasons
 
 
-def test_a_person_who_settles_the_start_gets_the_end_derived_on_approval(tmp_path, first_pass_path):
+def test_a_person_who_settles_the_start_gets_the_end_derived_on_approval(tmp_path):
     """Codex's round 1, finding 2 (b), through the API: 105526325's "1X-14-46" held, the end waiting. A person
     settles the start (1946-09-14) and approves: on the units path step.refinalize derives the end by its
-    rule, its reason naming it, and the record clears of both dates. On the old path the end stays settled
-    absent, as on origin/main."""
+    rule, its reason naming it, and the record clears of both dates."""
     from test_step import decide
 
     rig, client = person_journey(tmp_path, label_with(date_visited_from="1X-14-46"), None,
@@ -542,19 +517,15 @@ def test_a_person_who_settles_the_start_gets_the_end_derived_on_approval(tmp_pat
     run = decide(client, rig, "approve-1", "approve")
 
     end = run.fields["date_visited_to"]
-    if first_pass_path == "units":
-        assert (end.state, end.parsed, end.layer) == (ValueState.SUPPORTED, "1946-09-14", "derived")
-        assert end.reason.endswith("Basis: derived, rule end_date_from_one_date.")
-        assert not [reason for reason in run.reasons if reason.endswith(":date_visited_to")]
-    else:
-        assert end.state == ValueState.NOT_PRESENT
-        assert "mandatory_unresolved:date_visited_to" in run.reasons
+    assert (end.state, end.parsed, end.layer) == (ValueState.SUPPORTED, "1946-09-14", "derived")
+    assert end.reason.endswith("Basis: derived, rule end_date_from_one_date.")
+    assert not [reason for reason in run.reasons if reason.endswith(":date_visited_to")]
 
 
-def test_a_person_who_settles_the_foot_field_gets_its_partners_derived(tmp_path, first_pass_path):
+def test_a_person_who_settles_the_foot_field_gets_its_partners_derived(tmp_path):
     """The same journey for the elevation partners: "Elev.6400" with no mark leaves the foot field held and
     its partners waiting; a person settles 6400 ft and approves. On the units path the partners are derived
-    (1950.72 m, 6400 ft), each naming elevation_conversion; on the old path they stay settled absent."""
+    (1950.72 m, 6400 ft), each naming elevation_conversion."""
     from test_step import decide
 
     text, _ = elevation_label("Elev.6400")
@@ -566,19 +537,15 @@ def test_a_person_who_settles_the_foot_field_gets_its_partners_derived(tmp_path,
     run = decide(client, rig, "approve-1", "approve")
 
     found = {key: (run.fields[key].state, run.fields[key].parsed) for key in PARTNERS}
-    if first_pass_path == "units":
-        assert found == {"elevation_from_m": (ValueState.SUPPORTED, "1950.72"),
-            "elevation_to_m": (ValueState.SUPPORTED, "1950.72"), "elevation_to_ft": (ValueState.SUPPORTED, "6400")}
-        assert all(run.fields[key].reason.endswith("Basis: derived, rule elevation_conversion.") for key in PARTNERS)
-        assert not [reason for reason in run.reasons if reason.startswith("mandatory_unresolved:elevation")]
-    else:
-        assert set(found.values()) == {(ValueState.NOT_PRESENT, None)}
+    assert found == {"elevation_from_m": (ValueState.SUPPORTED, "1950.72"),
+        "elevation_to_m": (ValueState.SUPPORTED, "1950.72"), "elevation_to_ft": (ValueState.SUPPORTED, "6400")}
+    assert all(run.fields[key].reason.endswith("Basis: derived, rule elevation_conversion.") for key in PARTNERS)
+    assert not [reason for reason in run.reasons if reason.startswith("mandatory_unresolved:elevation")]
 
 
 @pytest.mark.parametrize("change", [dict(state="not_present", literal=None, parsed=None),
     dict(state="supported", literal="14-16.IX.1946", parsed="1946-09-14")], ids=["absent", "a-written-range"])
-def test_a_waiting_field_whose_source_settles_without_a_derivation_takes_today_s_treatment(tmp_path,
-        first_pass_path, change):
+def test_a_waiting_field_whose_source_settles_without_a_derivation_takes_today_s_treatment(tmp_path, change):
     """Codex's round 1, finding 2 (c): a person settles the start absent, or as a written range that the rule
     never derives an end from. The end stops waiting: not present, with its expert's reason and its own
     review reason, as on origin/main; never left unknown and silent."""
@@ -610,34 +577,34 @@ YEPOCAPA_ELEVATION = {"r1": {"4800 ft."}}
     (YEPOCAPA, "any", True),
 ], ids=["whole-settled", "town-line-settled", "nothing-settled", "number-settled", "other-text-settled",
         "other-label-settled", "expert-check"])
-def test_yepocapa_s_elevation_is_kept_only_as_the_literal_its_elevation_field_settled(first_pass_path, literal,
+def test_yepocapa_s_elevation_is_kept_only_as_the_literal_its_elevation_field_settled(literal,
         elevations, accepted):
     """The plan's case, read from the transcript: "Yepocapa, 4800 ft." over "Chimaltenango, Guatemala" is
     accepted on the units path only when the elevation field settled "4800 ft." from that label (or, in
     the expert's own check, before any field settles: agreement.ANY_ELEVATION); otherwise refused for the
-    elevation it holds. The old path refuses it whatever settled, as on origin/main."""
-    readings = label_readings(YEPOCAPA, first_pass_path == "units")
+    elevation it holds."""
+    readings = label_readings(YEPOCAPA, True)
     task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
     if elevations == "any":
         elevations = agreement.ANY_ELEVATION
 
     refused = agreement.literal_refusal(task, readings, literal=literal, named=readings, elevations=elevations)
 
-    if accepted and first_pass_path == "units":
+    if accepted:
         assert refused is None
     else:
         assert refused is not None and refused.reason == agreement.HOLDS_AN_ELEVATION
 
 
 @pytest.mark.parametrize("literal", ELEVATION_REVIEW_CASES)
-def test_the_review_rounds_elevation_inputs_stay_refused_whatever_elevation_settled(first_pass_path, literal):
+def test_the_review_rounds_elevation_inputs_stay_refused_whatever_elevation_settled(literal):
     """The review rounds' inputs, each with its own elevation text (written.other_kind) settled from its
-    label, and with every text (the expert's check): none is accepted on either path. "4800 ft.", "Elev.
+    label, and with every text (the expert's check): none is accepted. "4800 ft.", "Elev.
     6400'" alone and the sea-level phrases have no Precise Location; the collector and date lines write
     no elevation at the end of their line, or a month before it."""
     from specimen_digitization.field_research import written
 
-    readings = label_readings(literal + "\nChimaltenango, Guatemala", first_pass_path == "units")
+    readings = label_readings(literal + "\nChimaltenango, Guatemala", True)
     task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
     own = written.other_kind(literal, place=True)[1]
 
@@ -661,14 +628,13 @@ def test_elevation_kept_keeps_one_elevation_at_its_line_s_end_beside_a_locality(
     assert agreement.elevation_kept(literal) == kept
 
 
-def test_an_organiser_candidate_holding_an_elevation_follows_the_same_rule(first_pass_path):
+def test_an_organiser_candidate_holding_an_elevation_follows_the_same_rule():
     """The candidate basis (agreement.literal_basis CANDIDATE): an organiser candidate "Yepocapa, 4800 ft.\\n
     Chimaltenango, Guatemala" taken as the precise location. On the units path it settles only when the
-    elevation field settled "4800 ft." from its label, as the transcript basis does; on the old path it
-    passes whatever settled, as on origin/main."""
+    elevation field settled "4800 ft." from its label, as the transcript basis does."""
     from specimen_digitization.field_research.contracts import Candidate
 
-    readings = label_readings(YEPOCAPA, first_pass_path == "units")
+    readings = label_readings(YEPOCAPA, True)
     candidates = tuple(Candidate(reading.name, YEPOCAPA, YEPOCAPA, f"e-{reading.name}") for reading in readings)
     task = FieldTask("precise_location", True, FieldValue(), candidates, FIELD_TOOLS["precise_location"])
     assert agreement.literal_basis(task, readings, YEPOCAPA, readings) == agreement.CANDIDATE
@@ -677,11 +643,8 @@ def test_an_organiser_candidate_holding_an_elevation_follows_the_same_rule(first
     settled = agreement.literal_refusal(task, readings, literal=YEPOCAPA, named=readings,
         elevations=YEPOCAPA_ELEVATION)
 
-    if first_pass_path == "units":
-        assert nothing is not None and nothing.reason == agreement.HOLDS_AN_ELEVATION
-        assert settled is None
-    else:
-        assert nothing is None and settled is None
+    assert nothing is not None and nothing.reason == agreement.HOLDS_AN_ELEVATION
+    assert settled is None
 
 
 def settled_run(tmp_path, text, scripts, *, candidates=COLLECTORS):
@@ -700,13 +663,13 @@ def settled_run(tmp_path, text, scripts, *, candidates=COLLECTORS):
 
 
 @pytest.mark.parametrize("literal", ["Ejido 20 de Noviembre", "Colonia 18 de Marzo"])
-def test_an_organiser_candidate_holding_a_date_settles_on_both_paths(first_pass_path, literal):
+def test_an_organiser_candidate_holding_a_date_settles_on_both_paths(literal):
     """The candidate basis is held to the elevation rule only (the coordinator's ruling on G51's round 1 of
     PR #437; the plan's WP 2.3 row names only it): a candidate place whose name holds a date's words settles on
     both paths, as on origin/main."""
     from specimen_digitization.field_research.contracts import Candidate
 
-    readings = label_readings(literal + "\nChimaltenango, Guatemala", first_pass_path == "units")
+    readings = label_readings(literal + "\nChimaltenango, Guatemala", True)
     task = FieldTask("precise_location", True, FieldValue(),
         tuple(Candidate(reading.name, literal, literal, f"e-{reading.name}") for reading in readings),
         FIELD_TOOLS["precise_location"])
@@ -726,55 +689,36 @@ def yepocapa_run(tmp_path, elevation, *, candidate=False):
 
 
 @pytest.mark.parametrize("candidate", [False, True], ids=["transcript", "candidate"])
-def test_105526329_s_whole_locality_settles_beside_its_settled_elevation_on_the_units_path(tmp_path,
-        first_pass_path, candidate):
+def test_105526329_s_whole_locality_settles_beside_its_settled_elevation_on_the_units_path(tmp_path, candidate):
     """The elevation field's answer "4800 ft." from the label: on the units path the precise location settles
-    as written, its elevation line included, on either basis, and the elevation settles beside it. On the
-    old path, as on origin/main, the transcript's locality goes to review as text the elevation field
-    claims (step._taken), and the organiser's candidate settles and takes the elevation's text, which goes
-    to review instead."""
+    as written, its elevation line included, on either basis, and the elevation settles beside it."""
     rig, run, _ = yepocapa_run(tmp_path, answering(resolved("4800 ft.", value="4800")), candidate=candidate)
 
     place, height = run.fields["precise_location"], run.fields["elevation_from_ft"]
-    if first_pass_path == "units":
-        assert (place.state, place.literal) == (ValueState.SUPPORTED, YEPOCAPA)
-        assert (height.state, height.literal) == (ValueState.SUPPORTED, "4800 ft.")
-    elif candidate:
-        assert (place.state, place.literal) == (ValueState.SUPPORTED, YEPOCAPA)
-        assert height.state == ValueState.UNRESOLVED
-        assert height.reason.startswith(field_step.TAKEN.format(other="Precise Location"))
-    else:
-        assert (place.state, place.literal) == (ValueState.UNRESOLVED, None)
-        assert place.reason.startswith(field_step.TAKEN.format(other="Elevation From (ft)"))
-        assert (height.state, height.literal) == (ValueState.SUPPORTED, "4800 ft.")
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, YEPOCAPA)
+    assert (height.state, height.literal) == (ValueState.SUPPORTED, "4800 ft.")
 
 
 @pytest.mark.parametrize("candidate", [False, True], ids=["transcript", "candidate"])
 @pytest.mark.parametrize("elevation", ["number", "none"])
-def test_105526329_s_whole_locality_is_refused_beside_another_elevation_or_none(tmp_path, first_pass_path,
+def test_105526329_s_whole_locality_is_refused_beside_another_elevation_or_none(tmp_path,
         candidate, elevation):
     """The elevation field settled the number "4800" (its literal another text than the locality's
-    "4800 ft.") or nothing: on the units path the precise location is left for a person on either basis.
-    On the old path the transcript's locality is refused and the organiser's candidate settles, as on
-    origin/main."""
+    "4800 ft.") or nothing: on the units path the precise location is left for a person on either basis."""
     answer = answering(resolved("4800", value="4800")) if elevation == "number" else answering(LACKS)
     rig, run, _ = yepocapa_run(tmp_path, answer, candidate=candidate)
 
     place = run.fields["precise_location"]
-    if first_pass_path == "old" and candidate:
-        assert (place.state, place.literal) == (ValueState.SUPPORTED, YEPOCAPA)
-    else:
-        assert place.state == ValueState.UNRESOLVED
-        assert place.reason.startswith((agreement.HOLDS_AN_ELEVATION, field_step.TAKEN.format(
-            other="Elevation From (ft)")))
+    assert place.state == ValueState.UNRESOLVED
+    assert place.reason.startswith((agreement.HOLDS_AN_ELEVATION, field_step.TAKEN.format(
+        other="Elevation From (ft)")))
 
 
-def test_an_elevation_another_field_s_text_takes_is_no_elevation_the_locality_may_keep(tmp_path, first_pass_path):
+def test_an_elevation_another_field_s_text_takes_is_no_elevation_the_locality_may_keep(tmp_path):
     """Codex's round 1, finding 3: a retry where a collection code settled before holds "4800" from the label and
     is not researched again. The elevation's expert answers "4800 ft." from the transcript; _taken refuses it
     (the code claims its number). The precise location, the organiser's whole candidate, may keep only an
-    elevation that survives every guard: on the units path it is refused. On the old path the candidate
-    settles and takes the elevation's text, as on origin/main."""
+    elevation that survives every guard: on the units path it is refused."""
     candidates = [*COLLECTORS, *(("precise_location", name, YEPOCAPA, YEPOCAPA) for name in ("1A", "1B"))]
     rig = build_rig(tmp_path, YEPOCAPA, candidates=candidates)
     run = rig.specimen.run
@@ -789,19 +733,14 @@ def test_an_elevation_another_field_s_text_takes_is_no_elevation_the_locality_ma
 
     height, place = run.fields["elevation_from_ft"], run.fields["precise_location"]
     assert height.state == ValueState.UNRESOLVED
-    if first_pass_path == "units":
-        assert height.reason.startswith(field_step.TAKEN.format(other="Collection Code"))
-        assert place.state == ValueState.UNRESOLVED and place.reason.startswith(agreement.HOLDS_AN_ELEVATION)
-    else:
-        # On the old path the candidate locality takes the elevation's text first, as on origin/main.
-        assert height.reason.startswith(field_step.TAKEN.format(other="Precise Location"))
-        assert (place.state, place.literal) == (ValueState.SUPPORTED, YEPOCAPA)
+    assert height.reason.startswith(field_step.TAKEN.format(other="Collection Code"))
+    assert place.state == ValueState.UNRESOLVED and place.reason.startswith(agreement.HOLDS_AN_ELEVATION)
 
 
-def test_the_expert_s_own_check_lets_a_kept_elevation_pass_on_the_units_path_only(tmp_path, first_pass_path):
+def test_the_expert_s_own_check_lets_a_kept_elevation_pass_on_the_units_path_only(tmp_path):
     """experts._Expert.validate: before any field settles, a precise location keeping an elevation the rule
     could accept passes on the units path (agreement.ANY_ELEVATION), and the step decides; a review-round
-    input is still sent back. On the old path both are sent back, as on origin/main."""
+    input is still sent back."""
     rig = build_rig(tmp_path, YEPOCAPA + "\nYepocapa, 1948 M. Smith\n" + label_with(precise_location=None))
     readings, tasks, _ = field_step.build_tasks(rig.specimen.run)
     [task] = [task for task in tasks if task.key == "precise_location"]
@@ -809,16 +748,12 @@ def test_the_expert_s_own_check_lets_a_kept_elevation_pass_on_the_units_path_onl
     answer = FieldAnswer(outcome="resolved", literal=YEPOCAPA, reading_names=["1A", "1B"],
         explanation="The locality.")
 
-    if first_pass_path == "units":
-        assert expert.validate(answer).literal == YEPOCAPA
-    else:
-        with pytest.raises(ModelRetry, match="holds '4800 ft.'"):
-            expert.validate(answer)
+    assert expert.validate(answer).literal == YEPOCAPA
     with pytest.raises(ModelRetry, match="holds '1948 M.'"):
         expert.validate(answer.model_copy(update={"literal": "Yepocapa, 1948 M. Smith"}))
 
 
-def test_a_settled_precise_location_and_an_elevation_share_its_text_on_the_units_path(first_pass_path):
+def test_a_settled_precise_location_and_an_elevation_share_its_text_on_the_units_path():
     """step._keeps_an_elevation, in both directions: the precise location keeps the elevation field's
     literal, on a label both are read from. Another literal, another label or another pair of fields
     shares nothing."""
@@ -858,22 +793,18 @@ def extent_marks(run):
 @pytest.mark.parametrize(("answered", "line", "level", "text"), [
     ("E. slope Mt. McKinley", "Davao Prov.", "province or state", "Davao Prov."),
 ], ids=["before-the-province"])
-def test_a_precise_location_cut_short_before_a_line_holding_a_settled_higher_place_is_marked(tmp_path,
-        first_pass_path, answered, line, level, text):
+def test_a_precise_location_cut_short_before_a_line_holding_a_settled_higher_place_is_marked(tmp_path, answered, line, level, text):
     """The plan's case: "E. slope Mt. McKinley" settled where the label goes on with "Davao Prov." and
     "Mindanao, P.I.", the province and the country settled. On the units path the precise location is
-    marked, its reason naming the rule and the line; on the old path nothing is marked."""
+    marked, its reason naming the rule and the line."""
     rig, run = mckinley_run(tmp_path, answered)
 
     place = run.fields["precise_location"]
     assert (place.state, place.literal) == (ValueState.SUPPORTED, answered)
-    if first_pass_path == "units":
-        code = field_step.marked_code("precise_location", run.regions[0].id, "precise_location_extent")
-        assert extent_marks(run) == [code] and code in run.reasons
-        assert place.reason.endswith(f"Marked for a person, rule precise_location_extent: the label's next line, "
-            f"{line!r}, writes the {level} settled, {text!r}, so its locality goes on after this text.")
-    else:
-        assert extent_marks(run) == [] and "Marked for a person" not in place.reason
+    code = field_step.marked_code("precise_location", run.regions[0].id, "precise_location_extent")
+    assert extent_marks(run) == [code] and code in run.reasons
+    assert place.reason.endswith(f"Marked for a person, rule precise_location_extent: the label's next line, "
+        f"{line!r}, writes the {level} settled, {text!r}, so its locality goes on after this text.")
 
 
 @pytest.mark.parametrize(("answered", "text", "other"), [
@@ -889,7 +820,7 @@ def test_a_precise_location_cut_short_before_a_line_holding_a_settled_higher_pla
     ("E. slope Mt. McKinley\nDavao Prov.", MCKINLEY + "\n3 Sept. '46\nF.G. Werner",
      "E. slope Mt. McKinley\nDavao Prov.\n3 Sept. '46\nMindanao, P.I.\nF.G. Werner"),
 ], ids=["whole", "within-a-line", "no-next-line", "a-name-no-field-settled", "readers-differ"])
-def test_the_cut_short_check_abstains_unless_certain(tmp_path, first_pass_path, answered, text, other):
+def test_the_cut_short_check_abstains_unless_certain(tmp_path, answered, text, other):
     rig, run = mckinley_run(tmp_path, answered, text, other)
 
     assert extent_marks(run) == []
@@ -909,7 +840,7 @@ MCKINLEY_FIELDS = {"precise_location": settled_at("E. slope Mt. McKinley"),
     "province_state": settled_at("Davao Prov."), "country": settled_at("P.I.")}
 
 
-def test_a_person_s_precise_location_is_never_marked_cut_short(first_pass_path):
+def test_a_person_s_precise_location_is_never_marked_cut_short():
     """_extent_marks: a person's precise location, or one that is not settled, is not checked; nor is a
     higher place that is not settled; and a place's text inside a longer word is not that place."""
     readings = one_label(MCKINLEY, MCKINLEY)
@@ -978,7 +909,7 @@ def test_a_person_s_precise_location_is_never_marked_cut_short(first_pass_path):
         "105526324-elevation-held", "unit-word", "another-word", "a-place-the-literal-writes", "inside-a-word",
         "within-a-line", "readers-differ", "yepocapa-expedition", "athens-georgia", "davao-penal-colony",
         "mt-with-no-period", "collectors-university", "collectors-expedition", "habitat-penal-colony"])
-def test_the_next_line_marks_only_as_the_locality_going_on(first_pass_path, texts, fields, marked):
+def test_the_next_line_marks_only_as_the_locality_going_on(texts, fields, marked):
     """Codex's round 1, finding 4 (the coordinator's ruling): a whole-word match is no certainty. The next
     line must write a settled higher place the literal does not write, and nothing besides but other settled
     fields' texts, place unit words and punctuation."""
@@ -991,25 +922,19 @@ def test_the_next_line_marks_only_as_the_locality_going_on(first_pass_path, text
 # ---- 5. a country-only locality ------------------------------------------------------------------
 
 def test_a_label_whose_only_locality_text_is_its_country_settles_it_as_the_precise_location_on_the_units_path(
-        tmp_path, first_pass_path):
+        tmp_path):
     """A label whose only locality text is "Guatemala". The PRD's Precise Location is the verbatim locality
     as written (PRD.md:519, :774), Darwin Core's verbatimLocality (GEOREFERENCING.md:258), whose example
     keeps the country's line (:276): on the units path the answer "Guatemala" settles as written, and no
-    check marks it. On the old path it is no finer locality than the settled country (step._repeats_a_place)
-    and, with no city or county settled, waits for a person, as on origin/main."""
+    check marks it."""
     text = "Guatemala\nIV-24-48\nR.D. Mitchell"
     rig, run, decisions = settled_run(tmp_path, text, {**IN_GUATEMALA, "province_state": answering(LACKS),
         "precise_location": whole("Guatemala")})
 
     place = run.fields["precise_location"]
     assert run.fields["country"].state == ValueState.SUPPORTED
-    if first_pass_path == "units":
-        assert (place.state, place.literal) == (ValueState.SUPPORTED, "Guatemala")
-        assert extent_marks(run) == []
-    else:
-        assert place.state == ValueState.NOT_PRESENT
-        assert decisions["precise_location"]["rule"] == "A_declined:no_city_or_county_settled"
-        assert "mandatory_unresolved:precise_location" in run.reasons
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, "Guatemala")
+    assert extent_marks(run) == []
 
 
 # ---- 6. derive.py's rules from the file ----------------------------------------------------------
@@ -1054,9 +979,9 @@ MAIN_DERIVATIONS = [
 ]
 
 
-def test_derivation_writes_what_it_wrote_on_main(tmp_path, first_pass_path):
+def test_derivation_writes_what_it_wrote_on_main(tmp_path):
     """derive.fill's values, rows and records on test_step's label, pinned as origin/main writes them:
-    reading the rules from the file changes none of them, on either path."""
+    reading the rules from the file changes none of them."""
     rig = build_rig(tmp_path)
     run = rig.specimen.run
     prepared, outcomes, calls = research(rig, Scripted())

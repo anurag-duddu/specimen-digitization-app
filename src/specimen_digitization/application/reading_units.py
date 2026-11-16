@@ -24,19 +24,11 @@ NOT_VISIBLE = "not visible"
 # decided the label's text (application/api.py, a transcription decision).
 PERSON = "person"
 
-SETTING = "SPECIMEN_FIRST_PASS_UNITS"
+# The first-pass path a run records (domain.Run.first_pass_path). Every new run records UNITS.
+# A run the old first pass processed, which WP 1.8 of docs/execution/units/PLAN.md removed,
+# holds OLD, the default of a stored run without the key, until it is reopened and moved to
+# the units path (workflow.move_to_units).
 OLD, UNITS = "old", "units"
-
-
-def first_pass_path(environ) -> str:
-    """"units" when SPECIMEN_FIRST_PASS_UNITS is "on"; "old" when it is "off", empty or unset;
-    another value raises a ValueError that names the setting and not the value."""
-    value = environ.get(SETTING, "")
-    if value in ("", "off"):
-        return OLD
-    if value == "on":
-        return UNITS
-    raise ValueError(f"{SETTING} must be on or off")
 
 Line = Annotated[int, Field(ge=1)]
 
