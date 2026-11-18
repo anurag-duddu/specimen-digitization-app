@@ -2983,7 +2983,9 @@ def marked_code(key: str, region_id: str, why: str) -> str:
     """`marked:<field>:<label>:<why>`: the label settled the field on a text that only
     readers that agree or another label back (text_only), or against another backed
     text (conflict); or the label writes a part of a field whose parts lie on different
-    labels, left ambiguous (parts_on_labels, PARTS)."""
+    labels, left ambiguous (parts_on_labels, PARTS); or its readers agree on a catalogue
+    number the slide's QR code contradicts, left ambiguous (barcode_differs,
+    catalogue_code.DIFFERS)."""
     return f"marked:{key}:{region_id}:{why}"
 
 

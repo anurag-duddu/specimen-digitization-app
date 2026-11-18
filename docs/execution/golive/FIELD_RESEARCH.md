@@ -1990,7 +1990,11 @@ all equal to the truth.
    the two wrong clearances of 105526487 become its code's 4486618, and no
    catalogue number is newly wrong. Those two runs' value no reader wrote is
    not raw-grounded, so that slide's barcode label is now held as
-   `unresolved_transcription` instead of clearing a wrong number.
+   `unresolved_transcription` instead of clearing a wrong number; and on
+   105526522 (three runs), whose barcode label the duplicate-label rule of
+   the autonomy program's S1 had left to the catalogue number's text_only
+   mark, the label's own `unresolved_transcription` returns once the mark
+   goes. No specimen finished before or after.
 
 Tests: `tests/test_barcode.py` (codes made by zxing-cpp's encoder in the
 test; no museum image is committed) and
