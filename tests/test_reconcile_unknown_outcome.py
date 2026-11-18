@@ -775,3 +775,31 @@ def test_a_size_limit_then_a_retry_the_budget_gives_up_leaves_no_kind(tmp_path):
     assert step in drained.run.completed_steps and drained.run.attempts[step] == 2
     assert any(f.rule_id == "first_pass_given_up" for f in drained.run.findings)
     assert drained.run.dependencies == pins
+
+
+def test_reconciling_keeps_an_approval_while_the_run_s_values_are_unchanged(tmp_path):
+    # An approval can land on a blocked run (the decision route finalizes it and the blocker
+    # keeps it blocked). The approval of the values the run holds then is the stored
+    # precondition here (lane.approve, as the decision records it); the route under test is
+    # reconcile. The reading runs again, and this fixture's run then stops at its cost budget
+    # with no field or resolved transcript changed, so the approval stands: only a change of
+    # the values it covers withdraws it (lane.settle_approval).
+    from specimen_digitization.application.lane import approve, approved_values_digest, settle_approval
+
+    repo, blobs, blocked = blocked_run(tmp_path, "transcribe:" + ROUTES[1])
+    approved = mutate(repo, blocked.id, approve, "approved")
+    held = approved.run.approved_values_sha256
+    assert approved.run.human_approved is True and held == approved_values_digest(approved.run)
+    c = admin(tmp_path)
+    response = reconcile(c, approved.run, approved.version)
+    assert response.status_code == 200, response.text
+    workflow = Workflow(repo, blobs, Readers(blobs))
+    for _ in range(16):
+        drained = workflow.step(operator(), blocked.id)
+        if drained.run.stage in {"processing_blocked", "finalized"}:
+            break
+    assert len(drained.run.observations) > len(approved.run.observations)
+    assert approved_values_digest(drained.run) == held
+    settle_approval(drained.run)
+    assert drained.run.human_approved is True
+    assert repo.get(SCOPE, blocked.id).run.human_approved is True

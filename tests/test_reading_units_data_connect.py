@@ -4,6 +4,11 @@ Main's connector operations and schema types are pinned by name and by one diges
 texts, as they stood at MAIN. Every one of them is byte-identical in this tree but
 `TranscriptionVersion`, which gains one nullable field; exactly one operation is new; and the
 data release's additive gate (scripts/ci/schema_gate.py) accepts the change.
+
+One later change is declared here by its exact text, so the pins still hold for everything else:
+the queue's "cleared by" (2026-11-17) projects the stored `run.human_approved` as the last column
+of the `SpecimenSearch` view and the last selection of `SearchSpecimens` (SEARCH_DELTAS). The view
+is inlined by Data Connect, so the database receives no statement for it.
 """
 
 import hashlib
@@ -74,6 +79,33 @@ NEW_FIELD = (
     "  readingUnits: Any\n"
 )
 
+# The queue's "cleared by" (2026-11-17): (definition, text in this tree, text at MAIN), exactly.
+SEARCH_DELTAS = (
+    ("SpecimenSearch",
+     "    v.snapshot -> 'active_graph' AS active_graph,\n"
+     "    CASE WHEN jsonb_typeof(v.snapshot #> '{run,human_approved}') = 'boolean'"
+     " THEN (v.snapshot #>> '{run,human_approved}')::boolean END AS human_approved\n",
+     "    v.snapshot -> 'active_graph' AS active_graph\n"),
+    ("SpecimenSearch",
+     "  activeGraph: Any\n"
+     "  # run.human_approved when the stored run holds a boolean, else null (lane.cleared_by).\n"
+     "  humanApproved: Boolean\n}",
+     "  activeGraph: Any\n}"),
+    ("SearchSpecimens",
+     "fieldReviewStates activeGraph humanApproved\n",
+     "fieldReviewStates activeGraph\n"),
+)
+
+
+def at_main(found: dict[str, str]) -> dict[str, str]:
+    """The definitions with SEARCH_DELTAS taken back out, each found exactly once."""
+    found = dict(found)
+    for name, now, then in SEARCH_DELTAS:
+        if name in found:
+            assert found[name].count(now) == 1, name
+            found[name] = found[name].replace(now, then)
+    return found
+
 
 def blocks(directory: Path, keywords: str) -> dict[str, str]:
     """Each definition's exact text, from its keyword at the start of a line to its closing `}`."""
@@ -130,14 +162,14 @@ def test_every_connector_operation_on_main_is_byte_identical_and_exactly_one_is_
     found = operations()
     assert set(found) - set(MAIN_OPERATIONS) == {NEW_OPERATION}
     assert set(MAIN_OPERATIONS) <= set(found)
-    assert sha256(joined(found, MAIN_OPERATIONS)) == MAIN_OPERATIONS_SHA256, (
+    assert sha256(joined(at_main(found), MAIN_OPERATIONS)) == MAIN_OPERATIONS_SHA256, (
         f"an operation of main {MAIN} changed: compare with git show {MAIN}:dataconnect/connector"
     )
 
 
 def test_every_schema_type_on_main_is_byte_identical_but_transcription_versions_new_field():
     assert set(types()) == set(MAIN_TYPES)
-    assert sha256(joined(types_without_the_new_field(), MAIN_TYPES)) == MAIN_TYPES_SHA256, (
+    assert sha256(joined(at_main(types_without_the_new_field()), MAIN_TYPES)) == MAIN_TYPES_SHA256, (
         f"a type of main {MAIN} changed: compare with git show {MAIN}:dataconnect/schema"
     )
 

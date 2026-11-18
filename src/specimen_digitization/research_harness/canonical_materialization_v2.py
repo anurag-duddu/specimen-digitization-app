@@ -187,6 +187,10 @@ def _scientific_reasons(result, profile, observed_at, *, latest_work, field_mapp
     native original request/checkpoint/value lineage qualifies derived/settled
     layers before any source-evidence exemption below.
     """
+    from ..application.lane import settle_approval
+
+    # An approval stands only on the values it was given for (lane.settle_approval).
+    settle_approval(result.run)
     run = result.run
     # An unpublished terminal field (_relations_unproved) keeps its prior record
     # value, which is not its research result: the rules leave it out.

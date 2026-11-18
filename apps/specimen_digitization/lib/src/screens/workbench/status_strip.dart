@@ -94,6 +94,7 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
   static SpecimenStatus _statusOf(Specimen record) => SpecimenStatus.ofRecord(
     disposition: record.disposition,
     state: record.state,
+    clearedBy: record.clearedBy,
   );
 
   static (String, int, String) _versionOf(Specimen record) =>

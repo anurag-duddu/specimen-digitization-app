@@ -894,7 +894,7 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
     Specimen record,
   ) => _card(_resetPreview ? 'Initial version · 1' : 'Version ${record.revision}', [
     Text(
-      'Status: ${SpecimenStatus.ofRecord(disposition: record.disposition, state: record.state).label}',
+      'Status: ${SpecimenStatus.ofRecord(disposition: record.disposition, state: record.state, clearedBy: record.clearedBy).label}',
       style: _line,
     ),
     Text(

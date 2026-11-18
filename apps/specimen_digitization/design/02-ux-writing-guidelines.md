@@ -432,12 +432,22 @@ Two to twenty characters, sentence case, no icon-only chips, and colour is never
 
 | Queue or state | Chip label | Role colour | Glyph |
 | --- | --- | --- | --- |
-| Cleared | "Cleared" | `tertiary` container | filled circle |
+| Cleared, approved by a person | "Approved by a person" | `disposition.cleared` (green) | filled check circle |
+| Cleared by the system | "Cleared by system" | `evidence.model` (neutral) | model reading glyph |
+| Cleared, who not stated | "Cleared" | `evidence.model` (neutral) | filled check circle |
 | Needs human review | "Needs review" | `secondary` container | half circle |
 | Deferred | "Deferred" | `surfaceContainerHighest` | open circle |
 | Processing blocked | "Blocked" | operational amber container | square |
 | Duplicate | "Already in collection" | `surfaceContainerHighest` | open circle |
 | Not calibrated | "Not calibrated" | none, outline only | none |
+
+"Cleared by system" drops the article to fit twenty characters; its accessibility label keeps the
+whole phrase, "Queue: cleared by the system". The two cleared chips are two things, because a record
+a person approved and one the system cleared are two different claims (amended 2026-11-17 on the
+coordinator's wording, put to the owner as "'Cleared by the system' in the app. The design says
+'Green means a human affirmed it.'", and to "Go ahead with the plan, including the three rule
+changes?" the owner typed "Yes, go ahead" (2026-11-17, session f9614090)). The queue's view stays
+"Cleared" and holds both; each row in it names which.
 
 "Processing blocked" is an operational state and is never rendered in `colorScheme.error`, because
 error red is reserved for things the reader can fix (section 2.4).
@@ -491,7 +501,8 @@ Rules for the pattern:
 - Every `Semantics.label` is a complete phrase that stands alone out of context, 100 characters or
   fewer. "Label region 2 of 5, selected" beats "Region 2".
 - Where a chip carries meaning through colour, the label carries it through words: the "Cleared"
-  chip's semantic label is "Queue: cleared".
+  chip's semantic label is "Queue: cleared", the "Approved by a person" chip's is "Queue: approved
+  by a person", and the "Cleared by system" chip's is "Queue: cleared by the system".
 - Errors keep `liveRegion: true`, which the code already does; keep this and extend it to the
   operational status card, so a blocked run announces itself.
 - Images keep the semantic labels already present at `workbench.dart:510` and `region_editor.dart:109`.

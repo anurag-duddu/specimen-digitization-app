@@ -519,6 +519,9 @@ class Run(Record):
     lookups: list[Lookup] = Field(default_factory=list)
     coverage_confirmed: bool = False
     human_approved: bool = False
+    # The digest of the values a person approved (lane.approved_values_digest), set with the
+    # approval. Omitted while None, so a run approved before it existed keeps its stored bytes.
+    approved_values_sha256: str | None = Field(default=None, exclude_if=lambda value: value is None)
     # A restore withdraws clearance while retaining existing human field locks.
     # Omit the false default so historical immutable snapshot digests stay exact.
     history_restore_human_locks: bool = Field(
