@@ -256,3 +256,37 @@ def test_a_rules_only_retry_of_an_approved_record_keeps_the_persons_approval(tmp
             "finalized", Disposition.CLEARED, True)
         item, detail = read_both(http, ident)
         assert item["cleared_by"] == detail.json()["cleared_by"] == "person"
+
+
+def test_a_retry_through_resolve_and_normalize_keeps_an_approval_of_unchanged_values(tmp_path):
+    """Codex's round 3 case 1: an approved, cleared ordinary-workflow record whose resolve,
+    normalize, validate and finalize steps are not marked done (set by hand, the state an
+    approval leaves when it lands before resolve). A retry runs them; they change no value,
+    so the approval stands and the record stays cleared and the person's."""
+    from specimen_digitization.application.workflow import Workflow
+
+    with client(tmp_path) as http:
+        ident = approved_synthetic_record(http)
+        repo = SQLiteRepository(tmp_path / "state.sqlite3")
+        scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+        principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
+        stored = repo.get(scope, ident)
+        stored.run.completed_steps = [step for step in stored.run.completed_steps
+            if step not in {"resolve", "normalize", "validate", "finalize"}]
+        stored = repo.save(principal, stored, stored.version, "before-resolve", digest({"before": "resolve"}))
+        assert Workflow.next_step(stored.run) == "resolve"
+        response = http.post(PREFIX + f"/runs/{stored.run.id}/actions",
+            headers={**HEADERS, "Idempotency-Key": "retry-through-resolve"},
+            json={"expected_revision": stored.version, "action": "retry", "reason": "Run the steps again."})
+        assert response.status_code == 200, response.text
+        for _ in range(8):
+            current = repo.get(scope, ident)
+            if current.run.stage == "finalized":
+                break
+            http.app.state.workflow.step(principal, ident)
+        current = repo.get(scope, ident)
+        assert {"resolve", "normalize"} <= set(current.run.completed_steps)
+        assert (current.run.stage, current.run.disposition, current.run.human_approved) == (
+            "finalized", Disposition.CLEARED, True)
+        item, detail = read_both(http, ident)
+        assert item["cleared_by"] == detail.json()["cleared_by"] == "person"

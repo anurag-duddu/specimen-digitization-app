@@ -331,7 +331,12 @@ def test_reassessment_withdraws_an_earlier_approval_of_the_values_it_replaces(ca
     # Queued, not yet researched: no disposition, so nothing reads as anyone's clearance.
     assert response.json()["cleared_by"] is None
     mounted(case, Scripted())
-    # The workflow withdraws the approval before field research runs (Workflow._step).
+    # Research replaces the location values the approval covered, so it is withdrawn when
+    # the disposition is decided (lane.settle_approval).
     after = case.workflow.step(case.principal, case.specimen.id)
+    from specimen_digitization.application.lane import approved_values_digest
+
+    assert approved.approved_values_sha256 is not None
+    assert approved_values_digest(after.run) != approved.approved_values_sha256
     assert after.run.human_approved is False
     assert app_api.summary(after, "reviewer")["cleared_by"] in {None, "system"}

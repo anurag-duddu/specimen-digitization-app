@@ -49,6 +49,7 @@ from .evidence_runtime import read_authority_result, read_artifact
 from .integrity import EvidenceIntegrityError, verify_evidence
 from .lane import (
     LaneConflict,
+    approve,
     cleared_by,
     processable,
     queue,
@@ -2381,7 +2382,7 @@ def create_app(
             if not pilot:
                 refresh_review_evidence(s, blobs, metadata_only=True)
         elif body.kind == "approve":
-            s.run.human_approved = True
+            approve(s.run)
         elif body.kind == "coverage":
             s.run.coverage_confirmed = body.after.get("confirmed") is True
         else:

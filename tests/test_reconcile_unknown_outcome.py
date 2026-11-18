@@ -777,16 +777,29 @@ def test_a_size_limit_then_a_retry_the_budget_gives_up_leaves_no_kind(tmp_path):
     assert drained.run.dependencies == pins
 
 
-def test_reconciling_reads_again_and_withdraws_an_approval_given_while_blocked(tmp_path):
+def test_reconciling_keeps_an_approval_while_the_run_s_values_are_unchanged(tmp_path):
     # An approval can land on a blocked run (the decision route finalizes it and the blocker
-    # keeps it blocked); the reading that runs again can change what the approval covered.
-    # The approval is the stored precondition here; the route under test is reconcile.
+    # keeps it blocked). The approval of the values the run holds then is the stored
+    # precondition here (lane.approve, as the decision records it); the route under test is
+    # reconcile. The reading runs again, and this fixture's run then stops at its cost budget
+    # with no field or resolved transcript changed, so the approval stands: only a change of
+    # the values it covers withdraws it (lane.settle_approval).
+    from specimen_digitization.application.lane import approve, approved_values_digest, settle_approval
+
     repo, blobs, blocked = blocked_run(tmp_path, "transcribe:" + ROUTES[1])
-    approved = mutate(repo, blocked.id, lambda run: setattr(run, "human_approved", True), "approved")
+    approved = mutate(repo, blocked.id, approve, "approved")
+    held = approved.run.approved_values_sha256
+    assert approved.run.human_approved is True and held == approved_values_digest(approved.run)
     c = admin(tmp_path)
     response = reconcile(c, approved.run, approved.version)
     assert response.status_code == 200, response.text
-    # The workflow withdraws the approval before the reading runs again (Workflow._step).
-    drained = Workflow(repo, blobs, Readers(blobs)).step(operator(), blocked.id)
-    assert drained.run.human_approved is False
-    assert repo.get(SCOPE, blocked.id).run.human_approved is False
+    workflow = Workflow(repo, blobs, Readers(blobs))
+    for _ in range(16):
+        drained = workflow.step(operator(), blocked.id)
+        if drained.run.stage in {"processing_blocked", "finalized"}:
+            break
+    assert len(drained.run.observations) > len(approved.run.observations)
+    assert approved_values_digest(drained.run) == held
+    settle_approval(drained.run)
+    assert drained.run.human_approved is True
+    assert repo.get(SCOPE, blocked.id).run.human_approved is True

@@ -46,13 +46,61 @@ def run_status(run: Run) -> str:
     return "running"
 
 
+def approved_values_digest(run: Run) -> str:
+    """The digest of a run's values: what a person's approval covers.
+
+    Every field's value layers and state (`state`, `literal`, `parsed`, `normalized`,
+    `authority_id`, `precision`) and each label's resolved transcript text, as canonical JSON
+    (storage.digest). Provenance (evidence ids, reasons, layer, observations) is left out, so
+    research that writes the identical value again leaves the digest unchanged.
+    """
+    from .storage import digest
+
+    return digest({
+        "fields": {
+            key: {
+                "state": value.state.value,
+                "literal": value.literal,
+                "parsed": value.parsed,
+                "normalized": value.normalized,
+                "authority_id": value.authority_id,
+                "precision": value.precision,
+            }
+            for key, value in sorted(run.fields.items())
+        },
+        "transcripts": sorted({(t.region_id, t.text or "") for t in run.transcripts if t.resolved}),
+    })
+
+
+def approve(run: Run) -> None:
+    """A person's approval of the run's values as they are now."""
+    run.human_approved = True
+    run.approved_values_sha256 = approved_values_digest(run)
+
+
+def settle_approval(run: Run) -> None:
+    """Withdraw a standing approval whose values have changed since it was given.
+
+    Called first wherever a disposition is decided (policy.finalize,
+    field_research.step.finalize_fields, which refinalize calls, and the research harness's
+    canonical materializations), so the review reasons, `marked_reasons` and the
+    preserved-decision hold apply again and the stored `human_approved` is false. An approval
+    with no recorded digest (given before the digest existed) stands, as it did before.
+    """
+    recorded = run.approved_values_sha256
+    if run.human_approved and recorded is not None and recorded != approved_values_digest(run):
+        run.human_approved = False
+        run.approved_values_sha256 = None
+
+
 def cleared_by(disposition, human_approved) -> str | None:
     """Who cleared a cleared record: the summary's and the listing's `cleared_by`.
 
     `person` when a reviewer's approval stands on the record (`run.human_approved`, set
-    only by an `approve` decision; `Workflow._step` withdraws it when a workflow step that
-    produces or changes values runs). `system` when the clearance rules cleared it with no
-    approval standing. Null for a record that is not cleared, and when `human_approved` is
+    only by an `approve` decision, `approve` above). A cleared record is `person` only while
+    its values are the ones a person approved: `settle_approval` withdraws the approval
+    before a disposition is decided on changed values. `system` when the clearance rules
+    cleared it with no approval standing. Null for a record that is not cleared, and when `human_approved` is
     not a boolean: the list's projections pass None for a stored value that is not a JSON
     boolean; the detail passes the validated run's value.
     """

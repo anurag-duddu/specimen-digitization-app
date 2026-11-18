@@ -71,14 +71,22 @@ record is cleared and a reviewer's approval stands on it (`run.human_approved`),
 `"system"` when it is cleared and no approval stands (the clearance rules cleared
 it with no person, `field_research.step.finalize_fields`), and `null` when the
 record is not cleared. It is derived from the stored run on every read
-(`application/lane.py` `cleared_by`); nothing new is stored. The workflow
-withdraws a standing approval when a workflow step that produces or changes
-values runs: every step but the rules-only ones (`workflow.RULES_ONLY_STEPS`:
-the field research recheck, validate and finalize), whatever made the run due
-(`Workflow._step`). A decision that changes a value, a restore and a reprocess
-also leave the run without an approval, as before. A cleared record therefore
-reads `"person"` only when the approval was given after the last step that
-produced or changed its values.
+(`application/lane.py` `cleared_by`). A cleared record is `"person"` only
+while its values are the ones a person approved. An `approve` decision records
+`run.approved_values_sha256`, the digest of the run's values
+(`lane.approved_values_digest`: every field's `state`, `literal`, `parsed`,
+`normalized`, `authority_id` and `precision`, and each label's resolved
+transcript text; provenance is left out). Wherever a disposition is decided
+(`lane.settle_approval`, called first by `policy.finalize`,
+`field_research.step.finalize_fields`, which `refinalize` calls, and the
+research harness's canonical materializations), a standing approval whose
+digest no longer matches the values is withdrawn, so the stored
+`human_approved` is false whenever a disposition is stored on changed values. A
+step or route that changes no value keeps the approval; research, a
+derivation and a person's edit that change one end it. An approval with no
+recorded digest (every record approved before 2026-11-17) stands, as before.
+`approved_values_sha256` is optional on load and omitted while unset, so older
+snapshots keep their bytes.
 
 Residual risk: every writer dumps the run model, so the stored
 `run.human_approved` is always a JSON boolean. A read-only check of production
