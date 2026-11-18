@@ -4791,7 +4791,7 @@ def incomplete_reasons(run, profile: CollectionProfile, work: Mapping[str, str],
     return [f"{INCOMPLETE}:{key}" for key in field_keys(profile) if key in now | kept and key not in mandatory]
 
 
-def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: date | None = None) -> None:
+def refinalize(run, *, specimen=None, blobs=None, today: date | None = None) -> None:
     """The clearance rules again, on a run field research has completed.
 
     Nothing is researched or paid for and a reviewer's value stays exactly as
@@ -4803,16 +4803,13 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
     (ontology_checks.follow_sources). As on the native path, where every
     review decision ends in the ordinary finalize: a run with a blocker (the
     decision's integrity check) stays blocked with it, a person's decision
-    (``decided``) waits for their approval until they give it, and an approval
-    clears what the rules clear. A later pass keeps a pending approval.
+    waits for their approval until they give it (recorded where the decision
+    entered, api.py apply_decision: standing_holds.person_acted), and an
+    approval clears what the rules clear. A later pass keeps a pending approval.
     """
-    from specimen_digitization.application.standing_holds import APPROVAL, adopt_legacy, note_pending
+    from specimen_digitization.application.standing_holds import adopt_legacy
 
     adopt_legacy(run)
-    if decided and not run.human_approved:
-        # A person's decision waits for their approval (an approve decision itself is approved).
-        # Recorded before anything else, a block included: the finalize after it derives the hold.
-        note_pending(run, APPROVAL)
     if run.blocker:
         # policy.finalize: a blocked run is not decided.
         run.stage, run.disposition, run.reasons = "processing_blocked", None, [run.blocker]
@@ -5041,6 +5038,9 @@ class FieldResearchStep:
 
         run = specimen.run
         reassessment_marker = copy.deepcopy(run.dependencies.get(REASSESSMENT))
+        # This attempt researches: an earlier give-up of the run's research no longer stands. Removed
+        # before the reassessment's working copy is made, so its commit cannot copy it back.
+        run.findings = [finding for finding in run.findings if finding.rule_id != GIVEN_UP]
         research_run = working_run(run)
         route = None
         try:
@@ -5061,8 +5061,6 @@ class FieldResearchStep:
         outcomes = None
         unused: list[SourceCall] = []
         decisions: dict[str, dict] = {}
-        # This attempt researches: an earlier give-up of the run's research no longer stands.
-        run.findings = [finding for finding in run.findings if finding.rule_id != GIVEN_UP]
         # Research, then each field's decision (trace_fields), in one span.
         with logfire.span(SPAN) as span:
             try:
@@ -5083,14 +5081,12 @@ class FieldResearchStep:
                 apply_outcomes(research_run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=calls,
                     asset_id=specimen.asset.id, decisions=decisions, unused=unused)
                 retained = commit(run, research_run, decisions=decisions) if research_run is not run else set()
-                if research_run is not run:
-                    from specimen_digitization.application.standing_holds import clear_reassessment
-
-                    # This reassessment settles its family: it records what it still leaves unproved.
-                    clear_reassessment(run)
                 blocker = finalize_fields(run, profile, outcomes, specimen=specimen, blobs=workflow.blobs,
                     today=workflow.clock().date())
-                self._retained_reassessment(run, retained)
+                # This reassessment settles its family: only now that its finalize has succeeded do the
+                # fields it still leaves unproved replace the family's earlier entries (an integrity
+                # failure above leaves them exactly as they were).
+                self._retained_reassessment(run, retained, replace=research_run is not run)
                 if blocker is not None and research_run is not run and not last_attempt(run):
                     # The ordinary bounded operational retry keeps this explicit
                     # family's scope; it must not expand to unrelated fields.
@@ -5105,16 +5101,23 @@ class FieldResearchStep:
             raise AdapterFailure(blocker, BLOCKER_STATUS[blocker])
 
     @staticmethod
-    def _retained_reassessment(run, retained) -> None:
-        if retained:
-            from specimen_digitization.application.standing_holds import REASSESSMENT_UNCONFIRMED, note_pending
+    def _retained_reassessment(run, retained, *, replace: bool = False) -> None:
+        """Record the fields a reassessment leaves unproved on the run, so every later finalize derives
+        them (application/standing_holds.py). `replace`: a reassessment that ran, after its finalize:
+        its entries replace the family's earlier ones, which the finalize just derived."""
+        from specimen_digitization.application.standing_holds import (
+            REASSESSMENT_UNCONFIRMED, note_pending, replace_reassessment)
 
-            # Recorded on the run, so every later finalize derives it (application/standing_holds.py).
-            codes = [f"{REASSESSMENT_UNCONFIRMED}:{key}" for key in sorted(retained)]
+        codes = [f"{REASSESSMENT_UNCONFIRMED}:{key}" for key in sorted(retained)]
+        if replace:
+            replace_reassessment(run, codes)
+            run.reasons = [reason for reason in run.reasons
+                if reason.partition(":")[0] != REASSESSMENT_UNCONFIRMED or reason in codes]
+        elif codes:
             note_pending(run, *codes)
-            run.reasons = list(dict.fromkeys((*run.reasons, *codes)))
-            if run.blocker is None:
-                run.disposition = Disposition.REVIEW
+        run.reasons = list(dict.fromkeys((*run.reasons, *codes)))
+        if run.blocker is None and (codes or replace):
+            run.disposition = Disposition.REVIEW if run.reasons else Disposition.CLEARED
 
     def _bound(self, deadline_seconds: float) -> float:
         from specimen_digitization.application.worker_deadline import current_deadline

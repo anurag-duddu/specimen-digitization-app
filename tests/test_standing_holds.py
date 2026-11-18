@@ -92,9 +92,10 @@ def test_every_hold_written_outside_the_recomputation_is_recorded_on_the_run():
 def test_the_live_recomputations_derive_the_holds_and_read_no_earlier_hold():
     for path, name in (("field_research/step.py", "finalize_fields"), ("application/policy.py", "finalize")):
         assert "derived_holds(" in source_of(path, name), (path, name)
-    # A decision records its approval hold before refinalize's blocked return.
+    # A person's decision records its approval hold where it enters (api.py apply_decision), never in a
+    # finalize, which a decision may skip (Codex round 4 on #455).
     refinalize = source_of("field_research/step.py", "refinalize")
-    assert refinalize.index("note_pending(run, APPROVAL)") < refinalize.index("if run.blocker:")
+    assert "note_pending(" not in refinalize and "person_acted(" not in refinalize
 
 
 def test_holds_are_derived_from_the_runs_state():
@@ -106,7 +107,9 @@ def test_holds_are_derived_from_the_runs_state():
     run.reasons = ["evidence_integrity_failure"]  # a blocker replaced the list: nothing depends on it
     assert standing_holds.derived_holds(run) == [standing_holds.APPROVAL, "location_reassessment_unconfirmed:city",
         standing_holds.GIVEN_UP]
-    standing_holds.clear_reassessment(run)
+    standing_holds.replace_reassessment(run, ["location_reassessment_unconfirmed:county"])
+    assert run.pending_review == [standing_holds.APPROVAL, "location_reassessment_unconfirmed:county"]
+    standing_holds.replace_reassessment(run, [])
     assert run.pending_review == [standing_holds.APPROVAL]
     run.human_approved = True
     assert standing_holds.derived_holds(run) == []
@@ -125,3 +128,35 @@ def test_a_run_stored_before_the_key_adopts_its_stored_holds_once():
     untouched = Run(reasons=["mandatory_unresolved:taxon"])
     standing_holds.adopt_legacy(untouched)
     assert untouched.pending_review == [] and standing_holds.derived_holds(untouched) == []
+
+
+def test_no_helper_turns_an_unset_key_into_an_empty_one_without_adopting_first():
+    """Codex round 4 on #455: a legacy run's stored hold is adopted by every helper that writes the key."""
+    for write in (lambda run: standing_holds.replace_reassessment(run, []),
+            lambda run: standing_holds.note_pending(run, standing_holds.GIVEN_UP),
+            standing_holds.person_acted):
+        legacy = Run(reasons=[standing_holds.APPROVAL, "mandatory_unresolved:taxon"])
+        write(legacy)
+        assert standing_holds.APPROVAL in legacy.pending_review
+
+
+def test_a_stored_run_without_the_key_adopts_its_holds_where_it_is_loaded():
+    """Codex round 4 on #455: adoption happens where a stored run is loaded (active_graph.unpack), before
+    any code can write the key or the reasons; a stored run with the key set is read as stored."""
+    from specimen_digitization.application.active_graph import unpack
+
+    def stored(**run):
+        payload = {"id": "s1", "version": 1, "scope": {"organization_id": "o", "collection_id": "c"},
+            "asset": {"id": "a1", "blob_ref": "b", "sha256": "0" * 64, "media_type": "image/png", "width": 1,
+                "height": 1, "size_bytes": 1, "filename": "a.png", "uploader": "u"},
+            "run": Run(**run).model_dump(mode="json")}
+        return unpack(payload, None)
+
+    legacy = stored(reasons=[standing_holds.APPROVAL, "location_reassessment_unconfirmed:city"])
+    assert legacy.run.pending_review == [standing_holds.APPROVAL, "location_reassessment_unconfirmed:city"]
+    current = stored(reasons=[standing_holds.APPROVAL], pending_review=[])
+    assert current.run.pending_review == []
+    # Nothing to adopt: the loaded record equals the record saved (storage's review proofs compare them);
+    # every helper that writes the key adopts first.
+    untouched = stored(reasons=["mandatory_unresolved:taxon"])
+    assert untouched.run.pending_review is None

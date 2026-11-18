@@ -6,13 +6,20 @@ reasons list outright. A hold that must outlive that is never recovered from an 
 from state recorded on the run when its cause happened.
 
 - `run.pending_review` (one optional list, omitted while unset): what a person must still review.
-  `human_approval_required` is recorded by a person's decision (field_research.step.refinalize with
-  `decided`), `history_restored_requires_review` by a history restore (history_restore.restored_specimen),
+  `human_approval_required` is recorded where a person's decision enters the application (api.py
+  apply_decision, through which the decisions route, decisions:batch and candidate choices all pass:
+  person_acted), before any other effect and whatever the run's stage or blocker;
+  `history_restored_requires_review` by a history restore (history_restore.restored_specimen);
   `location_reassessment_unconfirmed:<field>` by a reassessment that leaves a field unproved
-  (FieldResearchStep._retained_reassessment). A person's approval (lane.approve) clears the list; the
-  reassessment that settles a location family clears that family's entries (clear_reassessment).
+  (FieldResearchStep._retained_reassessment, which replaces the family's earlier entries only after its
+  finalize has succeeded). A person's approval (lane.approve) clears the list.
 - Research given up for the run as a whole: the step's give-up finding (rule `field_research_given_up`,
-  FieldResearchStep.give_up), which the next research attempt removes before it researches.
+  FieldResearchStep.give_up), which the next research attempt removes before it makes its working copy.
+
+A run stored before the key existed adopts its stored holds once, where a stored run is loaded
+(active_graph.unpack: adopt_legacy, when its stored reasons name a hold), before anything can write the
+key or the reasons; every helper here that writes the key adopts first, so none turns "unset" into
+"empty" without reading the stored reasons.
 
 `tests/test_standing_holds.py` scans the source for every writer of a run's reasons and fails on one
 that is neither the recomputation, a blocker, nor backed by this state.
@@ -29,7 +36,14 @@ DERIVED = frozenset({APPROVAL, HISTORY_RESTORED, REASSESSMENT_UNCONFIRMED, GIVEN
 
 def note_pending(run, *codes: str) -> None:
     """Record what a person must still review, when its cause happens."""
-    run.pending_review = list(dict.fromkeys((*(run.pending_review or ()), *codes)))
+    adopt_legacy(run)
+    run.pending_review = list(dict.fromkeys((*run.pending_review, *codes)))
+
+
+def person_acted(run) -> None:
+    """A person acted on this record: it waits for their approval until they give it (an approve
+    decision's own approval then clears it, lane.approve)."""
+    note_pending(run, APPROVAL)
 
 
 def clear_on_approval(run) -> None:
@@ -37,19 +51,27 @@ def clear_on_approval(run) -> None:
     run.pending_review = []
 
 
-def clear_reassessment(run) -> None:
-    """The reassessment that settles a location family: it records what it still leaves unproved."""
-    run.pending_review = [code for code in run.pending_review or ()
-        if code.partition(":")[0] != REASSESSMENT_UNCONFIRMED]
+def replace_reassessment(run, codes) -> None:
+    """The reassessment that settles a location family, once its finalize has succeeded: what it still
+    leaves unproved replaces the family's earlier entries, in one assignment."""
+    adopt_legacy(run)
+    run.pending_review = [*(code for code in run.pending_review
+        if code.partition(":")[0] != REASSESSMENT_UNCONFIRMED), *dict.fromkeys(codes)]
 
 
 def adopt_legacy(run) -> None:
     """A run stored before pending_review existed (unset, None): its stored reasons are the only record
-    of a person's pending review, so they are adopted once, at its first finalize; a run with the key
-    set, even to an empty list, never reads them."""
+    of a person's pending review, so they are adopted once, where the stored run is loaded
+    (active_graph.unpack); a run with the key set, even to an empty list, never reads them."""
     if run.pending_review is not None:
         return
-    note_pending(run, *(() if run.human_approved else (reason for reason in run.reasons
+    run.pending_review = legacy_holds(run)
+
+
+def legacy_holds(run) -> list[str]:
+    """What a run stored before pending_review existed records of a person's pending review: the holds
+    its stored reasons name (none once a person has approved it)."""
+    return list(dict.fromkeys(() if run.human_approved else (reason for reason in run.reasons
         if reason.partition(":")[0] in {APPROVAL, HISTORY_RESTORED, REASSESSMENT_UNCONFIRMED})))
 
 

@@ -295,7 +295,7 @@ def test_a_pending_approval_survives_research_after_a_retry(tmp_path, monkeypatc
     assert done.run.disposition == Disposition.CLEARED and done.run.fields["country"].state == ValueState.UNRESOLVED
 
     def a_persons_edit(run):
-        # What a person's decision records (step.refinalize: note_pending) and leaves.
+        # What a person's decision records (api.py apply_decision: person_acted) and leaves.
         run.pending_review, run.reasons, run.disposition = [field_step.APPROVAL], [field_step.APPROVAL], \
             Disposition.REVIEW
 
@@ -315,7 +315,7 @@ def test_a_pending_approval_survives_research_after_a_retry(tmp_path, monkeypatc
 
 
 def test_a_location_reassessment_left_unconfirmed_survives_a_recheck_until_approval(tmp_path):
-    from specimen_digitization.application.standing_holds import clear_reassessment, note_pending
+    from specimen_digitization.application.standing_holds import note_pending, replace_reassessment
 
     _, run = settled_under(tmp_path, everything_settles, published())
     # What FieldResearchStep._retained_reassessment records.
@@ -324,7 +324,7 @@ def test_a_location_reassessment_left_unconfirmed_survives_a_recheck_until_appro
     field_step.refinalize(run, today=TODAY)
     assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["location_reassessment_unconfirmed:city"])
     # The reassessment that settles it records what it still leaves unconfirmed itself.
-    clear_reassessment(run)
+    replace_reassessment(run, [])
     field_step.finalize_fields(run, None, (), today=TODAY)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
     note_pending(run, "location_reassessment_unconfirmed:city")
@@ -507,7 +507,10 @@ def test_research_given_up_for_the_run_holds_through_refinalize_until_a_person_a
 def test_a_person_s_decision_and_coverage_still_hold_a_record_whose_optional_fields_are_open(tmp_path):
     _, run = settled_under(tmp_path, taxon_and_habitat_lacking, published())
     assert run.disposition == Disposition.CLEARED
-    field_step.refinalize(run, decided=True, today=TODAY)
+    from specimen_digitization.application.standing_holds import person_acted
+
+    person_acted(run)  # what the decisions route records where a person's decision enters
+    field_step.refinalize(run, today=TODAY)
     assert (run.disposition, run.reasons) == (Disposition.REVIEW, [field_step.APPROVAL])
     run.human_approved = True
     run.coverage_confirmed = False

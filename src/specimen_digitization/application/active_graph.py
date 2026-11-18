@@ -199,10 +199,20 @@ def read_graph(payload, blobs):
 def unpack(payload, blobs):
     from .domain import Specimen
 
+    from .standing_holds import adopt_legacy, legacy_holds
+
     graph = read_graph(payload, blobs)
     if graph:
         payload = {**payload, "run": graph[1]}
-    return Specimen.model_validate(payload, context={"persisted_snapshot": True})
+    specimen = Specimen.model_validate(payload, context={"persisted_snapshot": True})
+    # The one place a stored run is loaded: a run stored before pending_review existed adopts its stored
+    # holds here, before anything can write the key or the reasons (application/standing_holds.py). Only
+    # the current run is worked on; earlier runs are history and keep their stored form. A run whose
+    # stored reasons name no hold keeps its stored form too, so a loaded record equals the record saved
+    # (storage.ReviewProofReader compares them); every helper that writes the key adopts first.
+    if specimen.run.pending_review is None and legacy_holds(specimen.run):
+        adopt_legacy(specimen.run)
+    return specimen
 
 
 def original_run_digest(payload, blobs):

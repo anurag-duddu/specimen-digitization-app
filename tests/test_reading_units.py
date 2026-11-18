@@ -263,6 +263,10 @@ def test_a_stored_run_from_main_loads_unchanged_and_stores_main_bytes():
     sql = SqlConnectRepository.__new__(SqlConnectRepository)
     sql.graph_blobs = None
     restored = sql._snapshot({"snapshot": transported, "sha256": hex_of(MAIN_SNAPSHOT_DIGEST)})
+    # Main's run predates pending_review and holds a person's pending approval in its reasons: it adopts that
+    # hold where it is loaded (active_graph.unpack; PR #455, Codex round 4). Nothing else changes.
+    assert specimen.run.pending_review is None and restored.run.pending_review == ["human_approval_required"]
+    restored.run.pending_review = None
     assert restored == specimen
     # Struct leaves untyped maps' numbers as doubles; the snapshot digest reads them as SQL does.
     assert digest(json.loads(stored_bytes(restored))) == hex_of(MAIN_SNAPSHOT_DIGEST)

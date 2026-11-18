@@ -2095,6 +2095,12 @@ def create_app(
             raise ValueError("Review reason required")
         if body.base_record_version_id != f"{s.run.id}:{body.expected_revision}":
             raise Conflict("Wrong base record version")
+        from .standing_holds import person_acted
+
+        # The one place a person's decision enters (the decisions route, decisions:batch and candidate
+        # choices all pass here): recorded first, whatever the kind, stage or blocker, so every later
+        # finalize holds the record for their approval (application/standing_holds.py).
+        person_acted(s.run)
         before_digest = repository.version_info(p.scope, s.id, s.version)["run_sha256"]
         before = {
             "specimen_id": s.id,
@@ -2406,9 +2412,9 @@ def create_app(
             phase_result = None
             if FIELD_RESEARCH in s.run.completed_steps and body.kind != "capability_defer":
                 # Field research's own clearance rules decide its run; a person's
-                # decision waits for their approval (field_research.step.refinalize).
+                # decision waits for their approval (person_acted, above).
                 from ..field_research.step import refinalize
-                refinalize(s.run, decided=True)
+                refinalize(s.run)
             else:
                 if (
                     s.run.blocker != "evidence_integrity_failure"
