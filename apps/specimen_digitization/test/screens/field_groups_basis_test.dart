@@ -313,6 +313,10 @@ void main() {
         specimen: Specimen({
           'specimen_id': 'attention',
           'regions': const [],
+          'reason_codes': const [
+            'evidence_missing',
+            'mandatory_evidence_unresolved',
+          ],
           'validation_findings': [
             {'field_key': 'country', 'reason_code': 'evidence_missing'},
             {

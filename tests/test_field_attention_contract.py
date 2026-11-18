@@ -1,6 +1,6 @@
 """The server's side of the shared field-attention contract (tests/fixtures/field_attention.json).
 
-The app's side is apps/specimen_digitization/test/field_attention_contract_test.dart; both read the
+The app's side is its test field_attention_contract_test.dart (no Python test reads the app); both read the
 same fixture, so the server's per-field counts and the app's field rows map reason codes to fields
 the same way (plan WP K1, Codex round 2 on PR #455)."""
 

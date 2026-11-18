@@ -98,6 +98,14 @@ void main() {
       },
       ...extraFindings,
     ],
+    // The server's reason_codes hold every hard finding and every unresolved
+    // transcription that blocks this record (the app takes blocking from them).
+    'reason_codes': <String>[
+      'country.required',
+      for (final Json item in extraFindings)
+        if (item['severity'] == 'hard')
+          (item['reason_code'] ?? item['rule_id']).toString(),
+    ],
   });
 
   Widget host(
@@ -462,7 +470,11 @@ void main() {
       final blockers = blockersFor(
         Specimen({
           ...record().data,
-          'reason_codes': const ['coverage_unconfirmed'],
+          'reason_codes': const [
+            'coverage_unconfirmed',
+            'country.required',
+            'unresolved_transcription:r1',
+          ],
           'transcriptions': const [
             {'region_id': 'r1', 'resolved': false},
           ],
