@@ -286,7 +286,8 @@ def _catalog(routes) -> list[dict]:
     return list(models.values())
 
 
-TODAY = ["handwriting-qwen", "handwriting-muse", "first-pass-glm", "harness-deepseek"]
+# Field research's second opinion (field_research/second_opinion.py) runs under every option.
+TODAY = ["handwriting-qwen", "handwriting-muse", "first-pass-glm", "harness-deepseek", "second-opinion-muse-spark"]
 
 
 @pytest.mark.parametrize(
@@ -294,17 +295,18 @@ TODAY = ["handwriting-qwen", "handwriting-muse", "first-pass-glm", "harness-deep
     [
         (None, TODAY),
         ("", TODAY),
-        ("first_pass", ["handwriting-qwen", "handwriting-muse", "first-pass-nemotron", "harness-deepseek"]),
+        ("first_pass", ["handwriting-qwen", "handwriting-muse", "first-pass-nemotron", "harness-deepseek",
+                        "second-opinion-muse-spark"]),
         # Nemotron is reader C: added after today's readers.
         (
             "readers",
             ["handwriting-qwen", "handwriting-muse", "handwriting-nemotron", "first-pass-glm",
-             "harness-deepseek"],
+             "harness-deepseek", "second-opinion-muse-spark"],
         ),
         (
             "readers,first_pass,field_research",
             ["handwriting-qwen", "handwriting-muse", "handwriting-nemotron", "first-pass-nemotron",
-             "harness-nemotron"],
+             "harness-nemotron", "second-opinion-muse-spark"],
         ),
     ],
 )
@@ -345,6 +347,7 @@ def test_preflight_with_a_stage_on_needs_its_nvidia_route_in_the_catalog(monkeyp
         "handwriting-muse": True,
         "first-pass-glm": True,
         "harness-nemotron": False,
+        "second-opinion-muse-spark": True,
     }
 
 

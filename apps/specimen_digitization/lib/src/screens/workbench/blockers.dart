@@ -212,6 +212,21 @@ const String barcodeDiffersWords =
     'The catalog number read from the label and the number in the slide\'s QR '
     'code differ. Compare them.';
 
+/// Why a value waits for a person when an independent reading of the slide's
+/// labels gives the field a different value, or none
+/// (`marked:<field>:<label>:second_opinion_differs`,
+/// field_research/second_opinion.py). The value shown stays as it was.
+const String secondOpinionDiffersWords =
+    'An independent reading of the labels gives a different value. Check '
+    'this value against the image.';
+
+/// Why a value waits for a person when the independent reading did not run,
+/// so the value is not confirmed
+/// (`marked:<field>:<label>:second_opinion_not_checked`).
+const String secondOpinionNotCheckedWords =
+    'The independent reading of the labels did not run, so this value is '
+    'not confirmed. Check it against the image.';
+
 /// Why a `marked:` code's label left its field for a person, by its `why`.
 String _markedWhy(String why) => switch (why) {
   'text_only' =>
@@ -220,6 +235,8 @@ String _markedWhy(String why) => switch (why) {
   'conflict' =>
     'Another reading competes with this value. Check it against the image.',
   'barcode_differs' => barcodeDiffersWords,
+  'second_opinion_differs' => secondOpinionDiffersWords,
+  'second_opinion_not_checked' => secondOpinionNotCheckedWords,
   _ => 'Review the value and its supporting sources.',
 };
 

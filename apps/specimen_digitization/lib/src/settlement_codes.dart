@@ -61,6 +61,8 @@ String? markedReasonWords(String suffix) {
     'text_only' => 'only readings back it',
     'conflict' => 'another reading competes',
     'barcode_differs' => 'the label and its QR code differ',
+    'second_opinion_differs' => 'an independent reading differs',
+    'second_opinion_not_checked' => 'not confirmed by an independent reading',
     _ => null,
   };
 }
