@@ -565,6 +565,52 @@ def _refusal(task, answer, *, readings, by_name, sources, elevations=None, date_
         date_rules=date_rules)
 
 
+VERBATIM_DTS = "verbatim_dts"
+# Why a resolved Verbatim D/T/S answer may not settle (_verbatim_dts_refusal), by refusal code. The field
+# holds date and time wording that is not an exact date: PRD.md:529 ("Original collection-event date/time
+# expressions that do not fit EMu's standard format, including partial or seasonal dates and qualitative
+# times") and PRD.md:540-544, the collection manager's instruction the owner relayed ("Used to hold non
+# EMu-standard format time and date values", used "when there is no exact time or date"); and G45 (golive
+# PLAN.md row G45) keeps a slide code out of every field, as the ontology's notation slide_code says.
+VERBATIM_EXACT_DATE = "verbatim_dts_exact_date"
+VERBATIM_SLIDE_CODE = "verbatim_dts_slide_code"
+VERBATIM_REFUSALS = {
+    VERBATIM_EXACT_DATE: ("Verbatim D/T/S holds only date or time wording that is not an exact date "
+        "(PRD.md:529, :540-544): {literal!r} reads as the exact date {iso}, which Date Visited From takes."),
+    VERBATIM_SLIDE_CODE: ("Verbatim D/T/S never holds a slide code (G45; the ontology's notation slide_code): "
+        "{literal!r} is one or is part of one."),
+}
+
+
+def _verbatim_dts_refusal(literal: str | None, readings: Sequence[Reading], date_rules=None) -> tuple[str, str] | None:
+    """Why a Verbatim D/T/S literal may not settle the field, as (code, reason), or None.
+
+    - VERBATIM_SLIDE_CODE: the literal holds a match of the ontology's slide-code forms ("IX-3-66-10"),
+      or a reading that writes it writes it inside one (checks.in_a_code);
+    - VERBATIM_EXACT_DATE: the date check (checks.parse_date, with the profile's date rules, as Date Visited
+      From or as Date Identified reads it) reads the whole literal, in the readings that write it, as a date
+      at day precision ("3 Sept. '46", "IX-14-46", "6-Sept.-1946"). A literal the check reads at month or
+      year precision ("XI.46", "1916"), or does not read as a date at all ("Nov, Dec 1955", "Summer 1914",
+      "am"), is left to the field's other rules.
+    """
+    from . import checks
+
+    if not literal or not literal.strip():
+        return None
+    texts = [reading.text for reading in readings if literal in reading.text]
+    if checks.in_a_code(literal, literal) or any(checks.in_a_code(literal, text) for text in texts):
+        return VERBATIM_SLIDE_CODE, VERBATIM_REFUSALS[VERBATIM_SLIDE_CODE].format(literal=literal)
+    if not texts:
+        return None
+    for field in ("date_visited_from", checks.DETERMINATION_FIELD):
+        found = checks.parse_date(literal, reading_texts=texts, date_rules=date_rules, field=field)
+        exact = [reading.iso for reading in found.readings if reading.precision == "day" and reading.iso]
+        if exact:
+            return VERBATIM_EXACT_DATE, VERBATIM_REFUSALS[VERBATIM_EXACT_DATE].format(
+                literal=literal, iso=" or ".join(dict.fromkeys(exact)))
+    return None
+
+
 def _place_texts(run, tasks_by_key: Mapping[str, FieldTask], readings) -> dict[str, dict[str, frozenset[str]]]:
     """Each place value field's texts by reading (agreement.reader_literals),
     before this attempt changes any value: its task's candidates and
@@ -1482,6 +1528,12 @@ def _field_value(run, task, outcome, *, readings, by_name, evidence, asset_id, b
                 decision["refusal"] = refusal_code(misfit.reason)
                 return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
                     reason=f"{misfit.reason} {answer.explanation}")
+            if task.key == VERBATIM_DTS and (wrong := _verbatim_dts_refusal(answer.literal, readings,
+                    date_rules)) is not None:
+                # An exact date or a slide code is no Verbatim D/T/S: the field stays for a person.
+                decision["refusal"] = wrong[0]
+                return _unsettled(task, ValueState.UNRESOLVED, literal=current.literal, cited=cited,
+                    reason=f"{wrong[1]} {answer.explanation}")
         else:
             decision["rule"] = "location_reconciliation"
         settled = _settled(run, task, outcome, by_name=by_name, evidence=evidence, asset_id=asset_id,
@@ -2728,10 +2780,17 @@ def _country_alternatives_are_lower_places(run, task, outcome, *, readings, rece
 
     value = run.fields.get("country")
     answer = outcome.answer if outcome is not None else None
+    # The expert's texts: a several_possibilities answer's options, or the text a
+    # sources_cannot_resolve answer quotes, which rule 6 leaves ambiguous with its
+    # readers' texts as the options (_field_value, rule_unsettled): 105526452's
+    # "Utah", the heading's state, beside the settled state Utah (G37).
+    offered = (list(answer.options) if answer is not None and answer.outcome == "several_possibilities"
+        else [answer.literal] if answer is not None and answer.outcome == "sources_cannot_resolve"
+        and answer.literal and answer.literal.strip() and not outcome.fallback else [])
     if (task is None or "country" in protected_keys(run)
             or value is None or value.state != ValueState.AMBIGUOUS
             or value.literal or value.verbatim_by_observation
-            or answer is None or answer.outcome != "several_possibilities" or not answer.options):
+            or not offered):
         return False
     captured = [source for sources in received.values() for source in sources
         if source.source_id in GAZETTEERS and source.status in PLACE_ANSWERED
@@ -2747,7 +2806,7 @@ def _country_alternatives_are_lower_places(run, task, outcome, *, readings, rece
     if not children:
         return False
     by_name = {reading.name: reading for reading in readings}
-    alternatives = [(literal, tuple(readings)) for literal in answer.options]
+    alternatives = [(literal, tuple(readings)) for literal in offered]
     if task.current.literal:
         alternatives.append((task.current.literal, tuple(readings)))
     alternatives.extend((candidate.literal, (by_name[candidate.reading],)

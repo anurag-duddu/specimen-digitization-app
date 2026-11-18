@@ -682,17 +682,20 @@ def test_text_from_the_transcript_beside_another_kinds_text_settles(tmp_path):
     assert "transcript_literal:precise_location" in [f.reason_code for f in run.findings]
 
 
-@pytest.mark.parametrize(("key", "settles"), [
+@pytest.mark.parametrize(("key", "refused"), [
     # A collection code read from the transcript where the organiser placed the date.
-    ("collection_code", False),
-    # Verbatim D/T/S may hold the date: the museum has set no rule against it (PRD.md:1224).
-    ("verbatim_dts", True),
+    ("collection_code", field_step.TAKEN.format(other="Date Visited From")),
+    # Verbatim D/T/S may share the date's text (agreement.may_share_text), but it holds only wording that is
+    # not an exact date (PRD.md:529, :540-544, the collection manager's instruction of 2026-10-07): an exact
+    # day is refused (step._verbatim_dts_refusal). Until WP V1a this case settled, on PRD.md:1224's open question.
+    ("verbatim_dts", "Verbatim D/T/S holds only date or time wording that is not an exact date"),
 ])
-def test_text_the_organiser_placed_in_another_field(tmp_path, key, settles):
+def test_text_the_organiser_placed_in_another_field(tmp_path, key, refused):
     """The organiser gave "IV-24-48" as the collecting date; another field's
     expert reads the same text from the transcript. The organiser's date
-    settles either way; a field of another kind does not. On origin/main
-    both are unresolved as no candidate."""
+    settles either way; a field of another kind does not, nor does Verbatim
+    D/T/S, as the text is an exact date. On origin/main both are unresolved
+    as no candidate."""
     rig = label_3(tmp_path, candidates=[("date_visited_from", name, "IV-24-48", "IV-24-48") for name in ("1A", "1B")])
     run = rig.specimen.run
     settle(rig, Scripted({
@@ -701,11 +704,8 @@ def test_text_the_organiser_placed_in_another_field(tmp_path, key, settles):
             explanation="Read from the transcript."))}))
     assert run.fields["date_visited_from"].state == ValueState.SUPPORTED
     value = run.fields[key]
-    if settles:
-        assert value.state == ValueState.SUPPORTED
-        return
     assert value.state == ValueState.UNRESOLVED
-    assert value.reason.startswith(field_step.TAKEN.format(other="Date Visited From"))
+    assert value.reason.startswith(refused)
 
 
 def test_a_date_settled_before_this_attempt_still_holds_its_text(tmp_path):

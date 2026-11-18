@@ -184,3 +184,57 @@ def test_new_derivation_branch_itself_preserves_human_protections(proof, protect
     proof.run.dependencies[protection] = ({"protected": ["country"]} if protection == "location_reassessment"
         else {"country": {"retained": True}})
     assert not qualifies(proof)
+
+
+# G37 (golive PLAN.md row G37: "these can be derived if other location related fields have returned a final
+# value"): a sources_cannot_resolve country answer quoting a text the gazetteers prove a lower place, which rule
+# 6 leaves ambiguous, no longer blocks the country its settled child derives. Stored run units-wp26 r2/pair,
+# 105526452: the country's expert quoted "Utah" (the heading "Siphonaptera of Utah"), the state Utah settled,
+# and the country was held although every source placed Utah in the United States.
+def quoted(proof, literal, *, fallback=False):
+    proof.outcome = FieldOutcome("country", FieldAnswer(outcome="sources_cannot_resolve", literal=literal,
+        reading_names=["1A"], explanation="The label's text names no country."), fallback=fallback)
+    return proof
+
+
+def test_a_quoted_lower_place_qualifies_like_an_option(proof):
+    assert qualifies(quoted(proof, "ILLINOIS"))
+
+
+@pytest.mark.parametrize("case", ["a_country", "fallback", "no_literal", "blank_literal", "unreadable",
+    "ungrounded", "label_lacks_value"])
+def test_a_quoted_text_without_lower_place_proof_keeps_the_country_ambiguous(proof, case):
+    """Controls: a quoted country ("CANADA", which a source holds as a nation), the resolver's fallback (no
+    answer of the expert's), no text or a blank one, an unreadable or unwritten text, and an outcome that
+    quotes nothing derive nothing."""
+    if case == "a_country":
+        quoted(proof, "CANADA")
+        answer = proof.sources._authority("wikidata", "CANADA", (SourceCandidate("CANADA", "fixture:canada", "country"),))
+        proof.received["county"] = [answer]
+        proof.fresh.add(answer.evidence.id)
+    elif case == "fallback":
+        quoted(proof, "ILLINOIS", fallback=True)
+    elif case == "no_literal":
+        quoted(proof, None)
+    elif case == "blank_literal":
+        quoted(proof, "  ")
+    elif case == "unreadable":
+        quoted(proof, "[unreadable] 69")
+    elif case == "ungrounded":
+        quoted(proof, "Indiana")
+    else:
+        proof.outcome = FieldOutcome("country", FieldAnswer(outcome="label_lacks_value", literal="ILLINOIS",
+            explanation="No country."))
+    assert not qualifies(proof)
+
+
+def test_another_reader_s_country_still_blocks_a_quoted_lower_place(proof):
+    """Two readers write different countries' texts: the other label's "CANADA" is an alternative too, and a
+    source holds it as a nation, so the country stays ambiguous (the alternatives keep every reader's text)."""
+    quoted(proof, "ILLINOIS")
+    proof.task = replace(proof.task, candidates=(*proof.task.candidates,
+        Candidate("2A", "CANADA", "CANADA", "other-country")))
+    answer = proof.sources._authority("wikidata", "CANADA", (SourceCandidate("CANADA", "fixture:canada", "country"),))
+    proof.received["county"] = [answer]
+    proof.fresh.add(answer.evidence.id)
+    assert not qualifies(proof)
