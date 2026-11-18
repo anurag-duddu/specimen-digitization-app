@@ -359,7 +359,7 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         "stage": run.stage,
         "intake_progress": intake_progress(run),
         "disposition": run.disposition,
-        "cleared_by": cleared_by(run.disposition, run.human_approved),
+        "cleared_by": cleared_by(run.disposition, run.human_approved if run.approval_stated else None),
         "reason_codes": run.reasons,
         "review_summary": review_summary(
             project_fields({
@@ -2837,10 +2837,17 @@ def create_app(
                         action_event.after["authorization_id"] = authorization
                     s.run.disposition = None
                     s.run.stage = "plan"
+                    # Research replaces values a person's approval did not see: the approval is withdrawn.
+                    s.run.human_approved = False
                 elif body.action in {"retry", "resume"}:
                     rerun_field_research = (
                         body.action == "retry" and requeue_completed_field_research(s.run)
                     )
+                    if rerun_field_research or FIELD_RESEARCH not in s.run.completed_steps:
+                        # Research, or the steps before it, run again and can change values a
+                        # person's approval did not see: the approval is withdrawn. A run whose
+                        # research is complete and not requeued only has the rules applied again.
+                        s.run.human_approved = False
                     s.run.blocker = None
                     s.run.disposition = None
                     s.run.stage = (
@@ -2892,6 +2899,8 @@ def create_app(
                     # The person settled the unknown outcome: its kind is no
                     # longer recorded, so the run keeps its pins (#146).
                     resolve_step_unknown_outcomes(s.run, step)
+                    # The reading runs again and can change values a person's approval did not see.
+                    s.run.human_approved = False
                     s.run.blocker = None
                     s.run.lease_until = None
                     s.run.disposition = None

@@ -1,9 +1,10 @@
 // Who cleared a record: a person's approval or the system's clearance, shown
 // as two things on the chip, the queue row, the Cleared view and the record.
 //
-// The owner's words, typed 2026-11-17 in session f9614090, to the plan he
-// answered "Yes, go ahead": "'Cleared by the system' in the app. The design
-// says 'Green means a human affirmed it.'"
+// The coordinator put the change to the owner as "'Cleared by the system' in
+// the app. The design says 'Green means a human affirmed it.'", and to "Go
+// ahead with the plan, including the three rule changes?" the owner typed
+// "Yes, go ahead" (2026-11-17, session f9614090).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -33,7 +33,7 @@ const reviewFields = {
 // efficiently; all values originate here and no network credentials are used.
 const psql=sql=>execFileSync(process.env.PSQL_BIN||'/opt/homebrew/opt/postgresql@18/bin/psql',['-h','127.0.0.1','-p',process.env.SPECIMEN_TEST_PG_PORT||'5599','-d','specimen-digitization-database','-v','ON_ERROR_STOP=1','-At'],{input:sql,encoding:'utf8',maxBuffer:4*1024*1024});
 const q=s=>"'"+s.replaceAll("'","''")+"'";
-const payload=n=>({id:ident(n),version:2,batch_id:n%2?'batch-b':'batch-a',created_at:'1999-01-01T00:00:00Z',asset:{id:`asset-${n}`,filename:`label-${n}.jpg`,uploader:n%3?'other':'uploader-a'},run:{id:`run-${n}`,stage:n%2?'classify':'finalized',profile:{id:'profile-a',version:n%3?'v2':'v1',synthetic:true},reasons:n%5?[]:['reason-a'],blocker:n%7?null:'blocker-a',review_risk:n%4===0?null:{composite:n%4===1?0:n%4===2?75:'75'}}});
+const payload=n=>({id:ident(n),version:2,batch_id:n%2?'batch-b':'batch-a',created_at:'1999-01-01T00:00:00Z',asset:{id:`asset-${n}`,filename:`label-${n}.jpg`,uploader:n%3?'other':'uploader-a'},run:{id:`run-${n}`,stage:n%2?'classify':'finalized',profile:{id:'profile-a',version:n%3?'v2':'v1',synthetic:true},reasons:n%5?[]:['reason-a'],human_approved:[true,false,'true',1,null,undefined][n%6],blocker:n%7?null:'blocker-a',review_risk:n%4===0?null:{composite:n%4===1?0:n%4===2?75:'75'}}});
 for(let start=0;start<count;start+=100){
  const summaries=[],snapshots=[];
  for(let n=start;n<Math.min(start+100,count);n++){
@@ -64,6 +64,8 @@ assert.equal((await search({createdFrom:nextDay}))[0].id,ident(1000));
 assert.ok((await search({createdBefore:nextDay})).every(r=>r.createdAt.startsWith('2020-01-01')));
 assert.equal((await search({createdBefore:past})).length,0);
 for(const n of [0,1,2,3])assert.equal((await search({specimenId:ident(n)}))[0].risk,[null,0,75,null][n]);
+// run.human_approved only as a JSON boolean: true, false; a string, a number, null or no key is null.
+for(const n of [0,1,2,3,4,5])assert.equal((await search({specimenId:ident(n)}))[0].humanApproved,[true,false,null,null,null,null][n]);
 console.log('PASS persisted fields, exact current revision, AND filters, typed timestamp boundaries and nullable numeric risk');
 // A committed insert after cutoff cannot extend this page sequence.
 const laterId=ident(count+1);

@@ -318,3 +318,19 @@ def test_reassessment_requires_an_audit_reason(case):
     assert response.status_code == 422, response.text
     assert saved(case).model_dump() == before.model_dump()
     assert case.dispatcher.calls == 0
+
+
+def test_reassessment_withdraws_an_earlier_approval_of_the_values_it_replaces(case, monkeypatch):
+    # A reviewer approves the record in review; the reassessment then researches the
+    # location fields again, so the approval no longer covers what the record will hold.
+    approved = decide(case.client, case, "approve-before-reassess", "approve")
+    assert approved.human_approved is True and approved.disposition == Disposition.REVIEW
+    prove_review(case, monkeypatch, saved(case))
+    response = post(case)
+    assert response.status_code == 200, response.text
+    assert saved(case).run.human_approved is False
+    assert response.json()["cleared_by"] is None
+    mounted(case, Scripted())
+    after = case.workflow.step(case.principal, case.specimen.id)
+    assert after.run.human_approved is False
+    assert app_api.summary(after, "reviewer")["cleared_by"] in {None, "system"}

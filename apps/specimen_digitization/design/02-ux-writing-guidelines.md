@@ -444,9 +444,10 @@ Two to twenty characters, sentence case, no icon-only chips, and colour is never
 "Cleared by system" drops the article to fit twenty characters; its accessibility label keeps the
 whole phrase, "Queue: cleared by the system". The two cleared chips are two things, because a record
 a person approved and one the system cleared are two different claims (amended 2026-11-17 on the
-owner's words, typed 2026-11-17 in session f9614090 inside the plan he answered "Yes, go ahead":
-"'Cleared by the system' in the app. The design says 'Green means a human affirmed it.'"). The
-queue's view stays "Cleared" and holds both; each row in it names which.
+coordinator's wording, put to the owner as "'Cleared by the system' in the app. The design says
+'Green means a human affirmed it.'", and to "Go ahead with the plan, including the three rule
+changes?" the owner typed "Yes, go ahead" (2026-11-17, session f9614090)). The queue's view stays
+"Cleared" and holds both; each row in it names which.
 
 "Processing blocked" is an operational state and is never rendered in `colorScheme.error`, because
 error red is reserved for things the reader can fix (section 2.4).

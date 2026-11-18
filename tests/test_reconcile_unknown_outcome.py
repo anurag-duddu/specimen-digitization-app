@@ -775,3 +775,15 @@ def test_a_size_limit_then_a_retry_the_budget_gives_up_leaves_no_kind(tmp_path):
     assert step in drained.run.completed_steps and drained.run.attempts[step] == 2
     assert any(f.rule_id == "first_pass_given_up" for f in drained.run.findings)
     assert drained.run.dependencies == pins
+
+
+def test_reconciling_reads_again_and_withdraws_an_approval_given_while_blocked(tmp_path):
+    # An approval can land on a blocked run (the decision route finalizes it and the blocker
+    # keeps it blocked); the reading that runs again can change what the approval covered.
+    # The approval is the stored precondition here; the route under test is reconcile.
+    repo, _, blocked = blocked_run(tmp_path, "transcribe:" + ROUTES[1])
+    approved = mutate(repo, blocked.id, lambda run: setattr(run, "human_approved", True), "approved")
+    c = admin(tmp_path)
+    response = reconcile(c, approved.run, approved.version)
+    assert response.status_code == 200, response.text
+    assert repo.get(SCOPE, blocked.id).run.human_approved is False

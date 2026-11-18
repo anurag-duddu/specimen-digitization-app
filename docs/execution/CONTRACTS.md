@@ -70,13 +70,21 @@ decision responses that carry the summary) has `cleared_by`: `"person"` when the
 record is cleared and a reviewer's approval stands on it (`run.human_approved`),
 `"system"` when it is cleared and no approval stands (the clearance rules cleared
 it with no person, `field_research.step.finalize_fields`), and `null` when the
-record is not cleared or its stored run does not say. It is derived from the
+record is not cleared or its stored run does not hold `human_approved` as a JSON
+boolean (the list and the detail answer the same). It is derived from the
 stored run on every read (`application/lane.py` `cleared_by`); nothing new is
-stored. Older clients ignore it, as this section's common rules require; a client
-that reads it treats an absent or null value on a cleared record as "not stated",
-never as either answer. The authority is the owner's words, typed 2026-11-17 in
-session f9614090 inside the plan he answered "Yes, go ahead": "'Cleared by the
-system' in the app. The design says 'Green means a human affirmed it.'"
+stored. An approval stands until one of these withdraws it: a field,
+transcription, authority, taxonomy or metadata decision; a restore; a
+reprocess; the move to the units path; a run action that researches or reads
+again (`retry` that requeues field research, `retry` or `resume` before research
+is complete, `reconcile`, `reassess_locations`). Research that clears the record
+afterwards clears it as the system. Older clients ignore the
+field, as this section's common rules require; a client that reads it treats an
+absent or null value on a cleared record as "not stated", never as either
+answer. The authority: the coordinator put the change to the owner as
+"'Cleared by the system' in the app. The design says 'Green means a human
+affirmed it.'", and to "Go ahead with the plan, including the three rule
+changes?" the owner typed "Yes, go ahead" (2026-11-17, session f9614090).
 
 ### Bulk decisions
 

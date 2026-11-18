@@ -1,9 +1,11 @@
 """`cleared_by` on the specimen list and detail: who cleared a cleared record.
 
-The owner's words, typed 2026-11-17 in session f9614090, to the coordinator's plan he answered
-"Yes, go ahead": "'Cleared by the system' in the app. The design says 'Green means a human
-affirmed it.'" The field is derived from the stored `run.human_approved` (lane.cleared_by) on
-both list paths (SQLite and SQL Connect) and on the summary the detail returns.
+The coordinator put the change to the owner as "'Cleared by the system' in the app. The design
+says 'Green means a human affirmed it.'", and to "Go ahead with the plan, including the three
+rule changes?" the owner typed "Yes, go ahead" (2026-11-17, session f9614090). The field is
+derived from the stored `run.human_approved` (lane.cleared_by) on both list paths (SQLite and
+SQL Connect) and on the summary the detail returns, and both answer null when the stored run
+does not hold it as a JSON boolean.
 """
 
 import json
@@ -164,3 +166,47 @@ def test_the_api_list_and_detail_follow_a_person_approval_and_a_system_clearance
         principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
         repo.save(principal, stored, stored.version, "system-clearance", digest({"system": ident}))
         assert read() == ("cleared", "system", "system")
+
+
+MISSING = object()
+
+
+@pytest.mark.parametrize("stored", [MISSING, "true", 1, None], ids=["missing", "string", "number", "null"])
+def test_the_list_and_the_detail_agree_on_a_stored_run_that_does_not_say(tmp_path, stored):
+    """A cleared snapshot whose run lacks `human_approved` or holds a non-boolean never
+    reads as a person's or the system's clearance, on the list or on the detail."""
+    with client(tmp_path) as http:
+        ident = intake(http)["specimen_id"]
+        work = http.post(PREFIX + f"/specimens/{ident}/process", headers=HEADERS).json()
+        approved = http.post(PREFIX + f"/specimens/{ident}/decisions", headers=HEADERS, json={
+            "expected_revision": work["revision"], "base_record_version_id": work["record_version_id"],
+            "kind": "approve", "reason": "Synthetic fixture reviewed"})
+        assert approved.json()["cleared_by"] == "person"
+        repo = SQLiteRepository(tmp_path / "state.sqlite3")
+        scope = (SYNTHETIC_ORG, SYNTHETIC_COLLECTION, ident)
+        # Rewrite the current stored snapshot as an older or malformed writer would have left it,
+        # with its digest, so the reader accepts it as the stored record.
+        with repo.connect() as db:
+            revision, payload = db.execute(
+                "SELECT revision,payload FROM records WHERE org=? AND collection=? AND id=?", scope).fetchone()
+            payload = json.loads(payload)
+            if stored is MISSING:
+                del payload["run"]["human_approved"]
+            else:
+                payload["run"]["human_approved"] = stored
+            text = json.dumps(payload)
+            db.execute("UPDATE records SET payload=? WHERE org=? AND collection=? AND id=?", (text, *scope))
+            db.execute("UPDATE versions SET payload=?,sha256=? WHERE org=? AND collection=? AND id=? AND revision=?",
+                (text, digest(payload), *scope, revision))
+        listed = http.get(PREFIX + "/specimens", headers=HEADERS,
+                          params={"collection_id": SYNTHETIC_COLLECTION, "specimen_id": ident})
+        assert listed.status_code == 200, listed.text
+        [item] = listed.json()["items"]
+        assert (item["disposition"], item["cleared_by"]) == ("cleared", None)
+        detail = http.get(PREFIX + f"/specimens/{ident}", headers=HEADERS)
+        if stored is None:
+            # A null the run model cannot read: the detail refuses the record and claims nothing.
+            assert detail.status_code >= 400 and "cleared_by" not in detail.json()
+        else:
+            assert detail.status_code == 200, detail.text
+            assert (detail.json()["disposition"], detail.json()["cleared_by"]) == ("cleared", None)
