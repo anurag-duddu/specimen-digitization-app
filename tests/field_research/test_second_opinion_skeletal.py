@@ -360,10 +360,11 @@ def test_a_run_nobody_touched_clears_through_finish_as_through_researchs_finaliz
     assert not marks(done.reasons)
 
 
-def test_a_run_classified_before_the_second_opinion_is_unconfigured_and_still_clears(tmp_path):
-    """A run whose pinned profile has no price row for the second opinion (classified before #456): the step
-    ends `unconfigured`, every settled value it answers for reads "not checked", and under #455 that holds
-    nothing: the record clears."""
+def test_a_skeletal_run_with_no_price_row_is_unconfigured_and_still_clears(tmp_path):
+    """A run on the published skeletal profile whose pinned prices have no row for the second opinion: the step
+    ends `unconfigured`, every settled value it answers for reads "not checked", and on that profile those marks
+    hold nothing: the record clears. (A run stored before this change keeps its old mandatory set: see
+    test_a_main_stored_run_keeps_its_old_mandatory_set_on_resume_and_retry.)"""
     from specimen_digitization.model_gateway import SECOND_OPINION_ROUTE
 
     opinion = Opinion(full())
@@ -691,3 +692,45 @@ def test_retry_and_resume_of_a_record_cleared_with_second_opinion_flags_never_re
         assert marks(run.open_reasons) == marks(first.open_reasons)
     assert (len(opinion.requests) if opinion else 0) == asked <= 1
     assert len(step_paid(run)) == len(step_paid(first)) <= 1
+
+
+@pytest.mark.parametrize("action", ["resume", "retry"])
+def test_a_main_stored_run_keeps_its_old_mandatory_set_on_resume_and_retry(tmp_path, monkeypatch, action):
+    """Codex round 6 on the combined head: a run is judged by its own pinned profile. A units-path run stored by main
+    (every field a label writes mandatory, no second-opinion price row, no second-opinion key; its mandatory fields
+    settled, no standing hold, no approval; cleared by main) keeps that mandatory set on Resume or Retry: the step
+    ends `unconfigured`, every settled value it answers for reads "not checked", and on that profile those marks
+    hold the record (they are mandatory fields' marks). A person's approval clears it as the person's. Only a new
+    run takes the published skeletal profile."""
+    from test_step import field_mechanics_profile
+
+    from specimen_digitization.model_gateway import SECOND_OPINION_ROUTE
+
+    old = field_mechanics_profile()
+    with pytest.MonkeyPatch.context() as patch:
+        _without_the_step(patch)
+        rig = build_rig(tmp_path, profile=old)
+        mounted(rig, Scripted())
+        rig.workflow.second_opinion = None
+        stored = to_end(rig)
+    assert (stored.run.disposition, stored.run.reasons, stored.run.pending_review) == (Disposition.CLEARED, [], [])
+    assert stored.run.profile.mandatory_fields == old.mandatory_fields and not stored.run.human_approved
+    stored.run.profile_snapshot["processing"]["price_list"]["models"].pop(SECOND_OPINION_ROUTE)
+    stored.run.profile.execution.price_list["models"].pop(SECOND_OPINION_ROUTE, None)
+    stored.run.second_opinion = None
+    rig.repository.save(rig.principal, stored, stored.version, "as-main", "as-main")
+    opinion = Opinion(full())
+    rig.workflow.second_opinion = so.SecondOpinionStep(model_factory=opinion.factory)
+    _api(rig, action, monkeypatch)
+    done = to_end(rig)
+    run = done.run
+    assert run.profile.mandatory_fields == old.mandatory_fields
+    assert (run.second_opinion["status"], run.second_opinion["reason"]) == (so.NOT_OBTAINED, "unconfigured")
+    assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
+    held = settled_judged(run) & set(old.mandatory_fields)
+    assert held and sorted(run.reasons) == marks(run.reasons, so.NOT_CHECKED)
+    assert fields_of(run.reasons) == held and not opinion.requests
+    approved = decide(review_client(rig), rig, "approve", "approve")
+    record = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    assert (approved.disposition, approved.reasons, marks(approved.open_reasons)) == (Disposition.CLEARED, [], [])
+    assert summary(record)["cleared_by"] == "person"

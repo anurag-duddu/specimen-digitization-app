@@ -2207,17 +2207,17 @@ opinion in their pinned profile: on Resume or Retry the step ends
 for its values, and is costed at the request's worst case by main's meter
 rule for non-429 errors (`budget.py:264`).
 
-**A mark is a flag on its field, never a hold.** The second opinion ships
-with the clearing rule (work package K1, the same pull request): only the
-catalogue number is mandatory and the second opinion never judges it, so
+**On the published profile a mark is a flag on its field, not a hold.** The
+second opinion ships with the clearing rule (work package K1, the same pull
+request): on the published profile only the catalogue number is mandatory and the second opinion never judges it, so
 its marks are optional fields' doubts (`step.split_reasons`, at
 `finalize_fields`, which the step's own finish reaches through `refinalize`).
 An agreed value is shown as settled; a differing or unchecked value is
 settled and flagged on its field (`open_reasons`, the API's
 `open_reason_codes`, which the app reads for a field's attention); the
-record clears on its catalogue number. Not obtained, switched off or `unconfigured` (a run classified before this
-change), every settled value it answers for is flagged "not checked" and the
-record still clears. A record held for another reason (its catalogue number unsettled,
+record clears on its catalogue number. Not obtained or switched off, every
+settled value it answers for is flagged "not checked" and the record still
+clears. A run is judged by its own pinned profile: on a run whose profile makes a field mandatory, any mark on that field holds the record, the second opinion's included; a new run (Reprocess, the app's "Start new run") takes the published skeletal profile, where only the catalogue number is mandatory and no second-opinion mark can hold. A record stored before this change keeps its old mandatory set on Resume or Retry: the second opinion ends `unconfigured`, its settled fields read "not checked", and those marks hold under the old profile; it clears by the new rule only on a new run, or by a person's approval. A record held for another reason (its catalogue number unsettled,
 marked or of the wrong format; label coverage unconfirmed; research given
 up; a person's pending approval or another standing hold) stays held
 whatever the second opinion says (`tests/field_research/test_second_opinion_skeletal.py`).
