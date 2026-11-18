@@ -2080,13 +2080,13 @@ def create_app(
             s = s.model_copy(deep=True)
         from ..field_research import second_opinion as field_second_opinion
 
-        if field_second_opinion.open_intent(s.run):
-            # A person's decision while the fields' second opinion's intent is open abandons it here (not
-            # obtained, its reservation held), and the record is finalized as field research left it, so
-            # the decision proceeds as on main (field_research/second_opinion.py, abandon).
+        if s.run.stage == field_second_opinion.STEP:
+            # A person's decision while the record waits for the fields' second opinion: an open intent is
+            # abandoned here (not obtained, its reservation held), and the decision is handled as main
+            # handles it on a record whose research is complete, a finalized one: below, the same whole
+            # refinalize (field_research/second_opinion.py, abandon).
             field_second_opinion.abandon(s.run)
-            if s.run.stage == field_second_opinion.STEP:
-                field_second_opinion.finish(s.run)
+            s.run.stage = "finalized"
         pilot = "evidence_pilot" in s.run.dependencies
         pilot_blocker = s.run.blocker
         pilot_risk = dict(s.run.review_risk)
