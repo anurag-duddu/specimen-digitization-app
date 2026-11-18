@@ -529,6 +529,11 @@ class Run(Record):
     )
     disposition: Disposition | None = None
     reasons: list[str] = Field(default_factory=list)
+    # The doubts about optional fields, which do not hold the record (field_research.step
+    # split_reasons; the owner's ruling of 2026-11-18, docs/execution/autonomy/PLAN.md WP K1):
+    # codes of the same form as `reasons`, kept so a cleared record still says which of its
+    # optional fields are open. Omitted while empty, so older snapshots keep their bytes.
+    open_reasons: list[str] = Field(default_factory=list, exclude_if=lambda value: not value)
     findings: list[RunFinding] = Field(default_factory=list)
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
     blocker: str | None = None

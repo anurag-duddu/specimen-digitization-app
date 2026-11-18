@@ -111,6 +111,25 @@ answer. The authority: the coordinator put the change to the owner as
 affirmed it.'", and to "Go ahead with the plan, including the three rule
 changes?" the owner typed "Yes, go ahead" (2026-11-17, session f9614090).
 
+### Optional fields' open reasons (`run.open_reasons`, additive, 2026-11-18)
+
+The slide profile's mandatory set is the catalogue number (`fmnh_ins_number`);
+the other nineteen fields are optional (the autonomy program's work package
+K1, `docs/execution/autonomy/PLAN.md` section 4, where the owner's words and
+the coordinator's decision are quoted). A reason about an optional field's
+value no longer holds the record: `field_research.step.split_reasons` keeps it
+in `run.open_reasons`, a list of codes of the same form as `reason_codes`
+(`mandatory_unresolved:<field>` there reads "this field has no supported
+value", as the code always meant). The workspace response carries it inside
+`run`; the summary's `reason_codes` and `disposition` carry only the reasons
+that hold the record, so a cleared record can have open optional fields. The
+key is omitted while the list is empty, so older snapshots keep their bytes,
+and older clients ignore it. One new holding code: `research_incomplete:<field>`,
+an optional field research could not finish (a limit, a request too large, an
+outage or a deadline on the step's last attempt, or its expert's fallback); it
+holds the record until the field is settled, a person decides it, or a person
+approves the record. `no_specimen_value` is no longer produced.
+
 ### Bulk decisions
 
 `POST /decisions:batch` exists because a reviewer acting on a selection is one

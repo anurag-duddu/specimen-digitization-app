@@ -4337,12 +4337,8 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
       marked) is not also unresolved_transcription, since a person is sent to
       each of those fields anyway; any drawn field without one keeps the
       label's reason, as does every label no field is drawn from.
-    - Not in canonical_materialization_v2: a record every field of which that
-      describes the specimen (the catalogue number, the collection code and the
-      determiner's IRN aside: IDENTIFYING_FIELDS) is settled with no value
-      (SETTLED_EMPTY, or supported with no text, _has_value) is
-      no_specimen_value until a person approves it (plan WP S1, the empty-record
-      guard).
+    - Every reason is returned, an optional field's doubt among them: which of them
+      hold the record is split_reasons' decision (plan WP K1).
     """
     reasons: list[str] = []
     # 198-199
@@ -4508,26 +4504,9 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
     for at, region_id, keys in reversed(drawn_labels):
         if not keys <= held:
             reasons.insert(at, f"unresolved_transcription:{region_id}")
-    # A record every field of which that describes the specimen is settled with no value (absent,
-    # or a placeholder) is never finished without a person, whatever clears each field on its own
-    # (plan WP S1, the empty-record guard). A field still open is held by its own reason instead.
-    described = [value for key, value in run.fields.items() if key not in IDENTIFYING_FIELDS]
-    if not run.human_approved and described and all(
-            value.state in SETTLED_EMPTY or (value.state == ValueState.SUPPORTED and not _has_value(value))
-            for value in described):
-        reasons.append(NO_SPECIMEN_VALUE)
     return list(dict.fromkeys(reasons))
 
 
-# The reason of a record every field of which that describes the specimen is settled with no
-# value (scientific_reasons): a record such as R0's 105526335 would be one, whose labels write
-# only "FMNHINS 4486770" and "LEWIS COLLECTION / col", once its open fields settled absent.
-NO_SPECIMEN_VALUE = "no_specimen_value"
-# The states of a field settled with no value (the empty-record guard).
-SETTLED_EMPTY = frozenset({ValueState.NOT_PRESENT, ValueState.NOT_APPLICABLE})
-# The fields that identify the record, not the specimen: the catalogue number, the collection
-# code and the determiner's EMu record.
-IDENTIFYING_FIELDS = frozenset({"fmnh_ins_number", "collection_code", IRN})
 # The record-level reasons that name a field, or fields, of their own (_reason_fields).
 RECORD_REASON_FIELDS = {
     "taxonomy_unresolved": ("taxon",),
@@ -4551,12 +4530,72 @@ def _reason_fields(reason: str, fields: Mapping[str, FieldValue]) -> tuple[str, 
     return (key,) if key in fields else ()
 
 
-def _has_value(value: FieldValue) -> bool:
-    """Whether a field holds a value: supported, with a settled text that is no placeholder
-    (scientific_reasons' 232-236 test)."""
-    settled = value.normalized or value.parsed or value.literal
-    return (value.state == ValueState.SUPPORTED and bool(settled and settled.strip())
-        and settled.strip().casefold() not in PLACEHOLDERS)
+# Which reasons hold the record (plan WP K1, the owner's ruling of 2026-11-18: "As long as the
+# mandatory ones are filled it should be cleared"). The kinds of reason that are a doubt about a
+# field's value: each is an optional field's doubt, which does not hold the record, when every
+# field it names is optional. Every other kind holds the record whatever field it names: label
+# coverage, a label's language rule, raw provenance, evidence and its grounding, the catalogue
+# number's format, a person's carried decision, approval or reassessment, an operational failure
+# or a field research could not finish (incomplete_reasons), and any code not listed here.
+FIELD_DOUBTS = frozenset({
+    "mandatory_unresolved", "unsupported_parsed", "unsupported_normalized", "unsupported_authority_id",
+    "identified_by_irn_identity_unproved", "taxonomy_unresolved", "elevation_invalid", "elevation_range",
+    "elevation_units_conflict", "date_precision_requires_review", "date_order", "marked",
+    "unresolved_transcription", "independent_observations_missing", "taxonomy_lookup_missing",
+})
+# The field-doubt reasons with no field in their code that _reason_fields does not name: the
+# determiner's EMu identity, and the ordinary path's taxon lookup (policy.evaluate).
+DOUBT_FIELDS = {"identified_by_irn_identity_unproved": (IRN,), "taxonomy_lookup_missing": ("taxon",)}
+# The label reasons (`<code>:<label>`): they name the fields drawn from the label (label_fields).
+LABEL_DOUBTS = frozenset({"unresolved_transcription", "independent_observations_missing"})
+
+
+def label_fields(run, region_id: str) -> frozenset[str]:
+    """The fields drawn from a label, as scientific_reasons draws them: a field whose source is
+    the label, that a reading of the label wrote, or that cites a row of the label (the
+    determiner's IRN aside, which no label writes)."""
+    ids = {item.id for item in run.observations if item.region_id == region_id}
+    rows = {item.id for item in run.evidence if item.region_id == region_id}
+    return frozenset(key for key, value in run.fields.items() if key != IRN and (
+        value.source_region_id == region_id or any(identifier in ids for identifier in value.verbatim_by_observation)
+        or any(item in rows for item in value.evidence_ids)))
+
+
+def split_reasons(run, reasons: Sequence[str], *, mandatory: Iterable[str]) -> tuple[list[str], list[str]]:
+    """The reasons that hold the record, and the optional fields' doubts that do not (plan WP K1).
+
+    A reason of a kind in FIELD_DOUBTS is an optional field's doubt when every field it names is
+    optional: `<code>:<field>` and `marked:<field>:...` name theirs, the record-level ones theirs
+    (_reason_fields), the determiner's identity and the ordinary path's taxon lookup theirs
+    (DOUBT_FIELDS), and a label's
+    reason the fields drawn from the label (label_fields). A label's reason holds when a mandatory
+    field is drawn from it, and when no field is drawn from it (what the label writes is not
+    known, so neither are the fields it touches); `unresolved_transcription` always holds on a
+    label whose first pass was given up (a fallback, not a doubt). A field-doubt reason that names
+    no field holds (fail closed). The fields are not touched: an open optional field keeps its
+    state, value, marks and findings."""
+    mandatory = frozenset(mandatory)
+    given_up = given_up_regions(run)
+    holds, open_ = [], []
+    for reason in reasons:
+        code, _, rest = reason.partition(":")
+        if code not in FIELD_DOUBTS:
+            holds.append(reason)
+            continue
+        if code in LABEL_DOUBTS:
+            keys = label_fields(run, rest)
+            if not keys or code == "unresolved_transcription" and rest in given_up:
+                holds.append(reason)
+                continue
+        elif code in DOUBT_FIELDS:
+            keys = frozenset(DOUBT_FIELDS[code])
+        else:
+            keys = frozenset(_reason_fields(reason, run.fields))
+            if not keys:
+                holds.append(reason)
+                continue
+        (holds if keys & mandatory else open_).append(reason)
+    return holds, open_
 
 
 def work_states(run, profile: CollectionProfile, outcomes: Sequence[FieldOutcome]) -> dict[str, str]:
@@ -4596,7 +4635,8 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     The retained evidence is verified first, as the workflow's finalize does
     (EvidenceIntegrityError propagates). All mandatory fields settled and the
     rules satisfied: cleared. Anything for a person: needs human review, with a
-    reason per field. Any outage or model failure: processing_blocked with the
+    reason per field. An optional field's doubt (split_reasons) goes to
+    run.open_reasons and does not hold the record. Any outage or model failure: processing_blocked with the
     retryable blocker the workflow schedules a retry on, every settled field
     kept; on the step's last attempt a source still unreachable and a field
     that ran out of time are for a person instead (work_states), and only a
@@ -4613,14 +4653,23 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     work = work_states(run, profile, outcomes)
     qualified = frozenset(key for key, value in run.fields.items()
         if value.state == ValueState.SUPPORTED and value.layer == "derived")
-    human = scientific_reasons(run, work, mandatory=profile.mandatory_fields, qualified=qualified, today=today,
+    # Every field a label writes is checked, mandatory or optional (the determiner's IRN, which no
+    # label writes, only when it holds a value); which of the reasons hold the record is
+    # split_reasons' decision, below (plan WP K1).
+    checked = tuple(key for key in field_keys(profile) if key in profile.mandatory_fields or key != IRN)
+    human = scientific_reasons(run, work, mandatory=checked, qualified=qualified, today=today,
         allowed=not_on_label_keys(profile))
     # canonical_materialization_v2 447-450: a person's carried decision is
     # reviewed again, until a person approves the record (on the native path the
     # approval's ordinary finalize no longer names it).
     if not run.human_approved:
         human += [f"preserved_human_decision:{key}" for key in sorted(human_keys(run) & set(work))]
+    # An optional field's doubt does not hold the record (plan WP K1): it is kept beside the
+    # reasons, and the field keeps its state, value and marks.
+    human, run.open_reasons = split_reasons(run, list(dict.fromkeys(human)), mandatory=profile.mandatory_fields)
     by_key = {outcome.key: outcome for outcome in outcomes}
+    # An optional field research could not finish is held: a failure, not a doubt (plan WP K1).
+    human += incomplete_reasons(run, profile, work, by_key)
     failures = [by_key[key].failure for key in work if work[key] == FAILED]
     if failures:
         operational = [f"{RETRYABLE[by_key[key].failure][0]}:{key}" for key in work if work[key] == FAILED]
@@ -4636,6 +4685,30 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
 
 
 APPROVAL = "human_approval_required"
+# An optional field research could not finish (incomplete_reasons): it holds the record.
+INCOMPLETE = "research_incomplete"
+
+
+def incomplete_reasons(run, profile: CollectionProfile, work: Mapping[str, str],
+        by_key: Mapping[str, FieldOutcome]) -> list[str]:
+    """`research_incomplete:<field>` for each optional field research could not finish, in the
+    profile's order: this attempt left it for a person after a failure (a limit, a spent budget,
+    a request too large, or a source still unreachable or a deadline on the step's last attempt,
+    FIELD_REASONS) or on its expert's fallback (FieldOutcome.fallback); and a field an earlier
+    finalize named so, which this attempt did not research again, while it is still not supported
+    and no person has decided it. None once a person has approved the record. A mandatory field
+    research could not finish holds the record by its own mandatory_unresolved reason instead.
+    Plan WP K1: an optional field's doubt does not hold the record, a failure does."""
+    if run.human_approved:
+        return []
+    mandatory = frozenset(profile.mandatory_fields)
+    now = {key for key, outcome in by_key.items()
+        if work.get(key) == WAITING_HUMAN and (outcome.failure is not None or outcome.fallback)}
+    before = {reason.partition(":")[2] for reason in run.reasons if reason.startswith(INCOMPLETE + ":")}
+    persons = human_keys(run)
+    kept = {key for key in before - set(by_key) if key not in persons
+        and (run.fields.get(key) or FieldValue()).state != ValueState.SUPPORTED}
+    return [f"{INCOMPLETE}:{key}" for key in field_keys(profile) if key in now | kept and key not in mandatory]
 
 
 def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: date | None = None) -> None:

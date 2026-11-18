@@ -194,6 +194,7 @@ const Map<String, String> _fieldReasons = <String, String>{
   'competing_mandatory_candidates': 'has conflicting proposed values',
   'raw_reading_grounding_unproved': 'cannot be traced to the label readings',
   'preserved_human_decision': 'has an earlier review decision to confirm',
+  'research_incomplete': 'was not checked before research stopped',
   markedCode: 'is marked for review',
 };
 
@@ -290,8 +291,6 @@ const Map<String, String> _recordMessages = <String, String>{
       'Check the collection and identification dates',
   'date_order': 'Check the order of the collection and identification dates',
   'identifier_format': 'Check the catalog number format',
-  'no_specimen_value':
-      'No field describes the specimen. Check the labels in the photograph',
   'pilot_risk_unmeasured': 'The review priority assessment is not available',
   'identified_by_irn_identity_unproved':
       'The identifier needs a confirmed EMu person record',

@@ -97,7 +97,9 @@
       "synthetic": false,
       "schema_version": "insects-v1",
       "mandatory_fields": [
-        "fmnh_ins_number",
+        "fmnh_ins_number"
+      ],
+      "optional_fields": [
         "collection_code",
         "country",
         "province_state",
@@ -115,9 +117,7 @@
         "collectors",
         "verbatim_dts",
         "taxon",
-        "date_identified"
-      ],
-      "optional_fields": [
+        "date_identified",
         "identified_by_irn"
       ],
       "not_applicable_fields": [],

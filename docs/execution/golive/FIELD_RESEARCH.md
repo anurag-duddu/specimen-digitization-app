@@ -2618,6 +2618,22 @@ from keeps it as before. A record whose fields that describe the specimen
 are all settled with no value (the catalogue number and the collection code
 aside) is `no_specimen_value` until a person approves it.
 
+Amended 2026-11-18 (the autonomy program's work package K1,
+[`docs/execution/autonomy/PLAN.md`](../autonomy/PLAN.md) section 4; the
+owner's words of that date in [`PLAN.md`](PLAN.md) section 2.1, "Skeletal
+records"): the `no_specimen_value` reason is removed, and only the catalogue
+number is mandatory. `step.scientific_reasons` still gives every reason above,
+for every field a label writes; `step.split_reasons` then decides which hold
+the record. A label's `unresolved_transcription` or
+`independent_observations_missing` holds when the catalogue number is drawn
+from the label, when no field is drawn from it, or (the first) when its first
+pass was given up; on a label only optional fields are drawn from it is kept in
+`run.open_reasons` and the record can clear. The same holds for every reason
+about an optional field's value (unresolved, ambiguous, marked, unsupported
+layers, the taxon, the dates and elevations). An optional field research
+could not finish (`research_incomplete:<field>`, `step.incomplete_reasons`)
+holds. No field's state, value, marks or findings change.
+
 A field cleared as not on the label, or a taxon cleared as unmatched, is
 reopened like any other field with Correct value: the reviewer's value is
 kept as made and the record waits for that reviewer's approval. Every later

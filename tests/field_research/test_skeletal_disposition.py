@@ -1,0 +1,338 @@
+"""Plan WP K1 (docs/execution/autonomy/PLAN.md): the skeletal record.
+
+The owner typed on 2026-11-18 (coordinator session f9614090): "Where there is no field related data on the lable,
+nothing to do, it will get cleared. Not all fields are mandatory right. As long as the mandatory ones are filled it
+should be cleared. Lets make skeletal records mandatory (decide if not already decided), full set (remaining
+optional)". The coordinator's decision for this build (the coordinator's words, not the owner's): the mandatory
+(skeletal) set is the catalogue number, `fmnh_ins_number`; every other field is optional.
+
+What is tested here:
+- the published profile makes only the catalogue number mandatory;
+- step.split_reasons: every kind of reason scientific_reasons and finalize_fields give, as holding the record or as
+  an optional field's doubt (run.open_reasons);
+- through the rig on the published profile: a label with only the catalogue number clears; the same fields, states,
+  values, findings and reasons as under the profile with every field mandatory, the reasons only split between
+  run.reasons and run.open_reasons; what still holds (the catalogue number, a label it is drawn from, a label no
+  field is drawn from, a field research could not finish, a person's pending approval, coverage);
+- the ordinary path (policy.finalize) splits the same way, and the extraction request asks for the same fields.
+"""
+
+from __future__ import annotations
+
+import pytest
+from test_step import (
+    LABEL,
+    SMITH_OR_SMYTH,
+    SMYTH,
+    TEXT,
+    TODAY,
+    Scripted,
+    answering,
+    build_rig,
+    every_field,
+    failing,
+    field_mechanics_profile,
+    resolved,
+    settle,
+)
+
+from specimen_digitization.application import policy
+from specimen_digitization.application.collection_profiles import published_registry
+from specimen_digitization.application.domain import (
+    Disposition,
+    Evidence,
+    FieldValue,
+    Observation,
+    Region,
+    Run,
+    RunFinding,
+    ValueState,
+)
+from specimen_digitization.field_research import step as field_step
+from specimen_digitization.field_research.contracts import FieldAnswer, FieldOutcome
+
+LACKS = FieldAnswer(outcome="label_lacks_value", explanation="Not on the label.")
+CATALOGUE = "fmnh_ins_number"
+
+
+def published():
+    return published_registry().profiles[0]
+
+
+# ---- the profile -------------------------------------------------------------------------------
+
+def test_the_published_profile_makes_only_the_catalogue_number_mandatory():
+    profile = published()
+    assert profile.mandatory_fields == (CATALOGUE,)
+    # The 19 other fields, in the order the mandatory set had them, then the determiner's IRN, as before.
+    assert profile.optional_fields == (*field_mechanics_profile().mandatory_fields[1:], "identified_by_irn")
+    assert len(profile.optional_fields) == 19 and (profile.id, profile.version) == ("zoology_insects_slides", "1.0.0")
+
+
+def test_the_extraction_is_asked_for_the_same_fields_as_before(tmp_path):
+    """harness.extract_with_agent's request lists policy.checked_fields: every field a label writes, the same
+    list in the same order as the mandatory set it listed before the change."""
+    rig = build_rig(tmp_path, profile=published())
+    assert policy.checked_fields(rig.specimen.run) == field_mechanics_profile().mandatory_fields
+
+
+# ---- split_reasons -------------------------------------------------------------------------------
+
+def a_run():
+    """Two labels: L1, from which the catalogue number and the country are drawn; L2, from which the habitat is
+    drawn; and L3, from which no field is drawn."""
+    regions = [Region(id=name, asset_id="a", x=0, y=0, width=1, height=1, order=i, method="fixture", version="1")
+        for i, name in enumerate(("L1", "L2", "L3"))]
+    fields = {key: FieldValue() for key in published().mandatory_fields + published().optional_fields}
+    fields[CATALOGUE] = FieldValue(state=ValueState.SUPPORTED, literal="FMNH-INS 0010001", source_region_id="L1")
+    fields["country"] = FieldValue(state=ValueState.SUPPORTED, literal="United States", source_region_id="L1")
+    fields["habitat"] = FieldValue(state=ValueState.SUPPORTED, literal="grassland", source_region_id="L2")
+    return Run(regions=regions, fields=fields)
+
+
+HOLDS = [
+    "label_coverage_unconfirmed",
+    "language_conflicting:L2",            # a label's language rule (label_language_handling)
+    "raw_provenance_missing:L2",
+    "evidence_missing:habitat",
+    "evidence_does_not_support_value:habitat",
+    "raw_reading_grounding_unproved:habitat",
+    "identifier_format",
+    f"mandatory_unresolved:{CATALOGUE}",
+    f"unsupported_parsed:{CATALOGUE}",
+    f"marked:{CATALOGUE}:L1:text_only",
+    "preserved_human_decision:habitat",
+    "human_approval_required",
+    "location_reassessment_unconfirmed:city",
+    "lookup_operational_failure:country",
+    "research_incomplete:taxon",
+    "unresolved_transcription:L1",          # the catalogue number is drawn from L1
+    "independent_observations_missing:L1",
+    "unresolved_transcription:L3",          # no field is drawn from L3
+    "independent_observations_missing:L3",
+    "evidence_lineage_invalid:e1",          # the ordinary path's
+    "pixel_lineage_missing:habitat",
+    "institutional_policy_unapproved",
+    "a_code_this_rule_does_not_know:habitat",
+]
+OPEN = [
+    "mandatory_unresolved:habitat",
+    "mandatory_unresolved:taxon",
+    "unsupported_parsed:country",
+    "unsupported_normalized:country",
+    "unsupported_authority_id:taxon",
+    "identified_by_irn_identity_unproved",
+    "taxonomy_unresolved",
+    "taxonomy_lookup_missing",
+    "elevation_invalid:m",
+    "elevation_range:ft",
+    "elevation_units_conflict:from",
+    "date_precision_requires_review",
+    "date_order",
+    "marked:habitat:L2:text_only",
+    "marked:country:L1:conflict",
+    "marked:taxon:L2:parts_on_labels",
+    "marked:county:L2:place_within_settled_places",
+    "unresolved_transcription:L2",          # only the habitat, optional, is drawn from L2
+    "independent_observations_missing:L2",
+]
+
+
+@pytest.mark.parametrize("reason", HOLDS)
+def test_a_reason_that_is_not_an_optional_fields_doubt_holds_the_record(reason):
+    assert field_step.split_reasons(a_run(), [reason], mandatory=(CATALOGUE,)) == ([reason], [])
+
+
+@pytest.mark.parametrize("reason", OPEN)
+def test_an_optional_fields_doubt_does_not_hold_the_record(reason):
+    assert field_step.split_reasons(a_run(), [reason], mandatory=(CATALOGUE,)) == ([], [reason])
+
+
+@pytest.mark.parametrize("reason", OPEN)
+def test_every_field_doubt_holds_where_its_field_is_mandatory(reason):
+    """Under the profile with every field mandatory, as before 2026-11-18, the same reasons all hold (the
+    determiner's IRN, optional there too, aside)."""
+    every = field_mechanics_profile().mandatory_fields
+    holds, open_ = field_step.split_reasons(a_run(), [reason], mandatory=every)
+    assert (holds, open_) == (([], [reason]) if reason == "identified_by_irn_identity_unproved" else ([reason], []))
+
+
+def test_a_label_whose_first_pass_was_given_up_holds_whatever_is_drawn_from_it():
+    run = a_run()
+    run.findings.append(RunFinding(rule_id="first_pass_given_up", rule_version="1", severity="warning",
+        reason_code="first_pass_given_up:L2:model_rate_limited"))
+    from specimen_digitization.application.first_pass import GIVEN_UP
+
+    run.findings[-1] = run.findings[-1].model_copy(update={"rule_id": GIVEN_UP})
+    assert "L2" in field_step.given_up_regions(run)
+    assert field_step.split_reasons(run, ["unresolved_transcription:L2"], mandatory=(CATALOGUE,)) == (
+        ["unresolved_transcription:L2"], [])
+
+
+def test_a_label_is_drawn_from_by_a_reading_or_a_cited_row_too():
+    run = a_run()
+    run.observations.append(Observation(id="o3", region_id="L3", route_id="r", model_id="m", provider="p",
+        prompt_version="v", input_sha256="0" * 64, input_asset_id="a", input_crop_ref="c", literal_text="x",
+        raw_ref="r", raw_sha256="0" * 64))
+    run.evidence.append(Evidence(id="e3", kind="literal", region_id="L3", asset_id="a", excerpt="x", source="label",
+        locator="L3"))
+    run.fields["city"] = FieldValue(state=ValueState.SUPPORTED, literal="x", verbatim_by_observation={"o3": "x"})
+    assert field_step.label_fields(run, "L3") == {"city"}
+    run.fields["city"] = FieldValue(state=ValueState.SUPPORTED, literal="x", evidence_ids=["e3"])
+    run.fields[CATALOGUE] = FieldValue(state=ValueState.SUPPORTED, literal="1", evidence_ids=["e3"])
+    assert field_step.label_fields(run, "L3") == {"city", CATALOGUE}
+    assert field_step.split_reasons(run, ["unresolved_transcription:L3"], mandatory=(CATALOGUE,))[0]
+
+
+def test_open_reasons_are_left_out_of_a_stored_run_while_empty():
+    """Additive: a run with none keeps its stored bytes (domain.Run.open_reasons)."""
+    run = Run()
+    assert "open_reasons" not in run.model_dump(mode="json")
+    run.open_reasons = ["taxonomy_unresolved"]
+    assert run.model_dump(mode="json")["open_reasons"] == ["taxonomy_unresolved"]
+    assert Run.model_validate(run.model_dump(mode="json")).open_reasons == ["taxonomy_unresolved"]
+
+
+# ---- through the rig: the published profile against every field mandatory ----------------------
+
+def only_the_catalogue_number():
+    text = f"{CATALOGUE}: {LABEL[CATALOGUE]}"
+    candidates = [(CATALOGUE, name, LABEL[CATALOGUE], text) for name in ("1A", "1B")]
+    script = Scripted({key: answering(LACKS) for key in LABEL if key != CATALOGUE} | {
+        "collectors": answering(LACKS)})
+    return text, None, candidates, script
+
+
+def readers_differ_on_the_collectors():
+    """test_review_rules' Smith/Smyth label: the collectors' expert settles 1A's text, the readers disagree."""
+    return TEXT, SMYTH, every_field(*SMITH_OR_SMYTH), Scripted({
+        "collectors": answering(resolved("J. Smith", reading="1A"))})
+
+
+def everything_settles():
+    return TEXT, None, every_field(), Scripted()
+
+
+def taxon_and_habitat_lacking():
+    return TEXT, None, every_field(), Scripted({"taxon": answering(LACKS), "habitat": answering(LACKS)})
+
+
+def catalogue_number_lacking():
+    return TEXT, None, every_field(), Scripted({CATALOGUE: answering(LACKS)})
+
+
+def country_too_large():
+    """The country's research stops: its request is too large to send (a failure, not a doubt)."""
+    return TEXT, None, every_field(), Scripted({"country": failing("input_too_large")})
+
+
+def country_fallback():
+    async def script(task, readings, tools):
+        return FieldOutcome(task.key, FieldAnswer(outcome="sources_cannot_resolve", explanation="Exhausted."),
+            fallback=True, model_calls=3)
+    return TEXT, None, every_field(), Scripted({"country": script})
+
+
+SCENARIOS = {
+    "everything-settles": (everything_settles, Disposition.CLEARED),
+    "only-the-catalogue-number": (only_the_catalogue_number, Disposition.CLEARED),
+    "taxon-and-habitat-lacking": (taxon_and_habitat_lacking, Disposition.CLEARED),
+    # The label the catalogue number is drawn from holds when its readers differ, whatever field they differ on.
+    "readers-differ-on-the-catalogue-label": (readers_differ_on_the_collectors, Disposition.REVIEW),
+    "catalogue-number-lacking": (catalogue_number_lacking, Disposition.REVIEW),
+    "country-request-too-large": (country_too_large, Disposition.REVIEW),
+    "country-expert-fell-back": (country_fallback, Disposition.REVIEW),
+}
+
+
+def settled_under(tmp_path, scenario, profile):
+    text, other, candidates, script = scenario()
+    rig = build_rig(tmp_path, text, other, candidates=candidates, profile=profile)
+    settle(rig, script)
+    return rig, rig.specimen.run
+
+
+LAYERS = ("state", "literal", "parsed", "normalized", "authority_id", "layer", "reason", "precision", "derived_from")
+
+
+def named(run, text):
+    """The text with each label's id as its place in the run (two rigs make different ids)."""
+    for i, region in enumerate(run.regions):
+        text = text.replace(region.id, f"L{i + 1}")
+    return text
+
+
+def comparable(run):
+    """Each field's value and wording and each finding, with the ids two rigs draw differently left out."""
+    return ({key: {layer: getattr(value, layer) for layer in LAYERS} for key, value in run.fields.items()},
+        [(f.rule_id, f.severity, f.field_key, named(run, f.reason_code), len(f.evidence_ids)) for f in run.findings])
+
+
+def reasons(run, which):
+    return {named(run, reason) for reason in which}
+
+
+@pytest.mark.parametrize(("name", "expected"), [(name, d) for name, (_, d) in SCENARIOS.items()], ids=list(SCENARIOS))
+def test_the_published_profile_changes_only_which_reasons_hold(tmp_path, name, expected):
+    """Every field's state, value, layer, evidence and reason text, and every finding (marks included), are the
+    same under the published profile as under the profile with every field mandatory; the reasons are the same
+    set, split between those that hold and the optional fields' doubts, with research_incomplete added for an
+    optional field research could not finish. The record clears exactly when no reason holds."""
+    scenario = SCENARIOS[name][0]
+    _, every = settled_under(tmp_path / "every", scenario, field_mechanics_profile())
+    _, skeletal = settled_under(tmp_path / "skeletal", scenario, published())
+    assert comparable(skeletal) == comparable(every)
+    holding, open_ = reasons(skeletal, skeletal.reasons), reasons(skeletal, skeletal.open_reasons)
+    incomplete = {r for r in holding if r.startswith(field_step.INCOMPLETE + ":")}
+    assert holding - incomplete | open_ == reasons(every, every.reasons)
+    assert not holding & open_
+    assert skeletal.disposition == expected == (Disposition.CLEARED if not skeletal.reasons else Disposition.REVIEW)
+    assert every.disposition == (Disposition.CLEARED if name == "everything-settles" else Disposition.REVIEW)
+
+
+def test_a_label_with_only_the_catalogue_number_clears_with_every_other_field_blank(tmp_path):
+    """The owner's "Where there is no field related data on the lable, nothing to do, it will get cleared": PR #451's
+    no_specimen_value guard held this record; it is removed."""
+    _, run = settled_under(tmp_path, only_the_catalogue_number, published())
+    assert (run.disposition, run.reasons, run.stage) == (Disposition.CLEARED, [], "finalized")
+    assert run.fields[CATALOGUE].state == ValueState.SUPPORTED
+    assert all(value.state != ValueState.SUPPORTED for key, value in run.fields.items() if key != CATALOGUE)
+    assert "no_specimen_value" not in run.reasons + run.open_reasons
+    # What is open is kept: the taxon's doubt among them.
+    assert {"taxonomy_unresolved", "mandatory_unresolved:taxon"} <= set(run.open_reasons)
+
+
+def test_a_field_research_could_not_finish_holds_through_refinalize_until_a_person_approves(tmp_path):
+    _, run = settled_under(tmp_path, country_too_large, published())
+    assert run.reasons == ["research_incomplete:country"] and "mandatory_unresolved:country" in run.open_reasons
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["research_incomplete:country"])
+    run.human_approved = True
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert "mandatory_unresolved:country" in run.open_reasons
+
+
+def test_a_person_s_decision_and_coverage_still_hold_a_record_whose_optional_fields_are_open(tmp_path):
+    _, run = settled_under(tmp_path, taxon_and_habitat_lacking, published())
+    assert run.disposition == Disposition.CLEARED
+    field_step.refinalize(run, decided=True, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, [field_step.APPROVAL])
+    run.human_approved = True
+    run.coverage_confirmed = False
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["label_coverage_unconfirmed"])
+
+
+# ---- the ordinary path ----------------------------------------------------------------------------
+
+def test_the_ordinary_path_splits_the_same_way(tmp_path):
+    """policy.finalize: the optional fields' doubts go to open_reasons, every other reason still holds (its
+    institutional approval and human approval among them); every field a label writes is still checked."""
+    _, run = settled_under(tmp_path, taxon_and_habitat_lacking, published())
+    every = policy.evaluate(run)
+    policy.finalize(run)
+    assert set(run.reasons) | set(run.open_reasons) == set(every)
+    assert {"mandatory_unresolved:taxon", "mandatory_unresolved:habitat"} <= set(run.open_reasons)
+    assert {"human_approval_required", "institutional_policy_unapproved"} <= set(run.reasons)
+    assert run.disposition == Disposition.REVIEW
