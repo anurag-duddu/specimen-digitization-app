@@ -81,10 +81,18 @@ transcript text; provenance is left out). Wherever a disposition is decided
 `field_research.step.finalize_fields`, which `refinalize` calls, and the
 research harness's canonical materializations), a standing approval whose
 digest no longer matches the values is withdrawn, so the stored
-`human_approved` is false whenever a disposition is stored on changed values. A
-step or route that changes no value keeps the approval; research, a
-derivation and a person's edit that change one end it. An approval with no
-recorded digest (every record approved before 2026-11-17) stands, as before.
+`human_approved` is false whenever a disposition is stored on changed values.
+A standing approval is withdrawn by a person's later decision on the record (a
+field, transcription, authority, taxonomy, metadata or research-candidate
+decision), whether or not it changes a value, as before this change; and by
+the value test, wherever a disposition is decided, when the values differ from
+those recorded at the approval. A system step that leaves the values as
+approved (a retry, resume, recovery, reconcile or reassessment, or research
+that writes the same values again) keeps it. An approval with no recorded
+digest (every record approved before 2026-11-17) stands, as before: such a
+record keeps `"person"` even if later research changes its values. No
+production record is in that state today: the coordinator's read-only check of
+2026-11-17 found `human_approved` false in all 33 current snapshots.
 `approved_values_sha256` is optional on load and omitted while unset, so older
 snapshots keep their bytes.
 

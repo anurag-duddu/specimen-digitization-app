@@ -97,10 +97,12 @@ def cleared_by(disposition, human_approved) -> str | None:
     """Who cleared a cleared record: the summary's and the listing's `cleared_by`.
 
     `person` when a reviewer's approval stands on the record (`run.human_approved`, set
-    only by an `approve` decision, `approve` above). A cleared record is `person` only while
-    its values are the ones a person approved: `settle_approval` withdraws the approval
-    before a disposition is decided on changed values. `system` when the clearance rules
-    cleared it with no approval standing. Null for a record that is not cleared, and when `human_approved` is
+    only by an `approve` decision, `approve` above). A standing approval is withdrawn by a
+    person's later decision on the record (field, transcription, authority, taxonomy,
+    metadata or research-candidate), whether or not it changes a value, as before; and by
+    `settle_approval`, wherever a disposition is decided, when the values differ from those
+    recorded at the approval. A system step that leaves the values as approved keeps it.
+    `system` when the clearance rules cleared it with no approval standing. Null for a record that is not cleared, and when `human_approved` is
     not a boolean: the list's projections pass None for a stored value that is not a JSON
     boolean; the detail passes the validated run's value.
     """

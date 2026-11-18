@@ -5,9 +5,12 @@ person approved. `approve` records a digest of the run's values (lane.approved_v
 every field's state and value layers, each label's resolved transcript text); wherever a
 disposition is decided (lane.settle_approval, called first by policy.finalize,
 field_research.step.finalize_fields and the research harness's materializations) a standing
-approval whose digest no longer matches is withdrawn. A step or route that changes no value
-keeps it; any writer that changes one (research, a derivation in a recheck, a person's edit)
-ends it. An approval with no recorded digest (given before this change) stands, as on main.
+approval whose digest no longer matches is withdrawn. A person's later decision on the record
+(field, transcription, authority, taxonomy, metadata, research candidate) also withdraws it,
+whether or not it changes a value, as on main. A system step that leaves the values as approved
+(a retry, resume, recovery, reconcile or reassessment, or research writing the same values
+again) keeps it; research or a derivation that changes one ends it. An approval with no
+recorded digest (given before this change) stands, as on main.
 
 The routes are driven end to end through the workflow, the API and the drain; each test says
 what it sets by hand.
@@ -115,7 +118,7 @@ def test_an_approval_of_a_cleared_record_is_the_persons(rig):
     assert read_back(client, rig) == "person"
 
 
-# ---- a route that changes no value keeps the approval ---------------------------------------
+# ---- a system step that leaves the values as approved keeps the approval --------------------
 
 @pytest.mark.parametrize("action", ["retry", "resume"])
 def test_a_retry_or_resume_that_changes_no_value_keeps_the_approval(rig, monkeypatch, action):
@@ -208,6 +211,21 @@ def test_a_persons_edit_after_approving_ends_the_approval(rig):
         after=country.model_dump(mode="json", exclude={"evidence_ids"}) | {
             "parsed": "United States of America", "reason": "A person wrote the full name."},
         evidence_ids=list(country.evidence_ids))
+    assert after.human_approved is False
+    assert read_back(client, rig) != "person"
+
+
+def test_a_persons_unchanged_field_submission_after_approving_ends_the_approval(rig):
+    """Main's rule, kept: a person's own decision on the record withdraws a standing approval
+    even when it submits the field exactly as it is (api.py, the field decision). The person
+    has just acted on the record and approves again."""
+    client = approved_and_cleared(rig)
+    current = rig.repository.get(rig.principal.scope, rig.specimen.id).run
+    country = current.fields["country"]
+    after = decide(client, rig, "unchanged-field", "field", target_id="country",
+        after=country.model_dump(mode="json", exclude={"evidence_ids"}),
+        evidence_ids=list(country.evidence_ids))
+    assert approved_values_digest(after) == current.approved_values_sha256
     assert after.human_approved is False
     assert read_back(client, rig) != "person"
 
