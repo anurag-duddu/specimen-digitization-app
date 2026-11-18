@@ -1921,6 +1921,82 @@ pilot labels write), `tests/test_date_months.py`,
 `tests/field_research/test_date_lines.py` and the three date tests at the end
 of `tests/field_research/test_experts.py`.
 
+## The catalogue number and the slide's QR code (2026-11-17)
+
+An engineering change of the autonomy program (lane V2b); the owner has not
+ruled on the barcode. It serves his words of 2026-11-17, "it is important to
+not make mistakes because people wont trust it", and of 2026-10-09, "I think
+our harness is not about only being strict, its about the process of
+figuring it out given the data at hand."
+
+The barcode label prints the catalogue number twice: as digits after
+"FMNHINS" and as a QR code (Model 2, version 1, numeric; the payload is the
+seven digits alone). The readers read the digits, about 12 pixels high on a
+scan, and misread them: in the last full test (`units-wp26-20261115`) two
+runs cleared 105526487 as 4486518 where its code says 4486618, and
+`marked:fmnh_ins_number:*:text_only` held 6 to 10 of 30 specimens a run.
+Lane V2 measured a decoder on the 100 slides of the truth set (off-repo
+notes, 2026-11-17): zxing-cpp 3.1.1 asked for QR Code Model 2 decoded 98, all
+equal to the truth, none wrong, and none wrong in 300,000 damaged synthetic
+codes once anything but QR Code Model 2 with exactly seven digits is refused
+(a looser setting found Micro QR codes in the damage). The repository's
+wrapper, whose resize differs from the one V2 used, decodes 97 of the 100,
+all equal to the truth.
+
+1. **Decoded once, in the segment step** (`application/barcode.py`,
+   `record`), on the specimen's canonical pixels: the whole image and a
+   grey, lightly stretched copy, each at its size and at twice and three
+   times it (a rung over 24 million pixels is skipped). A decode is accepted
+   only when every symbol of every rung is a valid QR Code Model 2 whose
+   text is exactly seven digits, all of them the same text. An accepted
+   decode is one evidence row on the run (kind `derived`, source `barcode`,
+   locator `check:barcode_decode`, on the label whose box holds the code
+   when one does); its excerpt names the number, the decoder and its
+   version and the first rung that decoded it, and its stored record every
+   symbol found, with its box, version, error-correction level and the
+   share of its error correction left unused. Anything else, a decoder
+   failure included, stores nothing and never fails the step: the run goes
+   on as it would have without a decoder. No network, no model.
+2. **Field research uses it for the catalogue number alone**
+   (`field_research/catalogue_code.py`, called by `step.apply_outcomes`
+   after the field's expert answer and its labels' settlement). The expert
+   is not told the decode, so the readers and the code stay two readings of
+   one printed number. A reader's numbers are the runs of five to nine
+   digits it writes as a number of their own, on the code's label when the
+   decode places it on one:
+   - a reader writes the code's number: that is the value, cleared; the code
+     is a source-class backing, so one reader or readers that agree with no
+     image (text_only) are enough;
+   - readers write another number, each alone: the code's number is the
+     value, cleared; each such reading is cited as contradicting it, the
+     value's reason names it as ruled out, and an info finding
+     `barcode_ruled_out:fmnh_ins_number` lists them. A note, not a hold;
+   - two or more readers of one label agree on another number: the code and
+     the readers disagree, and the field is ambiguous with both numbers as
+     its options, the warning finding
+     `marked:fmnh_ins_number:<label>:barcode_differs` (one of the run's
+     reasons) and a reason that says so. Not seen in the 100 slides;
+   - no reader writes a number: the code's number is the value;
+   - no stored decode, a field a person decided, or a run not on the units
+     path: nothing changes.
+   The value is the seven digits, as the field stores every catalogue
+   number. No other field and no other review rule changes; a run whose
+   readers name the code's label unresolved still goes to review for that
+   label (`unresolved_transcription`), as before.
+3. **On the last full test, replayed** (R0's method over the stored runs,
+   the decode attached as the segment step would store it): the
+   `marked:fmnh_ins_number` and `identifier_format` reasons go from 7 to 12
+   specimens a run to 0 or 1 (the two slides the wrapper does not decode),
+   the two wrong clearances of 105526487 become its code's 4486618, and no
+   catalogue number is newly wrong. Those two runs' value no reader wrote is
+   not raw-grounded, so that slide's barcode label is now held as
+   `unresolved_transcription` instead of clearing a wrong number.
+
+Tests: `tests/test_barcode.py` (codes made by zxing-cpp's encoder in the
+test; no museum image is committed) and
+`tests/field_research/test_catalogue_code.py` (each rule, and that a run
+with no code row, and every other field, settle exactly as before).
+
 ## Fields the label does not state (owner, 2026-10-09)
 
 The owner decided two cases in the schema session on 2026-10-09. On whether
