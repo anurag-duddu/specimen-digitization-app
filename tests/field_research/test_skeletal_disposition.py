@@ -92,12 +92,13 @@ def a_run():
 
 HOLDS = [
     "label_coverage_unconfirmed",
-    "language_conflicting:L2",            # a label's language rule (label_language_handling)
-    "raw_provenance_missing:L2",
-    "evidence_missing:habitat",
-    "evidence_does_not_support_value:habitat",
-    "raw_reading_grounding_unproved:habitat",
     "identifier_format",
+    f"evidence_missing:{CATALOGUE}",
+    f"evidence_does_not_support_value:{CATALOGUE}",
+    f"raw_reading_grounding_unproved:{CATALOGUE}",
+    f"pixel_lineage_missing:{CATALOGUE}",
+    "raw_provenance_missing:L1",           # the catalogue number is drawn from L1
+    "field_research_given_up",
     f"mandatory_unresolved:{CATALOGUE}",
     f"unsupported_parsed:{CATALOGUE}",
     f"marked:{CATALOGUE}:L1:text_only",
@@ -105,13 +106,9 @@ HOLDS = [
     "human_approval_required",
     "location_reassessment_unconfirmed:city",
     "lookup_operational_failure:country",
-    "research_incomplete:taxon",
     "unresolved_transcription:L1",          # the catalogue number is drawn from L1
     "independent_observations_missing:L1",
-    "unresolved_transcription:L3",          # no field is drawn from L3
-    "independent_observations_missing:L3",
     "evidence_lineage_invalid:e1",          # the ordinary path's
-    "pixel_lineage_missing:habitat",
     "institutional_policy_unapproved",
     "a_code_this_rule_does_not_know:habitat",
 ]
@@ -135,6 +132,15 @@ OPEN = [
     "marked:county:L2:place_within_settled_places",
     "unresolved_transcription:L2",          # only the habitat, optional, is drawn from L2
     "independent_observations_missing:L2",
+    "unresolved_transcription:L3",          # no field is drawn from L3
+    "independent_observations_missing:L3",
+    "raw_provenance_missing:L2",
+    "raw_provenance_missing:L3",
+    "evidence_missing:habitat",
+    "evidence_does_not_support_value:habitat",
+    "raw_reading_grounding_unproved:habitat",
+    "pixel_lineage_missing:habitat",
+    "research_incomplete:taxon",
 ]
 
 
@@ -150,23 +156,37 @@ def test_an_optional_fields_doubt_does_not_hold_the_record(reason):
 
 @pytest.mark.parametrize("reason", OPEN)
 def test_every_field_doubt_holds_where_its_field_is_mandatory(reason):
-    """Under the profile with every field mandatory, as before 2026-11-18, the same reasons all hold (the
-    determiner's IRN, optional there too, aside)."""
+    """Under the profile with every field mandatory, as before 2026-11-18, the same reasons hold, but for the
+    determiner's IRN (optional there too) and a label no field is drawn from (L3: nothing of it is in the
+    record)."""
     every = field_mechanics_profile().mandatory_fields
     holds, open_ = field_step.split_reasons(a_run(), [reason], mandatory=every)
-    assert (holds, open_) == (([], [reason]) if reason == "identified_by_irn_identity_unproved" else ([reason], []))
+    opened = reason == "identified_by_irn_identity_unproved" or reason.endswith(":L3")
+    assert (holds, open_) == (([], [reason]) if opened else ([reason], []))
 
 
-def test_a_label_whose_first_pass_was_given_up_holds_whatever_is_drawn_from_it():
-    run = a_run()
-    run.findings.append(RunFinding(rule_id="first_pass_given_up", rule_version="1", severity="warning",
-        reason_code="first_pass_given_up:L2:model_rate_limited"))
+def test_a_label_whose_first_pass_was_given_up_is_a_label_like_the_others():
+    """The coordinator's ruling of 2026-11-18: a given-up label holds only where the catalogue number is drawn
+    from it and the slide's code does not confirm it."""
     from specimen_digitization.application.first_pass import GIVEN_UP
 
-    run.findings[-1] = run.findings[-1].model_copy(update={"rule_id": GIVEN_UP})
-    assert "L2" in field_step.given_up_regions(run)
-    assert field_step.split_reasons(run, ["unresolved_transcription:L2"], mandatory=(CATALOGUE,)) == (
-        ["unresolved_transcription:L2"], [])
+    run = a_run()
+    for label in ("L1", "L2"):
+        run.findings.append(RunFinding(rule_id=GIVEN_UP, rule_version="1", severity="warning",
+            reason_code=f"first_pass_given_up:{label}:model_rate_limited"))
+    assert {"L1", "L2"} <= field_step.given_up_regions(run)
+    reasons = ["unresolved_transcription:L1", "unresolved_transcription:L2"]
+    assert field_step.split_reasons(run, reasons, mandatory=(CATALOGUE,)) == (reasons[:1], reasons[1:])
+    with_the_code(run)
+    assert field_step.split_reasons(run, reasons, mandatory=(CATALOGUE,)) == ([], reasons)
+
+
+def test_a_label_language_rule_is_a_label_doubt():
+    run = a_run()
+    run.label_language_handling = {"labels": [{"region_id": "L1", "reasons": ["language_conflicting"]},
+        {"region_id": "L2", "reasons": ["language_conflicting"]}]}
+    reasons = ["language_conflicting:L1", "language_conflicting:L2"]
+    assert field_step.split_reasons(run, reasons, mandatory=(CATALOGUE,)) == (reasons[:1], reasons[1:])
 
 
 def test_a_label_is_drawn_from_by_a_reading_or_a_cited_row_too():
@@ -182,6 +202,49 @@ def test_a_label_is_drawn_from_by_a_reading_or_a_cited_row_too():
     run.fields[CATALOGUE] = FieldValue(state=ValueState.SUPPORTED, literal="1", evidence_ids=["e3"])
     assert field_step.label_fields(run, "L3") == {"city", CATALOGUE}
     assert field_step.split_reasons(run, ["unresolved_transcription:L3"], mandatory=(CATALOGUE,))[0]
+
+
+def with_the_code(run, payload="0010001", *, decides=True):
+    """The slide's QR code stored on L1 (barcode.evidence_row's shape), deciding the catalogue number as
+    catalogue_code.settle's rule 1 leaves it, or not."""
+    from specimen_digitization.application import barcode
+
+    row = Evidence(kind=barcode.KIND, asset_id="a", region_id="L1", source=barcode.SOURCE, locator=barcode.LOCATOR,
+        excerpt=barcode.EXCERPT.format(field=CATALOGUE, payload=payload, decoder="zxing-cpp", version="3.1.1",
+            rung="whole"))
+    run.evidence.append(row)
+    if decides:
+        value = run.fields[CATALOGUE]
+        run.fields[CATALOGUE] = value.model_copy(update={"evidence_ids": [row.id],
+            "evidence_relations": {row.id: "decides"}})
+    return run
+
+
+def test_a_label_whose_catalogue_number_the_slide_code_confirms_holds_only_for_its_other_fields():
+    """105526522 in the stored runs: the code confirms the number; the readers of its label differ, and the label
+    also gives the collection code (optional). The number is the code's, read from the image, so the readers'
+    doubt touches only the optional field."""
+    run = with_the_code(a_run())
+    assert field_step.code_confirmed(run) == {CATALOGUE}
+    assert field_step.split_reasons(run, ["unresolved_transcription:L1"], mandatory=(CATALOGUE,)) == (
+        [], ["unresolved_transcription:L1"])
+    assert field_step.split_reasons(run, ["independent_observations_missing:L1"], mandatory=(CATALOGUE,)) == (
+        [], ["independent_observations_missing:L1"])
+
+
+@pytest.mark.parametrize("case", ["no-code", "code-not-deciding", "marked-differs", "marked-text-only"])
+def test_a_catalogue_number_the_code_does_not_confirm_keeps_its_label_s_hold(case):
+    """105526487 in the stored runs: the code contradicts the number (barcode_differs), which holds the record
+    by itself and keeps its label's reason holding too; so does a number with no code, or one the code row
+    does not decide."""
+    run = a_run() if case == "no-code" else with_the_code(a_run(), decides=case != "code-not-deciding")
+    if case.startswith("marked"):
+        why = "barcode_differs" if case == "marked-differs" else "text_only"
+        run.findings.append(RunFinding(rule_id=field_step.SETTLEMENT, rule_version="1", severity="warning",
+            field_key=CATALOGUE, reason_code=f"marked:{CATALOGUE}:L1:{why}"))
+    assert field_step.code_confirmed(run) == frozenset()
+    reasons = ["unresolved_transcription:L1", f"marked:{CATALOGUE}:L1:barcode_differs"]
+    assert field_step.split_reasons(run, reasons, mandatory=(CATALOGUE,)) == (reasons, [])
 
 
 def test_open_reasons_are_left_out_of_a_stored_run_while_empty():
@@ -240,8 +303,10 @@ SCENARIOS = {
     # The label the catalogue number is drawn from holds when its readers differ, whatever field they differ on.
     "readers-differ-on-the-catalogue-label": (readers_differ_on_the_collectors, Disposition.REVIEW),
     "catalogue-number-lacking": (catalogue_number_lacking, Disposition.REVIEW),
-    "country-request-too-large": (country_too_large, Disposition.REVIEW),
-    "country-expert-fell-back": (country_fallback, Disposition.REVIEW),
+    # The coordinator's ruling of 2026-11-18: an optional field research could not finish is that field's
+    # doubt; the field stays open with its reason.
+    "country-request-too-large": (country_too_large, Disposition.CLEARED),
+    "country-expert-fell-back": (country_fallback, Disposition.CLEARED),
 }
 
 
@@ -283,8 +348,8 @@ def test_the_published_profile_changes_only_which_reasons_hold(tmp_path, name, e
     _, skeletal = settled_under(tmp_path / "skeletal", scenario, published())
     assert comparable(skeletal) == comparable(every)
     holding, open_ = reasons(skeletal, skeletal.reasons), reasons(skeletal, skeletal.open_reasons)
-    incomplete = {r for r in holding if r.startswith(field_step.INCOMPLETE + ":")}
-    assert holding - incomplete | open_ == reasons(every, every.reasons)
+    incomplete = {r for r in open_ if r.startswith(field_step.INCOMPLETE + ":")}
+    assert holding | open_ - incomplete == reasons(every, every.reasons)
     assert not holding & open_
     assert skeletal.disposition == expected == (Disposition.CLEARED if not skeletal.reasons else Disposition.REVIEW)
     assert every.disposition == (Disposition.CLEARED if name == "everything-settles" else Disposition.REVIEW)
@@ -302,15 +367,35 @@ def test_a_label_with_only_the_catalogue_number_clears_with_every_other_field_bl
     assert {"taxonomy_unresolved", "mandatory_unresolved:taxon"} <= set(run.open_reasons)
 
 
-def test_a_field_research_could_not_finish_holds_through_refinalize_until_a_person_approves(tmp_path):
+def test_an_optional_field_research_could_not_finish_stays_open_with_its_reason(tmp_path):
+    """The coordinator's ruling of 2026-11-18: an optional field's failure or fallback is that field's doubt. The
+    field stays unresolved with a reason a reviewer reads; the reason is kept through refinalize."""
     _, run = settled_under(tmp_path, country_too_large, published())
-    assert run.reasons == ["research_incomplete:country"] and "mandatory_unresolved:country" in run.open_reasons
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert {"research_incomplete:country", "mandatory_unresolved:country"} <= set(run.open_reasons)
+    assert run.fields["country"].state == ValueState.UNRESOLVED
+    assert run.fields["country"].reason == field_step.FIELD_REASONS["input_too_large"]
     field_step.refinalize(run, today=TODAY)
-    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["research_incomplete:country"])
+    assert run.disposition == Disposition.CLEARED and "research_incomplete:country" in run.open_reasons
+
+
+def test_research_given_up_for_the_run_holds_through_refinalize_until_a_person_approves(tmp_path):
+    """FieldResearchStep.give_up: every field it would research fails as run_limit. That is the run not
+    finishing, not a field's doubt: field_research_given_up holds, also on a record whose catalogue number an
+    earlier attempt settled."""
+    _, run = settled_under(tmp_path, everything_settles, published())
+    assert run.disposition == Disposition.CLEARED
+    # The give-up's finalize: every field it would research (all but the catalogue number, settled earlier)
+    # fails as run_limit (FieldResearchStep.give_up).
+    field_step.finalize_fields(run, None, [FieldOutcome(key, None, failure="run_limit")
+        for key in published().optional_fields if key != "identified_by_irn"], today=TODAY)
+    assert run.fields[CATALOGUE].state == ValueState.SUPPORTED
+    assert run.reasons[0] == field_step.GIVEN_UP_REASON and run.disposition == Disposition.REVIEW
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, [field_step.GIVEN_UP_REASON])
     run.human_approved = True
     field_step.refinalize(run, today=TODAY)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
-    assert "mandatory_unresolved:country" in run.open_reasons
 
 
 def test_a_person_s_decision_and_coverage_still_hold_a_record_whose_optional_fields_are_open(tmp_path):

@@ -4552,23 +4552,28 @@ def _reason_fields(reason: str, fields: Mapping[str, FieldValue]) -> tuple[str, 
 
 
 # Which reasons hold the record (plan WP K1, the owner's ruling of 2026-11-18: "As long as the
-# mandatory ones are filled it should be cleared"). The kinds of reason that are a doubt about a
-# field's value: each is an optional field's doubt, which does not hold the record, when every
-# field it names is optional. Every other kind holds the record whatever field it names: label
-# coverage, a label's language rule, raw provenance, evidence and its grounding, the catalogue
-# number's format, a person's carried decision, approval or reassessment, an operational failure
-# or a field research could not finish (incomplete_reasons), and any code not listed here.
+# mandatory ones are filled it should be cleared"; the classification is the coordinator's rulings
+# of that date). Only these hold: the catalogue number not settled, marked, failing its format,
+# without evidence, or drawn from a label whose reading is in doubt and the slide's QR code does not
+# confirm it; label coverage; the record's evidence lineage and the profile's policy gates (the
+# ordinary path); research given up for the run as a whole (GIVEN_UP_REASON); and a person's pending
+# decision, approval or reassessment; and, failing closed, any code no rule below names. Every other
+# reason is an optional field's doubt, kept in run.open_reasons.
 FIELD_DOUBTS = frozenset({
     "mandatory_unresolved", "unsupported_parsed", "unsupported_normalized", "unsupported_authority_id",
     "identified_by_irn_identity_unproved", "taxonomy_unresolved", "elevation_invalid", "elevation_range",
     "elevation_units_conflict", "date_precision_requires_review", "date_order", "marked",
-    "unresolved_transcription", "independent_observations_missing", "taxonomy_lookup_missing",
+    "taxonomy_lookup_missing", "evidence_missing", "evidence_does_not_support_value",
+    "raw_reading_grounding_unproved", "pixel_lineage_missing", "research_incomplete",
 })
 # The field-doubt reasons with no field in their code that _reason_fields does not name: the
 # determiner's EMu identity, and the ordinary path's taxon lookup (policy.evaluate).
 DOUBT_FIELDS = {"identified_by_irn_identity_unproved": (IRN,), "taxonomy_lookup_missing": ("taxon",)}
-# The label reasons (`<code>:<label>`): they name the fields drawn from the label (label_fields).
+# The label reasons (`<code>:<label>`) about the label's reading; a label's language rule
+# (label_language_handling) is one too. They name the fields drawn from the label (label_fields).
 LABEL_DOUBTS = frozenset({"unresolved_transcription", "independent_observations_missing"})
+# A label reason about a reading's stored provenance: the slide's QR code does not stand in for it.
+LABEL_PROVENANCE = frozenset({"raw_provenance_missing"})
 
 
 def label_fields(run, region_id: str) -> frozenset[str]:
@@ -4582,32 +4587,54 @@ def label_fields(run, region_id: str) -> frozenset[str]:
         or any(item in rows for item in value.evidence_ids)))
 
 
+def language_codes(run) -> frozenset[str]:
+    """The codes a label's language rule gives (label_language_handling: `<reason>:<label>`)."""
+    return frozenset(reason for label in (getattr(run, "label_language_handling", None) or {}).get("labels", [])
+        for reason in label.get("reasons", ()))
+
+
+def code_confirmed(run) -> frozenset[str]:
+    """The catalogue number, when the slide's QR code confirms it (catalogue_code.settle, rule 1): the
+    run's one stored code row decides its supported value and no mark is left on the field. Else
+    nothing."""
+    from specimen_digitization.application.barcode import FIELD, stored_code
+
+    code = stored_code(run)
+    value = run.fields.get(FIELD)
+    if (code is None or value is None or value.state != ValueState.SUPPORTED
+            or value.evidence_relations.get(code.row.id) != "decides"
+            or any(code_.startswith(f"marked:{FIELD}:") for code_ in marked_reasons(run))):
+        return frozenset()
+    return frozenset({FIELD})
+
+
 def split_reasons(run, reasons: Sequence[str], *, mandatory: Iterable[str]) -> tuple[list[str], list[str]]:
     """The reasons that hold the record, and the optional fields' doubts that do not (plan WP K1).
 
-    A reason of a kind in FIELD_DOUBTS is an optional field's doubt when every field it names is
-    optional: `<code>:<field>` and `marked:<field>:...` name theirs, the record-level ones theirs
-    (_reason_fields), the determiner's identity and the ordinary path's taxon lookup theirs
-    (DOUBT_FIELDS), and a label's
-    reason the fields drawn from the label (label_fields). A label's reason holds when a mandatory
-    field is drawn from it, and when no field is drawn from it (what the label writes is not
-    known, so neither are the fields it touches); `unresolved_transcription` always holds on a
-    label whose first pass was given up (a fallback, not a doubt). A field-doubt reason that names
-    no field holds (fail closed). The fields are not touched: an open optional field keeps its
-    state, value, marks and findings."""
+    A reason of a kind in FIELD_DOUBTS names its fields: `<code>:<field>` and `marked:<field>:...`
+    theirs, the record-level ones theirs (_reason_fields), the determiner's identity and the
+    ordinary path's taxon lookup theirs (DOUBT_FIELDS); it holds when one of them is mandatory and
+    is an optional field's doubt otherwise; one that names no field holds (fail closed). A label's
+    reason (LABEL_DOUBTS, a language rule's, LABEL_PROVENANCE) names the fields drawn from the
+    label (label_fields): it holds when a mandatory field is drawn from it, less, for a doubt about
+    the reading, a catalogue number the slide's QR code confirms (code_confirmed); a label no field
+    is drawn from gives the record nothing, so its doubt holds nothing, and a label whose first pass
+    was given up is a label like the others. Every other code holds. The fields are not touched: an
+    open optional field keeps its state, value, marks, findings and reason."""
     mandatory = frozenset(mandatory)
-    given_up = given_up_regions(run)
+    language = language_codes(run)
     holds, open_ = [], []
     for reason in reasons:
         code, _, rest = reason.partition(":")
-        if code not in FIELD_DOUBTS:
+        if code in LABEL_DOUBTS or code in LABEL_PROVENANCE or code in language:
+            keys = label_fields(run, rest)
+            if code not in LABEL_PROVENANCE:
+                # The catalogue number the slide's QR code confirms is not the readers' doubt: the
+                # code, read from the image, decides it (catalogue_code, rule 1).
+                keys -= code_confirmed(run)
+        elif code not in FIELD_DOUBTS:
             holds.append(reason)
             continue
-        if code in LABEL_DOUBTS:
-            keys = label_fields(run, rest)
-            if not keys or code == "unresolved_transcription" and rest in given_up:
-                holds.append(reason)
-                continue
         elif code in DOUBT_FIELDS:
             keys = frozenset(DOUBT_FIELDS[code])
         else:
@@ -4687,10 +4714,13 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
         human += [f"preserved_human_decision:{key}" for key in sorted(human_keys(run) & set(work))]
     # An optional field's doubt does not hold the record (plan WP K1): it is kept beside the
     # reasons, and the field keeps its state, value and marks.
+    earlier = (*run.reasons, *run.open_reasons)
     human, run.open_reasons = split_reasons(run, list(dict.fromkeys(human)), mandatory=profile.mandatory_fields)
     by_key = {outcome.key: outcome for outcome in outcomes}
-    # An optional field research could not finish is held: a failure, not a doubt (plan WP K1).
-    human += incomplete_reasons(run, profile, work, by_key)
+    # An optional field research could not finish is that field's doubt; research given up for the
+    # run as a whole holds the record (plan WP K1, the coordinator's rulings of 2026-11-18).
+    run.open_reasons = [*run.open_reasons, *incomplete_reasons(run, profile, work, by_key, earlier)]
+    human = [*given_up_reason(run, by_key, earlier), *human]
     failures = [by_key[key].failure for key in work if work[key] == FAILED]
     if failures:
         operational = [f"{RETRYABLE[by_key[key].failure][0]}:{key}" for key in work if work[key] == FAILED]
@@ -4706,30 +4736,46 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
 
 
 APPROVAL = "human_approval_required"
-# An optional field research could not finish (incomplete_reasons): it holds the record.
+# An optional field research could not finish (incomplete_reasons): an optional field's doubt.
 INCOMPLETE = "research_incomplete"
+# Research given up for the run as a whole (FieldResearchStep.give_up): it holds the record.
+GIVEN_UP_REASON = GIVEN_UP
 
 
 def incomplete_reasons(run, profile: CollectionProfile, work: Mapping[str, str],
-        by_key: Mapping[str, FieldOutcome]) -> list[str]:
+        by_key: Mapping[str, FieldOutcome], earlier: Sequence[str] = ()) -> list[str]:
     """`research_incomplete:<field>` for each optional field research could not finish, in the
     profile's order: this attempt left it for a person after a failure (a limit, a spent budget,
     a request too large, or a source still unreachable or a deadline on the step's last attempt,
     FIELD_REASONS) or on its expert's fallback (FieldOutcome.fallback); and a field an earlier
     finalize named so, which this attempt did not research again, while it is still not supported
-    and no person has decided it. None once a person has approved the record. A mandatory field
-    research could not finish holds the record by its own mandatory_unresolved reason instead.
-    Plan WP K1: an optional field's doubt does not hold the record, a failure does."""
+    and no person has decided it (`earlier`: the reasons before this finalize). An optional field's doubt (split_reasons): it is kept in
+    run.open_reasons so the app can say why the field is open, and holds nothing. A mandatory
+    field research could not finish holds the record by its mandatory_unresolved reason."""
     if run.human_approved:
         return []
     mandatory = frozenset(profile.mandatory_fields)
     now = {key for key, outcome in by_key.items()
         if work.get(key) == WAITING_HUMAN and (outcome.failure is not None or outcome.fallback)}
-    before = {reason.partition(":")[2] for reason in run.reasons if reason.startswith(INCOMPLETE + ":")}
+    before = {reason.partition(":")[2] for reason in earlier if reason.startswith(INCOMPLETE + ":")}
     persons = human_keys(run)
     kept = {key for key in before - set(by_key) if key not in persons
         and (run.fields.get(key) or FieldValue()).state != ValueState.SUPPORTED}
     return [f"{INCOMPLETE}:{key}" for key in field_keys(profile) if key in now | kept and key not in mandatory]
+
+
+def given_up_reason(run, by_key: Mapping[str, FieldOutcome], earlier: Sequence[str] = ()) -> list[str]:
+    """GIVEN_UP_REASON when research was given up for the run as a whole: this finalize is the
+    step's give_up (every field it researched failed as run_limit, the run's own limits leaving no
+    room for another attempt), or an earlier finalize said so and this one researched nothing
+    (refinalize). A field's own failure or fallback, a spent per-field or per-specimen meter among
+    them, is that field's doubt instead (incomplete_reasons). None once a person approves."""
+    if run.human_approved:
+        return []
+    researched = [outcome for outcome in by_key.values() if not outcome.finalized_without_model]
+    if researched:
+        return [GIVEN_UP_REASON] if all(outcome.failure == "run_limit" for outcome in researched) else []
+    return [GIVEN_UP_REASON] if GIVEN_UP_REASON in earlier else []
 
 
 def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: date | None = None) -> None:

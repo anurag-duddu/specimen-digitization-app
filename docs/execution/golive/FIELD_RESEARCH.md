@@ -2739,15 +2739,34 @@ owner's words of that date in [`PLAN.md`](PLAN.md) section 2.1, "Skeletal
 records"): the `no_specimen_value` reason is removed, and only the catalogue
 number is mandatory. `step.scientific_reasons` still gives every reason above,
 for every field a label writes; `step.split_reasons` then decides which hold
-the record. A label's `unresolved_transcription` or
-`independent_observations_missing` holds when the catalogue number is drawn
-from the label, when no field is drawn from it, or (the first) when its first
-pass was given up; on a label only optional fields are drawn from it is kept in
-`run.open_reasons` and the record can clear. The same holds for every reason
-about an optional field's value (unresolved, ambiguous, marked, unsupported
-layers, the taxon, the dates and elevations). An optional field research
-could not finish (`research_incomplete:<field>`, `step.incomplete_reasons`)
-holds. No field's state, value, marks or findings change.
+the record, and every other reason is kept in `run.open_reasons`. The classification is the coordinator's rulings of 2026-11-18 (the coordinator's words, not the owner's): an optional field the system failed to resolve is that field's doubt, it is the field that waits for a person, not the record; a label no field is drawn from holds nothing, except the label the catalogue number is drawn from; and only these hold: the catalogue number not settled, marked, failing its format, or drawn from a label whose reading is in doubt that the slide's QR code does not confirm; label coverage; missing provenance or evidence for the record as a whole; a run that did not finish; and a person's pending decision or approval.
+Research given up for the run as a whole is the step's `give_up` (every field
+it would research fails as `run_limit`, the run's own limits leaving no room for
+another attempt): it holds as `field_research_given_up`. A field's own failure
+or fallback, a spent per-field or per-specimen meter among them, is that field's
+`research_incomplete:<field>`. No field's state, value, marks or findings change.
+
+| Reason code | Holds the record? |
+|---|---|
+| `label_coverage_unconfirmed` | holds |
+| `mandatory_unresolved:fmnh_ins_number` (no settled catalogue number, its research failed included) | holds |
+| `marked:fmnh_ins_number:<label>:<why>` (`text_only`, `conflict`, `parts_on_labels`, `barcode_differs`, a check-stage rule) | holds |
+| `identifier_format` | holds |
+| `unsupported_parsed`, `unsupported_normalized`, `unsupported_authority_id`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing` on `fmnh_ins_number` | holds |
+| `unresolved_transcription:<label>`, `independent_observations_missing:<label>`, a label's language rule `<reason>:<label>` | holds when the catalogue number is drawn from the label and the slide's QR code does not confirm it; otherwise (a label only optional fields are drawn from, a label no field is drawn from, a label whose first pass was given up) an optional field's doubt |
+| `raw_provenance_missing:<label>` | holds when the catalogue number is drawn from the label (the code does not stand in for a missing raw reading); otherwise an optional field's doubt |
+| the field codes above on an optional field (`mandatory_unresolved`, `unsupported_*`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing`, `marked`) | an optional field's doubt |
+| `research_incomplete:<optional field>` (new: a failure, a limit, a spent per-field or per-specimen meter, a request too large, an outage or deadline on the last attempt, or the expert's fallback) | an optional field's doubt; the field keeps its own reason (`FIELD_REASONS`) |
+| `taxonomy_unresolved`, `identified_by_irn_identity_unproved` | an optional field's doubt |
+| `elevation_invalid`, `elevation_range`, `elevation_units_conflict`, `date_precision_requires_review`, `date_order` | an optional field's doubt |
+| `field_research_given_up` (new: research given up for the run as a whole, `FieldResearchStep.give_up`) | holds |
+| `preserved_human_decision:<field>`, `human_approval_required`, `location_reassessment_unconfirmed:<field>` | holds |
+| an operational failure (`lookup_operational_failure`, `field_research_model_error`, `field_research_timeout` `:<field>`, the blocker) | holds: the run is blocked, as before |
+| `evidence_integrity_failure` | never a reason: the step blocks, as before |
+| ordinary path: `institutional_policy_unapproved`, `mandatory_semantics_unconfirmed`, `evidence_lineage_invalid:<row>`, its capability reason | holds |
+| ordinary path: `taxonomy_lookup_missing` | an optional field's doubt |
+| `no_specimen_value` | removed |
+| any other code | holds (fail closed; no code produced today falls here) |
 
 A field cleared as not on the label, or a taxon cleared as unmatched, is
 reopened like any other field with Correct value: the reviewer's value is

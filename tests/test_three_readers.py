@@ -199,7 +199,8 @@ def test_a_label_left_with_one_reading_is_unmeasured(tmp_path):
         "policy_blocked",
         ["independent_pair_incomplete"],
     )
-    assert any(r.startswith("independent_observations_missing") for r in work["run"]["reasons"])
+    # Plan WP K1 (2026-11-18): a label nothing is drawn from keeps its doubt in open_reasons; the record is held by the catalogue number's own reason.
+    assert any(r.startswith("independent_observations_missing") for r in [*work["run"]["reasons"], *work["run"].get("open_reasons", [])])
 
 
 @pytest.mark.parametrize("alternate", [None, "taxon: different"], ids=["agree", "differ"])

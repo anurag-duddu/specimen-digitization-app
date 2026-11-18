@@ -115,7 +115,10 @@ def test_a_second_label_whose_readers_differ_keeps_the_reason(tmp_path, monkeypa
     keeps unresolved_transcription, as on main."""
     rig, run = noted(tmp_path, monkeypatch, *texts)
     region = second_region(run)
-    assert transcription(run, region) in run.reasons and run.disposition == Disposition.REVIEW
+    # Plan WP K1, the coordinator's ruling of 2026-11-18: a label no field is drawn from gives the record
+    # nothing, so its readers' doubt holds nothing; it is kept in open_reasons. Every field drawn from
+    # the first label settles, so the record clears.
+    assert transcription(run, region) in run.open_reasons and run.disposition == Disposition.CLEARED
 
 
 def test_a_label_whose_readers_differ_on_a_fields_literal_keeps_the_reason(tmp_path):
@@ -137,7 +140,11 @@ def test_a_label_whose_first_pass_was_given_up_keeps_the_reason(tmp_path, monkey
     rig, run = noted(tmp_path, monkeypatch, CASE_A, CASE_B, refused=True)
     region = second_region(run)
     assert region in field_step.given_up_regions(run)
-    assert transcription(run, region) in run.reasons and run.disposition == Disposition.REVIEW
+    # Plan WP K1, the coordinator's ruling of 2026-11-18: a given-up label is a label like the others. The
+    # second, which no field is drawn from, is kept in open_reasons; the first, given up too and the one the
+    # catalogue number is drawn from (no slide code here), holds the record.
+    assert transcription(run, region) in run.open_reasons and run.disposition == Disposition.REVIEW
+    assert transcription(run, run.regions[0].id) in run.reasons
 
 
 def test_a_label_one_reader_read_keeps_the_reason(tmp_path, monkeypatch):
@@ -146,7 +153,10 @@ def test_a_label_one_reader_read_keeps_the_reason(tmp_path, monkeypatch):
     rig, run = noted(tmp_path, monkeypatch, NOTE_A, "")
     region = second_region(run)
     assert [r.text for r in field_step.run_readings(run) if r.region_id == region] == [NOTE_A]
-    assert transcription(run, region) in run.reasons and run.disposition == Disposition.REVIEW
+    # Plan WP K1, the coordinator's ruling of 2026-11-18: a label no field is drawn from gives the record
+    # nothing, so its readers' doubt holds nothing; it is kept in open_reasons. Every field drawn from
+    # the first label settles, so the record clears.
+    assert transcription(run, region) in run.open_reasons and run.disposition == Disposition.CLEARED
 
 
 @pytest.mark.parametrize("texts", [("Malaise trap\nslide 2", "slide 2"), ("Malaise trap\nslide 2", "Malaise trep\nslide 2"),
@@ -164,7 +174,10 @@ def test_a_label_whose_readers_write_a_cleared_fields_text_keeps_the_reason(tmp_
     allowed = field_step.not_on_label_keys(field_step.profile_of(run))
     evidence = {item.id: item for item in run.evidence}
     assert field_step.not_on_label("collection_method", run.fields["collection_method"], run, evidence, allowed)
-    assert transcription(run, region) in run.reasons and run.disposition == Disposition.REVIEW
+    # The method stays cleared as not on the label, as before; the second label's doubt that guarded that
+    # absence no longer holds the record (plan WP K1, the coordinator's ruling of 2026-11-18 on a label no
+    # field is drawn from): it is kept in open_reasons.
+    assert transcription(run, region) in run.open_reasons and run.disposition == Disposition.CLEARED
 
 
 # ---- (ii) mandatory_unresolved on a field settled absent ------------------------------------------

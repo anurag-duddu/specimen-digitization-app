@@ -224,7 +224,8 @@ def ended_without_its_reading(run, tmp_path, attempts, requests=1):
     assert calls(tmp_path, run) == attempts * requests
     # Only the other reader's observation exists, once; never a duplicate.
     assert [o.route_id for o in run.observations] == [run.profile.routes[0]]
-    assert f"independent_observations_missing:{run.regions[0].id}" in run.reasons
+    # Plan WP K1 (2026-11-18): a label nothing is drawn from keeps its doubt in open_reasons; the record is held by the catalogue number's own reason.
+    assert f"independent_observations_missing:{run.regions[0].id}" in [*run.reasons, *run.open_reasons]
 
 
 # Each way a reader can end other than with an answer. A 429, a 5xx, a provider
@@ -364,8 +365,10 @@ def test_both_readers_failing_still_ends_in_review(tmp_path, monkeypatch):
     assert run.observations == []
     assert [run.attempts[step_of(run, i)] for i in (0, 1)] == [3, 3]
     region = run.regions[0].id
-    assert f"independent_observations_missing:{region}" in run.reasons
-    assert f"unresolved_transcription:{region}" in run.reasons
+    # Plan WP K1 (2026-11-18): a label nothing is drawn from keeps its doubt in open_reasons; the record is held by the catalogue number's own reason.
+    assert f"independent_observations_missing:{region}" in [*run.reasons, *run.open_reasons]
+    # Plan WP K1 (2026-11-18): a label nothing is drawn from keeps its doubt in open_reasons; the record is held by the catalogue number's own reason.
+    assert f"unresolved_transcription:{region}" in [*run.reasons, *run.open_reasons]
     [transcript] = run.transcripts
     assert (transcript.text, transcript.resolved, transcript.observation_ids) == (
         None,

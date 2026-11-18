@@ -260,6 +260,8 @@ const Map<String, String> _researchStops = <String, String>{
       'Field research stopped because the model gave no usable answer',
   'field_research_timeout':
       'Field research ran out of time before every field was checked',
+  'field_research_given_up':
+      'Field research stopped at a processing limit before every field was checked',
 };
 
 const Map<String, String> _operatorMessages = <String, String>{

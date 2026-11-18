@@ -114,4 +114,5 @@ def test_a_reader_stopped_by_its_token_limits_ends_its_reading_not_the_run(
         routes[1 - stopped_index]
     ]
     assert run["stage"] == "finalized" and work["disposition"] == Disposition.REVIEW
-    assert f"independent_observations_missing:{region}" in run["reasons"]
+    # Plan WP K1 (2026-11-18): a label nothing is drawn from keeps its doubt in open_reasons; the record is held by the catalogue number's own reason.
+    assert f"independent_observations_missing:{region}" in [*run["reasons"], *run.get("open_reasons", [])]

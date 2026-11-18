@@ -104,7 +104,8 @@ def test_three_first_pass_refusals_give_up_and_the_record_goes_to_review(
     assert given_up_findings(run) == [
         (GIVEN_UP, "warning", f"{GIVEN_UP}:{region}:model_rate_limited")
     ]
-    assert f"unresolved_transcription:{region}" in run.reasons
+    # Plan WP K1 (2026-11-18): a label nothing is drawn from keeps its doubt in open_reasons; the record is held by the catalogue number's own reason.
+    assert f"unresolved_transcription:{region}" in [*run.reasons, *run.open_reasons]
     # Every refusal, the last one too, cost nothing (#311).
     calls = [c for c in run.paid_calls if c["step"] == step]
     assert ledger_rows(calls) == [
@@ -115,7 +116,10 @@ def test_three_first_pass_refusals_give_up_and_the_record_goes_to_review(
     # The record's summary: a completed run waiting for a person.
     record = summary(workflow.repository.get(principal.scope, ident))
     assert (record["status"], record["disposition"]) == ("completed", "needs_human_review")
-    assert f"unresolved_transcription:{region}" in record["reason_codes"]
+    # Plan WP K1 (2026-11-18): the summary's reason codes are the ones that hold the record (the catalogue
+    # number's); the given-up label's doubt is in the run's open_reasons, above.
+    assert "mandatory_unresolved:fmnh_ins_number" in record["reason_codes"]
+    assert f"unresolved_transcription:{region}" not in record["reason_codes"]
 
 
 def test_a_first_pass_refused_once_then_answered_is_decided_as_before(tmp_path, monkeypatch):
@@ -227,7 +231,8 @@ def test_a_first_pass_given_up_on_a_provider_error_stays_reserved_and_names_its_
     assert given_up_findings(run) == [
         (GIVEN_UP, "warning", f"{GIVEN_UP}:{region}:model_provider_error")
     ]
-    assert f"unresolved_transcription:{region}" in run.reasons
+    # Plan WP K1 (2026-11-18): a label nothing is drawn from keeps its doubt in open_reasons; the record is held by the catalogue number's own reason.
+    assert f"unresolved_transcription:{region}" in [*run.reasons, *run.open_reasons]
     calls = [c for c in run.paid_calls if c["step"] == step]
     reserved = step_reservation(run, step)
     assert 0 < reserved < FIRST_PASS_RESERVATION

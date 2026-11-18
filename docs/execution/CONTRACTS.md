@@ -124,11 +124,13 @@ value", as the code always meant). The workspace response carries it inside
 `run`; the summary's `reason_codes` and `disposition` carry only the reasons
 that hold the record, so a cleared record can have open optional fields. The
 key is omitted while the list is empty, so older snapshots keep their bytes,
-and older clients ignore it. One new holding code: `research_incomplete:<field>`,
-an optional field research could not finish (a limit, a request too large, an
-outage or a deadline on the step's last attempt, or its expert's fallback); it
-holds the record until the field is settled, a person decides it, or a person
-approves the record. `no_specimen_value` is no longer produced.
+and older clients ignore it. Two new codes: `research_incomplete:<field>`, an
+optional field research could not finish (a failure, a limit, a spent meter, a
+request too large, an outage or deadline on the last attempt, or its expert's
+fallback), kept in `open_reasons` while the field is not supported and no
+person has decided it; and `field_research_given_up`, research given up for
+the run as a whole, which holds the record (in `reason_codes`) until a person
+approves it. `no_specimen_value` is no longer produced.
 
 ### Bulk decisions
 

@@ -98,7 +98,7 @@ fields already on the not-on-the-label list (C1, C4a, C4b and C4c wait: section 
 | C3's not-on-the-label release (dropped) | A drawn field cleared as not on the label, or waiting for a held source, no longer holding its label. | | G51's round 1 on #451: on one label whose readers differ ("Malaise trap" against "Malaise trep", left out or capitals; "Cook Co." against "Cock Co."; "Chicago" against "Chicaqo"), with the county, city or method cleared as not on the label against an organiser text, the label's reason was the one hold, and the head cleared the record (7 of 7; main held). The step cannot tell from its data whether a reader difference touches the text an absence was reached against, so the release is dropped and these cases are tests that stay held. |
 | A1 who cleared a record (PR #450) | The coordinator's rule change 3, its first part: the specimen list, detail, workspace and decision responses carry additive `cleared_by` (`person`, `system` or null), derived on each read from the stored `run.human_approved`; the app shows "Approved by a person" (green) and "Cleared by system" (the model treatment), and a cleared record whose server does not say stays "Cleared", not green. A standing approval is withdrawn by a person's later decision on the record (a field, transcription, authority, taxonomy, metadata or research-candidate decision), whether or not it changes a value, as before this change; and by the value test, wherever a disposition is decided, when the values differ from those recorded at the approval. A system step that leaves the values as approved (a retry, resume, recovery, reconcile or reassessment, or research that writes the same values again) keeps it. `approve` records the digest (`run.approved_values_sha256`) and `lane.settle_approval` applies the value test; an approval with no digest (before this change) stands. Follow-up: tell the reviewer why the record still waits after approving, when the approval's own finalize derives a value and withdraws it. Not in scope: which records clear, the audit sample, showing a reviewer only the open fields, queue sorting or new tabs. | `application/lane.py`, `api.py`, `search.py`, `domain.py` (one optional key), `policy.py`, `field_research/step.py`, the research harness's two canonical materializations, the `SpecimenSearch` view and `SearchSpecimens` (one nullable last column), the app's `specimen_status.dart`, `models.dart`, the queue row, the record screen and the glossary, design 02, 03 and 09, CONTRACTS.md, DATA_SEARCH.md | Fail-first tests per change: the field on both list paths and the detail; an approval ended by each writer that changes a value (research after a retry, resume or reassessment, the drain's recovery, a derivation in the recheck, a person's edit) and kept by a retry, resume or reconcile that changes none, by research writing the identical value, and when it has no digest; widget tests for each chip; no golden changed. Residual risk stated in CONTRACTS.md: a stored non-boolean, which no writer produces, reads null on the list and the model's coercion on the detail (production, read-only, 2026-11-17: 33 of 33 snapshots hold a JSON boolean). |
 | V2b the catalogue number from the slide's QR code | An engineering change (the owner has not ruled on the barcode). The segment step decodes the slide's QR code once (zxing-cpp 3.1.1, QR Code Model 2 only, exactly seven digits, one payload on every rung of a fixed ladder; never fails the step) and stores an accepted decode as one evidence row. Field research compares the code with `fmnh_ins_number`'s settled value, after the expert's answer, and changes no value layer. It confirms (no text_only mark) when all three hold: the value's literal writes the code whole (on its letters and numbers alone, no numeric character beside the seven digits); a reading of the code's label holds that literal at an occurrence with no number beside it; the value's parsed and normalized layers are supported without the code. A value whose literal does not write the code whole stays and is held (`marked:fmnh_ins_number:<label>:barcode_differs`, worded in the app). Otherwise, an open field or a person's transcript on any label included, nothing changes. An exception inside the comparison is logged and the field is put back. **Breaking a tie on the code is not shipped**: any later attempt must hold Codex's cases on #452 (a candidate clipped from a longer number, a Unicode or superscript digit beside the code, an invisible separator, a date joined across a line break, a spaced number that made research fail), and should compare the code with the first pass's reading units for the catalogue number (a whole unit's text), not search the raw text. | `application/barcode.py`, `workflow.py` (segment), `field_research/catalogue_code.py`, `step.apply_outcomes`, `pyproject.toml`, `uv.lock`, the app's `blockers.dart` and `settlement_codes.dart` (the new reason's words) | Lane V2's measurement (98 of 100 real slides decoded, all equal to the truth, none wrong; none wrong in 300,000 damaged synthetic codes); this wrapper decodes 97 of 100, all equal to the truth. Fail-first tests per rule; a run with no code row and every other field settle as before. Replay over wp26's 120 specimen-runs: catalogue numbers newly wrong 0, 104 values confirmed, the two wrong clearances of 105526487 now held, open fields left open, `marked:fmnh_ins_number` on 0 to 2 specimens a run (from 6 to 10). Not in scope: the expert's brief, any other field, any other review rule. Residual risk: a slide whose QR code holds seven digits that are not its catalogue number (another institution's code) would hold a correctly settled number (`barcode_differs`); and where the readers also wrote the code's digits as the number, it confirms that wrong number (removing a text_only or conflict mark). This is the stated residual risk; none of the 100 truth slides carries such a code. |
-| K1 skeletal records (this pull request) | The owner's ruling of 2026-11-18 (section 1, quoted there). **The profile**: `zoology_insects_slides` 1.0.0 makes `fmnh_ins_number` its only mandatory field; the nineteen others are optional, in the same order, then `identified_by_irn` (edited in place, as every earlier change to this profile was; a run keeps the profile it was bound with until Retry, Resume or Reprocess binds it again). **The disposition**: every field a label writes is still checked and gets the same reasons as before (`policy.checked_fields`, `step.finalize_fields`); `step.split_reasons` then keeps an optional field's doubt in the new additive `run.open_reasons` and lets the record clear; the classification of every reason code is below. **A failure is not a doubt**: `research_incomplete:<field>` holds the record for an optional field research could not finish (a failure, or its expert's fallback), through refinalize, until the field settles, a person decides it or approves the record. **Removed**: S1's `no_specimen_value` guard (the coordinator added it on 2026-11-17; the owner's "Where there is no field related data on the lable, nothing to do, it will get cleared" removes it). The ordinary path (`policy.finalize`) splits the same way. No field's state, value, marks or findings change. | `application/profiles/published.json`, `field_research/step.py`, `application/policy.py`, `application/harness.py` (the extraction request lists the same fields as before), `application/domain.py` (one optional key), the app's `blockers.dart` (one reason's words added, one removed), PRD QUE-002 and 12.4, golive PLAN 2.1/G19/stage 8/4.2, FIELD_RESEARCH.md, CONTRACTS.md | Unit tests: each reason kind classified both ways; the published profile against the profile with every field mandatory, field for field, the same reasons split; a label with only the catalogue number clears; a failure holds through refinalize. The field-mechanics tests (`test_step.py`'s rig and the files built on it) run on the profile with every field mandatory (`test_step.field_mechanics_profile`), so every pinned case, the "expert wrong" ones included, keeps its field held or marked exactly as before. Replay over the 100 truth slides below. |
+| K1 skeletal records (this pull request) | The owner's ruling of 2026-11-18 (section 1, quoted there). **The profile**: `zoology_insects_slides` 1.0.0 makes `fmnh_ins_number` its only mandatory field; the nineteen others are optional, in the same order, then `identified_by_irn` (edited in place, as every earlier change to this profile was; a run keeps the profile it was bound with until Retry, Resume or Reprocess binds it again). **The disposition**: every field a label writes is still checked and gets the same reasons as before (`policy.checked_fields`, `step.finalize_fields`); `step.split_reasons` then keeps an optional field's doubt in the new additive `run.open_reasons` and lets the record clear; the classification of every reason code is below. **Failures**: an optional field research could not finish (a failure or its expert's fallback) is that field's doubt, `research_incomplete:<field>` in `open_reasons`; research given up for the run as a whole holds (`field_research_given_up`); a label no field is drawn from holds nothing (the coordinator's rulings of 2026-11-18). **Removed**: S1's `no_specimen_value` guard (the coordinator added it on 2026-11-17; the owner's "Where there is no field related data on the lable, nothing to do, it will get cleared" removes it). The ordinary path (`policy.finalize`) splits the same way. No field's state, value, marks or findings change. | `application/profiles/published.json`, `field_research/step.py`, `application/policy.py`, `application/harness.py` (the extraction request lists the same fields as before), `application/domain.py` (one optional key), the app's `blockers.dart` (one reason's words added, one removed), PRD QUE-002 and 12.4, golive PLAN 2.1/G19/stage 8/4.2, FIELD_RESEARCH.md, CONTRACTS.md | Unit tests: each reason kind classified both ways; the published profile against the profile with every field mandatory, field for field, the same reasons split; a label with only the catalogue number clears; research given up for the run holds through refinalize; an optional field's failure stays open with its reason. The field-mechanics tests (`test_step.py`'s rig and the files built on it) run on the profile with every field mandatory (`test_step.field_mechanics_profile`), so every pinned case, the "expert wrong" ones included, keeps its field held or marked exactly as before. Replay over the 100 truth slides below. |
 
 The owner's ruling of 2026-11-18, typed in session f9614090 (quoted exactly):
 
@@ -116,59 +116,66 @@ database should be:" and twenty fields) stays the list of fields the record carr
 
 ### K1: which reasons hold the record (`step.split_reasons`)
 
+The classification is the coordinator's rulings of 2026-11-18 (the coordinator's words, not the owner's): an optional field the system failed to resolve is that field's doubt, it is the field that waits for a person, not the record; a label no field is drawn from holds nothing, except the label the catalogue number is drawn from; and only these hold: the catalogue number not settled, marked, failing its format, or drawn from a label whose reading is in doubt that the slide's QR code does not confirm; label coverage; missing provenance or evidence for the record as a whole; a run that did not finish; and a person's pending decision or approval.
+
 | Reason code | Holds the record? |
 |---|---|
 | `label_coverage_unconfirmed` | holds |
-| a label's language rule, `<reason>:<label>` | holds |
-| `raw_provenance_missing:<label>` | holds |
-| `unresolved_transcription:<label>` | holds when the label's first pass was given up, the catalogue number is drawn from it, or no field is drawn from it; otherwise an optional field's doubt |
-| `independent_observations_missing:<label>` | holds when the catalogue number or no field is drawn from the label; otherwise an optional field's doubt |
-| `mandatory_unresolved:<field>` | holds for the catalogue number; an optional field's doubt otherwise |
-| `unsupported_parsed`, `unsupported_normalized`, `unsupported_authority_id` `:<field>` | holds for the catalogue number; an optional field's doubt otherwise |
-| `marked:<field>:<label>:<why>` (`text_only`, `conflict`, `parts_on_labels`, a check-stage rule) | holds for the catalogue number; an optional field's doubt otherwise |
+| `mandatory_unresolved:fmnh_ins_number` (no settled catalogue number, its research failed included) | holds |
+| `marked:fmnh_ins_number:<label>:<why>` (`text_only`, `conflict`, `parts_on_labels`, `barcode_differs`, a check-stage rule) | holds |
 | `identifier_format` | holds |
-| `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved` `:<field>` | holds, whatever the field |
-| `taxonomy_unresolved` | an optional field's doubt |
-| `identified_by_irn_identity_unproved` | an optional field's doubt |
-| `elevation_invalid:<unit>`, `elevation_range:<unit>`, `elevation_units_conflict:<end>` | an optional field's doubt |
-| `date_precision_requires_review`, `date_order` | an optional field's doubt |
-| `research_incomplete:<field>` (new) | holds |
-| `preserved_human_decision:<field>`, `human_approval_required` | holds |
-| `location_reassessment_unconfirmed:<field>` | holds |
-| an operational failure (`lookup_operational_failure`, `field_research_model_error`, `field_research_timeout` `:<field>`, the blocker) | holds (the run is blocked, as before) |
+| `unsupported_parsed`, `unsupported_normalized`, `unsupported_authority_id`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing` on `fmnh_ins_number` | holds |
+| `unresolved_transcription:<label>`, `independent_observations_missing:<label>`, a label's language rule `<reason>:<label>` | holds when the catalogue number is drawn from the label and the slide's QR code does not confirm it; otherwise (a label only optional fields are drawn from, a label no field is drawn from, a label whose first pass was given up) an optional field's doubt |
+| `raw_provenance_missing:<label>` | holds when the catalogue number is drawn from the label (the code does not stand in for a missing raw reading); otherwise an optional field's doubt |
+| the field codes above on an optional field (`mandatory_unresolved`, `unsupported_*`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing`, `marked`) | an optional field's doubt |
+| `research_incomplete:<optional field>` (new: a failure, a limit, a spent per-field or per-specimen meter, a request too large, an outage or deadline on the last attempt, or the expert's fallback) | an optional field's doubt; the field keeps its own reason (`FIELD_REASONS`) |
+| `taxonomy_unresolved`, `identified_by_irn_identity_unproved` | an optional field's doubt |
+| `elevation_invalid`, `elevation_range`, `elevation_units_conflict`, `date_precision_requires_review`, `date_order` | an optional field's doubt |
+| `field_research_given_up` (new: research given up for the run as a whole, `FieldResearchStep.give_up`) | holds |
+| `preserved_human_decision:<field>`, `human_approval_required`, `location_reassessment_unconfirmed:<field>` | holds |
+| an operational failure (`lookup_operational_failure`, `field_research_model_error`, `field_research_timeout` `:<field>`, the blocker) | holds: the run is blocked, as before |
 | `evidence_integrity_failure` | never a reason: the step blocks, as before |
+| ordinary path: `institutional_policy_unapproved`, `mandatory_semantics_unconfirmed`, `evidence_lineage_invalid:<row>`, its capability reason | holds |
+| ordinary path: `taxonomy_lookup_missing` | an optional field's doubt |
 | `no_specimen_value` | removed |
-| the ordinary path's `institutional_policy_unapproved`, `mandatory_semantics_unconfirmed`, `evidence_lineage_invalid:<id>`, `pixel_lineage_missing:<field>`, its capability reason | holds |
-| the ordinary path's `taxonomy_lookup_missing` | an optional field's doubt |
-| any code not listed | holds |
-
-An optional field's doubt is a reason every field it names is optional. A field-doubt code that names no field holds.
+| any other code | holds (fail closed; no code produced today falls here) |
 
 ### K1's replay (free, real code, the 100 truth slides)
 
 Each stored run (`~/specimen-golive/runs/units-wp26-20261115/`, four runs of 30; `~/specimen-golive/runs/autonomy-base70-20261118/`,
-one run of 70) was loaded from a copy, bound to the published profile of the code under test, and re-finalized
-(`finalize_fields` with each field's stored failure and fallback). Before: 0 of 30, 0 of 30, 0 of 30, 0 of 30 and 0 of
-70 cleared, as stored and as replayed on main d4c33d94. Scored against `T0/truth_rows.json` (off-repo:
-`~/specimen-golive/autonomy-program/K1/`, `score_k1.txt`). The 100 are wp26 r1/pair and base70.
+one run of 70: 69 finalized, 1 blocked) was loaded from a copy, bound to the published profile of the code under test
+(this branch merged with main 9e79d35e, PR #452 included), and re-finalized (`finalize_fields` with each field's stored
+failure and fallback). "With the code": PR #452's decode of the slide's QR code attached as its segment step would store
+it (T0's image, byte-equal to the run's asset in all 189 finalized specimen-runs; decoded on 28 of the 30 wp26 slides
+and 68 of the 69 finalized base70 slides) and its rule (`catalogue_code.settle`) run on the stored catalogue number, as
+lane V2b's replay does. Before: 0 cleared in every run, as stored and as replayed on main d4c33d94. Scored against
+`T0/truth_rows.json` (off-repo `~/specimen-golive/autonomy-program/K1/`: `score_r2_code.txt`, `score_r2_nocode.txt`,
+`holds_r2_code.txt`, `wrong_values_r2_the100.txt`). The 100 are wp26 r1/pair and base70.
 
-| run | cleared after | unmarked values in cleared records (wrong) | marked (wrong) | catalogue number wrong |
-|---|---|---|---|---|
-| wp26 r1/pair | 14 of 30 | 94 (3) | 13 (4) | 0 |
-| wp26 r2/pair | 11 of 30 | 83 (1) | 7 (0) | 1 |
-| wp26 r1/three | 13 of 30 | 95 (3) | 21 (5) | 1 |
-| wp26 r2/three | 12 of 30 | 85 (4) | 21 (1) | 0 |
-| base70 r1/pair | 10 of 70 | 79 (8) | 3 (0) | 1 |
-| **the 100** | **24 of 100** | **173 (11)** | **16 (4)** | **1** |
+| run | cleared, no code | cleared, with the code | unmarked values in cleared records (wrong), with the code | marked (wrong) | wrong catalogue number cleared (no code / code) |
+|---|---|---|---|---|---|
+| wp26 r1/pair | 23 of 30 | 28 of 30 | 181 (5) | 20 (5) | 0 / 0 |
+| wp26 r2/pair | 20 of 30 | 26 of 30 | 167 (3) | 20 (4) | 1 / 0 |
+| wp26 r1/three | 20 of 30 | 28 of 30 | 178 (9) | 41 (8) | 1 / 0 |
+| wp26 r2/three | 18 of 30 | 27 of 30 | 174 (11) | 36 (3) | 0 / 0 |
+| base70 r1/pair | 46 of 70 | 55 of 70 | 365 (40) | 20 (3) | 2 / 0 |
+| **the 100** | **69 of 100** | **83 of 100** | **546 (45)** | **40 (8)** | **2 / 0** |
 
 Values are the app's (normalized first), every field the truth settles; a value where the truth has none counts
-wrong. The frozen scorer (parsed first, its 11 fields) on the same 24 records: primary cleared right 95, cleared
-wrong 11 ("P.I." among them), marked right 11, marked wrong 1, left without a value 18; derived 38 right, 1 wrong;
-absences 77 right, 0 wrong. Of the 11 unmarked wrong values, one is a naming convention ("Aysen" for the label's
-"Aisen"); the wrong catalogue number is 105526771 ("448634" for 4486334). Four precise locations shown differ from the
-truth at all; two of them pass the frozen scorer's 0.85 similarity. Only 4 records cleared in all four wp26 runs (22 in
-any). What still holds most of the rest is `research_incomplete` (across the five runs, 148 of its 157 reasons come from an expert's fallback, 9 from a request too large) and a mark on
-the catalogue number (PR #452 works on that).
+wrong. In the 83 cleared records of the 100: 45 of 546 unmarked values are wrong (8.2 %; about five of them are
+conventions: "Aysen" shown for the label's "Aisen" three times, a determination date kept as written "VI.'41"
+twice); 8 of 40 marked values are wrong; 75 fields are blank where the truth has a value (habitat 52, the host
+name M0 ruled belongs there) and 198 are left open where the truth has one. The frozen scorer (parsed first, its 11
+fields) on the 83: primary cleared right 320, cleared wrong 28 ("P.I." among them), marked right 29, marked wrong 1,
+left without a value 94; derived 108 right, 9 wrong; absences 277 right, 3 wrong. 16 precise locations shown differ
+from the truth at all, most a "Loc:" heading kept or a line cut; 8 of them pass the frozen scorer's 0.85
+similarity. The code turns every wrong catalogue number that cleared without it (105526487 "4486518", 105526771
+"448634", 105526356 "4486748") into a `barcode_differs` hold; no cleared record carries a wrong catalogue number.
+
+What holds the other 17 of the 100 (with the code; a record counts once per kind): the catalogue number not settled
+and so failing its format 8; label coverage unconfirmed 4; `barcode_differs` 3; `text_only` on the catalogue number
+1 (no code decoded); the one blocked run (`external_outcome_unknown`) 1. Without the code, 31 are held, 18 of them
+by `text_only` on the catalogue number.
 
 ### S1's replay (free, real code, wp26's 120 specimen-runs)
 
