@@ -477,43 +477,6 @@ def verbatim_runs(text: str, literal: str) -> list[tuple[int, int]]:
 # lines; the third rerun of 2026-10-18). Every other field, places among
 # them, keeps its literal on one line.
 ACROSS_LINES = frozenset({"precise_location"})
-# The place value fields, whose literal may run over one line break of a reading (plan WP S1,
-# C4a): a line break is white space, so "Davao\nProv.," and "Davao Prov.," are one text
-# (105526323's label writes "McKinley, Davao" over "Prov., Mindanao P.I.", and its province's
-# expert was refused for either). One break only: a place name is no locality block.
-ONE_LINE_BREAK = PLACE_VALUE_FIELDS
-
-
-def may_cross_lines(key: str, literal: str) -> bool:
-    """Whether the field's literal, which holds a line break, may be read over consecutive
-    lines (runs_across_lines): any number of them for a field in ACROSS_LINES, one for a field
-    in ONE_LINE_BREAK."""
-    return "\n" in literal and (key in ACROSS_LINES or (key in ONE_LINE_BREAK and literal.count("\n") == 1))
-
-
-# The fields whose text a place value field's literal over a line break may cross (place_units_only):
-# the places and the precise location, which holds them.
-PLACE_UNIT_FIELDS = frozenset({*PLACE_VALUE_FIELDS, "precise_location"})
-
-
-def place_units_only(key: str, readings: Sequence[Reading], literal: str) -> bool:
-    """For a place value field's literal over one line break (ONE_LINE_BREAK), whether the
-    first pass's units attribute everything it covers to places: in every reading, wherever
-    it writes the literal, each unit covering it names fields, and only place fields or the
-    precise location (PLACE_UNIT_FIELDS; Codex's round 1 on #451: "leg. J. New" over "York"
-    names the collectors, so "New\nYork" is no city). True for any literal without a line
-    break or of another field; False where a reading has no units or a unit names no field
-    (105526323's "Davao" over "Prov.," is one unit of the province and the precise location,
-    or two, in every run of wp26)."""
-    if key not in ONE_LINE_BREAK or key in ACROSS_LINES or "\n" not in literal:
-        return True
-    for reading in readings:
-        covers = covering_units(reading, literal)
-        if not covers or not all(cover for cover in covers):
-            return False
-        if any(not unit.fields or not set(unit.fields) <= PLACE_UNIT_FIELDS for cover in covers for unit in cover):
-            return False
-    return True
 
 
 def _flat(text: str) -> str:
@@ -547,28 +510,24 @@ def runs_across_lines(text: str, literal: str) -> list[tuple[int, int]]:
 
 def written_runs(key: str, text: str, literal: str) -> list[tuple[int, int]]:
     """Where the text writes the field `key`'s literal as a run of whole
-    words: within one line (verbatim_runs), or, for a literal that holds a
-    line break and may cross lines (may_cross_lines: a field in ACROSS_LINES,
-    or a place value field over one break), over consecutive lines
+    words: within one line (verbatim_runs), or, for a field in ACROSS_LINES
+    whose literal holds a line break, over consecutive lines
     (runs_across_lines)."""
-    if may_cross_lines(key, literal):
+    if key in ACROSS_LINES and "\n" in literal:
         return runs_across_lines(text, literal)
     return verbatim_runs(text, literal)
 
 
 def across_lines(key: str, readings: Sequence[Reading], literal: str) -> str | None:
-    """For a field in ACROSS_LINES or ONE_LINE_BREAK, the text each of these readings writes for
+    """For a field in ACROSS_LINES, the text each of these readings writes for
     the literal over consecutive lines, its line breaks as the readings write
     them, when the literal reads each line break as a space or a line break
-    (_flat), every reading writes that one text so (runs_across_lines) and it
-    may cross those lines (may_cross_lines):
+    (_flat) and every reading writes that one text so (runs_across_lines):
     e98a924c's expert gave "E Slope Mt. McKinley, Davao Prov.", which both
-    readers of its label write as "E Slope Mt.\\nMcKinley, Davao Prov.", and
-    105526323's province expert "Davao Prov.,", which both write "Davao\\nProv.,".
+    readers of its label write as "E Slope Mt.\\nMcKinley, Davao Prov.".
     None for any other field, when no reading is given, or when a reading
     writes no such text or several."""
-    if (key not in ACROSS_LINES and key not in ONE_LINE_BREAK) or not readings or not literal \
-            or literal != literal.strip():
+    if key not in ACROSS_LINES or not readings or not literal or literal != literal.strip():
         return None
     want = _flat(literal)
     found: set[str] = set()
@@ -578,8 +537,7 @@ def across_lines(key: str, readings: Sequence[Reading], literal: str) -> str | N
         at = flat.find(want)
         while at >= 0:
             written = reading.text[at:at + len(want)]
-            if (may_cross_lines(key, written) and runs_across_lines(reading.text, written)
-                    and place_units_only(key, [reading], written)):
+            if "\n" in written and runs_across_lines(reading.text, written):
                 texts.add(written)
             at = flat.find(want, at + 1)
         if len(texts) != 1:
@@ -660,8 +618,7 @@ def literal_basis(task: FieldTask, readings: Sequence[Reading], literal: str,
     if candidate_literal(task, readings, literal, named) is not None:
         return CANDIDATE
     if (all(written_runs(task.key, reading.text, literal) for reading in named)
-            and _cut_candidate(task, readings, literal, named) is None
-            and place_units_only(task.key, named, literal)):
+            and _cut_candidate(task, readings, literal, named) is None):
         return TRANSCRIPT
     return None
 
@@ -923,23 +880,9 @@ def elevation_kept(literal: str) -> str | None:
     return text
 
 
-def same_elevation(kept: str, literal: str) -> bool:
-    """Whether the elevation text a precise location keeps (elevation_kept) is the elevation an
-    elevation field settled on `literal`: the same text after collapse ("4800 ft."), or that
-    text's one number, written with its unit, being the literal (plan WP S1, C4b: the elevation
-    experts settle the number, "4800" of 105526329's "Yepocapa, 4800ft.", "3300" of 105526326's
-    "Davao, Prov. 3300'", "1,500" of 105526596's "el. 1,500 m."). A range or a number with no
-    unit is never so."""
-    if collapse(kept) == collapse(literal):
-        return True
-    found = written.numbers(kept)
-    return (len(found) == 1 and found[0].unit is not None and bool(literal.strip())
-        and kept[found[0].start:found[0].end] == literal.strip())
-
-
 def elevation_settled_inside(literal: str, named: Sequence[Reading], elevations) -> bool:
     """Whether a precise location's literal keeps an elevation (elevation_kept)
-    that is the elevation (same_elevation) of a literal an elevation field settled from
+    whose text is, after collapse, a literal an elevation field settled from
     each label the literal is read from (`elevations`: label -> literals;
     ANY_ELEVATION holds every text)."""
     kept = elevation_kept(literal)
@@ -947,7 +890,7 @@ def elevation_settled_inside(literal: str, named: Sequence[Reading], elevations)
         return False
     if elevations is ANY_ELEVATION:
         return True
-    return all(any(same_elevation(kept, text) for text in elevations.get(label, ()))
+    return all(collapse(kept) in {collapse(text) for text in elevations.get(label, ())}
         for label in {reading.region_id for reading in named})
 
 

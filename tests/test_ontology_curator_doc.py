@@ -93,7 +93,7 @@ CITED_TEXT = {
     'id: end_date_from_one_date +4': 'fd7d00',
     'Give Date Visited To only from an end date the label writes +2': 'ad4968',
     'confirmed by the reference truth +2': 'a8a095',
-    'id: precise_location_extent +13': '0a88c3',
+    'id: precise_location_extent +13': 'fbe05c',
     "The rule's meaning +6": '277907',
     'id: taxon_in_collection_scope +15': '3315e6',
     'id: taxon_in_collection_scope +5': '26c7f0',

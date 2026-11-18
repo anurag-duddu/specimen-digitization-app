@@ -2607,21 +2607,16 @@ is drawn from it, or a field drawn from it, its work done, is not supported, or
 is neither grounded in a reader's raw reading nor derived; and a label the
 first pass gave up on is so however its fields settle.
 
-Amended 2026-11-17 (the autonomy program's work package S1, C3; the plan's
-item 1, in the coordinator's words "the duplicate 'readers differ' hold
-removed", is part of the plan the owner answered "Yes, go ahead" to:
-[`docs/execution/autonomy/PLAN.md`](../autonomy/PLAN.md) sections 1 and 2):
-G19 is per
-field, so a drawn field cleared as not on the label, or one waiting for a
-held source (whose source's reason routes the record), no longer makes its
-label `unresolved_transcription`; and a label no field is drawn from, on
-which the organiser found text for some field, is so only while one of those
-fields has a reason of its own. A label with no field drawn and no organiser
-text at all keeps the reason, as WP 2.R left it: its inputs above ("1948"
-against "1949" beside "IV-25", "Mt. Apo" against "MT. APO") are such labels.
-A record none of whose fields that describe the specimen holds a value (the
-catalogue number and the collection code aside) is `no_specimen_value` until a person
-approves it.
+Amended 2026-11-17 (the autonomy program's work package S1, C3;
+[`docs/execution/autonomy/PLAN.md`](../autonomy/PLAN.md) section 4): a
+label with fields drawn from it is not also `unresolved_transcription` when
+every one of those fields already has a review reason of its own (held or
+marked), since a person is sent to each of them anyway. Any drawn field
+without one, a field cleared as not on the label or one waiting for its
+source among them, keeps the label's reason, and a label no field is drawn
+from keeps it as before. A record whose fields that describe the specimen
+are all settled with no value (the catalogue number and the collection code
+aside) is `no_specimen_value` until a person approves it.
 
 A field cleared as not on the label, or a taxon cleared as unmatched, is
 reopened like any other field with Correct value: the reviewer's value is
