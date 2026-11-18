@@ -183,8 +183,9 @@ by `text_only` on the catalogue number.
 ### K1 with F1's second opinion (PR #455 with PR #456 merged in)
 
 The two ship together. The second opinion's marks (`marked:<field>:<label>:second_opinion_differs`,
-`..._not_checked`) pass through `step.split_reasons` like every other reason, at `finalize_fields` and at the step's
-own finalize (`second_opinion.finish`, which before this merge put them in `run.reasons`). The second opinion never
+`..._not_checked`) pass through `step.split_reasons` like every other reason, at `finalize_fields`, which the step's
+own finish and a person's decision at its stage both reach through `step.refinalize` (#456 at d016678b; an approved run
+gets no second-opinion code, so a person's approval clears every flag with the holds). The second opinion never
 judges the catalogue number, the one mandatory field, so none of its marks holds a record: an agreed value is shown as
 settled; a differing or unchecked value is settled and flagged on its field (`open_reasons`, the app's field
 attention); the record clears on its catalogue number. Not obtained (a provider error, HTTP 402 included; a malformed
