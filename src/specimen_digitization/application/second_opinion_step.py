@@ -142,7 +142,8 @@ def _save(workflow, principal, specimen, revision, label: str):
         return None
 
 
-def _end(workflow, principal, specimen, revision, *, label: str, release=None, prior=None, attempt=0, settle=None):
+def _end(workflow, principal, specimen, revision, *, label: str, release=None, prior=None, attempt=0, settle=None,
+        sent=None):
     """Finalize the record (second_opinion.finish) and save it with an audit event. A stored result that
     would leave less than MARGIN_BYTES below the record's limit, or whose save is refused for size, is
     put back to `prior` (the stored result before this attempt) and stored "not obtained:
@@ -161,9 +162,13 @@ def _end(workflow, principal, specimen, revision, *, label: str, release=None, p
         after={"stage": run.stage, "blocker": run.blocker}))
 
     def too_large():
-        run.second_opinion = prior
-        second_opinion.record(run, second_opinion.Result(second_opinion.NOT_OBTAINED, "result_too_large"),
-            attempt=attempt, at=workflow.clock().isoformat())
+        # Not stored, but sent: like every other sent outcome it keeps the values it asked and the count
+        # of requests sent (`sent`: the intent's stored result), so Retry or Resume never asks them again.
+        run.second_opinion = sent if sent is not None else prior
+        requests = next((call["usage"] or {}).get("model_calls", 1) for call in reversed(run.paid_calls)
+            if call["step"] == second_opinion.STEP and call["attempt"] == attempt) if sent is not None else 0
+        second_opinion.record(run, second_opinion.Result(second_opinion.NOT_OBTAINED, "result_too_large",
+            requests=requests or 1 if sent is not None else 0), attempt=attempt, at=workflow.clock().isoformat())
         second_opinion.finish(run)
 
     try:
@@ -252,6 +257,7 @@ def run_step(workflow, principal, specimen, revision):
     run.attempts[step] = run.attempts.get(step, 0) + 1
     attempt = run.attempts[step]
     second_opinion.record(run, second_opinion.Result(second_opinion.ASKING), attempt=attempt, at=at.isoformat())
+    asking = dict(run.second_opinion)
     intent = _save_intent(workflow, principal, specimen, revision)
     if intent is None:
         return workflow.repository.get(principal.scope, specimen.id)
@@ -299,7 +305,7 @@ def run_step(workflow, principal, specimen, revision):
                 logging.getLogger(__name__).warning("second opinion: ledger settlement failed", exc_info=True)
 
     return _end(workflow, principal, specimen, revision, label="second-opinion", prior=prior, attempt=attempt,
-        settle=settle)
+        settle=settle, sent=asking if result.requests else None)
 
 
 def _save_intent(workflow, principal, specimen, revision):

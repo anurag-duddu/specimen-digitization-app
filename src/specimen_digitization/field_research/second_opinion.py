@@ -735,10 +735,16 @@ def record(run, result: Result, *, attempt: int, at: str) -> None:
             stored["reason"] = result.reason
         stored.update({key: previous[key] for key in ("instruction_sha256", "fields", "answer", "labels",
             "padded_labels") if key in previous})
+        # Coverage of sent calls (`asked`): the values an intent opens on wait in `asking`, and join
+        # `asked` field by field once a request was sent (or may have been); an outcome that sent nothing
+        # never removes or replaces what earlier sent calls asked.
+        before = dict(previous.get("asked") or {})
         if result.status == ASKING:
-            stored["asked"] = asked_values(run)
-        elif "asked" in previous and (result.reason in UNANSWERED or result.requests):
-            stored["asked"] = previous["asked"]
+            stored["asking"] = asked_values(run)
+        elif previous.get("status") == ASKING and (result.reason in UNANSWERED or result.requests):
+            before.update(previous.get("asking") or {})
+        if before:
+            stored["asked"] = before
     run.second_opinion = stored
 
 

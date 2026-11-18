@@ -2103,7 +2103,11 @@ save is refused for size, is not stored ("result_too_large"), so a later
 ordinary write is never the one to cross it; when nothing of the step can
 be saved at all, it writes nothing of its own and the record is finalized
 exactly as research left it, as main would save it (the marks not checked),
-never left pending at an unchanged revision. A person's decision while the intent is open
+never left pending at an unchanged revision. Residual risk, accepted by the
+coordinator: within a few bytes of the limit (0 to 4 bytes of graph headroom)
+that finalized record is five bytes longer than the pending one (its
+disposition) and the size-limit recovery blocks the run; a run that close is
+blocked by its next write on main too. A person's decision while the intent is open
 abandons it at the decision endpoint, and anything else that finalizes the
 run abandons it first (`second_opinion.abandon`, from `finalize_fields`):
 "not obtained: abandoned", its whole reservation held on the run and on
@@ -2111,8 +2115,9 @@ the ledgers alike; the step's own result then loses its save and settles
 nothing, and the record stays as that decision or finalize left it. The
 shared ledgers are settled only after the result's save succeeds. Every
 outcome of a call that was sent (a timeout, a provider error after sending,
-a second malformed answer, an abandoned or lost call) is final for the
-values it asked about: Retry, Resume or a recheck asks again only for a
+a second malformed answer, an answer too large to store, an abandoned or
+lost call) is final for the values it asked about, and an outcome that sent
+nothing never removes or replaces that coverage: Retry, Resume or a recheck asks again only for a
 field it answers for now whose value was never asked or has changed since;
 a field that left that set (a person took it) never causes it; a new run
 asks afresh. A lost outcome (the

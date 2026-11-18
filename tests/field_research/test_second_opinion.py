@@ -1233,3 +1233,59 @@ def test_confirming_an_unchanged_field_after_an_abandoned_call_does_not_re_ask(t
     again = to_end(rig).run
     assert (again.stage, again.blocker) == ("finalized", None) and len(opinion.requests) == 1
     assert not so.due(again)
+
+
+# ---- Codex round 6 on 1f491ed5 ----------------------------------------------------------------------
+
+def resume(rig, **changes):
+    held = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    held.run.stage, held.run.disposition = "plan", None
+    for key, value in changes.items():
+        held.run.fields[key].literal = held.run.fields[key].parsed = held.run.fields[key].normalized = value
+    rig.repository.save(rig.principal, held, held.version, f"resume:{held.version}", f"resume:{held.version}")
+    return to_end(rig).run
+
+
+def test_a_discarded_oversized_answer_keeps_what_it_asked_and_is_not_bought_again(tmp_path, monkeypatch):
+    """Codex round 6, 2: an answer too large to store (it would breach the margin) was still sent: its
+    outcome keeps the asked values and the request count, and Resume on the same values asks nothing."""
+    from specimen_digitization.application import active_graph, second_opinion_step
+
+    opinion = Opinion(BULKY)
+    rig, pending = pending_rig(tmp_path, opinion, monkeypatch)
+    monkeypatch.setattr(active_graph, "NORMAL_GRAPH_LIMIT", graph_size(pending) + 2 * second_opinion_step.MARGIN_BYTES)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert run.second_opinion["reason"] == "result_too_large" and run.second_opinion["asked"]
+    assert len(opinion.requests) == 1
+    again = resume(rig)
+    assert (again.stage, again.blocker) == ("finalized", None) and len(opinion.requests) == 1
+
+
+def test_a_later_refusal_that_sent_nothing_keeps_the_earlier_coverage(tmp_path, monkeypatch):
+    """Codex round 6, 3: a sent opinion times out; research later settles City anew, so another is due;
+    a budget guard refuses it, sending nothing; a person then confirms City. With money back, Resume
+    asks nothing: the timed-out call's coverage of the other fields was kept through the refusal."""
+    monkeypatch.setattr(so, "TIMEOUT_SECONDS", 15.5)
+    monkeypatch.setattr(so, "MIN_SECONDS", 15.0)
+    rig = build_rig(tmp_path)
+    opinion = Opinion(full(), delay=2.0)
+    with_opinion(rig, opinion)
+    real = so.ask
+
+    async def short(model, labels, text, meter, *, deadline, **kwargs):
+        return await real(model, labels, text, meter, deadline=deadline - 14.0, **kwargs)
+
+    monkeypatch.setattr(so, "ask", short)
+    first = to_end(rig).run
+    asked = dict(first.second_opinion["asked"])
+    assert first.second_opinion["reason"] == "timeout" and "city" in asked
+    monkeypatch.setattr(so, "CAP_MICROS", 50_000_000)
+    refused = resume(rig, city="Evanston")
+    assert refused.second_opinion["reason"] == "budget" and refused.second_opinion["asked"] == asked
+    assert len(opinion.requests) == 1
+    monkeypatch.setattr(so, "CAP_MICROS", 120_000)
+    held = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    held.run.person_decided_fields = ["city"]
+    rig.repository.save(rig.principal, held, held.version, "person-city", "person-city")
+    again = resume(rig)
+    assert (again.stage, again.blocker) == ("finalized", None) and len(opinion.requests) == 1
