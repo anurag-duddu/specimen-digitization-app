@@ -2976,8 +2976,8 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     stage(run, readings=readings, received=received, researched=tasks_by_key, derived=derived, human=human,
         blobs=blobs, decisions=decisions)
     # Confident or flagged (field_research/confidence.py): a settled value something in the run argues
-    # against is marked on its field; no value changes. Any exception inside the pass leaves no mark
-    # from it and the fields and findings exactly as the rules above left them (confidence.guarded).
+    # against is marked on its field; nothing else changes. Any exception inside the pass leaves the
+    # fields and findings as the rules above left them (confidence.guarded).
     if units_path(run):
         confidence.guarded(run, confidence.review, readings=readings, human=human, date_rules=profile.date_rules)
     return derived
@@ -4691,9 +4691,9 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
 
     follow_sources(run, asset_id=run.regions[0].asset_id if run.regions else None, blobs=blobs)
     if units_path(run):
-        # A field a person has authority over carries no confidence mark; refinalize adds none
-        # (confidence.settle_persons).
-        confidence.guarded(run, confidence.settle_persons, human=human_keys(run))
+        # After a person's decision: no confidence mark on a field a person holds, and rule 2
+        # recomputed on the current marks; no other mark is added (confidence.settle_after_decision).
+        confidence.guarded(run, confidence.settle_after_decision, human=human_keys(run))
     finalize_fields(run, None, (), specimen=specimen, blobs=blobs, today=today)
     if pending and not run.human_approved:
         run.reasons = [*run.reasons, APPROVAL]

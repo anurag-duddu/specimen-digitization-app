@@ -1578,13 +1578,13 @@ EXPECTED: dict[str, tuple] = {
         for names in ("1A", "1B", "1A-1B")},
 }
 # The rows whose value the settlement rule leaves as above and the confidence pass then flags
-# (field_research/confidence.py), each with its mark. Rule 1: the readers differ ("Shurbs", "Grass" and
-# "Shrubs", "" and "light") and only the image judgement chose the value. Rule 4: "la" is not the
-# collection heading the owner ruled a Collection Code.
+# (field_research/confidence.py), each with its mark. Rule 1: the readers' verbatims recorded for the
+# value differ, exactly ("shrubs" and "Shrubs"; "Shrubs" and "Grass"), and only the image backs it; where
+# fewer than two verbatims are recorded (codex1-5, the units.txt example) the rule does not mark. Rule 5:
+# "la" is not the collection heading the owner ruled a Collection Code.
 CONFIDENCE_MARKS: dict[str, list[str]] = {
-    "codex1-5-transcript": ["marked:L1:readers_differ"],
+    "codex1-4-image-spelling": ["marked:L1:readers_differ"],
     "codex3-3-grass-answered": ["marked:L1:readers_differ"],
-    "mechanics-units-txt-example": ["marked:L1:readers_differ"],
     "claude1-c2d-both-named": ["marked:L1:not_collection_code"],
 }
 

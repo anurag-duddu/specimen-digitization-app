@@ -2388,12 +2388,12 @@ def create_app(
         else:
             raise ValueError("Unsupported review decision")
         if body.kind in {"field", "research_candidate", "authority_resolution", "taxonomy_resolution"}:
-            # A person decided or selected the field's value: the confidence pass's mark on it, the
-            # system's own doubt, goes (field_research/confidence.py, release).
+            # A person decided or selected the field's value: the confidence pass's findings on it go
+            # (field_research/confidence.py, forget). The field itself is not touched.
             from ..field_research import confidence
 
             decided_key = "taxon" if body.kind == "taxonomy_resolution" else body.target_id
-            confidence.guarded(s.run, confidence.release, {decided_key})
+            confidence.guarded(s.run, confidence.forget, {decided_key})
         if pilot:
             s.run.stage = "processing_blocked"
             s.run.blocker = pilot_blocker

@@ -237,8 +237,8 @@ const Map<String, String> confidenceWords = <String, String>{
       'This value was worked out from another field that is marked for '
       'review. Check that field first.',
   'extent':
-      'The label may hold more or less of this value than was kept. Check '
-      'where it starts and ends on the label.',
+      'Both readings give a longer text for this field than was kept. Check '
+      'where it ends on the label.',
   'distance_origin':
       'The label names this town only as the point a distance is measured '
       'from, not as the place it was collected.',
@@ -247,7 +247,7 @@ const Map<String, String> confidenceWords = <String, String>{
       'text looks like a slide, preparation or field number.',
   'not_verbatim_date':
       'Verbatim D/T/S keeps only dates that are not exact. This text is an '
-      'exact date, a slide code or the identification date.',
+      'exact date or holds a slide code.',
 };
 
 /// The field note a `cleared:` or `marked:` finding reads as, naming the

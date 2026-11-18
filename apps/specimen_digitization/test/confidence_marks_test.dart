@@ -31,9 +31,9 @@ const List<(String, String, String, String, String)> cases = [
     'extent',
     'precise_location',
     'Locality',
-    'The label may hold more or less of this value than was kept. Check '
-        'where it starts and ends on the label.',
-    'the label may hold more or less of it',
+    'Both readings give a longer text for this field than was kept. Check '
+        'where it ends on the label.',
+    'the readings give a longer text',
   ),
   (
     'distance_origin',
@@ -56,7 +56,7 @@ const List<(String, String, String, String, String)> cases = [
     'verbatim_dts',
     'Verbatim D/T/S',
     'Verbatim D/T/S keeps only dates that are not exact. This text is an '
-        'exact date, a slide code or the identification date.',
+        'exact date or holds a slide code.',
     'an exact date belongs in the dates',
   ),
 ];
