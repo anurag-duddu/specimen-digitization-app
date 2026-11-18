@@ -571,17 +571,20 @@ YEPOCAPA_ELEVATION = {"r1": {"4800 ft."}}
     (YEPOCAPA, YEPOCAPA_ELEVATION, True),
     ("Yepocapa, 4800 ft.", YEPOCAPA_ELEVATION, True),
     (YEPOCAPA, None, False),
-    (YEPOCAPA, {"r1": {"4800"}}, False),
+    (YEPOCAPA, {"r1": {"4800"}}, True),
+    (YEPOCAPA, {"r1": {"480"}}, False),
     (YEPOCAPA, {"r1": {"4800 ft"}}, False),
     (YEPOCAPA, {"r2": {"4800 ft."}}, False),
+    (YEPOCAPA, {"r2": {"4800"}}, False),
     (YEPOCAPA, "any", True),
-], ids=["whole-settled", "town-line-settled", "nothing-settled", "number-settled", "other-text-settled",
-        "other-label-settled", "expert-check"])
+], ids=["whole-settled", "town-line-settled", "nothing-settled", "number-settled", "another-number-settled",
+        "other-text-settled", "other-label-settled", "number-on-another-label", "expert-check"])
 def test_yepocapa_s_elevation_is_kept_only_as_the_literal_its_elevation_field_settled(literal,
         elevations, accepted):
     """The plan's case, read from the transcript: "Yepocapa, 4800 ft." over "Chimaltenango, Guatemala" is
-    accepted on the units path only when the elevation field settled "4800 ft." from that label (or, in
-    the expert's own check, before any field settles: agreement.ANY_ELEVATION); otherwise refused for the
+    accepted on the units path only when the elevation field settled "4800 ft." from that label, or its
+    number "4800" with the unit written after it there (plan WP S1, C4b: agreement.same_elevation), or, in
+    the expert's own check, before any field settles (agreement.ANY_ELEVATION); otherwise refused for the
     elevation it holds."""
     readings = label_readings(YEPOCAPA, True)
     task = FieldTask("precise_location", True, FieldValue(), (), FIELD_TOOLS["precise_location"])
@@ -700,12 +703,24 @@ def test_105526329_s_whole_locality_settles_beside_its_settled_elevation_on_the_
 
 
 @pytest.mark.parametrize("candidate", [False, True], ids=["transcript", "candidate"])
-@pytest.mark.parametrize("elevation", ["number", "none"])
-def test_105526329_s_whole_locality_is_refused_beside_another_elevation_or_none(tmp_path,
-        candidate, elevation):
-    """The elevation field settled the number "4800" (its literal another text than the locality's
-    "4800 ft.") or nothing: on the units path the precise location is left for a person on either basis."""
-    answer = answering(resolved("4800", value="4800")) if elevation == "number" else answering(LACKS)
+def test_105526329_s_whole_locality_settles_beside_its_elevation_s_number(tmp_path, candidate):
+    """Plan WP S1, C4b: the elevation field settled the number "4800", as the elevation experts give it
+    (wp26's 105526329, 105526326 and 105526596), where the locality's line writes "4800 ft.". On the units
+    path the precise location settles as written, its elevation line included, on either basis; on main
+    it was refused as "also the value found for Elevation From (ft)"."""
+    rig, run, _ = yepocapa_run(tmp_path, answering(resolved("4800", value="4800")), candidate=candidate)
+
+    place, height = run.fields["precise_location"], run.fields["elevation_from_ft"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, YEPOCAPA)
+    assert (height.state, height.literal) == (ValueState.SUPPORTED, "4800")
+
+
+@pytest.mark.parametrize("candidate", [False, True], ids=["transcript", "candidate"])
+def test_105526329_s_whole_locality_is_refused_beside_no_elevation(tmp_path, candidate):
+    """The elevation field settled nothing: on the units path the precise location is left for a person
+    on either basis (another number than the locality's is refused by agreement.same_elevation:
+    test_yepocapa_s_elevation_is_kept_only_as_the_literal_its_elevation_field_settled)."""
+    answer = answering(LACKS)
     rig, run, _ = yepocapa_run(tmp_path, answer, candidate=candidate)
 
     place = run.fields["precise_location"]
@@ -760,7 +775,9 @@ def test_a_settled_precise_location_and_an_elevation_share_its_text_on_the_units
     keeps = field_step._keeps_an_elevation
     assert keeps("precise_location", YEPOCAPA, {"r1"}, "elevation_from_ft", "4800 ft.", {"r1"})
     assert keeps("elevation_from_ft", "4800 ft.", {"r1"}, "precise_location", YEPOCAPA, {"r1"})
-    assert not keeps("precise_location", YEPOCAPA, {"r1"}, "elevation_from_ft", "4800", {"r1"})
+    assert keeps("precise_location", YEPOCAPA, {"r1"}, "elevation_from_ft", "4800", {"r1"})
+    assert keeps("elevation_from_ft", "4800", {"r1"}, "precise_location", YEPOCAPA, {"r1"})
+    assert not keeps("precise_location", YEPOCAPA, {"r1"}, "elevation_from_ft", "480", {"r1"})
     assert not keeps("precise_location", YEPOCAPA, {"r1"}, "elevation_from_ft", "4800 ft.", {"r2"})
     assert not keeps("precise_location", YEPOCAPA, {"r1"}, "city", "4800 ft.", {"r1"})
     assert not keeps("collectors", YEPOCAPA, {"r1"}, "elevation_from_ft", "4800 ft.", {"r1"})

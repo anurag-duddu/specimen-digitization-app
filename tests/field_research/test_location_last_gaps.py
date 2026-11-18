@@ -392,9 +392,14 @@ def test_a_run_of_whole_words_over_consecutive_lines():
     assert agreement.runs_across_lines(MCKINLEY, "Slope Mt.\nMcKin") == []
     assert agreement.runs_across_lines("Seliban Riv.\n\nMt. Apo", "Seliban Riv.\n\nMt. Apo") == []
     assert agreement.runs_across_lines(MCKINLEY, "E Slope Mt.") == []
-    # Only precise location runs over lines; every other field keeps one line.
+    # Precise location runs over lines; a place value field over one line break (plan WP S1, C4a:
+    # agreement.ONE_LINE_BREAK), never two; every other field keeps one line.
     assert agreement.written_runs("precise_location", MCKINLEY, MCKINLEY_LINES) == [(6, 6 + len(MCKINLEY_LINES))]
-    assert agreement.written_runs("city", MCKINLEY, MCKINLEY_LINES) == []
+    assert agreement.written_runs("city", MCKINLEY, MCKINLEY_LINES) == [(6, 6 + len(MCKINLEY_LINES))]
+    two = MCKINLEY_LINES + "\nMindanao, P.I."
+    assert agreement.written_runs("precise_location", MCKINLEY, two) == [(6, 6 + len(two))]
+    assert agreement.written_runs("city", MCKINLEY, two) == []
+    assert agreement.written_runs("collectors", MCKINLEY, MCKINLEY_LINES) == []
 
 
 def two_readers_of(first, second, *, image=None):
@@ -412,7 +417,10 @@ def test_a_space_for_a_line_break_is_the_text_the_readings_write():
     readings = two_readers_of(MCKINLEY, MCKINLEY.replace("Elev.6400", "Elev. 6400"))
     given = "E Slope Mt. McKinley, Davao Prov."
     assert agreement.across_lines("precise_location", readings, given) == MCKINLEY_LINES
-    assert agreement.across_lines("city", readings, given) is None
+    # A place value field over one line break too (plan WP S1, C4a); any other field never.
+    assert agreement.across_lines("city", readings, given) == MCKINLEY_LINES
+    assert agreement.across_lines("collectors", readings, given) is None
+    assert agreement.across_lines("city", readings, given + " Mindanao, P.I.") is None
     # Readers who break the lines at different words write no one text.
     other = MCKINLEY.replace("E Slope Mt.\nMcKinley,", "E Slope\nMt. McKinley,")
     assert agreement.across_lines("precise_location", two_readers_of(MCKINLEY, other), given) is None

@@ -18,8 +18,11 @@ agrees (step.mark_not_on_label, step.not_on_label). WP 2.R
 checked each field the list leaves out against its sources and adds none (contracts.NOT_ON_LABEL's comment), so
 the rule is today's; its named cases are test_step's
 test_the_listed_fields_a_label_does_not_state_clear_as_not_on_the_label (a field the label does not write,
-cleared, no reason) and test_a_field_whose_line_the_label_writes_never_clears_as_not_on_the_label (a field whose
-reading writes its text, answered label_lacks_value, keeps the reason); the fields left out are pinned below."""
+cleared, no reason) and
+test_a_field_whose_line_the_label_writes_clears_only_on_its_expert_s_word_and_readers_that_agree (a field whose
+reading writes its text, answered label_lacks_value, kept the reason until the owner's rule change 1 of 2026-11-17,
+plan WP S1, C1: now it clears where both readers write that text alike, and keeps the reason where they do not);
+the fields left out are pinned below."""
 
 from __future__ import annotations
 

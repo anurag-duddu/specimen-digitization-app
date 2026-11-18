@@ -1113,7 +1113,7 @@ rules:
       a precise location that names nothing finer than its town, or than its
       country, is never cleared as not on the label; and one that holds an
       elevation settles only when its elevation text is the literal an
-      elevation field settled from that label.
+      elevation field settled from that label, or that literal with its unit.
     instruction: >-
       Precise Location is the label's locality as written: every line of its locality
       text, with its line breaks, the higher places and an elevation written on those

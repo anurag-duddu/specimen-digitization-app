@@ -943,10 +943,13 @@ METHOD_UNSETTLED = {
 
 
 @pytest.mark.parametrize("method", METHOD_UNSETTLED.values(), ids=METHOD_UNSETTLED)
-def test_a_habitat_whose_trap_no_method_settles_stays_in_review(tmp_path, method):
-    """The control: the organiser's habitat is "trap" and no field settles
-    that text, so it may be the habitat: rule A keeps declining, and the
-    habitat goes to review, as on 5332ce4e3."""
+def test_a_habitat_whose_trap_no_method_settles_clears_on_its_expert_s_word(tmp_path, method):
+    """The organiser's habitat is "trap" and no field settles that text, so it
+    may be the habitat: on 5332ce4e3 rule A kept declining (organiser_found_text).
+    Since the owner's rule change 1 (2026-11-17, "Yes, go ahead"; plan WP S1,
+    C1) the habitat's own expert's label_lacks_value clears it as not on the
+    label, both readers writing "trap" alike. An expert that does not say so
+    leaves it for a person (test_autonomy_rule_mechanics)."""
     from test_step import research
 
     rig = label_3(tmp_path, candidates=TRAP_HABITAT)
@@ -955,13 +958,16 @@ def test_a_habitat_whose_trap_no_method_settles_stays_in_review(tmp_path, method
     decisions: dict[str, dict] = {}
     field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
     assert run.fields["collection_method"].state != ValueState.SUPPORTED
-    assert decisions["habitat"] == {"rule": "A_declined:organiser_found_text"}
-    assert "habitat" not in cleared_as_not_on_label(run)
+    assert decisions["habitat"] == {"rule": "A_not_on_label"}
+    assert "habitat" in cleared_as_not_on_label(run)
 
 
-def test_organiser_text_with_more_than_the_settled_text_stays_in_review(tmp_path):
-    """The control: the organiser's habitat "trap, cloud forest" holds more
-    than the method's settled "trap", so the habitat may be on the label."""
+def test_organiser_text_with_more_than_the_settled_text_clears_only_on_its_expert_s_word(tmp_path):
+    """The organiser's habitat "trap, cloud forest" holds more than the method's
+    settled "trap", so the method's text does not absent it: on main rule A
+    declined (organiser_found_text). Since the owner's rule change 1 (plan WP
+    S1, C1) the habitat's own expert's label_lacks_value clears it, both readers
+    writing the line alike."""
     from test_step import research
 
     text = "trap, cloud forest\nIV-24-48\nR.D. Mitchell"
@@ -973,7 +979,7 @@ def test_organiser_text_with_more_than_the_settled_text_stays_in_review(tmp_path
     decisions: dict[str, dict] = {}
     field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
     assert run.fields["collection_method"].state == ValueState.SUPPORTED
-    assert decisions["habitat"] == {"rule": "A_declined:organiser_found_text"}
+    assert decisions["habitat"] == {"rule": "A_not_on_label"}
 
 
 def apply_scripts(rig, scripts, **kwargs):

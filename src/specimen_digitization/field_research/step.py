@@ -662,6 +662,17 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
                 written[key] = PlaceField(tuple(sorted(texts)))
                 if key in pending or value is None or value.state != ValueState.SUPPORTED or not value.literal:
                     unsettled.add(key)
+        country = run.fields.get("country")
+        if ("country" not in settled and "country" not in pending and country is not None
+                and _claims_text("country", country, human_keys(run)) and reading.region_id in _value_regions(
+                    country, readings, rows)):
+            # The record's country, settled from another reading of this same label (or a person's),
+            # where this reading writes it in another spelling (105526596's 2A "Costa Rica", 2B
+            # "Costa R.ica"): the place still settles only inside it (lies_in; plan WP S1, C4c).
+            settled["country"] = PlaceField(tuple(dict.fromkeys((country.literal,
+                *(text for text in (country.normalized, country.parsed) if text),
+                *_expansions("country", country, rows)))), country.authority_id,
+                _record_code(country, (received or {}).get("country", ())))
         refused = parents_refusal(task.key, candidate, basis, written=written, settled=settled,
             literal=answer.literal, unsettled=frozenset(unsettled), confirmed=confirmed)
         if refused is not None:
@@ -1173,10 +1184,11 @@ def _borrowed_years(run, readings: Sequence[Reading], evidence: Mapping[str, Evi
 def _keeps_an_elevation(key: str, literal: str, regions: set, claimant: str, text: str, theirs: set) -> bool:
     """On the units path (_taken), whether a precise location and an elevation field share the
     elevation's text by the ontology's rule precise_location_extent (plan WP 2.3b): the precise
-    location's literal keeps an elevation (agreement.elevation_kept) whose text is, after
-    collapse, the elevation field's literal, on a label both are read from. Either may be the
-    answer read from the transcript, the other the value that claims its text."""
-    from .agreement import ELEVATION_INSIDE, FIELD_UNITS, collapse, elevation_kept
+    location's literal keeps an elevation (agreement.elevation_kept) that is the elevation
+    field's literal: the same text after collapse, or its one number written with its unit
+    (agreement.same_elevation; plan WP S1, C4b), on a label both are read from. Either may be
+    the answer read from the transcript, the other the value that claims its text."""
+    from .agreement import ELEVATION_INSIDE, FIELD_UNITS, elevation_kept, same_elevation
 
     if key == ELEVATION_INSIDE and claimant in FIELD_UNITS:
         place, height = literal, text
@@ -1185,7 +1197,7 @@ def _keeps_an_elevation(key: str, literal: str, regions: set, claimant: str, tex
     else:
         return False
     kept = elevation_kept(place)
-    return kept is not None and collapse(kept) == collapse(height) and bool(regions & theirs)
+    return kept is not None and same_elevation(kept, height) and bool(regions & theirs)
 
 
 def _settled_elevations(run, settled: Mapping[str, FieldValue], readings: Sequence[Reading],
@@ -3064,17 +3076,19 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
 
 def _across_lines(outcomes: Sequence[FieldOutcome], by_name: Mapping[str, Reading]) -> tuple[FieldOutcome, ...]:
     """Each resolved answer of a field whose literal may run over consecutive
-    lines (agreement.ACROSS_LINES: precise location) with its literal as the
+    lines (agreement.ACROSS_LINES: precise location; agreement.ONE_LINE_BREAK:
+    a place value field over one line break, plan WP S1, C4a) with its literal as the
     readings it names write it (agreement.across_lines), when it gives a
     space for a line break or a line break for a space, as the experts'
     check gives it (experts._Expert._across_lines); every other outcome as
     it is."""
-    from .agreement import ACROSS_LINES, across_lines
+    from .agreement import ACROSS_LINES, ONE_LINE_BREAK, across_lines
 
     found = []
     for outcome in outcomes:
         answer = outcome.answer
-        if (outcome.key in ACROSS_LINES and answer is not None and answer.outcome == "resolved"
+        if ((outcome.key in ACROSS_LINES or outcome.key in ONE_LINE_BREAK) and answer is not None
+                and answer.outcome == "resolved"
                 and answer.literal and answer.reading_names
                 and all(name in by_name for name in answer.reading_names)
                 and not all(answer.literal in by_name[name].text for name in answer.reading_names)):
@@ -3511,6 +3525,33 @@ def _organiser_texts(task: FieldTask, readings: Sequence[Reading]) -> list[tuple
     for observation, text in current.verbatim_by_observation.items():
         found.append((text, _occurrences(text, [r for r in readings if r.observation_id == observation])))
     return [(text, spans) for text, spans in found if text and text.strip()]
+
+
+def _read_alike(texts: Sequence[tuple[str, frozenset]], found: Sequence[str], readings: Sequence[Reading]) -> bool:
+    """Whether every reader of a label writes each of the `found` organiser texts alike (rule A's
+    rule change 1, mark_not_on_label): each found text, letter case and white space aside
+    (checks.collapse), stands (`texts`: _organiser_texts, with where each stands) in at least one
+    reading, and in every reading of each label it stands in. "Malaise trap" one reader writes
+    "Malaise trep", or leaves out, is not read alike (G51's input on #441's first review)."""
+    from .checks import collapse
+
+    def keyed(text: str) -> str:
+        return collapse(text).casefold()
+
+    region_of = {reading.name: reading.region_id for reading in readings}
+    written: dict[str, set[str]] = {}
+    for text, spans in texts:
+        for name, _, _ in spans:
+            written.setdefault(name, set()).add(keyed(text))
+    for text in found:
+        names = [name for name, keys in written.items() if keyed(text) in keys and name in region_of]
+        if not names:
+            return False
+        regions = {region_of[name] for name in names}
+        if any(keyed(text) not in written.get(reading.name, set()) for reading in readings
+                if reading.region_id in regions):
+            return False
+    return True
 
 
 def _settled_claims(run, readings: Sequence[Reading]) -> list[tuple[str, str, frozenset]]:
@@ -3960,6 +4001,11 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
        inside the text of a place above it that claims its text
        (_places_above, _within: 48a71d53's "Davao Prov." under its settled
        province "Davao Prov."); and
+       when its expert answered label_lacks_value itself (not `above`) and it is
+       not the precise location, the texts left no longer refuse it where every
+       reader of their label writes each alike (_read_alike) and, for a county,
+       none writes a county unit word (the owner's rule change 1 of 2026-11-17,
+       plan WP S1, C1);
        for a precise location, the texts left count as absent when, beside
        the places settled, they write only an administrative marker, or
        readers differ only in one (_admin_markers);
@@ -3999,6 +4045,8 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
     if not allowed or not _whole_label_read(run, readings):
         why.update(dict.fromkeys(lacking, "label_not_read_whole" if allowed else "not_listed"))
         return []
+    from .agreement import writes_county_unit
+
     elevation = claims = None
     places_above: dict[str, list] = {}
     marked = []
@@ -4018,11 +4066,21 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
         claims = _settled_claims(run, readings) if claims is None else claims
         if key in BELOW_A_PLACE and key not in places_above:
             places_above[key] = _places_above(run, key, readings, rows, human)
-        found = [text for text, spans in _organiser_texts(tasks_by_key[key], readings)
+        texts = _organiser_texts(tasks_by_key[key], readings)
+        found = [text for text, spans in texts
             if not (key in INSIDE_A_PLACE and _inside_a_settled_place(run, key, text))
             and not any(_within(text, spans, theirs) for _, theirs, _ in places_above.get(key, ()))
             and _held_by_another_kind(key, text, spans, claims) is None]
-        if found and not (key == "precise_location" and _admin_markers(run, found) is not None):
+        # The owner's rule change 1 (2026-11-17, "Yes, go ahead"): blank is an answer when both
+        # readers read the whole label cleanly and the field's expert itself says the field is not
+        # there, so the organiser's text no longer refuses it then (plan WP S1, C1, the listed fields
+        # only): every reader of its label writes that text alike (_read_alike), and for a county it
+        # writes no county unit word of its own (N1 of #289's review: "Cook County"). An absence
+        # `above` gives, and the precise location (rule 7), keep condition 5.
+        asserted = (answer.outcome == "label_lacks_value" and key != "precise_location"
+            and _read_alike(texts, found, readings)
+            and not (key == "county" and any(writes_county_unit(text) for text in found)))
+        if found and not asserted and not (key == "precise_location" and _admin_markers(run, found) is not None):
             why[key] = "organiser_found_text"
             continue
         if key in ELEVATION_FIELDS:
@@ -4332,6 +4390,16 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
     - Not in canonical_materialization_v2: the code of each marked finding
       (marked_reasons), until a person approves the record, as the labels'
       review_required reasons above.
+    - 203-217, G19 per field (plan WP S1, C3): a drawn field cleared as not on
+      the label (not_on_label) or waiting for a held source does not make its
+      label unresolved_transcription; a label no field is drawn from is so
+      only while a field the organiser found text for on it has a reason of its
+      own (_reason_fields), or when the organiser found no text on it at all.
+    - Not in canonical_materialization_v2: a record none of whose fields that
+      describe the specimen holds a value (_has_value; the catalogue number, the
+      collection code and the determiner's IRN aside: IDENTIFYING_FIELDS) is
+      no_specimen_value until a person approves it (plan WP S1, the empty-record
+      guard).
     """
     reasons: list[str] = []
     # 198-199
@@ -4341,6 +4409,17 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
     for label in run.label_language_handling.get("labels", []):
         if label.get("review_required") and not run.human_approved:
             reasons.extend(f"{reason}:{label['region_id']}" for reason in label["reasons"])
+    # A field that waits for a held source adds no reason of its own: its source's reason
+    # routes the record (WP 2.3b, ontology_checks.waiting_fields). Only research on the units
+    # path makes a field wait (ontology_checks.wait_for_sources).
+    from .ontology_checks import waiting_fields
+
+    waits = waiting_fields(run)
+    rows = {item.id: item for item in run.evidence}
+    # The labels no field is drawn from, each with where its reason goes and the fields the
+    # organiser found text for on it: G19's hold is per field, so such a label is held only
+    # while one of those fields is (decided once every field's reasons are in, below).
+    undrawn: list[tuple[int, str, frozenset[str]]] = []
     # 203-217
     given_up = given_up_regions(run)
     for region in run.regions:
@@ -4361,21 +4440,21 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
             drawn = [key for key, value in run.fields.items() if key != IRN and (
                 value.source_region_id == region.id or any(identifier in ids for identifier in value.verbatim_by_observation)
                 or any(item.id in value.evidence_ids and item.region_id == region.id for item in run.evidence))]
-            if not drawn or any(run.fields[key].state != ValueState.SUPPORTED
+            if not drawn:
+                undrawn.append((len(reasons), region.id, _label_candidate_keys(run, region.id)))
+            # G19 (golive PLAN.md:77) is per field: a drawn field cleared as not on the label
+            # (owner decision A) or one waiting for a held source (whose source's reason routes
+            # the record) is no conflict of this label's readings (plan WP S1, C3).
+            elif any(run.fields[key].state != ValueState.SUPPORTED
                     or not _raw_grounded(run.fields[key], run) and key not in qualified
-                    for key in drawn if latest_work.get(key) in TERMINAL):
+                    for key in drawn if latest_work.get(key) in TERMINAL and key not in waits
+                    and not not_on_label(key, run.fields[key], run, rows, allowed)):
                 reasons.append(f"unresolved_transcription:{region.id}")
     evidence = {item.id: item for item in run.evidence}
     # 219-220: an identity collision is an integrity failure, never a review reason.
     if len(evidence) != len(run.evidence):
         raise EvidenceIntegrityError("evidence_integrity_failure")
     mandatory = frozenset(mandatory)
-    # A field that waits for a held source adds no reason of its own: its source's reason
-    # routes the record (WP 2.3b, ontology_checks.waiting_fields). Only research on the units
-    # path makes a field wait (ontology_checks.wait_for_sources).
-    from .ontology_checks import waiting_fields
-
-    waits = waiting_fields(run)
     for key in sorted(latest_work):
         if latest_work[key] not in TERMINAL or key in waits:
             continue
@@ -4485,7 +4564,67 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
         reasons.append("identifier_format")
     if not getattr(run, "human_approved", False):
         reasons += marked_reasons(run)
+    # A label no field is drawn from goes to a person only while a field the organiser found
+    # text for on it is held by a reason of its own (G19 is per field; plan WP S1, C3), or when
+    # the organiser found no text there at all: then its reason is the only thing standing for
+    # text no field took (WP 2.R's inputs, test_review_rules). Each keeps its place in the order.
+    held = {key for reason in reasons for key in _reason_fields(reason, run.fields)}
+    for at, region_id, keys in reversed(undrawn):
+        if not keys or keys & held:
+            reasons.insert(at, f"unresolved_transcription:{region_id}")
+    # A record no field of which describes the specimen is never finished without a person,
+    # whatever clears each field on its own (plan WP S1, the empty-record guard).
+    if not run.human_approved and not any(_has_value(value) for key, value in run.fields.items()
+            if key not in IDENTIFYING_FIELDS):
+        reasons.append(NO_SPECIMEN_VALUE)
     return list(dict.fromkeys(reasons))
+
+
+# The reason of a record none of whose fields that describe the specimen holds a value
+# (scientific_reasons): R0's 105526335, whose labels write only "FMNHINS 4486770" and
+# "LEWIS COLLECTION / col", so only its catalogue number and collection code have one.
+NO_SPECIMEN_VALUE = "no_specimen_value"
+# The fields that identify the record, not the specimen: the catalogue number, the collection
+# code and the determiner's EMu record.
+IDENTIFYING_FIELDS = frozenset({"fmnh_ins_number", "collection_code", IRN})
+# The record-level reasons that name a field, or fields, of their own (_reason_fields).
+RECORD_REASON_FIELDS = {
+    "taxonomy_unresolved": ("taxon",),
+    "identifier_format": ("fmnh_ins_number",),
+    "date_order": ("date_visited_from", "date_visited_to", "date_identified"),
+    "date_precision_requires_review": ("date_visited_from", "date_visited_to", "date_identified"),
+}
+
+
+def _reason_fields(reason: str, fields: Mapping[str, FieldValue]) -> tuple[str, ...]:
+    """The fields a review reason holds: `<code>:<field>` and `marked:<field>:<label>:<why>`
+    name theirs; the taxon's, the catalogue number's and the dates' record-level reasons
+    (RECORD_REASON_FIELDS) and an elevation's (`elevation_<code>:<unit or end>`) name theirs
+    too. Any other reason names none."""
+    if reason in RECORD_REASON_FIELDS:
+        return RECORD_REASON_FIELDS[reason]
+    code, _, rest = reason.partition(":")
+    if code.startswith("elevation_"):
+        return tuple(key for key in fields if key.startswith("elevation_") and rest in key.split("_"))
+    key = rest.split(":", 1)[0]
+    return (key,) if key in fields else ()
+
+
+def _has_value(value: FieldValue) -> bool:
+    """Whether a field holds a value: supported, with a settled text that is no placeholder
+    (scientific_reasons' 232-236 test)."""
+    settled = value.normalized or value.parsed or value.literal
+    return (value.state == ValueState.SUPPORTED and bool(settled and settled.strip())
+        and settled.strip().casefold() not in PLACEHOLDERS)
+
+
+def _label_candidate_keys(run, region_id: str) -> frozenset[str]:
+    """The fields the organiser found text for on one label: those with a candidate of one of
+    its readings (_candidates)."""
+    readings = run_readings(run)
+    names = {reading.name for reading in readings if reading.region_id == region_id}
+    return frozenset(key for key, found in _candidates(run, readings).items()
+        if key != IRN and any(candidate.reading in names for candidate in found))
 
 
 def work_states(run, profile: CollectionProfile, outcomes: Sequence[FieldOutcome]) -> dict[str, str]:
