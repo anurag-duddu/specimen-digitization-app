@@ -308,6 +308,77 @@ def test_a_persons_decision_carries_no_mark_holds_until_approval_and_buys_no_sec
     assert len(opinion.requests) == 1
 
 
+# ---- PR #456's head d016678b: an approval is the person's; finish is the whole refinalize -------------------
+
+def test_an_approved_record_carries_no_mark_is_not_due_and_is_cleared_by_the_person(tmp_path):
+    """#456: for a run a person approved the second opinion contributes no code and is not due. #455's approval
+    handling agrees: the approval clears pending_review (clear_on_approval), the record is cleared by a person,
+    no mark is left open, and a Retry or Resume afterwards asks nothing and keeps it so."""
+    opinion = Opinion(agreeing(tmp_path / "values", habitat=MEADOW))
+    rig = rig_on(tmp_path, opinion=opinion)
+    assert fields_of(marks(to_end(rig).run.open_reasons)) == {"habitat"}
+    client = review_client(rig)
+    decide(client, rig, "approve", "approve")
+    approved = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    run = approved.run
+    assert run.human_approved and run.pending_review == [] and not so.due(run) and so.reasons(run) == []
+    assert (run.disposition, run.reasons, marks(run.open_reasons)) == (Disposition.CLEARED, [], [])
+    assert summary(approved)["cleared_by"] == "person"
+    again = resumed(rig).run
+    assert (again.disposition, again.reasons, marks(again.open_reasons)) == (Disposition.CLEARED, [], [])
+    assert len(opinion.requests) == 1
+
+
+def test_a_decision_while_the_record_waits_for_the_second_opinion_holds_it_for_approval(tmp_path):
+    """#456: a person's decision at stage field_second_opinion sets the stage to finalized and goes through the
+    whole refinalize. #455's hold, written where the decision enters (apply_decision), holds the record for the
+    person's approval; the marks are split as research's finalize splits them; the decided field is unmarked."""
+    rig = rig_on(tmp_path, opinion=Opinion(agreeing(tmp_path / "values", habitat=MEADOW)))
+    waiting = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (waiting.stage, waiting.disposition) == (so.STEP, None)
+    habitat = waiting.fields["habitat"]
+    decided = decide(review_client(rig), rig, "field-habitat", "field", target_id="habitat",
+        after={"literal": habitat.literal, "parsed": habitat.parsed, "normalized": habitat.normalized,
+               "state": habitat.state.value, "reason": habitat.reason}, evidence_ids=list(habitat.evidence_ids))
+    assert (decided.stage, decided.disposition, decided.reasons) == ("finalized", Disposition.REVIEW, [APPROVAL])
+    assert decided.pending_review == [APPROVAL] and not marks(decided.reasons)
+    assert fields_of(marks(decided.open_reasons)) == settled_judged(decided) - {"habitat"}
+    assert not [code for code in decided.open_reasons if ":habitat:" in code and so.own(code)]
+
+
+@pytest.mark.parametrize("state", ["agrees", "differs", "switched-off"])
+def test_a_run_nobody_touched_clears_through_finish_as_through_researchs_finalize(tmp_path, state):
+    """The step's finish is the whole refinalize: the record it finalizes is the one research's finalize gives
+    on the same run with the step's stored result (finalize_fields, the split included)."""
+    rig = opinion_rig(tmp_path, state)
+    done = to_end(rig).run
+    again = done.model_copy(deep=True)
+    field_step.finalize_fields(again, None, (), today=TODAY)
+    assert (done.stage, done.disposition) == ("finalized", Disposition.CLEARED)
+    assert (again.stage, again.disposition, again.reasons, again.open_reasons) == (
+        done.stage, done.disposition, done.reasons, done.open_reasons)
+    assert not marks(done.reasons)
+
+
+def test_a_run_classified_before_the_second_opinion_is_unconfigured_and_still_clears(tmp_path):
+    """A run whose pinned profile has no price row for the second opinion (classified before #456): the step
+    ends `unconfigured`, every settled value it answers for reads "not checked", and under #455 that holds
+    nothing: the record clears."""
+    from specimen_digitization.model_gateway import SECOND_OPINION_ROUTE
+
+    opinion = Opinion(full())
+    rig = rig_on(tmp_path, opinion=opinion)
+    stored = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    stored.run.profile_snapshot["processing"]["price_list"]["models"].pop(SECOND_OPINION_ROUTE)
+    stored.run.profile.execution.price_list["models"].pop(SECOND_OPINION_ROUTE, None)
+    rig.repository.save(rig.principal, stored, stored.version, "old-profile", "old-profile")
+    run = to_end(rig).run
+    assert so.route_price(run) is None and not opinion.requests
+    assert (run.second_opinion["status"], run.second_opinion["reason"]) == (so.NOT_OBTAINED, "unconfigured")
+    assert (run.stage, run.blocker, run.disposition, run.reasons) == ("finalized", None, Disposition.CLEARED, [])
+    assert fields_of(marks(run.open_reasons, so.NOT_CHECKED)) == settled_judged(run) and settled_judged(run)
+
+
 # ---- 5. a record stored before either change; a history restore ------------------------------------------
 
 def test_a_record_stored_before_either_change_loads_and_keeps_its_hold(tmp_path):
@@ -338,7 +409,7 @@ def test_a_record_stored_before_either_change_loads_and_keeps_its_hold(tmp_path)
 def test_a_history_restore_returns_a_self_consistent_state(tmp_path):
     """A restore to the revision before a person's decision returns that revision's own second opinion, decided
     list and open marks, held for review after the restore (#455); refinalized, it is the same; approved, it
-    clears with its differing value still flagged on its field."""
+    clears, and the approval is the person's: the second opinion contributes no code to an approved run (#456)."""
     from specimen_digitization.application.history_restore import restored_specimen
 
     rig = rig_on(tmp_path, opinion=Opinion(agreeing(tmp_path / "values", habitat=MEADOW)))
@@ -366,5 +437,4 @@ def test_a_history_restore_returns_a_self_consistent_state(tmp_path):
     assert (loaded.run.reasons, loaded.run.open_reasons, loaded.run.person_decided_fields) == (
         [HISTORY_RESTORED], before[2], [])
     approved = decide(client, rig, "approve", "approve")
-    assert (approved.disposition, approved.reasons, marks(approved.open_reasons)) == (
-        Disposition.CLEARED, [], flagged)
+    assert (approved.disposition, approved.reasons, marks(approved.open_reasons)) == (Disposition.CLEARED, [], [])
