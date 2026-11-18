@@ -503,9 +503,10 @@ def own(code: str) -> bool:
     return code.startswith("marked:") and code.endswith((":" + DIFFERS, ":" + NOT_CHECKED))
 
 
-# Not obtained for these reasons, a request may have been sent and not answered: it is never asked again
-# for the same values (`asked`, kept with the stored result), on Retry, Resume or a recheck; only when the
-# settled values change or on a new run.
+# Every outcome of a call that was sent is final for the values it asked about (`asked`, kept with the
+# stored result): a timeout, a provider error after sending, a second malformed answer, and these two,
+# where it may have been sent: it is never asked again for them on Retry, Resume or a recheck; only for a
+# value never asked or changed since, or on a new run (due).
 UNANSWERED = frozenset({"outcome_unknown", "abandoned"})
 
 
@@ -521,13 +522,16 @@ def due(run) -> bool:
     shown value (its mark would be NOT_CHECKED), and no unanswered call was made on these same values."""
     from .step import run_readings
 
-    marks = derived(run, run_readings(run))
-    if not any(why == NOT_CHECKED for _, why in marks):
+    need = [key for key, why in derived(run, run_readings(run)) if why == NOT_CHECKED]
+    if not need:
         return False
     stored = getattr(run, "second_opinion", None)
-    return not (isinstance(stored, Mapping) and stored.get("status") == NOT_OBTAINED
-        and stored.get("reason") in UNANSWERED
-        and stored.get("asked") == {key: shown(run.fields[key]) for key, _ in marks})
+    asked = stored.get("asked") if isinstance(stored, Mapping) and stored.get("status") == NOT_OBTAINED else None
+    if not isinstance(asked, Mapping):
+        return True
+    # Field by field over the fields it answers for now: asked again only for a value never asked or
+    # changed since; a field that left the set (a person took it) never causes it.
+    return any(key not in asked or asked[key] != shown(run.fields[key]) for key in need)
 
 
 def finish(run) -> None:
@@ -733,7 +737,7 @@ def record(run, result: Result, *, attempt: int, at: str) -> None:
             "padded_labels") if key in previous})
         if result.status == ASKING:
             stored["asked"] = asked_values(run)
-        elif result.reason in UNANSWERED and "asked" in previous:
+        elif "asked" in previous and (result.reason in UNANSWERED or result.requests):
             stored["asked"] = previous["asked"]
     run.second_opinion = stored
 

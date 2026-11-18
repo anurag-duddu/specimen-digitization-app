@@ -1152,3 +1152,84 @@ def test_two_external_calls_are_reserved_and_counted_since_a_retry_is_possible(t
     before = pending.run.usage.external_calls
     run = counted.workflow.step(counted.principal, counted.specimen.id).run
     assert run.usage.external_calls == before + so.REQUESTS
+
+
+# ---- Codex round 5 on 77f82a6e ----------------------------------------------------------------------
+
+@pytest.mark.parametrize("room", [16, 0])
+def test_when_nothing_of_the_step_can_be_saved_the_record_is_finalized_as_main_would(tmp_path, monkeypatch, room):
+    """Codex round 5, 1: research's pending record sits so near the limit that not even "not obtained"
+    can be stored. The step writes nothing of its own and the record is finalized exactly as research
+    left it, as main would save it: no stored result, the marks not checked, the revision advanced, no
+    blocker. `room` is the bytes left below the limit by main's own finalized record."""
+    from specimen_digitization.application import active_graph
+
+    rig = build_rig(tmp_path)
+    opinion = Opinion(full())
+    with_opinion(rig, opinion)
+    pending = rig.workflow.step(rig.principal, rig.specimen.id)
+    monkeypatch.setattr(active_graph, "GRAPH_THRESHOLD", 0)
+    as_main = pending.model_copy(deep=True)
+    so.finish(as_main.run)
+    monkeypatch.setattr(active_graph, "NORMAL_GRAPH_LIMIT", graph_size(as_main) + room)
+    done = rig.workflow.step(rig.principal, rig.specimen.id)
+    run = done.run
+    assert done.version > pending.version and (run.stage, run.blocker) == ("finalized", None)
+    assert run.second_opinion is None and not opinion.requests and not step_paid(run)
+    assert own(run) and all(code.endswith(":" + so.NOT_CHECKED) for code in own(run))
+    assert run.reasons == as_main.run.reasons and run.disposition == as_main.run.disposition
+
+
+def test_a_timed_out_call_is_not_asked_again_on_resume(tmp_path, monkeypatch):
+    """Codex round 5, 2: a request that was sent and timed out is final for the values it asked about:
+    Resume, with the same values and money left, asks nothing."""
+    monkeypatch.setattr(so, "TIMEOUT_SECONDS", 15.5)
+    monkeypatch.setattr(so, "MIN_SECONDS", 15.0)
+    rig = build_rig(tmp_path)
+    opinion = Opinion(full(), delay=2.0)
+    with_opinion(rig, opinion)
+    real = so.ask
+
+    async def short(model, labels, text, meter, *, deadline, **kwargs):
+        return await real(model, labels, text, meter, deadline=deadline - 14.0, **kwargs)
+
+    monkeypatch.setattr(so, "ask", short)
+    run = to_end(rig).run
+    assert run.second_opinion["reason"] == "timeout" and run.second_opinion["asked"] and len(opinion.requests) == 1
+    held = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    held.run.stage, held.run.disposition = "plan", None
+    rig.repository.save(rig.principal, held, held.version, "resume", "resume")
+    again = to_end(rig).run
+    assert (again.stage, again.blocker) == ("finalized", None) and len(opinion.requests) == 1
+
+
+def test_confirming_an_unchanged_field_after_an_abandoned_call_does_not_re_ask(tmp_path, monkeypatch):
+    """Codex round 5, 3: the intent covers Country and Habitat among others; a person confirms Country
+    unchanged, which abandons the intent. On Resume the fields it answers for now are all asked with the
+    same values (Country left the set): nothing is asked again."""
+    from test_step import decide, review_client
+
+    rig = build_rig(tmp_path)
+    client = review_client(rig)
+    opinion = Opinion(agreeing(tmp_path))
+    with_opinion(rig, opinion)
+    rig.workflow.step(rig.principal, rig.specimen.id)
+    real = so.obtain
+
+    def decide_meanwhile(run, **kwargs):
+        current = rig.repository.get(rig.principal.scope, rig.specimen.id).run
+        country = current.fields["country"]
+        decide(client, rig, "country-meanwhile", "field", target_id="country",
+            after=country.model_dump(mode="json", exclude={"evidence_ids"}), evidence_ids=list(country.evidence_ids))
+        return real(run, **kwargs)
+
+    monkeypatch.setattr(so, "obtain", decide_meanwhile)
+    rig.workflow.step(rig.principal, rig.specimen.id)
+    monkeypatch.setattr(so, "obtain", real)
+    held = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    assert {"country", "habitat"} <= set(held.run.second_opinion["asked"])
+    held.run.stage, held.run.disposition = "plan", None
+    rig.repository.save(rig.principal, held, held.version, "resume", "resume")
+    again = to_end(rig).run
+    assert (again.stage, again.blocker) == ("finalized", None) and len(opinion.requests) == 1
+    assert not so.due(again)

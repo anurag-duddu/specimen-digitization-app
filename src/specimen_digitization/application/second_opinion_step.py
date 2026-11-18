@@ -177,12 +177,30 @@ def _end(workflow, principal, specimen, revision, *, label: str, release=None, p
     except Conflict:
         return workflow.repository.get(principal.scope, specimen.id)
     if saved is None:
-        return workflow.repository.get(principal.scope, specimen.id)
+        return _finalize_unchanged(workflow, principal, specimen.id, revision)
     if release is not None:
         settle_released(workflow.repository, principal, saved, release, workflow.clock)
     if settle is not None:
         settle(saved)
     return saved
+
+
+def _finalize_unchanged(workflow, principal, specimen_id, revision):
+    """Nothing about the step can be saved (the record's size limit): it writes nothing of its own, and
+    the record is finalized exactly as field research left it, as main would save it (its stored result
+    as it was, the marks derived from it: not checked). An intent of this step left open is abandoned
+    first. Never leaves the run pending at an unchanged revision."""
+    from ..field_research import second_opinion
+    from .active_graph import save_recoverably
+
+    base = workflow.repository.get(principal.scope, specimen_id)
+    if base.version != revision or base.run.stage != second_opinion.STEP:
+        return base
+    second_opinion.abandon(base.run)
+    second_opinion.finish(base.run)
+    base.run.lease_until = None
+    return save_recoverably(workflow.repository, principal, base, base.version, f"second-opinion-none:{revision}",
+        digest({"step": second_opinion.STEP, "run": base.run.id, "label": "none"}))
 
 
 def run_step(workflow, principal, specimen, revision):
