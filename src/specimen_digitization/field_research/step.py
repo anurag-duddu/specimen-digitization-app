@@ -87,14 +87,6 @@ from specimen_digitization.application.organiser import (
     stored_candidates,
 )
 from specimen_digitization.application.policy import PLACEHOLDERS
-from specimen_digitization.application.standing_holds import (
-    APPROVAL,
-    REASSESSMENT_UNCONFIRMED,
-    adopt_legacy,
-    clear_reassessment,
-    derived_holds,
-    note_pending,
-)
 from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.workflow import FIELD_RESEARCH, OperationalBlock, attempts_used
 
@@ -4723,6 +4715,8 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     that ran out of time are for a person instead (work_states), and only a
     model failure blocks.
     """
+    from specimen_digitization.application.standing_holds import adopt_legacy, derived_holds
+
     profile = profile_of(run) if profile is None else profile
     adopt_legacy(run)
     if specimen is not None and blobs is not None:
@@ -4812,6 +4806,8 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
     (``decided``) waits for their approval until they give it, and an approval
     clears what the rules clear. A later pass keeps a pending approval.
     """
+    from specimen_digitization.application.standing_holds import APPROVAL, adopt_legacy, note_pending
+
     adopt_legacy(run)
     if decided and not run.human_approved:
         # A person's decision waits for their approval (an approve decision itself is approved).
@@ -5088,6 +5084,8 @@ class FieldResearchStep:
                     asset_id=specimen.asset.id, decisions=decisions, unused=unused)
                 retained = commit(run, research_run, decisions=decisions) if research_run is not run else set()
                 if research_run is not run:
+                    from specimen_digitization.application.standing_holds import clear_reassessment
+
                     # This reassessment settles its family: it records what it still leaves unproved.
                     clear_reassessment(run)
                 blocker = finalize_fields(run, profile, outcomes, specimen=specimen, blobs=workflow.blobs,
@@ -5109,6 +5107,8 @@ class FieldResearchStep:
     @staticmethod
     def _retained_reassessment(run, retained) -> None:
         if retained:
+            from specimen_digitization.application.standing_holds import REASSESSMENT_UNCONFIRMED, note_pending
+
             # Recorded on the run, so every later finalize derives it (application/standing_holds.py).
             codes = [f"{REASSESSMENT_UNCONFIRMED}:{key}" for key in sorted(retained)]
             note_pending(run, *codes)
@@ -5179,3 +5179,7 @@ async def _production_tools(run, profile, blobs):
 
 def production_step() -> FieldResearchStep:
     return FieldResearchStep(resolver_factory=_production_resolver, tools_factory=_production_tools)
+
+
+# The approval hold's code, as the other modules read it here (application/standing_holds.py).
+from specimen_digitization.application.standing_holds import APPROVAL  # noqa: E402,F401
