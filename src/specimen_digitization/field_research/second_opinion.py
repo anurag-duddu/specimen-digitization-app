@@ -6,27 +6,38 @@ Measured basis (the program's fields benchmark, 2026-11-18, ~/specimen-golive/ru
 autonomy-fields-20261118/final/score_fields.md, K1's locality comparison): on the cleared records of
 the 100 truth slides, Muse Spark Open 816B, given the same label crops, the readers' transcriptions
 and the field definitions but never the pipeline's fields, agreed with 299 of the pipeline's 355
-settled values on the 67 slides it answered, 5 of them wrong (39 of the 355 were wrong); four in five
-of the values it disagreed on were wrong. Small samples: 2 wrong in 280 has a 95 % upper bound near
-3 %.
+settled values on the 67 slides it answered, 5 of them wrong (39 of the 355 were wrong). This code's
+own replay of the same answers marks 60 values as differing, 35 of them wrong. Small samples: 2 wrong
+in 280 has a 95 % upper bound near 3 %.
 
 THE STEP (FieldResearchStep.run calls `check` once per attempt, after research has settled the fields,
 their checks have run and a location reassessment's values are committed, before the clearance
 rules). One model call on SECOND_OPINION_ROUTE: the system message is the instruction
 (prompts/second_opinion.txt, pinned by INSTRUCTION_SHA256); the user message holds every label crop
 of the slide in label order, then each label's two readers' transcriptions (reader A and reader B,
-the profile's first two reader routes), exactly as the benchmark built it. The model answers the tool
-record_fields (TOOL): the 20 fields, each {value, evidence}. The request carries nothing of the
-pipeline's fields (`request_parts` reads only the regions' crops and the observations' texts).
+the profile's first two reader routes), exactly as the benchmark built it. A crop longer than
+MAX_ASPECT times its width (or the reverse) is padded with a white border to that ratio, centred,
+since the provider refuses it otherwise; the stored answer records which labels were padded. The
+model answers the tool record_fields (TOOL): the 20 fields, each {value, evidence}. The request
+carries nothing of the pipeline's fields (`request_parts` reads only the crops and the observations'
+texts).
 
-WHICH FIELDS IT JUDGES (`scope`): the values this attempt wrote (a field whose value differs from
-the one it had when the step began: researched, derived, inferred, or replaced by a location
-reassessment), and the fields an earlier attempt left NOT_CHECKED; of those, a value settled with
-text (supported, normalized, parsed or literal non-blank) that carries no `marked:` finding already
-and that no person holds authority over (`person_holds`). Never the catalogue number (it has its own
-evidence, the slide's QR code: catalogue_code.py) nor the determiner's IRN (the instruction asks for
-none). A field left open or blank is not judged: the second opinion's value for it is stored as
-evidence only.
+COVERAGE IS RECORDED (`responsible`, `covered`). The step is responsible for every value settled with
+text (supported, normalized, parsed or literal non-blank) that no other rule marks and that no
+person holds authority over (`person_holds`: a decision carried to the units path, a locked research
+selection, a location reassessment's protected field, a value whose label a person transcribed, and
+run.person_decided_fields, the fields a person decided at the decision endpoint). Never the
+catalogue number (its own evidence is the slide's QR code: catalogue_code.py) nor the determiner's
+IRN. After the step every such value carries exactly one verdict, kept in
+run.dependencies[STATE]["coverage"] with the value it was given on: `agrees` (an info finding
+`second_opinion_agrees:<field>` citing an evidence row of the second opinion's value), `differs` (a
+warning `marked:<field>:<label>:second_opinion_differs`, one of the run's reasons) or `not_checked`
+(a warning `marked:<field>:<label>:second_opinion_not_checked`). A value is judged when it has no
+verdict, its verdict was given on another value, or its verdict is not_checked; a recorded agree or
+differs on the same value stands. The step first drops this rule's findings and verdicts on every
+field it is not responsible for (a person's, an open one, one another rule marks), so a stale mark
+cannot outlive a person's decision or transcript correction. A field left open or blank is not
+judged: the second opinion's value for it is stored as an evidence row only.
 
 THE COMPARISON (`same`), one strict rule per kind of field, on the value the app shows (normalized,
 else parsed, else literal) against the second opinion's value:
@@ -36,36 +47,41 @@ else parsed, else literal) against the second opinion's value:
   and equal once each is rounded to the hundredth;
 - identifiers (the catalogue number, never judged here): the same digits, digit for digit;
 - text (everything else): equal once accents are removed (NFKD, combining marks dropped), case is
-  folded, and every character that is not a letter or a digit is dropped (white space and
-  punctuation folded). Province/State and County also set aside one trailing unit word on either
-  side (UNIT_WORDS), as the benchmark's comparison does.
-Agree: nothing changes. Differ, or the second opinion gives no value (the label does not carry the
-field, or it is unsure): the field gets a warning finding of rule RULE,
-`marked:<field>:<label>:second_opinion_differs` (step.marked_reasons makes it one of the run's
-reasons), citing an evidence row of kind EVIDENCE_KIND that holds the second opinion's value and the
-label text it rests on.
+  folded, and every character that is not a letter or a digit is dropped, except a "." or ","
+  between two digits and a "-" or "+" directly before a digit, which are kept (so "1.5 km" is not
+  "15 km" and "-80" is not "80"). Province/State and County also set aside one trailing unit word
+  on either side (UNIT_WORDS), as the benchmark's comparison does.
 
-WHAT IT NEVER DOES: change a field's value, state, layers or reason text; remove any finding but its
-own; un-mark or clear anything; judge a field a person holds; fail the run. When the second opinion is
-not obtained (no route price, an exception, a provider error such as HTTP 402, a timeout, a spent
-budget, an answer that is not one record_fields call holding every judged field, or a second call in
-the same attempt), every field it would have judged gets `marked:<field>:<label>:second_opinion_not_checked`
-in place of a verdict: an unchecked value is not confirmed, shown on its field. Nothing holds the
-record beyond what a mark does. `guarded` puts the fields, findings, evidence and the step's record
-back on any exception inside the comparison and marks the scope not checked.
+NOT OBTAINED: when the step is off (no model factory) or has no route or price, when research still
+has a retryable failure to ask again (`research_pending`: the money stays with research), when the
+time left is below what the step needs, the budget is spent, the provider errs (HTTP 402 included),
+the request times out, the answer is not one record_fields call that satisfies the tool schema field
+by field, a second request would be sent in the same attempt, or any exception: every value it would
+have judged gets `not_checked`, and one info finding `second_opinion_not_obtained:<code>` says why.
+An unchecked value is not confirmed, shown on its field; nothing holds the record beyond what a mark
+does. Fields, findings and evidence are put back before the marks are added; the run never fails.
 
-A person deciding a field drops this rule's findings on it (`forget`, called by the decision
-endpoint); refinalize and the decision endpoint compute nothing.
+TIME: the whole step, from reading the crops to storing the evidence, runs inside `seconds`, which
+the caller takes from what the enclosing step and the worker's deadline leave, less the clearance
+rules' margin. It does not start below MIN_SECONDS; it checks the clock before the request; the
+request is the only call whose time is not bounded by its size, and it is cut at the budget's end
+less STORE_SECONDS, which the evidence storage (one blob write) needs. So the step ends before the
+deadline the caller gave it, and the worker's deadline (WorkerDeadlineExceeded) lies beyond that.
+
+A person deciding a field adds it to run.person_decided_fields and drops this rule's findings on it
+(`forget`, called by the decision endpoint); refinalize and the decision endpoint compute nothing.
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import io
 import json
 import logging
 import math
 import re
+import time
 import unicodedata
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
@@ -80,15 +96,16 @@ from .contracts import Reading
 LOGGER = logging.getLogger(__name__)
 
 RULE = "second_opinion"
-RULE_VERSION = "field-research-second-opinion-v1"
+RULE_VERSION = "field-research-second-opinion-v2"
 DIFFERS = "second_opinion_differs"
 NOT_CHECKED = "second_opinion_not_checked"
+AGREES = "second_opinion_agrees"
 # The run-level note of an attempt whose second opinion was not obtained (an info finding, never a
 # reason): `second_opinion_not_obtained:<code>`.
 NOT_OBTAINED = "second_opinion_not_obtained"
 EVIDENCE_KIND = "second_opinion"
 EVIDENCE_SOURCE = "second_opinion"
-# run.dependencies[STATE]: the attempt that asked, the route, and how it went.
+# run.dependencies[STATE]: the attempt that last asked, its route and status, and the verdicts.
 STATE = "second_opinion"
 TOOL_NAME = "record_fields"
 # The 20 fields of the instruction, in its order.
@@ -117,10 +134,13 @@ CAP_MICROS = 60_000
 # Muse Spark calls reported about a third of that), and the text's by its UTF-8 bytes.
 PIXELS_PER_TOKEN = 28
 TEMPLATE_TOKENS = 512
+# Baseten refused 3 of the benchmark's 70 requests: "Media aspect ratio exceeds 40:1".
+MAX_ASPECT = 40
 # The longest the call may take (the benchmark's slowest answer took 27 s), within what the step's
-# deadline leaves.
+# deadline leaves; the least time the step starts with; what storing the evidence is left.
 TIMEOUT_SECONDS = 90.0
-MIN_SECONDS = 10.0
+MIN_SECONDS = 15.0
+STORE_SECONDS = 5.0
 
 _PROMPTS = Path(__file__).parent / "prompts"
 INSTRUCTION_FILE = _PROMPTS / "second_opinion.txt"
@@ -168,12 +188,30 @@ class Label:
     width: int
     height: int
     readers: tuple[str | None, str | None]
+    padded: bool = False
 
 
-def labels_of(run, crop: Callable) -> tuple[Label, ...]:
+def pad(png: bytes, width: int, height: int) -> tuple[bytes, int, int, bool]:
+    """The crop with a white border, centred, that brings it to MAX_ASPECT:1 when it is longer than
+    that; else the crop as it is. Deterministic: the same crop gives the same bytes."""
+    if max(width, height) <= MAX_ASPECT * min(width, height):
+        return png, width, height, False
+    from PIL import Image
+
+    new_w = max(width, math.ceil(height / MAX_ASPECT))
+    new_h = max(height, math.ceil(width / MAX_ASPECT))
+    with Image.open(io.BytesIO(png)) as image:
+        canvas = Image.new("RGB", (new_w, new_h), "white")
+        canvas.paste(image.convert("RGB"), ((new_w - image.width) // 2, (new_h - image.height) // 2))
+        out = io.BytesIO()
+        canvas.save(out, format="PNG")
+    return out.getvalue(), new_w, new_h, True
+
+
+def labels_of(run, crops: Mapping[str, bytes]) -> tuple[Label, ...]:
     """The slide's labels in their order (Region.order), numbered from 1, each with its crop
-    (`crop(region)` -> PNG bytes) and the last text of each of the profile's first two reader routes
-    (None where that reader returned nothing)."""
+    (`crops[region.id]`, PNG bytes, padded where it is too long) and the last text of each of the
+    profile's first two reader routes (None where that reader returned nothing)."""
     routes = list(run.profile.routes)[:2]
     labels = []
     for number, region in enumerate(sorted(run.regions, key=lambda r: (r.order, r.id)), start=1):
@@ -185,7 +223,8 @@ def labels_of(run, crop: Callable) -> tuple[Label, ...]:
         while len(texts) < 2:
             texts.append(None)
         width, height = (region.height, region.width) if region.rotation_quarter_turns % 2 else (region.width, region.height)
-        labels.append(Label(number, region.id, crop(region), width, height, (texts[0], texts[1])))
+        png, width, height, padded = pad(crops[region.id], width, height)
+        labels.append(Label(number, region.id, png, width, height, (texts[0], texts[1]), padded))
     return tuple(labels)
 
 
@@ -233,10 +272,11 @@ class Opinion:
 def read_answer(arguments) -> dict[str, Opinion]:
     """The record a record_fields call holds; NotObtained when it is not one.
 
-    `arguments` is the call's arguments (a JSON text or an object). Each of the judged fields must be
-    present; a field's entry is {value, evidence} (value a string, a number, which becomes its text, or
-    null; evidence a string, or absent) or null (nothing on the label). The catalogue number and the IRN
-    may be missing. A key outside the 20 fields, or any other shape, is malformed."""
+    `arguments` is the call's arguments (a JSON text or an object). It must be an object whose keys
+    are among the 20 fields and include every judged field. Each entry must satisfy the tool schema:
+    an object with exactly the keys `value` (a string or null) and `evidence` (a string). One
+    departure is read, as the benchmark read it: an entry that is null is a field the labels do not
+    carry. The catalogue number and the IRN may be missing. Anything else is malformed."""
     if isinstance(arguments, str):
         try:
             arguments = json.loads(arguments)
@@ -252,18 +292,12 @@ def read_answer(arguments) -> dict[str, Opinion]:
         if entry is None:
             record[key] = Opinion(None, "")
             continue
-        if not isinstance(entry, dict) or set(entry) - {"value", "evidence"}:
+        if not isinstance(entry, dict) or set(entry) != {"value", "evidence"}:
             raise NotObtained("second_opinion_malformed")
-        value, evidence = entry.get("value"), entry.get("evidence")
-        if isinstance(value, bool) or not (value is None or isinstance(value, (str, int, float))):
+        value, evidence = entry["value"], entry["evidence"]
+        if not (value is None or isinstance(value, str)) or not isinstance(evidence, str):
             raise NotObtained("second_opinion_malformed")
-        if isinstance(value, float) and not math.isfinite(value):
-            raise NotObtained("second_opinion_malformed")
-        if isinstance(value, (int, float)):
-            value = str(int(value)) if float(value) == int(value) else repr(value)
-        if evidence is not None and not isinstance(evidence, str):
-            raise NotObtained("second_opinion_malformed")
-        evidence = (evidence or "").strip()
+        evidence = evidence.strip()
         value = value.strip() if isinstance(value, str) and value.strip() else None
         record[key] = Opinion(value, evidence, unsure=value is None and evidence.upper().startswith("UNSURE"))
     return record
@@ -299,18 +333,29 @@ def _number(text: str) -> Decimal | None:
 
 
 def folded(text: str) -> str:
-    """Accents removed, case folded, only letters and digits kept."""
-    plain = "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
-    return "".join(ch for ch in plain.casefold() if ch.isalnum())
+    """Accents removed, case folded, only letters and digits kept, and a "." or "," between two
+    digits or a "-" or "+" directly before a digit."""
+    plain = "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch)).casefold()
+    kept = []
+    for i, ch in enumerate(plain):
+        after = plain[i + 1] if i + 1 < len(plain) else ""
+        before = plain[i - 1] if i else ""
+        if ch.isalnum():
+            kept.append(ch)
+        elif ch in ".," and before.isdigit() and after.isdigit():
+            kept.append(ch)
+        elif ch in "-+" and after.isdigit():
+            kept.append(ch)
+    return "".join(kept)
 
 
 def _unit_free(key: str, text: str) -> str:
     """folded(text) without one trailing unit word of the field (UNIT_WORDS), when another word
     precedes it."""
-    words = [word for word in (folded(part) for part in re.split(r"[^\w]+", text)) if word]
-    if len(words) > 1 and words[-1] in UNIT_WORDS.get(key, ()):
-        words = words[:-1]
-    return "".join(words)
+    match = re.search(r"[^\w]*(\w+)[^\w]*$", text)
+    if match and folded(match.group(1)) in UNIT_WORDS.get(key, ()) and re.search(r"\w", text[:match.start(1)]):
+        text = text[:match.start(1)]
+    return folded(text.rstrip(" ,.;:"))
 
 
 def kind(key: str) -> str:
@@ -329,8 +374,7 @@ def same(key: str, first: str | None, second: str | None) -> bool:
         a, b = _number(first), _number(second)
         return a is not None and a == b
     if how == "identifier":
-        a, b = re.sub(r"\D", "", first), re.sub(r"\D", "", second)
-        return bool(a) and a == b and first.strip().isdigit() and second.strip().isdigit()
+        return first.strip().isdigit() and first.strip() == second.strip()
     if key in UNIT_WORDS:
         a, b = _unit_free(key, first), _unit_free(key, second)
     else:
@@ -338,7 +382,7 @@ def same(key: str, first: str | None, second: str | None) -> bool:
     return bool(a) and a == b
 
 
-# ---- whose field it is ----------------------------------------------------------------------------
+# ---- whose field it is, and coverage --------------------------------------------------------------
 
 LOCKS = "human_review_field_locks"
 
@@ -346,12 +390,14 @@ LOCKS = "human_review_field_locks"
 def person_holds(run, readings: Sequence[Reading] = (), human: Collection[str] = ()) -> set[str]:
     """The fields a person holds authority over by a record on the run: `human` (step.human_keys, the
     decisions a move to the units path carried), a research selection a person locked, the location
-    reassessment's `protected` list (the person's verified decisions), and a value whose label a person
-    transcribed (Reading.person_decided). Lane Q1's function (PR #454), unchanged."""
+    reassessment's `protected` list (the person's verified decisions), the fields a person decided at
+    the decision endpoint (run.person_decided_fields), and a value whose label a person transcribed
+    (Reading.person_decided). Lane Q1's function (PR #454), with the decided fields added."""
     from .location_reassessment import KEY as REASSESSMENT
 
     dependencies = getattr(run, "dependencies", None) or {}
     held = set(human) | {key for key in dependencies.get(LOCKS) or {} if isinstance(key, str)}
+    held |= {key for key in getattr(run, "person_decided_fields", None) or () if isinstance(key, str)}
     marker = dependencies.get(REASSESSMENT)
     if isinstance(marker, Mapping) and isinstance(marker.get("protected"), list):
         held |= {key for key in marker["protected"] if isinstance(key, str)}
@@ -369,44 +415,60 @@ def _settled(value: FieldValue | None) -> bool:
     return value is not None and value.state == ValueState.SUPPORTED and shown(value) is not None
 
 
-def _not_checked(run) -> set[str]:
-    return {finding.field_key for finding in run.findings
-        if finding.rule_id == RULE and finding.reason_code.endswith(":" + NOT_CHECKED) and finding.field_key}
-
-
-def scope(run, before: Mapping[str, FieldValue], *, readings: Sequence[Reading], human: Collection[str] = ()) -> list[str]:
-    """The fields this attempt's second opinion judges (module docstring): the values this attempt
-    wrote and the fields an earlier attempt left not checked, settled with text, carrying no mark of
-    another rule, held by no person, and neither the catalogue number nor the IRN."""
-    held = person_holds(run, readings, human)
-    retry = _not_checked(run)
-    # A mark of another rule (a label's settlement, the check stage): the field is a person's already.
-    others = {finding.field_key for finding in run.findings
-        if finding.rule_id != RULE and finding.reason_code.startswith("marked:")}
-    others |= {code.split(":")[1] for code in _other_marks(run)}
-    found = []
-    for key in JUDGED:
-        value = run.fields.get(key)
-        if key in held or key in others or not _settled(value):
-            continue
-        if value == before.get(key) and key not in retry:
-            continue
-        found.append(key)
-    return found
-
-
-def _other_marks(run) -> list[str]:
-    """The run's `marked:` codes of rules other than this one (step.marked_reasons)."""
+def _other_marks(run) -> set[str]:
+    """The fields a `marked:` reason of another rule names (step.marked_reasons)."""
     from .step import marked_reasons
 
     own = {finding.reason_code for finding in run.findings if finding.rule_id == RULE}
-    return [code for code in marked_reasons(run) if code.count(":") >= 2 and code not in own]
+    found = {code.split(":")[1] for code in marked_reasons(run) if code.count(":") >= 2 and code not in own}
+    return found | {finding.field_key for finding in run.findings
+        if finding.rule_id != RULE and finding.reason_code.startswith("marked:") and finding.field_key}
+
+
+def responsible(run, *, readings: Sequence[Reading], human: Collection[str] = ()) -> list[str]:
+    """The values the step answers for (module docstring): settled with text, marked by no other rule,
+    held by no person, and neither the catalogue number nor the IRN."""
+    held = person_holds(run, readings, human)
+    others = _other_marks(run)
+    return [key for key in JUDGED if key not in held and key not in others and _settled(run.fields.get(key))]
+
+
+def coverage(run) -> dict:
+    state = run.dependencies.get(STATE)
+    found = state.get("coverage") if isinstance(state, Mapping) else None
+    return dict(found) if isinstance(found, Mapping) else {}
+
+
+def covered(run, key: str) -> bool:
+    """A recorded agrees or differs on the value the field holds now."""
+    entry = coverage(run).get(key)
+    return (isinstance(entry, Mapping) and entry.get("verdict") in ("agrees", "differs")
+        and entry.get("value") == shown(run.fields[key]))
+
+
+def _state(run, **update) -> None:
+    state = run.dependencies.get(STATE)
+    state = dict(state) if isinstance(state, Mapping) else {}
+    state.update(update)
+    run.dependencies[STATE] = state
 
 
 def forget(run, key: str) -> None:
-    """A person decided or selected the field `key`: this rule's findings on it go. Nothing is
-    recomputed; nothing else on the run changes (the evidence rows stay, as every row does)."""
+    """A person decided or selected the field `key`: this rule's findings and verdict on it go. Nothing
+    is recomputed; nothing else on the run changes (the evidence rows stay, as every row does)."""
     run.findings[:] = [finding for finding in run.findings if not (finding.rule_id == RULE and finding.field_key == key)]
+    found = coverage(run)
+    if key in found:
+        del found[key]
+        _state(run, coverage=found)
+
+
+def decided(run, key: str) -> None:
+    """The decision endpoint: the person decided the field `key`, durably (run.person_decided_fields),
+    and this rule's findings on it go (forget)."""
+    if key not in run.person_decided_fields:
+        run.person_decided_fields = [*run.person_decided_fields, key]
+    forget(run, key)
 
 
 def _labels(run, key: str, readings: Sequence[Reading]) -> list[str]:
@@ -445,29 +507,28 @@ def excerpt(key: str, opinion: Opinion) -> str:
 
 def apply(run, record: Mapping[str, Opinion], judged: Sequence[str], *, labels: Sequence[Label],
         readings: Sequence[Reading], asset_id: str | None, raw_ref: str | None, raw_digest: str | None) -> dict:
-    """Compare and mark (module docstring), and store the second opinion's value as evidence for every
-    judged field that differs and every field the pipeline left open or blank where the second opinion
-    gives a value. Returns {field: "agrees" | "differs" | "evidence"}."""
+    """Compare and record (module docstring): every judged field gets an evidence row of the second
+    opinion's value and its verdict (an agrees note or a differs mark); every field the pipeline left
+    open or blank where the second opinion gives a value gets the row alone. Returns {field: verdict}
+    for the judged fields."""
     outcome = {}
     judged_set = set(judged)
     for key in JUDGED:
         opinion = record[key]
         value = run.fields.get(key) or FieldValue()
         if key in judged_set:
-            if same(key, shown(value), opinion.value):
-                outcome[key] = "agrees"
-                continue
-            outcome[key] = "differs"
-        elif not _settled(value) and opinion.value is not None and value.state != ValueState.SUPPORTED:
-            outcome[key] = "evidence"
-        else:
+            outcome[key] = "agrees" if same(key, shown(value), opinion.value) else "differs"
+        elif not (opinion.value is not None and value.state != ValueState.SUPPORTED):
             continue
         row = Evidence(kind=EVIDENCE_KIND, asset_id=asset_id, region_id=_region_of(opinion.evidence, labels),
             source=EVIDENCE_SOURCE, locator=f"second_opinion:{key}", excerpt=excerpt(key, opinion),
             raw_ref=raw_ref, digest=raw_digest if raw_ref else None)
         run.evidence.append(row)
-        if outcome[key] == "differs":
+        if outcome.get(key) == "differs":
             _mark(run, key, DIFFERS, readings, [row.id])
+        elif outcome.get(key) == "agrees":
+            run.findings.append(RunFinding(rule_id=RULE, rule_version=RULE_VERSION, severity="info", field_key=key,
+                reason_code=f"{AGREES}:{key}", evidence_ids=[row.id]))
     return outcome
 
 
@@ -481,50 +542,57 @@ def not_checked(run, judged: Sequence[str], code: str, *, readings: Sequence[Rea
 
 # ---- the call -------------------------------------------------------------------------------------
 
-async def ask(model, labels: Sequence[Label], text: str, meter, *, timeout: float) -> tuple[object, int]:
-    """One request (the instruction and the labels), reserved on `meter` at its worst case and settled
-    at the provider's reported usage; the record_fields call's arguments. NotObtained when the request
-    is not made or not answered by one record_fields call."""
+async def ask(model, labels: Sequence[Label], text: str, meter, *, deadline: float) -> object:
+    """One request (the instruction and the labels), built first, then reserved on `meter` at its
+    worst case and settled at the provider's reported usage, or at its worst case (zero after an HTTP
+    429) when it fails after the reservation; cut at `deadline` (time.monotonic) less STORE_SECONDS.
+    Returns the record_fields call's arguments. NotObtained when the request is not made or not
+    answered by one record_fields call."""
     from pydantic_ai.messages import ModelRequest, SystemPromptPart, ToolCallPart, UserPromptPart
     from pydantic_ai.models import ModelRequestParameters
     from pydantic_ai.tools import ToolDefinition
 
     from .budget import BudgetExhausted
+    from .experts import _close_client
 
+    messages = [ModelRequest(parts=[SystemPromptPart(content=text), UserPromptPart(content=request_parts(labels))])]
+    parameters = ModelRequestParameters(output_mode="tool", allow_text_output=False, output_tools=[
+        ToolDefinition(name=TOOL_NAME, parameters_json_schema=tool_schema(), description=TOOL_DESCRIPTION)])
     bound = input_bound(labels, text)
+    timeout = deadline - STORE_SECONDS - time.monotonic()
+    if timeout <= 0:
+        raise NotObtained("second_opinion_no_time")
     try:
         ticket = await meter.reserve(bound, MAX_TOKENS)
     except BudgetExhausted:
         raise NotObtained("second_opinion_budget") from None
-    messages = [ModelRequest(parts=[SystemPromptPart(content=text), UserPromptPart(content=request_parts(labels))])]
-    parameters = ModelRequestParameters(output_mode="tool", allow_text_output=False, output_tools=[
-        ToolDefinition(name=TOOL_NAME, parameters_json_schema=tool_schema(), description=TOOL_DESCRIPTION)])
-    from .experts import _close_client
-
+    settled = False
     try:
         try:
             response = await asyncio.wait_for(model.request(messages, {"max_tokens": MAX_TOKENS}, parameters), timeout)
         finally:
             await _close_client(model)
     except asyncio.TimeoutError:
-        meter.settle(ticket, bound, MAX_TOKENS)
         raise NotObtained("second_opinion_timeout") from None
     except Exception as error:  # noqa: BLE001 - a provider error is the answer: not obtained
         status = getattr(error, "status_code", None)
         if status == 429:
             meter.settle(ticket, 0, 0)
-        else:
-            meter.settle(ticket, bound, MAX_TOKENS)
+            settled = True
         raise NotObtained(f"second_opinion_provider_error{'_' + str(status) if status else ''}") from None
-    usage = response.usage
-    if usage.has_values():
-        meter.settle(ticket, usage.input_tokens, usage.output_tokens, usage.cache_read_tokens, reported=True)
     else:
-        meter.settle(ticket, bound, MAX_TOKENS)
+        usage = response.usage
+        if usage.has_values():
+            meter.settle(ticket, usage.input_tokens, usage.output_tokens, usage.cache_read_tokens, reported=True)
+            settled = True
+    finally:
+        if not settled:
+            # Sent and not answered with usage, or not known whether it was sent: its worst case.
+            meter.settle(ticket, bound, MAX_TOKENS)
     calls = [part for part in response.parts if isinstance(part, ToolCallPart) and part.tool_name == TOOL_NAME]
     if len(calls) != 1:
         raise NotObtained("second_opinion_no_tool_call")
-    return calls[0].args, bound
+    return calls[0].args
 
 
 @dataclass
@@ -538,37 +606,51 @@ class Paid:
     model_calls: int = 1
 
 
-def check(run, before: Mapping[str, FieldValue], *, route: str | None, model_factory: Callable | None,
-        crop: Callable, blobs, asset_id: str | None, readings: Sequence[Reading], human: Collection[str],
-        cap_micros: int, meter_factory: Callable, price, timeout: float) -> Paid | None:
-    """The step: judge the fields in `scope` once for this attempt. Returns the paid call (Paid) when
-    a request was reserved, else None. Never raises: on any exception the run's fields, findings and
-    evidence are put back as they were and the judged fields are marked not checked."""
+def check(run, *, route: str | None, model_factory: Callable | None, crops: Callable, blobs,
+        asset_id: str | None, readings: Sequence[Reading], human: Collection[str], cap_micros: int,
+        meter_factory: Callable, price, seconds: float, research_pending: bool = False) -> Paid | None:
+    """The step (module docstring), once for this attempt, inside `seconds`. `crops()` returns
+    {region id: PNG bytes}. Returns the paid call (Paid) when a request was reserved, else None.
+    Never raises: on any exception the run's fields, findings and evidence are put back as they were
+    and the values to judge are marked not checked."""
     from .step import STEP
 
+    deadline = time.monotonic() + seconds
     attempt = run.attempts.get(STEP, 1)
+    previous = run.dependencies.get(STATE)
+    asked = isinstance(previous, Mapping) and previous.get("attempt") == attempt and previous.get("asked")
+    mine = responsible(run, readings=readings, human=human)
+    # This rule's findings and verdicts on any field it does not answer for now go first, and the
+    # previous attempt's run-level note.
+    run.findings[:] = [f for f in run.findings if not (f.rule_id == RULE and (f.field_key is None
+        or f.field_key not in mine))]
+    found = {key: entry for key, entry in coverage(run).items() if key in mine}
+    _state(run, coverage=found)
+    judged = [key for key in mine if not covered(run, key)]
+    if not judged:
+        return None
+    run.findings[:] = [f for f in run.findings if not (f.rule_id == RULE and f.field_key in judged)]
     kept_fields = {key: value.model_copy(deep=True) for key, value in run.fields.items()}
     kept_findings, kept_evidence = list(run.findings), list(run.evidence)
-    previous = run.dependencies.get(STATE)
-    judged: list[str] = []
     paid: Paid | None = None
+    padded: list[int] = []
     try:
-        judged = scope(run, before, readings=readings, human=human)
-        if not judged:
-            return None
-        # This attempt's verdicts replace this rule's earlier findings on the fields it judges.
-        run.findings[:] = [f for f in run.findings if not (f.rule_id == RULE and f.field_key in judged)]
-        if isinstance(previous, Mapping) and previous.get("attempt") == attempt:
+        if asked:
             raise NotObtained("second_opinion_already_asked")
-        run.dependencies[STATE] = {"attempt": attempt, "route": route, "status": "asking"}
         if model_factory is None or price is None or route is None:
             raise NotObtained("second_opinion_unconfigured")
-        if timeout < MIN_SECONDS:
+        if research_pending:
+            raise NotObtained("second_opinion_research_pending")
+        if seconds < MIN_SECONDS:
             raise NotObtained("second_opinion_no_time")
+        _state(run, attempt=attempt, route=route, asked=True, status="asking")
         text = instruction()
-        labels = labels_of(run, crop)
+        labels = labels_of(run, crops())
+        padded = [label.number for label in labels if label.padded]
         if not labels:
             raise NotObtained("second_opinion_no_labels")
+        if deadline - time.monotonic() < MIN_SECONDS:
+            raise NotObtained("second_opinion_no_time")
         try:
             model = model_factory()
         except Exception:  # noqa: BLE001 - no request was made
@@ -577,19 +659,21 @@ def check(run, before: Mapping[str, FieldValue], *, route: str | None, model_fac
         meter = meter_factory(cap, price)
         paid = Paid(reserved=cap)
         try:
-            arguments, _ = asyncio.run(ask(model, labels, text, meter, timeout=timeout))
+            arguments = asyncio.run(ask(model, labels, text, meter, deadline=deadline))
         finally:
             paid.spent = meter.spent_micros if meter.outstanding_micros == 0 else None
             paid.tokens = getattr(meter, "reported", None)
-            paid.model_calls = 1 if meter.spent_micros or meter.outstanding_micros else 0
+            paid.model_calls = 1 if meter.spent_micros or getattr(meter, "reported", {}).get("requests") else 0
         record = read_answer(arguments)
         stored = json.dumps({"route": route, "attempt": attempt, "instruction_sha256": INSTRUCTION_SHA256,
-            "arguments": arguments, "labels": {str(label.number): label.region_id for label in labels}},
-            sort_keys=True, ensure_ascii=False, default=str).encode()
+            "arguments": arguments, "labels": {str(label.number): label.region_id for label in labels},
+            "padded_labels": padded}, sort_keys=True, ensure_ascii=False, default=str).encode()
         raw_ref = blobs.put(stored) if blobs is not None else None
         outcome = apply(run, record, judged, labels=labels, readings=readings, asset_id=asset_id,
             raw_ref=raw_ref, raw_digest=hashlib.sha256(stored).hexdigest())
-        run.dependencies[STATE] = {"attempt": attempt, "route": route, "status": "obtained", "fields": outcome}
+        found.update({key: {"verdict": verdict, "value": shown(run.fields[key]), "attempt": attempt}
+            for key, verdict in outcome.items()})
+        _state(run, coverage=found, status="obtained", padded_labels=padded)
         paid.outcome = "completed"
         return paid
     except NotObtained as reason:
@@ -601,12 +685,13 @@ def check(run, before: Mapping[str, FieldValue], *, route: str | None, model_fac
     run.fields.clear()
     run.fields.update(kept_fields)
     run.evidence[:] = kept_evidence
-    run.findings[:] = [f for f in kept_findings if not (f.rule_id == RULE and f.field_key in judged)]
+    run.findings[:] = kept_findings
     try:
         not_checked(run, judged, code, readings=readings)
     except Exception:  # noqa: BLE001 - the marks never fail research either
         LOGGER.warning("second opinion: not-checked marks failed", exc_info=True)
         run.findings[:] = kept_findings
-    if not (isinstance(previous, Mapping) and previous.get("attempt") == attempt):
-        run.dependencies[STATE] = {"attempt": attempt, "route": route, "status": f"not_obtained:{code}"}
+    found.update({key: {"verdict": "not_checked", "value": shown(run.fields[key]), "attempt": attempt}
+        for key in judged})
+    _state(run, coverage=found, **({} if asked else {"status": f"not_obtained:{code}"}))
     return paid

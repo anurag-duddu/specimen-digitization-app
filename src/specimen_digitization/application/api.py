@@ -2388,12 +2388,13 @@ def create_app(
         else:
             raise ValueError("Unsupported review decision")
         if body.kind in {"field", "research_candidate", "authority_resolution", "taxonomy_resolution"}:
-            # A person decided or selected the field: the second opinion's findings on it go
-            # (field_research/second_opinion.py, forget). Nothing is recomputed here or in the
-            # clearance rules that follow; the field itself is not touched.
+            # A person decided or selected the field, whatever the payload holds: recorded on the run
+            # (run.person_decided_fields), so the second opinion never judges it again, and its
+            # findings on it go (field_research/second_opinion.py, decided). Nothing is recomputed
+            # here or in the clearance rules that follow; the field itself is not touched.
             from ..field_research import second_opinion
 
-            second_opinion.forget(s.run, "taxon" if body.kind == "taxonomy_resolution" else body.target_id)
+            second_opinion.decided(s.run, "taxon" if body.kind == "taxonomy_resolution" else body.target_id)
         if pilot:
             s.run.stage = "processing_blocked"
             s.run.blocker = pilot_blocker

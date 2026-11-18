@@ -2075,17 +2075,29 @@ route, inside what research left of the step's reservation and with its
 own cap of USD 0.06 (one request's worst case); the benchmark measured USD
 0.012 a slide on average and 0.038 at most.
 
-**Which values it judges**: the values this attempt wrote (researched,
-derived, inferred, or replaced by a location reassessment) and those an
-earlier attempt left not checked; of those, a value settled with text,
-with no mark of another rule, that no person holds authority over (a
-decision carried to the units path, a research selection a person locked,
-a location reassessment's protected field, or a value whose label a person
-transcribed: `person_holds`, lane Q1's function). Never the catalogue
-number, which has its own evidence (the slide's QR code, above), nor the
-determiner's IRN, which the instruction does not ask for. A field left open
-or blank is not judged: the second opinion's value for it is kept as an
-evidence row only (filling open fields from it is a later lane).
+**Coverage is recorded, not inferred.** The step answers for every value
+settled with text that no other rule marks and no person holds authority
+over: a decision carried to the units path, a research selection a person
+locked, a location reassessment's protected field, a value whose label a
+person transcribed, and the fields a person decided at the decision
+endpoint, which every field, research-candidate, authority or taxonomy
+decision records on the run (`Run.person_decided_fields`, an optional key
+omitted while empty) whatever its payload holds (`person_holds`). Never the
+catalogue number, which has its own evidence (the slide's QR code, above),
+nor the determiner's IRN, which the instruction does not ask for. After the
+step each such value carries exactly one verdict, kept with the value it was
+given on (`run.dependencies["second_opinion"]["coverage"]`): agreed (an info
+finding `second_opinion_agrees:<field>` citing an evidence row of the second
+opinion's value, shown in the app as a field note), `second_opinion_differs`
+or `second_opinion_not_checked`. A value is judged when it has no verdict
+(a value an earlier attempt, or a run from before this change, settled
+included), its verdict was given on another value, or its verdict is not
+checked; a recorded agree or differs on the same value stands. Whenever the
+step runs it first drops its findings and verdicts on every field it does not
+answer for, so a mark cannot outlive a person's decision or transcript
+correction. A field left open or blank is not judged: the second opinion's
+value for it is kept as an evidence row only (filling open fields from it is
+a later lane).
 
 **The comparison**, one strict rule per kind of field, between the value
 the app shows (normalized, else parsed, else literal) and the second
@@ -2095,40 +2107,60 @@ elevations) as plain decimals, equal once rounded to the hundredth;
 identifiers digit for digit (the catalogue number only, which is not
 judged); text (every other field) equal once accents are removed, case is
 folded and every character that is not a letter or a digit is dropped,
-Province/State and County setting aside one trailing unit word ("prov",
-"province", "department"; "county", "co"). Where it differs from the
-benchmark's "agree" (`analyse_fields.py`): the benchmark compares with
-K1's scorer, which takes a precise location as agreeing above 0.85
+except a "." or "," between two digits and a "-" or "+" directly before a
+digit, which are kept ("1.5 km" is not "15 km", "14,5 km" is not "14.5 km",
+"-80" is not "80"); Province/State and County set aside one trailing unit
+word ("prov", "province", "department"; "county", "co"). Where it differs
+from the benchmark's "agree" (`analyse_fields.py`): the benchmark compares
+with K1's scorer, which takes a precise location as agreeing above 0.85
 similarity (mode k1) or only when equal with punctuation kept (mode exact),
-accepts the truth sheet's country aliases, and keeps no letter outside
-a-z; here a precise location must be equal with punctuation folded (so a
-heading such as "LOC:" kept by one side differs, and "1.5 km" equals
-"15 km"), no alias table is used, and dates and numbers must be well-formed.
+accepts the truth sheet's country aliases, and keeps no letter outside a-z;
+here a precise location must be equal with punctuation folded but for the
+characters above (so a heading such as "LOC:" kept by one side differs), no
+alias table is used, and dates and numbers must be well-formed.
 
-**Agree**: nothing changes. **Differ**, or the second opinion gives no value
-(the label does not carry the field, or it is unsure): a warning finding
-`marked:<field>:<label>:second_opinion_differs`, one of the run's reasons
-like every mark, citing an evidence row (kind `second_opinion`) that holds
-the second opinion's value and the label text it rests on, with the whole
-answer stored behind it.
+**Agree**: no value changes; the agreement is recorded. **Differ**, or the
+second opinion gives no value (the label does not carry the field, or it is
+unsure): a warning finding `marked:<field>:<label>:second_opinion_differs`,
+one of the run's reasons like every mark, citing an evidence row (kind
+`second_opinion`) that holds the second opinion's value and the label text
+it rests on, with the whole answer stored behind it.
 
-**Not obtained** (no price row in the run's profile, the model factory
-refusing, an outage, an HTTP error such as 402, a timeout, a spent budget,
-an answer that is not one `record_fields` call holding every judged field
-in the schema's shape, an exception inside the comparison, or a second
-request in the same attempt): no verdict and no `second_opinion_differs`;
-every value it would have judged gets
-`marked:<field>:<label>:second_opinion_not_checked` instead, and one info
-finding `second_opinion_not_obtained:<code>` says why. An unchecked value is
-not confirmed, shown on its field; the record is held only as far as a mark
-holds it. The run never fails on this step; an exception restores the
-fields, findings and evidence before the marks are added. A later attempt
-judges the not-checked values again.
+**Not obtained**: the step switched off (no model) or without a route or
+price row; research still has a retryable failure to ask again (the money
+stays with research's retry, and the retry's attempt checks the values); the
+time left is below what the step needs; a spent budget; a model factory that
+refuses; an outage or an HTTP error such as 402; a timeout; an answer that
+is not one `record_fields` call satisfying the tool schema field by field
+(an entry `{}` or one without `value` is malformed; an entry that is null is
+read as not on the label, as the benchmark read it); a second request in the
+same attempt; any exception. Then no `second_opinion_differs`: every value
+it would have judged gets `marked:<field>:<label>:second_opinion_not_checked`,
+and one info finding `second_opinion_not_obtained:<code>` says why. An
+unchecked value is not confirmed, shown on its field; the record is held only
+as far as a mark holds it. The run never fails on this step; an exception
+restores the fields, findings and evidence before the marks are added.
 
-**A person deciding a field** (a field, research-candidate, authority or
-taxonomy decision) drops this step's findings on that field at the decision
-endpoint. Neither refinalize nor the endpoint computes a mark; research
-leaves a person's settled field alone, so a retry does not judge it.
+**Time and money.** The whole step, from cutting the crops (one read of the
+source image) to storing the evidence, runs inside one budget: at most 90 s,
+and no more than the step's deadline and the worker's deadline leave less
+the clearance rules' margin (three times the measured post-research work).
+It does not start with less than 15 s; it checks the clock again before the
+request; the request is cut at the budget's end less 5 s for storing the
+evidence (one blob write). So it ends before the deadline the step gave it,
+and the worker's deadline lies beyond that. The request is built before
+anything is reserved, and a reservation is settled whatever happens after it
+(its worst case when the spend is unknown, nothing after an HTTP 429).
+
+**Crops over the provider's limit.** Baseten refuses an image longer than
+40 times its width (3 of the benchmark's 70 requests). Such a crop is padded
+with a white border, centred, to exactly 40:1; the same crop always gives the
+same bytes, and the stored answer lists the padded labels. Not measured: the
+three slides were never answered.
+
+**A person deciding a field** records it on the run and drops this step's
+findings on it at the decision endpoint; the step never judges it again on
+that run. Neither refinalize nor the endpoint computes a mark.
 
 **Measured basis** (the fields benchmark, 2026-11-18, free analysis of
 paid answers, `~/specimen-golive/runs/autonomy-fields-20261118/`; cleared
@@ -2140,20 +2172,22 @@ as agreed held 5. With the stronger reader (r3): 336 and 33; agreed 280 and
 code's own replay over the same stored answers (lane F1's notes): base
 pipeline 284 values still shown as settled, 4 wrong (9 with the locality
 compared exactly); 60 newly marked (35 wrong, 25 right); 11 not checked
-(two answers refused as malformed, all 11 values right). r3 pipeline: 266
-shown, 2 wrong (5 exact); 57 newly marked (31 wrong, 26 right); 13 not
-checked.
+(two answers refused as malformed, all 11 values right). r3 pipeline: 265
+shown, 2 wrong (6 exact); 58 newly marked (31 wrong); 13 not checked. (The
+first head, which folded the decimal comma, gave r3 266 shown, 7 wrong
+exact: "14,5km" against the second opinion's "14.5 km" now differs.)
 
-Known limits: three of the benchmark's 70 Muse Spark requests were refused
-by the provider (a crop over its 40:1 aspect-ratio limit): those records'
-values are marked not checked. A misreading both readers share and the
-second opinion copies stays agreed (two dates of two slides in the replay).
+Known limits: a misreading both readers share and the second opinion copies
+stays agreed (two dates of two slides in the replay).
 
 Tests: `tests/field_research/test_second_opinion.py` (the comparison's
 table of cases, the answer's strict reading, the step through the workflow
-with a FunctionModel: agreeing, differing, unsure, the catalogue number,
-each way of not obtaining it, the guard, a person's field, scope, one call
-per attempt, the decision endpoint and a retry after it).
+with a FunctionModel: agreeing with its coverage recorded, differing,
+unsure, the catalogue number, each way of not obtaining it, the step
+switched off, a research retry pending, the time budget, a failure before
+the request, padding, the guard, a person's field and decision, a person's
+transcript correction, coverage across attempts, one call per attempt, the
+decision endpoint and a retry after it with the app's own payload).
 
 ## Fields the label does not state (owner, 2026-10-09)
 

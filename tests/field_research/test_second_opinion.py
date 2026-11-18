@@ -64,7 +64,13 @@ ROUTE = SECOND_OPINION_ROUTE
     ("country", "United States", "USA", False),
     ("precise_location", "Puerto Ibañez\n(Aisen)", "Puerto Ibanez (Aisen)", True),
     ("precise_location", "LOC: Asheville School\nNorth Carolina", "Asheville School North Carolina", False),
-    ("precise_location", "1.5 km N Moron", "15 km N Moron", True),  # punctuation folded: stated in the docs
+    # a decimal separator or a sign attached to digits is kept
+    ("precise_location", "1.5 km N Moron", "15 km N Moron", False),
+    ("precise_location", "14,5 km NNW", "14.5 km NNW", False),
+    ("precise_location", "14.5 km NNW", "14.5km NNW.", True),
+    ("habitat", "-80 m", "80 m", False),
+    ("precise_location", "80-90 m", "8090 m", False),
+    ("precise_location", "Aisen-Chili", "Aisen Chili", True),
     ("habitat", "EX: Raccoon.", "Raccoon", False),
     ("habitat", "ex Peromyscus", "ex Peromyscus leucopus", False),
     ("taxon", "Pulex irritans Linnaeus, 1758", "Pulex irritans", False),
@@ -102,7 +108,7 @@ def full(**fields):
 def test_an_answer_holds_every_judged_field_and_nothing_else():
     record = so.read_answer(json.dumps(full(city={"value": "Harvard", "evidence": "L1: Harvard,"},
         habitat=None, taxon={"value": None, "evidence": "UNSURE: readers differ"},
-        elevation_from_m={"value": 549, "evidence": "L1: 549 m"})))
+        elevation_from_m={"value": "549", "evidence": "L1: 549 m"})))
     assert record["city"] == so.Opinion("Harvard", "L1: Harvard,")
     assert record["habitat"] == so.Opinion(None, "")
     assert record["taxon"].unsure and record["taxon"].value is None
@@ -122,6 +128,11 @@ def test_an_answer_holds_every_judged_field_and_nothing_else():
     (full(city={"value": ["Harvard"], "evidence": ""}), "second_opinion_malformed"),
     (full(city={"value": True, "evidence": ""}), "second_opinion_malformed"),
     (full(city={"value": "Harvard", "evidence": 3}), "second_opinion_malformed"),
+    # the tool schema, field by field
+    ({key: {} for key in so.FIELDS}, "second_opinion_malformed"),
+    (full(city={"evidence": "L1: Harvard"}), "second_opinion_malformed"),
+    (full(city={"value": "Harvard"}), "second_opinion_malformed"),
+    (full(elevation_from_m={"value": 549, "evidence": ""}), "second_opinion_malformed"),
 ])
 def test_a_malformed_or_partial_answer_is_not_obtained(arguments, code):
     with pytest.raises(so.NotObtained) as caught:
@@ -160,7 +171,7 @@ def shown_values(tmp_path):
     twin = build_rig(tmp_path / "twin")
     mounted(twin, Scripted())
     run = twin.workflow.step(twin.principal, twin.specimen.id).run
-    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert all(reason.endswith(":" + so.NOT_CHECKED) for reason in run.reasons)
     return {key: so.shown(value) for key, value in run.fields.items() if value.state == ValueState.SUPPORTED}
 
 
@@ -216,6 +227,16 @@ def test_an_agreeing_second_opinion_changes_nothing_and_its_cost_is_one_more_pai
     assert (run.stage, run.disposition, run.reasons) == ("finalized", Disposition.CLEARED, [])
     assert len(opinion.requests) == 1 and not ours(run)
     assert run.dependencies[so.STATE]["status"] == "obtained"
+    # Coverage is recorded: every value it answers for agrees, on the value it holds, with a note
+    # citing the second opinion's evidence row.
+    mine = so.responsible(run, readings=field_step.run_readings(run))
+    coverage = run.dependencies[so.STATE]["coverage"]
+    assert mine and set(coverage) == set(mine)
+    assert all(coverage[key] == {"verdict": "agrees", "value": so.shown(run.fields[key]), "attempt": 1} for key in mine)
+    notes = {f.field_key: f for f in run.findings if f.rule_id == so.RULE and f.severity == "info" and f.field_key}
+    assert set(notes) == set(mine) and all(notes[k].reason_code == f"{so.AGREES}:{k}" for k in mine)
+    rows = {e.id: e for e in run.evidence if e.kind == so.EVIDENCE_KIND}
+    assert all(notes[k].evidence_ids and notes[k].evidence_ids[0] in rows for k in mine)
     research, second = research_paid(run)
     assert (research["route_id"], second["route_id"]) == (run.profile_snapshot["harness_route"], ROUTE)
     assert (second["outcome"], second["cost_basis"], second["reserved_micros"]) == ("completed", "computed", so.CAP_MICROS)
@@ -294,7 +315,7 @@ def test_the_catalogue_number_is_never_judged(tmp_path):
     with_opinion(rig, Opinion(agreeing(tmp_path, fmnh_ins_number={"value": "9999999", "evidence": "L1: 9999999"})))
     run = rig.workflow.step(rig.principal, rig.specimen.id).run
     assert (run.disposition, run.reasons, ours(run)) == (Disposition.CLEARED, [], [])
-    assert "fmnh_ins_number" not in run.dependencies[so.STATE]["fields"]
+    assert "fmnh_ins_number" not in run.dependencies[so.STATE]["coverage"]
 
 
 @pytest.mark.parametrize("error", [
@@ -331,9 +352,11 @@ def test_a_402_says_so(tmp_path):
 
 
 def test_a_timeout_is_not_obtained(tmp_path, monkeypatch):
-    monkeypatch.setattr(so, "TIMEOUT_SECONDS", so.MIN_SECONDS)
+    monkeypatch.setattr(so, "TIMEOUT_SECONDS", 2.0)
+    monkeypatch.setattr(so, "MIN_SECONDS", 1.0)
+    monkeypatch.setattr(so, "STORE_SECONDS", 0.5)
     rig = build_rig(tmp_path)
-    with_opinion(rig, Opinion(agreeing(tmp_path), delay=so.MIN_SECONDS + 1))
+    with_opinion(rig, Opinion(agreeing(tmp_path), delay=4.0))
     run = rig.workflow.step(rig.principal, rig.specimen.id).run
     assert f"{so.NOT_OBTAINED}:second_opinion_timeout" in [f.reason_code for f in run.findings]
     assert ours(run, so.NOT_CHECKED) and not ours(run, so.DIFFERS)
@@ -412,22 +435,100 @@ def test_an_exception_inside_the_comparison_puts_everything_back(tmp_path, monke
     verify_evidence(done, rig.blobs)
 
 
-def test_without_a_factory_the_step_is_off(tmp_path):
+def test_without_a_factory_every_settled_value_is_marked_not_checked(tmp_path):
+    """Switched off, an unchecked record never looks like a checked one."""
     rig = build_rig(tmp_path)
     mounted(rig, Scripted())
     run = rig.workflow.step(rig.principal, rig.specimen.id).run
-    assert (run.disposition, run.reasons, ours(run)) == (Disposition.CLEARED, [], [])
-    assert so.STATE not in run.dependencies and len(research_paid(run)) == 1
+    mine = so.responsible(run, readings=field_step.run_readings(run))
+    assert mine and run.disposition == Disposition.REVIEW
+    assert {f.field_key for f in run.findings if f.reason_code.endswith(":" + so.NOT_CHECKED)} == set(mine)
+    assert f"{so.NOT_OBTAINED}:second_opinion_unconfigured" in [f.reason_code for f in run.findings]
+    assert {v["verdict"] for v in run.dependencies[so.STATE]["coverage"].values()} == {"not_checked"}
+    assert len(research_paid(run)) == 1
+
+
+def test_a_research_attempt_with_a_retry_pending_does_not_spend_on_the_second_opinion(tmp_path):
+    """Codex round 1, 5: one expert failed retryably. The second opinion sends nothing, so the money
+    stays with research's retry, and marks the values not checked; the retry's attempt checks them."""
+    from test_step import failing
+
+    rig = build_rig(tmp_path)
+    opinion = Opinion(agreeing(tmp_path))
+    with_opinion(rig, opinion, Scripted({"country": failing("source_unavailable")}))
+    blocked = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert blocked.stage == "retry_scheduled" and opinion.built == 0 and len(research_paid(blocked)) == 1
+    assert f"{so.NOT_OBTAINED}:second_opinion_research_pending" in [f.reason_code for f in blocked.findings]
+    assert ours(blocked, so.NOT_CHECKED) and not ours(blocked, so.DIFFERS)
+    with_opinion(rig, opinion)
+    rig.clock.now += timedelta(hours=1)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert run.attempts[FIELD_RESEARCH] == 2 and len(opinion.requests) == 1
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert {v["verdict"] for v in run.dependencies[so.STATE]["coverage"].values()} == {"agrees"}
+
+
+def test_a_failure_before_the_request_leaves_no_reservation(tmp_path, monkeypatch):
+    """Codex round 1, 4: building the request fails; nothing is reserved or outstanding."""
+    run = settled_run(tmp_path)
+
+    def broken(labels):
+        raise ValueError("cannot build")
+
+    monkeypatch.setattr(so, "request_parts", broken)
+    meters = []
+
+    def meter_factory(cap, price):
+        meters.append(field_step.cost_meter(cap, price))
+        return meters[-1]
+
+    paid = check(run, opinion=Opinion(full()), readings=field_step.run_readings(run), meter_factory=meter_factory)
+    assert paid is not None and (paid.spent, paid.outcome) == (0, "failed")
+    assert [m.outstanding_micros for m in meters] == [0]
+    assert f"{so.NOT_OBTAINED}:second_opinion_error" in [f.reason_code for f in run.findings]
+
+
+def test_too_little_time_left_does_not_start(tmp_path):
+    run = settled_run(tmp_path)
+    opinion = Opinion(full())
+    read = []
+    check(run, opinion=opinion, readings=field_step.run_readings(run), seconds=so.MIN_SECONDS - 1,
+        crops=lambda: read.append(1) or {})
+    assert opinion.built == 0 and not read
+    assert f"{so.NOT_OBTAINED}:second_opinion_no_time" in [f.reason_code for f in run.findings]
+
+
+def test_a_crop_over_the_providers_aspect_limit_is_padded_and_recorded():
+    import io
+
+    from PIL import Image
+
+    out = io.BytesIO()
+    Image.new("RGB", (2000, 20), "black").save(out, format="PNG")
+    png, width, height, padded = so.pad(out.getvalue(), 2000, 20)
+    assert (width, height, padded) == (2000, 50, True)
+    with Image.open(io.BytesIO(png)) as image:
+        assert image.size == (2000, 50)
+        assert image.getpixel((0, 0)) == (255, 255, 255) and image.getpixel((1000, 25)) == (0, 0, 0)
+    assert so.pad(out.getvalue(), 2000, 20)[0] == png
+    assert so.pad(b"untouched", 400, 10) == (b"untouched", 400, 10, False)
+
+
+def test_the_decided_fields_key_is_omitted_while_empty():
+    from specimen_digitization.application.domain import Run
+
+    assert "person_decided_fields" not in Run().model_dump()
+    assert Run(person_decided_fields=["habitat"]).model_dump()["person_decided_fields"] == ["habitat"]
 
 
 # ---- scope: whose values, which attempt -------------------------------------------------------
 
-def check(run, before=None, *, opinion, readings=(), human=(), labels=None):
-    """second_opinion.check on a run in memory, with a 1x1 crop."""
-    return so.check(run, {} if before is None else before, route=ROUTE, model_factory=lambda: opinion.factory(ROUTE),
-        crop=lambda region: b"png", blobs=None, asset_id=None, readings=readings, human=human, cap_micros=1_000_000,
-        meter_factory=field_step.cost_meter, price=published_registry().profiles[0].processing.price_list.models[ROUTE],
-        timeout=30.0)
+def check(run, *, opinion, readings=(), human=(), seconds=60.0, crops=None, meter_factory=None):
+    """second_opinion.check on a run in memory, with a placeholder crop per label."""
+    return so.check(run, route=ROUTE, model_factory=lambda: opinion.factory(ROUTE),
+        crops=crops or (lambda: {region.id: b"png" for region in run.regions}), blobs=None, asset_id=None,
+        readings=readings, human=human, cap_micros=1_000_000, meter_factory=meter_factory or field_step.cost_meter,
+        price=published_registry().profiles[0].processing.price_list.models[ROUTE], seconds=seconds)
 
 
 def settled_run(tmp_path):
@@ -448,16 +549,39 @@ def test_a_person_s_field_is_never_judged(tmp_path):
     readings = field_step.run_readings(run)
     run.dependencies[so.LOCKS] = {"habitat": True}
     run.dependencies["location_reassessment"] = {"protected": ["city"]}
+    run.person_decided_fields = ["county"]
     check(run, opinion=Opinion(differing_everywhere()), readings=readings, human={"collectors"})
     marked = {f.field_key for f in run.findings if f.rule_id == so.RULE and f.reason_code.startswith("marked:")}
-    assert marked and not marked & {"habitat", "city", "collectors", "fmnh_ins_number", "identified_by_irn"}
+    assert marked and not marked & {"habitat", "city", "collectors", "county", "fmnh_ins_number", "identified_by_irn"}
+
+
+def test_a_decided_field_loses_its_earlier_findings_and_is_never_judged_again(tmp_path):
+    run = settled_run(tmp_path)
+    readings = field_step.run_readings(run)
+    check(run, opinion=Opinion(differing_everywhere()), readings=readings)
+    assert "habitat" in verdicts(run)
+    so.decided(run, "habitat")
+    assert run.person_decided_fields == ["habitat"] and "habitat" not in verdicts(run)
+    assert "habitat" not in run.dependencies[so.STATE]["coverage"]
+    run.attempts[FIELD_RESEARCH] = run.attempts.get(FIELD_RESEARCH, 1) + 1
+    run.fields["habitat"] = run.fields["habitat"].model_copy(update={"literal": "Rewritten grassland", "parsed": None, "normalized": None})
+    check(run, opinion=Opinion(differing_everywhere()), readings=readings)
+    assert "habitat" not in verdicts(run)
 
 
 def test_a_value_resting_on_a_persons_transcript_is_never_judged(tmp_path):
     run = settled_run(tmp_path)
+    check(run, opinion=Opinion(differing_everywhere()), readings=field_step.run_readings(run))
+    assert [f for f in run.findings if f.rule_id == so.RULE and f.reason_code.startswith("marked:")]
+    # Codex round 1, 2: a person then corrects the label's transcript. The next time the step runs it
+    # drops its earlier marks on the fields that now rest on the person's text, and judges none.
     readings = tuple(replace(reading, person_decided=True) for reading in field_step.run_readings(run))
-    check(run, opinion=Opinion(differing_everywhere()), readings=readings)
-    assert not [f for f in run.findings if f.rule_id == so.RULE and f.reason_code.startswith("marked:")]
+    run.attempts[FIELD_RESEARCH] = run.attempts.get(FIELD_RESEARCH, 1) + 1
+    opinion = Opinion(differing_everywhere())
+    check(run, opinion=opinion, readings=readings)
+    assert opinion.built == 0
+    assert not [f for f in run.findings if f.rule_id == so.RULE]
+    assert not run.dependencies[so.STATE]["coverage"]
 
 
 def test_a_field_marked_by_another_rule_is_not_judged_again(tmp_path):
@@ -471,20 +595,47 @@ def test_a_field_marked_by_another_rule_is_not_judged_again(tmp_path):
     assert [f for f in run.findings if f.rule_id == so.RULE and f.reason_code.startswith("marked:country:")]
 
 
-def test_only_values_this_attempt_wrote_are_judged(tmp_path):
-    run = settled_run(tmp_path)
-    before = {key: value.model_copy(deep=True) for key, value in run.fields.items()}
-    run.fields["habitat"] = run.fields["habitat"].model_copy(update={"literal": "Rewritten grassland"})
-    check(run, before, opinion=Opinion(differing_everywhere()), readings=field_step.run_readings(run))
-    assert {f.field_key for f in run.findings if f.rule_id == so.RULE and f.reason_code.startswith("marked:")} == {"habitat"}
+def agree_with(run):
+    return {key: {"value": so.shown(value), "evidence": ""} if value.state == ValueState.SUPPORTED else None
+            for key, value in run.fields.items() if key in so.FIELDS} | {
+            key: None for key in so.FIELDS if key not in run.fields}
 
 
-def test_no_value_written_means_no_call(tmp_path):
+def verdicts(run):
+    """Each field's second-opinion verdicts, by their why."""
+    found = {}
+    for f in run.findings:
+        if f.rule_id == so.RULE and f.field_key:
+            found.setdefault(f.field_key, set()).add(f.reason_code.rsplit(":", 1)[-1] if f.reason_code.startswith(
+                "marked:") else so.AGREES)
+    return found
+
+
+def test_a_value_settled_before_with_no_record_is_judged(tmp_path):
+    """Codex round 1, 6: values an earlier attempt settled carry no verdict; the step judges them all,
+    and after it each value it answers for carries exactly one verdict."""
     run = settled_run(tmp_path)
-    before = {key: value.model_copy(deep=True) for key, value in run.fields.items()}
+    readings = field_step.run_readings(run)
+    mine = so.responsible(run, readings=readings)
+    answer = agree_with(run) | {"habitat": {"value": "Elsewhere", "evidence": ""}}
+    check(run, opinion=Opinion(answer), readings=readings)
+    found = verdicts(run)
+    assert set(found) == set(mine) and all(len(v) == 1 for v in found.values())
+    assert found["habitat"] == {so.DIFFERS} and found["country"] == {so.AGREES}
+
+
+def test_a_recorded_verdict_on_the_same_value_stands_and_a_changed_value_is_judged_again(tmp_path):
+    run = settled_run(tmp_path)
+    readings = field_step.run_readings(run)
+    check(run, opinion=Opinion(agree_with(run)), readings=readings)
+    run.attempts[FIELD_RESEARCH] = run.attempts.get(FIELD_RESEARCH, 1) + 1
     opinion = Opinion(differing_everywhere())
-    assert check(run, before, opinion=opinion, readings=field_step.run_readings(run)) is None
-    assert opinion.built == 0 and so.STATE not in run.dependencies
+    assert check(run, opinion=opinion, readings=readings) is None and opinion.built == 0
+    run.fields["habitat"] = run.fields["habitat"].model_copy(update={"literal": "Rewritten grassland", "parsed": None, "normalized": None})
+    run.attempts[FIELD_RESEARCH] += 1
+    check(run, opinion=opinion, readings=readings)
+    found = verdicts(run)
+    assert found["habitat"] == {so.DIFFERS} and found["country"] == {so.AGREES}
 
 
 def test_never_twice_in_one_attempt(tmp_path):
@@ -492,23 +643,25 @@ def test_never_twice_in_one_attempt(tmp_path):
     first = Opinion(full())
     check(run, opinion=first, readings=field_step.run_readings(run))
     assert first.built == 1
+    run.fields["habitat"] = run.fields["habitat"].model_copy(update={"literal": "Rewritten grassland", "parsed": None, "normalized": None})
     again = Opinion(full())
     check(run, opinion=again, readings=field_step.run_readings(run))
     assert again.built == 0
     assert f"{so.NOT_OBTAINED}:second_opinion_already_asked" in [f.reason_code for f in run.findings]
-    assert ours(run, so.NOT_CHECKED) and not ours(run, so.DIFFERS)
+    # The changed value is not checked; the first request's verdicts on the others stand.
+    assert {f.field_key for f in run.findings if f.reason_code.endswith(":" + so.NOT_CHECKED)} == {"habitat"}
+    assert verdicts(run)["habitat"] == {so.NOT_CHECKED} and verdicts(run)["country"] == {so.DIFFERS}
 
 
 def test_a_later_attempt_checks_what_an_earlier_one_left_not_checked(tmp_path):
     run = settled_run(tmp_path)
-    before = {key: value.model_copy(deep=True) for key, value in run.fields.items()}
     check(run, opinion=Opinion(error=RuntimeError("provider_request_failed")), readings=field_step.run_readings(run))
     unchecked = set(f.field_key for f in run.findings if f.reason_code.endswith(so.NOT_CHECKED))
     assert unchecked
     run.attempts[FIELD_RESEARCH] = run.attempts.get(FIELD_RESEARCH, 1) + 1
     values = {key: so.shown(value) for key, value in run.fields.items() if value.state == ValueState.SUPPORTED}
     agree = {key: {"value": values.get(key), "evidence": ""} for key in so.FIELDS}
-    check(run, before, opinion=Opinion(agree), readings=field_step.run_readings(run))
+    check(run, opinion=Opinion(agree), readings=field_step.run_readings(run))
     assert not [f for f in run.findings if f.rule_id == so.RULE and f.reason_code.startswith("marked:")]
 
 
@@ -574,24 +727,31 @@ def test_a_person_confirming_a_differing_value_takes_the_mark_off_and_approval_a
     assert len(opinion.requests) == 1
 
 
-def test_a_retry_after_a_person_confirms_a_field_leaves_it_unmarked(tmp_path):
-    """Research runs again (a retry: the country failed on the first attempt) after a person
-    confirmed the disputed habitat: research leaves the settled habitat alone, its value is
-    unchanged, so the second attempt's second opinion does not judge it."""
+def test_a_retry_after_a_person_confirms_a_field_with_the_apps_payload_leaves_it_unjudged(tmp_path):
+    """Codex round 1, 1: the reviewer confirms the habitat with the app's own save payload, which
+    omits the layer, so research takes the habitat up again on the retry. The decision is recorded on
+    the run (person_decided_fields) and the retry's second opinion, which disputes the habitat, does
+    not judge it."""
     from test_step import decide, failing, review_client
 
     rig = build_rig(tmp_path)
     opinion = Opinion(agreeing(tmp_path, habitat={"value": "Synthetic meadow", "evidence": "L1: meadow"}))
     with_opinion(rig, opinion, Scripted({"country": failing("source_unavailable")}))
     blocked = rig.workflow.step(rig.principal, rig.specimen.id).run
-    assert blocked.stage == "retry_scheduled" and ours(blocked, so.DIFFERS)
+    assert blocked.stage == "retry_scheduled" and ours(blocked, so.NOT_CHECKED) and not opinion.requests
     client = review_client(rig)
     habitat = blocked.fields["habitat"]
-    decide(client, rig, "field-habitat", "field", target_id="habitat",
-        after=habitat.model_dump(mode="json", exclude={"evidence_ids"}), evidence_ids=list(habitat.evidence_ids))
-    state = with_opinion(rig, opinion)
+    # The app's own save payload (api_repository_review.dart, _decisionWire): no layer.
+    app_after = {"literal": habitat.literal, "parsed": habitat.parsed, "normalized": habitat.normalized,
+                 "state": habitat.state.value, "reason": habitat.reason}
+    decided_run = decide(client, rig, "field-habitat", "field", target_id="habitat", after=app_after,
+        evidence_ids=list(habitat.evidence_ids))
+    assert decided_run.person_decided_fields == ["habitat"]
+    assert not [f for f in decided_run.findings if f.rule_id == so.RULE and f.field_key == "habitat"]
+    with_opinion(rig, opinion)
     rig.clock.now += timedelta(hours=1)
     run = rig.workflow.step(rig.principal, rig.specimen.id).run
-    assert run.attempts[FIELD_RESEARCH] == 2 and len(opinion.requests) == 2
+    assert run.attempts[FIELD_RESEARCH] == 2 and len(opinion.requests) == 1
     assert not [f for f in run.findings if f.rule_id == so.RULE and f.field_key == "habitat"]
-    assert state is not None
+    assert "habitat" not in run.dependencies[so.STATE]["coverage"]
+    assert run.dependencies[so.STATE]["coverage"]["country"]["verdict"] == "agrees"
