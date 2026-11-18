@@ -1983,8 +1983,10 @@ all equal to the truth.
      `CATALOG`.
    - Break a tie: the field is ambiguous or unresolved, the code's number
      is one of its candidates' numbers, and a reading of the code's label
-     writes the code's seven digits as a whole number (no digit right before
-     or after them; nothing joined across white space). The field settles on
+     writes the code's seven digits as a whole number: in the reading's
+     letters and numbers alone (spaces, punctuation, marks and invisible
+     characters dropped), no numeric character stands right before or after
+     them, so "12 0010001" is refused and the field stays open. The field settles on
      those digits, cited where those readings write them, backed by the
      code, and the other candidates' numbers are named in the reason as
      ruled out. A candidate clipped from a longer number ("0010001" of

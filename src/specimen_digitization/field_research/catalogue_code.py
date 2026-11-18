@@ -33,6 +33,7 @@ does not supply a value that no reader wrote and field research did not propose.
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Iterable, Sequence
 
 from specimen_digitization.application.barcode import FIELD, stored_code
@@ -58,19 +59,27 @@ def number(text: str | None) -> str | None:
 
 
 def written_whole(text: str, payload: str) -> bool:
-    """Whether the text writes the code's digits as a whole number: the code's ASCII digits, and
-    no character of any numeric kind right before or right after them (nothing joined across
-    white space, nothing else normalised). str.isnumeric, not isdigit: it is the stricter test
-    here, as it also counts fractions, Roman numerals and CJK numerals as numbers a code beside
-    them would be clipped from."""
+    """Whether the text writes the code's digits as a whole number, decided on a projection of
+    the text that keeps only its letters and numbers (Unicode general categories L* and N*;
+    spaces, line breaks, punctuation, marks and format characters are deleted): the code's
+    ASCII digits occur in the projection with no numeric character directly before or after
+    them (category N*, or str.isnumeric, which also counts CJK numerals). So nothing invisible
+    or separating can stand between the code and another number. It is deliberately
+    conservative: a code after an unrelated number across a space ("12 0010001") is refused
+    too, and the field then stays open as it would without the code. Letters are not digits."""
     if not (payload.isascii() and payload.isdigit()):
         return False
-    start = text.find(payload)
+    kept = "".join(ch for ch in text if unicodedata.category(ch)[0] in "LN")
+
+    def numeric(ch: str) -> bool:
+        return unicodedata.category(ch)[0] == "N" or ch.isnumeric()
+
+    start = kept.find(payload)
     while start >= 0:
         end = start + len(payload)
-        if not (start and text[start - 1].isnumeric()) and not (end < len(text) and text[end].isnumeric()):
+        if not (start and numeric(kept[start - 1])) and not (end < len(kept) and numeric(kept[end])):
             return True
-        start = text.find(payload, start + 1)
+        start = kept.find(payload, start + 1)
     return False
 
 

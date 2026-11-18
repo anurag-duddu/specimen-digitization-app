@@ -217,8 +217,20 @@ def test_a_fullwidth_digit_before_the_code_breaks_no_tie(tmp_path, monkeypatch):
     ("FMNHINS 0010001", True),
     ("FMNHINS\n0010001", True),
     ("No.0010001.", True),
-    # Nothing is joined across white space.
-    ("FMNHINS 001 0001", False),
+    # The projection keeps letters and numbers only (Codex round 5): white space, marks and
+    # format characters between digits join them, so the code's own digits spaced are whole,
+    # and a number beside the code across any of them clips it.
+    ("FMNHINS 001 0001", True),
+    ("FMNHINS0010001", True),
+    ("FMNH-INS\n0010001", True),
+    ("No. 0010001.", True),
+    ("12 0010001", False),
+    ("0010001 7", False),
+    *[(f"FMNHINS 1{sep}0010001", False) for sep in (
+        "\N{ZERO WIDTH SPACE}", "\N{COMBINING ACUTE ACCENT}", "\N{ZERO WIDTH JOINER}", "\N{SOFT HYPHEN}",
+        "\N{NARROW NO-BREAK SPACE}", "\N{ARABIC THOUSANDS SEPARATOR}")],
+    *[(f"FMNHINS 0010001{sep}7", False) for sep in (
+        "\N{COMBINING ACUTE ACCENT}", "\N{ZERO WIDTH JOINER}", "\N{SOFT HYPHEN}")],
     # A digit of another script, or a superscript, right before or after (Codex round 4).
     ("FMNHINS \N{FULLWIDTH DIGIT ONE}0010001", False),
     ("FMNHINS 0010001\N{FULLWIDTH DIGIT ONE}", False),
