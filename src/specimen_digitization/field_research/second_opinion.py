@@ -538,14 +538,29 @@ def due(run) -> bool:
     return any(key not in asked or asked[key] != shown(run.fields[key]) for key in need)
 
 
+# The one reason family field research adds after its own finalize (FieldResearchStep.
+# _retained_reassessment): a location reassessment's retained, unconfirmed fields.
+REASSESSMENT_UNCONFIRMED = "location_reassessment_unconfirmed"
+
+
 def finish(run) -> None:
     """The record finalized once the step has ended, however it ended, through the same whole finalize
     every other path on a completed run uses (step.refinalize, as field research's recheck and a person's
     decision do): every reason recomputed on the run as it is now, the second opinion's derived from its
-    stored result among them; a pending approval kept. No field is researched or paid for."""
+    stored result among them; a pending approval kept. No field is researched or paid for. The reasons
+    research left of the one family it adds after its own finalize (`location_reassessment_unconfirmed`)
+    are kept, with the same effect as research's _retained_reassessment: present after, and the record for
+    review when it has no blocker. Nothing else is carried."""
+    from specimen_digitization.application.domain import Disposition
+
     from .step import refinalize
 
+    retained = [code for code in run.reasons if code.split(":", 1)[0] == REASSESSMENT_UNCONFIRMED]
     refinalize(run)
+    if retained:
+        run.reasons = list(dict.fromkeys((*run.reasons, *retained)))
+        if run.blocker is None:
+            run.disposition = Disposition.REVIEW
 
 
 # ---- the call ---------------------------------------------------------------------------------------

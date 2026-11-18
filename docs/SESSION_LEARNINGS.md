@@ -26553,3 +26553,10 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 - Learning: the main checkout's venv has no zxing-cpp; `uv sync --offline --frozen --python <uv's 3.12>` into the worktree builds a working environment from the cache alone, and with it the API contract fixture regenerates exactly.
 - Learning: to run another module's tests in a second mode, re-export its names into a new module (skip dunders, or pytest refuses the import-file mismatch) and add an autouse fixture; assertions stay the original's.
 - Follow-ups: the coordinator's paid confirmation after merge; K1 (#455) to classify the two codes.
+
+## 2026-11-19 - Autonomy F1b: G51 round 2, the retained reassessment reasons (PR #456)
+
+- Task: the coordinator's ruling 3 on the G51 review of d016678b. Same branch and worktree.
+- Outcome: the step's finish keeps research's `location_reassessment_unconfirmed:*` reasons across its whole refinalize, as `_retained_reassessment` does; a record resumed or retried while it waited for the step goes to the step again, not the recheck. field_research/step.py is unchanged beyond its four lines.
+- Validation actually run: the five new tests fail on d016678b and pass here; `test_second_opinion.py` 131 passed; targeted suites in the worktree's uv-synced environment (counts in the PR). Not run: the full suite (CI), Flutter (no Dart change), any paid call.
+- Learning: a reason research appends after its own finalize is lost by any later refinalize; a step that re-finalizes a research run must carry that family explicitly, the way research does.
