@@ -260,3 +260,33 @@ def test_a_code_row_on_a_run_of_the_old_path_changes_nothing(tmp_path, monkeypat
     monkeypatch.setattr(field_step, "units_path", lambda run: False)
     settle(rig, Scripted())
     assert asked == []
+
+
+def test_the_hold_code_is_the_one_the_app_words():
+    """The app words this exact code (the client's blockers.dart barcodeDiffersWords and
+    settlement_codes.dart markedReasonWords; its barcode_differs_test.dart). Pinned here as a plain
+    string, never by reading the app's files."""
+    from specimen_digitization.field_research import catalogue_code
+    from specimen_digitization.field_research.step import marked_code
+
+    assert catalogue_code.DIFFERS == "barcode_differs"
+    assert marked_code(KEY, "L1", catalogue_code.DIFFERS) == "marked:fmnh_ins_number:L1:barcode_differs"
+
+
+def test_the_one_reader_of_the_number_writing_another_is_ruled_out_and_both_numbers_are_shown(tmp_path):
+    """Only reader 1A writes a catalogue number, 0010007; 1B writes none; the code holds 0010001.
+    The code's number is the value, 1A's reading is cited against it, and the reason a reviewer
+    reads names both numbers."""
+    rig = build_rig(tmp_path, TEXT.replace(LINE, f"{KEY}: FMNH-INS 0010007"), TEXT.replace(LINE + "\n", ""))
+    run = rig.specimen.run
+    code = with_code(rig)
+    settle(rig, Scripted({KEY: catalogue("FMNH-INS 0010007", "0010007")}))
+    value = run.fields[KEY]
+    assert summary(run, KEY)[:3] == (ValueState.SUPPORTED, CODE, CODE)
+    rows = {row.id: row for row in run.evidence}
+    assert value.evidence_relations[code.id] == "decides" and CODE in rows[code.id].excerpt
+    [against] = [rows[i] for i, how in value.evidence_relations.items() if how == "contradicts"]
+    assert "0010007" in against.excerpt and against.observation_ids == [run.observations[0].id]
+    assert value.reason.endswith(
+        f"The slide's QR code reads {CODE}. reader 1A wrote 0010007, which the code rules out.")
+    assert not reasons_for(run, KEY)
