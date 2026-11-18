@@ -921,8 +921,8 @@ def test_the_output_schema_and_pinned_files_match_the_current_contract():
     assert installed_validator_source_sha256(Path(evidence_module.__file__).parent) == VALIDATOR_SOURCE_SHA256
     assert sha(projection.__file__) == CANONICAL_PROJECTOR_SHA256 == (
         "cc3599bd1b47bf281be30700966c806003a02b59add5c05019d0eba4592f7361")  # pragma: allowlist secret
-    assert sha(domain.__file__) == "d951c772c6e0b503777a1f16aea1ce20920fdd88c56fc6860d0c63c71adff9ee"  # pragma: allowlist secret
-    assert sha(storage.__file__) == "64d919f9d10ac4912b8902e19abab2d5e90978da32d6356c28f0e4c1130e6315"  # pragma: allowlist secret
-    assert sha(active_graph.__file__) == "2e1b3914fb47014210e8f7abfa0c6dabce4a895b98b30104eb21f62b19504898"  # pragma: allowlist secret
+    assert sha(domain.__file__) == "bd79252ace7a428413838c0236cbf949b9c22eae45574e753b418ab52cd28fc0"  # pragma: allowlist secret
+    assert sha(storage.__file__) == "4d4b52ce96cfb42db34431c518a61ada0284e56002b8b8476eccfa2c4635d5c8"  # pragma: allowlist secret
+    assert sha(active_graph.__file__) == "db63b87216ae5501652a2b7a885391e86317c7c13db9ca84bd8049d58b7d7126"  # pragma: allowlist secret
     for model in (FieldValue, Evidence, Run):
         assert not [name for name in model.model_fields if "organiser" in name]

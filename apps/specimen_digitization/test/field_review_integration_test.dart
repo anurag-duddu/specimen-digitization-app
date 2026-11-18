@@ -24,6 +24,12 @@ const record = Specimen({
       'literal_value': 'FMNHINS',
     },
   ],
+  'reason_codes': [
+    'mandatory_unresolved:country',
+    'mandatory_evidence_unresolved:country',
+    'institutional_policy_unapproved',
+    'new_check:private-diagnostic-id',
+  ],
   'validation_findings': [
     {'reason_code': 'mandatory_unresolved:country', 'severity': 'hard'},
     {

@@ -95,7 +95,11 @@ def assert_reviewed_without_a_call(run, held, resolver):
     # The field the harness could not check stays unchecked, for the reviewer.
     taxon = run.fields["taxon"]
     assert taxon.state == "unresolved" and "limit" in taxon.reason
-    assert "mandatory_unresolved:taxon" in run.reasons
+    # The taxon is optional since 2026-11-18 (plan WP K1): its doubt, research_incomplete among it, is
+    # kept in open_reasons; research given up for the run as a whole holds the record (the
+    # coordinator's ruling of 2026-11-18).
+    assert {"mandatory_unresolved:taxon", "research_incomplete:taxon"} <= set(run.open_reasons)
+    assert run.reasons == ["field_research_given_up"]
     # A field the first attempt settled is kept.
     assert run.fields["country"].state == "supported"
 

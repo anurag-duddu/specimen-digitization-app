@@ -111,6 +111,33 @@ answer. The authority: the coordinator put the change to the owner as
 affirmed it.'", and to "Go ahead with the plan, including the three rule
 changes?" the owner typed "Yes, go ahead" (2026-11-17, session f9614090).
 
+### Optional fields' open reasons (`run.open_reasons`, additive, 2026-11-18)
+
+The slide profile's mandatory set is the catalogue number (`fmnh_ins_number`);
+the other nineteen fields are optional (the autonomy program's work package
+K1, `docs/execution/autonomy/PLAN.md` section 4, where the owner's words and
+the coordinator's decision are quoted). A reason about an optional field's
+value no longer holds the record: `field_research.step.split_reasons` keeps it
+in `run.open_reasons`, a list of codes of the same form as `reason_codes`
+(`mandatory_unresolved:<field>` there reads "this field has no supported
+value", as the code always meant). Every specimen summary (list items and the
+detail) carries it as additive `open_reason_codes`, and the workspace response
+inside `run`; the summary's `reason_codes` and `disposition` carry only the
+reasons that hold the record, so a cleared record can have open optional
+fields. A field's attention reads both lists: `review_summary`'s per-field
+counts and the app's field rows count a field named by either, exactly as
+they counted `reason_codes` before; the record's blocker list reads
+`reason_codes` alone. The search view (`SpecimenSearch`) and `SearchSpecimens`
+carry it as one nullable last column, `openReasonCodes`. The
+key is omitted while the list is empty, so older snapshots keep their bytes,
+and older clients ignore it. Two new codes: `research_incomplete:<field>`, an
+optional field research could not finish (a failure, a limit, a spent meter, a
+request too large, an outage or deadline on the last attempt, or its expert's
+fallback), kept in `open_reasons` while the field is not supported and no
+person has decided it; and `field_research_given_up`, research given up for
+the run as a whole, which holds the record (in `reason_codes`) until a person
+approves it. `label_unsettled:<field>`, in `open_reason_codes` only, names each field drawn from a label whose doubt is open. `no_specimen_value` is no longer produced. `human_approval_required`, `history_restored_requires_review` and `location_reassessment_unconfirmed:<field>` are derived on every finalize from the run's additive `pending_review` (a list, omitted on a run stored before it existed; `application/standing_holds.py`), recorded when a person decides, a history is restored or a reassessment leaves a field unproved, and cleared by a person's approval; `field_research_given_up` is derived from the give-up's finding. A blocker may replace `reason_codes` while the run is blocked; the holds come back on the next finalize. The app lists a record blocker only for a code `reason_codes` holds; which fields need attention follows one mapping, pinned for server and app by `tests/fixtures/field_attention.json`.
+
 ### Bulk decisions
 
 `POST /decisions:batch` exists because a reviewer acting on a selection is one

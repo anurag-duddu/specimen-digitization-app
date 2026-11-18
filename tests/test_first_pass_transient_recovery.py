@@ -154,7 +154,8 @@ def test_exhausted_transient_comparison_keeps_readings_unresolved_for_review(
     transcript = run.transcripts[0]
     assert transcript.text is None and not transcript.resolved
     assert set(transcript.alternatives) == {reading.literal_text for reading in run.observations}
-    assert f"unresolved_transcription:{run.regions[0].id}" in run.reasons
+    # Plan WP K1 (2026-11-18): a label nothing is drawn from keeps its doubt in open_reasons; the record is held by the catalogue number's own reason.
+    assert f"unresolved_transcription:{run.regions[0].id}" in [*run.reasons, *run.open_reasons]
     assert given_up_findings(run) == [
         ("first_pass_given_up", "warning", f"first_pass_given_up:{run.regions[0].id}:{failure_code(failure)}")
     ]

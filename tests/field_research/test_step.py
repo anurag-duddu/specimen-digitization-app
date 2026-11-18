@@ -83,11 +83,26 @@ RESEARCHED = {key for key, tools in FIELD_TOOLS.items() if tools}
 # Every field gets its expert but the identified-by IRN, which no source supplies.
 EXPERTS = NO_TOOLS | RESEARCHED
 TODAY = date(2026, 10, 8)
-def make_specimen(blobs, text=TEXT, other=None):
+IRN = "identified_by_irn"
+
+
+def field_mechanics_profile():
+    """The published profile with every field a label writes mandatory, as it was published until
+    2026-11-18 (the determiner's IRN optional). The rig's tests pin how each field settles and
+    which reason it gets; under this profile every reason holds the record, as it did before plan
+    WP K1, so their expectations stand unchanged. Since 2026-11-18 only the catalogue number is
+    mandatory; that profile's disposition, and that it keeps the very same reasons split between
+    run.reasons and run.open_reasons, is tested in test_skeletal_disposition.py."""
+    published = published_registry().profiles[0]
+    every = tuple(key for key in (*published.mandatory_fields, *published.optional_fields) if key != IRN)
+    return published.model_copy(update={"mandatory_fields": every, "optional_fields": (IRN,)})
+
+
+def make_specimen(blobs, text=TEXT, other=None, *, profile=None):
     """A non-sensitive specimen at its first pass: one label, two readers, which agree
     unless `other` is the second reader's text, on the units path (Run.first_pass_path),
-    as every new run is."""
-    published = published_registry().profiles[0]
+    as every new run is. Bound to `profile`, by default field_mechanics_profile()."""
+    published = field_mechanics_profile() if profile is None else profile
     output = io.BytesIO()
     Image.new("RGB", (100, 100), "white").save(output, format="JPEG", quality=95)
     image = output.getvalue()
@@ -178,18 +193,20 @@ class RefusedFirstPass(SyntheticAdapters):
     first_pass_units = first_pass
 
 
-def build_rig(tmp_path, text=TEXT, other=None, *, candidates=COLLECTORS, refused=False):
+def build_rig(tmp_path, text=TEXT, other=None, *, candidates=COLLECTORS, refused=False, profile=None):
     """The run at the plan handover after the first pass, adjudicate, parse and the organiser's
     `candidates` ((field, reading, literal, quote)). With `other` the second reader differs. With
     `refused` the workflow runs the first pass, which is refused on every attempt (each retry at
-    its scheduled time) and given up on."""
+    its scheduled time) and given up on. Bound to `profile` (make_specimen)."""
     blobs = LocalBlobs(tmp_path / "blobs")
     repository = SQLiteRepository(tmp_path / "records.sqlite")
     clock = SimpleNamespace(now=datetime(2026, 10, 8, 12, tzinfo=timezone.utc))
     adapters = (RefusedFirstPass if refused else SeeingFirstPass)(blobs, TEXT)
     workflow = Workflow(repository, blobs, adapters, clock=lambda: clock.now)
     principal = worker_principal()
-    specimen = make_specimen(blobs, text, other)
+    # A test's own make_specimen (several wrap it) takes no profile: it binds the default.
+    specimen = make_specimen(blobs, text, other) if profile is None else make_specimen(blobs, text, other,
+        profile=profile)
     # The published stage reservations, so the paid first pass can reserve.
     execution = specimen.run.profile.execution
     specimen.run.profile.execution = execution.model_copy(update={
@@ -4908,7 +4925,9 @@ def test_the_not_on_label_list_is_the_published_profiles_and_reaches_a_pinned_sn
     [key] = contracts.NOT_ON_LABEL
     assert key == (published.id, published.version) == ("zoology_insects_slides", "1.0.0")
     listed = contracts.NOT_ON_LABEL[key]
-    assert listed == {*ABSENT, "city"} and listed <= set(published.mandatory_fields)
+    # Optional since 2026-11-18 (plan WP K1: only the catalogue number is mandatory); the list
+    # still names the fields an expert may clear as not on the label.
+    assert listed == {*ABSENT, "city"} and listed <= set(published.optional_fields)
     assert not listed & contracts.NEVER_NOT_ON_LABEL
     assert contracts.NEVER_NOT_ON_LABEL == {"fmnh_ins_number", "country", "date_visited_from", "date_visited_to",
         "collectors", "taxon"}

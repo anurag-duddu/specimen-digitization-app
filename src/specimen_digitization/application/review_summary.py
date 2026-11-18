@@ -20,8 +20,16 @@ FIELD_REASONS = frozenset(
         "competing_mandatory_candidates",
         "raw_reading_grounding_unproved",
         "preserved_human_decision",
+        # Plan WP K1: an optional field research could not finish; a field drawn from a label
+        # whose doubt is open (field_research.step.label_attention).
+        "research_incomplete",
+        "label_unsettled",
     }
 )
+# The record-level checks that name every date field the record has (plan WP K1; the app's
+# blockers.fieldAttentionFor maps them the same way, pinned by tests/fixtures/field_attention.json).
+DATE_CHECKS = frozenset({"date_order", "date_precision_requires_review"})
+DATE_FIELDS = ("date_visited_from", "date_visited_to", "date_identified")
 # Unicode White_Space plus BOM, matching Dart String.trim and both SQL projections.
 DISPLAY_WHITESPACE = (
     "\t\n\v\f\r \u0085\u00a0\u1680"
@@ -81,6 +89,40 @@ def project_fields(fields):
     }
 
 
+def attention_fields(fields, reasons):
+    """The fields that need attention: a field a reason names (FIELD_REASONS' `<code>:<field>`,
+    `marked:<field>:...`, REASON_FIELDS, the elevation checks, DATE_CHECKS on every date field
+    present), and a field whose state is not settled or that is supported with no value. The one
+    mapping of reasons to fields; the app's field rows follow it (tests/fixtures/field_attention.json)."""
+    attention = set()
+    for code in reasons or []:
+        if not isinstance(code, str):
+            continue
+        base, _, suffix = code.partition(":")
+        field = REASON_FIELDS.get(code)
+        if base in FIELD_REASONS:
+            field = suffix
+        elif base == "marked":
+            # marked:<field>:<label>:<why> (field_research.step.marked_code): the field is
+            # the first part after "marked:".
+            field = suffix.partition(":")[0]
+        elif base in {"elevation_invalid", "elevation_range"} and suffix in {"m", "ft"}:
+            field = f"elevation_from_{suffix}"
+        elif base == "elevation_units_conflict" and suffix in {"from", "to"}:
+            field = f"elevation_{suffix}_m"
+        elif code in DATE_CHECKS:
+            attention.update(key for key in DATE_FIELDS if key in fields)
+        if field in fields and field in KNOWN_FIELDS:
+            attention.add(field)
+    for key, value in fields.items():
+        state, has_value = value.get("state"), value["has_value"]
+        if state not in {"supported", "not_present", "not_applicable"} or (
+            state == "supported" and not has_value
+        ):
+            attention.add(key)
+    return attention
+
+
 def review_summary(fields, reasons):
     """Return unknown for absent fields; count each materialized field once.
 
@@ -100,31 +142,10 @@ def review_summary(fields, reasons):
         for value in fields.values()
     ):
         return None
-    attention = set()
-    for code in reasons or []:
-        if not isinstance(code, str):
-            continue
-        base, _, suffix = code.partition(":")
-        field = REASON_FIELDS.get(code)
-        if base in FIELD_REASONS:
-            field = suffix
-        elif base == "marked":
-            # marked:<field>:<label>:<why> (field_research.step.marked_code): the field is
-            # the first part after "marked:".
-            field = suffix.partition(":")[0]
-        elif base in {"elevation_invalid", "elevation_range"} and suffix in {"m", "ft"}:
-            field = f"elevation_from_{suffix}"
-        elif base == "elevation_units_conflict" and suffix in {"from", "to"}:
-            field = f"elevation_{suffix}_m"
-        if field in fields and field in KNOWN_FIELDS:
-            attention.add(field)
+    attention = attention_fields(fields, reasons)
     missing = 0
-    for key, value in fields.items():
+    for value in fields.values():
         state, has_value = value.get("state"), value["has_value"]
-        if state not in {"supported", "not_present", "not_applicable"} or (
-            state == "supported" and not has_value
-        ):
-            attention.add(key)
         if state != "not_applicable" and (state == "not_present" or not has_value):
             missing += 1
     return {"review": len(attention), "missing": missing}

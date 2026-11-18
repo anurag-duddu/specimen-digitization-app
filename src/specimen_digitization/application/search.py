@@ -207,6 +207,7 @@ def sql_item(row, scope):
         "profileId": "profile_id",
         "profileVersion": "profile_version",
         "reasonCodes": "reason_codes",
+        "openReasonCodes": "open_reason_codes",
         "risk": "risk",
         "synthetic": "synthetic",
     }
@@ -254,6 +255,7 @@ def sqlite_search(
         "synthetic": "json_extract(payload,'$.run.profile.synthetic')",
         "sensitive": "json_extract(payload,'$.asset.sensitive')",
         "reason_codes": "json_extract(payload,'$.run.reasons')",
+        "open_reason_codes": "json_extract(payload,'$.run.open_reasons')",
         "active_graph": "json_quote(json_extract(payload,'$.active_graph'))",
         "field_review_states": """json_quote(CASE WHEN json_type(payload,'$.active_graph.field_review')='object'
           THEN json_extract(payload,'$.active_graph.field_review.fields') ELSE
@@ -316,6 +318,7 @@ def sqlite_search(
         row = dict(zip(projections, values))
         row.update(scope.model_dump())
         row["reason_codes"] = json.loads(row["reason_codes"] or "[]")
+        row["open_reason_codes"] = json.loads(row["open_reason_codes"] or "[]")
         row["sensitive"] = row["sensitive"] is None or bool(row["sensitive"])
         row["synthetic"] = bool(row["synthetic"])
         approved = row.pop("human_approved")

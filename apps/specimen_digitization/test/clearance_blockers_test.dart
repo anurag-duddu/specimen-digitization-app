@@ -29,7 +29,12 @@ Specimen pilotRecord({
       'alignment_status': 'policy_blocked',
     },
   ],
-  'reason_codes': reasons,
+  // The server's reason_codes hold every hard finding and every unresolved
+  // transcription that blocks this record (the app takes blocking from them).
+  'reason_codes': <String>[
+    if (!resolved) 'unresolved_transcription:r1',
+    ...reasons,
+  ],
   'validation_findings': <Json>[
     for (final String reason in reasons)
       <String, dynamic>{

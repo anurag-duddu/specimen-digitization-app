@@ -108,3 +108,20 @@ def no_kind_outlives_its_step(request, monkeypatch):
 
     monkeypatch.setattr(SQLiteRepository, "save", checked)
     yield
+
+
+@pytest.fixture(autouse=True)
+def without_second_opinion_marks(request, monkeypatch):
+    """The fields' second opinion (field_research/second_opinion.py) derives a mark on every settled
+    value it has no agreeing verdict for, at every finalize of a run on the units path, and makes its
+    own workflow step due. That is the product's behaviour, tested by the modules that set
+    USES_SECOND_OPINION = True. Every other test was written about the rules without it: for them it
+    derives nothing (second_opinion.derived), so their records clear or wait for their own reasons and
+    the step is never due. Nothing else of the second opinion is replaced."""
+    if getattr(request.module, "USES_SECOND_OPINION", False):
+        yield
+        return
+    from specimen_digitization.field_research import second_opinion
+
+    monkeypatch.setattr(second_opinion, "derived", lambda run, readings=(): [])
+    yield

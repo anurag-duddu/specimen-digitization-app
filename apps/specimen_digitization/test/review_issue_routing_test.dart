@@ -33,7 +33,17 @@ Specimen record({
     <String, dynamic>{'field_key': 'elevation_from_m', 'state': 'unknown'},
   ],
   'validation_findings': findings,
-  'reason_codes': reasons,
+  // The server's reason_codes hold every hard finding and every unresolved
+  // transcription that blocks this record (the app takes blocking from them).
+  'reason_codes': <String>[
+    ...reasons,
+    for (final Json item in findings)
+      if (item['severity'] == 'hard')
+        (item['reason_code'] ?? item['rule_id']).toString(),
+    for (final Json item in transcriptions)
+      if (item['resolved'] != true)
+        'unresolved_transcription:${item['region_id']}',
+  ],
   'transcriptions': transcriptions,
   'run': <String, dynamic>{'blocker': processingBlocker},
 });

@@ -105,8 +105,23 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
     if (issue.rawCode != null) representedCodes.add(issue.rawCode!);
   }
 
+  // Record blocking is the server's: a transcription, finding or reason
+  // blocks the record only when the server's `reason_codes` holds it. An
+  // optional field's doubt (`open_reason_codes`) is field attention at most
+  // (fieldAttentionFor).
+  final Set<String> heldCodes = <String>{
+    for (final Object? code
+        in specimen.data['reason_codes'] as List? ?? const <Object?>[])
+      code.toString(),
+  };
+
   for (final Json t in objects(specimen.data['transcriptions'])) {
     if (t['resolved'] == true) continue;
+    if (!heldCodes.contains(
+      'unresolved_transcription:${textOf(t['region_id'], '')}',
+    )) {
+      continue;
+    }
     final String region = _regionName(specimen, t['region_id']);
     final String? regionId = _matchingRegion(specimen, t['region_id']);
     add(
@@ -136,6 +151,7 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
       textOf(f['rule_id'], ''),
     );
     if (code == 'human_approval_required') continue;
+    if (!heldCodes.contains(code)) continue;
     add(_issueFor(specimen, code, finding: f));
   }
 
@@ -158,6 +174,55 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
   }
 
   return blockers;
+}
+
+/// The fields that need attention for a reason, whether it holds the record
+/// (`reason_codes`) or is an optional field's doubt (`open_reason_codes`). Each reads exactly
+/// as the same code does among the blockers, so a marked or open optional
+/// value on a cleared record never shows as settled. A `marked:` code with a
+/// reason this client does not know still needs attention, with generic words.
+/// A date check names every date field the record has. Codes that name no
+/// field (a label's doubt) are left out: they are about a label, not a field.
+List<ClearanceBlocker> fieldAttentionFor(Specimen specimen) {
+  const Set<String> dateChecks = <String>{
+    'date_order',
+    'date_precision_requires_review',
+  };
+  const List<String> dateFields = <String>[
+    'date_visited_from',
+    'date_visited_to',
+    'date_identified',
+  ];
+  final List<ClearanceBlocker> attention = <ClearanceBlocker>[];
+  // From whichever list holds the code: a held date check names its date
+  // fields as an open one does (tests/fixtures/field_attention.json).
+  for (final String code in <String>[
+    for (final Object? held
+        in specimen.data['reason_codes'] as List? ?? const <Object?>[])
+      held.toString(),
+    ...specimen.openReasonCodes,
+  ]) {
+    final ClearanceBlocker issue = _issueFor(specimen, code);
+    if (issue.fieldKey != null) {
+      attention.add(issue);
+    } else if (dateChecks.contains(code)) {
+      for (final String key in dateFields) {
+        final String? field = _matchingField(specimen, key);
+        if (field == null) continue;
+        attention.add(
+          ClearanceBlocker(
+            message: issue.message,
+            segment: issue.segment,
+            detail: issue.detail,
+            fieldKey: field,
+            kind: ClearanceBlockerKind.field,
+            rawCode: code,
+          ),
+        );
+      }
+    }
+  }
+  return attention;
 }
 
 bool _isContextualFinding(Json finding) =>
@@ -194,6 +259,8 @@ const Map<String, String> _fieldReasons = <String, String>{
   'competing_mandatory_candidates': 'has conflicting proposed values',
   'raw_reading_grounding_unproved': 'cannot be traced to the label readings',
   'preserved_human_decision': 'has an earlier review decision to confirm',
+  'research_incomplete': 'was not checked before research stopped',
+  'label_unsettled': 'comes from a label that needs checking',
   markedCode: 'is marked for review',
 };
 
@@ -212,6 +279,21 @@ const String barcodeDiffersWords =
     'The catalog number read from the label and the number in the slide\'s QR '
     'code differ. Compare them.';
 
+/// Why a value waits for a person when an independent reading of the slide's
+/// labels gives the field a different value, or none
+/// (`marked:<field>:<label>:second_opinion_differs`,
+/// field_research/second_opinion.py). The value shown stays as it was.
+const String secondOpinionDiffersWords =
+    'An independent reading of the labels gives a different value. Check '
+    'this value against the image.';
+
+/// Why a value waits for a person when the independent reading did not run,
+/// so the value is not confirmed
+/// (`marked:<field>:<label>:second_opinion_not_checked`).
+const String secondOpinionNotCheckedWords =
+    'The independent reading of the labels did not run, so this value is '
+    'not confirmed. Check it against the image.';
+
 /// Why a `marked:` code's label left its field for a person, by its `why`.
 String _markedWhy(String why) => switch (why) {
   'text_only' =>
@@ -220,6 +302,8 @@ String _markedWhy(String why) => switch (why) {
   'conflict' =>
     'Another reading competes with this value. Check it against the image.',
   'barcode_differs' => barcodeDiffersWords,
+  'second_opinion_differs' => secondOpinionDiffersWords,
+  'second_opinion_not_checked' => secondOpinionNotCheckedWords,
   _ => 'Review the value and its supporting sources.',
 };
 
@@ -259,6 +343,8 @@ const Map<String, String> _researchStops = <String, String>{
       'Field research stopped because the model gave no usable answer',
   'field_research_timeout':
       'Field research ran out of time before every field was checked',
+  'field_research_given_up':
+      'Field research stopped at a processing limit before every field was checked',
 };
 
 const Map<String, String> _operatorMessages = <String, String>{
@@ -299,8 +385,6 @@ const Map<String, String> _recordMessages = <String, String>{
       'Check the collection and identification dates',
   'date_order': 'Check the order of the collection and identification dates',
   'identifier_format': 'Check the catalog number format',
-  'no_specimen_value':
-      'No field describes the specimen. Check the labels in the photograph',
   'pilot_risk_unmeasured': 'The review priority assessment is not available',
   'identified_by_irn_identity_unproved':
       'The identifier needs a confirmed EMu person record',

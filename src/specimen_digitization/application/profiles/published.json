@@ -97,7 +97,9 @@
       "synthetic": false,
       "schema_version": "insects-v1",
       "mandatory_fields": [
-        "fmnh_ins_number",
+        "fmnh_ins_number"
+      ],
+      "optional_fields": [
         "collection_code",
         "country",
         "province_state",
@@ -115,9 +117,7 @@
         "collectors",
         "verbatim_dts",
         "taxon",
-        "date_identified"
-      ],
-      "optional_fields": [
+        "date_identified",
         "identified_by_irn"
       ],
       "not_applicable_fields": [],
@@ -235,7 +235,7 @@
           "ledger_collection": "insects"
         },
         "price_list": {
-          "version": "pilot-prices-2026-10-25",
+          "version": "pilot-prices-2026-11-18",
           "as_of": "2026-09-24",
           "sources": [
             "https://router.huggingface.co/v1/models",
@@ -301,6 +301,12 @@
               "input_micros_per_million": 200000,
               "output_micros_per_million": 500000,
               "context_tokens": 1048576
+            },
+            "second-opinion-muse-spark": {
+              "input_micros_per_million": 1250000,
+              "output_micros_per_million": 4250000,
+              "context_tokens": 1048576,
+              "max_output_tokens": 8000
             }
           },
           "segmentation": {

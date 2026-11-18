@@ -21,6 +21,22 @@ PLACEHOLDERS = {
 }
 
 
+# The determiner's EMu person record: no label writes it (the parties authority gives it).
+EMU_IRN = "identified_by_irn"
+
+
+def checked_fields(run) -> tuple[str, ...]:
+    """The fields read off the labels and checked, in the bound profile's order: every mandatory
+    field, and every optional one but the determiner's EMu IRN, which no label writes
+    (Run.field_groups); a run with no bound groups, its profile's mandatory fields. Whether a
+    field's doubt holds the record is field_research.step.split_reasons' decision, not this
+    list's. Until the profile made only the catalogue number mandatory (2026-11-18, plan WP K1)
+    this list was the mandatory set, in the same order."""
+    groups = getattr(run, "field_groups", None) or {}
+    keys = tuple(key for key, group in groups.items() if group == "mandatory" or key != EMU_IRN)
+    return keys or tuple(run.profile.mandatory_fields)
+
+
 def evaluate(run: Run) -> list[str]:
     failures = []
     for label in run.label_language_handling.get("labels", []):
@@ -59,7 +75,7 @@ def evaluate(run: Run) -> list[str]:
             or any(o not in observation_ids for o in e.observation_ids)
         ):
             failures.append(f"evidence_lineage_invalid:{e.id}")
-    for key in run.profile.mandatory_fields:
+    for key in checked_fields(run):
         field = run.fields.get(key)
         if (
             not field
@@ -163,18 +179,29 @@ def finalize(run: Run) -> None:
 
     settle_approval(run)
     run.disposition = None
+    from .standing_holds import adopt_legacy, derived_holds
+
+    adopt_legacy(run)
     if run.blocker or any(l.status in OPERATIONAL for l in run.lookups[-1:]):
         run.stage = "processing_blocked"
-        run.reasons = [run.blocker or "lookup_operational_failure"]
+        run.reasons, run.open_reasons = [run.blocker or "lookup_operational_failure"], []
         return
-    run.reasons = evaluate(run)
+    from ..field_research.step import label_attention, split_reasons
+
+    # An optional field's doubt does not hold the record (field_research.step.split_reasons, the
+    # same rule as field research's finalize_fields): it is kept in open_reasons.
+    run.reasons, run.open_reasons = split_reasons(run, evaluate(run), mandatory=run.profile.mandatory_fields)
+    # The fields an open label doubt reaches, as field research names them (step.label_attention);
+    # and the holds derived from the run's state (application/standing_holds.py).
+    run.open_reasons = [*run.open_reasons, *label_attention(run, run.open_reasons)]
+    run.reasons = list(dict.fromkeys((*run.reasons, *derived_holds(run))))
     if (
         run.capability_reason
         and run.retry_eligibility
         and "capability_attempts_exhausted" in run.completed_steps
     ):
         run.disposition = Disposition.DEFERRED
-        run.reasons = [run.capability_reason]
+        run.reasons, run.open_reasons = [run.capability_reason], []
     else:
         run.disposition = Disposition.REVIEW if run.reasons else Disposition.CLEARED
     run.stage = "finalized"

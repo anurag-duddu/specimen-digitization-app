@@ -522,6 +522,15 @@ class Run(Record):
     # The digest of the values a person approved (lane.approved_values_digest), set with the
     # approval. Omitted while None, so a run approved before it existed keeps its stored bytes.
     approved_values_sha256: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    # The fields a person decided at the decision endpoint (a field, research-candidate, authority
+    # or taxonomy decision), in order: no second-opinion mark is derived on them on this run
+    # (field_research/second_opinion.py). Omitted while empty, so stored runs keep their bytes.
+    person_decided_fields: list[str] = Field(default_factory=list, exclude_if=lambda value: not value)
+    # The fields' second opinion's one stored result (field_research/second_opinion.py, the workflow
+    # step field_second_opinion): its status, each judged field's compared value, the second
+    # opinion's value and text and the verdict, and the model's answer inline. The clearance rules
+    # derive its marks from it at every finalize. Omitted while None, so stored runs keep their bytes.
+    second_opinion: dict | None = Field(default=None, exclude_if=lambda value: value is None)
     # A restore withdraws clearance while retaining existing human field locks.
     # Omit the false default so historical immutable snapshot digests stay exact.
     history_restore_human_locks: bool = Field(
@@ -529,6 +538,15 @@ class Run(Record):
     )
     disposition: Disposition | None = None
     reasons: list[str] = Field(default_factory=list)
+    # The doubts about optional fields, which do not hold the record (field_research.step
+    # split_reasons; the owner's ruling of 2026-11-18, docs/execution/autonomy/PLAN.md WP K1):
+    # codes of the same form as `reasons`, kept so a cleared record still says which of its
+    # optional fields are open. Omitted while empty, so older snapshots keep their bytes.
+    open_reasons: list[str] = Field(default_factory=list, exclude_if=lambda value: not value)
+    # What a person must still review, recorded when its cause happens and cleared by their approval
+    # (application/standing_holds.py; plan WP K1): every finalize derives its holds from it. None on a
+    # run stored before it existed (omitted, so older snapshots keep their bytes).
+    pending_review: list[str] | None = Field(default=None, exclude_if=lambda value: value is None)
     findings: list[RunFinding] = Field(default_factory=list)
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
     blocker: str | None = None

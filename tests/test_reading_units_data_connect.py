@@ -7,8 +7,10 @@ data release's additive gate (scripts/ci/schema_gate.py) accepts the change.
 
 One later change is declared here by its exact text, so the pins still hold for everything else:
 the queue's "cleared by" (2026-11-17) projects the stored `run.human_approved` as the last column
-of the `SpecimenSearch` view and the last selection of `SearchSpecimens` (SEARCH_DELTAS). The view
-is inlined by Data Connect, so the database receives no statement for it.
+of the `SpecimenSearch` view and the last selection of `SearchSpecimens` (SEARCH_DELTAS); and the
+skeletal records (2026-11-18, docs/execution/autonomy/PLAN.md WP K1) project `run.open_reasons` after
+it, as the view's and the selection's new last. The view is inlined by Data Connect, so the database
+receives no statement for it.
 """
 
 import hashlib
@@ -79,20 +81,26 @@ NEW_FIELD = (
     "  readingUnits: Any\n"
 )
 
-# The queue's "cleared by" (2026-11-17): (definition, text in this tree, text at MAIN), exactly.
+# The queue's "cleared by" (2026-11-17) and K1's open reasons (2026-11-18): (definition, text in this
+# tree, text at MAIN), exactly.
 SEARCH_DELTAS = (
     ("SpecimenSearch",
      "    v.snapshot -> 'active_graph' AS active_graph,\n"
      "    CASE WHEN jsonb_typeof(v.snapshot #> '{run,human_approved}') = 'boolean'"
-     " THEN (v.snapshot #>> '{run,human_approved}')::boolean END AS human_approved\n",
+     " THEN (v.snapshot #>> '{run,human_approved}')::boolean END AS human_approved,\n"
+     "    ARRAY(SELECT value #>> '{}' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v.snapshot #>"
+     " '{run,open_reasons}') = 'array' THEN v.snapshot #> '{run,open_reasons}' ELSE '[]'::jsonb END)"
+     " WHERE jsonb_typeof(value) = 'string') AS open_reason_codes\n",
      "    v.snapshot -> 'active_graph' AS active_graph\n"),
     ("SpecimenSearch",
      "  activeGraph: Any\n"
      "  # run.human_approved when the stored run holds a boolean, else null (lane.cleared_by).\n"
-     "  humanApproved: Boolean\n}",
+     "  humanApproved: Boolean\n"
+     "  # run.open_reasons: the optional fields' doubts, which hold no record (plan WP K1).\n"
+     "  openReasonCodes: [String]\n}",
      "  activeGraph: Any\n}"),
     ("SearchSpecimens",
-     "fieldReviewStates activeGraph humanApproved\n",
+     "fieldReviewStates activeGraph humanApproved openReasonCodes\n",
      "fieldReviewStates activeGraph\n"),
 )
 

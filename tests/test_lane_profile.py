@@ -87,16 +87,20 @@ def test_the_slide_pilot_profile_carries_the_specified_settings():
     )
     assert profile.collection_id == "insects" and not profile.synthetic
     assert profile.model_routes == ("handwriting-qwen", "handwriting-muse")
-    assert profile.mandatory_fields == tuple(
-        key for key in MANDATORY if key != "identified_by_irn"
+    # Since 2026-11-18 only the catalogue number is mandatory (the owner's ruling of that date, the
+    # coordinator's decision of the skeletal set; docs/execution/autonomy/PLAN.md WP K1); every other
+    # field, the elevations among them, is optional, in the same order, then identified_by_irn.
+    assert profile.mandatory_fields == ("fmnh_ins_number",)
+    assert profile.optional_fields == (
+        *(key for key in MANDATORY if key not in ("fmnh_ins_number", "identified_by_irn")),
+        "identified_by_irn",
     )
-    assert profile.optional_fields == ("identified_by_irn",)
     assert {
         "elevation_from_m",
         "elevation_to_m",
         "elevation_from_ft",
         "elevation_to_ft",
-    } <= set(profile.mandatory_fields)
+    } <= set(profile.optional_fields)
     assert profile.field_tools == FIELD_TOOLS
     assert set(profile.tools) == {tool for tools in FIELD_TOOLS.values() for tool in tools}
     assert "identified_by_irn" not in profile.field_tools
@@ -242,8 +246,9 @@ def test_classify_gives_the_run_every_field_with_its_group(tmp_path):
     )
     assert issue is None
     assert set(specimen.run.fields) == set(MANDATORY)
+    # Plan WP K1 (2026-11-18): only the catalogue number is mandatory.
     assert specimen.run.field_groups == {
-        key: "optional" if key == "identified_by_irn" else "mandatory"
+        key: "mandatory" if key == "fmnh_ins_number" else "optional"
         for key in MANDATORY
     }
     assert "identified_by_irn" not in specimen.run.profile.mandatory_fields

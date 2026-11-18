@@ -20,6 +20,7 @@ from .domain import Record, Evidence, FieldValue, ValueState
 from .extraction_guard import extraction_refusal
 from .field_harness import labelled
 from .field_resolution import DECIDED, Reading
+from .policy import checked_fields
 from .organiser import (
     SOURCE,
     CandidateLocation,
@@ -312,7 +313,7 @@ def extract_with_agent(gateway, blobs, specimen):
     try:
         result = run_agent_bounded(
             agent,
-            request_text(run.profile.mandatory_fields, labelled(readings)),
+            request_text(checked_fields(run), labelled(readings)),
             usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
             timeout_seconds=run.profile.execution.external_timeout_seconds,
         )

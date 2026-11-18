@@ -362,12 +362,15 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         "disposition": run.disposition,
         "cleared_by": cleared_by(run.disposition, run.human_approved),
         "reason_codes": run.reasons,
+        # The optional fields' doubts (plan WP K1): they hold no record, and they count for the
+        # field's attention as reason_codes do.
+        "open_reason_codes": run.open_reasons,
         "review_summary": review_summary(
             project_fields({
                 key: value.model_dump(mode="json")
                 for key, value in run.fields.items()
             }),
-            run.reasons,
+            [*run.reasons, *run.open_reasons],
         ),
         "blocker": run.blocker,
         "profile_id": run.profile.id,
@@ -2078,6 +2081,15 @@ def create_app(
             # Arbitrary nested dependency JSON must never alias an immutable
             # repository/read-cache snapshot when a human edit supersedes it.
             s = s.model_copy(deep=True)
+        from ..field_research import second_opinion as field_second_opinion
+
+        if s.run.stage == field_second_opinion.STEP:
+            # A person's decision while the record waits for the fields' second opinion: an open intent is
+            # abandoned here (not obtained, its reservation held), and the decision is handled as main
+            # handles it on a record whose research is complete, a finalized one: below, the same whole
+            # refinalize (field_research/second_opinion.py, abandon).
+            field_second_opinion.abandon(s.run)
+            s.run.stage = "finalized"
         pilot = "evidence_pilot" in s.run.dependencies
         pilot_blocker = s.run.blocker
         pilot_risk = dict(s.run.review_risk)
@@ -2092,6 +2104,12 @@ def create_app(
             raise ValueError("Review reason required")
         if body.base_record_version_id != f"{s.run.id}:{body.expected_revision}":
             raise Conflict("Wrong base record version")
+        from .standing_holds import person_acted
+
+        # The one place a person's decision enters (the decisions route, decisions:batch and candidate
+        # choices all pass here): recorded first, whatever the kind, stage or blocker, so every later
+        # finalize holds the record for their approval (application/standing_holds.py).
+        person_acted(s.run)
         before_digest = repository.version_info(p.scope, s.id, s.version)["run_sha256"]
         before = {
             "specimen_id": s.id,
@@ -2387,6 +2405,15 @@ def create_app(
             s.run.coverage_confirmed = body.after.get("confirmed") is True
         else:
             raise ValueError("Unsupported review decision")
+        if body.kind in {"field", "research_candidate", "authority_resolution", "taxonomy_resolution"}:
+            # A person decided or selected the field, whatever the payload holds: recorded on the run
+            # (run.person_decided_fields), so no second-opinion mark is derived on it, and named in the
+            # audit as recorded so it is never adopted again at load (field_research/second_opinion.py).
+            from ..field_research import second_opinion
+
+            decided = "taxon" if body.kind == "taxonomy_resolution" else body.target_id
+            second_opinion.decided(s.run, decided)
+            audit_after = {**audit_after, second_opinion.DECIDED_MARK: decided}
         if pilot:
             s.run.stage = "processing_blocked"
             s.run.blocker = pilot_blocker
@@ -2403,9 +2430,9 @@ def create_app(
             phase_result = None
             if FIELD_RESEARCH in s.run.completed_steps and body.kind != "capability_defer":
                 # Field research's own clearance rules decide its run; a person's
-                # decision waits for their approval (field_research.step.refinalize).
+                # decision waits for their approval (person_acted, above).
                 from ..field_research.step import refinalize
-                refinalize(s.run, decided=True)
+                refinalize(s.run)
             else:
                 if (
                     s.run.blocker != "evidence_integrity_failure"

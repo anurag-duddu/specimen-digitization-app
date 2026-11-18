@@ -464,7 +464,8 @@ def test_a_reading_refused_with_429_costs_nothing_on_every_attempt(tmp_path, mon
     assert requests(tmp_path, "transcribe") == 3
     # Given up after max_attempts, as before: the record goes to review.
     assert (run.stage, run.disposition, run.attempts[step]) == ("finalized", Disposition.REVIEW, 3)
-    assert f"independent_observations_missing:{region}" in run.reasons
+    # Plan WP K1 (2026-11-18): a label nothing is drawn from keeps its doubt in open_reasons; the record is held by the catalogue number's own reason.
+    assert f"independent_observations_missing:{region}" in [*run.reasons, *run.open_reasons]
     calls = [c for c in run.paid_calls if c["step"] == step]
     assert ledger_rows(calls) == [
         (n, "failed", "refused", 0, None, "model_rate_limited") for n in (1, 2, 3)

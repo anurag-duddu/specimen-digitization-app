@@ -118,7 +118,8 @@ def test_a_reading_lost_on_its_last_attempt_ends_and_the_record_goes_to_review(t
     assert done.attempts[step] == 3 and step in done.completed_steps
     assert calls["muse"] == 3  # Never a fourth call.
     assert [o.route_id for o in done.observations] == ["handwriting-qwen"]
-    assert f"independent_observations_missing:{done.regions[0].id}" in done.reasons
+    # Plan WP K1 (2026-11-18): a label nothing is drawn from keeps its doubt in open_reasons; the record is held by the catalogue number's own reason.
+    assert f"independent_observations_missing:{done.regions[0].id}" in [*done.reasons, *done.open_reasons]
     assert muse_calls(done) == [(n, "failed", LOST_READING, "reserved") for n in (1, 2, 3)]
     assert ledger_total(app) == done.usage.reserved_cost_micros
 

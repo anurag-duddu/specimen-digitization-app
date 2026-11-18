@@ -31,8 +31,11 @@ def compact_summary(row, fields, metadata):
     """Use inline fields or the exact graph's versioned content-free projection."""
     from .storage import digest
 
+    # A field's attention reads the reasons that hold the record and the optional fields' doubts
+    # (open_reason_codes, plan WP K1) alike.
+    attention = [*(row.get("reason_codes") or []), *(row.get("open_reason_codes") or [])]
     if metadata is None:
-        return review_summary(fields, row.get("reason_codes"))
+        return review_summary(fields, attention)
     try:
         bound_metadata(row, metadata)
         projection = metadata["field_review"]
@@ -40,7 +43,7 @@ def compact_summary(row, fields, metadata):
                 or projection["reasons_sha256"] != digest(row["reason_codes"])
                 or projection["fields"] != fields):
             return None
-        return review_summary(fields, row["reason_codes"])
+        return review_summary(fields, attention)
     except (KeyError, TypeError, ValueError, OverflowError):
         return None
 

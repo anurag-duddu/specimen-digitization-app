@@ -67,6 +67,11 @@ def restored_specimen(base, source, *, accounting=None):
     result.run.lease_until = None
     result.run.next_retry_at = None
     result.run.queued_at = None
+    from .standing_holds import HISTORY_RESTORED, adopt_legacy, note_pending
+
+    # Recorded on the run, so every finalize derives the hold until a person approves.
+    adopt_legacy(result.run)
+    note_pending(result.run, HISTORY_RESTORED)
     if result.run.blocker:
         result.run.stage = "processing_blocked"
         result.run.disposition = None

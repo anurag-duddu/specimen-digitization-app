@@ -5,8 +5,8 @@ measured as rule mechanics, not doubt, removed, and the holds that guard a real 
   own is not also unresolved_transcription; any drawn field without one, a field cleared as not on
   the label among them, keeps the label's reason, as does a label no field is drawn from.
 - C4d: an expert whose request its sources made too long answers once more on a shortened one.
-- The empty-record guard: a record whose fields that describe the specimen are all settled with no
-  value is never finished without a person.
+- The empty-record guard S1 added was removed by plan WP K1 (the owner's ruling of 2026-11-18): a
+  record whose label carries only the catalogue number clears (test_skeletal_disposition.py).
 """
 
 from __future__ import annotations
@@ -267,55 +267,3 @@ def test_a_first_request_over_the_bound_still_fails_as_too_large():
     outcome = asyncio.run(resolver(province_task(), two_readers(DAVAO_LINES) + huge, {}, tools=Tools()))
 
     assert (outcome.answer, outcome.failure) == (None, "input_too_large") and seen == []
-
-
-# ---- the empty-record guard --------------------------------------------------------------------
-
-def empty_record_reasons(run):
-    work = dict.fromkeys(run.fields, field_step.RESOLVED)
-    profile = field_step.profile_of(run)
-    return field_step.scientific_reasons(run, work, mandatory=(), qualified=frozenset(), today=TODAY,
-        allowed=field_step.not_on_label_keys(profile))
-
-
-def test_a_record_nothing_on_which_describes_the_specimen_is_never_finished(tmp_path):
-    """A record such as R0's 105526335 once its open fields settle absent (its labels write only
-    "FMNHINS 4486770" and "LEWIS COLLECTION / col"): its catalogue number and collection code have
-    values, every other field is settled with no value (cleared as not on the label, or none
-    mandatory), and it still goes to a person, with its own reason. One value that describes the
-    specimen, or one field still open (105526461 on the pair arm: its host, locality and date are
-    written but left open, each with a reason of its own), and the guard says nothing."""
-    rig = build_rig(tmp_path)
-    run = rig.specimen.run
-    settle(rig, Scripted())
-    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
-
-    kept = run.fields["habitat"]
-    for key in run.fields:
-        if key not in ("fmnh_ins_number", "collection_code"):
-            run.fields[key] = FieldValue(state=ValueState.NOT_PRESENT)
-    assert field_step.NO_SPECIMEN_VALUE in empty_record_reasons(run)
-
-    run.fields["habitat"] = kept
-    assert field_step.NO_SPECIMEN_VALUE not in empty_record_reasons(run)
-    # A field still open is held by its own reason, not this one.
-    run.fields["habitat"] = FieldValue(state=ValueState.UNRESOLVED)
-    assert field_step.NO_SPECIMEN_VALUE not in empty_record_reasons(run)
-    # A placeholder is no value.
-    run.fields["habitat"] = FieldValue(state=ValueState.SUPPORTED, literal="unknown")
-    assert field_step.NO_SPECIMEN_VALUE in empty_record_reasons(run)
-    # A person's approval decides the record.
-    run.human_approved = True
-    assert field_step.NO_SPECIMEN_VALUE not in empty_record_reasons(run)
-
-
-def test_the_empty_record_reason_is_the_code_the_app_words():
-    """The reason's code as the app's no_specimen_value_test.dart names it (blockers.dart words it)."""
-    assert field_step.NO_SPECIMEN_VALUE == "no_specimen_value"
-
-
-def test_the_empty_record_guard_keeps_a_cleared_record_cleared(tmp_path):
-    rig = build_rig(tmp_path)
-    settle(rig, Scripted())
-    assert field_step.NO_SPECIMEN_VALUE not in rig.specimen.run.reasons
-    assert LABEL["habitat"] == rig.specimen.run.fields["habitat"].literal
