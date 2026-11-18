@@ -4614,6 +4614,25 @@ def code_confirmed(run) -> frozenset[str]:
     return frozenset({FIELD})
 
 
+# A field drawn from a label whose doubt is open (label_attention): `label_unsettled:<field>`.
+LABEL_UNSETTLED = "label_unsettled"
+
+
+def label_attention(run, open_reasons: Sequence[str]) -> list[str]:
+    """`label_unsettled:<field>` for each field drawn from a label whose doubt is an open reason
+    (a label's reading doubt, its language rule, its raw provenance), in field order: the label's
+    doubt holds no record, and each field it reaches needs a person's attention all the same. Every
+    consumer reads the field from the code itself (review_summary, the app's field rows), so the
+    server and the app cannot map it differently. The label's own code stays beside them."""
+    language = language_codes(run)
+    reached: set[str] = set()
+    for reason in open_reasons:
+        code, _, rest = reason.partition(":")
+        if code in LABEL_DOUBTS or code in LABEL_PROVENANCE or code in language:
+            reached |= label_fields(run, rest)
+    return [f"{LABEL_UNSETTLED}:{key}" for key in run.fields if key in reached]
+
+
 def split_reasons(run, reasons: Sequence[str], *, mandatory: Iterable[str]) -> tuple[list[str], list[str]]:
     """The reasons that hold the record, and the optional fields' doubts that do not (plan WP K1).
 
@@ -4722,6 +4741,7 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     # reasons, and the field keeps its state, value and marks.
     earlier = (*run.reasons, *run.open_reasons)
     human, run.open_reasons = split_reasons(run, list(dict.fromkeys(human)), mandatory=profile.mandatory_fields)
+    run.open_reasons = [*run.open_reasons, *label_attention(run, run.open_reasons)]
     by_key = {outcome.key: outcome for outcome in outcomes}
     # An optional field research could not finish is that field's doubt; research given up for the
     # run as a whole holds the record (plan WP K1, the coordinator's rulings of 2026-11-18).
@@ -4742,22 +4762,19 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     return None
 
 
-APPROVAL = "human_approval_required"
-# A location family's explicit reassessment left unconfirmed (FieldResearchStep._retained_reassessment).
-REASSESSMENT_UNCONFIRMED = "location_reassessment_unconfirmed"
+from specimen_digitization.application.standing_holds import (  # noqa: E402
+    APPROVAL,
+    REASSESSMENT_UNCONFIRMED,
+    standing_holds,
+)
 
 
 def pending_person_holds(run, earlier: Sequence[str], *, settles_reassessment: bool = False) -> list[str]:
-    """The holds of a person's pending decision that the reasons before this finalize carried
-    (`earlier`), kept until their own resolution, on every path that recomputes the reasons (plan WP
-    K1, Codex round 1 on #455): human_approval_required until a person approves; a location
-    family's location_reassessment_unconfirmed until a person approves or the reassessment that
-    settles it runs (`settles_reassessment`: that step names what it still leaves unconfirmed
-    itself). preserved_human_decision is recomputed from the person's decisions on every finalize."""
-    if run.human_approved:
-        return []
-    return [reason for reason in earlier if reason == APPROVAL
-        or (reason.startswith(REASSESSMENT_UNCONFIRMED + ":") and not settles_reassessment)]
+    """The standing holds the reasons before this finalize carried (`earlier`; application/
+    standing_holds.py: every reason a path outside this recomputation writes), kept until the event
+    that resolves each (plan WP K1, Codex rounds 1 and 2 on #455). preserved_human_decision is
+    recomputed from the person's decisions on every finalize."""
+    return standing_holds(earlier, approved=run.human_approved, settles_reassessment=settles_reassessment)
 # An optional field research could not finish (incomplete_reasons): an optional field's doubt.
 INCOMPLETE = "research_incomplete"
 # Research given up for the run as a whole (FieldResearchStep.give_up): it holds the record.
@@ -4817,7 +4834,9 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
     """
     if run.blocker:
         # policy.finalize: a blocked run is not decided.
-        run.stage, run.disposition, run.reasons = "processing_blocked", None, [run.blocker]
+        # The standing holds stay beside the blocker, for the finalize after the run is unblocked.
+        run.stage, run.disposition = "processing_blocked", None
+        run.reasons = list(dict.fromkeys((run.blocker, *standing_holds(run.reasons, approved=run.human_approved))))
         return
     pending = decided or APPROVAL in run.reasons
     # A field that waited for its source follows it once a person settles it (WP 2.3b). Only
@@ -4827,7 +4846,7 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
     follow_sources(run, asset_id=run.regions[0].asset_id if run.regions else None, blobs=blobs)
     finalize_fields(run, None, (), specimen=specimen, blobs=blobs, today=today)
     if pending and not run.human_approved:
-        # finalize_fields keeps a pending approval itself (pending_person_holds); a new one is added.
+        # A standing hold (application/standing_holds.py): finalize_fields keeps a pending one itself.
         run.reasons = list(dict.fromkeys((*run.reasons, APPROVAL)))
         run.disposition = Disposition.REVIEW
 
@@ -5107,8 +5126,9 @@ class FieldResearchStep:
     @staticmethod
     def _retained_reassessment(run, retained) -> None:
         if retained:
+            # A standing hold (application/standing_holds.py).
             run.reasons = list(dict.fromkeys((*run.reasons,
-                *(f"location_reassessment_unconfirmed:{key}" for key in sorted(retained)))))
+                *(f"{REASSESSMENT_UNCONFIRMED}:{key}" for key in sorted(retained)))))
             if run.blocker is None:
                 run.disposition = Disposition.REVIEW
 

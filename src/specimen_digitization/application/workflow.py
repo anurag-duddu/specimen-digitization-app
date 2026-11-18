@@ -1737,7 +1737,11 @@ class Workflow:
             run.blocker = "external_outcome_unknown"
             run.stage = "processing_blocked"
             run.disposition = None
-            run.reasons = ["external_stage_deadline_exceeded"]
+            from .standing_holds import standing_holds
+
+            # The blocker's reason; the standing holds stay beside it (application/standing_holds.py).
+            run.reasons = ["external_stage_deadline_exceeded",
+                *standing_holds(run.reasons, approved=run.human_approved)]
             _log_step_failure(
                 run,
                 step,

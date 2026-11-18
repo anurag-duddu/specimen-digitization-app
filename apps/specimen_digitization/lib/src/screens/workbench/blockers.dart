@@ -105,8 +105,23 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
     if (issue.rawCode != null) representedCodes.add(issue.rawCode!);
   }
 
+  // Record blocking is the server's: a transcription, finding or reason
+  // blocks the record only when the server's `reason_codes` holds it. An
+  // optional field's doubt (`open_reason_codes`) is field attention at most
+  // (fieldAttentionFor).
+  final Set<String> heldCodes = <String>{
+    for (final Object? code
+        in specimen.data['reason_codes'] as List? ?? const <Object?>[])
+      code.toString(),
+  };
+
   for (final Json t in objects(specimen.data['transcriptions'])) {
     if (t['resolved'] == true) continue;
+    if (!heldCodes.contains(
+      'unresolved_transcription:${textOf(t['region_id'], '')}',
+    )) {
+      continue;
+    }
     final String region = _regionName(specimen, t['region_id']);
     final String? regionId = _matchingRegion(specimen, t['region_id']);
     add(
@@ -136,6 +151,7 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
       textOf(f['rule_id'], ''),
     );
     if (code == 'human_approval_required') continue;
+    if (!heldCodes.contains(code)) continue;
     add(_issueFor(specimen, code, finding: f));
   }
 
@@ -237,6 +253,7 @@ const Map<String, String> _fieldReasons = <String, String>{
   'raw_reading_grounding_unproved': 'cannot be traced to the label readings',
   'preserved_human_decision': 'has an earlier review decision to confirm',
   'research_incomplete': 'was not checked before research stopped',
+  'label_unsettled': 'comes from a label that needs checking',
   markedCode: 'is marked for review',
 };
 

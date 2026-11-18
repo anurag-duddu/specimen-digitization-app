@@ -1,0 +1,74 @@
+{
+  "about": "Plan WP K1 (Codex round 2 on PR #455): which fields need attention for a set of reason codes. The server (application/review_summary.attention_fields, tests/test_field_attention_contract.py) and the app (blockers.fieldAttentionFor with the field rows' rule, test/field_attention_contract_test.dart) both read this file, so their one mapping of reason codes to fields cannot disagree. Each case: the record's fields (state, has_value), its reason codes, and the fields that need attention.",
+  "cases": [
+    {
+      "name": "date order on two supported dates",
+      "fields": {
+        "date_visited_from": {"state": "supported", "has_value": true},
+        "date_identified": {"state": "supported", "has_value": true},
+        "habitat": {"state": "supported", "has_value": true}
+      },
+      "codes": ["date_order"],
+      "attention": ["date_identified", "date_visited_from"]
+    },
+    {
+      "name": "date precision on all three dates",
+      "fields": {
+        "date_visited_from": {"state": "supported", "has_value": true},
+        "date_visited_to": {"state": "supported", "has_value": true},
+        "date_identified": {"state": "supported", "has_value": true}
+      },
+      "codes": ["date_precision_requires_review"],
+      "attention": ["date_identified", "date_visited_from", "date_visited_to"]
+    },
+    {
+      "name": "a marked habitat and an unresolved collectors field",
+      "fields": {
+        "habitat": {"state": "supported", "has_value": true},
+        "collectors": {"state": "unresolved", "has_value": false},
+        "country": {"state": "supported", "has_value": true}
+      },
+      "codes": ["marked:habitat:L1:text_only", "mandatory_unresolved:collectors"],
+      "attention": ["collectors", "habitat"]
+    },
+    {
+      "name": "a mark with a reason no client knows",
+      "fields": {"habitat": {"state": "supported", "has_value": true}},
+      "codes": ["marked:habitat:L1:a_new_check"],
+      "attention": ["habitat"]
+    },
+    {
+      "name": "fields drawn from a label whose doubt is open",
+      "fields": {
+        "country": {"state": "supported", "has_value": true},
+        "province_state": {"state": "supported", "has_value": true},
+        "fmnh_ins_number": {"state": "supported", "has_value": true}
+      },
+      "codes": ["unresolved_transcription:L2", "label_unsettled:country", "label_unsettled:province_state"],
+      "attention": ["country", "province_state"]
+    },
+    {
+      "name": "research could not finish an optional field",
+      "fields": {"country": {"state": "unresolved", "has_value": false}, "taxon": {"state": "supported", "has_value": true}},
+      "codes": ["research_incomplete:country", "mandatory_unresolved:country"],
+      "attention": ["country"]
+    },
+    {
+      "name": "the taxon, an elevation and the determiner",
+      "fields": {
+        "taxon": {"state": "supported", "has_value": true},
+        "elevation_from_m": {"state": "supported", "has_value": true},
+        "elevation_to_m": {"state": "supported", "has_value": true},
+        "identified_by_irn": {"state": "supported", "has_value": true}
+      },
+      "codes": ["taxonomy_unresolved", "elevation_units_conflict:from", "identified_by_irn_identity_unproved"],
+      "attention": ["elevation_from_m", "identified_by_irn", "taxon"]
+    },
+    {
+      "name": "no code and settled fields",
+      "fields": {"habitat": {"state": "supported", "has_value": true}, "county": {"state": "not_present", "has_value": false}},
+      "codes": [],
+      "attention": []
+    }
+  ]
+}

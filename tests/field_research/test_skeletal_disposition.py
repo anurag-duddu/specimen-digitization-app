@@ -442,7 +442,9 @@ def test_the_published_profile_changes_only_which_reasons_hold(tmp_path, name, e
     _, skeletal = settled_under(tmp_path / "skeletal", scenario, published())
     assert comparable(skeletal) == comparable(every)
     holding, open_ = reasons(skeletal, skeletal.reasons), reasons(skeletal, skeletal.open_reasons)
-    incomplete = {r for r in open_ if r.startswith(field_step.INCOMPLETE + ":")}
+    # Added beside the reasons: an optional field research could not finish; a field an open label doubt
+    # reaches (step.label_attention).
+    incomplete = {r for r in open_ if r.startswith((field_step.INCOMPLETE + ":", field_step.LABEL_UNSETTLED + ":"))}
     assert holding | open_ - incomplete == reasons(every, every.reasons)
     assert not holding & open_
     assert skeletal.disposition == expected == (Disposition.CLEARED if not skeletal.reasons else Disposition.REVIEW)

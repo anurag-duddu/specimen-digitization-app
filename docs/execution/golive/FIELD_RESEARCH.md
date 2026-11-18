@@ -2760,7 +2760,9 @@ or fallback, a spent per-field or per-specimen meter among them, is that field's
 | `taxonomy_unresolved`, `identified_by_irn_identity_unproved` | an optional field's doubt |
 | `elevation_invalid`, `elevation_range`, `elevation_units_conflict`, `date_precision_requires_review`, `date_order` | an optional field's doubt |
 | `field_research_given_up` (new: research given up for the run as a whole, `FieldResearchStep.give_up`) | holds |
-| `preserved_human_decision:<field>`, `human_approval_required`, `location_reassessment_unconfirmed:<field>` | holds |
+| `preserved_human_decision:<field>` | holds (recomputed from a person's decisions on every finalize) |
+| the standing holds (`application/standing_holds.py`): `human_approval_required`, `history_restored_requires_review`, `location_reassessment_unconfirmed:<field>` | holds, carried through every recomputation and beside a blocker until a person's approval (and, for the reassessment, the reassessment that settles it) |
+| `label_unsettled:<field>` (new: a field drawn from a label whose doubt is open, `step.label_attention`) | never holds: the field's attention only |
 | an operational failure (`lookup_operational_failure`, `field_research_model_error`, `field_research_timeout` `:<field>`, the blocker) | holds: the run is blocked, as before |
 | `evidence_integrity_failure` | never a reason: the step blocks, as before |
 | ordinary path: `institutional_policy_unapproved`, `mandatory_semantics_unconfirmed`, `evidence_lineage_invalid:<row>`, its capability reason | holds |

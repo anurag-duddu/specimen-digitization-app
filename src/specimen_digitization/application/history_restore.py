@@ -74,5 +74,6 @@ def restored_specimen(base, source, *, accounting=None):
     else:
         result.run.stage = "finalized"
         result.run.disposition = Disposition.REVIEW
+        # A standing hold (application/standing_holds.py): kept until a person approves.
         result.run.reasons = list(dict.fromkeys((*result.run.reasons,"history_restored_requires_review")))
     return result

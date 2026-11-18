@@ -179,22 +179,29 @@ def finalize(run: Run) -> None:
 
     settle_approval(run)
     run.disposition = None
+    from .standing_holds import standing_holds
+
+    # The standing holds the run carries (application/standing_holds.py), kept through this
+    # recomputation and beside a blocker.
+    standing = standing_holds(run.reasons, approved=run.human_approved)
     if run.blocker or any(l.status in OPERATIONAL for l in run.lookups[-1:]):
         run.stage = "processing_blocked"
-        run.reasons, run.open_reasons = [run.blocker or "lookup_operational_failure"], []
+        run.reasons = list(dict.fromkeys((run.blocker or "lookup_operational_failure", *standing)))
+        run.open_reasons = []
         return
     from ..field_research.step import split_reasons
 
     # An optional field's doubt does not hold the record (field_research.step.split_reasons, the
     # same rule as field research's finalize_fields): it is kept in open_reasons.
     run.reasons, run.open_reasons = split_reasons(run, evaluate(run), mandatory=run.profile.mandatory_fields)
+    run.reasons = list(dict.fromkeys((*run.reasons, *standing)))
     if (
         run.capability_reason
         and run.retry_eligibility
         and "capability_attempts_exhausted" in run.completed_steps
     ):
         run.disposition = Disposition.DEFERRED
-        run.reasons, run.open_reasons = [run.capability_reason], []
+        run.reasons, run.open_reasons = list(dict.fromkeys((run.capability_reason, *standing))), []
     else:
         run.disposition = Disposition.REVIEW if run.reasons else Disposition.CLEARED
     run.stage = "finalized"

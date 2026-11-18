@@ -180,4 +180,81 @@ void main() {
     });
     expect(specimen.openReasonCodes, <String>['taxonomy_unresolved']);
   });
+
+  // Codex round 2 on #455: L1 settles the catalogue number; L2 is unresolved
+  // and feeds only the optional country. The server cleared the record and
+  // put L2's doubt in open_reason_codes, with each field it reaches.
+  Specimen secondLabelOpen({required bool held}) {
+    final List<String> codes = <String>[
+      'unresolved_transcription:L2',
+      'label_unsettled:country',
+    ];
+    return Specimen(<String, dynamic>{
+      'specimen_id': 'second-label',
+      'revision': 4,
+      'disposition': held ? 'needs_human_review' : 'cleared',
+      'regions': <Json>[
+        <String, dynamic>{'region_id': 'L1'},
+        <String, dynamic>{'region_id': 'L2'},
+      ],
+      'transcriptions': <Json>[
+        <String, dynamic>{'region_id': 'L1', 'resolved': true},
+        <String, dynamic>{'region_id': 'L2', 'resolved': false},
+      ],
+      'fields': <Json>[
+        <String, dynamic>{
+          'field_key': 'fmnh_ins_number',
+          'state': 'supported',
+          'literal_value': 'FMNH-INS 0010001',
+        },
+        <String, dynamic>{
+          'field_key': 'country',
+          'state': 'supported',
+          'literal_value': 'United States',
+        },
+      ],
+      'reason_codes': held
+          ? <String>['unresolved_transcription:L2']
+          : <String>[],
+      'open_reason_codes': held ? <String>[] : codes,
+      'validation_findings': <Json>[
+        <String, dynamic>{
+          'rule_id': 'unresolved_transcription:L2',
+          'severity': 'hard',
+          'reason_code': 'unresolved_transcription:L2',
+        },
+      ],
+    });
+  }
+
+  test('a cleared record lists no blocker for an open label doubt', () {
+    expect(blockersFor(secondLabelOpen(held: false)), isEmpty);
+    expect(
+      fieldAttentionFor(
+        secondLabelOpen(held: false),
+      ).map((ClearanceBlocker b) => b.fieldKey),
+      <String>['country'],
+    );
+  });
+
+  test('a held record still lists the label as blocking', () {
+    expect(
+      blockersFor(
+        secondLabelOpen(held: true),
+      ).map((ClearanceBlocker b) => b.regionId),
+      contains('L2'),
+    );
+  });
+
+  testWidgets('the field an open label doubt reaches needs attention', (
+    WidgetTester tester,
+  ) async {
+    await showFields(tester, secondLabelOpen(held: false));
+    await expectNeedsAttention(
+      tester,
+      'Country',
+      'Country comes from a label that needs checking',
+    );
+    expect(tester.takeException(), isNull);
+  });
 }
