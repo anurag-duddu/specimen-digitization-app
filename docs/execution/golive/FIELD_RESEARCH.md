@@ -2683,6 +2683,17 @@ is drawn from it, or a field drawn from it, its work done, is not supported, or
 is neither grounded in a reader's raw reading nor derived; and a label the
 first pass gave up on is so however its fields settle.
 
+Amended 2026-11-17 (the autonomy program's work package S1, C3;
+[`docs/execution/autonomy/PLAN.md`](../autonomy/PLAN.md) section 4): a
+label with fields drawn from it is not also `unresolved_transcription` when
+every one of those fields already has a review reason of its own (held or
+marked), since a person is sent to each of them anyway. Any drawn field
+without one, a field cleared as not on the label or one waiting for its
+source among them, keeps the label's reason, and a label no field is drawn
+from keeps it as before. A record whose fields that describe the specimen
+are all settled with no value (the catalogue number and the collection code
+aside) is `no_specimen_value` until a person approves it.
+
 A field cleared as not on the label, or a taxon cleared as unmatched, is
 reopened like any other field with Correct value: the reviewer's value is
 kept as made and the record waits for that reviewer's approval. Every later
