@@ -181,6 +181,40 @@ def test_the_code_settles_the_one_candidate_it_equals(tmp_path, monkeypatch):
     assert not reasons_for(run, KEY) and "identifier_format" not in run.reasons
 
 
+def test_a_clipped_candidate_breaks_no_tie(tmp_path, monkeypatch):
+    """Codex round 3: the true number is 10010001, a foreign code holds 0010001, the readers
+    write "FMNHINS 10010001" and "FMNHINS 10010007", and the expert offers the clipped
+    "0010001". No reading writes 0010001 as a whole number: the field stays open, nothing
+    cleared (at 78744430 the clipped 0010001 settled and cleared)."""
+    rig = rig_with(tmp_path, monkeypatch, "FMNHINS 10010001", "FMNHINS 10010007")
+    run = rig.specimen.run
+    with_code(rig)
+    settle(rig, Scripted({KEY: several(CODE, "10010007")}))
+    assert run.fields[KEY].state == ValueState.AMBIGUOUS
+    assert f"mandatory_unresolved:{KEY}" in run.reasons
+    assert not [f for f in run.findings if f.field_key == KEY and f.reason_code.startswith("cleared:")]
+
+
+@pytest.mark.parametrize(("text", "whole"), [
+    # The code as the end (a suffix) or the start (a prefix) of a longer run of digits.
+    ("FMNHINS 10010001", False),
+    ("FMNHINS 00100012", False),
+    ("x10010001y", False),
+    # Whole at the start, in the middle and at the end of a line, and over the prefix's line.
+    ("0010001 FMNHINS", True),
+    ("FMNHINS 0010001 col", True),
+    ("FMNHINS 0010001", True),
+    ("FMNHINS\n0010001", True),
+    ("No.0010001.", True),
+    # Nothing is joined across white space.
+    ("FMNHINS 001 0001", False),
+])
+def test_the_code_counts_as_written_only_as_a_whole_number(text, whole):
+    from specimen_digitization.field_research.catalogue_code import written_whole
+
+    assert written_whole(text, CODE) is whole
+
+
 def test_candidates_none_of_which_is_the_code_stay_open(tmp_path, monkeypatch):
     """2A writes 0010004, 2B 0010007: no candidate is the code's number, so the field stays as
     today (ambiguous). At 8cf7f6b9 the code supplied 0010001 alone."""

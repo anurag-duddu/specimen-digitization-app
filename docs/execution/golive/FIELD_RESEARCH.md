@@ -1981,11 +1981,14 @@ all equal to the truth.
      mark becomes a cleared finding and the code row is cited as deciding
      it. `identifier_format` does not arise, as that value's number matches
      `CATALOG`.
-   - Break a tie: the field is ambiguous or unresolved and the code's number
-     is one of its candidates' numbers, written so in a reading. The field
-     settles on that candidate as the reading writes it, backed by the
+   - Break a tie: the field is ambiguous or unresolved, the code's number
+     is one of its candidates' numbers, and a reading of the code's label
+     writes the code's seven digits as a whole number (no digit right before
+     or after them; nothing joined across white space). The field settles on
+     those digits, cited where those readings write them, backed by the
      code, and the other candidates' numbers are named in the reason as
-     ruled out.
+     ruled out. A candidate clipped from a longer number ("0010001" of
+     "10010001") breaks no tie.
    - Contradict: the field settled on a value whose number is not the
      code's. The value stays and is marked for a person
      (`marked:fmnh_ins_number:<label>:barcode_differs`, one of the run's
@@ -1998,9 +2001,17 @@ all equal to the truth.
      the code's, the value's reason says so and an info finding
      `barcode_person_differs:fmnh_ins_number` cites the code.
    The stored value is the seven digits, as the field stores catalogue
-   numbers. No other field changes. A label whose readers are unresolved
-   still goes to review for that label (`unresolved_transcription`) when
-   the catalogue number no longer holds it.
+   numbers. No other field changes. The barcode label's own
+   `unresolved_transcription` follows the existing rule
+   (`step.scientific_reasons`): for a label whose transcript is unresolved,
+   it is raised when no field is drawn from the label, or when a field drawn
+   from it is not supported or not grounded in the raw readings (its
+   verbatim readings write its literal, with their raw records), unless the
+   duplicate-label rule of the autonomy program's S1 sets it aside because
+   each drawn field has a reason of its own. So it goes when a tie the code
+   breaks settles the catalogue number on readers' text (105526330 in
+   r2/pair), and it comes back where the catalogue number's own mark goes
+   and the label's readers still differ (105526522).
 3. **On the last full test, replayed** (R0's method over the stored runs,
    the decode attached as the segment step would store it; the experts'
    options taken from the stored reasons): `marked:fmnh_ins_number` falls

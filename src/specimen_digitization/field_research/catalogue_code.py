@@ -16,10 +16,11 @@ does not supply a value that no reader wrote and field research did not propose.
    so the field's marked findings (text_only, conflict) become one cleared finding on the
    code's label, and the code row is cited as deciding it. identifier_format does not arise:
    the value's number fullmatches CATALOG.
-2. Break a tie. The field is ambiguous or unresolved, and the code's number is one of its
-   candidates' numbers, written so by a reading: the field settles on that candidate as the
-   reading writes it, backed by the code, and the other candidates are named in the reason as
-   ruled out.
+2. Break a tie. The field is ambiguous or unresolved, the code's number is one of its
+   candidates' numbers, and a reading of the code's label writes the code's seven digits as a
+   whole number (written_whole: no digit right before or after them): the field settles on
+   those digits, cited where those readings write them, backed by the code, and the other
+   candidates are named in the reason as ruled out.
 3. Contradict. The field settled on a value whose number is not the code's: the value stays,
    and is marked for a person (marked:fmnh_ins_number:<label>:barcode_differs, one of the
    run's reasons), whatever its readers.
@@ -32,6 +33,7 @@ does not supply a value that no reader wrote and field research did not propose.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Sequence
 
 from specimen_digitization.application.barcode import FIELD, stored_code
@@ -54,6 +56,12 @@ def number(text: str | None) -> str | None:
     """A text's catalogue number, as check_catalog_number reads it (CATALOG), or None."""
     match = CATALOG.fullmatch(text) if text else None
     return match["digits"] if match else None
+
+
+def written_whole(text: str, payload: str) -> bool:
+    """Whether the text writes the code's digits as a whole number: no digit right before or
+    right after them (nothing joined across white space, nothing else normalised)."""
+    return re.search(rf"(?<![0-9]){re.escape(payload)}(?![0-9])", text) is not None
 
 
 def candidate_texts(task: FieldTask, value: FieldValue, outcomes: Iterable[FieldOutcome | None]) -> list[str]:
@@ -134,11 +142,14 @@ def settle(run, task: FieldTask, readings: Sequence[Reading], *, asset_id, blobs
     # Rule 2: the code breaks a tie among the field's candidates.
     texts = candidate_texts(task, current, outcomes)
     numbers = {text: number(text) for text in texts}
-    chosen = next((text for text in texts if numbers[text] == payload
-        and any(text in reading.text for reading in readings)), None)
-    if chosen is None:
+    # Eligible only when a candidate's number is the code's and a reading of the code's label
+    # writes the code as a whole number (written_whole): a candidate clipped from a longer
+    # number ("0010001" of "10010001") is not.
+    named = [reading for reading in readings
+        if reading.region_id == code.row.region_id and written_whole(reading.text, payload)]
+    if not named or payload not in numbers.values():
         return False
-    named = [reading for reading in readings if chosen in reading.text]
+    chosen = payload
     relations: dict[str, str] = {}
     for reading in named:
         row = _literal_row(FIELD, reading, chosen, asset_id, blobs)
