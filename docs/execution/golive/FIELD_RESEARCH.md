@@ -2182,19 +2182,36 @@ decision a person made after that revision is undone by the restore itself:
 this is what a restore is, not a defect. The restored reasons are what the
 derivation gives on the restored run.
 
+**A person's approval is the person's.** As main skips its own marks once a
+person approved (`scientific_reasons`, `human_approved`), the second opinion
+contributes no code to an approved run and is not due on it (no paid call);
+an approval withdrawn or superseded by a later value change
+(`lane.settle_approval`) brings the marks back by the same condition. A
+person's decision while the record waits at `field_second_opinion` is
+handled as main handles it on a record whose research is complete: an open
+intent is abandoned, and the same whole `refinalize` decides the record;
+the step's own finish also runs that whole finalize, never only its codes.
+
+**Runs classified before this change** have no price row for the second
+opinion in their pinned profile: on Resume or Retry the step ends
+`unconfigured` and their settled fields read "not checked" until a new run
+(an approved record stays cleared). HTTP 402 counts as a sent call, final
+for its values, and is costed at the request's worst case by main's meter
+rule for non-429 errors (`budget.py:264`).
+
 **With the clearing rule (PR #455, K1) a mark is a flag on its field.**
 With this change alone every mark held the record, so a record was held
 until its second opinion was obtained and agreed with every value it
 answers for. With K1, which ships with it, that is no longer so: only the
 catalogue number is mandatory and the second opinion never judges it, so
 its marks are optional fields' doubts (`step.split_reasons`, at
-`finalize_fields` and at the step's own finalize, `second_opinion.finish`).
+`finalize_fields`, which the step's own finish reaches through `refinalize`).
 An agreed value is shown as settled; a differing or unchecked value is
 settled and flagged on its field (`open_reasons`, the API's
 `open_reason_codes`, which the app reads for a field's attention); the
-record clears on its catalogue number. Not obtained or switched off, every
-settled value it answers for is flagged "not checked" and the record still
-clears. A record held for another reason (its catalogue number unsettled,
+record clears on its catalogue number. Not obtained, switched off or `unconfigured` (a run classified before this
+change), every settled value it answers for is flagged "not checked" and the
+record still clears. A record held for another reason (its catalogue number unsettled,
 marked or of the wrong format; label coverage unconfirmed; research given
 up; a person's pending approval or another standing hold) stays held
 whatever the second opinion says (`tests/field_research/test_second_opinion_skeletal.py`).
@@ -2244,9 +2261,11 @@ as agreed held 5. With the stronger reader (r3): 336 and 33; agreed 280 and
 2. This code's replay over the same stored answers (lane F1's notes,
 `replay_f1b.py`: the step's `obtain`, `record` and `derived`): base
 pipeline 273 values still shown as settled, 4 wrong (9 with the locality
-compared exactly); 60 newly marked differs (35 wrong); 22 not checked (four
+compared exactly; judged fields only, without the 55 never-judged catalogue
+numbers, 4 of 218, 1.8 %, 95 % upper bound 4.2 %); 60 newly marked differs
+(35 wrong); 22 not checked (four
 stored answers refused as malformed, all 22 values right). r3 pipeline: 265
-shown, 2 wrong (6 exact); 58 differs (31 wrong); 13 not checked. Small
+shown, 2 wrong (6 exact; judged only 2 of 217, upper bound 2.9 %); 58 differs (31 wrong); 13 not checked. Small
 samples: 2 wrong in 265 has a 95 % upper bound near 3 %. Against the first
 structure's replay, 11 base cells moved from shown to not checked: the
 strict answer rule refuses two more stored answers (105526322 has null

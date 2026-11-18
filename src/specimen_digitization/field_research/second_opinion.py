@@ -463,7 +463,11 @@ def derived(run, readings: Sequence[Reading] = ()) -> list[tuple[str, str]]:
     the one field research researches."""
     from .step import units_path
 
-    if not units_path(run):
+    if not units_path(run) or getattr(run, "human_approved", False):
+        # A person's approval is the person's: as main skips its own marks once a person approved
+        # (step.scientific_reasons, `human_approved`), the second opinion contributes none, and is not
+        # due. An approval withdrawn or superseded (lane.settle_approval) brings them back by the same
+        # condition.
         return []
     entries = judged_fields(run)
     held, others = authority(run, readings), _other_marks(run)
@@ -535,21 +539,13 @@ def due(run) -> bool:
 
 
 def finish(run) -> None:
-    """The record finalized once the step has ended, however it ended: the reasons field research's
-    finalize gave it, with the second opinion's codes derived again from the stored result and the
-    current values (reasons), split as finalize_fields splits every reason (step.split_reasons, plan WP
-    K1): a mark on an optional field is that field's doubt, kept in open_reasons; cleared when no reason
-    is left, else for review. No field, finding or other reason changes."""
-    from specimen_digitization.application.domain import Disposition
+    """The record finalized once the step has ended, however it ended, through the same whole finalize
+    every other path on a completed run uses (step.refinalize, as field research's recheck and a person's
+    decision do): every reason recomputed on the run as it is now, the second opinion's derived from its
+    stored result among them; a pending approval kept. No field is researched or paid for."""
+    from .step import refinalize
 
-    from .step import profile_of, split_reasons
-
-    held, open_ = split_reasons(run, reasons(run), mandatory=profile_of(run).mandatory_fields)
-    run.reasons = list(dict.fromkeys((*(code for code in run.reasons if not own(code)), *held)))
-    run.open_reasons = list(dict.fromkeys((*(code for code in run.open_reasons if not own(code)), *open_)))
-    run.blocker = None
-    run.disposition = Disposition.REVIEW if run.reasons else Disposition.CLEARED
-    run.stage = "finalized"
+    refinalize(run)
 
 
 # ---- the call ---------------------------------------------------------------------------------------

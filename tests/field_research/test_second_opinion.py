@@ -811,7 +811,8 @@ def test_a_persons_approval_refinalizes_with_the_marks_derived_from_the_key(tmp_
     with_opinion(rig, Opinion(agreeing(tmp_path, habitat={"value": "Synthetic meadow", "evidence": "L1: meadow"})))
     to_end(rig)
     approved = decide(review_client(rig), rig, "approve", "approve")
-    assert own(approved) == so.reasons(approved) and own(approved)
+    # A person's approval is the person's (the G51 ruling): no second-opinion code, as main's marks.
+    assert own(approved) == so.reasons(approved) == [] and approved.disposition == Disposition.CLEARED
 
 
 # ---- no double run, no double charge -----------------------------------------------------------
@@ -924,11 +925,12 @@ def test_a_decision_while_the_intent_is_open_abandons_it_and_the_run_moves_on(tm
     stored = rig.repository.get(rig.principal.scope, rig.specimen.id)
     assert returned.version == stored.version
     run = stored.run
-    assert (run.stage, run.blocker) == ("finalized", None) and run.disposition == Disposition.REVIEW
+    # The approval is the person's: cleared with no second-opinion code (the G51 ruling).
+    assert (run.stage, run.blocker) == ("finalized", None) and run.disposition == Disposition.CLEARED
     assert (run.second_opinion["status"], run.second_opinion["reason"]) == (so.NOT_OBTAINED, "abandoned")
     [paid] = step_paid(run)
     assert (paid["cost_basis"], paid["cost_micros"]) == ("reserved", so.CAP_MICROS) and run.lease_until is None
-    assert own(run, so.NOT_CHECKED) and len(opinion.requests) == 1
+    assert not own(run) and len(opinion.requests) == 1
     assert rig.workflow.step(rig.principal, rig.specimen.id).run == run
 
 
@@ -1289,3 +1291,125 @@ def test_a_later_refusal_that_sent_nothing_keeps_the_earlier_coverage(tmp_path, 
     rig.repository.save(rig.principal, held, held.version, "person-city", "person-city")
     again = resume(rig)
     assert (again.stage, again.blocker) == ("finalized", None) and len(opinion.requests) == 1
+
+
+# ---- the G51 sign-off review on 84cedd73 ------------------------------------------------------------
+
+def swamp(rig, client, key="habitat-swamp"):
+    """The reviewer's decision: habitat saved as a person's value with the app's own payload."""
+    from test_step import decide
+
+    current = rig.repository.get(rig.principal.scope, rig.specimen.id).run
+    habitat = current.fields["habitat"]
+    after = {"literal": habitat.literal, "parsed": "Person's swamp", "normalized": "Person's swamp",
+             "state": "supported", "reason": habitat.reason}
+    return decide(client, rig, key, "field", target_id="habitat", after=after, evidence_ids=list(habitat.evidence_ids))
+
+
+def outcome(rig):
+    from specimen_digitization.application.api import summary
+
+    stored = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    run = stored.run
+    return ([code for code in run.reasons if not so.own(code)], run.disposition,
+        summary(stored, "reviewer")["cleared_by"], [code for code in run.reasons if so.own(code) and ":habitat:" in code])
+
+
+def main_outcome(folder, act):
+    """The same act on main: no second opinion, no derived marks."""
+    from test_step import review_client
+
+    twin = build_rig(folder)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(so, "derived", lambda run, readings=(): [])
+        mounted(twin, Scripted())
+        to_end(twin)
+        act(twin, review_client(twin))
+        return outcome(twin)
+
+
+def test_an_approval_clears_a_record_the_opinion_disputed_as_main_clears_one_it_marked(tmp_path):
+    """G51, 1(a): the opinion differs on habitat; a person approves through the API: cleared, approved,
+    cleared by a person, exactly as main treats its own marks once a person approved."""
+    from test_step import decide, review_client
+
+    from specimen_digitization.application.api import summary
+
+    rig = build_rig(tmp_path)
+    with_opinion(rig, Opinion(agreeing(tmp_path, habitat={"value": "Synthetic meadow", "evidence": "L1: meadow"})))
+    assert own(to_end(rig).run, so.DIFFERS)
+    approved = decide(review_client(rig), rig, "approve", "approve")
+    assert (approved.disposition, approved.human_approved, approved.reasons) == (Disposition.CLEARED, True, [])
+    assert summary(rig.repository.get(rig.principal.scope, rig.specimen.id), "reviewer")["cleared_by"] == "person"
+    assert not so.due(approved) and so.reasons(approved) == []
+
+
+@pytest.mark.parametrize("action", ["resume", "retry"])
+def test_a_record_main_cleared_and_a_person_approved_stays_cleared_on_resume_and_retry(tmp_path, monkeypatch, action):
+    """G51, 1(b): a record written as main writes it (no second opinion), approved and cleared; then the
+    head's production runner is mounted and the record resumed or retried: it stays cleared, no mark,
+    and the step is not attempted."""
+    from test_step import ORG, decide, review_client
+
+    from specimen_digitization.application import api as app_api
+    from specimen_digitization.application.domain import now
+
+    rig = build_rig(tmp_path)
+    client = review_client(rig)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(so, "derived", lambda run, readings=(): [])
+        mounted(rig, Scripted())
+        to_end(rig)
+        approved = decide(client, rig, "approve", "approve")
+    assert (approved.disposition, approved.human_approved) == (Disposition.CLEARED, True)
+
+    def queue(specimen, registry, actor):
+        specimen.run.stage, specimen.run.queued_at = "pending", now()
+
+    monkeypatch.setattr(app_api, "queue", queue)
+    rig.workflow.second_opinion = so.production_step()
+    current = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    response = client.post(f"/v1/organizations/{ORG}/runs/{current.run.id}/actions",
+        headers={"Authorization": "Bearer reviewer", "Idempotency-Key": action},
+        json={"expected_revision": current.version, "action": action, "reason": "Again."})
+    assert response.status_code == 200, response.text
+    run = to_end(rig).run
+    assert (run.stage, run.disposition, run.blocker) == ("finalized", Disposition.CLEARED, None)
+    assert not own(run) and not step_paid(run) and so.STEP not in run.attempts
+
+
+@pytest.mark.parametrize("window", ["before_the_intent", "while_the_intent_is_open", "after_the_step"])
+def test_a_persons_field_decision_is_finalized_as_main_finalizes_it(tmp_path, monkeypatch, window):
+    """G51, 2: a person saves habitat "Person's swamp" with the app's payload after research's save and
+    before the step's intent, while the intent is open, or after the step finished; the step obtains an
+    agreeing opinion. In each the reasons, disposition and cleared_by equal main's for that decision on
+    its finalized record, no mark lands on the person's field, and nothing clears without approval."""
+    from test_step import review_client
+
+    expected = main_outcome(tmp_path / "main", lambda twin, client: swamp(twin, client))
+    rig = build_rig(tmp_path)
+    client = review_client(rig)
+    with_opinion(rig, Opinion(agreeing(tmp_path)))
+    if window == "before_the_intent":
+        pending = rig.workflow.step(rig.principal, rig.specimen.id)
+        assert pending.run.stage == so.STEP
+        swamp(rig, client)
+        to_end(rig)
+    elif window == "while_the_intent_is_open":
+        rig.workflow.step(rig.principal, rig.specimen.id)
+        real = so.obtain
+
+        def meanwhile(run, **kwargs):
+            swamp(rig, client)
+            return real(run, **kwargs)
+
+        monkeypatch.setattr(so, "obtain", meanwhile)
+        rig.workflow.step(rig.principal, rig.specimen.id)
+        monkeypatch.setattr(so, "obtain", real)
+        to_end(rig)
+    else:
+        to_end(rig)
+        swamp(rig, client)
+    got = outcome(rig)
+    assert got[:3] == expected[:3] and got[3] == []
+    assert got[1] == Disposition.REVIEW and "human_approval_required" in got[0]
