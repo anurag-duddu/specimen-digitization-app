@@ -1,41 +1,35 @@
-"""Every writer of a run's reasons is classified (plan WP K1, Codex round 2 on PR #455).
+"""Every writer of a run's reasons is classified, and every hold that outlives a recomputation is
+derived from durable state (plan WP K1, Codex rounds 2 and 3 on PR #455).
 
 The source is scanned with `ast` for every assignment to `<anything>.reasons` (tuple targets
 included) and every `.reasons.append/extend/insert`. Each site is one of:
-- RECOMPUTATION: the clearance rules recompute the reasons from the run (field research's
-  finalize_fields and refinalize, the ordinary path's policy.finalize), or another pipeline's own
-  recomputation that the field-research profile does not use (the research harness's canonical
-  materializations, the evidence harness's phase gate, the evidence pilot);
-- STANDING: a path outside the recomputation writes a standing hold (application/standing_holds.py),
-  which every recomputation carries until the event that resolves it;
-- BLOCKER: a path replaces the reasons with a blocker; it keeps the standing holds beside it.
-A new writer fails this test until it is classified here. The live paths that recompute or block
-must call standing_holds (checked on their source).
+- RECOMPUTATION: the reasons computed from the run (field research's finalize_fields and refinalize,
+  the ordinary path's policy.finalize), or another pipeline's own computation the field-research
+  profile does not use (the research harness's materializations, the evidence harness, the pilot);
+- BLOCKER: the reasons replaced by a blocker; nothing depends on the list it replaces;
+- DERIVED: a hold written outside the recomputation, which is backed by state recorded on the run
+  (application/standing_holds.py: note_pending) so every later computation derives it again.
+A new writer fails this test until it is classified here.
 """
 
 import ast
+import importlib
 import inspect
 from pathlib import Path
 
 from specimen_digitization.application import standing_holds
+from specimen_digitization.application.domain import Run, RunFinding
 
 SRC = Path(standing_holds.__file__).resolve().parents[1]
 
 RECOMPUTATION = {
     ("field_research/step.py", "finalize_fields"),
-    ("field_research/step.py", "refinalize"),
     ("application/policy.py", "finalize"),
     ("research_harness/canonical_materialization.py", "materialize"),
     ("research_harness/canonical_materialization_v2.py", "_materialize"),
     ("research_harness/canonical_progress_materialization_v2.py", "materialize_progress_v2"),
     ("application/evidence_runtime.py", "apply_phase_gate"),
     ("application/evidence_pilot.py", "_evidence_step"),
-}
-# The site, and the standing hold it writes.
-STANDING = {
-    ("field_research/step.py", "refinalize"): standing_holds.APPROVAL,
-    ("field_research/step.py", "_retained_reassessment"): standing_holds.REASSESSMENT_UNCONFIRMED,
-    ("application/history_restore.py", "restored_specimen"): standing_holds.HISTORY_RESTORED,
 }
 BLOCKER = {
     ("application/active_graph.py", "save_recoverably"),
@@ -44,11 +38,10 @@ BLOCKER = {
     ("field_research/step.py", "refinalize"),
     ("application/policy.py", "finalize"),
 }
-# The live paths that recompute the reasons or replace them with a blocker: each keeps the standing holds.
-CARRIERS = {
-    ("field_research/step.py", "finalize_fields"), ("field_research/step.py", "refinalize"),
-    ("application/policy.py", "finalize"), ("application/active_graph.py", "save_recoverably"),
-    ("application/workflow.py", "_step"),
+# The site, and the hold it writes, which state recorded on the run backs.
+DERIVED = {
+    ("field_research/step.py", "_retained_reassessment"): standing_holds.REASSESSMENT_UNCONFIRMED,
+    ("application/history_restore.py", "restored_specimen"): standing_holds.HISTORY_RESTORED,
 }
 
 
@@ -75,32 +68,60 @@ def writers():
     return found
 
 
+def source_of(path, name):
+    module = importlib.import_module("specimen_digitization." + path[:-3].replace("/", "."))
+    if hasattr(module, name):
+        return inspect.getsource(getattr(module, name))
+    owner = next(value for value in vars(module).values() if isinstance(value, type) and hasattr(value, name))
+    return inspect.getsource(getattr(owner, name))
+
+
 def test_every_writer_of_a_runs_reasons_is_classified():
     found = writers()
-    known = RECOMPUTATION | set(STANDING) | BLOCKER
+    known = RECOMPUTATION | BLOCKER | set(DERIVED)
     assert found - known == set(), "classify each new writer of a run's reasons in tests/test_standing_holds.py"
     assert known - found == set(), "a classified writer no longer writes reasons: remove it here"
 
 
-def test_every_standing_hold_written_is_one_the_recomputations_carry():
-    for site, code in STANDING.items():
-        assert code in standing_holds.STANDING, site
-        assert standing_holds.is_standing(code) and standing_holds.is_standing(code + ":detail")
+def test_every_hold_written_outside_the_recomputation_is_recorded_on_the_run():
+    for (path, name), code in DERIVED.items():
+        assert code in standing_holds.DERIVED, (path, name)
+        assert "note_pending(" in source_of(path, name), (path, name)
 
 
-def test_each_live_recomputation_and_blocker_keeps_the_standing_holds():
-    import importlib
-
-    for path, name in CARRIERS:
-        module = importlib.import_module("specimen_digitization." + path[:-3].replace("/", "."))
-        source = inspect.getsource(getattr(module, name) if hasattr(module, name)
-            else getattr(module.Workflow, name))
-        assert "standing_holds(" in source or "pending_person_holds(" in source, (path, name)
+def test_the_live_recomputations_derive_the_holds_and_read_no_earlier_hold():
+    for path, name in (("field_research/step.py", "finalize_fields"), ("application/policy.py", "finalize")):
+        assert "derived_holds(" in source_of(path, name), (path, name)
+    # A decision records its approval hold before refinalize's blocked return.
+    refinalize = source_of("field_research/step.py", "refinalize")
+    assert refinalize.index("note_pending(run, APPROVAL)") < refinalize.index("if run.blocker:")
 
 
-def test_a_standing_hold_is_resolved_by_its_own_event_only():
-    holds = [standing_holds.APPROVAL, standing_holds.HISTORY_RESTORED, "location_reassessment_unconfirmed:city",
-        "mandatory_unresolved:fmnh_ins_number"]
-    assert standing_holds.standing_holds(holds, approved=False) == holds[:3]
-    assert standing_holds.standing_holds(holds, approved=False, settles_reassessment=True) == holds[:2]
-    assert standing_holds.standing_holds(holds, approved=True) == []
+def test_holds_are_derived_from_the_runs_state():
+    run = Run(pending_review=[])
+    assert standing_holds.derived_holds(run) == []
+    standing_holds.note_pending(run, standing_holds.APPROVAL, "location_reassessment_unconfirmed:city")
+    run.findings.append(RunFinding(rule_id=standing_holds.GIVEN_UP, rule_version="1", severity="warning",
+        reason_code="field_research_given_up:token_budget_exhausted"))
+    run.reasons = ["evidence_integrity_failure"]  # a blocker replaced the list: nothing depends on it
+    assert standing_holds.derived_holds(run) == [standing_holds.APPROVAL, "location_reassessment_unconfirmed:city",
+        standing_holds.GIVEN_UP]
+    standing_holds.clear_reassessment(run)
+    assert run.pending_review == [standing_holds.APPROVAL]
+    run.human_approved = True
+    assert standing_holds.derived_holds(run) == []
+    standing_holds.clear_on_approval(run)
+    assert run.pending_review == []
+
+
+def test_a_run_stored_before_the_key_adopts_its_stored_holds_once():
+    legacy = Run(reasons=[standing_holds.APPROVAL, "mandatory_unresolved:taxon", "history_restored_requires_review"])
+    assert legacy.pending_review is None and "pending_review" not in legacy.model_dump(mode="json")
+    standing_holds.adopt_legacy(legacy)
+    assert legacy.pending_review == [standing_holds.APPROVAL, standing_holds.HISTORY_RESTORED]
+    legacy.reasons = ["location_reassessment_unconfirmed:city"]
+    standing_holds.adopt_legacy(legacy)  # the key is set: the reasons are never read again
+    assert legacy.pending_review == [standing_holds.APPROVAL, standing_holds.HISTORY_RESTORED]
+    untouched = Run(reasons=["mandatory_unresolved:taxon"])
+    standing_holds.adopt_legacy(untouched)
+    assert untouched.pending_review == [] and standing_holds.derived_holds(untouched) == []

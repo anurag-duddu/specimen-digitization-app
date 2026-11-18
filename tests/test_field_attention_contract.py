@@ -16,5 +16,6 @@ FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "field_attention.json
 
 @pytest.mark.parametrize("case", FIXTURE["cases"], ids=[case["name"] for case in FIXTURE["cases"]])
 def test_the_server_marks_the_fields_the_contract_names(case):
-    assert sorted(attention_fields(case["fields"], case["codes"])) == case["attention"]
-    assert review_summary(case["fields"], case["codes"])["review"] == len(case["attention"])
+    codes = [*case.get("held_codes", []), *case["codes"]]
+    assert sorted(attention_fields(case["fields"], codes)) == case["attention"]
+    assert review_summary(case["fields"], codes)["review"] == len(case["attention"])

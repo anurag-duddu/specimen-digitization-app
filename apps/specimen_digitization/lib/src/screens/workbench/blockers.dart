@@ -176,8 +176,8 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
   return blockers;
 }
 
-/// The fields that need attention for a reason that does not hold the
-/// record: an optional field's doubt (`open_reason_codes`). Each reads exactly
+/// The fields that need attention for a reason, whether it holds the record
+/// (`reason_codes`) or is an optional field's doubt (`open_reason_codes`). Each reads exactly
 /// as the same code does among the blockers, so a marked or open optional
 /// value on a cleared record never shows as settled. A `marked:` code with a
 /// reason this client does not know still needs attention, with generic words.
@@ -194,7 +194,14 @@ List<ClearanceBlocker> fieldAttentionFor(Specimen specimen) {
     'date_identified',
   ];
   final List<ClearanceBlocker> attention = <ClearanceBlocker>[];
-  for (final String code in specimen.openReasonCodes) {
+  // From whichever list holds the code: a held date check names its date
+  // fields as an open one does (tests/fixtures/field_attention.json).
+  for (final String code in <String>[
+    for (final Object? held
+        in specimen.data['reason_codes'] as List? ?? const <Object?>[])
+      held.toString(),
+    ...specimen.openReasonCodes,
+  ]) {
     final ClearanceBlocker issue = _issueFor(specimen, code);
     if (issue.fieldKey != null) {
       attention.add(issue);

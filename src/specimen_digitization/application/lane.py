@@ -76,6 +76,10 @@ def approve(run: Run) -> None:
     """A person's approval of the run's values as they are now."""
     run.human_approved = True
     run.approved_values_sha256 = approved_values_digest(run)
+    from .standing_holds import clear_on_approval
+
+    # A person's approval resolves everything they were to review (application/standing_holds.py).
+    clear_on_approval(run)
 
 
 def settle_approval(run: Run) -> None:

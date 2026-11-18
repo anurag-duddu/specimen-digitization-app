@@ -87,6 +87,14 @@ from specimen_digitization.application.organiser import (
     stored_candidates,
 )
 from specimen_digitization.application.policy import PLACEHOLDERS
+from specimen_digitization.application.standing_holds import (
+    APPROVAL,
+    REASSESSMENT_UNCONFIRMED,
+    adopt_legacy,
+    clear_reassessment,
+    derived_holds,
+    note_pending,
+)
 from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.workflow import FIELD_RESEARCH, OperationalBlock, attempts_used
 
@@ -4556,7 +4564,7 @@ def _reason_fields(reason: str, fields: Mapping[str, FieldValue]) -> tuple[str, 
 # of that date). Only these hold: the catalogue number not settled, marked, failing its format,
 # without evidence, or drawn from a label whose reading is in doubt and the slide's QR code does not
 # confirm it; label coverage; the record's evidence lineage and the profile's policy gates (the
-# ordinary path); research given up for the run as a whole (GIVEN_UP_REASON); and a person's pending
+# ordinary path); research given up for the run as a whole (field_research_given_up, derived); and a person's pending
 # decision, approval or reassessment; and, failing closed, any code no rule below names. Every other
 # reason is an optional field's doubt, kept in run.open_reasons.
 FIELD_DOUBTS = frozenset({
@@ -4702,7 +4710,7 @@ def work_states(run, profile: CollectionProfile, outcomes: Sequence[FieldOutcome
 
 
 def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[FieldOutcome], *,
-        specimen=None, blobs=None, today: date | None = None, settles_reassessment: bool = False) -> str | None:
+        specimen=None, blobs=None, today: date | None = None) -> str | None:
     """Set the run's reasons, disposition and stage; the blocker when it is blocked.
 
     The retained evidence is verified first, as the workflow's finalize does
@@ -4716,6 +4724,7 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     model failure blocks.
     """
     profile = profile_of(run) if profile is None else profile
+    adopt_legacy(run)
     if specimen is not None and blobs is not None:
         verify_evidence(specimen, blobs)
     from ..application.lane import settle_approval
@@ -4743,11 +4752,11 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     human, run.open_reasons = split_reasons(run, list(dict.fromkeys(human)), mandatory=profile.mandatory_fields)
     run.open_reasons = [*run.open_reasons, *label_attention(run, run.open_reasons)]
     by_key = {outcome.key: outcome for outcome in outcomes}
-    # An optional field research could not finish is that field's doubt; research given up for the
-    # run as a whole holds the record (plan WP K1, the coordinator's rulings of 2026-11-18).
+    # An optional field research could not finish is that field's doubt (plan WP K1).
     run.open_reasons = [*run.open_reasons, *incomplete_reasons(run, profile, work, by_key, earlier)]
-    human = [*given_up_reason(run, by_key, earlier), *human,
-        *pending_person_holds(run, earlier, settles_reassessment=settles_reassessment)]
+    # The holds derived from the run's own state, never from an earlier reasons list: what a person
+    # must still review, research given up for the run (application/standing_holds.py).
+    human = [*human, *derived_holds(run)]
     failures = [by_key[key].failure for key in work if work[key] == FAILED]
     if failures:
         operational = [f"{RETRYABLE[by_key[key].failure][0]}:{key}" for key in work if work[key] == FAILED]
@@ -4762,23 +4771,8 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     return None
 
 
-from specimen_digitization.application.standing_holds import (  # noqa: E402
-    APPROVAL,
-    REASSESSMENT_UNCONFIRMED,
-    standing_holds,
-)
-
-
-def pending_person_holds(run, earlier: Sequence[str], *, settles_reassessment: bool = False) -> list[str]:
-    """The standing holds the reasons before this finalize carried (`earlier`; application/
-    standing_holds.py: every reason a path outside this recomputation writes), kept until the event
-    that resolves each (plan WP K1, Codex rounds 1 and 2 on #455). preserved_human_decision is
-    recomputed from the person's decisions on every finalize."""
-    return standing_holds(earlier, approved=run.human_approved, settles_reassessment=settles_reassessment)
 # An optional field research could not finish (incomplete_reasons): an optional field's doubt.
 INCOMPLETE = "research_incomplete"
-# Research given up for the run as a whole (FieldResearchStep.give_up): it holds the record.
-GIVEN_UP_REASON = GIVEN_UP
 
 
 def incomplete_reasons(run, profile: CollectionProfile, work: Mapping[str, str],
@@ -4803,20 +4797,6 @@ def incomplete_reasons(run, profile: CollectionProfile, work: Mapping[str, str],
     return [f"{INCOMPLETE}:{key}" for key in field_keys(profile) if key in now | kept and key not in mandatory]
 
 
-def given_up_reason(run, by_key: Mapping[str, FieldOutcome], earlier: Sequence[str] = ()) -> list[str]:
-    """GIVEN_UP_REASON when research was given up for the run as a whole: this finalize is the
-    step's give_up (every field it researched failed as run_limit, the run's own limits leaving no
-    room for another attempt), or an earlier finalize said so and this one researched nothing
-    (refinalize). A field's own failure or fallback, a spent per-field or per-specimen meter among
-    them, is that field's doubt instead (incomplete_reasons). None once a person approves."""
-    if run.human_approved:
-        return []
-    researched = [outcome for outcome in by_key.values() if not outcome.finalized_without_model]
-    if researched:
-        return [GIVEN_UP_REASON] if all(outcome.failure == "run_limit" for outcome in researched) else []
-    return [GIVEN_UP_REASON] if GIVEN_UP_REASON in earlier else []
-
-
 def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: date | None = None) -> None:
     """The clearance rules again, on a run field research has completed.
 
@@ -4832,23 +4812,21 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
     (``decided``) waits for their approval until they give it, and an approval
     clears what the rules clear. A later pass keeps a pending approval.
     """
+    adopt_legacy(run)
+    if decided and not run.human_approved:
+        # A person's decision waits for their approval (an approve decision itself is approved).
+        # Recorded before anything else, a block included: the finalize after it derives the hold.
+        note_pending(run, APPROVAL)
     if run.blocker:
         # policy.finalize: a blocked run is not decided.
-        # The standing holds stay beside the blocker, for the finalize after the run is unblocked.
-        run.stage, run.disposition = "processing_blocked", None
-        run.reasons = list(dict.fromkeys((run.blocker, *standing_holds(run.reasons, approved=run.human_approved))))
+        run.stage, run.disposition, run.reasons = "processing_blocked", None, [run.blocker]
         return
-    pending = decided or APPROVAL in run.reasons
     # A field that waited for its source follows it once a person settles it (WP 2.3b). Only
     # research on the units path makes a field wait (ontology_checks.wait_for_sources).
     from .ontology_checks import follow_sources
 
     follow_sources(run, asset_id=run.regions[0].asset_id if run.regions else None, blobs=blobs)
     finalize_fields(run, None, (), specimen=specimen, blobs=blobs, today=today)
-    if pending and not run.human_approved:
-        # A standing hold (application/standing_holds.py): finalize_fields keeps a pending one itself.
-        run.reasons = list(dict.fromkeys((*run.reasons, APPROVAL)))
-        run.disposition = Disposition.REVIEW
 
 
 # ---- the workflow step ----------------------------------------------------
@@ -5087,6 +5065,8 @@ class FieldResearchStep:
         outcomes = None
         unused: list[SourceCall] = []
         decisions: dict[str, dict] = {}
+        # This attempt researches: an earlier give-up of the run's research no longer stands.
+        run.findings = [finding for finding in run.findings if finding.rule_id != GIVEN_UP]
         # Research, then each field's decision (trace_fields), in one span.
         with logfire.span(SPAN) as span:
             try:
@@ -5107,8 +5087,11 @@ class FieldResearchStep:
                 apply_outcomes(research_run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=calls,
                     asset_id=specimen.asset.id, decisions=decisions, unused=unused)
                 retained = commit(run, research_run, decisions=decisions) if research_run is not run else set()
+                if research_run is not run:
+                    # This reassessment settles its family: it records what it still leaves unproved.
+                    clear_reassessment(run)
                 blocker = finalize_fields(run, profile, outcomes, specimen=specimen, blobs=workflow.blobs,
-                    today=workflow.clock().date(), settles_reassessment=research_run is not run)
+                    today=workflow.clock().date())
                 self._retained_reassessment(run, retained)
                 if blocker is not None and research_run is not run and not last_attempt(run):
                     # The ordinary bounded operational retry keeps this explicit
@@ -5126,9 +5109,10 @@ class FieldResearchStep:
     @staticmethod
     def _retained_reassessment(run, retained) -> None:
         if retained:
-            # A standing hold (application/standing_holds.py).
-            run.reasons = list(dict.fromkeys((*run.reasons,
-                *(f"{REASSESSMENT_UNCONFIRMED}:{key}" for key in sorted(retained)))))
+            # Recorded on the run, so every later finalize derives it (application/standing_holds.py).
+            codes = [f"{REASSESSMENT_UNCONFIRMED}:{key}" for key in sorted(retained)]
+            note_pending(run, *codes)
+            run.reasons = list(dict.fromkeys((*run.reasons, *codes)))
             if run.blocker is None:
                 run.disposition = Disposition.REVIEW
 

@@ -534,6 +534,10 @@ class Run(Record):
     # codes of the same form as `reasons`, kept so a cleared record still says which of its
     # optional fields are open. Omitted while empty, so older snapshots keep their bytes.
     open_reasons: list[str] = Field(default_factory=list, exclude_if=lambda value: not value)
+    # What a person must still review, recorded when its cause happens and cleared by their approval
+    # (application/standing_holds.py; plan WP K1): every finalize derives its holds from it. None on a
+    # run stored before it existed (omitted, so older snapshots keep their bytes).
+    pending_review: list[str] | None = Field(default=None, exclude_if=lambda value: value is None)
     findings: list[RunFinding] = Field(default_factory=list)
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
     blocker: str | None = None

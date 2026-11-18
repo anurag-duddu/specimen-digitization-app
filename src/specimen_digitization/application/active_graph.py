@@ -228,10 +228,7 @@ def save_recoverably(repository, principal, specimen, revision, key, request_dig
         prior.run.stage = "processing_blocked"
         prior.run.disposition = None
         prior.run.blocker = reason
-        from .standing_holds import standing_holds
-
-        # The blocker's reason; the standing holds stay beside it (application/standing_holds.py).
-        prior.run.reasons = [reason, *standing_holds(prior.run.reasons, approved=prior.run.human_approved)]
+        prior.run.reasons = [reason]
         prior.run.human_approved = False
         prior.run.lease_until = None
         prior.audit.append(

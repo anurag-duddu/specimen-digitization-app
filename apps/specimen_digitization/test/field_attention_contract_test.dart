@@ -43,7 +43,10 @@ void main() {
                 'literal_value': 'A value',
             },
         ],
-        'reason_codes': <String>[],
+        'reason_codes': <String>[
+          for (final Object? code in item['held_codes'] as List? ?? const [])
+            code.toString(),
+        ],
         'open_reason_codes': <String>[
           for (final Object? code in item['codes'] as List) code.toString(),
         ],
@@ -62,7 +65,7 @@ void main() {
       expect(needing, <String>[
         for (final Object? key in item['attention'] as List) key.toString(),
       ]);
-      expect(blockersFor(specimen), isEmpty);
+      if (item['held_codes'] == null) expect(blockersFor(specimen), isEmpty);
     });
   }
 }

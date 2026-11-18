@@ -295,7 +295,9 @@ def test_a_pending_approval_survives_research_after_a_retry(tmp_path, monkeypatc
     assert done.run.disposition == Disposition.CLEARED and done.run.fields["country"].state == ValueState.UNRESOLVED
 
     def a_persons_edit(run):
-        run.reasons, run.disposition = [field_step.APPROVAL], Disposition.REVIEW
+        # What a person's decision records (step.refinalize: note_pending) and leaves.
+        run.pending_review, run.reasons, run.disposition = [field_step.APPROVAL], [field_step.APPROVAL], \
+            Disposition.REVIEW
 
     save_by_hand(rig, a_persons_edit, "pending-approval")
     client = review_client(rig)
@@ -313,14 +315,19 @@ def test_a_pending_approval_survives_research_after_a_retry(tmp_path, monkeypatc
 
 
 def test_a_location_reassessment_left_unconfirmed_survives_a_recheck_until_approval(tmp_path):
+    from specimen_digitization.application.standing_holds import clear_reassessment, note_pending
+
     _, run = settled_under(tmp_path, everything_settles, published())
-    run.reasons, run.disposition = ["location_reassessment_unconfirmed:city"], Disposition.REVIEW
+    # What FieldResearchStep._retained_reassessment records.
+    note_pending(run, "location_reassessment_unconfirmed:city")
+    run.reasons = ["snapshot_limit_exceeded"]  # a blocker replaced the list: the hold is derived anyway
     field_step.refinalize(run, today=TODAY)
     assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["location_reassessment_unconfirmed:city"])
-    # The reassessment that settles it names what it still leaves unconfirmed itself.
-    field_step.finalize_fields(run, None, (), today=TODAY, settles_reassessment=True)
+    # The reassessment that settles it records what it still leaves unconfirmed itself.
+    clear_reassessment(run)
+    field_step.finalize_fields(run, None, (), today=TODAY)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
-    run.reasons = ["location_reassessment_unconfirmed:city"]
+    note_pending(run, "location_reassessment_unconfirmed:city")
     run.human_approved = True
     field_step.refinalize(run, today=TODAY)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
@@ -481,14 +488,17 @@ def test_research_given_up_for_the_run_holds_through_refinalize_until_a_person_a
     earlier attempt settled."""
     _, run = settled_under(tmp_path, everything_settles, published())
     assert run.disposition == Disposition.CLEARED
-    # The give-up's finalize: every field it would research (all but the catalogue number, settled earlier)
-    # fails as run_limit (FieldResearchStep.give_up).
+    # The give-up records its finding and finalizes: every field it would research (all but the catalogue
+    # number, settled earlier) fails as run_limit (FieldResearchStep.give_up).
+    run.findings.append(RunFinding(rule_id=field_step.GIVEN_UP, rule_version=field_step.GIVEN_UP_RULES,
+        severity="warning", reason_code=f"{field_step.GIVEN_UP}:token_budget_exhausted"))
     field_step.finalize_fields(run, None, [FieldOutcome(key, None, failure="run_limit")
         for key in published().optional_fields if key != "identified_by_irn"], today=TODAY)
     assert run.fields[CATALOGUE].state == ValueState.SUPPORTED
-    assert run.reasons[0] == field_step.GIVEN_UP_REASON and run.disposition == Disposition.REVIEW
+    assert field_step.GIVEN_UP in run.reasons and run.disposition == Disposition.REVIEW
+    run.reasons = ["snapshot_limit_exceeded"]  # a blocker replaced the list: the hold is derived anyway
     field_step.refinalize(run, today=TODAY)
-    assert (run.disposition, run.reasons) == (Disposition.REVIEW, [field_step.GIVEN_UP_REASON])
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, [field_step.GIVEN_UP])
     run.human_approved = True
     field_step.refinalize(run, today=TODAY)
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
