@@ -49,6 +49,8 @@ from .evidence_runtime import read_authority_result, read_artifact
 from .integrity import EvidenceIntegrityError, verify_evidence
 from .lane import (
     LaneConflict,
+    approve,
+    cleared_by,
     processable,
     queue,
     queue_on_intake,
@@ -358,6 +360,7 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         "stage": run.stage,
         "intake_progress": intake_progress(run),
         "disposition": run.disposition,
+        "cleared_by": cleared_by(run.disposition, run.human_approved),
         "reason_codes": run.reasons,
         "review_summary": review_summary(
             project_fields({
@@ -2379,7 +2382,7 @@ def create_app(
             if not pilot:
                 refresh_review_evidence(s, blobs, metadata_only=True)
         elif body.kind == "approve":
-            s.run.human_approved = True
+            approve(s.run)
         elif body.kind == "coverage":
             s.run.coverage_confirmed = body.after.get("confirmed") is True
         else:

@@ -39,7 +39,8 @@ type SpecimenSearch @view(sql: """
       FROM jsonb_each(CASE WHEN jsonb_typeof(v.snapshot #> '{run,fields}') = 'object'
         THEN v.snapshot #> '{run,fields}' ELSE '{}'::jsonb END) AS field
     ) END AS field_review_states,
-    v.snapshot -> 'active_graph' AS active_graph
+    v.snapshot -> 'active_graph' AS active_graph,
+    CASE WHEN jsonb_typeof(v.snapshot #> '{run,human_approved}') = 'boolean' THEN (v.snapshot #>> '{run,human_approved}')::boolean END AS human_approved
   FROM public.specimen s JOIN public.specimen_snapshot v
     ON v.organization_id = s.organization_id AND v.collection_id = s.collection_id
     AND v.specimen_id = s.id AND v.revision = s.revision
@@ -74,4 +75,6 @@ type SpecimenSearch @view(sql: """
   displayReference: String
   fieldReviewStates: Any
   activeGraph: Any
+  # run.human_approved when the stored run holds a boolean, else null (lane.cleared_by).
+  humanApproved: Boolean
 }

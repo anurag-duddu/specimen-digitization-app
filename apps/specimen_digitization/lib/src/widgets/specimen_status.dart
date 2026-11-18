@@ -76,8 +76,19 @@ class StatusPresentation {
 /// Values through [unknown] are record-level; the last seven are field states
 /// the server publishes in `knownFieldStates`.
 enum SpecimenStatus {
-  /// A reviewer affirmed the record.
-  cleared('disposition.cleared'),
+  /// The record is cleared and the server did not say who cleared it.
+  ///
+  /// Drawn in the model triple, not green: green says a person affirmed it
+  /// (design system 1.5), and this record does not say so.
+  cleared('evidence.model'),
+
+  /// The record is cleared and a reviewer's approval stands on it. Green,
+  /// because a person affirmed it.
+  approvedByPerson('disposition.cleared'),
+
+  /// The record is cleared by the clearance rules, with no person. The
+  /// machine treatment: the model triple and the model glyph.
+  clearedBySystem('evidence.model'),
 
   /// The record is waiting on a person.
   needsReview('disposition.needsReview'),
@@ -178,6 +189,11 @@ enum SpecimenStatus {
   /// The one status a record's chip draws: its queue when it has one,
   /// otherwise the state of its run.
   ///
+  /// A cleared record is drawn as who cleared it when the server said
+  /// ([clearedBy], the summary's `cleared_by`): [approvedByPerson] or
+  /// [clearedBySystem]. A cleared record whose server did not say stays
+  /// [cleared], never either answer.
+  ///
   /// The queue row and the status strip both call this, so the two cannot
   /// disagree about a record. A disposition that is present decides: one of
   /// the three queues is drawn as itself, and anything else is "State
@@ -187,20 +203,39 @@ enum SpecimenStatus {
   /// as `unknown` or `supported` included, is never drawn as one. A
   /// `completed` run with no disposition is "State unknown" too, because a
   /// completed run's queue is its disposition and this one has none.
-  static SpecimenStatus ofRecord({String? disposition, String? state}) {
+  static SpecimenStatus ofRecord({
+    String? disposition,
+    String? state,
+    String? clearedBy,
+  }) {
     if (disposition != null && disposition.trim().isNotEmpty) {
       final SpecimenStatus queue = fromWire(disposition);
+      if (queue == SpecimenStatus.cleared) {
+        return switch (clearedBy) {
+          'person' => SpecimenStatus.approvedByPerson,
+          'system' => SpecimenStatus.clearedBySystem,
+          _ => SpecimenStatus.cleared,
+        };
+      }
       return queue.isQueue ? queue : SpecimenStatus.unknown;
     }
     final SpecimenStatus run = fromWire(state);
     return run.isRecordStatus && !run.isQueue ? run : SpecimenStatus.unknown;
   }
 
-  /// True for the three final queues: cleared, needs review and deferred.
+  /// True for the three final queues: cleared (whoever cleared it), needs
+  /// review and deferred.
   bool get isQueue =>
-      this == SpecimenStatus.cleared ||
+      isCleared ||
       this == SpecimenStatus.needsReview ||
       this == SpecimenStatus.deferred;
+
+  /// True for the cleared queue, whether a person approved the record, the
+  /// system cleared it, or the server did not say which.
+  bool get isCleared =>
+      this == SpecimenStatus.cleared ||
+      this == SpecimenStatus.approvedByPerson ||
+      this == SpecimenStatus.clearedBySystem;
 
   /// True for the operational run states, which PRD 10.1 says are "not final
   /// data-quality queues".
@@ -210,6 +245,8 @@ enum SpecimenStatus {
   /// The visible chip word.
   String get label => switch (this) {
     SpecimenStatus.cleared => 'Cleared',
+    SpecimenStatus.approvedByPerson => 'Approved by a person',
+    SpecimenStatus.clearedBySystem => 'Cleared by system',
     SpecimenStatus.needsReview => 'Needs review',
     SpecimenStatus.deferred => 'Deferred',
     SpecimenStatus.processing => 'Processing',
@@ -234,11 +271,15 @@ enum SpecimenStatus {
   /// `unknownValue` shares the unknown one, because each pair is the same
   /// meaning read at a different scale: a field the evidence supports and a
   /// record a reviewer affirmed both say yes, and a state neither the server
-  /// nor this client can name is one question mark. The three stopped run
+  /// nor this client can name is one question mark. A record the system
+  /// cleared draws the model reading's glyph, the machine's, so it is never
+  /// the same shape as a person's approval. The three stopped run
   /// states draw the registry entry whose meaning is theirs: waiting for a
   /// time, processing blocked, and cancelled processing.
   IconSpec get iconSpec => switch (this) {
     SpecimenStatus.cleared => UiIcons.cleared,
+    SpecimenStatus.approvedByPerson => UiIcons.cleared,
+    SpecimenStatus.clearedBySystem => UiIcons.modelReading,
     SpecimenStatus.needsReview => UiIcons.needsReview,
     SpecimenStatus.deferred => UiIcons.deferred,
     SpecimenStatus.processing => UiIcons.processing,
@@ -271,6 +312,10 @@ enum SpecimenStatus {
         : isRecordStatus
         ? 'Queue'
         : 'Field';
+    // The chip's 20 characters drop the article; the spoken phrase keeps it.
+    if (this == SpecimenStatus.clearedBySystem) {
+      return '$vocabulary: cleared by the system';
+    }
     return '$vocabulary: ${label.toLowerCase()}';
   }
 

@@ -4615,6 +4615,10 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     profile = profile_of(run) if profile is None else profile
     if specimen is not None and blobs is not None:
         verify_evidence(specimen, blobs)
+    from ..application.lane import settle_approval
+
+    # An approval stands only on the values it was given for (lane.settle_approval).
+    settle_approval(run)
     today = datetime.now(timezone.utc).date() if today is None else today
     work = work_states(run, profile, outcomes)
     qualified = frozenset(key for key, value in run.fields.items()
