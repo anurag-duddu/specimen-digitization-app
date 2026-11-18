@@ -2942,7 +2942,7 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             _settlement(run, tasks_by_key[outcome.key], outcome, readings=readings, by_name=by_name,
                 sources=received.get(outcome.key, ()), decision=decisions.get(outcome.key, {}), **given)
     # The catalogue number, where the segment step stored a decode of the slide's QR code, is
-    # settled on it after its expert's answer and its settlement (catalogue_code.settle).
+    # compared with it after its expert's answer and its settlement (catalogue_code.settle).
     from .catalogue_code import FIELD as CATALOGUE, settle as settle_on_the_code
 
     if CATALOGUE in tasks_by_key and CATALOGUE not in human and units_path(run):

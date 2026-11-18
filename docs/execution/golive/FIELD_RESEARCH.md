@@ -1966,56 +1966,57 @@ all equal to the truth.
    person's regions keeps them and skips the segment step
    (`human_field_carry.py`, `completed_steps = ["segment"]`), so it is never
    decoded and its catalogue number is settled as before.
-2. **Field research uses it for the catalogue number alone**
+2. **Field research compares it with the catalogue number alone**
    (`field_research/catalogue_code.py`, called by `step.apply_outcomes`
    after the field's expert answer and its labels' settlement). The expert
-   is not told the decode, so the readers and the code stay two readings of
-   one printed number. Only the readers of the code's label count, and a
-   decode placed on no label changes nothing. What a reader wrote is read
-   digit by digit: each run of digits in its text, joined across spaces and
-   line breaks as readers' texts are compared for agreement
-   (`agreement.agreement_key`: "001 0007" is 0010007), kept as written as
-   evidence. Digits a reader wrote are never silence: a reader that writes
-   digits none of whose runs is the code's number (a partial, six or eight
-   digits, a number broken around a letter) disagrees. No table of letters
-   read as digits is used: an unreadable number is a disagreement.
-   - a person decided the label's transcript: a person outranks the code.
-     The code decides nothing and holds nothing; where the person's digits
-     differ from it, the value's reason says so and an info finding
-     `barcode_person_differs:fmnh_ins_number` cites the code;
-   - a reader writes the code's number: that is the value, cleared; the code
-     is a source-class backing, so one reader or readers that agree with no
-     image (text_only) are enough;
-   - a reader disagrees alone: it is ruled out, cited as contradicting the
-     value, and named in the value's reason, and an info finding
-     `barcode_ruled_out:fmnh_ins_number` lists it. A note, not a hold;
-   - two or more readers that disagree wrote the same digits: the code and
-     the readers disagree, and the field is ambiguous with both numbers as
-     its options, the warning finding
-     `marked:fmnh_ins_number:<label>:barcode_differs` (one of the run's
-     reasons) and a reason that says so. Not seen in the 100 slides; the
-     app says "The readers agree on one catalog number, but the slide's QR
-     code holds another. Compare the printed digits with the code.";
-   - no reader of the code's label writes a digit: the code's number is the
-     value;
-   - no stored decode, a field a person decided, or a run not on the units
-     path: nothing changes.
-   The value is the seven digits, as the field stores every catalogue
-   number. No other field and no other review rule changes; a run whose
-   readers name the code's label unresolved still goes to review for that
-   label (`unresolved_transcription`), as before.
+   is not told the decode. The code is compared only with what field
+   research settled or proposed for the field: the settled value and the
+   field's candidates (the organiser's candidates, the readers' verbatims
+   the value keeps, the expert's literal and options), each read as a
+   catalogue number by `field_validators.CATALOG`, the reading
+   `check_catalog_number` uses. The rule does not read numbers out of the
+   readers' texts, and the code alone does not supply a value.
+   - Confirm: the field settled on a value whose number is the code's. The
+     code is a source-class backing, so the field's text_only or conflict
+     mark becomes a cleared finding and the code row is cited as deciding
+     it. `identifier_format` does not arise, as that value's number matches
+     `CATALOG`.
+   - Break a tie: the field is ambiguous or unresolved and the code's number
+     is one of its candidates' numbers, written so in a reading. The field
+     settles on that candidate as the reading writes it, backed by the
+     code, and the other candidates' numbers are named in the reason as
+     ruled out.
+   - Contradict: the field settled on a value whose number is not the
+     code's. The value stays and is marked for a person
+     (`marked:fmnh_ins_number:<label>:barcode_differs`, one of the run's
+     reasons); the app says "The catalog number read from the label and the
+     number in the slide's QR code differ. Compare them."
+   - Otherwise nothing changes: no candidate's number is the code's, no
+     value settled, no stored decode, a field a person decided, a run not on
+     the units path, or a run with a transcript a person decided on any of
+     its labels. In that last case, where the settled value's number is not
+     the code's, the value's reason says so and an info finding
+     `barcode_person_differs:fmnh_ins_number` cites the code.
+   The stored value is the seven digits, as the field stores catalogue
+   numbers. No other field changes. A label whose readers are unresolved
+   still goes to review for that label (`unresolved_transcription`) when
+   the catalogue number no longer holds it.
 3. **On the last full test, replayed** (R0's method over the stored runs,
-   the decode attached as the segment step would store it): the
-   `marked:fmnh_ins_number` and `identifier_format` reasons go from 7 to 12
-   specimens a run to 0 or 1 (the two slides the wrapper does not decode),
-   the two wrong clearances of 105526487 become its code's 4486618, and no
-   catalogue number is newly wrong. Those two runs' value no reader wrote is
-   not raw-grounded, so that slide's barcode label is now held as
-   `unresolved_transcription` instead of clearing a wrong number; and on
-   105526522 (three runs), whose barcode label the duplicate-label rule of
-   the autonomy program's S1 had left to the catalogue number's text_only
-   mark, the label's own `unresolved_transcription` returns once the mark
-   goes. No specimen finished before or after.
+   the decode attached as the segment step would store it; the experts'
+   options taken from the stored reasons): `marked:fmnh_ins_number` falls
+   from 6, 6, 10 and 9 specimens a run to 1, 2, 2 and 0 (the 2s include
+   105526487's new `barcode_differs`; the rest is 105526446, which does not
+   decode); the code settles
+   the tie on 105526330 and 105526617 (r2/pair) and 105526617 (r2/three),
+   each on a candidate equal to the truth; the two wrong clearances of
+   105526487 (4486518, the code's 4486618) are now held as
+   `barcode_differs`, with the wrong value kept for a person; 105526487's
+   open runs (whose candidates do not include 4486618) and 105526335
+   (whose expert's answers were refused) stay open. No catalogue number is
+   newly cleared wrong. On 105526522 (three runs) the barcode label's own
+   `unresolved_transcription` returns once the catalogue number's mark
+   goes (the duplicate-label rule of the autonomy program's S1 had set it
+   aside). No specimen finished before or after.
 
 Tests: `tests/test_barcode.py` (codes made by zxing-cpp's encoder in the
 test; no museum image is committed) and

@@ -441,6 +441,35 @@ def test_a_persons_field_decision_is_never_settled_on_the_code(tmp_path, monkeyp
     assert asked == []
 
 
+def test_an_approval_does_not_outlive_a_catalogue_number_the_code_settles(tmp_path, monkeypatch):
+    """A person approved the record while the catalogue number was open (#450 records a digest
+    of the approved values). Research runs again with the code stored and the code breaks the
+    tie: the values changed, so finalize withdraws the approval (lane.settle_approval) and the
+    record is no longer cleared by a person. No code of the rule's does this."""
+    from specimen_digitization.application.lane import approved_values_digest, cleared_by
+    from specimen_digitization.field_research import catalogue_code
+    from specimen_digitization.field_research import step as field_step
+    from specimen_digitization.field_research.contracts import FieldOutcome
+
+    rig = rig_with(tmp_path, monkeypatch, PRINTED, OTHER)
+    run = rig.specimen.run
+    settle(rig, Scripted({KEY: several(CODE, "0010007")}))
+    assert run.fields[KEY].state == ValueState.AMBIGUOUS
+    run.human_approved = True
+    run.approved_values_sha256 = approved_values_digest(run)
+    with_code(rig)
+    readings, tasks, _ = field_step.build_tasks(run)
+    task = next(task for task in tasks if task.key == KEY)
+    expert = FieldOutcome(KEY, FieldAnswer(outcome="several_possibilities", options=[CODE, "0010007"],
+        explanation="The readers' numbers differ."))
+    assert catalogue_code.settle(run, task, readings, asset_id=rig.specimen.asset.id, blobs=rig.blobs,
+        outcomes=[expert])
+    field_step.finalize_fields(run, None, (), specimen=rig.specimen, blobs=rig.blobs, today=rig_module.TODAY)
+    assert number(run) == (ValueState.SUPPORTED, CODE)
+    assert run.human_approved is False
+    assert cleared_by(run.disposition.value, run.human_approved) != "person"
+
+
 def test_the_hold_code_is_the_one_the_app_words():
     """The app words this exact code (the client's blockers.dart barcodeDiffersWords and
     settlement_codes.dart markedReasonWords; its barcode_differs_test.dart). Pinned here as a plain
