@@ -71,6 +71,12 @@ def qualify_packages() -> PackageQualification:
     installed = {name: version(name) for name in QUALIFIED_PACKAGES}
     if installed != dict(QUALIFIED_PACKAGES):
         raise PackageCompatibilityError("installed_package_pins_do_not_match")
+    # The slide's QR code decoder (application/barcode.py), which the segment step would
+    # otherwise skip silently, record after record.
+    from specimen_digitization.application.barcode import DECODER_PIN, decoder_version
+
+    if decoder_version() != DECODER_PIN:
+        raise PackageCompatibilityError("barcode_decoder_missing")
     for protocol, methods in ((StepStore, STEP_STORE_METHODS), (MediaStore, MEDIA_STORE_METHODS)):
         for name, parameters in methods.items():
             method = getattr(protocol, name, None)

@@ -60,6 +60,7 @@ String? markedReasonWords(String suffix) {
   return switch (parts.length > 2 ? parts[2] : '') {
     'text_only' => 'only readings back it',
     'conflict' => 'another reading competes',
+    'barcode_differs' => 'the label and its QR code differ',
     _ => null,
   };
 }

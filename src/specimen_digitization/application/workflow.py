@@ -1153,6 +1153,12 @@ class Workflow:
                 if not run.profile.synthetic:
                     from .label_coverage import check_run
                     check_run(specimen)
+                # The slide's QR code, decoded once where its pixels are at hand: an
+                # accepted decode is one evidence row, which field research reads for the
+                # catalogue number; anything else stores nothing and never fails the step
+                # (barcode.record).
+                from .barcode import record as record_barcode
+                record_barcode(run, specimen, self.blobs)
             elif step.startswith("transcribe:"):
                 _, region_id, route = step.split(":", 2)
                 region = next(r for r in run.regions if r.id == region_id)
