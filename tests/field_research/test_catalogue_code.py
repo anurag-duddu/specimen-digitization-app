@@ -1,11 +1,12 @@
-"""The catalogue number settled on the slide's QR code (field_research/catalogue_code.py).
+"""The catalogue number checked against the slide's QR code (field_research/catalogue_code.py).
 
 A step-level test builds its run with test_step.build_rig, with the synthetic label's catalogue
 line moved to a barcode label of its own (label 2, read by readers 2A and 2B), as on the real
 slides, and gives it the evidence row the segment step stores for a decoded code
 (application/barcode.record) on that label. The row is written out here as its fields so that
-each rule's test also runs, and fails, on the code before the rule existed. Every rule test
-names what that code did instead."""
+each test also runs on code from before a rule. Each test states the outcome under the four
+rules (confirm, break a tie, contradict, otherwise nothing) and, where it differs, what the
+previous head 8cf7f6b9 did."""
 
 from __future__ import annotations
 
@@ -40,6 +41,7 @@ LINE = f"{KEY}: {LABEL[KEY]}\n"
 # Label 1: the synthetic label without its catalogue line.
 FIRST = TEXT.replace(LINE, "")
 PRINTED = "FMNHINS\n0010001"
+OTHER = "FMNHINS\n0010007"
 
 
 def barcode_label(monkeypatch, *texts):
@@ -87,218 +89,201 @@ def with_code(rig, payload=CODE, *, region=1):
     return row
 
 
-def uncertain(rig):
-    """The barcode label's units with the image uncertain at every unit."""
+def images(rig, image):
+    """The barcode label's units with the image `image(unit)` gives each unit."""
     run = rig.specimen.run
     [entry] = [entry for entry in run.reading_units if entry.label == run.regions[1].id]
     store_reading_units(run, [entry.model_copy(update={"units": [
-        unit.model_copy(update={"image": UNCERTAIN}) for unit in entry.units]})])
+        unit.model_copy(update={"image": image(unit)}) for unit in entry.units]})])
 
 
 def catalogue(literal, value, reading="2A"):
     return answering(resolved(literal, value=value, reading=reading))
 
 
+def several(*options):
+    return answering(FieldAnswer(outcome="several_possibilities", options=list(options),
+        explanation="The readers' numbers differ."))
+
+
 LACKS = answering(FieldAnswer(outcome="label_lacks_value", explanation="No reading prints a catalogue number."))
 
 
-def summary(run, key):
+def summary(run, key=KEY):
     value = run.fields[key]
     return (value.state, value.literal, value.parsed, value.normalized, value.layer)
 
 
-def contradicting(run):
-    rows = {row.id: row for row in run.evidence}
-    return sorted(rows[i].excerpt for i, how in run.fields[KEY].evidence_relations.items() if how == "contradicts")
+def number(run):
+    value = run.fields[KEY]
+    return (value.state, value.normalized or value.parsed or value.literal)
 
 
-# ---- rule 1: a reader writes the code's number -------------------------------------------------
+def marked(run, why):
+    return f"marked:{KEY}:{run.regions[1].id}:{why}"
 
-def test_readers_that_agree_with_the_code_clear_where_the_image_names_nothing(tmp_path, monkeypatch):
-    """Both readers write the catalogue number, the image names nothing: readers agreeing alone
-    back it, and before the rule it settled marked text_only. The code backs it as a source: cleared."""
+
+# ---- rule 1: confirm ---------------------------------------------------------------------------
+
+def test_a_value_readers_alone_back_that_equals_the_code_clears(tmp_path, monkeypatch):
+    """Both readers write the number, the image names nothing: today it settles marked
+    text_only. The code confirms it: cleared, the code row deciding, no identifier_format."""
     rig = rig_with(tmp_path, monkeypatch, PRINTED)
     run = rig.specimen.run
-    uncertain(rig)
+    images(rig, lambda unit: UNCERTAIN)
     code = with_code(rig)
     settle(rig, Scripted({KEY: catalogue(CODE, CODE)}))
     value = run.fields[KEY]
     assert findings(run, KEY) == [(f"cleared:{KEY}:{run.regions[1].id}", "info")]
     assert not reasons_for(run, KEY) and "identifier_format" not in run.reasons
-    assert (value.state, value.literal) == (ValueState.SUPPORTED, CODE)
+    assert number(run) == (ValueState.SUPPORTED, CODE)
     assert value.evidence_relations.get(code.id) == "decides"
-    assert value.reason.endswith(f"The slide's QR code reads {CODE}, which readers 2A and 2B wrote too.")
+    assert value.reason.endswith(f"The slide's QR code reads {CODE} too.")
 
 
-def test_one_reader_that_agrees_with_the_code_clears(tmp_path, monkeypatch):
-    """Only reader 2A writes the number; 2B's text holds no digit. Before the rule one reader
-    backed nothing and the field went to review. The code backs 2A's number, with its lineage."""
-    rig = rig_with(tmp_path, monkeypatch, PRINTED, "FMNHINS")
-    run = rig.specimen.run
-    code = with_code(rig)
-    settle(rig, Scripted({KEY: catalogue(CODE, CODE)}))
-    value = run.fields[KEY]
-    assert summary(run, KEY)[:3] == (ValueState.SUPPORTED, CODE, CODE)
-    assert value.evidence_relations[code.id] == "decides"
-    assert value.settled_observation_ids == [run.observations[2].id]
-    assert not reasons_for(run, KEY) and "identifier_format" not in run.reasons
-
-
-def test_readers_that_space_the_codes_number_clear(tmp_path, monkeypatch):
-    """Both readers write "001 0007"-style spacing of the code's own number ("001 0001"): the
-    digits joined across the space are the code's number, so the code backs them: cleared, the
-    literal as the readers write it, the value the seven digits."""
+def test_a_spaced_value_whose_number_is_the_codes_clears(tmp_path, monkeypatch):
+    """Both readers space the number ("001 0001"); the expert settles it with the check's
+    number 0010001. Its number is the code's: cleared, its literal as written."""
     rig = rig_with(tmp_path, monkeypatch, "FMNHINS 001 0001")
     run = rig.specimen.run
-    uncertain(rig)
+    images(rig, lambda unit: UNCERTAIN)
     with_code(rig)
     settle(rig, Scripted({KEY: catalogue("001 0001", CODE)}))
-    assert summary(run, KEY)[:3] == (ValueState.SUPPORTED, "001 0001", CODE)
-    assert not reasons_for(run, KEY) and "identifier_format" not in run.reasons
+    assert summary(run)[:3] == (ValueState.SUPPORTED, "001 0001", CODE)
+    assert not reasons_for(run, KEY)
 
 
-# ---- rule 2: a reader alone writes another number ---------------------------------------------
-
-def test_a_reader_that_writes_another_number_is_ruled_out_and_noted(tmp_path, monkeypatch):
-    """2B writes 0010007. Before the rule the readers differed with nothing to decide them and
-    the field was left open (mandatory_unresolved, identifier_format). The code holds 2A's
-    number: it is the value, cleared, and 2B's reading is cited against it and named."""
-    rig = rig_with(tmp_path, monkeypatch, PRINTED, "FMNHINS\n0010007")
+def test_a_misread_prefix_beside_the_codes_number_is_no_contradiction(tmp_path, monkeypatch):
+    """105526522's reader A wrote "PMNH IN6" over the number. At 8cf7f6b9 the digit joining made
+    it 60010001 and named it ruled out; now only the settled value is compared: it confirms."""
+    rig = rig_with(tmp_path, monkeypatch, "PMNH IN6\n0010001", PRINTED)
     run = rig.specimen.run
     with_code(rig)
     settle(rig, Scripted({KEY: catalogue(CODE, CODE)}))
-    value = run.fields[KEY]
-    assert summary(run, KEY)[:3] == (ValueState.SUPPORTED, CODE, CODE)
-    assert contradicting(run) == ["0010007"]
-    assert value.reason.endswith(f"The slide's QR code reads {CODE}, which reader 2A wrote too. "
-        "reader 2B wrote 0010007, which the code rules out.")
-    ruled_out = [f for f in run.findings if f.field_key == KEY and f.rule_id == "barcode_decode"]
-    assert [(f.reason_code, f.severity) for f in ruled_out] == [(f"barcode_ruled_out:{KEY}", "info")]
-    assert not reasons_for(run, KEY) and "identifier_format" not in run.reasons
+    assert number(run) == (ValueState.SUPPORTED, CODE)
+    assert "60010001" not in run.fields[KEY].reason and not reasons_for(run, KEY)
 
 
-def test_readers_that_each_write_another_number_give_the_codes_number(tmp_path, monkeypatch):
-    """2A writes 0010004 and 2B 0010007, the code 0010001: the code's number is the value, from
-    the code alone (no reader's verbatim), and both readings are ruled out."""
-    rig = rig_with(tmp_path, monkeypatch, "FMNHINS\n0010004", "FMNHINS\n0010007")
+# ---- rule 2: break a tie -----------------------------------------------------------------------
+
+def test_the_code_settles_the_one_candidate_it_equals(tmp_path, monkeypatch):
+    """2A writes 0010001, 2B 0010007, and the expert offers both. Today: ambiguous. The code
+    equals one candidate: that candidate, as 2A writes it, backed by the code; 0010007 ruled out."""
+    rig = rig_with(tmp_path, monkeypatch, PRINTED, OTHER)
     run = rig.specimen.run
     code = with_code(rig)
-    settle(rig, Scripted({KEY: catalogue("0010004", "0010004")}))
+    settle(rig, Scripted({KEY: several(CODE, "0010007")}))
     value = run.fields[KEY]
-    assert summary(run, KEY)[:3] == (ValueState.SUPPORTED, CODE, CODE)
-    assert value.verbatim_by_observation == {} and value.source_observation_id is None
+    assert summary(run)[:3] == (ValueState.SUPPORTED, CODE, CODE)
     assert value.evidence_relations[code.id] == "decides"
-    assert contradicting(run) == ["0010004", "0010007"]
-    assert "reader 2A wrote 0010004; reader 2B wrote 0010007, which the code rules out." in value.reason
+    assert value.settled_observation_ids == [run.observations[2].id]
+    assert value.reason == f"The slide's QR code reads {CODE}, which settles this field among its candidates. Ruled out: 0010007."
     assert not reasons_for(run, KEY) and "identifier_format" not in run.reasons
 
 
-def test_a_number_the_image_named_wrong_is_replaced_by_the_codes(tmp_path, monkeypatch):
-    """The image names 2A's 0010004 and 2B wrote 0010007 (105526487's case in the last test:
-    4486518 cleared for the code's 4486618). Before the rule the image cleared the wrong number."""
-    rig = rig_with(tmp_path, monkeypatch, "FMNHINS\n0010004", "FMNHINS\n0010007")
+def test_candidates_none_of_which_is_the_code_stay_open(tmp_path, monkeypatch):
+    """2A writes 0010004, 2B 0010007: no candidate is the code's number, so the field stays as
+    today (ambiguous). At 8cf7f6b9 the code supplied 0010001 alone."""
+    rig = rig_with(tmp_path, monkeypatch, "FMNHINS\n0010004", OTHER)
     run = rig.specimen.run
-    [entry] = [entry for entry in run.reading_units if entry.label == run.regions[1].id]
-    store_reading_units(run, [entry.model_copy(update={"units": [
-        unit.model_copy(update={"image": next(iter(unit.readers.values())).text}) for unit in entry.units]})])
     with_code(rig)
-    settle(rig, Scripted({KEY: catalogue("0010004", "0010004")}))
-    assert summary(run, KEY)[:3] == (ValueState.SUPPORTED, CODE, CODE)
+    settle(rig, Scripted({KEY: several("0010004", "0010007")}))
+    assert run.fields[KEY].state == ValueState.AMBIGUOUS
+    assert f"mandatory_unresolved:{KEY}" in run.reasons
 
 
-def test_the_one_reader_of_the_number_writing_another_is_ruled_out_and_both_numbers_are_shown(
-        tmp_path, monkeypatch):
-    """Only reader 2A writes a number, 0010007; 2B writes none. The code's number is the value,
-    2A's reading is cited against it, and the reason a reviewer reads names both numbers."""
-    rig = rig_with(tmp_path, monkeypatch, "FMNHINS\n0010007", "FMNHINS")
-    run = rig.specimen.run
-    code = with_code(rig)
-    settle(rig, Scripted({KEY: catalogue("0010007", "0010007")}))
-    value = run.fields[KEY]
-    assert summary(run, KEY)[:3] == (ValueState.SUPPORTED, CODE, CODE)
-    rows = {row.id: row for row in run.evidence}
-    assert value.evidence_relations[code.id] == "decides" and CODE in rows[code.id].excerpt
-    assert contradicting(run) == ["0010007"]
-    assert value.reason.endswith(f"The slide's QR code reads {CODE}. reader 2A wrote 0010007, which the code rules out.")
-    assert not reasons_for(run, KEY)
-
-
-@pytest.mark.parametrize("written", ["FMNHINS\n001000", "FMNHINS\n00100017", "FMNHINS\n00I0001", "FMNHINS\n0010"])
-def test_digits_one_reader_cannot_write_as_the_codes_number_are_a_disagreement(tmp_path, monkeypatch, written):
-    """2B writes a six-digit partial, eight digits, a letter inside the number or four digits:
-    never silence. Alone, it is ruled out and named; the code's number, which 2A wrote, clears."""
-    rig = rig_with(tmp_path, monkeypatch, PRINTED, written)
+def test_one_reader_of_the_codes_number_settles_through_the_experts_literal(tmp_path, monkeypatch):
+    """Only 2A writes a number (the code's); today one reader backs nothing and the answer is
+    refused. The expert's literal is a candidate equal to the code: settled on it."""
+    rig = rig_with(tmp_path, monkeypatch, PRINTED, "FMNHINS")
     run = rig.specimen.run
     with_code(rig)
     settle(rig, Scripted({KEY: catalogue(CODE, CODE)}))
-    value = run.fields[KEY]
-    assert summary(run, KEY)[:3] == (ValueState.SUPPORTED, CODE, CODE)
-    assert contradicting(run)
-    assert "reader 2B wrote" in value.reason and "which the code rules out." in value.reason
+    assert number(run) == (ValueState.SUPPORTED, CODE)
     assert not reasons_for(run, KEY)
 
 
-# ---- rule 3: readers that agree on another number ---------------------------------------------
+# ---- rule 3: contradict ------------------------------------------------------------------------
 
-@pytest.mark.parametrize(("written", "read"), [
-    ("FMNHINS\n0010007", "0010007"),
-    # Spaced, or broken over two lines, as agreement_key joins readers' texts.
-    ("FMNHINS 001 0007", "0010007"),
-    ("FMNHINS\n001\n0007", "0010007"),
-    # Leading zeros, or the prefix run into the digits (the G51 review's case).
-    ("FMNHINS0000010007", "0000010007"),
-    # The prefix misread: the digits still count.
-    ("FNHNHNS 0010007", "0010007"),
-    # A letter inside the number, or a partial: the digits both readers wrote still agree.
-    ("FMNHINS 00l0007", "0007"),
-    ("FMNHINS 001000", "001000"),
+@pytest.mark.parametrize(("written", "literal", "value"), [
+    (OTHER, "0010007", "0010007"),
+    # Codex round 2, case 1: a second number equal to the code elsewhere on the label. At
+    # 8cf7f6b9 the code's 0010001 replaced the settled 0010007 and cleared.
+    ("FMNHINS 0010007\nOther accession: 0010001", "0010007", "0010007"),
 ])
-def test_readers_that_agree_on_other_digits_hold_the_field_for_a_person(tmp_path, monkeypatch, written, read):
-    """Both readers write the same other digits, the code 0010001. Before the rule the readers'
-    number cleared, or (where no contiguous number was read) the code's would have cleared
-    silently. The code and the readers disagree: ambiguous, with its own reason."""
+def test_a_settled_value_the_code_contradicts_is_held_and_kept(tmp_path, monkeypatch, written, literal, value):
+    """Both readers write the label's number, the image names it, the expert settles it; the
+    code holds 0010001. Today it clears. The value stays and is marked barcode_differs."""
     rig = rig_with(tmp_path, monkeypatch, written)
     run = rig.specimen.run
     code = with_code(rig)
-    settle(rig, Scripted({KEY: catalogue(read, read)}))
-    region = run.regions[1].id
-    value = run.fields[KEY]
-    assert value.state == ValueState.AMBIGUOUS
-    assert value.reason == (f"The slide's QR code reads {CODE}, but readers 2A and 2B read {read}. "
-        f"The code and the readers disagree, so a person checks the label and its code. Options: {CODE}; {read}.")
-    assert code.id in value.evidence_ids
-    assert findings(run, KEY) == [(f"marked:{KEY}:{region}:barcode_differs", "warning")]
-    assert f"marked:{KEY}:{region}:barcode_differs" in run.reasons
+    settle(rig, Scripted({KEY: catalogue(literal, value)}))
+    held = run.fields[KEY]
+    assert number(run) == (ValueState.SUPPORTED, value)
+    assert held.evidence_relations[code.id] == "contradicts"
+    assert held.reason.endswith(f"The slide's QR code reads {CODE}, which differs from this value. "
+        "A person compares the label with the code.")
+    assert findings(run, KEY) == [(marked(run, "barcode_differs"), "warning")]
+    assert marked(run, "barcode_differs") in run.reasons
     assert run.disposition == Disposition.REVIEW
 
 
-# ---- rule 4: no reader writes a digit ---------------------------------------------------------
+def test_one_reader_of_another_number_settled_is_held(tmp_path, monkeypatch):
+    """Only 2A writes 0010007; today's rules leave one reader open (ambiguous). No candidate is
+    the code's number, so it stays open (at 8cf7f6b9 the code's 0010001 was settled)."""
+    rig = rig_with(tmp_path, monkeypatch, OTHER, "FMNHINS")
+    run = rig.specimen.run
+    with_code(rig)
+    settle(rig, Scripted({KEY: catalogue("0010007", "0010007")}))
+    assert run.fields[KEY].state == ValueState.AMBIGUOUS
+    assert reasons_for(run, KEY) == [f"mandatory_unresolved:{KEY}"]
 
-def test_a_label_no_reader_writes_a_digit_on_takes_the_codes_number(tmp_path, monkeypatch):
-    """The barcode label's readers write the prefix and no digit; the expert answers
-    label_lacks_value. Before the rule the field was not present and, as it may never be
-    (NEVER_NOT_ON_LABEL), unresolved."""
+
+def test_spaced_readers_of_another_number_are_never_cleared_on_the_code(tmp_path, monkeypatch):
+    """Codex round 1's case: both readers write "FMNHINS 001 0007", the code 0010001. The code
+    contradicts the settled 0010007: it stays, held (8cf7f6b9 held it as ambiguous)."""
+    rig = rig_with(tmp_path, monkeypatch, "FMNHINS 001 0007")
+    run = rig.specimen.run
+    with_code(rig)
+    settle(rig, Scripted({KEY: catalogue("001 0007", "0010007")}))
+    assert summary(run)[:3] == (ValueState.SUPPORTED, "001 0007", "0010007")
+    assert marked(run, "barcode_differs") in run.reasons
+
+
+def test_the_image_named_wrong_number_is_held_not_replaced(tmp_path, monkeypatch):
+    """The image names 2A's 0010004 (105526487's case: 4486518 cleared against the code's
+    4486618). At 8cf7f6b9 the code's number replaced it; now the value stays, held."""
+    rig = rig_with(tmp_path, monkeypatch, "FMNHINS\n0010004", OTHER)
+    run = rig.specimen.run
+    images(rig, lambda unit: next(iter(unit.readers.values())).text)
+    with_code(rig)
+    settle(rig, Scripted({KEY: catalogue("0010004", "0010004")}))
+    assert number(run) == (ValueState.SUPPORTED, "0010004")
+    assert marked(run, "barcode_differs") in run.reasons
+
+
+# ---- rule 4: otherwise nothing -----------------------------------------------------------------
+
+def test_a_label_no_reader_writes_a_number_on_stays_held(tmp_path, monkeypatch):
+    """Neither reader of the barcode label writes a digit and the expert answers
+    label_lacks_value: the code supplies nothing, so the field stays not present and
+    mandatory_unresolved, as today. At 8cf7f6b9 the code's number filled it."""
     rig = rig_with(tmp_path, monkeypatch, "FMNHINS")
     run = rig.specimen.run
-    code = with_code(rig)
+    with_code(rig)
     settle(rig, Scripted({KEY: LACKS}))
-    value = run.fields[KEY]
-    assert summary(run, KEY) == (ValueState.SUPPORTED, CODE, CODE, None, "settled")
-    assert value.evidence_ids == [code.id] and value.evidence_relations == {code.id: "decides"}
-    assert value.reason == f"The slide's QR code reads {CODE}."
-    assert not reasons_for(run, KEY) and "identifier_format" not in run.reasons
+    assert run.fields[KEY].state == ValueState.NOT_PRESENT
+    assert f"mandatory_unresolved:{KEY}" in run.reasons
 
 
-# ---- rule 0: a person outranks the code -------------------------------------------------------
-
-def person_transcribes(rig, text):
-    """The barcode label's transcript as a reviewer's decision leaves it (application/api.py; as
+def person_transcribes(rig, region_index, text):
+    """A label's transcript as a reviewer's decision leaves it (application/api.py; as
     test_first_pass_advice.person_transcribed does for label 1): the person's text, resolved,
     its units from that text (first_pass.source_units)."""
     from specimen_digitization.application.first_pass import source_units
 
     run = rig.specimen.run
-    region = run.regions[1].id
+    region = run.regions[region_index].id
     index = next(i for i, t in enumerate(run.transcripts) if t.region_id == region)
     run.transcripts[index] = run.transcripts[index].model_copy(update={"text": text, "resolved": True,
         "actor": "reviewer@example.org", "reason": "The label reads so.", "decision_kind": "human"})
@@ -306,69 +291,68 @@ def person_transcribes(rig, text):
 
 
 @pytest.mark.parametrize(("person", "literal", "state"), [
-    # The person corrects the number to one no machine reader wrote.
+    # The person corrects the number to one no machine reader wrote (Codex round 1, case 1).
     ("FMNHINS 0010007", "0010007", ValueState.SUPPORTED),
     # The person's text holds no number at all.
     ("FMNHINS", None, ValueState.NOT_PRESENT),
 ])
-def test_a_persons_transcription_of_the_barcode_label_outranks_the_code(tmp_path, monkeypatch, person, literal,
-        state):
-    """A reviewer transcribes the barcode label, and research runs again on that decision. The
-    code holds 0010001. A person's transcript binds its label (BY_PERSON): the field is what the
-    person's text settles; the code overrules nothing and holds nothing, and only notes that it
-    differs (at f1798d07 the code replaced the person's 0010007 with 0010001 and cleared it)."""
+def test_a_persons_transcription_of_the_barcode_label_stands(tmp_path, monkeypatch, person, literal, state):
+    """The code changes nothing; where the settled value's number is not the code's, a note
+    and an info finding say so."""
     rig = rig_with(tmp_path, monkeypatch, PRINTED)
     run = rig.specimen.run
-    person_transcribes(rig, person)
+    person_transcribes(rig, 1, person)
     code = with_code(rig)
-    script = catalogue(literal, literal) if literal else LACKS
-    settle(rig, Scripted({KEY: script}))
+    settle(rig, Scripted({KEY: catalogue(literal, literal) if literal else LACKS}))
     value = run.fields[KEY]
     assert (value.state, value.literal) == (state, literal)
     assert code.id not in value.evidence_relations
-    assert not any(r.startswith(f"marked:{KEY}:") and r.endswith(":barcode_differs") for r in run.reasons)
-    assert value.reason.endswith(f"The slide's QR code reads {CODE}; the person's transcription of the label "
-        f"writes {'0010007' if literal else 'no number'}.")
-    notes = [f for f in run.findings if f.field_key == KEY and f.rule_id == "barcode_decode"]
-    assert [(f.reason_code, f.severity, f.evidence_ids) for f in notes] == [
-        (f"barcode_person_differs:{KEY}", "info", [code.id])]
+    assert not any(r.endswith(":barcode_differs") for r in run.reasons)
+    notes = [(f.reason_code, f.evidence_ids) for f in run.findings if f.field_key == KEY and f.rule_id == "barcode_decode"]
+    if literal:
+        assert value.reason.endswith(f"The slide's QR code reads {CODE}, which differs from this value; "
+            "a person's transcription stands.")
+        assert notes == [(f"barcode_person_differs:{KEY}", [code.id])]
+    else:
+        assert notes == []
 
 
-def test_a_persons_transcription_that_agrees_with_the_code_gets_no_note(tmp_path, monkeypatch):
-    rig = rig_with(tmp_path, monkeypatch, "FMNHINS\n0010004")
+def test_a_persons_transcription_on_another_label_stands(tmp_path, monkeypatch):
+    """Codex round 2, case 2: the code lies on label 2, whose readers write no number; a person
+    transcribes label 1 with "FMNHINS 0010007" and the field settles on it. At 8cf7f6b9 the
+    code's 0010001 replaced it; now it stands, with the note."""
+    rig = rig_with(tmp_path, monkeypatch, "FMNHINS")
     run = rig.specimen.run
-    person_transcribes(rig, PRINTED)
+    person_transcribes(rig, 0, FIRST + "\nFMNHINS 0010007")
     with_code(rig)
-    settle(rig, Scripted({KEY: catalogue(CODE, CODE)}))
-    value = run.fields[KEY]
-    assert (value.state, value.literal) == (ValueState.SUPPORTED, CODE)
-    assert "QR code" not in value.reason
-    assert not [f for f in run.findings if f.field_key == KEY and f.rule_id == "barcode_decode"]
+    settle(rig, Scripted({KEY: catalogue("0010007", "0010007", reading="1A")}))
+    assert number(run)[1] != CODE
+    assert not any(r.endswith(":barcode_differs") for r in run.reasons)
 
 
-# ---- the label the code lies on ---------------------------------------------------------------
+def test_a_person_confirming_a_reader_stands(tmp_path, monkeypatch):
+    """A person transcribes the barcode label as reader 2B's 0010007 (G51's case: the same
+    observation as a reader); the code changes nothing."""
+    rig = rig_with(tmp_path, monkeypatch, PRINTED, OTHER)
+    run = rig.specimen.run
+    person_transcribes(rig, 1, OTHER)
+    with_code(rig)
+    settle(rig, Scripted({KEY: catalogue("0010007", "0010007")}))
+    assert number(run)[1] != CODE
+    assert not any(r.endswith(":barcode_differs") for r in run.reasons)
+
 
 def test_a_decode_placed_on_no_label_changes_nothing(tmp_path, monkeypatch):
-    """A decode no label's box holds is no reading of any label: the field is as its expert left
-    it (here the readers differ, so it stays open)."""
-    rig = rig_with(tmp_path, monkeypatch, PRINTED, "FMNHINS\n0010007")
+    """G51 round 1's off-label code: the decoder stores no such row; a row without a label
+    changes nothing here either."""
+    rig = rig_with(tmp_path, monkeypatch, PRINTED, OTHER)
     run = rig.specimen.run
     with_code(rig, region=None)
-    settle(rig, Scripted({KEY: catalogue(CODE, CODE)}))
-    assert run.fields[KEY].state != ValueState.SUPPORTED
+    settle(rig, Scripted({KEY: several(CODE, "0010007")}))
+    assert run.fields[KEY].state == ValueState.AMBIGUOUS
 
 
-def test_digits_on_another_label_are_no_reading_of_the_code(tmp_path, monkeypatch):
-    """Label 1's readers write dates and elevations; only the code's label counts."""
-    rig = rig_with(tmp_path, monkeypatch, PRINTED)
-    run = rig.specimen.run
-    with_code(rig)
-    settle(rig, Scripted({KEY: catalogue(CODE, CODE)}))
-    assert summary(run, KEY)[:3] == (ValueState.SUPPORTED, CODE, CODE)
-    assert contradicting(run) == []
-
-
-# ---- controls ---------------------------------------------------------------------------------
+# ---- controls ----------------------------------------------------------------------------------
 
 def outcome(run):
     """What a person and the record's routing see: each field's value and reason, the findings
@@ -388,14 +372,13 @@ def outcome(run):
 
 SCENARIOS = {
     "readers-agree": ((PRINTED,), None),
-    "readers-differ": ((PRINTED, "FMNHINS\n0010007"), catalogue(CODE, CODE)),
+    "readers-differ": ((PRINTED, OTHER), several(CODE, "0010007")),
     "no-number": (("FMNHINS",), LACKS),
 }
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS)
 def test_a_run_with_no_code_row_settles_exactly_as_without_the_rule(tmp_path, monkeypatch, scenario):
-    """No stored decode: the rule changes nothing, whatever the readers write."""
     from specimen_digitization.field_research import catalogue_code
 
     texts, script = SCENARIOS[scenario]
@@ -410,8 +393,9 @@ def test_a_run_with_no_code_row_settles_exactly_as_without_the_rule(tmp_path, mo
 
 @pytest.mark.parametrize("scenario", SCENARIOS)
 def test_the_code_changes_no_other_field(tmp_path, monkeypatch, scenario):
-    """With a code row the catalogue number may change; every other field, its findings and its
-    reasons are as they are with no code row."""
+    """With a code row the catalogue number may change; every other field, its findings and the
+    other reasons stay as with no code row (the barcode label's own unresolved_transcription
+    aside: the duplicate-label rule of autonomy S1 sets it aside only while the field is held)."""
     texts, script = SCENARIOS[scenario]
     scripts = {KEY: script} if script else {}
     plain = rig_with(tmp_path / "plain", monkeypatch, *texts)
@@ -423,9 +407,7 @@ def test_the_code_changes_no_other_field(tmp_path, monkeypatch, scenario):
     fields_coded, found_coded, reasons_coded, _ = outcome(coded.specimen.run)
     assert {k: v for k, v in fields.items() if k != KEY} == {k: v for k, v in fields_coded.items() if k != KEY}
     assert [f for f in found if KEY not in f[1]] == [f for f in found_coded if KEY not in f[1]]
-    # The barcode label's own reason is no other field's: where its readers differ and the code
-    # settles the catalogue number, the label's unresolved_transcription, which the duplicate-label
-    # rule (autonomy S1, C3) leaves out while the field holds a reason of its own, comes back.
+
     def others(found_reasons):
         return [r for r in found_reasons if KEY not in r and r not in ("identifier_format",
             "unresolved_transcription:L2")]
@@ -434,9 +416,6 @@ def test_the_code_changes_no_other_field(tmp_path, monkeypatch, scenario):
 
 
 def test_a_code_row_on_a_run_of_the_old_path_changes_nothing(tmp_path, monkeypatch):
-    """A run of the old first pass (moved runs keep it until the workflow moves them; a moved
-    run's segment is not run again, so it holds no code row) is not settled on the code;
-    catalogue_code.settle is never asked."""
     from specimen_digitization.field_research import catalogue_code
     from specimen_digitization.field_research import step as field_step
 
@@ -450,14 +429,13 @@ def test_a_code_row_on_a_run_of_the_old_path_changes_nothing(tmp_path, monkeypat
 
 
 def test_a_persons_field_decision_is_never_settled_on_the_code(tmp_path, monkeypatch):
-    """A field a person decided (human_keys) is not researched, and the code is never asked."""
     from specimen_digitization.field_research import catalogue_code
     from specimen_digitization.field_research import step as field_step
 
     asked = []
     monkeypatch.setattr(catalogue_code, "settle", lambda *args, **kwargs: asked.append(args) or False)
     monkeypatch.setattr(field_step, "human_keys", lambda run: frozenset({KEY}))
-    rig = rig_with(tmp_path, monkeypatch, PRINTED, "FMNHINS\n0010007")
+    rig = rig_with(tmp_path, monkeypatch, PRINTED, OTHER)
     with_code(rig)
     settle(rig, Scripted({KEY: catalogue(CODE, CODE)}))
     assert asked == []

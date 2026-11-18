@@ -204,13 +204,13 @@ String _reasonField(String base, String suffix) =>
     ? settlementField(suffix)
     : suffix;
 
-/// Why the catalog number waits for a person when its readers agree on one
-/// number and the slide's QR code holds another
+/// Why the catalog number waits for a person when the number read from the
+/// label and the number in the slide's QR code differ
 /// (`marked:fmnh_ins_number:<label>:barcode_differs`,
-/// field_research/catalogue_code.py). Both numbers are the field's options.
+/// field_research/catalogue_code.py). The value read from the label stays.
 const String barcodeDiffersWords =
-    'The readers agree on one catalog number, but the slide\'s QR code holds '
-    'another. Compare the printed digits with the code.';
+    'The catalog number read from the label and the number in the slide\'s QR '
+    'code differ. Compare them.';
 
 /// Why a `marked:` code's label left its field for a person, by its `why`.
 String _markedWhy(String why) => switch (why) {

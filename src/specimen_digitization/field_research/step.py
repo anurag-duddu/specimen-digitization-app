@@ -2947,6 +2947,7 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
 
     if CATALOGUE in tasks_by_key and CATALOGUE not in human and units_path(run):
         settle_on_the_code(run, tasks_by_key[CATALOGUE], readings, asset_id=asset_id, blobs=blobs,
+            outcomes=[*(outcome for outcome in outcomes if outcome.key == CATALOGUE), put.get(CATALOGUE)],
             decision=decisions.setdefault(CATALOGUE, {}))
     # The check stage, last: an inference whose rule's conditions all hold fills an open field,
     # cleared, and derivation fills what it lets derive (ontology_checks.infer_feet); then the

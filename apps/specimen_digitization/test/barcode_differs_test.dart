@@ -1,5 +1,5 @@
 // The hold the slide's QR code adds (field_research/catalogue_code.py DIFFERS):
-// readers that agree on one catalog number against the code's other one,
+// a catalog number settled from the label whose number is not the code's,
 // `marked:fmnh_ins_number:<label>:barcode_differs`. Its words among a record's
 // blockers and in the decision sheet's reason chip.
 
@@ -10,8 +10,8 @@ import 'package:specimen_digitization/src/settlement_codes.dart';
 
 const String code = 'marked:fmnh_ins_number:L1:barcode_differs';
 const String words =
-    'The readers agree on one catalog number, but the slide\'s QR code holds '
-    'another. Compare the printed digits with the code.';
+    'The catalog number read from the label and the number in the slide\'s QR '
+    'code differ. Compare them.';
 
 Specimen held() => Specimen(<String, dynamic>{
   'specimen_id': 'held',
@@ -20,13 +20,17 @@ Specimen held() => Specimen(<String, dynamic>{
     <String, dynamic>{'region_id': 'L1'},
   ],
   'fields': <Json>[
-    <String, dynamic>{'field_key': 'fmnh_ins_number', 'state': 'ambiguous'},
+    <String, dynamic>{
+      'field_key': 'fmnh_ins_number',
+      'state': 'supported',
+      'literal_value': '4486518',
+    },
   ],
   'reason_codes': <String>[code],
 });
 
 void main() {
-  test('the words name the readers, the QR code and what to do', () {
+  test('the words say which two numbers differ and what to do', () {
     expect(barcodeDiffersWords, words);
   });
 
@@ -44,7 +48,7 @@ void main() {
     expect(
       settlementPhrase(held(), code),
       'Catalog number is marked for review on Label 1: '
-      'the QR code holds another number',
+      'the label and its QR code differ',
     );
   });
 }
