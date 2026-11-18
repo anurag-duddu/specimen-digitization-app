@@ -3003,14 +3003,11 @@ def marked_code(key: str, region_id: str, why: str) -> str:
 
 def marked_reasons(run) -> list[str]:
     """The codes of the run's marked findings, in their order: a label's settlement's
-    (_settlement), the check stage's (ontology_checks.stage) and the second opinion's
-    (second_opinion.check)."""
+    (_settlement) and the check stage's (ontology_checks.stage)."""
     from .ontology_checks import CHECK_STAGE
 
-    from .second_opinion import RULE as SECOND_OPINION
-
     return [finding.reason_code for finding in getattr(run, "findings", None) or ()
-        if finding.rule_id in (SETTLEMENT, CHECK_STAGE, SECOND_OPINION) and finding.reason_code.startswith("marked:")]
+        if finding.rule_id in (SETTLEMENT, CHECK_STAGE) and finding.reason_code.startswith("marked:")]
 
 
 def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
@@ -4644,6 +4641,10 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     # approval's ordinary finalize no longer names it).
     if not run.human_approved:
         human += [f"preserved_human_decision:{key}" for key in sorted(human_keys(run) & set(work))]
+    # The second opinion's marks, derived from its stored result and the current values (second_opinion.py).
+    from .second_opinion import reasons as second_opinion_reasons
+
+    human += second_opinion_reasons(run)
     by_key = {outcome.key: outcome for outcome in outcomes}
     failures = [by_key[key].failure for key in work if work[key] == FAILED]
     if failures:
@@ -4779,12 +4780,6 @@ class FieldResearchStep:
     resolver_factory: Callable
     tools_factory: Callable
     meter_factory: Callable = cost_meter
-    # The second opinion's model (second_opinion.py): `second_opinion_factory(route)` returns the
-    # model the one request goes to. None: no request is made and every settled value the step
-    # answers for is marked not checked, so an unchecked record never looks like a checked one.
-    # production_step, the only step the workflow builds (research_harness.workflow_bridge),
-    # always supplies it; a factory that raises is a second opinion not obtained too.
-    second_opinion_factory: Callable | None = None
     # Every field's expert at once (FIELD_RESEARCH.md, step 3).
     concurrency: int = len(FIELD_TOOLS)
     # Research stops this long before the step's own deadline: unfinished
@@ -4913,14 +4908,10 @@ class FieldResearchStep:
     def run(self, workflow, principal, specimen, *, cap_micros: int, deadline_seconds: float) -> None:
         from .location_reassessment import KEY as REASSESSMENT, commit, working_run
 
-        import time
-
         run = specimen.run
-        started = time.monotonic()
         reassessment_marker = copy.deepcopy(run.dependencies.get(REASSESSMENT))
         research_run = working_run(run)
         route = None
-        research_call = None
         try:
             # Nothing is sent before the research below: an error here is the
             # step's setup, never an unknown outcome, and costs nothing.
@@ -4950,25 +4941,15 @@ class FieldResearchStep:
                 # one that ended early kept its worst case (MeteredModel). Only a
                 # reservation still outstanding leaves the spend unknown.
                 known = outcomes is not None or meter.outstanding_micros == 0
-                count = len(run.paid_calls)
                 record_cost(run, route, reserved=cap_micros,
                     spent=meter.spent_micros if known else None,
                     outcome="completed" if outcomes is not None else "failed" if known else "unknown",
                     model_calls=sum(o.model_calls for o in outcomes or ()),
                     tokens=getattr(meter, "reported", None))
-                research_call = run.paid_calls[-1] if len(run.paid_calls) > count else None
             try:
                 apply_outcomes(research_run, profile, prepared[1], outcomes, blobs=workflow.blobs, calls=calls,
                     asset_id=specimen.asset.id, decisions=decisions, unused=unused)
                 retained = commit(run, research_run, decisions=decisions) if research_run is not run else set()
-                # The fields' second opinion, once the values are settled and committed, before the
-                # clearance rules (second_opinion.py): it can only add marks.
-                # It runs only when research has nothing left to ask again (no field of this attempt
-                # failed retryably): otherwise the money stays with research's retry.
-                left = cap_micros - meter.spent_micros - meter.outstanding_micros
-                pending = FAILED in work_states(run, profile, outcomes).values()
-                self._second_opinion(workflow, specimen, cap_micros=left, pending=pending,
-                    seconds=deadline_seconds - (time.monotonic() - started))
                 blocker = finalize_fields(run, profile, outcomes, specimen=specimen, blobs=workflow.blobs,
                     today=workflow.clock().date())
                 self._retained_reassessment(run, retained)
@@ -4981,48 +4962,9 @@ class FieldResearchStep:
                 raise OperationalBlock(str(error)) from error
             trace_fields(run, prepared[1], outcomes, calls, decisions)
         if blocker is not None:
-            if research_call is not None:
-                research_call["outcome"] = "failed"
+            if run.paid_calls and run.paid_calls[-1]["step"] == STEP:
+                run.paid_calls[-1]["outcome"] = "failed"
             raise AdapterFailure(blocker, BLOCKER_STATUS[blocker])
-
-    def _second_opinion(self, workflow, specimen, *, cap_micros: int, pending: bool, seconds: float) -> None:
-        """second_opinion.check on the run, its paid call recorded beside research's (record_cost,
-        under the second opinion's route), inside what research left of the step's reservation and
-        of its deadline and the worker's, less the clearance rules' margin (three times
-        POST_RESEARCH_SECONDS). The crops are cut from one read of the source image. A run off the
-        units path gets none; with no factory every value it answers for is marked not checked."""
-        from specimen_digitization.application.region_pixels import region_png
-        from specimen_digitization.application.source_pixels import source_image
-        from specimen_digitization.application.worker_deadline import current_deadline
-        from specimen_digitization.model_gateway import SECOND_OPINION_ROUTE
-
-        from . import second_opinion
-
-        run = specimen.run
-        if not units_path(run):
-            return
-        factory = self.second_opinion_factory
-        try:
-            price = _route_price(profile_of(run), SECOND_OPINION_ROUTE)
-        except OperationalBlock:
-            price = None
-        remaining = seconds - 3 * POST_RESEARCH_SECONDS
-        deadline = current_deadline()
-        if deadline is not None:
-            remaining = min(remaining, deadline.remaining() - 3 * POST_RESEARCH_SECONDS)
-
-        def crops():
-            with source_image(specimen.asset, workflow.blobs) as image:
-                return {region.id: region_png(image, region) for region in run.regions}
-
-        paid = second_opinion.check(run, route=SECOND_OPINION_ROUTE,
-            model_factory=None if factory is None else (lambda: factory(SECOND_OPINION_ROUTE)),
-            crops=crops, blobs=workflow.blobs, asset_id=specimen.asset.id, readings=run_readings(run),
-            human=human_keys(run), cap_micros=cap_micros, meter_factory=self.meter_factory, price=price,
-            seconds=min(second_opinion.TIMEOUT_SECONDS, remaining), research_pending=pending)
-        if paid is not None:
-            record_cost(run, SECOND_OPINION_ROUTE, reserved=paid.reserved, spent=paid.spent, outcome=paid.outcome,
-                model_calls=paid.model_calls, tokens=paid.tokens)
 
     @staticmethod
     def _retained_reassessment(run, retained) -> None:
@@ -5093,20 +5035,5 @@ async def _production_tools(run, profile, blobs):
             sources.close()  # A GBIF verification still running ends now.
 
 
-def _production_second_opinion(route: str):
-    """The second opinion's model (second_opinion.py) through the Hugging Face gateway, wrapped as
-    an expert's is (PrivateProviderModel, ClientTimeouts)."""
-    if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
-        raise OperationalBlock("provider_data_policy_and_spending_approval_required")
-    from specimen_digitization.model_gateway import HuggingFaceModelGateway
-    from specimen_digitization.provider_privacy import PrivateProviderModel
-
-    from .experts import ClientTimeouts
-
-    gateway = HuggingFaceModelGateway(timeout_seconds=MODEL_TIMEOUT_SECONDS)
-    return PrivateProviderModel(ClientTimeouts(gateway.model_for(route)))
-
-
 def production_step() -> FieldResearchStep:
-    return FieldResearchStep(resolver_factory=_production_resolver, tools_factory=_production_tools,
-        second_opinion_factory=_production_second_opinion)
+    return FieldResearchStep(resolver_factory=_production_resolver, tools_factory=_production_tools)

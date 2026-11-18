@@ -227,12 +227,6 @@ const String secondOpinionNotCheckedWords =
     'The independent reading of the labels did not run, so this value is '
     'not confirmed. Check it against the image.';
 
-/// The note an agreeing independent reading leaves on a field
-/// (`second_opinion_agrees:<field>`, an info finding): never a blocker.
-const String secondOpinionAgreesCode = 'second_opinion_agrees';
-const String secondOpinionAgreesWords =
-    'Agrees with an independent reading of the labels';
-
 /// Why a `marked:` code's label left its field for a person, by its `why`.
 String _markedWhy(String why) => switch (why) {
   'text_only' =>
@@ -463,14 +457,6 @@ ClearanceBlocker _issueFor(
     } else {
       field ??= _matchingField(specimen, target);
     }
-  } else if (base == secondOpinionAgreesCode) {
-    // second_opinion_agrees:<field>, a note: an independent reading of the
-    // labels gave the field the same value (field_research/second_opinion.py).
-    if (suffix.isNotEmpty && explicitField != null && suffix != explicitField) {
-      field = null;
-    } else {
-      field ??= _matchingField(specimen, suffix);
-    }
   } else if (base == 'unresolved_transcription') {
     region ??= _matchingRegion(specimen, suffix);
     if (region != null) {
@@ -541,7 +527,6 @@ ClearanceBlocker _issueFor(
                 'near_spelling' => 'Matched using a close spelling',
                 clearedCode ||
                 markedCode => _settlementNote(specimen, base, suffix),
-                secondOpinionAgreesCode => secondOpinionAgreesWords,
                 _ => 'Recorded field note',
               }
         : message ?? 'A specimen check needs review before approval',

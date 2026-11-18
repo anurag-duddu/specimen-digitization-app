@@ -69,6 +69,15 @@ FIELD_RESEARCH = "field_research"
 # A run field research has completed reaches the handover again: the clearance
 # rules only, nothing researched, external or paid (FieldResearchStep.recheck).
 FIELD_RECHECK = "field_research_recheck"
+# The fields' second opinion (field_research/second_opinion.py, application/second_opinion_step.py):
+# its own step after field research, and the run's stage while it is due.
+SECOND_OPINION = "field_second_opinion"
+
+
+def mark_second_opinion_due(run) -> None:
+    from .second_opinion_step import mark_due
+
+    mark_due(run)
 
 
 def current_human_location_fields(repository, specimen) -> set[str]:
@@ -594,6 +603,9 @@ class Workflow:
     # The field research step's runner (field_research.step.FieldResearchStep),
     # mounted by research_harness.workflow_bridge; None keeps the ordinary chain.
     field_research = None
+    # The fields' second opinion's runner (field_research.second_opinion.SecondOpinionStep),
+    # mounted beside field research; None: the step is switched off (second_opinion_step).
+    second_opinion = None
 
     def __init__(
         self,
@@ -752,6 +764,12 @@ class Workflow:
             and self.field_research.handles(run)
         ):
             step = FIELD_RECHECK if FIELD_RESEARCH in run.completed_steps else FIELD_RESEARCH
+        if step == FIELD_RECHECK and run.stage == SECOND_OPINION:
+            # The fields' second opinion, after field research, before the record is finalized: its
+            # own step, whose failure never blocks the run (second_opinion_step.py).
+            from .second_opinion_step import run_step
+
+            return run_step(self, principal, specimen, revision)
         ordinary_first_pass = step.startswith("first_pass:") and first_pass_failure_is_recoverable(
             run, step
         )
@@ -1444,8 +1462,10 @@ class Workflow:
                     cap_micros=cost or 0,
                     deadline_seconds=effect_timeout,
                 )
+                mark_second_opinion_due(run)
             elif step == FIELD_RECHECK:
                 self.field_research.recheck(self, principal, specimen)
+                mark_second_opinion_due(run)
             elif step == "plan":
                 run.authority_plan = plan_authorities(specimen)
             elif step.startswith("authority:"):

@@ -63,26 +63,6 @@ void main() {
     expect(blockers.single.detail, secondOpinionNotCheckedWords);
   });
 
-  test('an agreeing reading is a field note, never a blocker', () {
-    final Specimen agreed = Specimen(<String, dynamic>{
-      ...held(differs).data,
-      'reason_codes': <String>[],
-      'validation_findings': <Json>[
-        <String, dynamic>{
-          'rule_id': 'second_opinion',
-          'severity': 'info',
-          'field_key': 'habitat',
-          'reason_code': 'second_opinion_agrees:habitat',
-        },
-      ],
-    });
-    expect(blockersFor(agreed), isEmpty);
-    final List<ClearanceBlocker> notes = fieldNotesFor(agreed);
-    expect(notes, hasLength(1));
-    expect(notes.single.fieldKey, 'habitat');
-    expect(notes.single.message, contains(secondOpinionAgreesWords));
-  });
-
   test('the reason chips say why in a short phrase', () {
     expect(
       settlementPhrase(held(differs), differs),

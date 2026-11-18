@@ -202,7 +202,13 @@ def unpack(payload, blobs):
     graph = read_graph(payload, blobs)
     if graph:
         payload = {**payload, "run": graph[1]}
-    return Specimen.model_validate(payload, context={"persisted_snapshot": True})
+    specimen = Specimen.model_validate(payload, context={"persisted_snapshot": True})
+    # A person's field decisions saved before the decision endpoint recorded them on the run are
+    # adopted once, here (field_research/second_opinion.py, adopt_legacy); nothing else changes.
+    from ..field_research.second_opinion import adopt_legacy
+
+    adopt_legacy(specimen)
+    return specimen
 
 
 def original_run_digest(payload, blobs):
