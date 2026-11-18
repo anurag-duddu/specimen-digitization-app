@@ -204,6 +204,19 @@ class Specimen {
   String? get disposition =>
       data['disposition'] is String ? data['disposition'] : null;
   String get status => vocabularyLabel(disposition ?? state);
+
+  /// Who cleared this record: `person` when a reviewer's approval stands on
+  /// it, `system` when the clearance rules cleared it with no person.
+  ///
+  /// Null when the record is not cleared, and when the server did not say
+  /// (an older server, or a stored run that does not hold the answer), so a
+  /// cleared record is never shown as a person's, or the system's, on a
+  /// guess. Any other value is treated as not said.
+  String? get clearedBy => switch (data['cleared_by']) {
+    'person' => 'person',
+    'system' => 'system',
+    _ => null,
+  };
   String get profile => textOf(data['profile_version']);
   List<Json> get assets => objects(data['assets']);
   List<Json> get regions => objects(data['regions']);

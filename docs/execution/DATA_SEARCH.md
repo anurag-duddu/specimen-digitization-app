@@ -72,10 +72,21 @@ payloads safely become an empty list; only string array members are considered.
 Returns `items` with `id`, `revision`, `status`, `stage`, `disposition`,
 `sensitive`, `createdAt`, `updatedAt`, `domainCreatedAt`, `assetId`, `batchId`, `filename`, `uploader`,
 `activeRunId`, `blocker`, `profileId`, `profileVersion`, `reasonCodes`, `risk`,
-`synthetic`. Active run and synthetic come from current snapshot run.id and
+`synthetic`, `fieldReviewStates`, `activeGraph`, `humanApproved`. Active run and
+synthetic come from current snapshot run.id and
 run.profile.synthetic, including initial creations whose typed activeRunId has
 not yet been set. API may derive record_version_id from run ID and revision and
 available actions from current authorization. No payloads or signed URLs return.
+
+`humanApproved` (added 2026-11-17, the last column of the view and the last
+selection of the query) is the current snapshot's `run.human_approved` when it is
+a JSON boolean, else null. It is never returned as is: the API derives the item's
+`cleared_by` from it and `disposition` (`application/lane.py` `cleared_by`):
+`person` for a cleared record whose approval stands, `system` for a cleared
+record with none, null for any other disposition and for a stored run that does
+not hold a boolean. The SQLite path derives the same value from the same JSON.
+The view is inlined, so the change sends no statement to the database; an older
+connector or client that does not select or read it is unaffected.
 
 Typed specimen.createdAt is authoritative for search filtering, ordering, cutoff
 and displayed creation time. Original snapshot root.created_at may differ by

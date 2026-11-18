@@ -1,6 +1,6 @@
 """Bounded current-metadata search; cursors carry no authorization authority."""
 
-from .lane import SQLITE_STATUS
+from .lane import SQLITE_STATUS, cleared_by
 from .graph_review_summary import compact_summary
 
 import base64
@@ -212,6 +212,7 @@ def sql_item(row, scope):
     }
     result = {target: row.get(source) for source, target in names.items()}
     result.update(scope.model_dump())
+    result["cleared_by"] = cleared_by(result["disposition"], row.get("humanApproved"))
     result["record_version_id"] = f"{result['active_run_id']}:{result['revision']}"
     result["risk_calibrated"] = False
     result["review_summary"] = compact_summary(
@@ -245,6 +246,8 @@ def sqlite_search(
         "active_run_id": "json_extract(payload,'$.run.id')",
         "stage": "json_extract(payload,'$.run.stage')",
         "disposition": "json_extract(payload,'$.run.disposition')",
+        # A JSON boolean only, as json_type names it; anything else is null (lane.cleared_by).
+        "human_approved": "CASE json_type(payload,'$.run.human_approved') WHEN 'true' THEN 1 WHEN 'false' THEN 0 END",
         "blocker": "json_extract(payload,'$.run.blocker')",
         "profile_id": "json_extract(payload,'$.run.profile.id')",
         "profile_version": "json_extract(payload,'$.run.profile.version')",
@@ -315,6 +318,8 @@ def sqlite_search(
         row["reason_codes"] = json.loads(row["reason_codes"] or "[]")
         row["sensitive"] = row["sensitive"] is None or bool(row["sensitive"])
         row["synthetic"] = bool(row["synthetic"])
+        approved = row.pop("human_approved")
+        row["cleared_by"] = cleared_by(row["disposition"], None if approved is None else bool(approved))
         row["record_version_id"] = f"{row['active_run_id']}:{row['revision']}"
         row["risk_calibrated"] = False
         graph = json.loads(row.pop("active_graph") or "null")

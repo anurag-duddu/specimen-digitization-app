@@ -159,6 +159,9 @@ def evaluate(run: Run) -> list[str]:
 
 
 def finalize(run: Run) -> None:
+    from .lane import settle_approval
+
+    settle_approval(run)
     run.disposition = None
     if run.blocker or any(l.status in OPERATIONAL for l in run.lookups[-1:]):
         run.stage = "processing_blocked"
