@@ -309,12 +309,9 @@ def test_a_record_nothing_on_which_describes_the_specimen_is_never_finished(tmp_
     assert field_step.NO_SPECIMEN_VALUE not in empty_record_reasons(run)
 
 
-def test_the_empty_record_reason_has_reviewer_text_in_the_app():
-    """The app words every record reason it shows (blockers.dart _recordMessages)."""
-    from pathlib import Path
-
-    blockers = (Path(__file__).parents[2] / "apps/specimen_digitization/lib/src/screens/workbench/blockers.dart")
-    assert f"'{field_step.NO_SPECIMEN_VALUE}':" in blockers.read_text(encoding="utf-8")
+def test_the_empty_record_reason_is_the_code_the_app_words():
+    """The reason's code as the app's no_specimen_value_test.dart names it (blockers.dart words it)."""
+    assert field_step.NO_SPECIMEN_VALUE == "no_specimen_value"
 
 
 def test_the_empty_record_guard_keeps_a_cleared_record_cleared(tmp_path):
