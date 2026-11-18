@@ -103,11 +103,16 @@ binds each content role to the correct container fill and on-fill role.
 
 | Family | Meaning |
 | --- | --- |
-| Green | Cleared, human affirmation, low risk, added-value marker |
+| Green | Approved by a person (a cleared record a person affirmed), human affirmation, low risk, added-value marker |
 | Warm amber | Needs review, attention, medium risk, changed-value marker, synthetic-environment notice |
 | Red | Blocking or destructive outcome, high risk |
 | Iris | Processing and external-reference emphasis |
-| Neutral | Model observation, deferred work, unchanged content |
+| Neutral | Model observation, cleared by the system (a cleared record no person approved, or one whose server does not say who), deferred work, unchanged content |
+
+A cleared record is green only when a person approved it. Amended 2026-11-17 on
+the owner's words, typed 2026-11-17 in session f9614090 inside the plan he
+answered "Yes, go ahead": "'Cleared by the system' in the app. The design says
+'Green means a human affirmed it.'"
 
 Never remove the label and Phosphor icon because two states share a colour.
 An authority match does not imply human approval. A process colour does not

@@ -892,9 +892,12 @@ class _QueuePaneState extends State<QueuePane> {
               key: ValueKey<String>('queue-row-${items[index].id}'),
               child: _QueueListRow(
                 specimen: items[index],
+                // Within a view a row's queue goes without saying, except
+                // who cleared a cleared record, which the view does not say.
                 showStatus:
                     controller.disposition.isEmpty ||
-                    items[index].disposition != controller.disposition,
+                    items[index].disposition != controller.disposition ||
+                    items[index].clearedBy != null,
                 selected: _selection.isSelected(items[index]),
                 disabledReason: controller.mutating || _checkingDecision
                     ? 'Wait for the current selection check or decision to finish.'
@@ -974,6 +977,7 @@ class _QueueListRow extends StatelessWidget {
       status: SpecimenStatus.ofRecord(
         disposition: specimen.disposition,
         state: specimen.state,
+        clearedBy: specimen.clearedBy,
       ),
       riskComposite: specimen.data['risk'] is num
           ? specimen.data['risk'] as num

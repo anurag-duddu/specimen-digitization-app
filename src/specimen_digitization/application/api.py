@@ -49,6 +49,7 @@ from .evidence_runtime import read_authority_result, read_artifact
 from .integrity import EvidenceIntegrityError, verify_evidence
 from .lane import (
     LaneConflict,
+    cleared_by,
     processable,
     queue,
     queue_on_intake,
@@ -358,6 +359,7 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         "stage": run.stage,
         "intake_progress": intake_progress(run),
         "disposition": run.disposition,
+        "cleared_by": cleared_by(run.disposition, run.human_approved),
         "reason_codes": run.reasons,
         "review_summary": review_summary(
             project_fields({

@@ -124,6 +124,12 @@ Hue is a fast index into a meaning the label already states. It is never the sta
 
 - **So we do** pair every status with an icon and a word, and reuse one hue family across several
   semantic tokens where the meanings are related (green is human-affirmed; steel is machine).
+  A cleared record is therefore two things: approved by a person, drawn green, and cleared by the
+  system with no person, drawn in the machine's `evidence.model` treatment with the model glyph.
+  A cleared record whose server does not say which is drawn in the same model treatment as
+  "Cleared", never green. Amended 2026-11-17 on the owner's words, typed 2026-11-17 in session
+  f9614090 inside the plan he answered "Yes, go ahead": "'Cleared by the system' in the app. The
+  design says 'Green means a human affirmed it.'"
 - **So we never do** add a status that is distinguishable only by hue, and we never let a hue carry
   meaning inside a photograph, where we cannot control the background.
 
@@ -390,7 +396,7 @@ surrounding surface, satisfying SC 1.4.11 for the component boundary
 
 | Token | Primitive | Light content | Dark content | Notes |
 |---|---|---|---|---|
-| `disposition.cleared` | green | `#1A6D4F` | `#2CBB86` | Same family as `primary`. Green means a human affirmed it. Intentional, not a collision: the commit action and the state it produces share a family. |
+| `disposition.cleared` | green | `#1A6D4F` | `#2CBB86` | Same family as `primary`. Green means a human affirmed it: a cleared record takes it only when a person approved it ("Approved by a person"). A record the system cleared with no person, or whose server does not say who cleared it, takes `evidence.model` (section 3.5; amended 2026-11-17 on the owner's words, typed 2026-11-17 in session f9614090 inside the plan he answered "Yes, go ahead": "'Cleared by the system' in the app. The design says 'Green means a human affirmed it.'"). Intentional, not a collision: the commit action and the state it produces share a family. |
 | `disposition.needsReview` | ochre | `#84580B` | `#E19512` | Attention, not failure. |
 | `disposition.deferred` | clay | `#6D5E52` | `#B0A397` | Replaces the lavender `#594D7C` at `workspace.dart:305`. Shelved, not judged. |
 | `state.processing` | steel | `#2F6594` | `#78A9D4` | Never a final queue. Always paired with a progress affordance. |
@@ -422,7 +428,9 @@ screen reader from `Semantics(label:)` alone.
 
 | Status | Icon (`material_symbols_icons`) | FILL | Label string | Token |
 |---|---|---|---|---|
-| Cleared | `Symbols.check_circle` | 1 | `Cleared` | `disposition.cleared` |
+| Approved by a person | `Symbols.check_circle` | 1 | `Approved by a person` | `disposition.cleared` |
+| Cleared by the system | registry `modelReading` (09 section 7) | 0 | `Cleared by system` | `evidence.model` |
+| Cleared, who not stated | `Symbols.check_circle` | 1 | `Cleared` | `evidence.model` |
 | Needs human review | `Symbols.flag` | 1 | `Needs human review` | `disposition.needsReview` |
 | Deferred | `Symbols.pause_circle` | 1 | `Deferred` | `disposition.deferred` |
 | Processing | `Symbols.autorenew` | 0 | `Processing` | `state.processing` |

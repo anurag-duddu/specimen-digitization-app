@@ -52,8 +52,8 @@ where a later write uses optimistic concurrency.
 | PUT `/uploads/{upload_id}/content` | binary bytes and `Upload-Offset` header | updated offset/revision; authenticated scoped operator; backend-mediated transport |
 | POST `/uploads/{upload_id}/resume` | expected_revision | refreshed scoped resumable upload instructions; stable asset/specimen IDs |
 | POST `/uploads/{upload_id}/complete` | expected_revision, storage generation | server verifies actual bytes/hash/type/dimensions and commits immutable asset; idempotent ingestion enqueue |
-| GET `/specimens` | collection_id, batch_id, state, disposition, date bounds, uploader, score band, issue, profile_version, cursor | authorized specimen summaries |
-| GET `/specimens/{specimen_id}` | none | current summary plus pinned active/latest run, record version and available actions |
+| GET `/specimens` | collection_id, batch_id, state, disposition, date bounds, uploader, score band, issue, profile_version, cursor | authorized specimen summaries, each with `cleared_by` (below) |
+| GET `/specimens/{specimen_id}` | none | current summary, `cleared_by` included, plus pinned active/latest run, record version and available actions |
 | GET `/specimens/{specimen_id}/workspace` | optional run_id | regions, independent observations, transcription versions, candidates, evidence, validations, decisions, disposition and audit timeline; large raw payloads remain references |
 | GET `/assets/{asset_id}/access` | purpose | authenticated API read URL and immutable asset metadata; current scoped membership, plus sensitive-image permission for sensitive or legacy-unknown assets |
 | POST `/specimens/{specimen_id}/classification` | expected_revision, collection_id, reason | new pinned run and superseded downstream references; reviewer or permitted operator |
@@ -62,6 +62,21 @@ where a later write uses optimistic concurrency.
 | POST `/decisions:batch` | reason, decisions[] of specimen_id, expected_revision, base_record_version_id, kind, target_id, before, after, evidence_ids, idempotency_key (1 to 100) | per-decision outcome rows, never a single error; reviewer, checked per record |
 | POST `/runs/{run_id}/actions` | expected_revision, action (`retry`, `resume`, `pause`, `cancel`, `reprocess`), reason | authorized transition and current status; operator/admin per action |
 | GET `/runs/{run_id}/events` | after_sequence, limit | ordered persisted timeline, next retry and actionable blocker; polling is sufficient for first implementation |
+
+### Who cleared a record (`cleared_by`, additive, 2026-11-17)
+
+Every specimen summary (the list items, the detail, and the workspace and
+decision responses that carry the summary) has `cleared_by`: `"person"` when the
+record is cleared and a reviewer's approval stands on it (`run.human_approved`),
+`"system"` when it is cleared and no approval stands (the clearance rules cleared
+it with no person, `field_research.step.finalize_fields`), and `null` when the
+record is not cleared or its stored run does not say. It is derived from the
+stored run on every read (`application/lane.py` `cleared_by`); nothing new is
+stored. Older clients ignore it, as this section's common rules require; a client
+that reads it treats an absent or null value on a cleared record as "not stated",
+never as either answer. The authority is the owner's words, typed 2026-11-17 in
+session f9614090 inside the plan he answered "Yes, go ahead": "'Cleared by the
+system' in the app. The design says 'Green means a human affirmed it.'"
 
 ### Bulk decisions
 

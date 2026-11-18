@@ -1793,6 +1793,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     final status = SpecimenStatus.ofRecord(
       disposition: record.disposition,
       state: record.state,
+      clearedBy: record.clearedBy,
     );
     return Padding(
       key: const ValueKey<String>('review-overview'),
