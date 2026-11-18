@@ -2946,9 +2946,20 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     from .catalogue_code import FIELD as CATALOGUE, settle as settle_on_the_code
 
     if CATALOGUE in tasks_by_key and CATALOGUE not in human and units_path(run):
-        settle_on_the_code(run, tasks_by_key[CATALOGUE], readings, asset_id=asset_id, blobs=blobs,
-            outcomes=[*(outcome for outcome in outcomes if outcome.key == CATALOGUE), put.get(CATALOGUE)],
-            decision=decisions.setdefault(CATALOGUE, {}))
+        # The code can only add a confirmation or a hold: any exception inside it is logged and
+        # the field, its findings and its decision are put back as the rules above left them.
+        kept_value = run.fields.get(CATALOGUE)
+        kept_findings = list(run.findings)
+        kept_decision = dict(decisions.get(CATALOGUE, {}))
+        try:
+            settle_on_the_code(run, tasks_by_key[CATALOGUE], readings,
+                decision=decisions.setdefault(CATALOGUE, {}))
+        except Exception:  # noqa: BLE001 - the code never fails research
+            LOGGER.warning("catalogue number not compared with the slide's QR code", exc_info=True)
+            if kept_value is not None:
+                run.fields[CATALOGUE] = kept_value
+            run.findings[:] = kept_findings
+            decisions[CATALOGUE] = kept_decision
     # The check stage, last: an inference whose rule's conditions all hold fills an open field,
     # cleared, and derivation fills what it lets derive (ontology_checks.infer_feet); then the
     # stage marks what fails a rule of the ontology among the values settled, inferred and

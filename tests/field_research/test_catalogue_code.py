@@ -195,46 +195,35 @@ def test_a_misread_prefix_beside_the_codes_number_is_no_contradiction(tmp_path, 
     assert "60010001" not in run.fields[KEY].reason and not reasons_for(run, KEY)
 
 
-# ---- rule 2: break a tie -----------------------------------------------------------------------
+# ---- no tie is broken (rule 2 of earlier heads, not shipped) -----------------------------------
 
-def test_the_code_settles_the_one_candidate_it_equals(tmp_path, monkeypatch):
-    """2A writes 0010001, 2B 0010007, and the expert offers both. Today: ambiguous. The code
-    equals one candidate: that candidate, as 2A writes it, backed by the code; 0010007 ruled out."""
-    rig = rig_with(tmp_path, monkeypatch, PRINTED, OTHER)
-    run = rig.specimen.run
-    code = with_code(rig)
-    settle(rig, Scripted({KEY: several(CODE, "0010007")}))
-    value = run.fields[KEY]
-    assert summary(run)[:3] == (ValueState.SUPPORTED, CODE, CODE)
-    assert value.evidence_relations[code.id] == "decides"
-    assert value.settled_observation_ids == [run.observations[2].id]
-    assert value.reason == f"The slide's QR code reads {CODE}, which settles this field among its candidates. Ruled out: 0010007."
-    assert not reasons_for(run, KEY) and "identifier_format" not in run.reasons
-
-
-def test_a_clipped_candidate_breaks_no_tie(tmp_path, monkeypatch):
-    """Codex round 3: the true number is 10010001, a foreign code holds 0010001, the readers
-    write "FMNHINS 10010001" and "FMNHINS 10010007", and the expert offers the clipped
-    "0010001". No reading writes 0010001 as a whole number: the field stays open, nothing
-    cleared (at 78744430 the clipped 0010001 settled and cleared)."""
-    rig = rig_with(tmp_path, monkeypatch, "FMNHINS 10010001", "FMNHINS 10010007")
-    run = rig.specimen.run
-    with_code(rig)
-    settle(rig, Scripted({KEY: several(CODE, "10010007")}))
-    assert run.fields[KEY].state == ValueState.AMBIGUOUS
-    assert f"mandatory_unresolved:{KEY}" in run.reasons
-    assert not [f for f in run.findings if f.field_key == KEY and f.reason_code.startswith("cleared:")]
+TIE_CASES = {
+    # The readers differ, one of them writing the code's number (105526330's and 105526617's
+    # case): the field stays open, as on main. At 947f0efd the code broke the tie.
+    "one-reader-is-the-code": ((PRINTED, OTHER), (CODE, "0010007")),
+    # Codex's cases any later tie-break must hold: a clipped suffix, a Unicode digit, an
+    # invisible separator, a joined date, and the spaced number that crashed research.
+    "clipped-suffix": (("FMNHINS 10010001", "FMNHINS 10010007"), (CODE, "10010007")),
+    "unicode-digit": (("FMNHINS \N{FULLWIDTH DIGIT ONE}0010001", "FMNHINS 10010007"), (CODE, "10010007")),
+    "invisible-separator": (("FMNHINS 1\N{ZERO WIDTH SPACE}0010001", "FMNHINS 10010007"), (CODE, "10010007")),
+    "joined-date": (("FMNHINS 10010001\nCollected 1/12/2026", "FMNHINS 10010007"), (CODE, "10010007")),
+    "spaced-number": (("FMNHINS 001 0001", OTHER), (CODE, "0010007")),
+}
 
 
-def test_a_fullwidth_digit_before_the_code_breaks_no_tie(tmp_path, monkeypatch):
-    """Codex round 4: the true number is 10010001 with a fullwidth first one; the foreign code
-    0010001 is its suffix. It is not written whole: the field stays open (at 1152f5ca it cleared)."""
-    rig = rig_with(tmp_path, monkeypatch, "FMNHINS \N{FULLWIDTH DIGIT ONE}0010001", "FMNHINS 10010007")
-    run = rig.specimen.run
-    with_code(rig)
-    settle(rig, Scripted({KEY: several(CODE, "10010007")}))
-    assert run.fields[KEY].state == ValueState.AMBIGUOUS
-    assert not [f for f in run.findings if f.field_key == KEY and f.reason_code.startswith("cleared:")]
+@pytest.mark.parametrize("case", TIE_CASES)
+def test_the_code_breaks_no_tie(tmp_path, monkeypatch, case):
+    """An open field stays open with a code row exactly as without one: research raises
+    nothing, and nothing is cleared."""
+    texts, options = TIE_CASES[case]
+    barcode_label(monkeypatch, *texts)
+    plain = build_rig(tmp_path / "plain", FIRST)
+    settle(plain, Scripted({KEY: several(*options)}))
+    coded = build_rig(tmp_path / "coded", FIRST)
+    with_code(coded)
+    settle(coded, Scripted({KEY: several(*options)}))
+    assert coded.specimen.run.fields[KEY].state == ValueState.AMBIGUOUS
+    assert outcome(plain.specimen.run) == outcome(coded.specimen.run)
 
 
 @pytest.mark.parametrize(("text", "whole"), [
@@ -248,9 +237,9 @@ def test_a_fullwidth_digit_before_the_code_breaks_no_tie(tmp_path, monkeypatch):
     ("FMNHINS 0010001", True),
     ("FMNHINS\n0010001", True),
     ("No.0010001.", True),
-    # The projection keeps letters and numbers only (Codex round 5): white space, marks and
-    # format characters between digits join them, so the code's own digits spaced are whole,
-    # and a number beside the code across any of them clips it.
+    # The projection keeps letters and numbers only: white space, marks and format characters
+    # between digits join them, so the code's own digits spaced are whole, and a number beside
+    # the code across any of them clips it.
     ("FMNHINS 001 0001", True),
     ("FMNHINS0010001", True),
     ("FMNH-INS\n0010001", True),
@@ -262,14 +251,13 @@ def test_a_fullwidth_digit_before_the_code_breaks_no_tie(tmp_path, monkeypatch):
         "\N{NARROW NO-BREAK SPACE}", "\N{ARABIC THOUSANDS SEPARATOR}")],
     *[(f"FMNHINS 0010001{sep}7", False) for sep in (
         "\N{COMBINING ACUTE ACCENT}", "\N{ZERO WIDTH JOINER}", "\N{SOFT HYPHEN}")],
-    # A digit of another script, or a superscript, right before or after (Codex round 4).
+    # A digit of another script, or a superscript, right before or after.
     ("FMNHINS \N{FULLWIDTH DIGIT ONE}0010001", False),
     ("FMNHINS 0010001\N{FULLWIDTH DIGIT ONE}", False),
     ("FMNHINS \N{ARABIC-INDIC DIGIT ONE}0010001", False),
     ("FMNHINS 0010001\N{ARABIC-INDIC DIGIT ONE}", False),
     ("FMNHINS \N{SUPERSCRIPT ONE}0010001", False),
     ("FMNHINS 0010001\N{SUPERSCRIPT ONE}", False),
-    # Numeric characters that are not digits count too (isnumeric).
     ("FMNHINS \N{VULGAR FRACTION ONE HALF}0010001", False),
     # A clipped occurrence first and a whole one later on the text.
     ("10010001 and 0010001", True),
@@ -280,26 +268,66 @@ def test_the_code_counts_as_written_only_as_a_whole_number(text, whole):
     assert written_whole(text, CODE) is whole
 
 
-def test_candidates_none_of_which_is_the_code_stay_open(tmp_path, monkeypatch):
-    """2A writes 0010004, 2B 0010007: no candidate is the code's number, so the field stays as
-    today (ambiguous). At 8cf7f6b9 the code supplied 0010001 alone."""
-    rig = rig_with(tmp_path, monkeypatch, "FMNHINS\n0010004", OTHER)
-    run = rig.specimen.run
-    with_code(rig)
-    settle(rig, Scripted({KEY: several("0010004", "0010007")}))
-    assert run.fields[KEY].state == ValueState.AMBIGUOUS
-    assert f"mandatory_unresolved:{KEY}" in run.reasons
+@pytest.mark.parametrize(("text", "literal", "held"), [
+    ("FMNHINS 0010001", "0010001", True),
+    ("FMNHINS\n001 0001", "001 0001", True),
+    # The literal as the end of a longer number, or joined to a date across a line break
+    # (Codex round 6): not the literal's own occurrence.
+    ("FMNHINS 10010001", "0010001", False),
+    ("FMNHINS 11122026\nCollected 1/12/2026", "1122026", False),
+    ("FMNHINS 0010001\n12/1", "0010001", False),
+    # The raw text does not hold a literal the projection would admit.
+    ("FMNHINS 001 0001", "0010001", False),
+])
+def test_rule_1_needs_the_literals_own_whole_occurrence(text, literal, held):
+    from specimen_digitization.field_research.catalogue_code import _held_whole
+
+    assert _held_whole(text, literal) is held
 
 
-def test_one_reader_of_the_codes_number_settles_through_the_experts_literal(tmp_path, monkeypatch):
-    """Only 2A writes a number (the code's); today one reader backs nothing and the answer is
-    refused. The expert's literal is a candidate equal to the code: settled on it."""
-    rig = rig_with(tmp_path, monkeypatch, PRINTED, "FMNHINS")
-    run = rig.specimen.run
-    with_code(rig)
-    settle(rig, Scripted({KEY: catalogue(CODE, CODE)}))
-    assert number(run) == (ValueState.SUPPORTED, CODE)
-    assert not reasons_for(run, KEY)
+@pytest.mark.parametrize(("written", "literal", "payload"), [
+    # The spaced literal the projection admits (Codex round 6, finding 2's text).
+    ("FMNHINS 001 0001", "001 0001", CODE),
+    # A line break inside the number.
+    ("FMNHINS 001\n0001", "001\n0001", CODE),
+    # The joined date (Codex round 6, finding 1): the literal is the clipped suffix.
+    ("FMNHINS 11122026\nCollected 1/12/2026", "1122026", "1122026"),
+])
+def test_rule_1_on_a_literal_it_cannot_ground_whole_raises_nothing_and_changes_nothing(tmp_path, monkeypatch,
+        written, literal, payload):
+    """Through apply_outcomes: no exception, and the field is exactly as with no code row."""
+    barcode_label(monkeypatch, written)
+    plain = build_rig(tmp_path / "plain", FIRST)
+    settle(plain, Scripted({KEY: catalogue(literal, payload)}))
+    coded = build_rig(tmp_path / "coded", FIRST)
+    with_code(coded, payload)
+    settle(coded, Scripted({KEY: catalogue(literal, payload)}))
+    assert outcome(plain.specimen.run) == outcome(coded.specimen.run)
+
+
+def test_an_exception_inside_the_rule_leaves_the_field_as_the_rules_settled_it(tmp_path, monkeypatch, caplog):
+    """The single call site in step.apply_outcomes logs any exception of the rule and puts the
+    field, its findings and its decision back: the code cannot fail research."""
+    from specimen_digitization.field_research import catalogue_code
+
+    barcode_label(monkeypatch, PRINTED)
+    plain = build_rig(tmp_path / "plain", FIRST)
+    images(plain, lambda unit: UNCERTAIN)
+    settle(plain, Scripted({KEY: catalogue(CODE, CODE)}))
+
+    def broken(run, *args, **kwargs):
+        run.fields[KEY] = run.fields[KEY].model_copy(update={"literal": "broken"})
+        run.findings.clear()
+        raise ValueError("substring not found")
+
+    monkeypatch.setattr(catalogue_code, "settle", broken)
+    coded = build_rig(tmp_path / "coded", FIRST)
+    images(coded, lambda unit: UNCERTAIN)
+    with_code(coded)
+    with caplog.at_level("WARNING"):
+        settle(coded, Scripted({KEY: catalogue(CODE, CODE)}))
+    assert outcome(plain.specimen.run) == outcome(coded.specimen.run)
+    assert any("not compared with the slide's QR code" in record.message for record in caplog.records)
 
 
 # ---- rule 3: contradict ------------------------------------------------------------------------
@@ -541,33 +569,26 @@ def test_a_persons_field_decision_is_never_settled_on_the_code(tmp_path, monkeyp
     assert asked == []
 
 
-def test_an_approval_does_not_outlive_a_catalogue_number_the_code_settles(tmp_path, monkeypatch):
-    """A person approved the record while the catalogue number was open (#450 records a digest
-    of the approved values). Research runs again with the code stored and the code breaks the
-    tie: the values changed, so finalize withdraws the approval (lane.settle_approval) and the
-    record is no longer cleared by a person. No code of the rule's does this."""
-    from specimen_digitization.application.lane import approved_values_digest, cleared_by
+def test_the_rule_changes_no_approved_value(tmp_path, monkeypatch):
+    """#450 records a digest of the values a person approved and withdraws the approval when
+    they change. The code changes no value layer (it confirms or holds the value as settled),
+    so a confirmation leaves the digest, and the approval, as they were."""
+    from specimen_digitization.application.lane import approved_values_digest
     from specimen_digitization.field_research import catalogue_code
     from specimen_digitization.field_research import step as field_step
-    from specimen_digitization.field_research.contracts import FieldOutcome
 
-    rig = rig_with(tmp_path, monkeypatch, PRINTED, OTHER)
+    rig = rig_with(tmp_path, monkeypatch, PRINTED)
     run = rig.specimen.run
-    settle(rig, Scripted({KEY: several(CODE, "0010007")}))
-    assert run.fields[KEY].state == ValueState.AMBIGUOUS
+    images(rig, lambda unit: UNCERTAIN)
+    settle(rig, Scripted({KEY: catalogue(CODE, CODE)}))
     run.human_approved = True
     run.approved_values_sha256 = approved_values_digest(run)
     with_code(rig)
-    readings, tasks, _ = field_step.build_tasks(run)
-    task = next(task for task in tasks if task.key == KEY)
-    expert = FieldOutcome(KEY, FieldAnswer(outcome="several_possibilities", options=[CODE, "0010007"],
-        explanation="The readers' numbers differ."))
-    assert catalogue_code.settle(run, task, readings, asset_id=rig.specimen.asset.id, blobs=rig.blobs,
-        outcomes=[expert])
+    task = field_step.FieldTask(key=KEY, mandatory=True, current=run.fields[KEY], candidates=(), tools=())
+    assert catalogue_code.settle(run, task, field_step.run_readings(run))
+    assert approved_values_digest(run) == run.approved_values_sha256
     field_step.finalize_fields(run, None, (), specimen=rig.specimen, blobs=rig.blobs, today=rig_module.TODAY)
-    assert number(run) == (ValueState.SUPPORTED, CODE)
-    assert run.human_approved is False
-    assert cleared_by(run.disposition.value, run.human_approved) != "person"
+    assert run.human_approved is True
 
 
 def test_the_hold_code_is_the_one_the_app_words():
