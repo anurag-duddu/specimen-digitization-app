@@ -56,15 +56,6 @@ def mark_due(run) -> None:
         run.stage, run.disposition = second_opinion.STEP, None
 
 
-def waits(run) -> bool:
-    """A run field research completed, brought back to the handover with no disposition (a Resume or
-    Retry), whose second opinion is due: the step runs (and its finish is the recheck's whole refinalize,
-    keeping the reasons research retained), as it would have had the record not been resumed."""
-    from ..field_research import second_opinion
-
-    return run.disposition is None and run.blocker is None and second_opinion.due(run)
-
-
 def _refusal(workflow, principal, specimen, cost: int, timeout: float) -> str | None:
     """Why the step makes no request, before anything is reserved, or None."""
     from ..field_research import second_opinion

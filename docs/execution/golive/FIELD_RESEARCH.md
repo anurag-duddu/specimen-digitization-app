@@ -2197,7 +2197,8 @@ durably (`run.pending_review`, by `_retained_reassessment`) and every
 finalize derives it; the finish carries no reason across, so the durable
 state decides (no duplicate; nothing stale once a reassessment that settles
 the family or a person's approval has cleared it). A record resumed or retried while it waited
-for the step goes to the step again, not the recheck.
+for the step goes through research's recheck as on main (the same refinalize), then to the step if
+it is still due: at most one paid call for values it has not asked about.
 
 **Runs classified before this change** have no price row for the second
 opinion in their pinned profile: on Resume or Retry the step ends
@@ -2206,10 +2207,8 @@ opinion in their pinned profile: on Resume or Retry the step ends
 for its values, and is costed at the request's worst case by main's meter
 rule for non-429 errors (`budget.py:264`).
 
-**With the clearing rule (PR #455, K1) a mark is a flag on its field.**
-With this change alone every mark held the record, so a record was held
-until its second opinion was obtained and agreed with every value it
-answers for. With K1, which ships with it, that is no longer so: only the
+**A mark is a flag on its field, never a hold.** The second opinion ships
+with the clearing rule (work package K1, the same pull request): only the
 catalogue number is mandatory and the second opinion never judges it, so
 its marks are optional fields' doubts (`step.split_reasons`, at
 `finalize_fields`, which the step's own finish reaches through `refinalize`).

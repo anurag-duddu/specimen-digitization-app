@@ -21,6 +21,7 @@ from test_step import FIELD_RESEARCH, Gazetteer, Scripted, answering, build_rig,
 from specimen_digitization.application.collection_profiles import published_registry
 from specimen_digitization.application.domain import AuditEvent, Disposition, FieldValue, ValueState
 from specimen_digitization.application.integrity import verify_evidence
+from specimen_digitization.application.standing_holds import REASSESSMENT_UNCONFIRMED
 from specimen_digitization.application.model_option import active_routes
 from specimen_digitization.application.worker_deadline import WorkerDeadlineExceeded
 from specimen_digitization.application.workflow import SECOND_OPINION
@@ -1451,7 +1452,7 @@ def reassessed_unconfirmed(tmp_path, monkeypatch, runner):
     _, done, *_ = execute(rig, monkeypatch, outage=True)
     if runner:
         rig.workflow.second_opinion = runner(rig)
-    assert any(code.startswith(so.REASSESSMENT_UNCONFIRMED + ":") for code in done.run.reasons)
+    assert any(code.startswith(REASSESSMENT_UNCONFIRMED + ":") for code in done.run.reasons)
     return rig, done
 
 
@@ -1459,7 +1460,9 @@ def reassessed_unconfirmed(tmp_path, monkeypatch, runner):
 def test_the_step_keeps_the_reassessment_reasons_research_left(tmp_path, monkeypatch, how):
     """G51 round 2, (a): after the step finishes, however it finishes, the run's reasons other than the
     second opinion's equal what research left on its own saved run, the retained
-    location_reassessment_unconfirmed reasons included, and the record is for review."""
+    location_reassessment_unconfirmed reasons included, and the record is for review. With PR #455 the
+    step's finish carries no reason across its refinalize: the hold is durable (run.pending_review,
+    recorded by _retained_reassessment) and derived at every finalize."""
     from specimen_digitization.application import active_graph
 
     def runner(rig):
@@ -1474,6 +1477,8 @@ def test_the_step_keeps_the_reassessment_reasons_research_left(tmp_path, monkeyp
     final = to_end(rig).run
     assert (final.stage, final.blocker) == ("finalized", None) and final.disposition == Disposition.REVIEW
     assert others(final) == others(research.run)
+    retained = [code for code in research.run.reasons if code.startswith(REASSESSMENT_UNCONFIRMED + ":")]
+    assert retained and set(retained) <= set(final.pending_review)
 
 
 def test_a_resume_at_the_steps_stage_keeps_them_and_a_decision_afterwards_is_mains(tmp_path, monkeypatch):
@@ -1490,7 +1495,7 @@ def test_a_resume_at_the_steps_stage_keeps_them_and_a_decision_afterwards_is_mai
         held.run.stage, held.run.disposition = "plan", None
         rig.repository.save(rig.principal, held, held.version, "resume", "resume")
     resumed = to_end(rig).run
-    retained = [code for code in research.run.reasons if code.startswith(so.REASSESSMENT_UNCONFIRMED + ":")]
+    retained = [code for code in research.run.reasons if code.startswith(REASSESSMENT_UNCONFIRMED + ":")]
     assert retained and all(code in resumed.reasons for code in retained)
     assert resumed.disposition == Disposition.REVIEW
     habitat = resumed.fields["habitat"]

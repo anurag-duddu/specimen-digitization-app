@@ -80,14 +80,6 @@ def mark_second_opinion_due(run) -> None:
     mark_due(run)
 
 
-def second_opinion_waits(run) -> bool:
-    """A completed run brought back to the handover with no disposition (Resume, Retry) whose second
-    opinion is due: it goes to the step, not the recheck (second_opinion_step.waits)."""
-    from .second_opinion_step import waits
-
-    return waits(run)
-
-
 def current_human_location_fields(repository, specimen) -> set[str]:
     """Current ordinary field decisions, verified against immutable save audits.
 
@@ -772,13 +764,11 @@ class Workflow:
             and self.field_research.handles(run)
         ):
             step = FIELD_RECHECK if FIELD_RESEARCH in run.completed_steps else FIELD_RESEARCH
-        if step == FIELD_RECHECK and (run.stage == SECOND_OPINION or second_opinion_waits(run)):
+        if step == FIELD_RECHECK and run.stage == SECOND_OPINION:
             # The fields' second opinion, after field research, before the record is finalized: its
-            # own step, whose failure never blocks the run (second_opinion_step.py). A record resumed
-            # or retried while it waited for it goes to it again; its finish is the recheck's refinalize.
+            # own step, whose failure never blocks the run (second_opinion_step.py).
             from .second_opinion_step import run_step
 
-            run.stage = SECOND_OPINION
             return run_step(self, principal, specimen, revision)
         ordinary_first_pass = step.startswith("first_pass:") and first_pass_failure_is_recoverable(
             run, step
