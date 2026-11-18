@@ -33,7 +33,6 @@ does not supply a value that no reader wrote and field research did not propose.
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterable, Sequence
 
 from specimen_digitization.application.barcode import FIELD, stored_code
@@ -59,9 +58,20 @@ def number(text: str | None) -> str | None:
 
 
 def written_whole(text: str, payload: str) -> bool:
-    """Whether the text writes the code's digits as a whole number: no digit right before or
-    right after them (nothing joined across white space, nothing else normalised)."""
-    return re.search(rf"(?<![0-9]){re.escape(payload)}(?![0-9])", text) is not None
+    """Whether the text writes the code's digits as a whole number: the code's ASCII digits, and
+    no character of any numeric kind right before or right after them (nothing joined across
+    white space, nothing else normalised). str.isnumeric, not isdigit: it is the stricter test
+    here, as it also counts fractions, Roman numerals and CJK numerals as numbers a code beside
+    them would be clipped from."""
+    if not (payload.isascii() and payload.isdigit()):
+        return False
+    start = text.find(payload)
+    while start >= 0:
+        end = start + len(payload)
+        if not (start and text[start - 1].isnumeric()) and not (end < len(text) and text[end].isnumeric()):
+            return True
+        start = text.find(payload, start + 1)
+    return False
 
 
 def candidate_texts(task: FieldTask, value: FieldValue, outcomes: Iterable[FieldOutcome | None]) -> list[str]:

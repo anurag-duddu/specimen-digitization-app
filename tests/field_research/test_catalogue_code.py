@@ -195,6 +195,17 @@ def test_a_clipped_candidate_breaks_no_tie(tmp_path, monkeypatch):
     assert not [f for f in run.findings if f.field_key == KEY and f.reason_code.startswith("cleared:")]
 
 
+def test_a_fullwidth_digit_before_the_code_breaks_no_tie(tmp_path, monkeypatch):
+    """Codex round 4: the true number is 10010001 with a fullwidth first one; the foreign code
+    0010001 is its suffix. It is not written whole: the field stays open (at 1152f5ca it cleared)."""
+    rig = rig_with(tmp_path, monkeypatch, "FMNHINS \N{FULLWIDTH DIGIT ONE}0010001", "FMNHINS 10010007")
+    run = rig.specimen.run
+    with_code(rig)
+    settle(rig, Scripted({KEY: several(CODE, "10010007")}))
+    assert run.fields[KEY].state == ValueState.AMBIGUOUS
+    assert not [f for f in run.findings if f.field_key == KEY and f.reason_code.startswith("cleared:")]
+
+
 @pytest.mark.parametrize(("text", "whole"), [
     # The code as the end (a suffix) or the start (a prefix) of a longer run of digits.
     ("FMNHINS 10010001", False),
@@ -208,6 +219,17 @@ def test_a_clipped_candidate_breaks_no_tie(tmp_path, monkeypatch):
     ("No.0010001.", True),
     # Nothing is joined across white space.
     ("FMNHINS 001 0001", False),
+    # A digit of another script, or a superscript, right before or after (Codex round 4).
+    ("FMNHINS \N{FULLWIDTH DIGIT ONE}0010001", False),
+    ("FMNHINS 0010001\N{FULLWIDTH DIGIT ONE}", False),
+    ("FMNHINS \N{ARABIC-INDIC DIGIT ONE}0010001", False),
+    ("FMNHINS 0010001\N{ARABIC-INDIC DIGIT ONE}", False),
+    ("FMNHINS \N{SUPERSCRIPT ONE}0010001", False),
+    ("FMNHINS 0010001\N{SUPERSCRIPT ONE}", False),
+    # Numeric characters that are not digits count too (isnumeric).
+    ("FMNHINS \N{VULGAR FRACTION ONE HALF}0010001", False),
+    # A clipped occurrence first and a whole one later on the text.
+    ("10010001 and 0010001", True),
 ])
 def test_the_code_counts_as_written_only_as_a_whole_number(text, whole):
     from specimen_digitization.field_research.catalogue_code import written_whole
