@@ -102,12 +102,19 @@ IDENTIFIERS = frozenset({"fmnh_ins_number"})
 UNIT_WORDS = {"province_state": ("prov", "province", "department"), "county": ("county", "co")}
 
 # The request, as the benchmark pinned it (candidates.json, probe.json): 8,000 output tokens, the
-# output tool forced. The step's reservation, in micro-USD: one request's worst case at list (an input
-# bound of about 14,000 tokens for a four-label slide and 8,000 output tokens is about USD 0.052; the
-# benchmark's dearest answer cost USD 0.038, its mean 0.012). A request whose worst case is more is
-# not sent (not obtained: budget).
+# output tool forced. One request's worst case at list is about USD 0.052 (an input bound of about
+# 14,000 tokens for a four-label slide and 8,000 output tokens; the benchmark's dearest answer cost
+# USD 0.038, its mean 0.012). A malformed answer is asked again once (REQUESTS), as the readers' are,
+# so the step reserves two requests' worst case, in micro-USD, and settles to what they cost. A
+# request whose worst case does not fit what is left is not sent (not obtained: budget).
 MAX_TOKENS = 8_000
-CAP_MICROS = 60_000
+REQUESTS = 2
+CAP_MICROS = 120_000
+# The tokens the step reserves on the run's token budget, as every mandatory paid step does
+# (workflow.Workflow._step, reservation_tokens).
+RESERVED_TOKENS = 16_000
+# The stored result's status while its intent is open (the request may be in flight).
+ASKING = "asking"
 # Each image's tokens are bounded by one token per 28 by 28 pixels (the readers' rule; the benchmark's
 # Muse Spark calls reported about a third of that), and the text's by its UTF-8 bytes.
 PIXELS_PER_TOKEN = 28
@@ -520,12 +527,13 @@ def finish(run) -> None:
 
 # ---- the call ---------------------------------------------------------------------------------------
 
-async def ask(model, labels: Sequence[Label], text: str, meter, *, deadline: float) -> object:
+async def ask(model, labels: Sequence[Label], text: str, meter, *, deadline: float, sent: list | None = None) -> object:
     """One request (the instruction and the labels), built first, then reserved on `meter` at its
     worst case and settled at the provider's reported usage, or at its worst case (zero after an HTTP
-    429) when it fails after the reservation; cut at `deadline` (time.monotonic). Returns the
-    record_fields call's arguments. NotObtained when the request is not made or not answered by one
-    record_fields call."""
+    429) when it fails after the reservation; the request and the client's closing are both cut at
+    `deadline` (time.monotonic). Returns the record_fields call's arguments. NotObtained when the
+    request is not made or not answered by one record_fields call. `sent` gets one item per request
+    reserved."""
     from pydantic_ai.messages import ModelRequest, SystemPromptPart, ToolCallPart, UserPromptPart
     from pydantic_ai.models import ModelRequestParameters
     from pydantic_ai.tools import ToolDefinition
@@ -544,12 +552,17 @@ async def ask(model, labels: Sequence[Label], text: str, meter, *, deadline: flo
         ticket = await meter.reserve(bound, MAX_TOKENS)
     except BudgetExhausted:
         raise NotObtained("budget") from None
+    if sent is not None:
+        sent.append(ticket)
     settled = False
     try:
         try:
             response = await asyncio.wait_for(model.request(messages, {"max_tokens": MAX_TOKENS}, parameters), timeout)
         finally:
-            await _close_client(model)
+            try:
+                await asyncio.wait_for(_close_client(model), max(0.0, deadline - time.monotonic()))
+            except asyncio.TimeoutError:
+                LOGGER.warning("second opinion: the client did not close before the deadline")
     except asyncio.TimeoutError:
         raise NotObtained("timeout") from None
     except Exception as error:  # noqa: BLE001 - a provider error is the answer: not obtained
@@ -589,41 +602,61 @@ class Result:
     requests: int = 0
 
 
+def bounded(call: Callable, deadline: float):
+    """`call()` in a worker thread, waited for until `deadline` (time.monotonic) at most: NotObtained
+    ("no_time") when it has not returned by then (the thread is left to end on its own; nothing waits
+    for it)."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as Late
+
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="second-opinion")
+    try:
+        return pool.submit(call).result(timeout=max(0.0, deadline - time.monotonic()))
+    except Late:
+        raise NotObtained("no_time") from None
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+
+
 def obtain(run, *, model_factory: Callable, crops: Callable, price, seconds: float, meter_factory: Callable) -> Result:
-    """Ask once and compare (module docstring), inside `seconds`. `crops()` returns {region id: PNG
-    bytes}; `model_factory()` the model. Never raises an Exception: anything that goes wrong is a
-    Result not obtained, with its code. The run is not changed."""
+    """Ask and compare (module docstring), inside `seconds`: reading the crops (`crops()`, {region id:
+    PNG bytes}, in a worker thread waited for until the deadline), the request and the client's closing
+    (ask) all end by it. A malformed answer (no record_fields call, or one the schema refuses) is asked
+    again once with a new model (`model_factory()`) while time and the meter's cap allow; a second is
+    "malformed". Never raises an Exception: anything that goes wrong is a Result not obtained, with
+    its code. The run is not changed."""
     deadline = time.monotonic() + seconds
-    spent, tokens, requests, padded = 0, None, 0, []
+    spent, tokens, sent, padded = 0, None, [], []
+    meter = None
     try:
         if price is None:
             raise NotObtained("unconfigured")
         if seconds < MIN_SECONDS:
             raise NotObtained("no_time")
         text = instruction()
-        labels = labels_of(run, crops())
+        labels = labels_of(run, bounded(crops, deadline))
         padded = [label.number for label in labels if label.padded]
         if not labels:
             raise NotObtained("no_labels")
-        if deadline - time.monotonic() < MIN_SECONDS:
-            raise NotObtained("no_time")
-        try:
-            model = model_factory()
-        except Exception:  # noqa: BLE001 - no request was made
-            raise NotObtained("unconfigured") from None
         meter = meter_factory(CAP_MICROS, price)
-        try:
-            arguments = asyncio.run(ask(model, labels, text, meter, deadline=deadline))
-        finally:
-            spent = meter.spent_micros if meter.outstanding_micros == 0 else None
-            tokens = getattr(meter, "reported", None)
-            requests = 1 if meter.spent_micros or (tokens or {}).get("requests") else 0
-        if isinstance(arguments, str):
+        for request in range(REQUESTS):
+            if deadline - time.monotonic() < MIN_SECONDS:
+                raise NotObtained("no_time")
             try:
-                arguments = json.loads(arguments)
-            except ValueError:
-                raise NotObtained("malformed") from None
-        record = read_answer(arguments)
+                model = model_factory()
+            except Exception:  # noqa: BLE001 - no request was made
+                raise NotObtained("unconfigured") from None
+            try:
+                arguments = asyncio.run(ask(model, labels, text, meter, deadline=deadline, sent=sent))
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except ValueError:
+                        raise NotObtained("malformed") from None
+                record = read_answer(arguments)
+                break
+            except NotObtained as reason:
+                if reason.code not in ("malformed", "no_tool_call") or request + 1 == REQUESTS:
+                    raise
         fields = {}
         for key in JUDGED:
             value = run.fields.get(key)
@@ -631,13 +664,18 @@ def obtain(run, *, model_factory: Callable, crops: Callable, price, seconds: flo
                 opinion = record[key]
                 fields[key] = {"compared": shown(value), "value": opinion.value, "evidence": opinion.evidence,
                     "verdict": AGREES_VERDICT if same(key, shown(value), opinion.value) else DIFFERS_VERDICT}
-        return Result(OBTAINED, fields=fields, answer=arguments, padded=padded, spent=spent, tokens=tokens,
-            requests=requests, labels={str(label.number): label.region_id for label in labels})
+        result = Result(OBTAINED, fields=fields, answer=arguments, padded=padded,
+            labels={str(label.number): label.region_id for label in labels})
     except NotObtained as reason:
-        return Result(NOT_OBTAINED, reason.code, padded=padded, spent=spent, tokens=tokens, requests=requests)
+        result = Result(NOT_OBTAINED, reason.code, padded=padded)
     except Exception:  # noqa: BLE001 - the step never fails the run
         LOGGER.warning("second opinion not obtained", exc_info=True)
-        return Result(NOT_OBTAINED, "error", padded=padded, spent=spent, tokens=tokens, requests=requests)
+        result = Result(NOT_OBTAINED, "error", padded=padded)
+    if meter is not None:
+        spent = meter.spent_micros if meter.outstanding_micros == 0 else None
+        tokens = getattr(meter, "reported", None)
+    result.spent, result.tokens, result.requests = spent, tokens, len(sent)
+    return result
 
 
 def record(run, result: Result, *, attempt: int, at: str) -> None:
@@ -657,6 +695,74 @@ def record(run, result: Result, *, attempt: int, at: str) -> None:
         stored.update({key: previous[key] for key in ("instruction_sha256", "fields", "answer", "labels",
             "padded_labels") if key in previous})
     run.second_opinion = stored
+
+
+def open_intent(run) -> bool:
+    """Whether the step's intent is open on the run: saved before its request, its result not yet."""
+    stored = getattr(run, "second_opinion", None)
+    return isinstance(stored, Mapping) and stored.get("status") == ASKING
+
+
+def paid_call(run, *, attempt: int, reserved: int, result: Result) -> None:
+    """The step's one paid-call entry, in lane_costs' shape (field_research.step.record_cost's): what the
+    provider reported, or the reservation when that is not known; the run's token total gets the
+    reported tokens."""
+    from specimen_digitization.application.domain import now
+    from specimen_digitization.model_gateway import SECOND_OPINION_ROUTE
+
+    prices = run.profile.execution.price_list
+    known = result.spent is not None
+    usage = {"model_calls": result.requests}
+    if result.tokens:
+        usage.update(reported_requests=result.tokens["requests"], input_tokens=result.tokens["input_tokens"],
+            cached_input_tokens=result.tokens["cached_input_tokens"], output_tokens=result.tokens["output_tokens"])
+        run.usage.tokens += result.tokens["input_tokens"] + result.tokens["output_tokens"]
+    run.paid_calls.append({
+        "step": STEP,
+        "attempt": attempt,
+        "kind": "model",
+        "route_id": SECOND_OPINION_ROUTE,
+        "reserved_micros": reserved,
+        "usage": usage if known else None,
+        "outcome": "completed" if result.status == OBTAINED else "failed" if known else "unknown",
+        "cost_micros": result.spent if known else reserved,
+        "cost_basis": "computed" if known else "reserved",
+        **({"failure_code": result.reason} if result.reason else {}),
+        "price_list": {"version": prices["version"], "as_of": prices["as_of"]},
+        "at": now(),
+    })
+    if any(call["cost_basis"] == "reserved" for call in run.paid_calls):
+        run.usage.actual_cost_micros = None
+    elif known:
+        run.usage.actual_cost_micros = (run.usage.actual_cost_micros or 0) + result.spent
+
+
+def abandon(run, code: str = "abandoned") -> bool:
+    """The step's open intent ends "not obtained" with `code`, its request's spend unknown: its paid
+    call is recorded at the whole reservation, held (the run's reserved cost, the monthly caps' and the
+    program's ledgers keep it, as for any call whose outcome is unknown); its lease and reserved time
+    go. Whether there was one to abandon."""
+    from specimen_digitization.application.domain import now
+
+    if not open_intent(run):
+        return False
+    attempt = run.second_opinion.get("attempt") or run.attempts.get(STEP, 1)
+    if not any(call["step"] == STEP and call["attempt"] == attempt for call in run.paid_calls):
+        paid_call(run, attempt=attempt, reserved=0 if run.profile.synthetic else CAP_MICROS,
+            result=Result(NOT_OBTAINED, code, spent=None))
+    record(run, Result(NOT_OBTAINED, code), attempt=attempt, at=now())
+    run.lease_until = None
+    timeout = run.profile.execution.effect_timeout_for_step(STEP)
+    run.usage.reserved_active_seconds = max(0, run.usage.reserved_active_seconds - timeout)
+    return True
+
+
+def at_finalize(run) -> list[str]:
+    """step.finalize_fields' hook: anything that finalizes the run while the step's intent is open (a
+    person's decision, its approval, research again) abandons that intent first (abandon), so it never
+    stands as an unknown outcome; then the derived marks (reasons)."""
+    abandon(run)
+    return reasons(run)
 
 
 def route_price(run):

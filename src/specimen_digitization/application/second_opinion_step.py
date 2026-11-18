@@ -7,27 +7,36 @@ no recorded verdict for its current value (`second_opinion.due`), the workflow d
 record yet: `mark_due` sets the run's stage to the step and its disposition to none, in the same
 save. The next workflow step runs it (`run_step`), and it finalizes the record (second_opinion.finish).
 
-ITS LIFECYCLE is a paid step's: what it reserves (one request's cap, second_opinion.CAP_MICROS) is
-checked against the run's cost ceiling, the retained research liabilities, the run's limits on steps,
-external calls and active time, any monthly cap and the program's allowance, and reserved on them; an
-intent is saved with a lease, the attempt and the unknown-outcome blocker before the request; the
-request runs inside the step's deadline (the profile's external timeout, the request's own
-TIMEOUT_SECONDS and the worker's deadline); its paid call is recorded under the second opinion's route
-and the reservation settled to what the provider reported (lane_costs.settle_step), or held in full
-when that is not known.
+THE STEP IS OPTIONAL: every way it can go wrong ends it "not obtained" with a code and the record is
+finalized with the stage and blocker field research gave it (finalized, none) and the not-checked
+marks derived from the current values; and it obeys every guard a mandatory paid step obeys. A
+mandatory paid step that cannot be afforded, fails, times out or loses its outcome blocks the run
+(processing_blocked, a retry scheduled, or a person's attention); this one never does.
 
-HOW ITS FAILURE DIFFERS FROM A MANDATORY STEP'S. A mandatory paid step that cannot be afforded, that
-fails, times out or loses its outcome blocks the run (processing_blocked, a retry scheduled, or a
-person's attention). This step never does: whatever stops it ends it "not obtained" with a code, and
-the workflow finalizes the record in the same save, with the stage and blocker field research gave it
-(finalized, none) and the not-checked marks derived from the current values. The refusals before any
-reservation (switched off, attempts used, a run limit, no price, money) reserve nothing; a refusal on
-the monthly-cap or allowance ledgers releases what it held there. After the intent: a provider error
-(HTTP 402 included), a timeout, a malformed answer, a spent meter or any exception is recorded and
-finalized at once; a lost outcome (the worker's deadline, a crash, a save that failed) is found by the
-next workflow step once the lease ends, recorded "not obtained: outcome_unknown" with its whole
-reservation held, and finalized. It is never sent twice for one due: each attempt makes at most one
-request, and a lost one is not repeated.
+ITS LIFECYCLE is a paid step's:
+- Guards before anything is reserved (`_refusal`): its attempts, the run's limits on steps, external
+  calls, reserved tokens (RESERVED_TOKENS, as a mandatory paid step reserves) and active time, a price
+  row, the cost ceiling with the retained research liabilities. Then the reservations (the retained
+  research cost, any monthly cap, the program's allowance), all inside one handler: any refusal or
+  error there releases what the monthly caps held (tenant_budget.release_unsent, settled at zero once
+  saved) and ends it not obtained ("budget"), so nothing is retried in a loop.
+- The intent, saved before the request: the stored result's status `asking`, the attempt, a lease,
+  the reserved cost, tokens and time. It sets no blocker: an open intent is never an unknown external
+  outcome that blocks. Whatever else finalizes the run meanwhile (a person's decision or approval,
+  research again) abandons it first (second_opinion.abandon, from step.finalize_fields): not obtained,
+  "abandoned", its whole reservation held as for any call whose outcome is unknown. If the step's own
+  result then loses its save, it reads the record again and leaves it as that finalize left it.
+- The request, inside the step's deadline: the profile's external timeout, at most TIMEOUT_SECONDS, and
+  the worker's deadline less research's margin. Reading the crops runs in a worker thread waited for
+  until the deadline, the request and the client's closing are each cut at it (second_opinion.obtain,
+  bounded, ask). A malformed answer is asked again once inside the same deadline and reservation.
+- The result: its paid call recorded under its own route and settled to what the provider reported
+  (lane_costs.settle_step), or held in full when that is not known; the reported tokens counted. A
+  result that would pass the record's size limit is not stored: "not obtained: result_too_large".
+- A lost outcome (the worker's deadline, a crash, the result's save failing) is found by the next
+  workflow step once the lease ends: not obtained "outcome_unknown", its reservation held, and the
+  record finalized. Each attempt sends at most one request, or two when the first answer is
+  malformed; a lost one is not repeated.
 """
 
 from __future__ import annotations
@@ -36,8 +45,6 @@ from datetime import datetime, timedelta
 
 from .domain import AuditEvent
 from .storage import digest
-
-UNKNOWN = "external_outcome_unknown"
 
 
 def mark_due(run) -> None:
@@ -49,39 +56,6 @@ def mark_due(run) -> None:
         run.stage, run.disposition = second_opinion.STEP, None
 
 
-def _paid_call(run, *, attempt: int, reserved: int, result) -> None:
-    """The step's one paid-call entry, in lane_costs' shape (field_research.step.record_cost's): what the
-    provider reported, or the reservation when that is not known."""
-    from ..field_research import second_opinion
-    from ..model_gateway import SECOND_OPINION_ROUTE
-    from .domain import now
-
-    prices = run.profile.execution.price_list
-    known = result.spent is not None
-    usage = {"model_calls": result.requests}
-    if result.tokens:
-        usage.update(reported_requests=result.tokens["requests"], input_tokens=result.tokens["input_tokens"],
-            cached_input_tokens=result.tokens["cached_input_tokens"], output_tokens=result.tokens["output_tokens"])
-    run.paid_calls.append({
-        "step": second_opinion.STEP,
-        "attempt": attempt,
-        "kind": "model",
-        "route_id": SECOND_OPINION_ROUTE,
-        "reserved_micros": reserved,
-        "usage": usage if known else None,
-        "outcome": "completed" if result.status == second_opinion.OBTAINED else "failed" if known else "unknown",
-        "cost_micros": result.spent if known else reserved,
-        "cost_basis": "computed" if known else "reserved",
-        **({"failure_code": result.reason} if result.reason else {}),
-        "price_list": {"version": prices["version"], "as_of": prices["as_of"]},
-        "at": now(),
-    })
-    if any(call["cost_basis"] == "reserved" for call in run.paid_calls):
-        run.usage.actual_cost_micros = None
-    elif known:
-        run.usage.actual_cost_micros = (run.usage.actual_cost_micros or 0) + result.spent
-
-
 def _refusal(workflow, principal, specimen, cost: int, timeout: float) -> str | None:
     """Why the step makes no request, before anything is reserved, or None."""
     from ..field_research import second_opinion
@@ -91,7 +65,9 @@ def _refusal(workflow, principal, specimen, cost: int, timeout: float) -> str | 
     policy = run.profile.execution
     if attempts_used(run, second_opinion.STEP) >= policy.max_attempts:
         return "attempts_used"
+    tokens = 0 if run.profile.synthetic else second_opinion.RESERVED_TOKENS
     if (run.usage.steps >= policy.max_steps or run.usage.external_calls + 1 > policy.max_external_calls
+            or run.usage.reserved_tokens + tokens > policy.max_tokens
             or run.usage.active_seconds + run.usage.reserved_active_seconds + timeout > policy.max_active_seconds):
         return "run_limit"
     if second_opinion.route_price(run) is None or policy.price_list is None:
@@ -113,11 +89,44 @@ def _refusal(workflow, principal, specimen, cost: int, timeout: float) -> str | 
     return None
 
 
-def _end(workflow, principal, specimen, revision, *, label: str, release=None):
-    """Finalize the record (second_opinion.finish) and save it with an audit event; then settle at zero
-    any monthly-cap hold a refusal released (tenant_budget.settle_released)."""
+def _reserve(workflow, principal, specimen, cost: int):
+    """The reservations, all inside one handler: (None, None) when every one holds; else ("budget",
+    what the monthly caps held, released on the run for settle_released)."""
     from ..field_research import second_opinion
+    from .lane_allowance import reserve_step
+    from .tenant_budget import release_unsent, reserve_step as reserve_tenant_budget
+
+    step = second_opinion.STEP
+    try:
+        if workflow.reserve_retained_cost is not None:
+            workflow.reserve_retained_cost(principal, specimen, step, cost)
+        if not (reserve_tenant_budget(workflow.repository, principal, specimen, step, cost, workflow.clock)
+                or reserve_step(workflow.repository, principal, specimen, step, cost, workflow.clock)):
+            return None, None
+    except Exception:  # noqa: BLE001 - a refusal or an unreadable ledger: not obtained, never a loop
+        pass
+    try:
+        return "budget", release_unsent(specimen.run, step)
+    except Exception:  # noqa: BLE001 - the holds then stay, as release_unsent's own rule says
+        return "budget", None
+
+
+def _save(workflow, principal, specimen, revision, label: str):
     from .active_graph import save_recoverably
+
+    return save_recoverably(workflow.repository, principal, specimen, revision, f"{label}:{revision}",
+        digest({"step": "field_second_opinion", "run": specimen.run.id, "label": label}))
+
+
+def _end(workflow, principal, specimen, revision, *, label: str, release=None, prior=None, attempt=0):
+    """Finalize the record (second_opinion.finish) and save it with an audit event; then settle at zero
+    any monthly-cap hold a refusal released (tenant_budget.settle_released). A result that would pass
+    the record's size limit is put back to `prior` (the stored result before this attempt) and stored
+    "not obtained: result_too_large" instead. A save that loses to another writer returns the record
+    as that writer left it (an open intent is abandoned by its finalize)."""
+    from ..field_research import second_opinion
+    from .active_graph import GraphTooLarge
+    from .storage import Conflict, SnapshotTooLarge
     from .tenant_budget import settle_released
 
     run = specimen.run
@@ -125,8 +134,22 @@ def _end(workflow, principal, specimen, revision, *, label: str, release=None):
     run.lease_until = None
     specimen.audit.append(AuditEvent(actor=principal.user_id, action="workflow_step", reason=second_opinion.STEP,
         after={"stage": run.stage, "blocker": run.blocker}))
-    saved = save_recoverably(workflow.repository, principal, specimen, revision, f"{label}:{revision}",
-        digest({"step": second_opinion.STEP, "run": run.id, "label": label}))
+    try:
+        try:
+            saved = workflow.repository.save(principal, specimen, revision, f"{label}:{revision}",
+                digest({"step": second_opinion.STEP, "run": run.id, "label": label}))
+        except (GraphTooLarge, SnapshotTooLarge):
+            if not (isinstance(run.second_opinion, dict) and run.second_opinion.get("status") == second_opinion.OBTAINED):
+                raise
+            run.second_opinion = prior
+            second_opinion.record(run, second_opinion.Result(second_opinion.NOT_OBTAINED, "result_too_large"),
+                attempt=attempt, at=workflow.clock().isoformat())
+            second_opinion.finish(run)
+            saved = _save(workflow, principal, specimen, revision, label + "-too-large")
+    except Conflict:
+        return workflow.repository.get(principal.scope, specimen.id)
+    except (GraphTooLarge, SnapshotTooLarge):
+        saved = _save(workflow, principal, specimen, revision, label)
     if release is not None:
         settle_released(workflow.repository, principal, saved, release, workflow.clock)
     return saved
@@ -135,29 +158,20 @@ def _end(workflow, principal, specimen, revision, *, label: str, release=None):
 def run_step(workflow, principal, specimen, revision):
     """The step, once (module docstring). Returns the saved record."""
     from ..field_research import second_opinion
-    from .lane_allowance import reserve_step
     from .region_pixels import region_png
     from .source_pixels import source_image
-    from .tenant_budget import release_unsent, reserve_step as reserve_tenant_budget
     from .worker_deadline import current_deadline
-    from .workflow import OperationalBlock
 
     step = second_opinion.STEP
     run = specimen.run
     policy = run.profile.execution
     timeout = policy.effect_timeout_for_step(step)
     at = workflow.clock()
-    if run.blocker == UNKNOWN:
+    if second_opinion.open_intent(run):
         if run.lease_until and datetime.fromisoformat(run.lease_until) > at:
-            return specimen  # Another worker holds it.
+            return specimen  # Another worker holds it (storage.work_available_at waits for the lease).
         # The attempt's intent was saved and its result never was: not obtained, its reservation held.
-        attempt = run.attempts.get(step, 1)
-        result = second_opinion.Result(second_opinion.NOT_OBTAINED, "outcome_unknown", spent=None)
-        if not any(call["step"] == step and call["attempt"] == attempt for call in run.paid_calls):
-            _paid_call(run, attempt=attempt, reserved=0 if run.profile.synthetic else second_opinion.CAP_MICROS,
-                result=result)
-        second_opinion.record(run, result, attempt=attempt, at=at.isoformat())
-        run.usage.reserved_active_seconds = max(0, run.usage.reserved_active_seconds - timeout)
+        second_opinion.abandon(run, "outcome_unknown")
         return _end(workflow, principal, specimen, revision, label="second-opinion-lost")
     runner = getattr(workflow, "second_opinion", None)
     if runner is None:
@@ -170,29 +184,23 @@ def run_step(workflow, principal, specimen, revision):
     code = _refusal(workflow, principal, specimen, cost, timeout)
     release = None
     if code is None and not run.profile.synthetic:
-        if workflow.reserve_retained_cost is not None:
-            try:
-                workflow.reserve_retained_cost(principal, specimen, step, cost)
-            except OperationalBlock:
-                code = "budget"
-        if code is None and (reserve_tenant_budget(workflow.repository, principal, specimen, step, cost, workflow.clock)
-                or reserve_step(workflow.repository, principal, specimen, step, cost, workflow.clock)):
-            code = "budget"
-            # A monthly cap may hold the attempt while the allowance refused it: released at zero.
-            release = release_unsent(run, step)
+        code, release = _reserve(workflow, principal, specimen, cost)
     if code is not None:
         second_opinion.record(run, second_opinion.Result(second_opinion.NOT_OBTAINED, code),
             attempt=run.attempts.get(step, 0), at=at.isoformat())
         return _end(workflow, principal, specimen, revision, label="second-opinion-refused", release=release)
-    # The intent, saved before the request: a lost outcome is found by the next step (above).
+    # The intent, saved before the request: no blocker; a lost outcome is found by the next step (above),
+    # and anything else that finalizes the run abandons it (second_opinion.at_finalize).
+    prior = run.second_opinion
     run.usage.steps += 1
     run.usage.external_calls += 1
+    run.usage.reserved_tokens += 0 if run.profile.synthetic else second_opinion.RESERVED_TOKENS
     run.usage.reserved_cost_micros += cost
     run.usage.reserved_active_seconds += timeout
-    run.blocker = UNKNOWN
     run.lease_until = (at + timedelta(seconds=policy.lease_seconds)).isoformat()
     run.attempts[step] = run.attempts.get(step, 0) + 1
     attempt = run.attempts[step]
+    second_opinion.record(run, second_opinion.Result(second_opinion.ASKING), attempt=attempt, at=at.isoformat())
     specimen = workflow.repository.save(principal, specimen, revision, f"intent:{revision}", digest({"intent": step}))
     revision, run = specimen.version, specimen.run
     seconds = min(second_opinion.TIMEOUT_SECONDS, timeout)
@@ -214,13 +222,12 @@ def run_step(workflow, principal, specimen, revision):
         result = second_opinion.Result(second_opinion.NOT_OBTAINED, "error", spent=None)
     run.usage.active_seconds += max(0, workflow.monotonic() - started)
     run.usage.reserved_active_seconds = max(0, run.usage.reserved_active_seconds - timeout)
-    _paid_call(run, attempt=attempt, reserved=cost, result=result)
+    second_opinion.paid_call(run, attempt=attempt, reserved=cost, result=result)
     second_opinion.record(run, result, attempt=attempt, at=at.isoformat())
-    run.blocker = None
     if not run.profile.synthetic:
         from .lane_costs import settle_step
 
         settle_step(workflow.repository, principal, specimen, step, cost, workflow.clock)
         if workflow.settle_retained_cost is not None:
             workflow.settle_retained_cost(principal, specimen, step)
-    return _end(workflow, principal, specimen, revision, label="second-opinion")
+    return _end(workflow, principal, specimen, revision, label="second-opinion", prior=prior, attempt=attempt)

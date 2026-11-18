@@ -475,7 +475,8 @@ def test_a_provider_error_or_a_malformed_answer_is_not_obtained_and_never_blocks
     stage_and_blocker_unchanged(run, main_like(tmp_path / "main"))
     assert (run.second_opinion["status"], run.second_opinion["reason"]) == (so.NOT_OBTAINED, code)
     assert "fields" not in run.second_opinion and "answer" not in run.second_opinion
-    assert len(opinion.requests) == 1
+    # A malformed answer is asked again once; a provider error is not.
+    assert len(opinion.requests) == (2 if code == "malformed" else 1)
     [paid] = step_paid(run)
     assert paid["failure_code"] == code and paid["outcome"] in ("failed", "unknown")
 
@@ -488,8 +489,8 @@ def test_a_timeout_is_not_obtained(tmp_path, monkeypatch):
     with_opinion(rig, opinion)
     real = so.ask
 
-    async def short(model, labels, text, meter, *, deadline):
-        return await real(model, labels, text, meter, deadline=deadline - 14.0)
+    async def short(model, labels, text, meter, *, deadline, **kwargs):
+        return await real(model, labels, text, meter, deadline=deadline - 14.0, **kwargs)
 
     monkeypatch.setattr(so, "ask", short)
     run = to_end(rig).run
@@ -600,8 +601,12 @@ def test_a_worker_deadline_during_the_request_is_found_after_the_lease_and_never
     with pytest.raises(WorkerDeadlineExceeded):
         rig.workflow.step(rig.principal, rig.specimen.id)
     held = rig.repository.get(rig.principal.scope, rig.specimen.id).run
-    assert (held.stage, held.blocker, held.attempts[so.STEP]) == (SECOND_OPINION, "external_outcome_unknown", 1)
-    assert held.lease_until and not step_paid(held)
+    # The open intent sets no blocker: it is never an unknown outcome that blocks.
+    assert (held.stage, held.blocker, held.attempts[so.STEP]) == (SECOND_OPINION, None, 1)
+    assert held.second_opinion["status"] == so.ASKING and held.lease_until and not step_paid(held)
+    from specimen_digitization.application.storage import work_available_at
+
+    assert work_available_at(rig.repository.get(rig.principal.scope, rig.specimen.id)) == held.lease_until
     # Within the lease: left as it is.
     assert rig.workflow.step(rig.principal, rig.specimen.id).version == rig.repository.get(
         rig.principal.scope, rig.specimen.id).version
@@ -826,3 +831,170 @@ def test_a_recheck_with_the_values_judged_asks_nothing_and_a_not_obtained_keeps_
     so.record(run, so.Result(so.NOT_OBTAINED, "provider_error_402"), attempt=2, at="t")
     assert run.second_opinion["status"] == so.NOT_OBTAINED and run.second_opinion["fields"]
     assert so.reasons(run) == []
+
+
+# ---- Codex round 3 on 91176adf: the optional step's lifecycle ----------------------------------
+
+def graph_size(specimen):
+    from specimen_digitization.application import active_graph
+
+    return len(active_graph.encoded(active_graph.envelope(specimen)))
+
+
+def test_a_result_that_would_pass_the_size_limit_is_not_stored_and_never_blocks(tmp_path, monkeypatch):
+    """Codex round 3, 1: research and the intent fit under the record's limit, the inline answer would
+    not. The result is not stored ("not obtained: result_too_large") and the record is finalized with
+    research's stage and blocker, at the boundary of the limit."""
+    from specimen_digitization.application import active_graph
+
+    bulky = {key: {"value": None, "evidence": "L1: " + "x" * 2_000} for key in so.FIELDS}
+    twin = build_rig(tmp_path / "twin")
+    with_opinion(twin, Opinion(bulky))
+    obtained = graph_size(to_end(twin))
+    rig = build_rig(tmp_path)
+    with_opinion(rig, Opinion(bulky))
+    pending = rig.workflow.step(rig.principal, rig.specimen.id)
+    monkeypatch.setattr(active_graph, "GRAPH_THRESHOLD", 0)
+    # The limit lies between the record without the answer (a few KiB more than the pending record)
+    # and with it (about 80 KiB more: the answer and the judged fields' texts).
+    limit = graph_size(pending) + 8 * 1024
+    assert obtained > limit
+    monkeypatch.setattr(active_graph, "NORMAL_GRAPH_LIMIT", limit)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (run.second_opinion["status"], run.second_opinion["reason"]) == (so.NOT_OBTAINED, "result_too_large")
+    assert "answer" not in run.second_opinion and "fields" not in run.second_opinion
+    stage_and_blocker_unchanged(run, main_like(tmp_path / "main"))
+    assert graph_size(rig.repository.get(rig.principal.scope, rig.specimen.id)) <= limit
+
+
+def test_a_decision_while_the_intent_is_open_abandons_it_and_the_run_moves_on(tmp_path, monkeypatch):
+    """Codex round 3, 2: after the intent is saved, a person approves the record. The approval's
+    finalize abandons the open intent (not obtained, "abandoned", its reservation held) and finalizes
+    as on main; the provider's result then loses its save, and the step returns the record the approval
+    left. Nothing is blocked; later steps see a finalized record."""
+    from test_step import decide, review_client
+
+    rig = build_rig(tmp_path)
+    client = review_client(rig)
+    opinion = Opinion(agreeing(tmp_path))
+    with_opinion(rig, opinion)
+    rig.workflow.step(rig.principal, rig.specimen.id)
+    real = so.obtain
+
+    def approve_meanwhile(run, **kwargs):
+        decide(client, rig, "approve-meanwhile", "approve")
+        return real(run, **kwargs)
+
+    monkeypatch.setattr(so, "obtain", approve_meanwhile)
+    returned = rig.workflow.step(rig.principal, rig.specimen.id)
+    stored = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    assert returned.version == stored.version
+    run = stored.run
+    assert (run.stage, run.blocker) == ("finalized", None) and run.disposition == Disposition.REVIEW
+    assert (run.second_opinion["status"], run.second_opinion["reason"]) == (so.NOT_OBTAINED, "abandoned")
+    [paid] = step_paid(run)
+    assert (paid["cost_basis"], paid["cost_micros"]) == ("reserved", so.CAP_MICROS) and run.lease_until is None
+    assert own(run, so.NOT_CHECKED) and len(opinion.requests) == 1
+    assert rig.workflow.step(rig.principal, rig.specimen.id).run == run
+
+
+def test_a_reservation_that_raises_ends_it_not_obtained_and_releases_its_holds(tmp_path, monkeypatch):
+    """Codex round 3, 3: a ledger that cannot be read while reserving: no request, the monthly caps'
+    holds released, not obtained ("budget"), the record finalized; nothing is retried."""
+    from specimen_digitization.application import lane_allowance, tenant_budget
+
+    main = main_like(tmp_path / "main")
+    rig = build_rig(tmp_path)
+    opinion = Opinion(full())
+    with_opinion(rig, opinion)
+    rig.workflow.step(rig.principal, rig.specimen.id)
+    released = []
+    real_release = tenant_budget.release_unsent
+    monkeypatch.setattr(tenant_budget, "release_unsent",
+        lambda run, step: released.append(step) or real_release(run, step))
+    monkeypatch.setattr(lane_allowance, "reserve_step",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("ledger unreadable")))
+    run = to_end(rig).run
+    assert run.second_opinion["reason"] == "budget" and not opinion.requests and not step_paid(run)
+    assert released == [so.STEP] and so.STEP not in run.attempts
+    [research] = research_paid(run)
+    assert run.usage.reserved_cost_micros == research["cost_micros"]
+    stage_and_blocker_unchanged(run, main)
+
+
+class SimpleRun:
+    regions = ()
+    observations = ()
+    profile = type("P", (), {"routes": ()})()
+    fields = {}
+
+
+def test_a_crop_read_that_hangs_ends_by_the_deadline(monkeypatch):
+    """Codex round 3, 4: reading the crops runs in a worker thread waited for until the deadline."""
+    import time
+
+    monkeypatch.setattr(so, "MIN_SECONDS", 0.2)
+    started = time.monotonic()
+    result = so.obtain(SimpleRun(), model_factory=lambda: None, crops=lambda: time.sleep(5),
+        price=object(), seconds=0.5, meter_factory=lambda cap, price: None)
+    assert (result.status, result.reason) == (so.NOT_OBTAINED, "no_time")
+    assert time.monotonic() - started < 2
+
+
+def test_a_client_that_never_closes_ends_by_the_deadline(monkeypatch):
+    """Codex round 3, 4: the client's closing is cut at the deadline too; the answer stands."""
+    import time
+
+    from specimen_digitization.field_research import experts
+
+    async def never(model):
+        await asyncio.sleep(60)
+
+    monkeypatch.setattr(experts, "_close_client", never)
+    label = so.Label(1, "r1", b"png", 10, 10, ("a", "b"))
+    price = published_registry().profiles[0].processing.price_list.models[ROUTE]
+    meter = field_step.cost_meter(so.CAP_MICROS, price)
+    started = time.monotonic()
+    arguments = asyncio.run(so.ask(Opinion(full()).factory(), [label], "x", meter, deadline=time.monotonic() + 1.0))
+    assert json.loads(arguments) == full() and time.monotonic() - started < 3
+    assert meter.outstanding_micros == 0
+
+
+def test_the_token_budget_guards_it_as_it_guards_a_mandatory_paid_step(tmp_path):
+    """Codex round 3, 5: at the run's token limit the step does not run ("not obtained: run_limit");
+    otherwise it reserves tokens as a mandatory paid step does and counts what the provider reported."""
+    rig = build_rig(tmp_path)
+    opinion = Opinion(agreeing(tmp_path), tokens=(5_000, 700))
+    with_opinion(rig, opinion)
+    pending = rig.workflow.step(rig.principal, rig.specimen.id)
+    before = (pending.run.usage.reserved_tokens, pending.run.usage.tokens)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert run.second_opinion["status"] == so.OBTAINED
+    assert (run.usage.reserved_tokens, run.usage.tokens) == (before[0] + so.RESERVED_TOKENS, before[1] + 5_700)
+    limited = build_rig(tmp_path / "limited")
+    blocked = Opinion(full())
+    with_opinion(limited, blocked)
+    pending = limited.workflow.step(limited.principal, limited.specimen.id)
+    pending.run.usage.reserved_tokens = pending.run.profile.execution.max_tokens
+    limited.repository.save(limited.principal, pending, pending.version, "tokens", "tokens")
+    run = limited.workflow.step(limited.principal, limited.specimen.id).run
+    assert run.second_opinion["reason"] == "run_limit" and not blocked.requests and run.stage == "finalized"
+
+
+def test_a_malformed_answer_is_asked_again_once(tmp_path):
+    """The coordinator's ruling on round 3: a malformed answer is asked again once, as the readers'
+    are, inside the step's deadline and reservation; the second answer stands."""
+    rig = build_rig(tmp_path)
+
+    class Twice(Opinion):
+        def factory(self):
+            self.raw = "{not json" if not self.built else None
+            return super().factory()
+
+    opinion = Twice(agreeing(tmp_path))
+    with_opinion(rig, opinion)
+    run = to_end(rig).run
+    assert run.second_opinion["status"] == so.OBTAINED and len(opinion.requests) == 2
+    assert run.reasons == [] and run.disposition == Disposition.CLEARED
+    [paid] = step_paid(run)
+    assert paid["usage"]["model_calls"] == 2 and paid["cost_micros"] <= so.CAP_MICROS

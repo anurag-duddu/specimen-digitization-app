@@ -313,6 +313,9 @@ def work_available_at(specimen: Specimen) -> str | None:
         return run.queued_at
     if run.blocker == "external_outcome_unknown" and run.lease_until:
         return run.lease_until
+    # The fields' second opinion's open intent waits for its lease (second_opinion_step.py).
+    if run.stage == "field_second_opinion" and run.lease_until:
+        return run.lease_until
     if run.stage == "retry_scheduled" and run.next_retry_at:
         return run.next_retry_at
     return now()

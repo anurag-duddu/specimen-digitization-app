@@ -4641,8 +4641,8 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     # approval's ordinary finalize no longer names it).
     if not run.human_approved:
         human += [f"preserved_human_decision:{key}" for key in sorted(human_keys(run) & set(work))]
-    # The second opinion's marks, derived from its stored result and the current values (second_opinion.py).
-    from .second_opinion import reasons as second_opinion_reasons
+    # The second opinion's marks from its stored result and the current values; an open intent ends first.
+    from .second_opinion import at_finalize as second_opinion_reasons
 
     human += second_opinion_reasons(run)
     by_key = {outcome.key: outcome for outcome in outcomes}

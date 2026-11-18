@@ -2063,34 +2063,47 @@ retryable research failure pending, nothing further to ask) and a value the
 second opinion answers for has no recorded verdict for its current value,
 the workflow does not finalize the record yet: in the same save the run's
 stage becomes `field_second_opinion` and its disposition none. The next
-workflow step runs it with a paid step's lifecycle: its reservation (one
-request's cap, USD 0.06 at list) is checked against the run's cost ceiling,
-retained research liabilities, the run's limits on steps, external calls
-and active time, any monthly cap and the program's allowance, and reserved
-on them; an intent is saved with a lease, the attempt and the
-unknown-outcome blocker before the request; the request runs inside the
-step's deadline (the profile's external timeout, at most 90 s, and the
-worker's deadline less research's margin); its paid call is recorded under
-its own route and the reservation settled to what the provider reported, or
-held in full when that is not known. The step then finalizes the record.
-Field research never calls it and never reads its result.
+workflow step runs it with a paid step's lifecycle, and obeys every guard a
+mandatory paid step obeys: its attempts, the run's limits on steps, external
+calls, reserved tokens (16,000, as a mandatory paid step reserves) and
+active time, a price row, and the cost ceiling with retained research
+liabilities; then its reservation (two requests' worst case, USD 0.12 at
+list, since a malformed answer is asked again once) on the retained research
+cost, any monthly cap and the program's allowance, all inside one handler.
+An intent is saved before the request: the stored result's status `asking`,
+the attempt, a lease, the reserved cost, tokens and time, and no blocker, so
+an open intent is never an unknown external outcome that blocks. The step's
+deadline is the profile's external timeout, at most 90 s, and the worker's
+deadline less research's margin; reading the crops runs in a worker thread
+waited for until it, and the request and the client's closing are each cut
+at it. Its paid call is recorded under its own route and settled to what the
+provider reported, or held in full when that is not known; the reported
+tokens count in the run's tokens. The step then finalizes the record. Field
+research never calls it and never reads its result.
 
-**How its failure differs from a mandatory step's.** A mandatory paid step
-that cannot be afforded, fails, times out or loses its outcome blocks the
-run (processing blocked, a retry scheduled, or a person's attention). This
-step never does. Whatever stops it ends it "not obtained" with a code, and
-the workflow finalizes the record in the same save, with the stage and
+**How its failure differs from a mandatory step's.** The step is optional.
+A mandatory paid step that cannot be afforded, fails, times out or loses its
+outcome blocks the run (processing blocked, a retry scheduled, or a
+person's attention). This step never does. Whatever stops it ends it "not
+obtained" with a code, and the record is finalized with the stage and
 blocker field research gave it (finalized, none) and the not-checked marks
 derived from the current values. Refusals before any reservation (switched
-off, its attempts used, a run limit, no price row, money the run cannot
-afford) reserve nothing; a refusal on a monthly cap's or the allowance's
-ledger releases what it held there at zero. After the intent, a provider
-error (HTTP 402 included), a timeout, a malformed answer, a request dearer
-than its cap or any exception is recorded and finalized at once. A lost
-outcome (the worker's deadline, a crash, the result's save failing) is found
-by the next workflow step once the lease ends: recorded "not obtained:
-outcome_unknown" with its whole reservation held, and finalized. Each
-attempt makes at most one request and a lost one is not repeated.
+off, its attempts used, a run limit, no price row, money) reserve nothing; a
+refusal or an error while reserving releases what a monthly cap held, at
+zero, and is not retried. After the intent, a provider error (HTTP 402
+included), a timeout, a second malformed answer, a request dearer than what
+is left of its reservation or any exception is recorded and finalized at
+once. A result that would pass the record's size limit is not stored: "not
+obtained: result_too_large". Anything else that finalizes the run while the
+intent is open (a person's decision or approval, research again) abandons
+it first (`second_opinion.abandon`, from `finalize_fields`): "not obtained:
+abandoned", its whole reservation held; the step's own result then loses
+its save and the record stays as that finalize left it. A lost outcome (the
+worker's deadline, a crash, the result's save failing) is found by the next
+workflow step once the lease ends (the queue waits for the lease):
+"not obtained: outcome_unknown", its whole reservation held, and finalized.
+Each attempt sends one request, or two when the first answer is malformed;
+a lost one is not repeated.
 
 **One stored result** (`Run.second_opinion`, an optional key omitted while
 unset): the status (`obtained`, `not_obtained` with its code,
@@ -2223,7 +2236,10 @@ refusal on money, a request dearer than its cap, the attempts used; no step
 while research has a retry pending; the feet inference on a retry equal to
 main's; a person's field with the app's payload across a retry; a person's
 transcript; carried decisions, locks and protected fields; a legacy record
-adopted at load; a history restore; a recheck that asks nothing). Every
+adopted at load; a history restore; a recheck that asks nothing; a result
+over the size limit at its boundary; an approval while the intent is open;
+a reservation that raises; a crop read and a client close that hang; the
+token budget; a malformed answer asked again once). Every
 other test runs with no derived mark (`tests/conftest.py`).
 
 ## Fields the label does not state (owner, 2026-10-09)

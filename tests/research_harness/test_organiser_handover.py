@@ -922,7 +922,7 @@ def test_the_output_schema_and_pinned_files_match_the_current_contract():
     assert sha(projection.__file__) == CANONICAL_PROJECTOR_SHA256 == (
         "cc3599bd1b47bf281be30700966c806003a02b59add5c05019d0eba4592f7361")  # pragma: allowlist secret
     assert sha(domain.__file__) == "164082d3ee95e9beb6859ced5062e1eefb00bc80e5f5d30999a7a8bd46f97db5"  # pragma: allowlist secret
-    assert sha(storage.__file__) == "64d919f9d10ac4912b8902e19abab2d5e90978da32d6356c28f0e4c1130e6315"  # pragma: allowlist secret
+    assert sha(storage.__file__) == "4d4b52ce96cfb42db34431c518a61ada0284e56002b8b8476eccfa2c4635d5c8"  # pragma: allowlist secret
     assert sha(active_graph.__file__) == "55a5d49e77bbf84c9d82d5dc58fd2435762b9b9dc59103e54e5db7e1f9ac55d8"  # pragma: allowlist secret
     for model in (FieldValue, Evidence, Run):
         assert not [name for name in model.model_fields if "organiser" in name]
