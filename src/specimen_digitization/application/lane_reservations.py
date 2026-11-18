@@ -156,9 +156,12 @@ def step_reservation(run, step: str):
         # tokenizer. Reserve the whole route context, including both requests.
         return max(floor, call_micros({**price, "max_input_tokens": None}, None))
     if floor and step == "parse" and policy.price_list is not None:
-        # extract_with_agent uses the first reader route and permits two model
-        # requests. The stage's historical USD .02 floor was not a bound.
-        route = run.profile.routes[0] if run.profile.routes else None
+        # extract_with_agent uses the first reader route (the organiser's route,
+        # model_gateway.organiser_route) and permits two model requests. The
+        # stage's historical USD .02 floor was not a bound.
+        from ..model_gateway import organiser_route
+
+        route = organiser_route(run.profile.routes)
         price = policy.price_list.get("models", {}).get(route)
         if not price or not price.get("context_tokens"):
             return None

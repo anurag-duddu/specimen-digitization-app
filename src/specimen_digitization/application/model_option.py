@@ -17,6 +17,16 @@ collection mapping names the variant. A run classified under it keeps that
 snapshot, so it records the option it ran under and never changes option
 mid-way. The API and the worker each load the profiles, so both carry the same
 value (scripts/ci/test_runtime_settings.py).
+
+A second, separate switch, SPECIMEN_READER_A, puts a stronger model in reader
+A's place (the autonomy program's reader measurement, 2026-11-18): its only
+value today is "kimi", which loads each published profile as a variant whose
+first reader is handwriting-kimi (Kimi K3.1 Pro on DeepInfra) in place of
+handwriting-qwen, with reader B and everything else as published. The organiser
+(parse), which runs on reader A's route, stays on Qwen
+(model_gateway.organiser_route). The two switches do not combine. Unset, empty
+or blank is off and the published profiles load as written; any other value
+raises, naming the setting and never its value.
 """
 
 from __future__ import annotations
@@ -42,6 +52,36 @@ REPLACED_ROUTES = {
 }
 BUILD_PREFIX = "nvidia"
 
+READER_A_SETTING = "SPECIMEN_READER_A"
+# The value the switch takes, and the reader route it puts in reader A's place.
+READER_A_ROUTES = {"kimi": "handwriting-kimi"}
+READER_A_BUILD_PREFIX = "reader-a"
+# The reader A these variants replace: today's, the first of the published routes.
+REPLACED_READER_A = "handwriting-qwen"
+# What a reader-A route costs, in the price list's units, and the floor its
+# stage reserves (as every reader's: 20,000 micro-dollars). Hugging Face's
+# router lists Kimi K3.1 Pro on DeepInfra at USD 1.90 in and 9.50 out per
+# million tokens with a 1,048,576-token context (snapshot of 2026-11-18). The
+# image rule is the model's own: its preprocessor_config.json sets 14-pixel
+# patches merged 2 by 2 (28 pixels a token) and at most 65,536 patches an image
+# (16,384 tokens); the 269 label crops of the arbiter benchmark came out at
+# exactly ceil(h/28) x ceil(w/28) image tokens each. The rows live here, in
+# the variant, and not in published.json, so the published profile, its price
+# list and its digest stay as they are until the option is made the default.
+READER_A_PRICES = {
+    "handwriting-kimi": {
+        "input_micros_per_million": 1_900_000,
+        "output_micros_per_million": 9_500_000,
+        "context_tokens": 1_048_576,
+        "image_tokens": {
+            "pixels_per_token": 28,
+            "max_tokens": 16_384,
+            "source": "https://huggingface.co/moonshotai/Kimi-K3.1-Pro/blob/main/preprocessor_config.json",
+        },
+    }
+}
+READER_A_STAGE_COST_MICROS = 20_000
+
 
 class ModelOptionConfigurationError(ValueError):
     """SPECIMEN_NVIDIA_STAGES names something other than its stages."""
@@ -62,6 +102,22 @@ def nvidia_stages(environ: Mapping[str, str]) -> tuple[str, ...]:
             "and field_research"
         )
     return tuple(stage for stage in STAGES if stage in names)
+
+
+def reader_a_route(environ: Mapping[str, str]) -> str | None:
+    """The reader route the switch puts in reader A's place; None when it is off.
+
+    Errors name the setting, never its value.
+    """
+    value = environ.get(READER_A_SETTING, "")
+    if not value.strip():
+        return None
+    route = READER_A_ROUTES.get(value.strip())
+    if route is None:
+        raise ModelOptionConfigurationError(
+            f"{READER_A_SETTING} must be empty or one of: " + ", ".join(sorted(READER_A_ROUTES))
+        )
+    return route
 
 
 def variant_version(version: str, stages: Iterable[str]) -> str:
@@ -111,7 +167,7 @@ def nvidia_variant(registry, stages: Iterable[str]):
     route it names (CollectionProfile.validate_fields), so a profile that does
     not cannot load its variant. Every mapping to a profile names its variant.
     """
-    from .collection_profiles import CollectionProfile, CollectionProfileRegistry
+    from .collection_profiles import CollectionProfile
     from .domain import ExecutionPolicy
 
     stages = tuple(stage for stage in STAGES if stage in set(stages))
@@ -140,6 +196,14 @@ def nvidia_variant(registry, stages: Iterable[str]):
             data["harness_route"] = HARNESS_ROUTE
         versions[(profile.id, profile.version)] = data["version"]
         profiles.append(CollectionProfile.model_validate(data))
+    return _registry_of(registry, profiles, versions)
+
+
+def _registry_of(registry, profiles, versions: Mapping[tuple[str, str], str]):
+    """The registry with these (variant) profiles in place of its own, and every
+    mapping to a profile naming its variant's version."""
+    from .collection_profiles import CollectionProfileRegistry
+
     mappings = [
         mapping.model_copy(
             update={
@@ -160,10 +224,55 @@ def nvidia_variant(registry, stages: Iterable[str]):
     )
 
 
-def active_routes(stages: Iterable[str]):
+def reader_a_variant(registry, route: str | None):
+    """The registry with each profile replaced by its variant that has ``route``
+    as reader A in place of today's (handwriting-qwen); the registry itself when
+    ``route`` is None.
+
+    Reader B and every other route are as published, and so are the run's limits
+    (the same number of readers). The route's price and its stage's reservation
+    are added to the profile's price list and stage costs, whose version gains
+    the same build metadata as the profile's, so a variant's run records the
+    list it was priced with. A profile whose first reader is not today's reader A
+    has no such variant.
+    """
+    from .collection_profiles import CollectionProfile
+
+    if route is None:
+        return registry
+    if route not in READER_A_PRICES:
+        raise ValueError("Unknown reader-A route.")
+    build = ".".join([READER_A_BUILD_PREFIX, route.removeprefix("handwriting-")])
+    versions: dict[tuple[str, str], str] = {}
+    profiles = []
+    for profile in registry.profiles:
+        if "+" in profile.version:
+            raise ValueError(
+                "A published profile version that carries build metadata has no reader-A variant."
+            )
+        if not profile.model_routes or profile.model_routes[0] != REPLACED_READER_A:
+            raise ValueError("A reader-A variant replaces a first reader that is not Qwen.")
+        data = profile.model_dump(mode="json")
+        data["version"] = f"{profile.version}+{build}"
+        data["model_routes"] = [route, *profile.model_routes[1:]]
+        processing = data.get("processing")
+        if processing is not None:
+            stage_costs = processing["stage_cost_micros"]["cost_micros"]
+            stage_costs.setdefault(f"transcribe:{route}", READER_A_STAGE_COST_MICROS)
+            price_list = processing.get("price_list")
+            if price_list is not None:
+                price_list["version"] = f"{price_list['version']}+{build}"
+                price_list["models"].setdefault(route, dict(READER_A_PRICES[route]))
+        versions[(profile.id, profile.version)] = data["version"]
+        profiles.append(CollectionProfile.model_validate(data))
+    return _registry_of(registry, profiles, versions)
+
+
+def active_routes(stages: Iterable[str], reader_a: str | None = None):
     """The routes the active option calls: today's, with the readers stage's
     added reader after today's readers and each other enabled stage's route
-    replaced by its NVIDIA route (what preflight checks)."""
+    replaced by its NVIDIA route, and the reader-A option's route added (Qwen
+    stays: the organiser runs on it) (what preflight checks)."""
     from ..model_gateway import (
         HUGGINGFACE_ROUTES,
         INITIAL_HUGGINGFACE_ROUTES,
@@ -172,6 +281,8 @@ def active_routes(stages: Iterable[str]):
 
     stages = set(stages)
     added = [route for stage, route in ADDED_ROUTES.items() if stage in stages]
+    if reader_a is not None:
+        added.append(reader_a)
     replaced = {old: new for stage, (old, new) in REPLACED_ROUTES.items() if stage in stages}
     routes = [
         *INITIAL_HUGGINGFACE_ROUTES,

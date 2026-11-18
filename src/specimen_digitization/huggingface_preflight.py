@@ -19,6 +19,7 @@ from .application.model_option import (
     ModelOptionConfigurationError,
     active_routes,
     nvidia_stages,
+    reader_a_route,
 )
 from .hub_models import SAM3_MODEL
 from .model_gateway import (
@@ -213,7 +214,8 @@ def run_preflight(
     # The routes of the active option only (SPECIMEN_NVIDIA_STAGES,
     # application/model_option.py): a route the option leaves off cannot block
     # a release. A live smoke may still name any registered route.
-    routes = active_routes(nvidia_stages(os.environ if environ is None else environ))
+    environment = os.environ if environ is None else environ
+    routes = active_routes(nvidia_stages(environment), reader_a_route(environment))
     token_report = inspect_runtime_token(token)
     catalog = fetch_router_catalog(token)
     route_reports = [validate_route(route, catalog) for route in routes.values()]
@@ -285,6 +287,7 @@ def main() -> None:
         parser.error("HF_TOKEN is not set.")
     try:
         nvidia_stages(os.environ)
+        reader_a_route(os.environ)
     except ModelOptionConfigurationError as error:
         parser.error(str(error))  # It names the setting, never its value.
 

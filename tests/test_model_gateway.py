@@ -96,11 +96,13 @@ def test_gateway_resolves_both_transcription_routes() -> None:
 
     routes = gateway.routes_for_capability("handwriting_transcriber")
 
-    # The NVIDIA option's reader is registered too; a profile names two of them.
+    # The NVIDIA option's reader and the reader-A option's are registered too; a
+    # profile names two of them.
     assert {route.route_id for route in routes} == {
         "handwriting-qwen",
         "handwriting-muse",
         "handwriting-nemotron",
+        "handwriting-kimi",
     }
 
 
@@ -447,6 +449,7 @@ def test_the_nvidia_option_serves_one_model_on_baseten_through_the_router() -> N
     """docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md section 1."""
     from specimen_digitization.model_gateway import (
         NVIDIA_HUGGINGFACE_ROUTES,
+        READER_A_HUGGINGFACE_ROUTES,
         READER_HUGGINGFACE_ROUTES,
         STAGE_HUGGINGFACE_ROUTES,
     )
@@ -488,11 +491,13 @@ def test_the_nvidia_option_serves_one_model_on_baseten_through_the_router() -> N
         **INITIAL_HUGGINGFACE_ROUTES,
         **STAGE_HUGGINGFACE_ROUTES,
         **NVIDIA_HUGGINGFACE_ROUTES,
+        **READER_A_HUGGINGFACE_ROUTES,
     }
     assert set(INITIAL_HUGGINGFACE_ROUTES) == {"handwriting-qwen", "handwriting-muse"}
     assert dict(READER_HUGGINGFACE_ROUTES) == {
         **INITIAL_HUGGINGFACE_ROUTES,
         "handwriting-nemotron": reader,
+        **READER_A_HUGGINGFACE_ROUTES,
     }
 
 
