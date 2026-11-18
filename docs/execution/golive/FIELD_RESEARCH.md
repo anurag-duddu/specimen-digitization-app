@@ -1976,11 +1976,15 @@ all equal to the truth.
    catalogue number by `field_validators.CATALOG`, the reading
    `check_catalog_number` uses. The rule does not read numbers out of the
    readers' texts, and the code alone does not supply a value.
-   - Confirm: the field settled on a value whose number is the code's. The
-     code is a source-class backing, so the field's text_only or conflict
-     mark becomes a cleared finding and the code row is cited as deciding
-     it. `identifier_format` does not arise, as that value's number matches
-     `CATALOG`.
+   - Confirm: the field settled on a value whose literal writes the code
+     whole (the projection test below), a reading of the code's label writes
+     the code whole, and the value's parsed and normalized layers are
+     supported without the code. The code is a source-class backing, so the
+     field's text_only or conflict mark becomes a cleared finding, the code
+     row is cited as deciding it, and the reason says the code confirms the
+     number. Where the literal writes the code whole but another condition
+     fails, nothing changes (an `unsupported_parsed` hold stays as with no
+     code).
    - Break a tie: the field is ambiguous or unresolved, the code's number
      is one of its candidates' numbers, and a reading of the code's label
      writes the code's seven digits as a whole number: in the reading's
@@ -1991,8 +1995,9 @@ all equal to the truth.
      code, and the other candidates' numbers are named in the reason as
      ruled out. A candidate clipped from a longer number ("0010001" of
      "10010001") breaks no tie.
-   - Contradict: the field settled on a value whose number is not the
-     code's. The value stays and is marked for a person
+   - Contradict: the field settled on a value whose literal does not write
+     the code whole, whatever its parsed layer reads. The value stays and is
+     marked for a person
      (`marked:fmnh_ins_number:<label>:barcode_differs`, one of the run's
      reasons); the app says "The catalog number read from the label and the
      number in the slide's QR code differ. Compare them."

@@ -138,19 +138,50 @@ def test_a_value_readers_alone_back_that_equals_the_code_clears(tmp_path, monkey
     assert not reasons_for(run, KEY) and "identifier_format" not in run.reasons
     assert number(run) == (ValueState.SUPPORTED, CODE)
     assert value.evidence_relations.get(code.id) == "decides"
-    assert value.reason.endswith(f"The slide's QR code reads {CODE} too.")
+    # The mark's sentence is replaced by what is now true (G51 round 4, finding 4).
+    assert value.reason.endswith(f"The slide's QR code confirms this number, {CODE}.")
+    assert "Marked for a person" not in value.reason
 
 
-def test_a_spaced_value_whose_number_is_the_codes_clears(tmp_path, monkeypatch):
-    """Both readers space the number ("001 0001"); the expert settles it with the check's
-    number 0010001. Its number is the code's: cleared, its literal as written."""
-    rig = rig_with(tmp_path, monkeypatch, "FMNHINS 001 0001")
+def test_a_spaced_value_whose_parse_is_unsupported_stays_as_with_no_code(tmp_path, monkeypatch):
+    """Both readers space the number ("001 0001"); the expert settles the literal with the
+    value 0010001. The literal writes the code whole, but the check does not read a spaced
+    literal, so the parsed 0010001 has no support: with no code main holds it as
+    unsupported_parsed (and marked text_only). The code does not stand in for that support:
+    the field is exactly as with no code. At aea10588 the code row cleared it."""
+    runs = []
+    barcode_label(monkeypatch, "FMNHINS 001 0001")
+    for name, coded in (("plain", False), ("coded", True)):
+        rig = build_rig(tmp_path / name, FIRST)
+        images(rig, lambda unit: UNCERTAIN)
+        if coded:
+            with_code(rig)
+        settle(rig, Scripted({KEY: catalogue("001 0001", CODE)}))
+        runs.append(rig.specimen.run)
+    plain, coded = runs
+    assert f"unsupported_parsed:{KEY}" in plain.reasons
+    assert outcome(plain) == outcome(coded)
+
+
+@pytest.mark.parametrize(("written", "literal", "value"), [
+    # G51 round 4: the readers write the longer 10010001 and the expert parses its suffix.
+    ("FMNHINS 10010001", "10010001", CODE),
+    # The readers write 0010007 and the expert's value is the code's.
+    (OTHER, "0010007", CODE),
+])
+def test_a_parsed_value_equal_to_the_code_never_confirms_a_literal_that_is_not(tmp_path, monkeypatch, written,
+        literal, value):
+    """The literal the label writes is not the code written whole: the code contradicts what
+    was written, whatever the parsed value reads. The field is held as barcode_differs, and the
+    unsupported_parsed hold main raises stays too. At aea10588 the code confirmed it, cleared."""
+    rig = rig_with(tmp_path, monkeypatch, written)
     run = rig.specimen.run
-    images(rig, lambda unit: UNCERTAIN)
-    with_code(rig)
-    settle(rig, Scripted({KEY: catalogue("001 0001", CODE)}))
-    assert summary(run)[:3] == (ValueState.SUPPORTED, "001 0001", CODE)
-    assert not reasons_for(run, KEY)
+    code = with_code(rig)
+    settle(rig, Scripted({KEY: catalogue(literal, value)}))
+    assert marked(run, "barcode_differs") in run.reasons
+    assert code.id not in run.fields[KEY].evidence_ids
+    assert not [f for f in run.findings if f.field_key == KEY and f.reason_code.startswith("cleared:")]
+    assert run.disposition == Disposition.REVIEW
 
 
 def test_a_misread_prefix_beside_the_codes_number_is_no_contradiction(tmp_path, monkeypatch):
@@ -288,9 +319,10 @@ def test_a_settled_value_the_code_contradicts_is_held_and_kept(tmp_path, monkeyp
     settle(rig, Scripted({KEY: catalogue(literal, value)}))
     held = run.fields[KEY]
     assert number(run) == (ValueState.SUPPORTED, value)
-    assert held.evidence_relations[code.id] == "contradicts"
-    assert held.reason.endswith(f"The slide's QR code reads {CODE}, which differs from this value. "
-        "A person compares the label with the code.")
+    assert code.id not in held.evidence_ids
+    assert held.reason.endswith(f"The slide's QR code reads {CODE}, which differs from the number the label "
+        "writes. A person compares the label with the code.")
+    assert "Marked for a person" not in held.reason
     assert findings(run, KEY) == [(marked(run, "barcode_differs"), "warning")]
     assert marked(run, "barcode_differs") in run.reasons
     assert run.disposition == Disposition.REVIEW

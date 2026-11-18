@@ -11,19 +11,23 @@ read as a catalogue number by field_validators.CATALOG, the normalisation
 check_catalog_number uses. It does not read the readers' texts for numbers of its own, and it
 does not supply a value that no reader wrote and field research did not propose.
 
-1. Confirm. The field settled on a value whose number is the code's: the code is a clearing
-   backing of the SOURCE class (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4, rule 3),
-   so the field's marked findings (text_only, conflict) become one cleared finding on the
-   code's label, and the code row is cited as deciding it. identifier_format does not arise:
-   the value's number fullmatches CATALOG.
+1. Confirm. The field settled on a value whose literal writes the code whole (written_whole),
+   a reading of the code's label writes the code whole, and the value's parsed and normalized
+   layers are supported without the code (_unsupported_layers): the code is a clearing backing
+   of the SOURCE class (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4, rule 3), so the
+   field's marked findings (text_only, conflict) become one cleared finding on the code's
+   label, the code row is cited as deciding it, and the reason says the code confirms the
+   number in place of the mark's sentence. Where the literal writes the code whole but either
+   other condition fails, nothing changes.
 2. Break a tie. The field is ambiguous or unresolved, the code's number is one of its
    candidates' numbers, and a reading of the code's label writes the code's seven digits as a
    whole number (written_whole: no digit right before or after them): the field settles on
    those digits, cited where those readings write them, backed by the code, and the other
    candidates are named in the reason as ruled out.
-3. Contradict. The field settled on a value whose number is not the code's: the value stays,
-   and is marked for a person (marked:fmnh_ins_number:<label>:barcode_differs, one of the
-   run's reasons), whatever its readers.
+3. Contradict. The field settled on a value whose literal does not write the code whole,
+   whatever its parsed layer reads: the value stays, and is marked for a person
+   (marked:fmnh_ins_number:<label>:barcode_differs, one of the run's reasons), whatever its
+   readers. The code row is cited by the mark only, never by the value.
 4. Otherwise nothing changes: no candidate's number is the code's, no value settled, no stored
    decode, a field a person decided (step.human_keys: settle is not called), a run not on the
    units path, or a run with a transcript a person decided on any of its labels
@@ -95,6 +99,26 @@ def candidate_texts(task: FieldTask, value: FieldValue, outcomes: Iterable[Field
     return list(dict.fromkeys(text for text in texts if text and text.strip()))
 
 
+MARK_NOTE = " Marked for a person: "
+
+
+def _without_mark_note(reason: str) -> str:
+    """The value's reason without the sentence step._settlement appends for a marked label
+    ("Marked for a person: ..."), which the code's own finding replaces."""
+    head, found, _ = (" " + reason).partition(MARK_NOTE)
+    return head.strip() if found else reason
+
+
+def _unsupported_layers(run, value: FieldValue) -> bool:
+    """Whether the value's parsed or normalized layer differs from its literal with no cited row
+    supporting it, as step.scientific_reasons tests it (unsupported_parsed, unsupported_normalized)."""
+    rows = {row.id: row for row in run.evidence}
+    cited = [rows[i] for i in value.evidence_ids if i in rows]
+    return any(text and text != value.literal and not any(
+        row.kind in {"authority", "authority_selection", "derived", "lookup"} and text in row.excerpt
+        for row in cited) for text in (value.parsed, value.normalized))
+
+
 def _marked_regions(run) -> list[str]:
     from .step import SETTLEMENT
 
@@ -128,28 +152,37 @@ def settle(run, task: FieldTask, readings: Sequence[Reading], *, asset_id, blobs
             return True
         return False
     if settled:
-        held = number(current.normalized or current.parsed or current.literal)
         regions = _marked_regions(run) or [code.row.region_id]
         value = current.model_copy(deep=True)
-        run.findings[:] = [finding for finding in run.findings
-            if not (finding.rule_id == SETTLEMENT and finding.field_key == FIELD)]
-        if held == payload:
-            # Rule 1: the code confirms the value.
+        if written_whole(current.literal or "", payload):
+            whole_on_label = any(reading.region_id == code.row.region_id and written_whole(reading.text, payload)
+                for reading in readings)
+            if not whole_on_label or _unsupported_layers(run, current):
+                # No reading of the code's label writes it whole, or the value's own parsed or
+                # normalized layer is unsupported: the field stays as it is with no code (the code
+                # does not stand in for missing support).
+                return False
+            # Rule 1: the code confirms the number the label writes.
+            run.findings[:] = [finding for finding in run.findings
+                if not (finding.rule_id == SETTLEMENT and finding.field_key == FIELD)]
             value.evidence_relations[code.row.id] = "decides"
             value.evidence_ids = list(dict.fromkeys([*value.evidence_ids, code.row.id]))
-            value.reason = " ".join(part for part in (value.reason,
-                f"The slide's QR code reads {payload} too.") if part)
+            value.reason = " ".join(part for part in (_without_mark_note(value.reason),
+                f"The slide's QR code confirms this number, {payload}.") if part)
             run.fields[FIELD] = value
             run.findings.append(RunFinding(rule_id=SETTLEMENT, rule_version=SETTLEMENT_RULES, severity="info",
                 field_key=FIELD, reason_code=cleared_code(FIELD, code.row.region_id),
                 evidence_ids=[e for e, how in value.evidence_relations.items() if how in ("supports", "decides")]))
             decision["rule"] = "barcode_confirms"
             return True
-        # Rule 3: the code contradicts the settled value; the value stays, marked for a person.
-        value.evidence_relations[code.row.id] = "contradicts"
-        value.evidence_ids = list(dict.fromkeys([*value.evidence_ids, code.row.id]))
-        value.reason = " ".join(part for part in (value.reason, f"The slide's QR code reads {payload}, "
-            f"which differs from this value. A person compares the label with the code.") if part)
+        # Rule 3: the label's number, as the literal writes it, is not the code written whole
+        # (whatever the value's parsed layer reads): the value stays, marked for a person. The code
+        # row is cited by the mark alone, so it supports none of the value's layers.
+        run.findings[:] = [finding for finding in run.findings
+            if not (finding.rule_id == SETTLEMENT and finding.field_key == FIELD)]
+        value.reason = " ".join(part for part in (_without_mark_note(value.reason), f"The slide's QR code reads "
+            f"{payload}, which differs from the number the label writes. A person compares the label with the "
+            "code.") if part)
         run.fields[FIELD] = value
         for region in regions:
             run.findings.append(RunFinding(rule_id=SETTLEMENT, rule_version=SETTLEMENT_RULES, severity="warning",
