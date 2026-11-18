@@ -1921,6 +1921,121 @@ pilot labels write), `tests/test_date_months.py`,
 `tests/field_research/test_date_lines.py` and the three date tests at the end
 of `tests/field_research/test_experts.py`.
 
+## The catalogue number and the slide's QR code (2026-11-17)
+
+An engineering change of the autonomy program (lane V2b); the owner has not
+ruled on the barcode. It serves his words of 2026-11-17, "it is important to
+not make mistakes because people wont trust it", and of 2026-10-09, "I think
+our harness is not about only being strict, its about the process of
+figuring it out given the data at hand."
+
+The barcode label prints the catalogue number twice: as digits after
+"FMNHINS" and as a QR code (Model 2, version 1, numeric; the payload is the
+seven digits alone). The readers read the digits, about 12 pixels high on a
+scan, and misread them: in the last full test (`units-wp26-20261115`) two
+runs cleared 105526487 as 4486518 where its code says 4486618, and
+`marked:fmnh_ins_number:*:text_only` held 6 to 10 of 30 specimens a run.
+Lane V2 measured a decoder on the 100 slides of the truth set (off-repo
+notes, 2026-11-17): zxing-cpp 3.1.1 asked for QR Code Model 2 decoded 98, all
+equal to the truth, none wrong, and none wrong in 300,000 damaged synthetic
+codes once anything but QR Code Model 2 with exactly seven digits is refused
+(a looser setting found Micro QR codes in the damage). The repository's
+wrapper, whose resize differs from the one V2 used, decodes 97 of the 100,
+all equal to the truth.
+
+1. **Decoded once, in the segment step** (`application/barcode.py`,
+   `record`), on the specimen's canonical pixels: the whole image and a
+   grey, lightly stretched copy, each at its size and at twice and three
+   times it (a rung over 24 million pixels is skipped). A decode is accepted
+   only when every symbol of every rung is a valid QR Code Model 2 whose
+   text is exactly seven digits, all of them the same text, and one and the
+   same label region of the slide holds every symbol's centre (a code on no
+   label, such as a neighbouring slide's in the scan, is no decode). An
+   accepted decode is one evidence row on the run (kind `derived`, source
+   `barcode`, locator `check:barcode_decode`, on that label); its excerpt
+   names the number, the decoder and its version and the first rung that
+   decoded it, and its stored record every symbol found, with its box,
+   version, error-correction level and the share of its error correction
+   left unused. Anything else, a decoder failure included, stores nothing
+   and never fails the step: the run goes on as it would have without a
+   decoder. No network, no model. A missing decoder is logged once a process
+   at warning level, and the application images' package check
+   (`research_harness/package_qualification.qualify_packages`, run by
+   `scripts/ci/build_runtime_image.sh` for the API and worker images)
+   refuses an image without the pinned zxing-cpp. A run started on a
+   person's regions keeps them and skips the segment step
+   (`human_field_carry.py`, `completed_steps = ["segment"]`), so it is never
+   decoded and its catalogue number is settled as before.
+2. **Field research compares it with the catalogue number alone**
+   (`field_research/catalogue_code.py`, called by `step.apply_outcomes`
+   after the field's expert answer and its labels' settlement). The expert
+   is not told the decode. The code is compared only with the value field
+   research settled; the rule does not read numbers out of the readers'
+   texts, and it changes no value layer: it adds a confirmation or a hold.
+   - Confirm, when all three hold: the settled value's literal writes the
+     code whole (in the literal's letters and numbers alone, spaces,
+     punctuation, marks and invisible characters dropped, the code's seven
+     digits have no numeric character right before or after them); a
+     reading of the code's label holds that literal at an occurrence with no
+     number right before or after it (the same projection, applied to the
+     text on either side); and the value's parsed and normalized layers are
+     supported without the code. The code is then a source-class backing:
+     the field's text_only or conflict mark becomes a cleared finding, the
+     code row is cited as deciding it, and the reason says the code confirms
+     the number. If the literal writes the code whole but another condition
+     fails, nothing changes (an `unsupported_parsed` hold stays as with no
+     code).
+   - Contradict: the settled value's literal does not write the code whole,
+     whatever its parsed layer reads. The value stays and is marked for a
+     person (`marked:fmnh_ins_number:<label>:barcode_differs`, one of the
+     run's reasons); the app says "The catalog number read from the label
+     and the number in the slide's QR code differ. Compare them."
+   - Otherwise nothing changes: no value settled (an ambiguous or
+     unresolved field included), no stored decode, a field a person
+     decided, a run not on the units path, or a run with a transcript a
+     person decided on any of its labels. In that last case, where the
+     settled value's number is not the code's, the value's reason says so
+     and an info finding `barcode_person_differs:fmnh_ins_number` cites the
+     code.
+   Residual risk: a code that is not this slide's catalogue number, whose
+   digits the readers also wrote as the number, confirms that number (and
+   removes its text_only or conflict mark); none of the 100 truth slides
+   carries such a code.
+   The rule builds no evidence row, and `step.apply_outcomes` calls it
+   inside a guard that logs any exception and puts the field, its findings
+   and its decision back as the rules above left them. No other field
+   changes. The barcode label's own `unresolved_transcription` follows the
+   existing rule (`step.scientific_reasons`): for a label whose transcript
+   is unresolved it is raised when no field is drawn from the label, or a
+   drawn field is not supported or not grounded in the raw readings, unless
+   S1's duplicate-label rule sets it aside because each drawn field has a
+   reason of its own; so it comes back where the catalogue number's mark
+   goes and the label's readers still differ (105526522).
+3. **On the last full test, replayed** (R0's method over the stored runs,
+   the decode attached as the segment step would store it):
+   `marked:fmnh_ins_number` falls from 6, 6, 10 and 9 specimens a run to
+   1, 2, 2 and 0 (the 2s are 105526487's new `barcode_differs`; the 1 is
+   105526446, which does not decode). 104 settled values are confirmed and
+   2 held: the two wrong clearances of 105526487 (4486518, the code's
+   4486618) now go to a person with the wrong value kept. Open fields stay
+   open as on main (105526330, 105526617, 105526487, 105526335). No
+   catalogue number is newly cleared wrong, and no specimen finished before
+   or after.
+4. **Breaking a tie on the code is not shipped.** Earlier heads of PR #452
+   settled an open field on the candidate equal to the code. Review found a
+   new way through it each round: a candidate clipped from a longer number
+   ("0010001" of "10010001"), a digit of another script or a superscript
+   beside the code, an invisible separator between them, a date joined to
+   the number across a line break, and a spaced number that made research
+   fail. A later attempt must hold all of these, and should compare the
+   code with the first pass's reading units for the catalogue number (a
+   whole unit's text), not search the raw text.
+
+Tests: `tests/test_barcode.py` (codes made by zxing-cpp's encoder in the
+test; no museum image is committed) and
+`tests/field_research/test_catalogue_code.py` (each rule, and that a run
+with no code row, and every other field, settle exactly as before).
+
 ## Fields the label does not state (owner, 2026-10-09)
 
 The owner decided two cases in the schema session on 2026-10-09. On whether
