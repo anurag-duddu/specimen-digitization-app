@@ -24,7 +24,12 @@ The acceptance rule, every part of it required:
 - the decoder is zxing-cpp, asked for QR Code Model 2 only, and each symbol it returns is
   a valid QR Code (not Micro QR, not rMQR), of a version that is a number;
 - each symbol's text is exactly seven digits;
-- every symbol found on every rung of the ladder has the same text.
+- every symbol found on every rung of the ladder has the same text;
+- one and the same label region of the slide holds every symbol's centre (a code on no label,
+  such as a neighbouring slide's in the scan, is no decode).
+A missing decoder is logged once a process at warning level and decodes nothing;
+research_harness.package_qualification checks the pinned version (DECODER_PIN) where the
+application images check their packages.
 The ladder: the whole image and the image in grey with a light contrast stretch (2 % cut
 at each end), each at its own size, then at twice and at three times it; a rung larger than MAX_PIXELS is skipped, so
 the work is bounded by the image and never by a clock.
@@ -48,6 +53,8 @@ SOURCE = "barcode"
 KIND = "derived"
 LOCATOR = "check:barcode_decode"
 DECODER = "zxing-cpp"
+# The version pyproject.toml pins.
+DECODER_PIN = "3.1.1"
 SYMBOLOGY = "QRCodeModel2"
 PAYLOAD = re.compile(r"[0-9]{7}")
 # A rung's image is decoded only up to this many pixels (a 1,780 by 600 slide scan at three
@@ -144,17 +151,37 @@ def _symbols(image) -> list[Symbol] | None:
     return found
 
 
-def _region_of(box: tuple[int, int, int, int], regions: Sequence) -> str | None:
+def _regions_holding(box: tuple[int, int, int, int], regions: Sequence) -> set[str]:
+    """The labels whose boxes hold the symbol's centre."""
     x, y = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
-    inside = [region.id for region in regions
-        if region.x <= x < region.x + region.width and region.y <= y < region.y + region.height]
-    return inside[0] if len(inside) == 1 else None
+    return {region.id for region in regions
+        if region.x <= x < region.x + region.width and region.y <= y < region.y + region.height}
+
+
+def _label_of(symbols: Sequence[Symbol], regions: Sequence) -> str | None:
+    """The one label whose box holds every symbol's centre, or None: a code on none of the
+    slide's labels (a neighbour's slide in the scan, say), or on more than one, is no decode."""
+    common = set.intersection(*(_regions_holding(symbol.box, regions) for symbol in symbols))
+    return next(iter(common)) if len(common) == 1 else None
+
+
+_MISSING_LOGGED = False
+
+
+def _missing_decoder() -> None:
+    """Log, once a process, that no decoder is installed: the feature is off for every record."""
+    global _MISSING_LOGGED
+    if not _MISSING_LOGGED:
+        _MISSING_LOGGED = True
+        LOGGER.warning("barcode decoder zxing-cpp is not installed: no slide's QR code is decoded")
 
 
 def decode(image, regions: Sequence = ()) -> Decode | None:
-    """The image's accepted decode (the module's acceptance rule), or None. Never raises."""
+    """The image's accepted decode (the module's acceptance rule), on the one label of
+    `regions` that holds every symbol's centre; or None. Never raises."""
     version = decoder_version()
     if version is None:
+        _missing_decoder()
         return None
     try:
         symbols = _symbols(image)
@@ -163,9 +190,11 @@ def decode(image, regions: Sequence = ()) -> Decode | None:
         return None
     if not symbols or len({symbol.text for symbol in symbols}) != 1:
         return None
+    if (label := _label_of(symbols, regions)) is None:
+        return None
     first = symbols[0]
     return Decode(payload=first.text, decoder=DECODER, decoder_version=version, symbology=SYMBOLOGY,
-        rung=first.rung, symbols=tuple(symbols), region_id=_region_of(first.box, regions))
+        rung=first.rung, symbols=tuple(symbols), region_id=label)
 
 
 def evidence_row(found: Decode, asset_id: str, blobs) -> Evidence:

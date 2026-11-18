@@ -45,6 +45,14 @@ def region(x, y, width, height, order=0):
         method="synthetic_fixture_region", version="1")
 
 
+WHOLE = [region(0, 0, *SLIDE)]
+
+
+def decode(image, regions=None):
+    """barcode.decode with the slide as one label, unless `regions` are given."""
+    return barcode.decode(image, WHOLE if regions is None else regions)
+
+
 # ---- the acceptance rule ----------------------------------------------------------------------
 
 def test_a_seven_digit_qr_code_model_2_is_accepted_with_its_provenance():
@@ -60,12 +68,12 @@ def test_a_seven_digit_qr_code_model_2_is_accepted_with_its_provenance():
 
 
 def test_leading_zeros_are_part_of_the_payload():
-    assert barcode.decode(slide((symbol("0010001"), (700, 120)))).payload == "0010001"
+    assert decode(slide((symbol("0010001"), (700, 120)))).payload == "0010001"
 
 
 def test_the_first_rung_that_decodes_is_recorded():
     """A code drawn one pixel a module and blurred decodes only at three times its size."""
-    found = barcode.decode(slide((symbol("4486784", scale=1, blur=0.6), (700, 120))))
+    found = decode(slide((symbol("4486784", scale=1, blur=0.6), (700, 120))))
     assert (found.payload, found.rung) == ("4486784", "whole_x3")
     assert {item.rung for item in found.symbols} <= {"whole_x3", "gray_stretch_x3"}
 
@@ -75,28 +83,89 @@ def test_a_micro_qr_code_is_never_read():
     decoder asks for QR Code Model 2 alone, so a Micro QR code holding seven digits is no decode."""
     image = slide((symbol("4486784", MICRO), (700, 120)))
     assert [item.text for item in zxingcpp.read_barcodes(image)] == ["4486784"]
-    assert barcode.decode(image) is None
+    assert decode(image) is None
 
 
 @pytest.mark.parametrize("text", ["448678", "44867840", "FMNHINS 4486784", "4486784 ", "https://example.org/1"])
 def test_a_payload_that_is_not_exactly_seven_digits_is_no_decode(text):
-    assert barcode.decode(slide((symbol(text), (700, 120)))) is None
+    assert decode(slide((symbol(text), (700, 120)))) is None
 
 
 def test_two_different_codes_on_one_slide_are_no_decode():
-    assert barcode.decode(slide((symbol("4486784"), (100, 120)), (symbol("4486785"), (700, 120)))) is None
+    assert decode(slide((symbol("4486784"), (100, 120)), (symbol("4486785"), (700, 120)))) is None
 
 
 def test_a_seven_digit_code_beside_another_symbol_is_no_decode():
-    assert barcode.decode(slide((symbol("4486784"), (100, 120)), (symbol("FMNH"), (700, 120)))) is None
+    assert decode(slide((symbol("4486784"), (100, 120)), (symbol("FMNH"), (700, 120)))) is None
 
 
 def test_the_same_code_twice_is_one_payload():
-    found = barcode.decode(slide((symbol("4486784"), (100, 120)), (symbol("4486784"), (700, 120))))
+    found = decode(slide((symbol("4486784"), (100, 120)), (symbol("4486784"), (700, 120))))
     assert found.payload == "4486784"
-    # Two symbols on the first rung; the region is the first symbol's, and no label is given.
+    # Two symbols on the first rung, both on the one whole-slide label.
     assert len([item for item in found.symbols if item.rung == "whole"]) == 2
-    assert found.region_id is None
+    assert found.region_id == WHOLE[0].id
+    # On two labels, one symbol each: no one label holds the code.
+    halves = [region(0, 0, 600, 400), region(600, 0, 600, 400, order=1)]
+    assert barcode.decode(slide((symbol("4486784"), (100, 120)), (symbol("4486784"), (700, 120))), halves) is None
+
+
+# ---- the code must lie on one of the slide's labels ---------------------------------------------
+
+def test_a_code_on_none_of_the_slides_labels_is_no_decode():
+    """The slide's own code half erased and a neighbour's 9999999 outside both labels (the G51
+    review's case): the neighbour's code decodes, and lies on no label, so nothing is accepted."""
+    labels = [region(0, 0, 500, 400), region(500, 0, 400, 400, order=1)]
+    own = symbol("4486784")
+    own.paste(255, (0, 0, own.size[0], own.size[1] // 2))
+    image = slide((own, (600, 120)), (symbol("9999999"), (1000, 120)))
+    assert [item.text for item in zxingcpp.read_barcodes(image, formats=zxingcpp.BarcodeFormat.QRCodeModel2)] == [
+        "9999999"]
+    assert barcode.decode(image, labels) is None
+    assert barcode.decode(image, []) is None
+
+
+def test_a_code_straddling_a_label_edge_belongs_to_the_label_holding_its_centre():
+    code = symbol("4486784")
+    width = code.size[0]
+    labels = [region(0, 0, 700, 400), region(700, 0, 500, 400, order=1)]
+    # Its centre on label 2, its left edge on label 1.
+    found = barcode.decode(slide((code, (700 - width // 3, 120))), labels)
+    assert found.region_id == labels[1].id
+    # Its centre on label 1.
+    found = barcode.decode(slide((code, (700 - 2 * width // 3, 120))), labels)
+    assert found.region_id == labels[0].id
+
+
+@pytest.mark.parametrize("count", [3, 4])
+def test_the_code_is_placed_on_its_label_among_three_or_four(count):
+    labels = [region(300 * i, 0, 300, 400, order=i) for i in range(count)]
+    found = barcode.decode(slide((symbol("4486784"), (300 * (count - 1) + 100, 120))), labels)
+    assert found.region_id == labels[count - 1].id
+
+
+def test_a_missing_decoder_is_logged_once(monkeypatch, caplog):
+    monkeypatch.setattr(barcode, "decoder_version", lambda: None)
+    monkeypatch.setattr(barcode, "_MISSING_LOGGED", False)
+    image = slide((symbol("4486784"), (700, 120)))
+    with caplog.at_level("WARNING", logger=barcode.__name__):
+        assert decode(image) is None and decode(image) is None
+    assert [record.message for record in caplog.records] == [
+        "barcode decoder zxing-cpp is not installed: no slide's QR code is decoded"]
+
+
+def test_the_decoder_pin_is_the_projects_and_the_qualification_checks_it(monkeypatch):
+    import tomllib
+    from pathlib import Path
+
+    from specimen_digitization.research_harness import package_qualification
+
+    project = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    assert f"zxing-cpp=={barcode.DECODER_PIN}" in project["project"]["dependencies"]
+    package_qualification.qualify_packages()
+    monkeypatch.setattr(barcode, "decoder_version", lambda: None)
+    with pytest.raises(package_qualification.PackageCompatibilityError, match="barcode_decoder_missing"):
+        package_qualification.qualify_packages()
 
 
 @pytest.mark.parametrize("image", [
@@ -106,27 +175,27 @@ def test_the_same_code_twice_is_one_payload():
     Image.new("P", SLIDE),
 ])
 def test_an_image_with_no_code_is_no_decode(image):
-    assert barcode.decode(image) is None
+    assert decode(image) is None
 
 
 def test_a_rung_larger_than_the_bound_is_skipped(monkeypatch):
     """The work is bounded by the image: a rung over MAX_PIXELS is never made."""
     monkeypatch.setattr(barcode, "MAX_PIXELS", SLIDE[0] * SLIDE[1])
     assert [name for name, _, _ in barcode._rungs(slide())] == ["whole", "gray_stretch"]
-    assert barcode.decode(slide((symbol("4486784", scale=1, blur=0.6), (700, 120)))) is None
+    assert decode(slide((symbol("4486784", scale=1, blur=0.6), (700, 120)))) is None
 
 
 def test_a_failing_or_missing_decoder_is_no_decode(monkeypatch):
     image = slide((symbol("4486784"), (700, 120)))
     monkeypatch.setattr(barcode, "decoder_version", lambda: None)
-    assert barcode.decode(image) is None
+    assert decode(image) is None
     monkeypatch.undo()
 
     def broken(*args, **kwargs):
         raise RuntimeError("decoder failed")
 
     monkeypatch.setattr(zxingcpp, "read_barcodes", broken)
-    assert barcode.decode(image) is None
+    assert decode(image) is None
 
 
 # ---- the evidence row ------------------------------------------------------------------------

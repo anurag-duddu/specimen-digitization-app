@@ -1948,35 +1948,56 @@ all equal to the truth.
    grey, lightly stretched copy, each at its size and at twice and three
    times it (a rung over 24 million pixels is skipped). A decode is accepted
    only when every symbol of every rung is a valid QR Code Model 2 whose
-   text is exactly seven digits, all of them the same text. An accepted
-   decode is one evidence row on the run (kind `derived`, source `barcode`,
-   locator `check:barcode_decode`, on the label whose box holds the code
-   when one does); its excerpt names the number, the decoder and its
-   version and the first rung that decoded it, and its stored record every
-   symbol found, with its box, version, error-correction level and the
-   share of its error correction left unused. Anything else, a decoder
-   failure included, stores nothing and never fails the step: the run goes
-   on as it would have without a decoder. No network, no model.
+   text is exactly seven digits, all of them the same text, and one and the
+   same label region of the slide holds every symbol's centre (a code on no
+   label, such as a neighbouring slide's in the scan, is no decode). An
+   accepted decode is one evidence row on the run (kind `derived`, source
+   `barcode`, locator `check:barcode_decode`, on that label); its excerpt
+   names the number, the decoder and its version and the first rung that
+   decoded it, and its stored record every symbol found, with its box,
+   version, error-correction level and the share of its error correction
+   left unused. Anything else, a decoder failure included, stores nothing
+   and never fails the step: the run goes on as it would have without a
+   decoder. No network, no model. A missing decoder is logged once a process
+   at warning level, and the application images' package check
+   (`research_harness/package_qualification.qualify_packages`, run by
+   `scripts/ci/build_runtime_image.sh` for the API and worker images)
+   refuses an image without the pinned zxing-cpp. A run started on a
+   person's regions keeps them and skips the segment step
+   (`human_field_carry.py`, `completed_steps = ["segment"]`), so it is never
+   decoded and its catalogue number is settled as before.
 2. **Field research uses it for the catalogue number alone**
    (`field_research/catalogue_code.py`, called by `step.apply_outcomes`
    after the field's expert answer and its labels' settlement). The expert
    is not told the decode, so the readers and the code stay two readings of
-   one printed number. A reader's numbers are the runs of five to nine
-   digits it writes as a number of their own, on the code's label when the
-   decode places it on one:
+   one printed number. Only the readers of the code's label count, and a
+   decode placed on no label changes nothing. What a reader wrote is read
+   digit by digit: each run of digits in its text, joined across spaces and
+   line breaks as readers' texts are compared for agreement
+   (`agreement.agreement_key`: "001 0007" is 0010007), kept as written as
+   evidence. Digits a reader wrote are never silence: a reader that writes
+   digits none of whose runs is the code's number (a partial, six or eight
+   digits, a number broken around a letter) disagrees. No table of letters
+   read as digits is used: an unreadable number is a disagreement.
+   - a person decided the label's transcript: a person outranks the code.
+     The code decides nothing and holds nothing; where the person's digits
+     differ from it, the value's reason says so and an info finding
+     `barcode_person_differs:fmnh_ins_number` cites the code;
    - a reader writes the code's number: that is the value, cleared; the code
      is a source-class backing, so one reader or readers that agree with no
      image (text_only) are enough;
-   - readers write another number, each alone: the code's number is the
-     value, cleared; each such reading is cited as contradicting it, the
-     value's reason names it as ruled out, and an info finding
-     `barcode_ruled_out:fmnh_ins_number` lists them. A note, not a hold;
-   - two or more readers of one label agree on another number: the code and
+   - a reader disagrees alone: it is ruled out, cited as contradicting the
+     value, and named in the value's reason, and an info finding
+     `barcode_ruled_out:fmnh_ins_number` lists it. A note, not a hold;
+   - two or more readers that disagree wrote the same digits: the code and
      the readers disagree, and the field is ambiguous with both numbers as
      its options, the warning finding
      `marked:fmnh_ins_number:<label>:barcode_differs` (one of the run's
-     reasons) and a reason that says so. Not seen in the 100 slides;
-   - no reader writes a number: the code's number is the value;
+     reasons) and a reason that says so. Not seen in the 100 slides; the
+     app says "The readers agree on one catalog number, but the slide's QR
+     code holds another. Compare the printed digits with the code.";
+   - no reader of the code's label writes a digit: the code's number is the
+     value;
    - no stored decode, a field a person decided, or a run not on the units
      path: nothing changes.
    The value is the seven digits, as the field stores every catalogue
