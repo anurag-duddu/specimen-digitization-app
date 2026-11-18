@@ -4391,6 +4391,17 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
     - Not in canonical_materialization_v2: the code of each marked finding
       (marked_reasons), until a person approves the record, as the labels'
       review_required reasons above.
+    - 203-217, a strict duplicate only (plan WP S1, C3): a label whose every drawn
+      field already has a review reason of its own (_reason_fields: held or
+      marked) is not also unresolved_transcription, since a person is sent to
+      each of those fields anyway; any drawn field without one keeps the
+      label's reason, as does every label no field is drawn from.
+    - Not in canonical_materialization_v2: a record every field of which that
+      describes the specimen (the catalogue number, the collection code and the
+      determiner's IRN aside: IDENTIFYING_FIELDS) is settled with no value
+      (SETTLED_EMPTY, or supported with no text, _has_value) is
+      no_specimen_value until a person approves it (plan WP S1, the empty-record
+      guard).
     """
     reasons: list[str] = []
     # 198-199
@@ -4400,6 +4411,9 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
     for label in run.label_language_handling.get("labels", []):
         if label.get("review_required") and not run.human_approved:
             reasons.extend(f"{reason}:{label['region_id']}" for reason in label["reasons"])
+    # The labels with fields drawn from them whose readings hold them, each with where its
+    # reason goes and those fields: decided once every field's reasons are in (below).
+    drawn_labels: list[tuple[int, str, frozenset[str]]] = []
     # 203-217
     given_up = given_up_regions(run)
     for region in run.regions:
@@ -4420,10 +4434,12 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
             drawn = [key for key, value in run.fields.items() if key != IRN and (
                 value.source_region_id == region.id or any(identifier in ids for identifier in value.verbatim_by_observation)
                 or any(item.id in value.evidence_ids and item.region_id == region.id for item in run.evidence))]
-            if not drawn or any(run.fields[key].state != ValueState.SUPPORTED
+            if not drawn:
+                reasons.append(f"unresolved_transcription:{region.id}")
+            elif any(run.fields[key].state != ValueState.SUPPORTED
                     or not _raw_grounded(run.fields[key], run) and key not in qualified
                     for key in drawn if latest_work.get(key) in TERMINAL):
-                reasons.append(f"unresolved_transcription:{region.id}")
+                drawn_labels.append((len(reasons), region.id, frozenset(drawn)))
     evidence = {item.id: item for item in run.evidence}
     # 219-220: an identity collision is an integrity failure, never a review reason.
     if len(evidence) != len(run.evidence):
@@ -4544,7 +4560,62 @@ def scientific_reasons(run, latest_work: Mapping[str, str], *, mandatory: Iterab
         reasons.append("identifier_format")
     if not getattr(run, "human_approved", False):
         reasons += marked_reasons(run)
+    # A label's reason that only repeats its drawn fields' own reasons (plan WP S1, C3, the
+    # strict duplicate): when every field drawn from it is held or marked by a reason of its own,
+    # a person goes to each of them anyway; otherwise the label's reason stays, in its place.
+    held = {key for reason in reasons for key in _reason_fields(reason, run.fields)}
+    for at, region_id, keys in reversed(drawn_labels):
+        if not keys <= held:
+            reasons.insert(at, f"unresolved_transcription:{region_id}")
+    # A record every field of which that describes the specimen is settled with no value (absent,
+    # or a placeholder) is never finished without a person, whatever clears each field on its own
+    # (plan WP S1, the empty-record guard). A field still open is held by its own reason instead.
+    described = [value for key, value in run.fields.items() if key not in IDENTIFYING_FIELDS]
+    if not run.human_approved and described and all(
+            value.state in SETTLED_EMPTY or (value.state == ValueState.SUPPORTED and not _has_value(value))
+            for value in described):
+        reasons.append(NO_SPECIMEN_VALUE)
     return list(dict.fromkeys(reasons))
+
+
+# The reason of a record every field of which that describes the specimen is settled with no
+# value (scientific_reasons): a record such as R0's 105526335 would be one, whose labels write
+# only "FMNHINS 4486770" and "LEWIS COLLECTION / col", once its open fields settled absent.
+NO_SPECIMEN_VALUE = "no_specimen_value"
+# The states of a field settled with no value (the empty-record guard).
+SETTLED_EMPTY = frozenset({ValueState.NOT_PRESENT, ValueState.NOT_APPLICABLE})
+# The fields that identify the record, not the specimen: the catalogue number, the collection
+# code and the determiner's EMu record.
+IDENTIFYING_FIELDS = frozenset({"fmnh_ins_number", "collection_code", IRN})
+# The record-level reasons that name a field, or fields, of their own (_reason_fields).
+RECORD_REASON_FIELDS = {
+    "taxonomy_unresolved": ("taxon",),
+    "identifier_format": ("fmnh_ins_number",),
+    "date_order": ("date_visited_from", "date_visited_to", "date_identified"),
+    "date_precision_requires_review": ("date_visited_from", "date_visited_to", "date_identified"),
+}
+
+
+def _reason_fields(reason: str, fields: Mapping[str, FieldValue]) -> tuple[str, ...]:
+    """The fields a review reason holds: `<code>:<field>` and `marked:<field>:<label>:<why>`
+    name theirs; the taxon's, the catalogue number's and the dates' record-level reasons
+    (RECORD_REASON_FIELDS) and an elevation's (`elevation_<code>:<unit or end>`) name theirs
+    too. Any other reason names none."""
+    if reason in RECORD_REASON_FIELDS:
+        return RECORD_REASON_FIELDS[reason]
+    code, _, rest = reason.partition(":")
+    if code.startswith("elevation_"):
+        return tuple(key for key in fields if key.startswith("elevation_") and rest in key.split("_"))
+    key = rest.split(":", 1)[0]
+    return (key,) if key in fields else ()
+
+
+def _has_value(value: FieldValue) -> bool:
+    """Whether a field holds a value: supported, with a settled text that is no placeholder
+    (scientific_reasons' 232-236 test)."""
+    settled = value.normalized or value.parsed or value.literal
+    return (value.state == ValueState.SUPPORTED and bool(settled and settled.strip())
+        and settled.strip().casefold() not in PLACEHOLDERS)
 
 
 def work_states(run, profile: CollectionProfile, outcomes: Sequence[FieldOutcome]) -> dict[str, str]:

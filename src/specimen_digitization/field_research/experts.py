@@ -79,6 +79,10 @@ LOGGER = logging.getLogger(__name__)
 # policy_blocked is a refused query or an unqualified source, not an outage.
 SOURCE_OUTAGES = OPERATIONAL - {LookupStatus.POLICY}
 EXHAUSTED = "The expert used all its attempts without settling this field."
+# The resolver's fallback when the answer asked for on a shortened request (plan WP S1, C4d)
+# failed its checks.
+TRIMMED = ("The readings and sources for this field were too long to send whole, and the answer "
+           "given from a shortened request did not pass the checks.")
 # The resolver's fallback when every answer the expert gave failed its checks
 # (the readings, the candidates and the sources' answers); never an outage's
 # reason, which is a failure (the second rerun of 2026-10-18 read "could not
@@ -718,17 +722,22 @@ class _Expert:
 
     # Result ------------------------------------------------------------------
 
-    async def answer_now(self, model: Model, messages: Sequence[ModelMessage]) -> FieldAnswer | None:
+    async def answer_now(self, model: Model, messages: Sequence[ModelMessage], *,
+            shortened: bool = False) -> FieldAnswer | None:
         """The expert's answer from what it has, once it ran out of requests or
-        tool calls: one more request on the same metered model, with its
-        tools withheld, asking for its answer (ANSWER_NOW_PROMPT). The answer
+        tool calls, or (`shortened`) once its next request was over the input bound:
+        one more request on the same metered model, with its
+        tools withheld, asking for its answer (ANSWER_NOW_PROMPT), its tool results
+        shortened (_shortened) when `shortened`. The answer
         is checked as any other. None when its answer does not pass the
         checks: the resolver's fallback then stands. A request the run's
         ceiling or the input bound refuses raises, as any refused request
         does (BudgetExhausted, InputTooLarge), so the field reports why."""
+        history = _answer_now_history(messages)
         try:
             result = await self.agent(model, tools=False).run(
-                None, message_history=_answer_now_history(messages), usage_limits=ANSWER_NOW_LIMITS)
+                None, message_history=_shortened(history) if shortened else history,
+                usage_limits=ANSWER_NOW_LIMITS)
         except (UsageLimitExceeded, UnexpectedModelBehavior) as error:
             LOGGER.warning(
                 "field_research expert gave no answer at its limit: field=%s error=%s",
@@ -816,6 +825,45 @@ def _answer_now_history(messages: Sequence[ModelMessage]) -> list[ModelMessage]:
         parts += [ToolReturnPart(call.tool_name, NOT_RUN, tool_call_id=call.tool_call_id)
                   for call in last.tool_calls if call.tool_call_id not in answered]
     return [*history, ModelRequest(parts=[*parts, UserPromptPart(ANSWER_NOW_PROMPT)])]
+
+
+# What a lookup's result keeps in a shortened request (_shortened): what an answer cites and the
+# checks compare (the evidence_id, the candidates' names, records and kinds), never the source's
+# note, a candidate's detail, or the budget and repeat notes.
+SHORTENED_KEYS = frozenset({"source", "query", "status", "evidence_id", "candidates", "more_candidates"})
+SHORTENED_CANDIDATE_KEYS = frozenset({"name", "authority_id", "kind"})
+
+
+def _tool_returns(messages: Sequence[ModelMessage]) -> bool:
+    """Whether the run so far holds a tool's result."""
+    return any(isinstance(part, ToolReturnPart) for message in messages if isinstance(message, ModelRequest)
+               for part in message.parts)
+
+
+def _shortened_result(content: Any) -> Any:
+    """A lookup's result as a shortened request carries it (SHORTENED_KEYS); any other result
+    as it is."""
+    if not isinstance(content, dict) or "candidates" not in content:
+        return content
+    shortened = {key: value for key, value in content.items() if key in SHORTENED_KEYS}
+    shortened["candidates"] = [{key: value for key, value in candidate.items() if key in SHORTENED_CANDIDATE_KEYS}
+                               if isinstance(candidate, dict) else candidate for candidate in content["candidates"]]
+    return shortened
+
+
+def _shortened(messages: Sequence[ModelMessage]) -> list[ModelMessage]:
+    """The run so far with each lookup's result shortened (_shortened_result), for the answer an
+    expert gives once its next request was over the input bound (plan WP S1, C4d: 105526324's and
+    105526456's province experts). The answers' evidence itself is untouched: the checks read the
+    sources' answers the expert received (_Expert.received), never the request."""
+    found = []
+    for message in messages:
+        if isinstance(message, ModelRequest):
+            message = replace(message, parts=[
+                replace(part, content=_shortened_result(part.content)) if isinstance(part, ToolReturnPart) else part
+                for part in message.parts])
+        found.append(message)
+    return found
 
 
 def timed_out(error: BaseException) -> bool:
@@ -922,7 +970,7 @@ def make_resolver(
             async with deadline:
                 model = metered = MeteredModel(model_factory(), meter)
                 expert.requests_made = lambda: metered.model_calls
-                exhausted = False
+                exhausted = trimmed = False
                 with capture_run_messages() as messages:
                     try:
                         result = await expert.agent(model).run(
@@ -930,10 +978,18 @@ def make_resolver(
                         )
                     except UsageLimitExceeded:
                         exhausted = True
-                if exhausted:
-                    answer = await expert.answer_now(model, messages)
+                    except InputTooLarge:
+                        # A request its sources' answers made too long (plan WP S1, C4d): the
+                        # answer is asked for on the run so far, shortened (_shortened). The first
+                        # request, with no answer yet, is too long as it is.
+                        if not _tool_returns(messages):
+                            raise
+                        trimmed = True
+                if exhausted or trimmed:
+                    answer = await expert.answer_now(model, messages, shortened=trimmed)
                     if answer is None:
-                        answer = FieldAnswer(outcome="sources_cannot_resolve", explanation=EXHAUSTED)
+                        answer = FieldAnswer(outcome="sources_cannot_resolve",
+                                             explanation=TRIMMED if trimmed else EXHAUSTED)
                         fallback = True
                 else:
                     answer = result.output
