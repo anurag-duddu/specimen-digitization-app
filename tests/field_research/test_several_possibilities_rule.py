@@ -86,7 +86,8 @@ def test_readers_that_agree_with_the_image_uncertain_settle_marked(tmp_path):
 
 def test_the_image_naming_a_readers_text_clears_it(tmp_path):
     """1A writes "Shrubs", 1B "Shurbs", and the image names 1A's text; the expert answers
-    several_possibilities with both: the IMAGE backing alone clears 1A's text (rule 4)."""
+    several_possibilities with both: the IMAGE backing alone clears 1A's text (rule 4). The
+    confidence pass flags it, the readers differing there (confidence.READERS_DIFFER)."""
     rig = build_rig(tmp_path, TEXT.replace("Synthetic grassland", "Shrubs"),
         TEXT.replace("Synthetic grassland", "Shurbs"), candidates=SHRUBS)
     run = rig.specimen.run
@@ -96,7 +97,7 @@ def test_the_image_naming_a_readers_text_clears_it(tmp_path):
     assert (habitat.state, habitat.literal) == (ValueState.SUPPORTED, "Shrubs")
     assert habitat.settled_observation_ids == [run.observations[0].id]
     assert findings(run, "habitat") == [(f"cleared:habitat:{run.regions[0].id}", "info")]
-    assert not reasons_for(run, "habitat")
+    assert reasons_for(run, "habitat") == [f"marked:habitat:{run.regions[0].id}:readers_differ"]
 
 
 def test_readers_that_differ_only_in_case_and_spacing_are_one_candidate(tmp_path):

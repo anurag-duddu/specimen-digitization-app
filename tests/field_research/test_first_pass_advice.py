@@ -66,7 +66,7 @@ from specimen_digitization.field_research.contracts import (
 )
 from specimen_digitization.field_research.experts import INPUT_PREFIX
 
-LA, ONE_A = (TEXT.replace("collection_code: SYNTHETIC", f"collection_code: {code}") for code in ("la", "1a"))
+LA, ONE_A = (TEXT.replace("collection_code: LEWIS COLLECTION", f"collection_code: {code}") for code in ("la", "1a"))
 CODES = every_field(("collection_code", "1A", "la", "collection_code: la"),
     ("collection_code", "1B", "1a", "collection_code: 1a"))
 # The review's probe (#414, round 1): 1A writes "1a"; 1B and both readers of
@@ -405,7 +405,8 @@ def test_a_field_no_source_checks_settles_on_the_images_text_when_nothing_backs_
     """One label: 1A writes "la", 1B "1a", the image names 1A's "la", and no
     source checks the collection code. 1A's text settles, cleared (an IMAGE
     backing, rule 4); 1B's text, which nothing backs, is ambiguous for
-    review."""
+    review. The confidence pass flags the settled "la": it is not the collection heading the
+    owner ruled a Collection Code (confidence.NOT_COLLECTION_CODE)."""
     rig = build_rig(tmp_path, LA, ONE_A, candidates=CODES)
     run = rig.specimen.run
     prefer(rig, 0)
@@ -414,7 +415,8 @@ def test_a_field_no_source_checks_settles_on_the_images_text_when_nothing_backs_
     if settles:
         assert (code.state, code.literal) == (ValueState.SUPPORTED, "la")
         assert settlement_findings(run, "collection_code") == [(f"cleared:collection_code:{run.regions[0].id}", "info")]
-        assert not reasons_for(run, "collection_code")
+        assert reasons_for(run, "collection_code") == [
+            f"marked:collection_code:{run.regions[0].id}:not_collection_code"]
         return
     assert (code.state, code.literal) == (ValueState.AMBIGUOUS, None)
     assert code.reason == agreement.DIFFER + " Settled."

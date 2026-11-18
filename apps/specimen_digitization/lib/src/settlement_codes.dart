@@ -61,6 +61,12 @@ String? markedReasonWords(String suffix) {
     'text_only' => 'only readings back it',
     'conflict' => 'another reading competes',
     'barcode_differs' => 'the label and its QR code differ',
+    'readers_differ' => 'the readings differ here',
+    'follows_marked' => 'it comes from a marked field',
+    'extent' => 'the label may hold more or less of it',
+    'distance_origin' => 'the town is only a distance reference',
+    'not_collection_code' => 'not the collection heading',
+    'not_verbatim_date' => 'an exact date belongs in the dates',
     _ => null,
   };
 }

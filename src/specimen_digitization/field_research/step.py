@@ -90,7 +90,7 @@ from specimen_digitization.application.policy import PLACEHOLDERS
 from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.workflow import FIELD_RESEARCH, OperationalBlock, attempts_used
 
-from . import derive
+from . import confidence, derive
 from .budget import BudgetExhausted
 from .contracts import (
     FIELD_TOOLS,
@@ -2975,6 +2975,10 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
         derived = [*derived, *more]
     stage(run, readings=readings, received=received, researched=tasks_by_key, derived=derived, human=human,
         blobs=blobs, decisions=decisions)
+    # Confident or flagged (field_research/confidence.py): a settled value something in the run argues
+    # against is marked on its field; no value changes.
+    if units_path(run):
+        confidence.review(run, readings=readings, human=human, date_rules=profile.date_rules)
     return derived
 
 
@@ -3004,10 +3008,11 @@ def marked_code(key: str, region_id: str, why: str) -> str:
 def marked_reasons(run) -> list[str]:
     """The codes of the run's marked findings, in their order: a label's settlement's
     (_settlement) and the check stage's (ontology_checks.stage)."""
+    from .confidence import RULE as CONFIDENCE
     from .ontology_checks import CHECK_STAGE
 
     return [finding.reason_code for finding in getattr(run, "findings", None) or ()
-        if finding.rule_id in (SETTLEMENT, CHECK_STAGE) and finding.reason_code.startswith("marked:")]
+        if finding.rule_id in (SETTLEMENT, CHECK_STAGE, CONFIDENCE) and finding.reason_code.startswith("marked:")]
 
 
 def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
@@ -4684,6 +4689,9 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
     from .ontology_checks import follow_sources
 
     follow_sources(run, asset_id=run.regions[0].asset_id if run.regions else None, blobs=blobs)
+    if units_path(run):
+        # A value derived again above follows its sources' marks (confidence.py, rule 2).
+        confidence.review(run, readings=run_readings(run), human=human_keys(run), date_rules=profile_of(run).date_rules)
     finalize_fields(run, None, (), specimen=specimen, blobs=blobs, today=today)
     if pending and not run.human_approved:
         run.reasons = [*run.reasons, APPROVAL]

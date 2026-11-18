@@ -68,7 +68,7 @@ from specimen_digitization.application.reading_units import (
 )
 from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.application.workflow import FIELD_RESEARCH, store_reading_units
-from specimen_digitization.field_research import agreement
+from specimen_digitization.field_research import agreement, confidence
 from specimen_digitization.field_research import step as field_step
 from specimen_digitization.field_research.contracts import (
     FIELD_TOOLS,
@@ -124,7 +124,8 @@ HABITATS = every_field(("habitat", "1A", "Shrubs", "habitat: Shrubs"), ("habitat
 
 def test_image_only_clears(tmp_path):
     """1A writes "Shrubs", 1B "Shurbs", no source checks a habitat, and the image names 1A's text:
-    an IMAGE backing alone clears it (rule 4)."""
+    an IMAGE backing alone clears it (rule 4). The readers differ there and nothing but the image
+    chose, so the confidence pass flags the value it leaves as it is (confidence.READERS_DIFFER)."""
     rig = build_rig(tmp_path, TEXT.replace("Synthetic grassland", "Shrubs"),
         TEXT.replace("Synthetic grassland", "Shurbs"), candidates=HABITATS)
     run = rig.specimen.run
@@ -134,7 +135,7 @@ def test_image_only_clears(tmp_path):
     region = run.regions[0].id
     assert findings(run, "habitat") == [(f"cleared:habitat:{region}", "info")]
     assert (habitat.state, habitat.literal) == (ValueState.SUPPORTED, "Shrubs")
-    assert not reasons_for(run, "habitat")
+    assert reasons_for(run, "habitat") == [f"marked:habitat:{region}:readers_differ"]
 
 
 def test_source_only_clears(tmp_path):
@@ -1139,6 +1140,10 @@ def unit(*texts, image=0, fields=(), sep=" "):
     return SimpleNamespace(texts=texts, image=image, fields=list(fields), sep=sep)
 
 
+# The confidence pass's marks of the last row through_step ran ("marked:L1:readers_differ").
+CONFIDENCE_SEEN: list[str] = []
+
+
 def through_step(tmp_path, monkeypatch, labels, candidates, key, script, *, tools=None, person=False):
     """Run the row through the step; (state, literal, normalized, authority_id, options, findings,
     reasons): the options the value's reason lists ("Options: ...")."""
@@ -1218,7 +1223,13 @@ def through_step(tmp_path, monkeypatch, labels, candidates, key, script, *, tool
         return code
     found = [named(f.reason_code).replace(f":{key}:", ":") for f in run.findings
         if f.rule_id == "field_settlement" and f.field_key == key]
-    reasons = [named(reason).replace(f":{key}", "") for reason in run.reasons if key in reason.split(":")]
+    # The settlement rule's reasons; the confidence pass's marks (field_research/confidence.py), which
+    # flag a value the rule settled without changing it, are kept apart (CONFIDENCE_MARKS).
+    marks = {f.reason_code for f in run.findings if f.rule_id == confidence.RULE}
+    reasons = [named(reason).replace(f":{key}", "") for reason in run.reasons
+        if key in reason.split(":") and reason not in marks]
+    CONFIDENCE_SEEN[:] = [named(code).replace(f":{key}:", ":") for code in run.reasons
+        if code in marks and key in code.split(":")]
     options = tuple(value.reason.split(" Options: ", 1)[1].rstrip(".").split("; ")) if " Options: " in (
         value.reason or "") else ()
     return value.state, value.literal, value.normalized, value.authority_id, options, found, reasons
@@ -1566,6 +1577,16 @@ EXPECTED: dict[str, tuple] = {
     **{f"claude3-1b-two-line-locality-names-{names}": kept("Seliban Riv.\nMt. Apo", "cleared")
         for names in ("1A", "1B", "1A-1B")},
 }
+# The rows whose value the settlement rule leaves as above and the confidence pass then flags
+# (field_research/confidence.py), each with its mark. Rule 1: the readers differ ("Shurbs", "Grass" and
+# "Shrubs", "" and "light") and only the image judgement chose the value. Rule 4: "la" is not the
+# collection heading the owner ruled a Collection Code.
+CONFIDENCE_MARKS: dict[str, list[str]] = {
+    "codex1-5-transcript": ["marked:L1:readers_differ"],
+    "codex3-3-grass-answered": ["marked:L1:readers_differ"],
+    "mechanics-units-txt-example": ["marked:L1:readers_differ"],
+    "claude1-c2d-both-named": ["marked:L1:not_collection_code"],
+}
 
 
 @pytest.mark.parametrize("row", [row for row, *_ in TABLE])
@@ -1577,3 +1598,4 @@ def test_every_reviewer_input_through_the_step(tmp_path, monkeypatch, row):
     given = build()
     assert through_step(tmp_path, monkeypatch, given["labels"], given["candidates"], given["key"], given["script"],
         tools=given.get("tools"), person=given.get("person", False)) == EXPECTED[row]
+    assert CONFIDENCE_SEEN == CONFIDENCE_MARKS.get(row, [])

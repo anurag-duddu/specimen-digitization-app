@@ -47,6 +47,11 @@ from production_e2e_support import (  # noqa: E402
 )
 from test_step import GBIF_NAME, FakeSources, Scripted, default_script, failing, resolved  # noqa: E402
 
+# The label's Collection Code is the printed heading the owner ruled one (the ontology's notation
+# lewis_collection_heading): any other text is flagged for a person (field_research/confidence.py).
+LABEL_VALUES = {**LABEL_VALUES, "collection_code": "LEWIS COLLECTION"}
+LABEL_TEXT = "\n".join(f"{key}: {value}" for key, value in LABEL_VALUES.items())
+
 FIELDS = {"SPECIMEN_RESEARCH_HARNESS": "fields"}
 CAP = 1_000_000
 NATIVE_OPERATIONS = {"GetCanonicalResearchBindingV2", "RegisterCanonicalResearchBindingV2",
@@ -61,6 +66,11 @@ def no_network(monkeypatch):
         raise AssertionError("the offline e2e test performs no HTTP")
     monkeypatch.setattr(httpx.AsyncClient, "send", refuse)
     monkeypatch.setattr(httpx.Client, "send", refuse)
+    # The readings the support module builds carry the same label (LABEL_TEXT above).
+    import production_e2e_support
+
+    monkeypatch.setattr(production_e2e_support, "LABEL_TEXT", LABEL_TEXT)
+    monkeypatch.setattr(production_e2e_support, "LABEL_VALUES", LABEL_VALUES)
 
 
 class CloudBlobs(GenerationBlobs):

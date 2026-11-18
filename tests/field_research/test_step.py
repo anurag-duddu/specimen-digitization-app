@@ -61,7 +61,7 @@ GBIF_NAME = "Danaus plexippus (Linnaeus, 1758)"
 GBIF_KEY = "5133088"
 LABEL = {
     "fmnh_ins_number": "FMNH-INS 0010001",
-    "collection_code": "SYNTHETIC",
+    "collection_code": "LEWIS COLLECTION",
     "country": "United States",
     "province_state": "Illinois",
     "county": "Cook",
@@ -1383,7 +1383,11 @@ def test_a_label_whose_first_pass_was_given_up_goes_to_review_however_its_fields
     assert (city.state, city.literal) == (ValueState.SUPPORTED, "San Pedro")
     assert (run.stage, run.blocker, run.disposition) == ("finalized", None, Disposition.REVIEW)
     marked = [f"marked:{key}:{region}:text_only" for key in AGREEING_ALONE]
-    assert run.reasons == [f"unresolved_transcription:{region}", *marked]
+    # The values derived from a marked one are marked with it (field_research/confidence.py, rule 2).
+    followed = [f"marked:{key}:{region}:follows_marked"
+        for key in ("elevation_from_m", "elevation_to_m", "elevation_to_ft", "date_visited_to")]
+    assert run.reasons[0] == f"unresolved_transcription:{region}"
+    assert sorted(run.reasons[1:]) == sorted([*marked, *followed])
     assert [(f.severity, f.reason_code) for f in run.findings if f.rule_id == "first_pass_given_up"] == [
         ("warning", f"first_pass_given_up:{region}:model_rate_limited")]
 

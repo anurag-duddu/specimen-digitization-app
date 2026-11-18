@@ -213,14 +213,41 @@ const String barcodeDiffersWords =
     'code differ. Compare them.';
 
 /// Why a `marked:` code's label left its field for a person, by its `why`.
-String _markedWhy(String why) => switch (why) {
-  'text_only' =>
-    'Only the readings back this value. The image and sources do not '
-        'confirm it.',
-  'conflict' =>
-    'Another reading competes with this value. Check it against the image.',
-  'barcode_differs' => barcodeDiffersWords,
-  _ => 'Review the value and its supporting sources.',
+String _markedWhy(String why) =>
+    confidenceWords[why] ??
+    switch (why) {
+      'text_only' =>
+        'Only the readings back this value. The image and sources do not '
+            'confirm it.',
+      'conflict' =>
+        'Another reading competes with this value. Check it against the image.',
+      'barcode_differs' => barcodeDiffersWords,
+      _ => 'Review the value and its supporting sources.',
+    };
+
+/// Why a value the record clears with is not confirmed: the confidence
+/// pass's marks (`marked:<field>:<label>:<why>`,
+/// field_research/confidence.py). The value stays as it was read; the
+/// field is left for a person to check.
+const Map<String, String> confidenceWords = <String, String>{
+  'readers_differ':
+      'The two readings of this label differ here, and only the image check '
+      'chose this one. Compare it with the label.',
+  'follows_marked':
+      'This value was worked out from another field that is marked for '
+      'review. Check that field first.',
+  'extent':
+      'The label may hold more or less of this value than was kept. Check '
+      'where it starts and ends on the label.',
+  'distance_origin':
+      'The label names this town only as the point a distance is measured '
+      'from, not as the place it was collected.',
+  'not_collection_code':
+      'Only the printed heading LEWIS COLLECTION is a collection code. This '
+      'text looks like a slide, preparation or field number.',
+  'not_verbatim_date':
+      'Verbatim D/T/S keeps only dates that are not exact. This text is an '
+      'exact date, a slide code or the identification date.',
 };
 
 /// The field note a `cleared:` or `marked:` finding reads as, naming the
