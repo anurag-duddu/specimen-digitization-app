@@ -841,30 +841,64 @@ def graph_size(specimen):
     return len(active_graph.encoded(active_graph.envelope(specimen)))
 
 
-def test_a_result_that_would_pass_the_size_limit_is_not_stored_and_never_blocks(tmp_path, monkeypatch):
-    """Codex round 3, 1: research and the intent fit under the record's limit, the inline answer would
-    not. The result is not stored ("not obtained: result_too_large") and the record is finalized with
-    research's stage and blocker, at the boundary of the limit."""
+BULKY = {key: {"value": "v" * 2_000, "evidence": "L1: " + "x" * 2_000} for key in so.FIELDS}
+
+
+def pending_rig(folder, opinion, monkeypatch):
     from specimen_digitization.application import active_graph
 
-    bulky = {key: {"value": None, "evidence": "L1: " + "x" * 2_000} for key in so.FIELDS}
-    twin = build_rig(tmp_path / "twin")
-    with_opinion(twin, Opinion(bulky))
-    obtained = graph_size(to_end(twin))
-    rig = build_rig(tmp_path)
-    with_opinion(rig, Opinion(bulky))
+    rig = build_rig(folder)
+    with_opinion(rig, opinion)
     pending = rig.workflow.step(rig.principal, rig.specimen.id)
     monkeypatch.setattr(active_graph, "GRAPH_THRESHOLD", 0)
-    # The limit lies between the record without the answer (a few KiB more than the pending record)
-    # and with it (about 80 KiB more: the answer and the judged fields' texts).
-    limit = graph_size(pending) + 8 * 1024
-    assert obtained > limit
-    monkeypatch.setattr(active_graph, "NORMAL_GRAPH_LIMIT", limit)
+    return rig, pending
+
+
+def test_a_record_near_its_size_limit_asks_nothing_and_never_blocks(tmp_path, monkeypatch):
+    """Codex round 4, 1: the intent would fit just below the limit, and a refused factory's paid call
+    and settlement would cross it. With less than twice MARGIN_BYTES below the limit nothing is
+    reserved, saved as an intent or sent: "not obtained: record_too_large", the record finalized with
+    research's stage and blocker."""
+    from specimen_digitization.application import active_graph, second_opinion_step
+
+    opinion = Opinion(error=RuntimeError("refused"))
+    rig, pending = pending_rig(tmp_path, opinion, monkeypatch)
+    monkeypatch.setattr(active_graph, "NORMAL_GRAPH_LIMIT", graph_size(pending) + 1_024)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert (run.second_opinion["status"], run.second_opinion["reason"]) == (so.NOT_OBTAINED, "record_too_large")
+    assert not opinion.requests and not step_paid(run) and so.STEP not in run.attempts
+    stage_and_blocker_unchanged(run, main_like(tmp_path / "main"))
+    assert second_opinion_step.headroom(rig.repository.get(rig.principal.scope, rig.specimen.id)) >= 0
+
+
+def test_a_result_that_would_leave_too_little_room_is_not_stored_and_a_later_approval_fits(tmp_path, monkeypatch):
+    """Codex round 4, 2: an obtained result that would leave less than MARGIN_BYTES below the limit is
+    not stored ("not obtained: result_too_large"), so a person's approval afterwards (its values digest)
+    is not the write that crosses it."""
+    from test_step import decide, review_client
+
+    from specimen_digitization.application import active_graph, second_opinion_step
+
+    rig, pending = pending_rig(tmp_path, Opinion(BULKY), monkeypatch)
+    monkeypatch.setattr(active_graph, "NORMAL_GRAPH_LIMIT", graph_size(pending) + 2 * second_opinion_step.MARGIN_BYTES)
     run = rig.workflow.step(rig.principal, rig.specimen.id).run
     assert (run.second_opinion["status"], run.second_opinion["reason"]) == (so.NOT_OBTAINED, "result_too_large")
     assert "answer" not in run.second_opinion and "fields" not in run.second_opinion
     stage_and_blocker_unchanged(run, main_like(tmp_path / "main"))
-    assert graph_size(rig.repository.get(rig.principal.scope, rig.specimen.id)) <= limit
+    approved = decide(review_client(rig), rig, "approve-after", "approve")
+    assert (approved.stage, approved.blocker) == ("finalized", None)
+
+
+def test_the_stored_answer_is_bounded(tmp_path):
+    """Codex round 4, 1 and 2: the stored answer is the 20 values and their texts, each clipped."""
+    rig = build_rig(tmp_path)
+    with_opinion(rig, Opinion(BULKY))
+    stored = to_end(rig).run.second_opinion
+    assert stored["status"] == so.OBTAINED and set(stored["answer"]) == set(so.FIELDS)
+    assert all(len(entry["evidence"]) == len(entry["value"]) == so.TEXT_LIMIT for entry in stored["answer"].values())
+    assert all(len(entry["evidence"]) <= so.TEXT_LIMIT for entry in stored["fields"].values())
+    assert len(json.dumps(stored)) < 40 * so.TEXT_LIMIT * 4
+
 
 
 def test_a_decision_while_the_intent_is_open_abandons_it_and_the_run_moves_on(tmp_path, monkeypatch):
@@ -998,3 +1032,123 @@ def test_a_malformed_answer_is_asked_again_once(tmp_path):
     assert run.reasons == [] and run.disposition == Disposition.CLEARED
     [paid] = step_paid(run)
     assert paid["usage"]["model_calls"] == 2 and paid["cost_micros"] <= so.CAP_MICROS
+
+
+# ---- Codex round 4 on 489516c9 ----------------------------------------------------------------------
+
+def test_a_field_decision_while_the_intent_is_open_abandons_it_and_leaves_no_mark_on_the_field(tmp_path, monkeypatch):
+    """Codex round 4, 3: a person confirms Country while the intent is open. The endpoint abandons the
+    intent there and then and finalizes the record as research left it, so the decision proceeds as on
+    main: no lease, no open intent, and no derived mark on the person's field; the provider's result then
+    loses its save."""
+    from test_step import decide, review_client
+
+    rig = build_rig(tmp_path)
+    client = review_client(rig)
+    opinion = Opinion(agreeing(tmp_path))
+    with_opinion(rig, opinion)
+    rig.workflow.step(rig.principal, rig.specimen.id)
+    real = so.obtain
+    seen = {}
+
+    def decide_meanwhile(run, **kwargs):
+        current = rig.repository.get(rig.principal.scope, rig.specimen.id).run
+        country = current.fields["country"]
+        seen["decided"] = decide(client, rig, "country-meanwhile", "field", target_id="country",
+            after=country.model_dump(mode="json", exclude={"evidence_ids"}), evidence_ids=list(country.evidence_ids))
+        return real(run, **kwargs)
+
+    monkeypatch.setattr(so, "obtain", decide_meanwhile)
+    rig.workflow.step(rig.principal, rig.specimen.id)
+    decided = seen["decided"]
+    assert (decided.second_opinion["status"], decided.second_opinion["reason"]) == (so.NOT_OBTAINED, "abandoned")
+    assert decided.lease_until is None and decided.stage == "finalized" and decided.person_decided_fields == ["country"]
+    assert not [code for code in decided.reasons if code.startswith("marked:country:") and so.own(code)]
+    run = rig.repository.get(rig.principal.scope, rig.specimen.id).run
+    assert run == decided and len(opinion.requests) == 1
+
+
+def test_an_unanswered_call_is_never_asked_again_for_the_same_values(tmp_path):
+    """Codex round 4, 4: the worker dies in the request; after the lease, Retry or Resume puts the run
+    back at the handover. The recheck finalizes it, the lost intent is abandoned, and the step is not due
+    again for the same values: nothing is sent twice. A changed value makes it due again."""
+    rig = build_rig(tmp_path)
+    opinion = Opinion(error=WorkerDeadlineExceeded())
+    with_opinion(rig, opinion)
+    rig.workflow.step(rig.principal, rig.specimen.id)
+    with pytest.raises(WorkerDeadlineExceeded):
+        rig.workflow.step(rig.principal, rig.specimen.id)
+    held = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    rig.clock.now = datetime.fromisoformat(held.run.lease_until) + timedelta(seconds=1)
+    # What Retry or Resume does to a record that is not blocked: back to the handover (api.py, lane.queue).
+    held.run.stage, held.run.disposition = "plan", None
+    rig.repository.save(rig.principal, held, held.version, "resume", "resume")
+    opinion.error = None
+    opinion.answer = full()
+    run = to_end(rig).run
+    assert (run.stage, run.blocker) == ("finalized", None) and len(opinion.requests) == 1
+    assert run.second_opinion["reason"] in so.UNANSWERED and run.second_opinion["asked"]
+    assert not so.due(run)
+    key = next(iter(run.second_opinion["asked"]))
+    run.fields[key].literal = run.fields[key].parsed = run.fields[key].normalized = "Changed"
+    assert so.due(run)
+
+
+def test_the_ledgers_are_settled_only_after_the_result_is_saved(tmp_path, monkeypatch):
+    """Codex round 4, 5: an approval abandons the intent (its whole reservation held); the late answer's
+    known cost then loses its save and settles nothing, so the ledgers and the run agree on the held
+    reservation. A result that is saved settles the ledgers once, after its save."""
+    from test_step import decide, review_client
+
+    from specimen_digitization.application import lane_costs
+
+    settled = []
+    real_settle = lane_costs.settle_step
+    monkeypatch.setattr(lane_costs, "settle_step",
+        lambda repository, principal, specimen, step, *a, **k: settled.append((step, specimen.version))
+        or real_settle(repository, principal, specimen, step, *a, **k))
+    rig = build_rig(tmp_path)
+    client = review_client(rig)
+    with_opinion(rig, Opinion(agreeing(tmp_path)))
+    rig.workflow.step(rig.principal, rig.specimen.id)
+    real = so.obtain
+
+    def approve_meanwhile(run, **kwargs):
+        decide(client, rig, "approve-meanwhile", "approve")
+        return real(run, **kwargs)
+
+    monkeypatch.setattr(so, "obtain", approve_meanwhile)
+    rig.workflow.step(rig.principal, rig.specimen.id)
+    run = rig.repository.get(rig.principal.scope, rig.specimen.id).run
+    assert [s for s, _ in settled if s == so.STEP] == []
+    assert f"{so.STEP}:1" not in run.dependencies.get("ordinary_cost_settlements", {})
+    [paid] = step_paid(run)
+    assert (paid["cost_basis"], paid["cost_micros"]) == ("reserved", so.CAP_MICROS)
+    monkeypatch.setattr(so, "obtain", real)
+    other = build_rig(tmp_path / "saved")
+    with_opinion(other, Opinion(agreeing(tmp_path / "again")))
+    done = to_end(other)
+    [(step, version)] = [(s, v) for s, v in settled if s == so.STEP]
+    assert version == done.version
+    [paid] = step_paid(done.run)
+    assert done.run.dependencies["ordinary_cost_settlements"][f"{so.STEP}:1"] == {
+        "reserved_micros": so.CAP_MICROS, "settled_micros": paid["cost_micros"]}
+
+
+def test_two_external_calls_are_reserved_and_counted_since_a_retry_is_possible(tmp_path):
+    """Codex round 4, 6: with one external call left the step does not run ("run_limit"); otherwise it
+    counts two, as a retry-capable mandatory model step reserves."""
+    rig = build_rig(tmp_path)
+    opinion = Opinion(full())
+    with_opinion(rig, opinion)
+    pending = rig.workflow.step(rig.principal, rig.specimen.id)
+    pending.run.usage.external_calls = pending.run.profile.execution.max_external_calls - 1
+    rig.repository.save(rig.principal, pending, pending.version, "calls", "calls")
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert run.second_opinion["reason"] == "run_limit" and not opinion.requests
+    counted = build_rig(tmp_path / "counted")
+    with_opinion(counted, Opinion(full()))
+    pending = counted.workflow.step(counted.principal, counted.specimen.id)
+    before = pending.run.usage.external_calls
+    run = counted.workflow.step(counted.principal, counted.specimen.id).run
+    assert run.usage.external_calls == before + so.REQUESTS

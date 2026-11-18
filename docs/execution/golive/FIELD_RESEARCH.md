@@ -2065,7 +2065,7 @@ the workflow does not finalize the record yet: in the same save the run's
 stage becomes `field_second_opinion` and its disposition none. The next
 workflow step runs it with a paid step's lifecycle, and obeys every guard a
 mandatory paid step obeys: its attempts, the run's limits on steps, external
-calls, reserved tokens (16,000, as a mandatory paid step reserves) and
+calls (two, since a retry is possible), reserved tokens (16,000, as a mandatory paid step reserves) and
 active time, a price row, and the cost ceiling with retained research
 liabilities; then its reservation (two requests' worst case, USD 0.12 at
 list, since a malformed answer is asked again once) on the retained research
@@ -2075,8 +2075,10 @@ the attempt, a lease, the reserved cost, tokens and time, and no blocker, so
 an open intent is never an unknown external outcome that blocks. The step's
 deadline is the profile's external timeout, at most 90 s, and the worker's
 deadline less research's margin; reading the crops runs in a worker thread
-waited for until it, and the request and the client's closing are each cut
-at it. Its paid call is recorded under its own route and settled to what the
+waited for until it; the request is bounded as the experts' are
+(`asyncio.timeout`, over the gateway client's own timeout), and the client's
+closing is cut at it too: a valid answer received before it stands even if
+the closing then times out (logged). Its paid call is recorded under its own route and settled to what the
 provider reported, or held in full when that is not known; the reported
 tokens count in the run's tokens. The step then finalizes the record. Field
 research never calls it and never reads its result.
@@ -2093,12 +2095,22 @@ refusal or an error while reserving releases what a monthly cap held, at
 zero, and is not retried. After the intent, a provider error (HTTP 402
 included), a timeout, a second malformed answer, a request dearer than what
 is left of its reservation or any exception is recorded and finalized at
-once. A result that would pass the record's size limit is not stored: "not
-obtained: result_too_large". Anything else that finalizes the run while the
-intent is open (a person's decision or approval, research again) abandons
-it first (`second_opinion.abandon`, from `finalize_fields`): "not obtained:
-abandoned", its whole reservation held; the step's own result then loses
-its save and the record stays as that finalize left it. A lost outcome (the
+once. The record's size limit: the stored answer is the 20 values and
+their texts, each cut at 300 characters; with less than twice 16 KiB below
+the record's limit nothing is reserved, saved or sent ("not obtained:
+record_too_large"); a result that would leave less than 16 KiB, or whose
+save is refused for size, is not stored ("result_too_large"), so a later
+ordinary write is never the one to cross it; a save refused for size stores
+nothing and sets no blocker. A person's decision while the intent is open
+abandons it at the decision endpoint, and anything else that finalizes the
+run abandons it first (`second_opinion.abandon`, from `finalize_fields`):
+"not obtained: abandoned", its whole reservation held on the run and on
+the ledgers alike; the step's own result then loses its save and settles
+nothing, and the record stays as that decision or finalize left it. The
+shared ledgers are settled only after the result's save succeeds. An
+unanswered or abandoned call is never asked again for the same values
+(Retry, Resume, a recheck): only when the settled values change, or on a
+new run. A lost outcome (the
 worker's deadline, a crash, the result's save failing) is found by the next
 workflow step once the lease ends (the queue waits for the lease):
 "not obtained: outcome_unknown", its whole reservation held, and finalized.

@@ -66,7 +66,7 @@ def _refusal(workflow, principal, specimen, cost: int, timeout: float) -> str | 
     if attempts_used(run, second_opinion.STEP) >= policy.max_attempts:
         return "attempts_used"
     tokens = 0 if run.profile.synthetic else second_opinion.RESERVED_TOKENS
-    if (run.usage.steps >= policy.max_steps or run.usage.external_calls + 1 > policy.max_external_calls
+    if (run.usage.steps >= policy.max_steps or run.usage.external_calls + second_opinion.REQUESTS > policy.max_external_calls
             or run.usage.reserved_tokens + tokens > policy.max_tokens
             or run.usage.active_seconds + run.usage.reserved_active_seconds + timeout > policy.max_active_seconds):
         return "run_limit"
@@ -111,22 +111,47 @@ def _reserve(workflow, principal, specimen, cost: int):
         return "budget", None
 
 
+
+# The room a stored result must leave below the record's size limit, so that a later ordinary write (a
+# person's decision, an approval's digest) is never the one to cross it.
+MARGIN_BYTES = 16 * 1024
+# The inline snapshot's limit (storage.check_snapshot).
+SNAPSHOT_LIMIT = 256 * 1024
+
+
+def headroom(specimen) -> int:
+    """The bytes left below the limit the record's next save is held to: the active graph's
+    (active_graph.NORMAL_GRAPH_LIMIT) once the run is stored as a graph, else the inline snapshot's."""
+    from . import active_graph
+
+    payload = specimen.model_dump(mode="json")
+    if len(active_graph.encoded(payload["run"])) <= active_graph.GRAPH_THRESHOLD:
+        return SNAPSHOT_LIMIT - len(active_graph.encoded(payload))
+    return active_graph.NORMAL_GRAPH_LIMIT - len(active_graph.encoded(active_graph.envelope(specimen)))
+
+
 def _save(workflow, principal, specimen, revision, label: str):
-    from .active_graph import save_recoverably
-
-    return save_recoverably(workflow.repository, principal, specimen, revision, f"{label}:{revision}",
-        digest({"step": "field_second_opinion", "run": specimen.run.id, "label": label}))
-
-
-def _end(workflow, principal, specimen, revision, *, label: str, release=None, prior=None, attempt=0):
-    """Finalize the record (second_opinion.finish) and save it with an audit event; then settle at zero
-    any monthly-cap hold a refusal released (tenant_budget.settle_released). A result that would pass
-    the record's size limit is put back to `prior` (the stored result before this attempt) and stored
-    "not obtained: result_too_large" instead. A save that loses to another writer returns the record
-    as that writer left it (an open intent is abandoned by its finalize)."""
-    from ..field_research import second_opinion
+    """The step's save; None when the record would pass its size limit (nothing is stored then)."""
     from .active_graph import GraphTooLarge
-    from .storage import Conflict, SnapshotTooLarge
+    from .storage import SnapshotTooLarge
+
+    try:
+        return workflow.repository.save(principal, specimen, revision, f"{label}:{revision}",
+            digest({"step": "field_second_opinion", "run": specimen.run.id, "label": label}))
+    except (GraphTooLarge, SnapshotTooLarge):
+        return None
+
+
+def _end(workflow, principal, specimen, revision, *, label: str, release=None, prior=None, attempt=0, settle=None):
+    """Finalize the record (second_opinion.finish) and save it with an audit event. A stored result that
+    would leave less than MARGIN_BYTES below the record's limit, or whose save is refused for size, is
+    put back to `prior` (the stored result before this attempt) and stored "not obtained:
+    result_too_large" instead; a save refused for size again stores nothing (the record stays as it
+    was). A save that loses to another writer returns the record as that writer left it. Only once the
+    save has succeeded: the monthly-cap holds a refusal released are settled at zero, and `settle(saved)`
+    settles the ledgers to the request's known cost."""
+    from ..field_research import second_opinion
+    from .storage import Conflict
     from .tenant_budget import settle_released
 
     run = specimen.run
@@ -134,24 +159,29 @@ def _end(workflow, principal, specimen, revision, *, label: str, release=None, p
     run.lease_until = None
     specimen.audit.append(AuditEvent(actor=principal.user_id, action="workflow_step", reason=second_opinion.STEP,
         after={"stage": run.stage, "blocker": run.blocker}))
+
+    def too_large():
+        run.second_opinion = prior
+        second_opinion.record(run, second_opinion.Result(second_opinion.NOT_OBTAINED, "result_too_large"),
+            attempt=attempt, at=workflow.clock().isoformat())
+        second_opinion.finish(run)
+
     try:
-        try:
-            saved = workflow.repository.save(principal, specimen, revision, f"{label}:{revision}",
-                digest({"step": second_opinion.STEP, "run": run.id, "label": label}))
-        except (GraphTooLarge, SnapshotTooLarge):
-            if not (isinstance(run.second_opinion, dict) and run.second_opinion.get("status") == second_opinion.OBTAINED):
-                raise
-            run.second_opinion = prior
-            second_opinion.record(run, second_opinion.Result(second_opinion.NOT_OBTAINED, "result_too_large"),
-                attempt=attempt, at=workflow.clock().isoformat())
-            second_opinion.finish(run)
+        stored = run.second_opinion if isinstance(run.second_opinion, dict) else {}
+        if stored.get("status") == second_opinion.OBTAINED and headroom(specimen) < MARGIN_BYTES:
+            too_large()
+        saved = _save(workflow, principal, specimen, revision, label)
+        if saved is None and stored.get("status") == second_opinion.OBTAINED:
+            too_large()
             saved = _save(workflow, principal, specimen, revision, label + "-too-large")
     except Conflict:
         return workflow.repository.get(principal.scope, specimen.id)
-    except (GraphTooLarge, SnapshotTooLarge):
-        saved = _save(workflow, principal, specimen, revision, label)
+    if saved is None:
+        return workflow.repository.get(principal.scope, specimen.id)
     if release is not None:
         settle_released(workflow.repository, principal, saved, release, workflow.clock)
+    if settle is not None:
+        settle(saved)
     return saved
 
 
@@ -182,6 +212,9 @@ def run_step(workflow, principal, specimen, revision):
         return _end(workflow, principal, specimen, revision, label="second-opinion-covered")
     cost = 0 if run.profile.synthetic else second_opinion.CAP_MICROS
     code = _refusal(workflow, principal, specimen, cost, timeout)
+    if code is None and headroom(specimen) < 2 * MARGIN_BYTES:
+        # No room for the intent, the result and a later write: nothing is reserved or sent.
+        code = "record_too_large"
     release = None
     if code is None and not run.profile.synthetic:
         code, release = _reserve(workflow, principal, specimen, cost)
@@ -190,10 +223,10 @@ def run_step(workflow, principal, specimen, revision):
             attempt=run.attempts.get(step, 0), at=at.isoformat())
         return _end(workflow, principal, specimen, revision, label="second-opinion-refused", release=release)
     # The intent, saved before the request: no blocker; a lost outcome is found by the next step (above),
-    # and anything else that finalizes the run abandons it (second_opinion.at_finalize).
+    # and anything else that finalizes the run, or a person's decision, abandons it (second_opinion.abandon).
     prior = run.second_opinion
     run.usage.steps += 1
-    run.usage.external_calls += 1
+    run.usage.external_calls += second_opinion.REQUESTS
     run.usage.reserved_tokens += 0 if run.profile.synthetic else second_opinion.RESERVED_TOKENS
     run.usage.reserved_cost_micros += cost
     run.usage.reserved_active_seconds += timeout
@@ -201,7 +234,10 @@ def run_step(workflow, principal, specimen, revision):
     run.attempts[step] = run.attempts.get(step, 0) + 1
     attempt = run.attempts[step]
     second_opinion.record(run, second_opinion.Result(second_opinion.ASKING), attempt=attempt, at=at.isoformat())
-    specimen = workflow.repository.save(principal, specimen, revision, f"intent:{revision}", digest({"intent": step}))
+    intent = _save_intent(workflow, principal, specimen, revision)
+    if intent is None:
+        return workflow.repository.get(principal.scope, specimen.id)
+    specimen = intent
     revision, run = specimen.version, specimen.run
     seconds = min(second_opinion.TIMEOUT_SECONDS, timeout)
     deadline = current_deadline()
@@ -224,10 +260,41 @@ def run_step(workflow, principal, specimen, revision):
     run.usage.reserved_active_seconds = max(0, run.usage.reserved_active_seconds - timeout)
     second_opinion.paid_call(run, attempt=attempt, reserved=cost, result=result)
     second_opinion.record(run, result, attempt=attempt, at=at.isoformat())
-    if not run.profile.synthetic:
-        from .lane_costs import settle_step
+    settle = None
+    if not run.profile.synthetic and result.spent is not None:
+        # The run's side of the settlement is saved with the result; the shared ledgers are settled only
+        # once that save has succeeded (lane_costs.settle_step then finds the run's side recorded).
+        settlements = run.dependencies.setdefault("ordinary_cost_settlements", {})
+        settlements[f"{step}:{attempt}"] = {"reserved_micros": cost, "settled_micros": result.spent}
+        run.usage.reserved_cost_micros += result.spent - cost
 
-        settle_step(workflow.repository, principal, specimen, step, cost, workflow.clock)
-        if workflow.settle_retained_cost is not None:
-            workflow.settle_retained_cost(principal, specimen, step)
-    return _end(workflow, principal, specimen, revision, label="second-opinion", prior=prior, attempt=attempt)
+        def settle(saved):
+            from .lane_costs import settle_step
+
+            try:
+                settle_step(workflow.repository, principal, saved, step, cost, workflow.clock)
+                if workflow.settle_retained_cost is not None:
+                    workflow.settle_retained_cost(principal, saved, step)
+            except Exception:  # noqa: BLE001 - the ledgers then keep the whole reservation
+                import logging
+
+                logging.getLogger(__name__).warning("second opinion: ledger settlement failed", exc_info=True)
+
+    return _end(workflow, principal, specimen, revision, label="second-opinion", prior=prior, attempt=attempt,
+        settle=settle)
+
+
+def _save_intent(workflow, principal, specimen, revision):
+    """The intent's save; when it is refused for size the call is not made: the step ends not obtained
+    ("record_too_large") on the record as it was saved, and None is returned. What the ledgers reserved
+    for it stays held (conservative; run_step's headroom check before reserving makes this rare)."""
+    from ..field_research import second_opinion
+
+    saved = _save(workflow, principal, specimen, revision, "intent")
+    if saved is not None:
+        return saved
+    base = workflow.repository.get(principal.scope, specimen.id)
+    second_opinion.record(base.run, second_opinion.Result(second_opinion.NOT_OBTAINED, "record_too_large"),
+        attempt=base.run.attempts.get(second_opinion.STEP, 0), at=workflow.clock().isoformat())
+    _end(workflow, principal, base, base.version, label="second-opinion-refused")
+    return None

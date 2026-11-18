@@ -503,12 +503,31 @@ def own(code: str) -> bool:
     return code.startswith("marked:") and code.endswith((":" + DIFFERS, ":" + NOT_CHECKED))
 
 
-def due(run) -> bool:
-    """Whether the step is due: a value it answers for has no recorded verdict for its current
-    shown value (its mark would be NOT_CHECKED)."""
+# Not obtained for these reasons, a request may have been sent and not answered: it is never asked again
+# for the same values (`asked`, kept with the stored result), on Retry, Resume or a recheck; only when the
+# settled values change or on a new run.
+UNANSWERED = frozenset({"outcome_unknown", "abandoned"})
+
+
+def asked_values(run) -> dict:
+    """The values the step answers for, as shown, keyed by field: what an intent is opened on."""
     from .step import run_readings
 
-    return any(why == NOT_CHECKED for _, why in derived(run, run_readings(run)))
+    return {key: shown(run.fields[key]) for key, _ in derived(run, run_readings(run))}
+
+
+def due(run) -> bool:
+    """Whether the step is due: a value it answers for has no recorded verdict for its current
+    shown value (its mark would be NOT_CHECKED), and no unanswered call was made on these same values."""
+    from .step import run_readings
+
+    marks = derived(run, run_readings(run))
+    if not any(why == NOT_CHECKED for _, why in marks):
+        return False
+    stored = getattr(run, "second_opinion", None)
+    return not (isinstance(stored, Mapping) and stored.get("status") == NOT_OBTAINED
+        and stored.get("reason") in UNANSWERED
+        and stored.get("asked") == {key: shown(run.fields[key]) for key, _ in marks})
 
 
 def finish(run) -> None:
@@ -557,11 +576,15 @@ async def ask(model, labels: Sequence[Label], text: str, meter, *, deadline: flo
     settled = False
     try:
         try:
-            response = await asyncio.wait_for(model.request(messages, {"max_tokens": MAX_TOKENS}, parameters), timeout)
+            # As the experts bound theirs (experts.py, asyncio.timeout), with the gateway client's own
+            # timeout beneath it (production_model: ClientTimeouts).
+            async with asyncio.timeout(timeout):
+                response = await model.request(messages, {"max_tokens": MAX_TOKENS}, parameters)
         finally:
             try:
                 await asyncio.wait_for(_close_client(model), max(0.0, deadline - time.monotonic()))
             except asyncio.TimeoutError:
+                # An answer already received stands (the coordinator's ruling on round 4, 7).
                 LOGGER.warning("second opinion: the client did not close before the deadline")
     except asyncio.TimeoutError:
         raise NotObtained("timeout") from None
@@ -600,6 +623,20 @@ class Result:
     spent: int | None = 0
     tokens: dict | None = None
     requests: int = 0
+
+
+# The stored answer is the 20 values and their supporting text, each cut at TEXT_LIMIT characters: a
+# few kilobytes at most (20 fields x 2 texts x 300 characters), whatever the model returned.
+TEXT_LIMIT = 300
+
+
+def clip(text: str | None) -> str | None:
+    return text if text is None or len(text) <= TEXT_LIMIT else text[:TEXT_LIMIT]
+
+
+def bounded_answer(record: Mapping[str, Opinion]) -> dict:
+    """The answer as stored: {field: {value, evidence}}, each text clipped (clip)."""
+    return {key: {"value": clip(record[key].value), "evidence": clip(record[key].evidence)} for key in FIELDS}
 
 
 def bounded(call: Callable, deadline: float):
@@ -662,9 +699,9 @@ def obtain(run, *, model_factory: Callable, crops: Callable, price, seconds: flo
             value = run.fields.get(key)
             if _settled(value):
                 opinion = record[key]
-                fields[key] = {"compared": shown(value), "value": opinion.value, "evidence": opinion.evidence,
+                fields[key] = {"compared": shown(value), "value": clip(opinion.value), "evidence": clip(opinion.evidence),
                     "verdict": AGREES_VERDICT if same(key, shown(value), opinion.value) else DIFFERS_VERDICT}
-        result = Result(OBTAINED, fields=fields, answer=arguments, padded=padded,
+        result = Result(OBTAINED, fields=fields, answer=bounded_answer(record), padded=padded,
             labels={str(label.number): label.region_id for label in labels})
     except NotObtained as reason:
         result = Result(NOT_OBTAINED, reason.code, padded=padded)
@@ -694,6 +731,10 @@ def record(run, result: Result, *, attempt: int, at: str) -> None:
             stored["reason"] = result.reason
         stored.update({key: previous[key] for key in ("instruction_sha256", "fields", "answer", "labels",
             "padded_labels") if key in previous})
+        if result.status == ASKING:
+            stored["asked"] = asked_values(run)
+        elif result.reason in UNANSWERED and "asked" in previous:
+            stored["asked"] = previous["asked"]
     run.second_opinion = stored
 
 
