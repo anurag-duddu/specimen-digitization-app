@@ -665,10 +665,13 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
         country = run.fields.get("country")
         if ("country" not in settled and "country" not in pending and country is not None
                 and _claims_text("country", country, human_keys(run)) and reading.region_id in _value_regions(
-                    country, readings, rows)):
+                    country, readings, rows)
+                and _same_country_on_label(country, reading, readings, places, codes)):
             # The record's country, settled from another reading of this same label (or a person's),
             # where this reading writes it in another spelling (105526596's 2A "Costa Rica", 2B
             # "Costa R.ica"): the place still settles only inside it (lies_in; plan WP S1, C4c).
+            # Never where a reading of the label writes another country or the country is marked
+            # there (Codex's round 1 on #451: "United States" and "France" over "Paris").
             settled["country"] = PlaceField(tuple(dict.fromkeys((country.literal,
                 *(text for text in (country.normalized, country.parsed) if text),
                 *_expansions("country", country, rows)))), country.authority_id,
@@ -678,6 +681,19 @@ def _misfit(run, task, answer, *, sources, readings, by_name, places, pending, r
         if refused is not None:
             return refused
     return None
+
+
+def _same_country_on_label(country: FieldValue, reading: Reading, readings: Sequence[Reading],
+        places: Mapping[str, Mapping[str, frozenset[str]]], codes: Collection[str]) -> bool:
+    """Whether the record's settled country stands for `reading`'s whole label (_misfit, plan WP S1,
+    C4c): no finding marks the country on that label (`codes`, the run's finding codes), and every
+    country text each reading of the label writes is the country's literal in another reader's
+    spelling (_spelled_alike: "Costa R.ica" for "Costa Rica"; never "France" for "United States")."""
+    if not country.literal or any(code.startswith(f"marked:country:{reading.region_id}:") for code in codes):
+        return False
+    texts = [text for other in readings if other.region_id == reading.region_id
+        for text in places.get("country", {}).get(other.name, ())]
+    return bool(texts) and all(_spelled_alike(text, country.literal) for text in texts)
 
 
 def _province_spelling(run, literal: str | None, places: Mapping[str, Mapping[str, frozenset[str]]]) -> bool:

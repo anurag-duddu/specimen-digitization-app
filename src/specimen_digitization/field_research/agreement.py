@@ -491,6 +491,31 @@ def may_cross_lines(key: str, literal: str) -> bool:
     return "\n" in literal and (key in ACROSS_LINES or (key in ONE_LINE_BREAK and literal.count("\n") == 1))
 
 
+# The fields whose text a place value field's literal over a line break may cross (place_units_only):
+# the places and the precise location, which holds them.
+PLACE_UNIT_FIELDS = frozenset({*PLACE_VALUE_FIELDS, "precise_location"})
+
+
+def place_units_only(key: str, readings: Sequence[Reading], literal: str) -> bool:
+    """For a place value field's literal over one line break (ONE_LINE_BREAK), whether the
+    first pass's units attribute everything it covers to places: in every reading, wherever
+    it writes the literal, each unit covering it names fields, and only place fields or the
+    precise location (PLACE_UNIT_FIELDS; Codex's round 1 on #451: "leg. J. New" over "York"
+    names the collectors, so "New\nYork" is no city). True for any literal without a line
+    break or of another field; False where a reading has no units or a unit names no field
+    (105526323's "Davao" over "Prov.," is one unit of the province and the precise location,
+    or two, in every run of wp26)."""
+    if key not in ONE_LINE_BREAK or key in ACROSS_LINES or "\n" not in literal:
+        return True
+    for reading in readings:
+        covers = covering_units(reading, literal)
+        if not covers or not all(cover for cover in covers):
+            return False
+        if any(not unit.fields or not set(unit.fields) <= PLACE_UNIT_FIELDS for cover in covers for unit in cover):
+            return False
+    return True
+
+
 def _flat(text: str) -> str:
     """The text with each line break read as a space: the same length, so an
     offset in it is the same offset in the text."""
@@ -553,7 +578,8 @@ def across_lines(key: str, readings: Sequence[Reading], literal: str) -> str | N
         at = flat.find(want)
         while at >= 0:
             written = reading.text[at:at + len(want)]
-            if may_cross_lines(key, written) and runs_across_lines(reading.text, written):
+            if (may_cross_lines(key, written) and runs_across_lines(reading.text, written)
+                    and place_units_only(key, [reading], written)):
                 texts.add(written)
             at = flat.find(want, at + 1)
         if len(texts) != 1:
@@ -634,7 +660,8 @@ def literal_basis(task: FieldTask, readings: Sequence[Reading], literal: str,
     if candidate_literal(task, readings, literal, named) is not None:
         return CANDIDATE
     if (all(written_runs(task.key, reading.text, literal) for reading in named)
-            and _cut_candidate(task, readings, literal, named) is None):
+            and _cut_candidate(task, readings, literal, named) is None
+            and place_units_only(task.key, named, literal)):
         return TRANSCRIPT
     return None
 

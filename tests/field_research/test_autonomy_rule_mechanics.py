@@ -162,22 +162,58 @@ def test_each_reason_holds_the_fields_it_names(reason, fields):
 
 # 105526323's locality lines (results r1/pair: both readers).
 DAVAO_LINES = "CNHM. E.Slope Mt.\nMcKinley, Davao\nProv., Mindanao P.I."
+# What wp26's first pass attributed there (r1/pair 105526323): "Davao\nProv.," one unit of the precise
+# location; on r1/three "Davao" the province's and the precise location's, "Prov.," the province's.
+PLACE_WORDS = ("Davao", "Prov.", "McKinley", "Mindanao", "P.I.", "E.Slope", "Mt.")
 
 
-def two_readers(text):
-    return (Reading("1A", "r1", "o1a", "raw_reading", text), Reading("1B", "r1", "o1b", "raw_reading", text))
+def attributed(units, fields_of):
+    """The units with each one's fields as `fields_of(text)` gives them for its first reader's text."""
+    return units.model_copy(update={"units": [unit.model_copy(update={"fields": list(fields_of(
+        next(iter(unit.readers.values())).text))}) for unit in units.units]})
+
+
+def places_of(text):
+    return ("province_state", "precise_location") if any(word in text for word in PLACE_WORDS) else ()
+
+
+def two_readers(text, fields_of=places_of):
+    """Label r1's two readers writing `text`, with the alignment's units, their fields `fields_of`."""
+    from dataclasses import replace
+
+    from test_first_pass_advice import with_units
+
+    readings = with_units((Reading("1A", "r1", "o1a", "raw_reading", text),
+        Reading("1B", "r1", "o1b", "raw_reading", text)))
+    return tuple(replace(r, units=attributed(r.units, fields_of)) for r in readings)
 
 
 def test_a_province_over_one_line_break_is_the_text_its_readers_write():
     """C4a: "Davao\\nProv.," is read from the transcript over the line break, and "Davao Prov.," is the same
-    text: the place value fields fold one line break; on main both were refused (not_candidate,
-    literal_not_in_reading)."""
+    text, where the first pass attributes every unit it covers to places (agreement.place_units_only); on
+    main both were refused (not_candidate, literal_not_in_reading)."""
     readings = two_readers(DAVAO_LINES)
     task = FieldTask("province_state", True, FieldValue(), (), FIELD_TOOLS["province_state"])
 
     assert agreement.across_lines("province_state", readings, "Davao Prov.,") == "Davao\nProv.,"
     assert agreement.literal_basis(task, readings, "Davao\nProv.,", readings) == agreement.TRANSCRIPT
     assert agreement.literal_refusal(task, readings, literal="Davao\nProv.,", named=readings) is None
+
+
+@pytest.mark.parametrize("fields_of", [
+    lambda text: (),                                                     # no unit names a field
+    lambda text: ("collectors",) if "Prov." in text else places_of(text),  # another field's unit
+    lambda text: ("province_state", "habitat") if "Davao" in text else places_of(text),
+], ids=["unattributed", "another-fields-unit", "a-place-and-another-field"])
+def test_a_place_over_a_line_break_needs_units_of_places_only(fields_of):
+    """Codex's round 1 on #451: a line break is folded only where the first pass attributes every unit
+    the literal covers to places; any unit with no field, or one naming another field, keeps main's
+    refusal."""
+    readings = two_readers(DAVAO_LINES, fields_of)
+    task = FieldTask("province_state", True, FieldValue(), (), FIELD_TOOLS["province_state"])
+
+    assert agreement.across_lines("province_state", readings, "Davao Prov.,") is None
+    assert agreement.literal_basis(task, readings, "Davao\nProv.,", readings) is None
 
 
 @pytest.mark.parametrize(("key", "literal"), [
@@ -196,12 +232,19 @@ def test_only_a_place_over_one_line_break_folds(key, literal):
     assert agreement.across_lines(key, readings, literal.replace("\n", " ")) is None
 
 
+def attribute_run_units(run, fields_of):
+    """The run's stored units (Run.reading_units) with their fields as `fields_of` gives them."""
+    run.reading_units = [attributed(units, fields_of) for units in run.reading_units]
+
+
 def test_105526323_s_province_settles_on_its_two_line_text(tmp_path):
-    """The province's expert gives "Davao Prov.," as one line; both readers write it over the line break.
-    The step settles it on the readers' own text, with its source's value; on main it was refused."""
+    """The province's expert gives "Davao Prov.," as one line; both readers write it over the line break,
+    which the first pass attributes to places. The step settles it on the readers' own text, with its
+    source's value; on main it was refused."""
     text = label_with(country=None, province_state=None, county=None, city=None) + "\n" + DAVAO_LINES
     rig = build_rig(tmp_path, text)
     run = rig.specimen.run
+    attribute_run_units(run, places_of)
     answer = FieldAnswer(outcome="resolved", literal="Davao Prov.,", reading_names=["1A", "1B"], value="Davao",
         authority_id="wikidata:Q15095071", explanation="Both readers write Davao Prov. over the line break.")
 
@@ -217,11 +260,38 @@ def test_105526323_s_province_settles_on_its_two_line_text(tmp_path):
     assert (place.state, place.literal, place.normalized) == (ValueState.SUPPORTED, "Davao\nProv.,", "Davao")
 
 
+# Codex's round 1 on #451: a collector line runs on into a town the organiser missed.
+NEW_YORK = label_with(city=None).replace("leg. J. Smith", "leg. J. New\nYork")
+
+
+def test_a_place_over_a_line_break_into_another_fields_line_is_refused(tmp_path):
+    """Both readers write "leg. J. New" over "York"; the organiser gives the collectors "J. New" and no
+    city. The city's expert answers "New\\nYork", value "New York", citing a gazetteer. On S1's first
+    head the line break was folded and the place, read from the transcript, took precedence over the
+    collector; now the first pass attributes nothing there to a place (no unit names a field), so the
+    city is refused as on main and the collectors keep their own text."""
+    rig = build_rig(tmp_path, NEW_YORK, candidates=[("collectors", name, "J. New", "leg. J. New")
+        for name in ("1A", "1B")])
+    run = rig.specimen.run
+
+    async def city(task, readings, tools):
+        found = await tools.lookup("geolocate", "New York, Illinois, United States", field_key=task.key)
+        return FieldOutcome(task.key, FieldAnswer(outcome="resolved", literal="New\nYork", reading_names=["1A", "1B"],
+            value="New York", authority_id=found.candidates[0].authority_id, source_evidence_ids=[found.evidence.id],
+            explanation="The town New York."), evidence=[found.evidence], model_calls=1)
+
+    settle(rig, Scripted({"city": city, "collectors": answering(FieldAnswer(outcome="resolved", literal="J. New",
+        reading_names=["1A", "1B"], explanation="The collector."))}))
+
+    assert run.fields["city"].state != ValueState.SUPPORTED
+    assert "mandatory_unresolved:city" in run.reasons
+
+
 # ---- C4c: the country settled from another reading of the label -----------------------------------
 
 # Reader 1B writes the country in another spelling (105526596's 2B "Costa R.ica"); the country settled
 # before this attempt from reader 1A's "United States", so it is not researched again.
-ONE_COUNTRY = TEXT.replace("country: United States", "country: United Statse")
+ONE_COUNTRY = TEXT.replace("country: United States", "country: United Statcs")
 
 
 def countries(first, second):
@@ -247,11 +317,11 @@ def both_readers(key, query, literal, authority_id):
 
 
 def test_a_province_settles_inside_the_country_another_reading_of_its_label_settled(tmp_path):
-    """C4c: reader 1B writes "United Statse", which no source confirms, where 1A's "United States"
+    """C4c: reader 1B writes "United Statcs", which no source confirms, where 1A's "United States"
     settled. The province both readers write, which its source places in the United States, settles;
     on main it was refused for 1B (NO_COUNTRY: "No country is settled for the reading that writes this
     place")."""
-    rig = build_rig(tmp_path, TEXT, ONE_COUNTRY, candidates=countries("United States", "United Statse"))
+    rig = build_rig(tmp_path, TEXT, ONE_COUNTRY, candidates=countries("United States", "United Statcs"))
     run = rig.specimen.run
     settled_country(run)
     settle(rig, Scripted({"province_state": both_readers("province_state", "Illinois", "Illinois",
@@ -264,7 +334,7 @@ def test_a_province_settles_inside_the_country_another_reading_of_its_label_sett
 def test_a_province_outside_the_settled_country_is_still_refused(tmp_path):
     """The chain still holds: the country settled from 1A is another nation than the province's parent,
     so the province is refused (NOT_IN_COUNTRY), as on main."""
-    rig = build_rig(tmp_path, TEXT, ONE_COUNTRY, candidates=countries("United States", "United Statse"))
+    rig = build_rig(tmp_path, TEXT, ONE_COUNTRY, candidates=countries("United States", "United Statcs"))
     run = rig.specimen.run
     settled_country(run, literal="Canada")
     run.fields["country"] = run.fields["country"].model_copy(update={"authority_id": "tgn:Canada"})
@@ -279,8 +349,8 @@ def test_a_province_outside_the_settled_country_is_still_refused(tmp_path):
 def test_a_province_with_no_country_settled_anywhere_is_still_refused(tmp_path):
     """No reading's country settled (both readers' texts unconfirmed): the place is refused, NO_COUNTRY,
     as on main (R0's 105526321, 105526461 and 105526359 stay held: plan WP S1)."""
-    rig = build_rig(tmp_path, ONE_COUNTRY.replace("Statse", "Statez"), ONE_COUNTRY,
-        candidates=countries("United Statez", "United Statse"))
+    rig = build_rig(tmp_path, ONE_COUNTRY.replace("Statcs", "Statez"), ONE_COUNTRY,
+        candidates=countries("United Statez", "United Statcs"))
     run = rig.specimen.run
     settle(rig, Scripted({"country": answering(FieldAnswer(outcome="sources_cannot_resolve",
         explanation="No source confirms it.")), "province_state": both_readers("province_state", "Illinois",
@@ -288,6 +358,42 @@ def test_a_province_with_no_country_settled_anywhere_is_still_refused(tmp_path):
 
     place = run.fields["province_state"]
     assert place.state != ValueState.SUPPORTED and place.reason.startswith(agreement.NO_COUNTRY)
+
+
+FRANCE = TEXT.replace("country: United States", "country: France")
+
+
+def test_a_country_another_reading_of_the_label_contests_never_stands_for_it(tmp_path):
+    """Codex's round 1 on #451: reader 1A writes "United States", 1B "France"; the country settled on 1A's
+    text. The province both readers write, which its source places in the United States, is refused for
+    1B as on main (NO_COUNTRY): the settled country stands for a reading only where every reading of the
+    label writes it alike. On S1's first head the United States was put in for 1B and the province
+    settled."""
+    rig = build_rig(tmp_path, TEXT, FRANCE, candidates=countries("United States", "France"))
+    run = rig.specimen.run
+    settled_country(run)
+    settle(rig, Scripted({"province_state": both_readers("province_state", "Illinois", "Illinois",
+        "tgn:Illinois")}))
+
+    place = run.fields["province_state"]
+    assert place.state != ValueState.SUPPORTED and place.reason.startswith(agreement.NO_COUNTRY)
+
+
+def test_a_country_marked_on_the_label_never_stands_for_another_reading(tmp_path):
+    """The same alike spellings as the settling test, with the country marked on the label by an earlier
+    pass (a conflict): the province is refused for 1B as on main."""
+    from specimen_digitization.application.domain import RunFinding
+
+    rig = build_rig(tmp_path, TEXT, ONE_COUNTRY, candidates=countries("United States", "United Statcs"))
+    run = rig.specimen.run
+    settled_country(run)
+    run.findings.append(RunFinding(rule_id=field_step.SETTLEMENT, rule_version=field_step.SETTLEMENT_RULES,
+        severity="warning", field_key="country", reason_code=field_step.marked_code("country", run.regions[0].id,
+        "conflict"), evidence_ids=[]))
+    settle(rig, Scripted({"province_state": both_readers("province_state", "Illinois", "Illinois",
+        "tgn:Illinois")}))
+
+    assert run.fields["province_state"].state != ValueState.SUPPORTED
 
 
 # ---- C4d: a request its sources made too long ----------------------------------------------------
