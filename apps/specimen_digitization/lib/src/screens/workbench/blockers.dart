@@ -239,9 +239,6 @@ const Map<String, String> confidenceWords = <String, String>{
   'extent':
       'Both readings give a longer text for this field than was kept. Check '
       'where it ends on the label.',
-  'distance_origin':
-      'The label names this town only as the point a distance is measured '
-      'from, not as the place it was collected.',
   'not_collection_code':
       'Only the printed heading LEWIS COLLECTION is a collection code. This '
       'text looks like a slide, preparation or field number.',

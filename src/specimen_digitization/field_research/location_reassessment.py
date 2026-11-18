@@ -150,6 +150,13 @@ def commit(run, working, *, decisions) -> set[str]:
         existing.extend(item for item in getattr(working, name) if item not in existing)
     run.findings.extend(finding for finding in working.findings if finding not in run.findings)
     if not unproved:
+        # The confidence pass's marks belong to the values research settled: a value replaced here loses
+        # them (field_research/confidence.py; the reassessment computes none).
+        from .confidence import RULE as CONFIDENCE
+
+        replaced = {key for key in keys if run.fields[key] != working.fields[key]}
+        run.findings[:] = [finding for finding in run.findings
+            if not (finding.rule_id == CONFIDENCE and finding.field_key in replaced)]
         for key in keys:
             run.fields[key] = working.fields[key]
     else:

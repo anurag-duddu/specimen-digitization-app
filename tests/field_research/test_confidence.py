@@ -54,7 +54,7 @@ def derived(source, parsed):
     return FieldValue(state=ValueState.SUPPORTED, parsed=parsed, layer="derived", derived_from=[source]), []
 
 
-# ---- rule 1: the readers' recorded verbatims differ and the image alone backs the value ---------
+# ---- rule 1: the recorded verbatims differ and only the image can have cleared the value ---------
 
 @pytest.mark.parametrize(("first", "second", "marked"), [
     ("24-VII-1916", "24-VI-1916", True),          # 105526392
@@ -67,24 +67,35 @@ def derived(source, parsed):
     ("Shrubs ", "Shrubs", False),                 # outer white space only
 ])
 def test_readers_differ_compares_the_recorded_verbatims_exactly(first, second, marked):
-    run = run_of({"f": value(first, verbatims=(first, second))}, findings=[cleared("f")])
-    assert (review(run) == [f"marked:f:{LABEL}:readers_differ"]) is marked
+    run = run_of({"collectors": value(first, verbatims=(first, second), key="collectors")},
+        findings=[cleared("collectors")])
+    assert (review(run) == ["marked:collectors:L1:readers_differ"]) is marked
 
 
-def test_readers_differ_needs_two_recorded_verbatims_and_an_image_only_backing():
-    one = run_of({"f": value("24-VII-1916", verbatims=("24-VII-1916",))}, findings=[cleared("f")])
+def test_readers_differ_reads_only_the_fields_no_source_checks():
+    """Codex round 3, 3: a locality, a place or a taxon may be cleared by a source ("York" against "Yrok",
+    TGN confirming York): this rule never marks them. The dates, elevations and catalogue number have
+    checks but no source, so only the image clears them."""
+    assert confidence.IMAGE_ONLY_FIELDS == {"date_visited_from", "date_visited_to", "date_identified",
+        "elevation_from_m", "elevation_to_m", "elevation_from_ft", "elevation_to_ft", "fmnh_ins_number",
+        "collectors", "collection_code", "habitat", "collection_method", "verbatim_dts"}
+    for key in ("precise_location", "city", "province_state", "country", "county", "taxon"):
+        run = run_of({key: value("York", verbatims=("York", "Yrok"), key=key)}, findings=[cleared(key)])
+        assert review(run) == [], key
+
+
+def test_readers_differ_needs_two_recorded_verbatims_a_clearing_and_no_deciding_row():
+    one = run_of({"collectors": value("J. Smith", verbatims=("J. Smith",), key="collectors")},
+        findings=[cleared("collectors")])
     assert review(one) == []
-    no_clear = run_of({"f": value("24-VII-1916", verbatims=("24-VII-1916", "24-VI-1916"))})
+    no_clear = run_of({"collectors": value("J. Smith", verbatims=("J. Smith", "J. Smyth"), key="collectors")})
     assert review(no_clear) == []
-    decided = run_of({"f": value("Kunduz", verbatims=("Kunduz", "Kundus"), evidence_relations={"e": "decides"})},
-        findings=[cleared("f")])
-    assert review(decided) == []
-    place = run_of({"province_state": value("Kunduz", verbatims=("Kunduz", "Kundus"), authority_id="tgn:1",
-        key="province_state")}, findings=[cleared("province_state")])
-    assert review(place) == []
+    code = run_of({"fmnh_ins_number": value("4486518", verbatims=("4486518", "4486618"), key="fmnh_ins_number",
+        evidence_relations={"code": "decides"})}, findings=[cleared("fmnh_ins_number")])
+    assert review(code) == []
 
 
-# ---- rule 2 and recomputation ----------------------------------------------------------------------
+# ---- rule 2, decisions and research passes ----------------------------------------------------------
 
 def from_and_to(**more):
     return run_of({"date_visited_from": value("5-VII-1940", verbatims=("5-VII-1940", "5-VI-1940"), **more),
@@ -97,51 +108,78 @@ def test_a_value_derived_from_a_marked_one_is_marked_with_it():
         "marked:date_visited_to:L1:follows_marked"]
 
 
-def test_marks_are_recomputed_not_accumulated():
-    """Codex round 2, 3: a person confirms the From; its mark goes, and refinalize's recomputation takes
-    the derived To's follows_marked away with it. A second review drops what no longer holds."""
+def test_a_decision_drops_the_field_s_marks_and_its_dependents_follows_marked_and_recomputes_nothing():
+    """Codex round 3, 1a: a person confirms the derived To while its From is still marked: To's mark goes
+    and nothing puts it back. A person confirms the From: its mark and To's follows_marked go."""
     run = from_and_to()
     review(run)
-    confidence.forget(run, {"date_visited_from"})
-    confidence.settle_after_decision(run)
+    confidence.forget(run, "date_visited_to")
+    assert marked_reasons(run) == ["marked:date_visited_from:L1:readers_differ"]
+    run = from_and_to()
+    review(run)
+    confidence.forget(run, "date_visited_from")
     assert marked_reasons(run) == []
-    again = from_and_to()
-    review(again)
-    again.fields["date_visited_from"].verbatim_by_observation = {"o1A": "5-VI-1940", "o1B": "5-VI-1940"}
-    assert review(again) == []
+
+
+def test_a_research_pass_recomputes_only_the_fields_it_researched_or_derived():
+    """As step.build_tasks leaves a settled field unresearched on a retry, the pass leaves its marks, or
+    their absence, as they are; on a field it researched it drops and recomputes them."""
+    run = from_and_to()
+    review(run)
+    confidence.forget(run, "date_visited_from")
+    confidence.review(run, readings=READINGS, date_rules=RULES, researched={"habitat"})
+    assert marked_reasons(run) == []
+    run.fields["date_visited_from"].verbatim_by_observation = {"o1A": "5-VI-1940", "o1B": "5-VI-1940"}
+    run.findings.append(RunFinding(rule_id=confidence.RULE, rule_version="v", severity="warning",
+        field_key="date_visited_from", reason_code="marked:date_visited_from:L1:readers_differ"))
+    confidence.review(run, readings=READINGS, date_rules=RULES, researched={"date_visited_from"})
+    assert marked_reasons(run) == []
 
 
 # ---- persons ------------------------------------------------------------------------------------
 
+def held_run(**more):
+    return run_of({"collectors": value("J. Smith", verbatims=("J. Smith", "J. Smyth"), key="collectors",
+        excerpt="J. Smith")}, findings=[cleared("collectors")], **more)
+
+
 @pytest.mark.parametrize("record", [
-    {"human_review_field_locks": {"city": {"selection_id": "s1"}}},     # a locked research selection
-    {"location_reassessment": {"protected": ["city"]}},                  # Codex round 2, 2: reassessment
+    {"human_review_field_locks": {"collectors": {"selection_id": "s1"}}},  # a locked research selection
+    {"location_reassessment": {"protected": ["collectors"]}},             # Codex round 2, 2: reassessment
 ])
 def test_no_mark_lands_on_a_field_a_person_holds(record):
-    """Codex round 2, 2: a person selected City "Shidler"; reassessment protects it."""
-    fields = {"city": value("Kunduz", excerpt="27 km. north of Kunduz", key="city")}
-    assert review(run_of(fields)) == ["marked:city:L1:distance_origin"]
-    assert review(run_of(fields, dependencies=record)) == []
+    assert review(held_run()) == ["marked:collectors:L1:readers_differ"]
+    assert review(held_run(dependencies=record)) == []
 
 
 def test_no_mark_lands_on_a_carried_or_person_transcribed_field():
-    fields = {"city": value("Kunduz", excerpt="27 km. north of Kunduz", key="city")}
-    run = run_of(fields)
-    confidence.review(run, readings=READINGS, human={"city"}, date_rules=RULES)
+    run = held_run()
+    confidence.review(run, readings=READINGS, human={"collectors"}, date_rules=RULES)
     assert marked_reasons(run) == []
     person = (Reading("1A", LABEL, "o1A", "decided_transcript", "label text", person_decided=True), READINGS[1])
-    assert review(run_of(fields), person) == []
+    assert review(held_run(), person) == []
 
 
-def test_the_pass_never_changes_a_reason_or_any_other_part_of_a_field():
+def test_the_pass_never_changes_a_field():
     """Codex round 2, 1: a mark is a finding only."""
-    run = run_of({"date_visited_from": value("5-VII-1940", verbatims=("5-VII-1940", "5-VI-1940"), reason="Read."),
-        "date_visited_to": derived("date_visited_from", "1940-07-05")}, findings=[cleared("date_visited_from")])
+    run = from_and_to(reason="Read.")
     before = {key: item.model_copy(deep=True) for key, item in run.fields.items()}
     review(run)
-    confidence.forget(run, {"date_visited_from"})
-    confidence.settle_after_decision(run)
+    confidence.forget(run, "date_visited_from")
     assert run.fields == before
+
+
+def test_a_reassessment_computes_no_mark_and_drops_the_marks_of_a_value_it_replaces(tmp_path, monkeypatch):
+    """Codex round 3, 2: a City's mark does not survive its replacement by the reassessment."""
+    from test_location_reassessment import execute, old_location_run
+
+    rig = old_location_run(tmp_path)
+    region = rig.specimen.run.regions[0].id
+    rig.specimen.run.findings.append(RunFinding(rule_id=confidence.RULE, rule_version="v", severity="warning",
+        field_key="city", reason_code=f"marked:city:{region}:readers_differ"))
+    before, done, *_ = execute(rig, monkeypatch)
+    assert done.run.fields["city"] != before.fields["city"]
+    assert not [finding for finding in done.run.findings if finding.rule_id == confidence.RULE]
 
 
 # ---- rule 3: the organiser's agreed candidate is longer ----------------------------------------
@@ -164,19 +202,14 @@ def test_extent_marks_only_a_literal_inside_the_readers_agreed_candidate(pairs, 
     assert confidence.extent("habitat", found, candidates(*pairs), READINGS) is marked
 
 
-# ---- rule 4: conventions -------------------------------------------------------------------------
+# ---- rules 4 and 5: conventions ------------------------------------------------------------------
 
-@pytest.mark.parametrize(("excerpt", "literal", "marked"), [
-    ("27 km. north of Kunduz", "Kunduz", True),          # 105527218
-    ("14.5 km NNW Puerto Octay", "Puerto Octay", True),
-    ("Shidler, Osage Co,", "Shidler,", False),           # 105526631: the distance is on the line before: not marked
-    ("12 mi. N of Shidler and 3 mi. S of Fairfax", "Fairfax", True),
-    ("Kunduz, 27 km. north", "Kunduz", False),
-])
-def test_a_place_after_a_distance_in_its_own_label_row_is_marked(excerpt, literal, marked):
-    found, rows = value(literal, excerpt=excerpt, key="city")
-    run = run_of({"city": (found, rows)})
-    assert confidence.distance_origin(run, "city", found) is marked
+def test_a_town_after_a_distance_is_no_longer_marked():
+    """Codex round 3, 4: the distance rule is removed ("York" inside "Yorktown"); it waits for a rule on
+    recorded spans."""
+    fields = {"city": value("York", excerpt="27 km north of Yorktown; collected in York", key="city")}
+    assert review(run_of(fields)) == []
+    assert not hasattr(confidence, "distance_origin")
 
 
 @pytest.mark.parametrize(("literal", "flagged"), [
@@ -207,8 +240,7 @@ def test_the_identification_date_plays_no_part():
 
 
 def test_every_why_has_a_plain_code():
-    assert confidence.WHYS == ("readers_differ", "follows_marked", "extent", "distance_origin", "not_collection_code",
-        "not_verbatim_date")
+    assert confidence.WHYS == ("readers_differ", "follows_marked", "extent", "not_collection_code", "not_verbatim_date")
 
 
 # ---- the guard ----------------------------------------------------------------------------------
@@ -221,7 +253,7 @@ def test_an_exception_inside_the_pass_leaves_the_run_exactly_as_without_it(monke
     def boom(*args, **kwargs):
         raise RuntimeError("forced")
 
-    for target in ("person_holds", "readers_differ", "_follow"):
+    for target in ("person_holds", "readers_differ", "_marked_fields"):
         with monkeypatch.context() as patch:
             patch.setattr(confidence, target, boom)
             run = from_and_to()
@@ -270,3 +302,43 @@ def test_a_person_confirming_a_marked_value_unchanged_takes_the_mark_off_and_the
     approved = decide(client, rig, "approve-habitat", "approve")
     assert reasons_for(approved, "habitat") == []
     assert approved.fields["habitat"] == decided.fields["habitat"]
+
+
+def test_an_ordinary_retry_after_a_person_confirms_a_marked_field_leaves_it_unmarked(tmp_path, monkeypatch):
+    """Codex round 3, 1b: a person confirms Habitat "Shrubs" (readers "Shrubs", "Shurbs"), the Country is
+    unresolved, an ordinary Retry researches again with no carry. As on main, where the retry researches
+    only the unsettled fields (step.build_tasks) and leaves the confirmed one and its marks as they are,
+    the pass recomputes only what the retry researched: Habitat stays unmarked."""
+    from test_settlement_rule import HABITATS, naming
+    from test_step import (
+        LABEL as STEP_LABEL, ORG, TEXT, FieldAnswer, Scripted, answering, build_rig, decide, mounted, reasons_for,
+        resolved, review_client,
+    )
+
+    from specimen_digitization.application import api as app_api
+
+    rig = build_rig(tmp_path, TEXT.replace("Synthetic grassland", "Shrubs"),
+        TEXT.replace("Synthetic grassland", "Shurbs"), candidates=HABITATS)
+    naming(rig, 0)
+    rig.specimen = rig.repository.save(rig.principal, rig.specimen, rig.specimen.version, "naming", "naming")
+    unresolved = answering(FieldAnswer(outcome="sources_cannot_resolve", literal=STEP_LABEL["country"],
+        reading_names=["1A"], explanation="Cannot settle."))
+    mounted(rig, Scripted({"habitat": answering(resolved("Shrubs", reading="1A")), "country": unresolved}))
+    done = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert reasons_for(done, "habitat") == [f"marked:habitat:{done.regions[0].id}:readers_differ"]
+    client = review_client(rig)
+    habitat = done.fields["habitat"]
+    decide(client, rig, "field-habitat", "field", target_id="habitat",
+        after=habitat.model_dump(mode="json", exclude={"evidence_ids"}), evidence_ids=list(habitat.evidence_ids))
+    monkeypatch.setattr(app_api, "queue", lambda specimen, registry, actor: setattr(specimen.run, "stage", "pending"))
+    current = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    response = client.post(f"/v1/organizations/{ORG}/runs/{current.run.id}/actions",
+        headers={"Authorization": "Bearer reviewer", "Idempotency-Key": "retry"},
+        json={"expected_revision": current.version, "action": "retry", "reason": "Retry."})
+    assert response.status_code == 200, response.text
+    second = Scripted({"habitat": answering(resolved("Shrubs", reading="1A")), "country": unresolved})
+    mounted(rig, second)
+    again = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert "habitat" not in second.calls and "country" in second.calls
+    assert reasons_for(again, "habitat") == []
+    assert again.fields["habitat"] == habitat

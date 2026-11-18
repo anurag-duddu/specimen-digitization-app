@@ -36,14 +36,6 @@ const List<(String, String, String, String, String)> cases = [
     'the readings give a longer text',
   ),
   (
-    'distance_origin',
-    'city',
-    'City',
-    'The label names this town only as the point a distance is measured '
-        'from, not as the place it was collected.',
-    'the town is only a distance reference',
-  ),
-  (
     'not_collection_code',
     'collection_code',
     'Collection code',
@@ -104,7 +96,6 @@ void main() {
       'readers_differ',
       'follows_marked',
       'extent',
-      'distance_origin',
       'not_collection_code',
       'not_verbatim_date',
     });

@@ -2978,8 +2978,10 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     # Confident or flagged (field_research/confidence.py): a settled value something in the run argues
     # against is marked on its field; nothing else changes. Any exception inside the pass leaves the
     # fields and findings as the rules above left them (confidence.guarded).
-    if units_path(run):
-        confidence.guarded(run, confidence.review, readings=readings, human=human, date_rules=profile.date_rules)
+    # Only the fields this attempt researched or derived; a location reassessment computes none.
+    if units_path(run) and not reassessing:
+        confidence.guarded(run, confidence.review, readings=readings, human=human, date_rules=profile.date_rules,
+            researched={*tasks_by_key, *derived})
     return derived
 
 
@@ -4690,10 +4692,6 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
     from .ontology_checks import follow_sources
 
     follow_sources(run, asset_id=run.regions[0].asset_id if run.regions else None, blobs=blobs)
-    if units_path(run):
-        # After a person's decision: no confidence mark on a field a person holds, and rule 2
-        # recomputed on the current marks; no other mark is added (confidence.settle_after_decision).
-        confidence.guarded(run, confidence.settle_after_decision, human=human_keys(run))
     finalize_fields(run, None, (), specimen=specimen, blobs=blobs, today=today)
     if pending and not run.human_approved:
         run.reasons = [*run.reasons, APPROVAL]

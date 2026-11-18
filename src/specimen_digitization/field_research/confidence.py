@@ -9,68 +9,68 @@ reasons; the app words it from its code. The pass writes nothing else: no value,
 reason text changes. Under a profile whose field is optional the mark is that field's doubt and
 does not hold the record; on a mandatory field it holds the record as every mark does.
 
+Marks are computed only in the research pass, where the system settles values (step.apply_outcomes
+calls `review` after the check stage), and only for the fields that attempt researched or derived:
+as a retry leaves a field an earlier attempt or a person settled unresearched (step.build_tasks),
+the pass leaves its marks, or their absence, as they are. A location reassessment computes none.
+A mark lasts until a person decides the field (the decision endpoint calls `forget`, which drops
+the field's marks and the follows_marked marks of the values derived from it) or research settles
+the field again.
+
 The rules read only what the run recorded about the field: its settled literal, the readers'
-verbatims recorded for it (FieldValue.verbatim_by_observation), its label rows' excerpts, the
-organiser's candidates for the same field, the label settlement's finding, and its derivation
-sources. Comparisons are exact (outer white space trimmed, or runs of white space folded where
-said); a rule that lacks what it needs does not mark. Each rule has its own `why` (WHYS):
-1. READERS_DIFFER: two or more readers' verbatims are recorded for the value and are not all equal
-   (outer white space trimmed), and the value's backing is the image alone: its label settled it
-   cleared (`cleared:<field>:<label>`), no evidence row decides it (GBIF, the slide's QR code) and,
-   for a place value field, no source record names it (authority_id).
+verbatims recorded for it (FieldValue.verbatim_by_observation), the organiser's candidates for the
+same field, the label settlement's finding, and its derivation sources. Comparisons are exact
+(outer white space trimmed, or runs of white space folded where said); a rule that lacks what it
+needs does not mark. Each rule has its own `why` (WHYS):
+1. READERS_DIFFER, on the fields no approved source checks (IMAGE_ONLY_FIELDS: those whose tools,
+   contracts.FIELD_TOOLS, hold none of agreement.SOURCE_IDS: the dates, the elevations, the
+   catalogue number, collectors, collection code, habitat, collection method, Verbatim D/T/S): two or
+   more readers' verbatims are recorded for the value and are not all equal (outer white space
+   trimmed), its label settled it cleared (`cleared:<field>:<label>`), and no evidence row decides it
+   (the slide's QR code). The settlement rule gives such a field no SOURCE backing
+   (agreement.labels_by_rule, `sourced`), so a label clears it only on the image judgement or a
+   person's transcript, which person_holds sets aside: the readers differ and the image chose.
 2. FOLLOWS_MARKED: a derived value one of whose sources is marked, by any rule.
 3. EXTENT: the organiser's candidates for the same field from every reader of a label of the
    value hold one text alike (white space folded), and the settled literal is a proper part of it.
-4. Conventions settled from the requirements (lane M0):
-   - DISTANCE_ORIGIN (city, county, province or state): in a label row recorded for the value, the
-     text directly before the literal is a distance and a direction ("27 km. north of Kunduz").
-   - NOT_COLLECTION_CODE: a Collection Code that is not the printed heading the owner ruled (the
-     ontology's notation lewis_collection_heading).
-   - NOT_VERBATIM_DATE: a Verbatim D/T/S whose literal the profile's date rules read as an exact
-     day, or one of whose white-space-separated words the date parser reads as a slide code.
+4. NOT_COLLECTION_CODE: a Collection Code that is not the printed heading the owner ruled (the
+   ontology's notation lewis_collection_heading).
+5. NOT_VERBATIM_DATE: a Verbatim D/T/S whose literal the profile's date rules read as an exact day,
+   or one of whose white-space-separated words the date parser reads as a slide code.
 
-A field a person holds authority over (person_holds) gets no mark from the pass, and the decision
-endpoint removes this pass's findings from a field a person decides or selects (forget). Each run
-of the pass first drops every finding of RULE and recomputes them (review); step.refinalize, which
-adds no mark, drops the marks on fields a person holds and the follows_marked marks whose sources
-are no longer marked (settle_after_decision). Every call goes through `guarded`: any exception
-inside the pass leaves the run's fields and findings as they were and logs one warning.
+A field a person holds authority over by a record on the run (person_holds) gets no mark. Every
+call goes through `guarded`: any exception inside the pass leaves the run's fields and findings as
+they were and logs one warning.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Collection, Mapping, Sequence
 
 from specimen_digitization.application.domain import FieldValue, RunFinding, ValueState
 
-from .contracts import Reading
+from .agreement import SOURCE_IDS
+from .contracts import FIELD_TOOLS, Reading
 
 LOGGER = logging.getLogger(__name__)
 RULE = "confidence"
-RULE_VERSION = "field-research-confidence-v3"
+RULE_VERSION = "field-research-confidence-v4"
 READERS_DIFFER = "readers_differ"
 FOLLOWS_MARKED = "follows_marked"
 EXTENT = "extent"
-DISTANCE_ORIGIN = "distance_origin"
 NOT_COLLECTION_CODE = "not_collection_code"
 NOT_VERBATIM_DATE = "not_verbatim_date"
-WHYS = (READERS_DIFFER, FOLLOWS_MARKED, EXTENT, DISTANCE_ORIGIN, NOT_COLLECTION_CODE, NOT_VERBATIM_DATE)
+WHYS = (READERS_DIFFER, FOLLOWS_MARKED, EXTENT, NOT_COLLECTION_CODE, NOT_VERBATIM_DATE)
 LOCKS = "human_review_field_locks"
 
 SETTLED_LAYERS = frozenset({"settled", "verbatim"})
-ORIGIN_FIELDS = frozenset({"city", "county", "province_state"})
+# The fields no approved source checks (contracts.FIELD_TOOLS against agreement.SOURCE_IDS), the
+# determiner's IRN aside: the settlement rule clears them only on the image judgement or a person.
+IMAGE_ONLY_FIELDS = frozenset(key for key, tools in FIELD_TOOLS.items()
+    if not set(tools) & SOURCE_IDS) - {"identified_by_irn"}
 COLLECTION_CODE = "collection_code"
 VERBATIM = "verbatim_dts"
-
-_FRACTIONS = "[\N{VULGAR FRACTION ONE HALF}\N{VULGAR FRACTION ONE QUARTER}\N{VULGAR FRACTION THREE QUARTERS}]"
-_NUMBER = rf"(?:\d+(?:[.,]\d+)?\s*{_FRACTIONS}?|{_FRACTIONS})"
-_UNIT = r"(?:mi|mis|miles?|km|kms|kilomet(?:er|re)s?)\.?"
-_DIRECTION = (r"(?:(?:north|south)(?:[- ]?(?:east|west))?|east|west"
-    r"|[NSEW](?:\s*\.?\s*[NSEW]){0,2}\.?)")
-# A distance and a direction ending the text directly before a place, an "of" or "from" between.
-DISTANCE = re.compile(rf"{_NUMBER}\s*{_UNIT}\s*{_DIRECTION}(?:\s+(?:of|from))?\s*$", re.I)
 
 
 def _folded(text: str | None) -> str:
@@ -82,22 +82,12 @@ def _settled(value: FieldValue | None) -> bool:
         and bool(value.literal and value.literal.strip()))
 
 
-def _rows(run, value: FieldValue):
-    evidence = {item.id: item for item in run.evidence}
-    return [evidence[i] for i in value.evidence_ids if i in evidence and evidence[i].kind == "literal"]
-
-
 # ---- persons ------------------------------------------------------------------------------------
 
 def person_holds(run, readings: Sequence[Reading] = (), human: Collection[str] = ()) -> set[str]:
-    """The fields a person holds authority over, as the run records it: `human` (step.human_keys, the
-    decisions a move to the units path carried), a research selection a person locked, a field the
-    location reassessment's record protects (its `protected` list: the person's field and authority
-    decisions it verified, loaded from storage too), and a value whose label a person
-    transcribed (Reading.person_decided). A direct field, authority or taxonomy decision leaves no
-    such record on the run; the decision endpoint removes this pass's findings from that field
-    (forget), and no later step adds one (refinalize adds none; research runs again only on a retry,
-    which carries the decision)."""
+    """The fields a person holds authority over by a record on the run: `human` (step.human_keys, the
+    decisions a move to the units path carried), a research selection a person locked, the location
+    reassessment's `protected` list, and a value whose label a person transcribed."""
     from .location_reassessment import KEY as REASSESSMENT
 
     dependencies = getattr(run, "dependencies", None) or {}
@@ -106,29 +96,32 @@ def person_holds(run, readings: Sequence[Reading] = (), human: Collection[str] =
     if isinstance(marker, Mapping) and isinstance(marker.get("protected"), list):
         held |= {key for key in marker["protected"] if isinstance(key, str)}
     persons = {reading.region_id for reading in readings if reading.person_decided}
-    for key, value in run.fields.items():
-        if persons & {row.region_id for row in _rows(run, value)} or value.source_region_id in persons:
-            held.add(key)
+    if persons:
+        evidence = {item.id: item for item in run.evidence}
+        for key, value in run.fields.items():
+            regions = {evidence[i].region_id for i in value.evidence_ids if i in evidence} | {value.source_region_id}
+            if persons & regions:
+                held.add(key)
     return held
 
 
-def forget(run, keys: Collection[str]) -> None:
-    """Drop this pass's findings on the fields `keys` (a person decided or selected them). Nothing else
-    on the run changes."""
-    keys = set(keys)
-    run.findings[:] = [finding for finding in run.findings
-        if not (finding.rule_id == RULE and finding.field_key in keys)]
+def forget(run, key: str) -> None:
+    """A person decided or selected the field `key`: drop this pass's findings on it and the
+    follows_marked findings of the values derived from it. Nothing is recomputed; nothing else on the
+    run changes."""
+    dependents = {name for name, value in run.fields.items() if key in value.derived_from}
+    run.findings[:] = [finding for finding in run.findings if not (finding.rule_id == RULE and (
+        finding.field_key == key
+        or (finding.field_key in dependents and finding.reason_code.endswith(":" + FOLLOWS_MARKED))))]
 
 
 # ---- the rules ----------------------------------------------------------------------------------
 
 def readers_differ(run, key: str, value: FieldValue) -> bool:
-    from .agreement import PLACE_VALUE_FIELDS
-
-    texts = {text.strip() for text in value.verbatim_by_observation.values()}
-    if len(value.verbatim_by_observation) < 2 or len(texts) < 2:
+    if key not in IMAGE_ONLY_FIELDS:
         return False
-    if "decides" in value.evidence_relations.values() or (key in PLACE_VALUE_FIELDS and value.authority_id):
+    texts = {text.strip() for text in value.verbatim_by_observation.values()}
+    if len(value.verbatim_by_observation) < 2 or len(texts) < 2 or "decides" in value.evidence_relations.values():
         return False
     return any(finding.rule_id == "field_settlement" and finding.field_key == key
         and finding.reason_code.startswith(f"cleared:{key}:") for finding in run.findings)
@@ -149,17 +142,6 @@ def extent(key: str, value: FieldValue, candidates: Sequence, readings: Sequence
             continue
         agreed = set.intersection(*(by_reader[name] for name in writers))
         if any(literal != text and literal in text for text in agreed):
-            return True
-    return False
-
-
-def distance_origin(run, key: str, value: FieldValue) -> bool:
-    if key not in ORIGIN_FIELDS:
-        return False
-    literal = value.literal.strip()
-    for row in _rows(run, value):
-        at = row.excerpt.find(literal)
-        if at > 0 and DISTANCE.search(row.excerpt[:at]):
             return True
     return False
 
@@ -196,73 +178,53 @@ def _marked_fields(run) -> set[str]:
     return {code.split(":")[1] for code in marked_reasons(run) if code.count(":") >= 2}
 
 
-def _add(run, key: str, why: str, readings: Sequence[Reading]) -> list[str]:
+def _add(run, key: str, why: str, readings: Sequence[Reading]) -> None:
     from .ontology_checks import _labels
     from .step import marked_code
 
     rows = {item.id: item for item in run.evidence}
-    made = []
     for label in _labels(run, key, readings, rows):
-        code = marked_code(key, label, why)
         run.findings.append(RunFinding(rule_id=RULE, rule_version=RULE_VERSION, severity="warning",
-            field_key=key, reason_code=code, evidence_ids=list(run.fields[key].evidence_ids)))
-        made.append(code)
-    return made
+            field_key=key, reason_code=marked_code(key, label, why), evidence_ids=list(run.fields[key].evidence_ids)))
 
 
-def _follow(run, held: set[str], readings: Sequence[Reading]) -> list[str]:
-    """Rule 2 on the run's current marks: each derived value a marked source feeds, not held."""
-    made = []
+def review(run, *, readings: Sequence[Reading], human: Collection[str] = (), date_rules=None,
+        researched: Collection[str] | None = None) -> None:
+    """Mark the values this attempt settled (`researched`, the fields it researched or derived; None:
+    every field): drop this pass's findings on them, then apply the rules above. A field another rule
+    marked already gets no second mark; a field a person holds none."""
+    from .step import _candidates
+
+    scope = set(run.fields) if researched is None else set(researched)
+    scope |= {key for key, value in run.fields.items() if value.layer == "derived" and scope & set(value.derived_from)}
+    run.findings[:] = [finding for finding in run.findings
+        if not (finding.rule_id == RULE and finding.field_key in scope)]
+    held = person_holds(run, readings, human)
+    already = _marked_fields(run)
+    candidates = _candidates(run, readings) if readings else {}
+    for key, value in run.fields.items():
+        if key not in scope or key in held or key in already or not _settled(value):
+            continue
+        for why, holds in (
+                (NOT_COLLECTION_CODE, lambda: not_collection_code(key, value)),
+                (NOT_VERBATIM_DATE, lambda: not_verbatim_date(key, value, date_rules)),
+                (EXTENT, lambda: extent(key, value, candidates.get(key, ()), readings)),
+                (READERS_DIFFER, lambda: readers_differ(run, key, value))):
+            if holds():
+                _add(run, key, why, readings)
+                break
     marked = _marked_fields(run)
     changed = True
     while changed:
         changed = False
         for key, value in run.fields.items():
-            if (key in held or key in marked or value.state != ValueState.SUPPORTED or value.layer != "derived"):
+            if (key not in scope or key in held or key in marked or value.state != ValueState.SUPPORTED
+                    or value.layer != "derived"):
                 continue
             if any(name in marked for name in value.derived_from):
-                made += _add(run, key, FOLLOWS_MARKED, readings)
+                _add(run, key, FOLLOWS_MARKED, readings)
                 marked.add(key)
                 changed = True
-    return made
-
-
-def review(run, *, readings: Sequence[Reading], human: Collection[str] = (), date_rules=None) -> list[str]:
-    """Drop every finding of RULE, then mark the run's settled values by the rules above; the codes
-    made. A field another rule marked already gets no second mark; a field a person holds none."""
-    from .step import _candidates
-
-    run.findings[:] = [finding for finding in run.findings if finding.rule_id != RULE]
-    held = person_holds(run, readings, human)
-    already = _marked_fields(run)
-    candidates = _candidates(run, readings) if readings else {}
-    made: list[str] = []
-    for key, value in run.fields.items():
-        if key in held or key in already or not _settled(value):
-            continue
-        for why, holds in (
-                (NOT_COLLECTION_CODE, lambda: not_collection_code(key, value)),
-                (NOT_VERBATIM_DATE, lambda: not_verbatim_date(key, value, date_rules)),
-                (DISTANCE_ORIGIN, lambda: distance_origin(run, key, value)),
-                (EXTENT, lambda: extent(key, value, candidates.get(key, ()), readings)),
-                (READERS_DIFFER, lambda: readers_differ(run, key, value))):
-            if holds():
-                made += _add(run, key, why, readings)
-                break
-    return made + _follow(run, held, readings)
-
-
-def settle_after_decision(run, *, human: Collection[str] = ()) -> None:
-    """step.refinalize's part, after a person's decision: drop this pass's findings on the fields a
-    person holds, and recompute rule 2 (drop every follows_marked mark, then mark again each derived
-    value a still-marked source feeds). No other mark is added."""
-    from .step import run_readings
-
-    readings = run_readings(run)
-    held = person_holds(run, readings, human)
-    run.findings[:] = [finding for finding in run.findings if not (finding.rule_id == RULE
-        and (finding.field_key in held or finding.reason_code.endswith(":" + FOLLOWS_MARKED)))]
-    _follow(run, held, readings)
 
 
 def guarded(run, action, *args, **kwargs) -> None:
