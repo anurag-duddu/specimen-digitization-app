@@ -473,3 +473,32 @@ def test_an_unconfirmed_location_reassessment_holds_through_the_step_and_a_resum
     assert (again.disposition, again.reasons, again.pending_review) == (Disposition.REVIEW, [hold], [hold])
     approved = decide(review_client(rig), rig, "approve", "approve")
     assert (approved.disposition, approved.reasons, approved.pending_review) == (Disposition.CLEARED, [], [])
+
+
+@pytest.mark.parametrize("cleared_by", ["a-reassessment-that-settles-it", "a-persons-approval"])
+def test_the_durable_reassessment_hold_wins_in_the_steps_finish(tmp_path, cleared_by):
+    """#456 at d2ea7b28 kept research's `location_reassessment_unconfirmed:*` reasons across the step's finish.
+    On the merged tree #455's durable state decides that hold: finish never duplicates it, and once the durable
+    hold is cleared (a reassessment that settles the family, standing_holds.replace_reassessment, or a person's
+    approval) a reason research left in the list is not carried back."""
+    from specimen_digitization.application.standing_holds import (
+        REASSESSMENT_UNCONFIRMED,
+        clear_on_approval,
+        note_pending,
+        replace_reassessment,
+    )
+
+    hold = f"{REASSESSMENT_UNCONFIRMED}:city"
+    run = to_end(opinion_rig(tmp_path, "agrees")).run
+    note_pending(run, hold)
+    run.reasons = [*run.reasons, hold]  # as _retained_reassessment leaves the list after research's finalize
+    so.finish(run)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, [hold])
+    run.reasons = [*run.reasons, hold]  # a stale copy in the list, the durable hold then cleared
+    if cleared_by == "a-persons-approval":
+        run.human_approved = True
+        clear_on_approval(run)
+    else:
+        replace_reassessment(run, [])
+    so.finish(run)
+    assert (run.disposition, run.reasons, run.pending_review) == (Disposition.CLEARED, [], [])

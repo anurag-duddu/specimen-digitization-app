@@ -2191,6 +2191,13 @@ person's decision while the record waits at `field_second_opinion` is
 handled as main handles it on a record whose research is complete: an open
 intent is abandoned, and the same whole `refinalize` decides the record;
 the step's own finish also runs that whole finalize, never only its codes.
+The one family research adds after its own finalize
+(`location_reassessment_unconfirmed:*`) is kept because PR #455 records it
+durably (`run.pending_review`, by `_retained_reassessment`) and every
+finalize derives it; the finish carries no reason across, so the durable
+state decides (no duplicate; nothing stale once a reassessment that settles
+the family or a person's approval has cleared it). A record resumed or retried while it waited
+for the step goes to the step again, not the recheck.
 
 **Runs classified before this change** have no price row for the second
 opinion in their pinned profile: on Resume or Retry the step ends

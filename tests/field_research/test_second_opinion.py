@@ -1179,7 +1179,8 @@ def test_when_nothing_of_the_step_can_be_saved_the_record_is_finalized_as_main_w
     assert done.version > pending.version and (run.stage, run.blocker) == ("finalized", None)
     assert run.second_opinion is None and not opinion.requests and not step_paid(run)
     assert own(run) and all(code.endswith(":" + so.NOT_CHECKED) for code in own(run))
-    assert run.reasons == as_main.run.reasons and run.disposition == as_main.run.disposition
+    # Compared with research's own saved state, not with a finish of a copy (G51 round 2).
+    assert others(run) == others(pending.run) and run.disposition == as_main.run.disposition
 
 
 def test_a_timed_out_call_is_not_asked_again_on_resume(tmp_path, monkeypatch):
@@ -1413,3 +1414,97 @@ def test_a_persons_field_decision_is_finalized_as_main_finalizes_it(tmp_path, mo
     got = outcome(rig)
     assert got[:3] == expected[:3] and got[3] == []
     assert got[1] == Disposition.REVIEW and "human_approval_required" in got[0]
+
+
+# ---- the G51 review, round 2 (d016678b): research's retained reassessment reasons ----------------------
+
+def others(run):
+    return [code for code in run.reasons if not so.own(code)]
+
+
+class Current:
+    """An opinion that answers each settled value as the stored record shows it (agrees), or with
+    "Elsewhere" for each (differs)."""
+
+    def __init__(self, rig, *, differ=False):
+        self.rig, self.differ, self.requests = rig, differ, 0
+
+    def factory(self):
+        async def respond(messages, info: AgentInfo):
+            self.requests += 1
+            run = self.rig.repository.get(self.rig.principal.scope, self.rig.specimen.id).run
+            answer = {key: {"value": ("Elsewhere" if self.differ else so.shown(run.fields[key]))
+                if so._settled(run.fields.get(key)) else None, "evidence": "L1"} for key in so.FIELDS}
+            return ModelResponse(parts=[ToolCallPart(so.TOOL_NAME, json.dumps(answer))],
+                usage=RequestUsage(input_tokens=5_000, output_tokens=700))
+
+        return FunctionModel(respond)
+
+
+def reassessed_unconfirmed(tmp_path, monkeypatch, runner):
+    """The repository's unconfirmed-reassessment fixture (test_location_reassessment: the gazetteer down):
+    research's own saved state, with `runner` as the second opinion."""
+    from test_location_reassessment import execute, old_location_run
+
+    rig = old_location_run(tmp_path)
+    rig.workflow.second_opinion = runner(rig) if runner else None
+    _, done, *_ = execute(rig, monkeypatch, outage=True)
+    if runner:
+        rig.workflow.second_opinion = runner(rig)
+    assert any(code.startswith(so.REASSESSMENT_UNCONFIRMED + ":") for code in done.run.reasons)
+    return rig, done
+
+
+@pytest.mark.parametrize("how", ["agrees", "differs", "not_obtained", "size_fallback"])
+def test_the_step_keeps_the_reassessment_reasons_research_left(tmp_path, monkeypatch, how):
+    """G51 round 2, (a): after the step finishes, however it finishes, the run's reasons other than the
+    second opinion's equal what research left on its own saved run, the retained
+    location_reassessment_unconfirmed reasons included, and the record is for review."""
+    from specimen_digitization.application import active_graph
+
+    def runner(rig):
+        if how == "not_obtained":
+            return so.SecondOpinionStep(model_factory=lambda: Opinion(error=RuntimeError("down")).factory())
+        return so.SecondOpinionStep(model_factory=Current(rig, differ=how == "differs").factory)
+
+    rig, research = reassessed_unconfirmed(tmp_path, monkeypatch, runner)
+    if how == "size_fallback":
+        monkeypatch.setattr(active_graph, "GRAPH_THRESHOLD", 0)
+        monkeypatch.setattr(active_graph, "NORMAL_GRAPH_LIMIT", graph_size(research) + 64)
+    final = to_end(rig).run
+    assert (final.stage, final.blocker) == ("finalized", None) and final.disposition == Disposition.REVIEW
+    assert others(final) == others(research.run)
+
+
+def test_a_resume_at_the_steps_stage_keeps_them_and_a_decision_afterwards_is_mains(tmp_path, monkeypatch):
+    """G51 round 2, (b) and (c): the reassessment's research left the record waiting for the step; a
+    Resume there keeps the retained reasons; a person's decision afterwards is decided by the same
+    refinalize as without the step (with PR #455 the reassessment's hold is durable: it stays, and the
+    decision adds the person's approval hold)."""
+    from test_step import decide, review_client
+
+    rig, research = reassessed_unconfirmed(tmp_path, monkeypatch, lambda rig: so.SecondOpinionStep(
+        model_factory=Current(rig).factory))
+    if research.run.stage == so.STEP:
+        held = rig.repository.get(rig.principal.scope, rig.specimen.id)
+        held.run.stage, held.run.disposition = "plan", None
+        rig.repository.save(rig.principal, held, held.version, "resume", "resume")
+    resumed = to_end(rig).run
+    retained = [code for code in research.run.reasons if code.startswith(so.REASSESSMENT_UNCONFIRMED + ":")]
+    assert retained and all(code in resumed.reasons for code in retained)
+    assert resumed.disposition == Disposition.REVIEW
+    habitat = resumed.fields["habitat"]
+    decided = decide(review_client(rig), rig, "habitat-after", "field", target_id="habitat",
+        after=habitat.model_dump(mode="json", exclude={"evidence_ids"}), evidence_ids=list(habitat.evidence_ids))
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(so, "derived", lambda run, readings=(): [])
+        mainlike = rig.repository.get(rig.principal.scope, rig.specimen.id).run.model_copy(deep=True)
+        from specimen_digitization.field_research.step import refinalize
+
+        mainlike.reasons = [code for code in resumed.reasons if not so.own(code)]
+        # With PR #455 merged in, refinalize takes no `decided` argument: the decision's approval hold is
+        # recorded where the decision enters (apply_decision, run.pending_review), which the stored run
+        # already carries; and the reassessment's hold is durable, so it stays until its own resolution.
+        refinalize(mainlike)
+    assert others(decided) == others(mainlike)
+    assert all(code in decided.reasons for code in retained) and "human_approval_required" in decided.reasons
