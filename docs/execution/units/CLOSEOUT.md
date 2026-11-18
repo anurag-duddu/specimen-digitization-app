@@ -160,5 +160,12 @@ the one conflicting elevation for a person?" he answered "Yes, run it" (the log,
   mirrors as carrying the text of main 1ca922535. The Prompts page is therefore not current.
   Production reads no variables (the log, line 525), so this affects only what that page shows.
   Registering every prompt there is a follow-up if the owner still wants it.
+  Follow-up, 2026-11-17: the Prompts page now holds 29 prompts, each with the text of main
+  49474f94e: the 20 field-expert mirrors gained a version 2 (label `main` moved to it), and
+  `first-pass-units` was registered like the other two prompts the code reads (label
+  `development` pointing at the code default, a rollout serving that label, and
+  `FirstPassUnitsPromptInputs` as its inputs schema). Every prompt was checked byte for byte
+  through `variable_get`, and `variable_resolve` reports `is_code_default true` for the three the
+  code reads (`~/specimen-golive/units-program/logfire_cleanup/result_20261117_prompts_current.md`).
 - **Phase 3** (3.1 people lookups, 3.2 the conventions table, 3.3 the steady-state run) did not
   start.

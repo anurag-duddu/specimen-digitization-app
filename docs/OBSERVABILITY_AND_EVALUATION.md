@@ -164,6 +164,17 @@ every run; a label by itself is not reproducible evidence.
 > these 30 (the collection classifier's `GUARDRAILS` plus its configured
 > `prompt_text` in `application/hf_collection_classifier.py`, the smoke and
 > preflight prompts) are not registered.
+>
+> 2026-11-17: after WP 1.8 the code reads three prompts, the three in the table
+> above. The Prompts page holds those three and the 26 mirrors, 29 in all, each
+> with the text of main `49474f94e`, checked byte for byte through
+> `variable_get`. `prompt__first_pass_units` was registered as the other two
+> code-read prompts were: label `development` pointing at the code default, a
+> default rollout serving that label, and `FirstPassUnitsPromptInputs` as its
+> template inputs schema; the field-expert mirrors gained a version 2, and
+> `main` points at each prompt's latest version. The deleted
+> `prompt__transcription_disagreement_adjudication` and `prompt__field_harness`
+> are no longer there.
 
 Logfire Prompt Management currently requires an eligible plan and an enabled AI
 Gateway for UI prompt tests. The gateway supports Hugging Face BYOK, but do not
