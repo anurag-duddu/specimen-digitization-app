@@ -2103,21 +2103,10 @@ def test_an_unresolved_mandatory_field_sends_the_record_to_review_with_its_reaso
 LACKS = FieldAnswer(outcome="label_lacks_value", explanation="Not on the label.")
 
 
-def test_an_empty_date_is_unresolved_not_a_date_precision_question(tmp_path):
-    """An empty date is no date precision question. Since the owner's rule change 1 (2026-11-17, "Yes, go
-    ahead"; plan WP S1, C1) the listed Date Identified its own expert says the label lacks, the whole label
-    read alike by both readers, clears as not on the label though the organiser offered a text; an expert
-    that leaves it unresolved sends it to a person, never as a precision question."""
-    rig = build_rig(tmp_path / "lacks")
+def test_an_empty_date_is_unresolved_not_a_date_precision_question(rig):
     run = rig.specimen.run
     settle(rig, Scripted({"date_identified": answering(LACKS)}))
     assert run.fields["date_identified"].state == ValueState.NOT_PRESENT
-    assert "date_identified" in cleared_as_not_on_label(run)
-    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
-    rig = build_rig(tmp_path / "open")
-    run = rig.specimen.run
-    settle(rig, Scripted({"date_identified": answering(FieldAnswer(outcome="sources_cannot_resolve",
-        explanation="Not settled."))}))
     assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["mandatory_unresolved:date_identified"])
 
 
@@ -3233,24 +3222,12 @@ def test_collectors_the_label_does_not_state_still_go_to_review(tmp_path):
     assert cleared_as_not_on_label(run) == cleared_absent() and not not_on_label_rows(run, "collectors")
 
 
-def test_a_field_whose_line_the_label_writes_clears_only_on_its_expert_s_word_and_readers_that_agree(tmp_path):
-    """The county line is on the label, and its expert says it is not. Since the owner's rule change 1
-    (2026-11-17, "Yes, go ahead"; plan WP S1, C1: "Blank becomes an answer when both readers read the whole
-    label cleanly and the expert says the field is not there") its word clears the county as not on the
-    label where both readers write the line alike; where they write it differently ("Cook" and "Cock") the
-    county stays for a person, as on main."""
-    text = label_with(**dict.fromkeys(set(ABSENT) - {"county"}, None))
-    rig = build_rig(tmp_path / "alike", text)
+def test_a_field_whose_line_the_label_writes_never_clears_as_not_on_the_label(tmp_path):
+    """The county line is on the label, and its expert says it is not."""
+    rig = build_rig(tmp_path, label_with(**dict.fromkeys(set(ABSENT) - {"county"}, None)))
     run = rig.specimen.run
     settle(rig, lacking(*ABSENT))
-    assert (run.disposition, run.reasons) == lacking_outcome()
-    assert not_on_label_rows(run, "county") and "county" in cleared_as_not_on_label(run)
-
-    rig = build_rig(tmp_path / "differ", text, text.replace("county: Cook", "county: Cock"),
-        candidates=every_field(("county", "1A", "Cook", "county: Cook"), ("county", "1B", "Cock", "county: Cock")))
-    run = rig.specimen.run
-    settle(rig, lacking(*ABSENT))
-    assert "mandatory_unresolved:county" in run.reasons
+    assert (run.disposition, run.reasons) == lacking_outcome("county")
     assert not not_on_label_rows(run, "county") and "county" not in cleared_as_not_on_label(run)
 
 
@@ -4966,14 +4943,11 @@ def test_a_retry_researches_a_field_marked_not_on_the_label_again_and_cites_only
 MCKINLEY = "E. slope Mt. McKinley"
 
 
-@pytest.mark.parametrize(("city", "kept"), [("Mt. McKinley", ()), ("Mt. Apo", ())],
+@pytest.mark.parametrize(("city", "kept"), [("Mt. McKinley", ()), ("Mt. Apo", ("city",))],
     ids=["inside-the-settled-locality", "a-place-of-its-own"])
 def test_a_city_the_organiser_took_from_the_settled_precise_location_counts_as_absent(tmp_path, city, kept):
     """105526321's second label: the organiser offers "Mt. McKinley", part of
-    the precise location the record settles, as the city. "Mt. Apo", a place of
-    its own, kept the city for a person on main; since the owner's rule change 1
-    (plan WP S1, C1) the city's own expert's label_lacks_value clears it, both
-    readers writing the line alike."""
+    the precise location the record settles, as the city."""
     text = label_with(**dict.fromkeys(set(ABSENT) - {"precise_location"}, None), city=None,
         precise_location=MCKINLEY) + ("" if city in MCKINLEY else "\n" + city)
     quote = "precise_location: " + MCKINLEY if city in MCKINLEY else city
@@ -5001,28 +4975,16 @@ def test_a_county_with_its_own_unit_word_inside_the_settled_locality_stays_in_re
     assert "county" not in cleared_as_not_on_label(run) and not not_on_label_rows(run, "county")
 
 
-def test_a_county_that_is_only_part_of_a_word_of_the_settled_city_is_not_inside_it(tmp_path):
+def test_a_county_that_is_only_part_of_a_word_of_the_settled_city_stays_in_review(tmp_path):
     """N1 of #289's review: "Lee" on a line of its own is no part of the
-    settled city "Leesburg": places compare by whole words, so rule A's place
-    test does not absent it. Since the owner's rule change 1 (plan WP S1, C1)
-    the county's own expert's label_lacks_value clears it, both readers writing
-    "Lee" alike; one reader's "Lce" keeps it for a person."""
-    assert not field_step._inside_a_settled_place(SimpleNamespace(fields={"city": FieldValue(
-        state=ValueState.SUPPORTED, literal="Leesburg")}), "county", "Lee")
+    settled city "Leesburg": places compare by whole words."""
     text = label_with(**dict.fromkeys(ABSENT, None), city="Leesburg") + "\nLee"
-    rig = build_rig(tmp_path / "alike", text,
-        candidates=[*COLLECTORS, *(("county", name, "Lee", "Lee") for name in ("1A", "1B"))])
+    rig = build_rig(tmp_path, text, candidates=[*COLLECTORS, *(("county", name, "Lee", "Lee") for name in ("1A", "1B"))])
     run = rig.specimen.run
     settle(rig, lacking(*ABSENT, city=confirming("Leesburg", reading="1A")))
     assert run.fields["city"].state == ValueState.SUPPORTED
-    assert (run.disposition, run.reasons) == lacking_outcome()
-    assert "county" in cleared_as_not_on_label(run)
-
-    rig = build_rig(tmp_path / "differ", text, text.replace("\nLee", "\nLce"),
-        candidates=[*COLLECTORS, ("county", "1A", "Lee", "Lee"), ("county", "1B", "Lce", "Lce")])
-    run = rig.specimen.run
-    settle(rig, lacking(*ABSENT, city=confirming("Leesburg", reading="1A")))
-    assert "mandatory_unresolved:county" in run.reasons and "county" not in cleared_as_not_on_label(run)
+    assert (run.disposition, run.reasons) == lacking_outcome("county")
+    assert "county" not in cleared_as_not_on_label(run) and not not_on_label_rows(run, "county")
 
 
 def test_an_inline_unreadable_marker_with_no_span_listed_keeps_every_listed_field_in_review(tmp_path):

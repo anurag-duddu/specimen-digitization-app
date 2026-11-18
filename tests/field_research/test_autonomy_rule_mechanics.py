@@ -8,8 +8,6 @@ measured as rule mechanics, not doubt, removed, and the holds that guard a real 
   keeps the elevation whose number its elevation field settled (C4b, in test_elevations_and_extent);
   a place below the country settles inside the country settled from another reading of its label
   (C4c); an expert whose request its sources made too long answers on a shortened one (C4d).
-- C1: a listed field whose own expert says the label lacks it clears as not on the label though the
-  organiser offered text for it (the owner's rule change 1).
 - The empty-record guard: a record with no value in any field is never finished without a person.
 """
 
@@ -32,7 +30,6 @@ from test_step import (
     build_rig,
     every_field,
     label_with,
-    research,
     settle,
 )
 
@@ -383,59 +380,6 @@ def test_a_first_request_over_the_bound_still_fails_as_too_large():
     outcome = asyncio.run(resolver(province_task(), two_readers(DAVAO_LINES) + huge, {}, tools=Tools()))
 
     assert (outcome.answer, outcome.failure) == (None, "input_too_large") and seen == []
-
-
-# ---- C1: blank is an answer for a listed field --------------------------------------------------
-
-# The organiser's habitat is the method's text "trap", which no field settles (test_agreement's control).
-TRAP = label_with(habitat=None, collection_method=None) + "\ntrap"
-TRAP_HABITAT = every_field(*(("habitat", name, "trap", "trap") for name in ("1A", "1B")))
-
-
-@pytest.mark.parametrize("answered", ["lacks", "cannot-resolve"])
-def test_a_listed_field_its_expert_says_is_not_there_clears_whatever_the_organiser_offered(tmp_path, answered):
-    """The owner's rule change 1 (2026-11-17): the whole label read by both readers and the habitat's own
-    expert saying the label lacks it, the organiser's "trap" no longer refuses the absence (on main:
-    A_declined:organiser_found_text). An expert that did not itself say so (sources_cannot_resolve) leaves
-    the habitat for a person, as before."""
-    rig = build_rig(tmp_path, TRAP, candidates=TRAP_HABITAT)
-    run = rig.specimen.run
-    habitat = answering(LACKS) if answered == "lacks" else answering(FieldAnswer(
-        outcome="sources_cannot_resolve", explanation="It may be the method."))
-    prepared, outcomes, calls = research(rig, Scripted({"habitat": habitat, "collection_method": answering(LACKS)}))
-    decisions: dict[str, dict] = {}
-    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
-    field_step.finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=TODAY)
-
-    if answered == "lacks":
-        assert decisions["habitat"] == {"rule": "A_not_on_label"}
-        assert "mandatory_unresolved:habitat" not in run.reasons
-        return
-    assert "rule" not in decisions.get("habitat", {}) or decisions["habitat"]["rule"] != "A_not_on_label"
-    assert "mandatory_unresolved:habitat" in run.reasons
-
-
-def test_a_field_off_the_list_stays_held_when_its_expert_says_it_is_not_there(tmp_path):
-    """C1 adds no field to the list: the collectors (NEVER_NOT_ON_LABEL) stay held when their expert
-    answers label_lacks_value, organiser text or none."""
-    rig = build_rig(tmp_path, label_with())
-    run = rig.specimen.run
-    settle(rig, Scripted({"collectors": answering(LACKS)}))
-
-    assert "mandatory_unresolved:collectors" in run.reasons
-    assert "collectors" not in field_step.not_on_label_keys(field_step.profile_of(run))
-
-
-def test_a_precise_location_its_expert_says_is_not_there_stays_held(tmp_path):
-    """The precise-location extent rule stays (rule 7): its expert's label_lacks_value never clears it."""
-    rig = build_rig(tmp_path)
-    run = rig.specimen.run
-    prepared, outcomes, calls = research(rig, Scripted({"precise_location": answering(LACKS)}))
-    decisions: dict[str, dict] = {}
-    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
-
-    assert decisions["precise_location"]["rule"].startswith("A_declined:")
-    assert run.fields["precise_location"].state == ValueState.NOT_PRESENT
 
 
 # ---- the empty-record guard --------------------------------------------------------------------

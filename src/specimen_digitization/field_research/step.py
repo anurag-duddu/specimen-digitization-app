@@ -3527,33 +3527,6 @@ def _organiser_texts(task: FieldTask, readings: Sequence[Reading]) -> list[tuple
     return [(text, spans) for text, spans in found if text and text.strip()]
 
 
-def _read_alike(texts: Sequence[tuple[str, frozenset]], found: Sequence[str], readings: Sequence[Reading]) -> bool:
-    """Whether every reader of a label writes each of the `found` organiser texts alike (rule A's
-    rule change 1, mark_not_on_label): each found text, letter case and white space aside
-    (checks.collapse), stands (`texts`: _organiser_texts, with where each stands) in at least one
-    reading, and in every reading of each label it stands in. "Malaise trap" one reader writes
-    "Malaise trep", or leaves out, is not read alike (G51's input on #441's first review)."""
-    from .checks import collapse
-
-    def keyed(text: str) -> str:
-        return collapse(text).casefold()
-
-    region_of = {reading.name: reading.region_id for reading in readings}
-    written: dict[str, set[str]] = {}
-    for text, spans in texts:
-        for name, _, _ in spans:
-            written.setdefault(name, set()).add(keyed(text))
-    for text in found:
-        names = [name for name, keys in written.items() if keyed(text) in keys and name in region_of]
-        if not names:
-            return False
-        regions = {region_of[name] for name in names}
-        if any(keyed(text) not in written.get(reading.name, set()) for reading in readings
-                if reading.region_id in regions):
-            return False
-    return True
-
-
 def _settled_claims(run, readings: Sequence[Reading]) -> list[tuple[str, str, frozenset]]:
     """Each settled value's field and literal, with where the literal stands
     (_claims_text, _value_spans): the text the run's settled values hold."""
@@ -4001,11 +3974,6 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
        inside the text of a place above it that claims its text
        (_places_above, _within: 48a71d53's "Davao Prov." under its settled
        province "Davao Prov."); and
-       when its expert answered label_lacks_value itself (not `above`) and it is
-       not the precise location, the texts left no longer refuse it where every
-       reader of their label writes each alike (_read_alike) and, for a county,
-       none writes a county unit word (the owner's rule change 1 of 2026-11-17,
-       plan WP S1, C1);
        for a precise location, the texts left count as absent when, beside
        the places settled, they write only an administrative marker, or
        readers differ only in one (_admin_markers);
@@ -4045,8 +4013,6 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
     if not allowed or not _whole_label_read(run, readings):
         why.update(dict.fromkeys(lacking, "label_not_read_whole" if allowed else "not_listed"))
         return []
-    from .agreement import writes_county_unit
-
     elevation = claims = None
     places_above: dict[str, list] = {}
     marked = []
@@ -4066,21 +4032,11 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
         claims = _settled_claims(run, readings) if claims is None else claims
         if key in BELOW_A_PLACE and key not in places_above:
             places_above[key] = _places_above(run, key, readings, rows, human)
-        texts = _organiser_texts(tasks_by_key[key], readings)
-        found = [text for text, spans in texts
+        found = [text for text, spans in _organiser_texts(tasks_by_key[key], readings)
             if not (key in INSIDE_A_PLACE and _inside_a_settled_place(run, key, text))
             and not any(_within(text, spans, theirs) for _, theirs, _ in places_above.get(key, ()))
             and _held_by_another_kind(key, text, spans, claims) is None]
-        # The owner's rule change 1 (2026-11-17, "Yes, go ahead"): blank is an answer when both
-        # readers read the whole label cleanly and the field's expert itself says the field is not
-        # there, so the organiser's text no longer refuses it then (plan WP S1, C1, the listed fields
-        # only): every reader of its label writes that text alike (_read_alike), and for a county it
-        # writes no county unit word of its own (N1 of #289's review: "Cook County"). An absence
-        # `above` gives, and the precise location (rule 7), keep condition 5.
-        asserted = (answer.outcome == "label_lacks_value" and key != "precise_location"
-            and _read_alike(texts, found, readings)
-            and not (key == "county" and any(writes_county_unit(text) for text in found)))
-        if found and not asserted and not (key == "precise_location" and _admin_markers(run, found) is not None):
+        if found and not (key == "precise_location" and _admin_markers(run, found) is not None):
             why[key] = "organiser_found_text"
             continue
         if key in ELEVATION_FIELDS:

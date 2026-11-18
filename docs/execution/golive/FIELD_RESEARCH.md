@@ -2069,18 +2069,6 @@ elevation is derived first, and only for a field a person has not decided):
    canton) and "Distr. Kandy" beside the settled county "Kandy": with the
    precise location's expert finding none, each stays in review (for
    "Distr. Kandy", the conservative outcome the coordinator accepted).
-   Amended 2026-11-17 by the owner's rule change 1 ("Blank becomes an
-   answer when both readers read the whole label cleanly and the expert
-   says the field is not there."; his "Yes, go ahead",
-   [`docs/execution/autonomy/PLAN.md`](../autonomy/PLAN.md) section 1;
-   work package S1, C1): when the field's expert itself answered
-   label_lacks_value (not a county or city that only a place above
-   settles), the texts still left no longer refuse it, as long as every
-   reader of each text's label writes that text alike (letter case and
-   white space aside: `step._read_alike`; "Malaise trap" one reader writes
-   "Malaise trep", or leaves out, still refuses) and, for a county, no text
-   writes a county unit word ("Cook County" still refuses). The precise
-   location keeps condition 7. The list itself is unchanged.
 6. For an elevation, no reading writes an elevation
    (`step._elevation_written`, on every reading's and every reader's text).
    That is, none of:
@@ -2619,10 +2607,11 @@ is drawn from it, or a field drawn from it, its work done, is not supported, or
 is neither grounded in a reader's raw reading nor derived; and a label the
 first pass gave up on is so however its fields settle.
 
-Amended 2026-11-17 (the autonomy program's work package S1, C3: item 1 of
-the plan the owner approved with "Yes, go ahead", the duplicate "readers
-differ" hold removed; [`docs/execution/autonomy/PLAN.md`](../autonomy/PLAN.md)
-sections 1 and 2): G19 is per
+Amended 2026-11-17 (the autonomy program's work package S1, C3; the plan's
+item 1, in the coordinator's words "the duplicate 'readers differ' hold
+removed", is part of the plan the owner answered "Yes, go ahead" to:
+[`docs/execution/autonomy/PLAN.md`](../autonomy/PLAN.md) sections 1 and 2):
+G19 is per
 field, so a drawn field cleared as not on the label, or one waiting for a
 held source (whose source's reason routes the record), no longer makes its
 label `unresolved_transcription`; and a label no field is drawn from, on

@@ -57,7 +57,7 @@ Earlier owner words that still bind:
 The reading-units program's rule of order applies to every package: first make the values right, then
 lift the hold that guards them.
 
-## 2. The approved plan (the owner's view of it)
+## 2. The plan the coordinator put to the owner (his answer: "Yes, go ahead"; the items are the coordinator's words)
 
 0. Yardstick: the truth set from 10 slides to about 100; two numbers on every change: the share of
    specimens finished without a person, and wrong values among the cleared ones.
@@ -83,45 +83,44 @@ stack frees 0 of 30 specimens in every run and moves 56 pilot cells to cleared r
 wrong. Every specimen any change finishes carries a wrong or contested value ("P.I." stored as the
 parsed country is 15 of the 20 cleared-wrong cells). After every change, what holds specimens is real
 doubt. R0's "safe now" items are C3 (the duplicate label hold), C4 (mechanical refusals) and C1 on the
-fields already on the not-on-the-label list.
+fields already on the not-on-the-label list (C1 waits: section 4).
 
 ## 4. Work packages
 
 | WP | Scope | Files | Acceptance |
 |---|---|---|---|
-| S1 rule mechanics (this pull request) | R0's safe items 1 to 3 and an empty-record guard. **C3**: a drawn field cleared as not on the label, or waiting for a held source, no longer makes its label `unresolved_transcription`; a label no field is drawn from, on which the organiser found text, holds only while one of those fields has a reason of its own (a label with no organiser text at all still holds, as WP 2.R left it). **C4a**: a place value field's literal may run over one line break ("Davao\nProv.," is "Davao Prov.,"). **C4b**: a precise location keeps an elevation whose number its elevation field settled ("4800" beside "Yepocapa, 4800ft."), by the extent rule precise_location_extent, whose statement now says so. **C4c**: a place below the country settles inside the country settled from another reading of its label, where its own reading spells the country otherwise. **C4d**: an expert whose request its sources' answers made too long answers once more on the run so far, each lookup result shortened to what an answer cites. **C1** (rule change 1, the listed fields only, `contracts.NOT_ON_LABEL` unchanged): a listed field whose own expert answered `label_lacks_value`, the whole label read, clears as not on the label though the organiser offered text for it, when every reader of its label writes that text alike and, for a county, the text writes no county unit word; the precise location keeps its extent rule. **Guard**: a record none of whose fields that describe the specimen holds a value (the catalogue number, the collection code and the determiner's IRN aside: R0's 105526335, labels "FMNHINS 4486770" and "LEWIS COLLECTION / col") gets `no_specimen_value` and never finishes without a person. | `field_research/step.py`, `agreement.py`, `experts.py`, `ontology/specimen.yaml`, the app's `blockers.dart` (the reason's words) | Fail-first tests per sub-change, with the cases that stay held; a replay with the real code over the 120 stored specimen-runs: pilot values newly cleared wrong 0. Not in scope: any prompt, "P.I." storage, Verbatim D/T/S, the taxon (C2), the marks (C6), one-reader labels (C5), the app beyond the reason's words |
+| S1 rule mechanics (this pull request) | R0's safe items 1 and 2 and an empty-record guard; C1 removed (below). **C3**: a drawn field cleared as not on the label, or waiting for a held source, no longer makes its label `unresolved_transcription`; a label no field is drawn from, on which the organiser found text, holds only while one of those fields has a reason of its own (a label with no organiser text at all still holds, as WP 2.R left it). **C4a**: a place value field's literal may run over one line break ("Davao\nProv.," is "Davao Prov.,"). **C4b**: a precise location keeps an elevation whose number its elevation field settled ("4800" beside "Yepocapa, 4800ft."), by the extent rule precise_location_extent, whose statement now says so. **C4c**: a place below the country settles inside the country settled from another reading of its label, where its own reading spells the country otherwise. **C4d**: an expert whose request its sources' answers made too long answers once more on the run so far, each lookup result shortened to what an answer cites. **Guard**: a record none of whose fields that describe the specimen holds a value (the catalogue number, the collection code and the determiner's IRN aside: R0's 105526335, labels "FMNHINS 4486770" and "LEWIS COLLECTION / col") gets `no_specimen_value` and never finishes without a person. | `field_research/step.py`, `agreement.py`, `experts.py`, `ontology/specimen.yaml`, the app's `blockers.dart` (the reason's words) | Fail-first tests per sub-change, with the cases that stay held; no existing test's expectation loosened except where the sub-change itself is the change (C4b's number-settled cases, C4a's place over one line break); a replay with the real code over the 120 stored specimen-runs: pilot values newly cleared wrong 0. Not in scope: any prompt, "P.I." storage, Verbatim D/T/S, the taxon (C2), the marks (C6), one-reader labels (C5), the app beyond the reason's words |
+| C1 on the listed fields (waits) | The coordinator's rule change 1 ("blank as an answer") on the fields already on `contracts.NOT_ON_LABEL`: the field's own expert's `label_lacks_value` clearing it although the organiser offered text for it. **Waits for the larger truth set.** | `field_research/step.py` (`mark_not_on_label`, condition 5) | Coordinator's ruling of 2026-11-17 on PR #451: no existing safety pin is loosened. The tests that pin a wrong expert answer as held (the keyed lines "county: Cook" and Date Identified, "Lee" as a county, the city "Mt. Apo", the habitat "trap" and "trap, cloud forest") must stay held, so the organiser's text keeps refusing the absence whenever nothing the code already establishes explains why that text is not the field's value. Rule A's condition 5 already absents every text so explained (the same text settled as another field's value, a run inside a settled place, a text within a settled place above), so a C1 that keeps every pin releases nothing on the stored runs. Measured on S1's first head (C1 as the expert's word plus readers that agree): 6, 4, 3 and 8 absences released (r1/pair, r2/pair, r1/three, r2/three), each judged true by reading the label except 105526487's habitat beside "PRAIRIE DOG", now known to be wrong (M0, 2026-11-17: a bare animal name on a label is the host and belongs in Habitat), and it unpinned the six tests above. |
 
 ### S1's replay (free, real code, wp26's 120 specimen-runs)
 
 Each stored Run was loaded and, on a copy, the precise location's captured outcome reapplied where it
-had been refused for its elevation (C4b), `mark_not_on_label` rerun on the captured outcomes (C1) and
-`finalize_fields` called (C3, the guard). On main 49474f94 the same replay reproduces every stored
-reason. Pilot cells by the frozen scorer (`tests/reference/units_program/score.py`).
+had been refused for its elevation (C4b), `mark_not_on_label` rerun on the captured outcomes (main's rule
+A, unchanged) and `finalize_fields` called (C3, the guard). On main 49474f94 the same replay reproduces
+every stored reason. Pilot cells by the frozen scorer (`tests/reference/units_program/score.py`).
 
 | run | finished | reasons removed | reasons added | pilot newly cleared wrong | newly cleared right | left to marked |
 |---|---|---|---|---|---|---|
-| r1/pair | 0 of 30 | 8 mandatory_unresolved, 3 unresolved_transcription | 2 no_specimen_value | 0 | 2 | 0 |
-| r2/pair | 0 of 30 | 5 mandatory_unresolved, 3 unresolved_transcription | 2 no_specimen_value | 0 | 1 | 0 |
-| r1/three | 0 of 30 | 4 mandatory_unresolved | 1 marked, 1 no_specimen_value | 0 | 0 | 1 |
-| r2/three | 0 of 30 | 10 mandatory_unresolved, 2 unresolved_transcription | 2 marked, 1 no_specimen_value | 0 | 0 | 1 |
+| r1/pair | 0 of 30 | 3 mandatory_unresolved, 3 unresolved_transcription | 2 no_specimen_value | 0 | 2 | 0 |
+| r2/pair | 0 of 30 | 1 mandatory_unresolved | 2 no_specimen_value | 0 | 1 | 0 |
+| r1/three | 0 of 30 | 1 mandatory_unresolved | 1 marked, 1 no_specimen_value | 0 | 0 | 1 |
+| r2/three | 0 of 30 | 3 mandatory_unresolved, 1 unresolved_transcription | 2 marked, 1 no_specimen_value | 0 | 0 | 1 |
 
 The pilot cells that changed are all the precise location (C4b): 105526326 and 105526329 cleared right
 on the pair arm (r1/pair both, r2/pair 105526329), 105526326 marked right (a conflict) on the three arm.
-Cleared wrong stays 7, 5, 4 and 4, as R0's base. `no_specimen_value` falls on 105526335 in every run
-and 105526461 on the pair arm, both already held. C1 releases 6, 4, 3 and 8 absences (collection
-method, collection code, county, city, habitat), every one judged true by reading the label, except
-105526487's habitat beside "PRAIRIE DOG" (r2/three), a host, whose convention is unruled.
+Cleared wrong stays 7, 5, 4 and 4, as R0's base. Once 105526326's precise location settles, main's rule
+A clears its city as not on the label (r1/pair, r2/three: the organiser's "Mt. McKinley" lies inside
+it; no town is written). `no_specimen_value` falls on 105526335 in every run and 105526461 on the pair
+arm, both already held. 105526487's habitat ("PRAIRIE DOG") stays held for a person, as on main.
 
 Kept held by S1, narrower than R0's simulation:
 - C4c settles a place only inside a country settled on the record. R0's wider form, any place a source
   confirmed, would lift the refusal of 105526359's city answer, "LOS ALAMOS Co." as the town Los Alamos,
   where the label writes no town, and of 105526459's city on the misread "AWellsville" (judged from the
-  stored answers; not replayable); so 105526321 ("P.I."), 105526461
-  (the heading "Siphonaptera of Utah"), 105526359 and 105526459 stay held.
+  stored answers; not replayable); so 105526321 ("P.I."), 105526461 (the heading "Siphonaptera of
+  Utah"), 105526359 and 105526459 stay held.
 - C3 keeps the reason of a label with no field drawn and no organiser text on it (R0's simulation kept
   these too; WP 2.R's inputs in `tests/field_research/test_review_rules.py`).
-- C1 needs every reader of the organiser's text to write it alike, and a county's text to write no county
-  unit word; the readers-differ and "Cook County" cases stay held.
 
 C4a, C4c and C4d act inside the expert or on source answers the stored rows do not keep (the captured
 outcomes carry no cited evidence ids, authority ids or options, and refused answers survive only as
