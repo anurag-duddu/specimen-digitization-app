@@ -202,6 +202,44 @@
       },
       "codes": [],
       "attention": []
+    },
+    {
+      "name": "a value the second opinion differs on, on a cleared record",
+      "fields": {
+        "habitat": {
+          "state": "supported",
+          "has_value": true
+        },
+        "country": {
+          "state": "supported",
+          "has_value": true
+        }
+      },
+      "codes": [
+        "marked:habitat:L1:second_opinion_differs"
+      ],
+      "attention": [
+        "habitat"
+      ]
+    },
+    {
+      "name": "a value the second opinion did not check, on a cleared record",
+      "fields": {
+        "county": {
+          "state": "supported",
+          "has_value": true
+        },
+        "country": {
+          "state": "supported",
+          "has_value": true
+        }
+      },
+      "codes": [
+        "marked:county:L1:second_opinion_not_checked"
+      ],
+      "attention": [
+        "county"
+      ]
     }
   ]
 }

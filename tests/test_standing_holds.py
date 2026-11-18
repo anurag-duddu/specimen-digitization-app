@@ -25,6 +25,9 @@ SRC = Path(standing_holds.__file__).resolve().parents[1]
 RECOMPUTATION = {
     ("field_research/step.py", "finalize_fields"),
     ("application/policy.py", "finalize"),
+    # The fields' second opinion's finalize (PR #456): finalize_fields' reasons kept but for its own marks,
+    # which it derives again from its stored result and splits as finalize_fields does (split_reasons).
+    ("field_research/second_opinion.py", "finish"),
     ("research_harness/canonical_materialization.py", "materialize"),
     ("research_harness/canonical_materialization_v2.py", "_materialize"),
     ("research_harness/canonical_progress_materialization_v2.py", "materialize_progress_v2"),

@@ -537,12 +537,16 @@ def due(run) -> bool:
 def finish(run) -> None:
     """The record finalized once the step has ended, however it ended: the reasons field research's
     finalize gave it, with the second opinion's codes derived again from the stored result and the
-    current values (reasons); cleared when no reason is left, else for review. No field, finding or
-    other reason changes."""
+    current values (reasons), split as finalize_fields splits every reason (step.split_reasons, plan WP
+    K1): a mark on an optional field is that field's doubt, kept in open_reasons; cleared when no reason
+    is left, else for review. No field, finding or other reason changes."""
     from specimen_digitization.application.domain import Disposition
 
-    kept = [code for code in run.reasons if not own(code)]
-    run.reasons = list(dict.fromkeys((*kept, *reasons(run))))
+    from .step import profile_of, split_reasons
+
+    held, open_ = split_reasons(run, reasons(run), mandatory=profile_of(run).mandatory_fields)
+    run.reasons = list(dict.fromkeys((*(code for code in run.reasons if not own(code)), *held)))
+    run.open_reasons = list(dict.fromkeys((*(code for code in run.open_reasons if not own(code)), *open_)))
     run.blocker = None
     run.disposition = Disposition.REVIEW if run.reasons else Disposition.CLEARED
     run.stage = "finalized"

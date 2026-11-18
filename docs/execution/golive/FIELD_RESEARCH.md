@@ -2182,10 +2182,22 @@ decision a person made after that revision is undone by the restore itself:
 this is what a restore is, not a defect. The restored reasons are what the
 derivation gives on the restored run.
 
-**On main every mark holds the record.** With this change a record that
-would clear on main is held until its second opinion is obtained and agrees
-with every value it answers for. PR #455 (K1) will make an optional field's
-mark a field-level flag; it merges after this one.
+**With the clearing rule (PR #455, K1) a mark is a flag on its field.**
+With this change alone every mark held the record, so a record was held
+until its second opinion was obtained and agreed with every value it
+answers for. With K1, which ships with it, that is no longer so: only the
+catalogue number is mandatory and the second opinion never judges it, so
+its marks are optional fields' doubts (`step.split_reasons`, at
+`finalize_fields` and at the step's own finalize, `second_opinion.finish`).
+An agreed value is shown as settled; a differing or unchecked value is
+settled and flagged on its field (`open_reasons`, the API's
+`open_reason_codes`, which the app reads for a field's attention); the
+record clears on its catalogue number. Not obtained or switched off, every
+settled value it answers for is flagged "not checked" and the record still
+clears. A record held for another reason (its catalogue number unsettled,
+marked or of the wrong format; label coverage unconfirmed; research given
+up; a person's pending approval or another standing hold) stays held
+whatever the second opinion says (`tests/field_research/test_second_opinion_skeletal.py`).
 
 **The request.** Route `second-opinion-muse-spark` (Muse Spark Open 816B on
 Baseten through the Hugging Face router; tool choice required, 8,000 output

@@ -63,6 +63,28 @@ void main() {
     expect(blockers.single.detail, secondOpinionNotCheckedWords);
   });
 
+  // With the clearing rule (plan WP K1) a mark on an optional field holds
+  // nothing: it arrives in `open_reason_codes` on a cleared record, and the
+  // field still needs attention, in the same words.
+  for (final (String code, String words) in <(String, String)>[
+    (differs, secondOpinionDiffersWords),
+    (notChecked, secondOpinionNotCheckedWords),
+  ]) {
+    test('$code on a cleared record flags its field, not the record', () {
+      final Specimen cleared = Specimen(<String, dynamic>{
+        ...held(code).data,
+        'disposition': 'cleared',
+        'reason_codes': <String>[],
+        'open_reason_codes': <String>[code],
+      });
+      expect(blockersFor(cleared), isEmpty);
+      final List<ClearanceBlocker> attention = fieldAttentionFor(cleared);
+      expect(attention, hasLength(1));
+      expect(attention.single.fieldKey, 'habitat');
+      expect(attention.single.detail, words);
+    });
+  }
+
   test('the reason chips say why in a short phrase', () {
     expect(
       settlementPhrase(held(differs), differs),

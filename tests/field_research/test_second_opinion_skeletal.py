@@ -1,0 +1,370 @@
+"""The clearing rule (plan WP K1, PR #455) with the fields' second opinion (WP F1, PR #456), together.
+
+Under the published profile only the catalogue number is mandatory (K1); the second opinion marks a settled
+value it does not agree with (`marked:<field>:<label>:second_opinion_differs`) or did not check
+(`..._not_checked`), and never judges the catalogue number (F1). Combined, a second opinion's mark is an
+optional field's doubt: it is kept in `run.open_reasons` (the API's `open_reason_codes`), the field needs
+attention, and the record clears on its catalogue number. What holds a record for another reason holds it with
+the second opinion in any state.
+
+The tests in test_second_opinion.py run on the profile with every field mandatory (test_step.field_mechanics_profile),
+where every mark holds, as #456 alone does on main; these run on the published profile. Every record here is
+built by the field research rig (test_step.build_rig) and taken through the workflow, with the second opinion's
+step mounted as in production but for its model.
+"""
+
+from __future__ import annotations
+
+from datetime import timedelta
+
+import pytest
+from test_second_opinion import Opinion, agreeing, full, step_paid
+from test_skeletal_disposition import catalogue_number_lacking, readers_differ_on_the_collectors
+from test_step import TODAY, Scripted, build_rig, decide, mounted, review_client
+
+from specimen_digitization.application import active_graph
+from specimen_digitization.application.api import summary
+from specimen_digitization.application.collection_profiles import published_registry
+from specimen_digitization.application.domain import AuditEvent, Disposition, RunFinding
+from specimen_digitization.application.review_summary import attention_fields, project_fields
+from specimen_digitization.application.standing_holds import APPROVAL, HISTORY_RESTORED, person_acted
+from specimen_digitization.field_research import second_opinion as so
+from specimen_digitization.field_research import step as field_step
+
+# The product's behaviour: the marks are derived (tests/conftest.py).
+USES_SECOND_OPINION = True
+CATALOGUE = "fmnh_ins_number"
+MEADOW = {"value": "Synthetic meadow", "evidence": "L1: meadow"}
+
+
+def published():
+    return published_registry().profiles[0]
+
+
+def rig_on(folder, scenario=None, opinion=None, *, switched_off=False):
+    """The rig's record on the published profile, with the second opinion's step mounted (its model answering
+    as `opinion`), or switched off."""
+    if scenario is None:
+        rig, script = build_rig(folder, profile=published()), Scripted()
+    else:
+        text, other, candidates, script = scenario()
+        rig = build_rig(folder, text, other, candidates=candidates, profile=published())
+    mounted(rig, script)
+    rig.workflow.second_opinion = None if switched_off else so.SecondOpinionStep(model_factory=opinion.factory)
+    return rig
+
+
+def to_end(rig):
+    return rig.workflow.drain(rig.principal, rig.specimen.id)
+
+
+def marks(codes, why=None):
+    return sorted(code for code in codes if so.own(code) and (why is None or code.endswith(":" + why)))
+
+
+def fields_of(codes):
+    return {code.split(":")[1] for code in codes}
+
+
+def settled_judged(run):
+    """The fields the second opinion answers for on this run: settled, judged, no other rule's mark."""
+    return {key for key in so.JUDGED if so._settled(run.fields.get(key))} - so._other_marks(run)
+
+
+def resumed(rig):
+    """A completed run reaching the handover again (Retry, Resume: the recheck), taken to its end."""
+    specimen = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    specimen.run.stage, specimen.run.disposition = "plan", None
+    rig.repository.save(rig.principal, specimen, specimen.version, "resume", "resume")
+    return to_end(rig)
+
+
+# ---- 1. a second opinion's mark on an optional field is that field's doubt ----------------------------------
+
+def test_the_second_opinion_never_judges_the_one_mandatory_field():
+    assert published().mandatory_fields == (CATALOGUE,)
+    assert CATALOGUE in so.EXCLUDED and not set(published().mandatory_fields) & set(so.JUDGED)
+
+
+def test_every_second_opinion_mark_is_an_optional_fields_doubt(tmp_path):
+    """step.split_reasons classifies both marks on every field the second opinion judges as an optional
+    field's doubt; another rule's mark on the catalogue number still holds."""
+    run = to_end(rig_on(tmp_path, opinion=Opinion(agreeing(tmp_path / "values")))).run
+    label = run.regions[0].id
+    codes = [field_step.marked_code(key, label, why) for key in so.JUDGED for why in (so.DIFFERS, so.NOT_CHECKED)]
+    assert all(so.own(code) for code in codes)
+    held, open_ = field_step.split_reasons(run, codes, mandatory=published().mandatory_fields)
+    assert (held, open_) == ([], codes)
+    catalogue = field_step.marked_code(CATALOGUE, label, "text_only")
+    assert field_step.split_reasons(run, [catalogue, *codes], mandatory=published().mandatory_fields) == (
+        [catalogue], codes)
+
+
+def test_a_differing_and_an_unchecked_value_land_in_open_reasons_and_need_attention(tmp_path):
+    """Both marks reach the record's open reasons, never its reasons, and the field needs attention on the
+    server's view of the record (api.summary; the app reads `open_reason_codes` the same way:
+    tests/fixtures/field_attention.json, second_opinion_test.dart)."""
+    rig = rig_on(tmp_path, opinion=Opinion(agreeing(tmp_path / "values", habitat=MEADOW)))
+    done = to_end(rig)
+    run = done.run
+    assert (run.stage, run.disposition, run.reasons) == ("finalized", Disposition.CLEARED, [])
+    assert fields_of(marks(run.open_reasons, so.DIFFERS)) == {"habitat"}
+    # A value changed after it was judged is not checked: refinalized, its mark is open as well.
+    run.fields["county"].literal = run.fields["county"].normalized = run.fields["county"].parsed = "Changed"
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert fields_of(marks(run.open_reasons, so.NOT_CHECKED)) == {"county"}
+    view = summary(done)
+    assert view["reason_codes"] == [] and set(marks(run.open_reasons)) <= set(view["open_reason_codes"])
+    fields = project_fields({key: value.model_dump(mode="json") for key, value in run.fields.items()})
+    assert {"habitat", "county"} <= attention_fields(fields, view["open_reason_codes"])
+    # The habitat's attention is its mark's alone (the changed county's evidence no longer supports it too).
+    assert "habitat" not in attention_fields(fields, [code for code in view["open_reason_codes"] if not so.own(code)])
+
+
+# ---- 2. the catalogue number settled: agreeing, differing on two, not obtained ------------------------------
+
+def test_agreeing_everywhere_the_record_clears_with_no_open_reason(tmp_path):
+    opinion = Opinion(agreeing(tmp_path / "values"))
+    run = to_end(rig_on(tmp_path, opinion=opinion)).run
+    assert (run.stage, run.disposition, run.blocker) == ("finalized", Disposition.CLEARED, None)
+    assert (run.reasons, run.open_reasons) == ([], [])
+    assert run.second_opinion["status"] == so.OBTAINED and len(opinion.requests) == 1
+
+
+def test_differing_on_two_optional_fields_the_record_clears_with_exactly_those_two_marks_open(tmp_path):
+    rig = rig_on(tmp_path, opinion=Opinion(agreeing(tmp_path / "values", habitat=MEADOW,
+        county={"value": None, "evidence": ""})))
+    run = to_end(rig).run
+    region = run.regions[0].id
+    assert (run.stage, run.disposition, run.blocker, run.reasons) == ("finalized", Disposition.CLEARED, None, [])
+    assert run.open_reasons == [f"marked:county:{region}:second_opinion_differs",
+                                f"marked:habitat:{region}:second_opinion_differs"]
+
+
+def not_obtained(case, tmp_path, monkeypatch):
+    """The record of each way the second opinion is not obtained, or switched off."""
+    from pydantic_ai.exceptions import ModelHTTPError
+
+    folder = tmp_path / case
+    if case == "switched-off":
+        return to_end(rig_on(folder, switched_off=True)).run
+    answers = {"402": Opinion(error=ModelHTTPError(402, "second-opinion", body="credit")),
+               "503": Opinion(error=ModelHTTPError(503, "second-opinion", body="down")),
+               "error": Opinion(error=RuntimeError("provider_request_failed")),
+               "malformed": Opinion(raw="{not json"),
+               "partial": Opinion({key: value for key, value in full().items() if key != "city"})}
+    opinion = answers.get(case) or Opinion(full())
+    rig = rig_on(folder, opinion=opinion)
+    if case == "budget":
+        monkeypatch.setattr(so, "CAP_MICROS", 5_000_000)
+    elif case == "unconfigured":
+        monkeypatch.setattr(so, "route_price", lambda run: None)
+    elif case == "exception":
+        monkeypatch.setattr(so, "obtain", lambda run, **kwargs: (_ for _ in ()).throw(ValueError("boom")))
+    elif case == "attempts-used":
+        pending = rig.workflow.step(rig.principal, rig.specimen.id)
+        pending.run.attempts[so.STEP] = pending.run.profile.execution.max_attempts
+        rig.repository.save(rig.principal, pending, pending.version, "attempts", "attempts")
+    return to_end(rig).run
+
+
+CAUSES = {"switched-off": (so.SWITCHED_OFF, None), "402": (so.NOT_OBTAINED, "provider_error_402"),
+          "503": (so.NOT_OBTAINED, "provider_error_503"), "error": (so.NOT_OBTAINED, "provider_error"),
+          "malformed": (so.NOT_OBTAINED, "malformed"), "partial": (so.NOT_OBTAINED, "malformed"),
+          "budget": (so.NOT_OBTAINED, "budget"), "unconfigured": (so.NOT_OBTAINED, "unconfigured"),
+          "exception": (so.NOT_OBTAINED, "error"), "attempts-used": (so.NOT_OBTAINED, "attempts_used")}
+
+
+@pytest.mark.parametrize("case", list(CAUSES))
+def test_not_obtained_or_switched_off_the_record_clears_with_every_settled_value_not_checked(
+        tmp_path, monkeypatch, case):
+    """Each way #456 names the second opinion not obtained (a provider error, HTTP 402 included; a malformed or
+    partial answer, asked twice; money; no price row; an exception; its attempts used), and switched off: the
+    record clears, every settled value the second opinion answers for is open as "not checked", and the step's
+    failure changes neither the stage nor the blocker research left."""
+    run = not_obtained(case, tmp_path, monkeypatch)
+    status, reason = CAUSES[case]
+    assert run.second_opinion["status"] == status and run.second_opinion.get("reason") == reason
+    assert (run.stage, run.blocker, run.disposition, run.reasons) == ("finalized", None, Disposition.CLEARED, [])
+    assert fields_of(marks(run.open_reasons)) == fields_of(marks(run.open_reasons, so.NOT_CHECKED)) == (
+        settled_judged(run)) and settled_judged(run)
+    assert not marks(run.reasons)
+
+
+def test_a_worker_deadline_in_the_request_ends_it_not_obtained_and_the_record_clears(tmp_path):
+    """The outcome unknown (#456's lost-outcome path): found after the lease, held in full, finalized; the
+    record clears with every value not checked."""
+    from datetime import datetime
+
+    from specimen_digitization.application.worker_deadline import WorkerDeadlineExceeded
+
+    rig = rig_on(tmp_path, opinion=Opinion(error=WorkerDeadlineExceeded()))
+    rig.workflow.step(rig.principal, rig.specimen.id)
+    with pytest.raises(WorkerDeadlineExceeded):
+        rig.workflow.step(rig.principal, rig.specimen.id)
+    held = rig.repository.get(rig.principal.scope, rig.specimen.id).run
+    assert (held.stage, held.blocker, held.disposition) == (so.STEP, None, None)
+    rig.clock.now = datetime.fromisoformat(held.lease_until) + timedelta(seconds=1)
+    run = rig.workflow.step(rig.principal, rig.specimen.id).run
+    assert run.second_opinion["reason"] == "outcome_unknown"
+    assert (run.stage, run.blocker, run.disposition, run.reasons) == ("finalized", None, Disposition.CLEARED, [])
+    assert fields_of(marks(run.open_reasons, so.NOT_CHECKED)) == settled_judged(run)
+
+
+# ---- 3. a record held for another reason stays held, the second opinion in any state ----------------------
+
+OPINIONS = {
+    "agrees": lambda folder: Opinion(agreeing(folder)),
+    "differs": lambda folder: Opinion(agreeing(folder, habitat=MEADOW, county={"value": None, "evidence": ""})),
+    "differs-on-the-catalogue-number": lambda folder: Opinion(agreeing(folder,
+        fmnh_ins_number={"value": "999", "evidence": "L1: 999"})),
+    "not-obtained": lambda folder: Opinion(error=RuntimeError("provider_request_failed")),
+    "switched-off": None,
+}
+
+
+def opinion_rig(folder, state, scenario=None):
+    make = OPINIONS[state]
+    if make is None:
+        return rig_on(folder, scenario, switched_off=True)
+    return rig_on(folder, scenario, make(folder / "values"))
+
+
+def coverage(run):
+    run.coverage_confirmed = False
+
+
+def given_up(run):
+    run.findings.append(RunFinding(rule_id=field_step.GIVEN_UP, rule_version=field_step.GIVEN_UP_RULES,
+        severity="warning", reason_code=f"{field_step.GIVEN_UP}:token_budget_exhausted"))
+
+
+def wrong_format(run):
+    value = run.fields[CATALOGUE]
+    value.literal = value.parsed = value.normalized = "12AB"
+
+
+HOLDS_AFTER = {  # a hold that arises on a finished record; refinalized (what the endpoint or step then runs)
+    "coverage-unconfirmed": (coverage, "label_coverage_unconfirmed"),
+    "research-given-up": (given_up, field_step.GIVEN_UP),
+    "pending-approval": (person_acted, APPROVAL),
+    "catalogue-number-of-the-wrong-format": (wrong_format, "identifier_format"),
+}
+HOLDS_FROM = {  # a record held from research on
+    "catalogue-number-unsettled": (catalogue_number_lacking, f"mandatory_unresolved:{CATALOGUE}"),
+    "catalogue-label-readers-differ": (readers_differ_on_the_collectors, "unresolved_transcription:"),
+}
+
+
+def held_by(run, code):
+    return any(reason == code or (code.endswith(":") and reason.startswith(code)) for reason in run.reasons)
+
+
+@pytest.mark.parametrize("state", list(OPINIONS))
+@pytest.mark.parametrize("hold", [*HOLDS_FROM, *HOLDS_AFTER])
+def test_a_record_held_for_another_reason_stays_held_whatever_the_second_opinion(tmp_path, state, hold):
+    if hold in HOLDS_FROM:
+        scenario, code = HOLDS_FROM[hold]
+        run = to_end(opinion_rig(tmp_path, state, scenario)).run
+    else:
+        change, code = HOLDS_AFTER[hold]
+        run = to_end(opinion_rig(tmp_path, state)).run
+        change(run)
+        field_step.refinalize(run, today=TODAY)
+    assert run.stage == "finalized" and run.disposition == Disposition.REVIEW and held_by(run, code), run.reasons
+    # No second-opinion mark holds the record; where it marks, the mark is open.
+    assert not marks(run.reasons)
+    assert not [code for code in marks(run.open_reasons) if code.startswith(f"marked:{CATALOGUE}:")]
+
+
+# ---- 4. a person's decision: no mark on their field, their approval hold, approval clears ------------------
+
+def test_a_persons_decision_carries_no_mark_holds_until_approval_and_buys_no_second_opinion(tmp_path):
+    """#456: a field a person decided carries no second-opinion mark. #455: the person's decision holds the record
+    for their approval (human_approval_required, from run.pending_review). Approved, it clears. Retry and
+    Resume in between ask the second opinion nothing again for unchanged values."""
+    opinion = Opinion(agreeing(tmp_path / "values", habitat=MEADOW))
+    rig = rig_on(tmp_path, opinion=opinion)
+    first = to_end(rig).run
+    assert first.disposition == Disposition.CLEARED and fields_of(marks(first.open_reasons)) == {"habitat"}
+    habitat = first.fields["habitat"]
+    app_after = {"literal": habitat.literal, "parsed": habitat.parsed, "normalized": habitat.normalized,
+                 "state": habitat.state.value, "reason": habitat.reason}
+    client = review_client(rig)
+    decided = decide(client, rig, "field-habitat", "field", target_id="habitat", after=app_after,
+        evidence_ids=list(habitat.evidence_ids))
+    assert decided.person_decided_fields == ["habitat"] and decided.pending_review == [APPROVAL]
+    assert (decided.disposition, decided.reasons) == (Disposition.REVIEW, [APPROVAL])
+    assert not [code for code in marks([*decided.reasons, *decided.open_reasons]) if ":habitat:" in code]
+    again = resumed(rig).run
+    assert (again.disposition, again.reasons) == (Disposition.REVIEW, [APPROVAL])
+    assert len(opinion.requests) == 1 and len(step_paid(again)) == 1
+    again = resumed(rig).run
+    assert len(opinion.requests) == 1 and len(step_paid(again)) == 1
+    approved = decide(client, rig, "approve", "approve")
+    assert (approved.stage, approved.disposition, approved.reasons) == ("finalized", Disposition.CLEARED, [])
+    assert approved.pending_review == [] and not marks(approved.open_reasons)
+    assert len(opinion.requests) == 1
+
+
+# ---- 5. a record stored before either change; a history restore ------------------------------------------
+
+def test_a_record_stored_before_either_change_loads_and_keeps_its_hold(tmp_path):
+    """Stored before #455 and #456: no pending_review, person_decided_fields, second_opinion or open_reasons;
+    its reasons hold a person's pending approval and its audit names a person's habitat decision. It loads:
+    the hold is adopted (#455), the decision is adopted (#456), and its refinalize holds it for that approval
+    alone, the habitat unmarked and every other settled value open as not checked."""
+    rig = rig_on(tmp_path, switched_off=True)
+    done = to_end(rig)
+    payload = done.model_dump(mode="json")
+    for key in ("pending_review", "person_decided_fields", "second_opinion", "open_reasons"):
+        payload["run"].pop(key, None)
+    payload["run"]["reasons"] = [APPROVAL]
+    payload["run"]["disposition"] = "needs_human_review"
+    payload["audit"].append(AuditEvent(actor="reviewer-1", action="review_field", reason="Reviewed.",
+        before={"run_id": done.run.id}, after={"field_key": "habitat", "state": "supported"}).model_dump(mode="json"))
+    loaded = active_graph.unpack(payload, rig.blobs)
+    run = loaded.run
+    assert (run.pending_review, run.person_decided_fields, run.second_opinion) == ([APPROVAL], ["habitat"], None)
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, [APPROVAL])
+    assert fields_of(marks(run.open_reasons, so.NOT_CHECKED)) == settled_judged(run) - {"habitat"}
+    # A legacy record with nothing to adopt loads exactly as stored.
+    plain = done.model_dump(mode="json")
+    assert active_graph.unpack(plain, rig.blobs).model_dump(mode="json") == plain
+
+
+def test_a_history_restore_returns_a_self_consistent_state(tmp_path):
+    """A restore to the revision before a person's decision returns that revision's own second opinion, decided
+    list and open marks, held for review after the restore (#455); refinalized, it is the same; approved, it
+    clears with its differing value still flagged on its field."""
+    from specimen_digitization.application.history_restore import restored_specimen
+
+    rig = rig_on(tmp_path, opinion=Opinion(agreeing(tmp_path / "values", habitat=MEADOW)))
+    revision = to_end(rig)
+    region = revision.run.regions[0].id
+    flagged = [f"marked:habitat:{region}:second_opinion_differs"]
+    assert (revision.run.disposition, marks(revision.run.open_reasons)) == (Disposition.CLEARED, flagged)
+    habitat = revision.run.fields["habitat"]
+    client = review_client(rig)
+    decide(client, rig, "field-habitat", "field", target_id="habitat",
+        after=habitat.model_dump(mode="json", exclude={"evidence_ids"}), evidence_ids=list(habitat.evidence_ids))
+    base = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    source = rig.repository.version(rig.principal.scope, rig.specimen.id, revision.version)
+    restored = restored_specimen(base, source)
+    run = restored.run
+    assert run.person_decided_fields == [] and run.second_opinion == revision.run.second_opinion
+    assert (run.disposition, run.reasons, marks(run.open_reasons)) == (
+        Disposition.REVIEW, [HISTORY_RESTORED], flagged)
+    assert run.pending_review == [HISTORY_RESTORED]
+    before = (run.disposition, list(run.reasons), list(run.open_reasons))
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons, run.open_reasons) == before
+    saved = rig.repository.save(rig.principal, restored, base.version, "restore", "restore")
+    loaded = rig.repository.get(rig.principal.scope, saved.id)
+    assert (loaded.run.reasons, loaded.run.open_reasons, loaded.run.person_decided_fields) == (
+        [HISTORY_RESTORED], before[2], [])
+    approved = decide(client, rig, "approve", "approve")
+    assert (approved.disposition, approved.reasons, marks(approved.open_reasons)) == (
+        Disposition.CLEARED, [], flagged)
