@@ -1997,6 +1997,10 @@ all equal to the truth.
      settled value's number is not the code's, the value's reason says so
      and an info finding `barcode_person_differs:fmnh_ins_number` cites the
      code.
+   Residual risk: a code that is not this slide's catalogue number, whose
+   digits the readers also wrote as the number, confirms that number (and
+   removes its text_only or conflict mark); none of the 100 truth slides
+   carries such a code.
    The rule builds no evidence row, and `step.apply_outcomes` calls it
    inside a guard that logs any exception and puts the field, its findings
    and its decision back as the rules above left them. No other field
