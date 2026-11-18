@@ -7,7 +7,7 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .reading_declarations import LanguageHandling
 from .reading_units import ReadingUnits
@@ -569,31 +569,6 @@ class Run(Record):
         if len({entry.label for entry in value}) != len(value):
             raise ValueError("A run holds one entry of reading units per label")
         return value
-
-    # True when the stored run read from a snapshot did not hold `human_approved` as a JSON
-    # boolean (missing, or a value the lax field coerced, such as "true" or 1). The run then
-    # does not say whether a person approved it, so `approval_stated` is False and the summary's
-    # `cleared_by` is null, as the list's SQL projection is for the same snapshot. Any later
-    # assignment of `human_approved` states it again. Never stored.
-    _approval_unstated: bool = PrivateAttr(default=False)
-
-    @model_validator(mode="wrap")
-    @classmethod
-    def remember_unstated_approval(cls, data, handler, info):
-        run = handler(data)
-        if (info.context or {}).get("persisted_snapshot") is True and isinstance(data, dict):
-            run._approval_unstated = type(data.get("human_approved")) is not bool
-        return run
-
-    def __setattr__(self, name, value):
-        if name == "human_approved":
-            super().__setattr__("_approval_unstated", False)
-        super().__setattr__(name, value)
-
-    @property
-    def approval_stated(self) -> bool:
-        """Whether `human_approved` is a value this run holds, not a default or a coercion."""
-        return not self._approval_unstated
 
 
 class AuditEvent(Record):

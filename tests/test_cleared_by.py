@@ -4,8 +4,9 @@ The coordinator put the change to the owner as "'Cleared by the system' in the a
 says 'Green means a human affirmed it.'", and to "Go ahead with the plan, including the three
 rule changes?" the owner typed "Yes, go ahead" (2026-11-17, session f9614090). The field is
 derived from the stored `run.human_approved` (lane.cleared_by) on both list paths (SQLite and
-SQL Connect) and on the summary the detail returns, and both answer null when the stored run
-does not hold it as a JSON boolean.
+SQL Connect) and on the summary the detail returns. Every writer dumps the run model, so the
+stored value is always a JSON boolean; for one that is not, which no writer produces, the list
+answers null and the detail follows the run model's coercion (pinned below).
 """
 
 import json
@@ -171,21 +172,41 @@ def test_the_api_list_and_detail_follow_a_person_approval_and_a_system_clearance
 MISSING = object()
 
 
+def approved_synthetic_record(http):
+    """The synthetic fixture processed and approved through the API: cleared, a person's."""
+    ident = intake(http)["specimen_id"]
+    work = http.post(PREFIX + f"/specimens/{ident}/process", headers=HEADERS).json()
+    approved = http.post(PREFIX + f"/specimens/{ident}/decisions", headers=HEADERS, json={
+        "expected_revision": work["revision"], "base_record_version_id": work["record_version_id"],
+        "kind": "approve", "reason": "Synthetic fixture reviewed"})
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["cleared_by"] == "person"
+    return ident
+
+
+def read_both(http, ident):
+    listed = http.get(PREFIX + "/specimens", headers=HEADERS,
+                      params={"collection_id": SYNTHETIC_COLLECTION, "specimen_id": ident})
+    assert listed.status_code == 200, listed.text
+    [item] = listed.json()["items"]
+    return item, http.get(PREFIX + f"/specimens/{ident}", headers=HEADERS)
+
+
+# The detail's answer for each stored value no writer produces: the run model's coercion.
+COERCED = {"missing": "system", "string": "person", "number": "person"}
+
+
 @pytest.mark.parametrize("stored", [MISSING, "true", 1, None], ids=["missing", "string", "number", "null"])
-def test_the_list_and_the_detail_agree_on_a_stored_run_that_does_not_say(tmp_path, stored):
-    """A cleared snapshot whose run lacks `human_approved` or holds a non-boolean never
-    reads as a person's or the system's clearance, on the list or on the detail."""
+def test_a_stored_value_that_is_not_a_boolean_is_null_on_the_list_and_coerced_on_the_detail(tmp_path, stored):
+    """Pins the residual risk the contract states: only the list reads the stored JSON. The
+    detail reads the validated run, whose lax boolean turns a missing key into False and "true"
+    or 1 into True; a stored null makes the record unreadable. No writer stores these shapes."""
     with client(tmp_path) as http:
-        ident = intake(http)["specimen_id"]
-        work = http.post(PREFIX + f"/specimens/{ident}/process", headers=HEADERS).json()
-        approved = http.post(PREFIX + f"/specimens/{ident}/decisions", headers=HEADERS, json={
-            "expected_revision": work["revision"], "base_record_version_id": work["record_version_id"],
-            "kind": "approve", "reason": "Synthetic fixture reviewed"})
-        assert approved.json()["cleared_by"] == "person"
+        ident = approved_synthetic_record(http)
         repo = SQLiteRepository(tmp_path / "state.sqlite3")
         scope = (SYNTHETIC_ORG, SYNTHETIC_COLLECTION, ident)
-        # Rewrite the current stored snapshot as an older or malformed writer would have left it,
-        # with its digest, so the reader accepts it as the stored record.
+        # Rewrite the current stored snapshot in a shape no writer produces, with its digest,
+        # so the reader accepts it as the stored record.
         with repo.connect() as db:
             revision, payload = db.execute(
                 "SELECT revision,payload FROM records WHERE org=? AND collection=? AND id=?", scope).fetchone()
@@ -198,15 +219,40 @@ def test_the_list_and_the_detail_agree_on_a_stored_run_that_does_not_say(tmp_pat
             db.execute("UPDATE records SET payload=? WHERE org=? AND collection=? AND id=?", (text, *scope))
             db.execute("UPDATE versions SET payload=?,sha256=? WHERE org=? AND collection=? AND id=? AND revision=?",
                 (text, digest(payload), *scope, revision))
-        listed = http.get(PREFIX + "/specimens", headers=HEADERS,
-                          params={"collection_id": SYNTHETIC_COLLECTION, "specimen_id": ident})
-        assert listed.status_code == 200, listed.text
-        [item] = listed.json()["items"]
+        item, detail = read_both(http, ident)
         assert (item["disposition"], item["cleared_by"]) == ("cleared", None)
-        detail = http.get(PREFIX + f"/specimens/{ident}", headers=HEADERS)
         if stored is None:
-            # A null the run model cannot read: the detail refuses the record and claims nothing.
             assert detail.status_code >= 400 and "cleared_by" not in detail.json()
         else:
+            name = "missing" if stored is MISSING else "string" if stored == "true" else "number"
             assert detail.status_code == 200, detail.text
-            assert (detail.json()["disposition"], detail.json()["cleared_by"]) == ("cleared", None)
+            assert detail.json()["cleared_by"] == COERCED[name]
+
+
+def test_a_rules_only_retry_of_an_approved_record_keeps_the_persons_approval(tmp_path, monkeypatch):
+    """Codex's round 2 case: every ordinary step is complete, so a retry's only step is finalize,
+    which applies the rules to the values the person approved. The approval stands."""
+    from specimen_digitization.application import api as app_api
+    from specimen_digitization.application.workflow import Workflow
+
+    with client(tmp_path) as http:
+        ident = approved_synthetic_record(http)
+        repo = SQLiteRepository(tmp_path / "state.sqlite3")
+        scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+        stored = repo.get(scope, ident)
+        assert Workflow.next_step(stored.run) == "finalize"
+        response = http.post(PREFIX + f"/runs/{stored.run.id}/actions",
+            headers={**HEADERS, "Idempotency-Key": "rules-only-retry"},
+            json={"expected_revision": stored.version, "action": "retry", "reason": "Apply the rules again."})
+        assert response.status_code == 200, response.text
+        for _ in range(4):
+            current = repo.get(scope, ident)
+            if current.run.stage == "finalized":
+                break
+            http.app.state.workflow.step(
+                Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer"), ident)
+        current = repo.get(scope, ident)
+        assert (current.run.stage, current.run.disposition, current.run.human_approved) == (
+            "finalized", Disposition.CLEARED, True)
+        item, detail = read_both(http, ident)
+        assert item["cleared_by"] == detail.json()["cleared_by"] == "person"

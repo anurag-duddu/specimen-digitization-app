@@ -50,15 +50,11 @@ def cleared_by(disposition, human_approved) -> str | None:
     """Who cleared a cleared record: the summary's and the listing's `cleared_by`.
 
     `person` when a reviewer's approval stands on the record (`run.human_approved`, set
-    only by an `approve` decision). A later field, transcription, authority, taxonomy or
-    metadata decision, a restore, a reprocess, the move to the units path, and a run action that
-    researches or reads again (`retry` that requeues field research, `retry` or `resume`
-    before research is complete, `reconcile`, `reassess_locations`; api.py `action`)
-    withdraw it. `system` when the clearance rules cleared it with no approval standing.
-    Null for a record that is not cleared, and for one whose stored run does not hold a
-    JSON boolean (`human_approved` passed as None: Run.approval_stated on the detail, the
-    SQL projections on the list), so a record is never said to be a person's, or the
-    system's, on a guess.
+    only by an `approve` decision; `Workflow._step` withdraws it when a workflow step that
+    produces or changes values runs). `system` when the clearance rules cleared it with no
+    approval standing. Null for a record that is not cleared, and when `human_approved` is
+    not a boolean: the list's projections pass None for a stored value that is not a JSON
+    boolean; the detail passes the validated run's value.
     """
     if disposition != "cleared" or not isinstance(human_approved, bool):
         return None

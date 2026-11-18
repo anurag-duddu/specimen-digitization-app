@@ -328,9 +328,10 @@ def test_reassessment_withdraws_an_earlier_approval_of_the_values_it_replaces(ca
     prove_review(case, monkeypatch, saved(case))
     response = post(case)
     assert response.status_code == 200, response.text
-    assert saved(case).run.human_approved is False
+    # Queued, not yet researched: no disposition, so nothing reads as anyone's clearance.
     assert response.json()["cleared_by"] is None
     mounted(case, Scripted())
+    # The workflow withdraws the approval before field research runs (Workflow._step).
     after = case.workflow.step(case.principal, case.specimen.id)
     assert after.run.human_approved is False
     assert app_api.summary(after, "reviewer")["cleared_by"] in {None, "system"}

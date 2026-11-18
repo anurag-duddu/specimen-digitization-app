@@ -781,9 +781,12 @@ def test_reconciling_reads_again_and_withdraws_an_approval_given_while_blocked(t
     # An approval can land on a blocked run (the decision route finalizes it and the blocker
     # keeps it blocked); the reading that runs again can change what the approval covered.
     # The approval is the stored precondition here; the route under test is reconcile.
-    repo, _, blocked = blocked_run(tmp_path, "transcribe:" + ROUTES[1])
+    repo, blobs, blocked = blocked_run(tmp_path, "transcribe:" + ROUTES[1])
     approved = mutate(repo, blocked.id, lambda run: setattr(run, "human_approved", True), "approved")
     c = admin(tmp_path)
     response = reconcile(c, approved.run, approved.version)
     assert response.status_code == 200, response.text
+    # The workflow withdraws the approval before the reading runs again (Workflow._step).
+    drained = Workflow(repo, blobs, Readers(blobs)).step(operator(), blocked.id)
+    assert drained.run.human_approved is False
     assert repo.get(SCOPE, blocked.id).run.human_approved is False

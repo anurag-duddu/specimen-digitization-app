@@ -69,6 +69,9 @@ FIELD_RESEARCH = "field_research"
 # A run field research has completed reaches the handover again: the clearance
 # rules only, nothing researched, external or paid (FieldResearchStep.recheck).
 FIELD_RECHECK = "field_research_recheck"
+# The steps that only apply the rules again to the values the run holds; they leave a person's
+# approval standing. Workflow._step withdraws it before any other step.
+RULES_ONLY_STEPS = frozenset({FIELD_RECHECK, "validate", "finalize"})
 
 
 def current_human_location_fields(repository, specimen) -> set[str]:
@@ -752,6 +755,12 @@ class Workflow:
             and self.field_research.handles(run)
         ):
             step = FIELD_RECHECK if FIELD_RESEARCH in run.completed_steps else FIELD_RESEARCH
+        if step not in RULES_ONLY_STEPS:
+            # A person's approval covers the values they saw. Every step but those that only
+            # apply the rules again can produce or change readings or fields, whatever route
+            # made the run due (a run action, recover_blocked, a lease re-claim), so the approval
+            # is withdrawn here, before the step runs, and saved with the step's next save.
+            run.human_approved = False
         ordinary_first_pass = step.startswith("first_pass:") and first_pass_failure_is_recoverable(
             run, step
         )

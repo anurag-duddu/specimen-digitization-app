@@ -70,15 +70,24 @@ decision responses that carry the summary) has `cleared_by`: `"person"` when the
 record is cleared and a reviewer's approval stands on it (`run.human_approved`),
 `"system"` when it is cleared and no approval stands (the clearance rules cleared
 it with no person, `field_research.step.finalize_fields`), and `null` when the
-record is not cleared or its stored run does not hold `human_approved` as a JSON
-boolean (the list and the detail answer the same). It is derived from the
-stored run on every read (`application/lane.py` `cleared_by`); nothing new is
-stored. An approval stands until one of these withdraws it: a field,
-transcription, authority, taxonomy or metadata decision; a restore; a
-reprocess; the move to the units path; a run action that researches or reads
-again (`retry` that requeues field research, `retry` or `resume` before research
-is complete, `reconcile`, `reassess_locations`). Research that clears the record
-afterwards clears it as the system. Older clients ignore the
+record is not cleared. It is derived from the stored run on every read
+(`application/lane.py` `cleared_by`); nothing new is stored. The workflow
+withdraws a standing approval when a workflow step that produces or changes
+values runs: every step but the rules-only ones (`workflow.RULES_ONLY_STEPS`:
+the field research recheck, validate and finalize), whatever made the run due
+(`Workflow._step`). A decision that changes a value, a restore and a reprocess
+also leave the run without an approval, as before. A cleared record therefore
+reads `"person"` only when the approval was given after the last step that
+produced or changed its values.
+
+Residual risk: every writer dumps the run model, so the stored
+`run.human_approved` is always a JSON boolean. A read-only check of production
+on 2026-11-17 found it a JSON boolean in all 33 specimens' current snapshots
+(all false; the 2 cleared records were cleared with no approval, so they read
+as cleared by the system). For a stored value that is not a boolean, which no
+writer produces, the list answers null and the detail follows the run model's
+coercion (a missing key reads as false, "true" or 1 as true, a null makes the
+record unreadable); `tests/test_cleared_by.py` pins this. Older clients ignore the
 field, as this section's common rules require; a client that reads it treats an
 absent or null value on a cleared record as "not stated", never as either
 answer. The authority: the coordinator put the change to the owner as
