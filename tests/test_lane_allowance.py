@@ -191,6 +191,41 @@ def test_reprocessing_preserves_the_retained_profile_and_unknown_costs(tmp_path)
     assert repository.documents(SCOPE, LEDGER_KIND) == []
 
 
+def test_a_new_run_of_an_existing_specimen_binds_the_published_profile(tmp_path):
+    """Plan WP K1 (Codex round 1 on #455): Retry and Resume keep the run's clearance profile and
+    snapshot (lane.queue renews only the execution limits), so a record bound before 2026-11-18
+    keeps its nineteen mandatory fields through them. Reprocess (the app's "Start new run") starts a
+    run with no profile snapshot, whose classify step binds the published profile: only the
+    catalogue number mandatory."""
+    from specimen_digitization.application.collection_runtime import classify_and_select
+
+    app, repository = lab(tmp_path)
+    profiles = published_registry({SYNTHETIC_COLLECTION: "insects"})
+    specimen = specimen_with(Run(profile=Profile(synthetic=False)))
+    queue(specimen, profiles, USER)
+    old = profiles.resolve(SYNTHETIC_COLLECTION).profile
+    every = tuple(key for key in (*old.mandatory_fields, *old.optional_fields) if key != "identified_by_irn")
+    # The run as one bound before 2026-11-18 holds it: every field a label writes mandatory.
+    specimen.run.profile.mandatory_fields = every
+    specimen.run.profile_snapshot = old.model_copy(update={"mandatory_fields": every,
+        "optional_fields": ("identified_by_irn",)}).model_dump(mode="json")
+    specimen.run.stage = "finalized"
+    original = repository.create(principal(), specimen, "bound-before", "bound-before")
+
+    response = action(TestClient(app, raise_server_exceptions=False), original.id, "reprocess", "start-new-run")
+    assert response.status_code == 200, response.text
+    saved = repository.get(SCOPE, original.id)
+    assert saved.run.id != original.run.id and "classify" not in saved.run.completed_steps
+    assert saved.previous_runs[-1].profile_snapshot["mandatory_fields"] == list(every)
+    # The new run's classify step (collection_runtime.classify_and_select) binds the published profile.
+    assert classify_and_select(saved, profiles, None, LocalBlobs(tmp_path / "classify"),
+        published_risk_registry()) is None
+    assert saved.run.profile.mandatory_fields == ("fmnh_ins_number",)
+    assert saved.run.profile_snapshot["mandatory_fields"] == ["fmnh_ins_number"]
+    assert saved.run.field_groups["fmnh_ins_number"] == "mandatory"
+    assert {group for key, group in saved.run.field_groups.items() if key != "fmnh_ins_number"} == {"optional"}
+
+
 def test_a_ledger_collection_bound_twice_refuses_the_request():
     specimen = specimen_with(Run(profile=Profile(synthetic=False)))
     bindings = {SYNTHETIC_COLLECTION: "insects", OTHER_COLLECTION: "insects"}

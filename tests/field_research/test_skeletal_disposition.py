@@ -213,10 +213,9 @@ def with_the_code(run, payload="0010001", *, decides=True):
         excerpt=barcode.EXCERPT.format(field=CATALOGUE, payload=payload, decoder="zxing-cpp", version="3.1.1",
             rung="whole"))
     run.evidence.append(row)
-    if decides:
-        value = run.fields[CATALOGUE]
-        run.fields[CATALOGUE] = value.model_copy(update={"evidence_ids": [row.id],
-            "evidence_relations": {row.id: "decides"}})
+    value = run.fields[CATALOGUE]
+    run.fields[CATALOGUE] = value.model_copy(update={"layer": "settled", **({"evidence_ids": [row.id],
+        "evidence_relations": {row.id: "decides"}} if decides else {})})
     return run
 
 
@@ -232,19 +231,114 @@ def test_a_label_whose_catalogue_number_the_slide_code_confirms_holds_only_for_i
         [], ["independent_observations_missing:L1"])
 
 
-@pytest.mark.parametrize("case", ["no-code", "code-not-deciding", "marked-differs", "marked-text-only"])
+def same_specimen_new_run(run):
+    """The run's labels as a second run of the same specimen draws them: new ids, the same image."""
+    regions = [region.model_copy(update={"id": "N" + region.id}) for region in run.regions]
+    fields = {key: value.model_copy(update={"source_region_id": "N" + value.source_region_id}
+        if value.source_region_id else {}) for key, value in run.fields.items()}
+    return run.model_copy(update={"regions": regions, "fields": fields})
+
+
+def changed(run, literal):
+    value = run.fields[CATALOGUE]
+    run.fields[CATALOGUE] = value.model_copy(update={"literal": literal, "parsed": None})
+    return run
+
+
+@pytest.mark.parametrize("case", ["no-code", "marked-differs", "marked-text-only", "stale-relation",
+    "changed-by-a-person", "changed-by-research", "another-image", "a-second-run"])
 def test_a_catalogue_number_the_code_does_not_confirm_keeps_its_label_s_hold(case):
     """105526487 in the stored runs: the code contradicts the number (barcode_differs), which holds the record
-    by itself and keeps its label's reason holding too; so does a number with no code, or one the code row
-    does not decide."""
-    run = a_run() if case == "no-code" else with_the_code(a_run(), decides=case != "code-not-deciding")
+    by itself and keeps its label's reason holding too. Confirmation is recomputed on the run as it is now
+    (Codex round 1 on #455), never read from a relation alone: a stale `decides` relation over a decode of
+    another number; a value a person or research changed after the code confirmed it; a decode row of another
+    image, or one a second run of the specimen does not hold among its labels."""
+    run = a_run() if case == "no-code" else with_the_code(a_run(),
+        payload="9999999" if case == "stale-relation" else "0010001")
+    if case == "changed-by-a-person":
+        changed(run, "FMNH-INS 0010002").fields[CATALOGUE].reason = "A person corrected the number."
+    elif case == "changed-by-research":
+        changed(run, "FMNH-INS 0010011")
+    elif case == "another-image":
+        run.evidence[-1] = run.evidence[-1].model_copy(update={"asset_id": "another-image"})
+    elif case == "a-second-run":
+        run = same_specimen_new_run(run)
     if case.startswith("marked"):
         why = "barcode_differs" if case == "marked-differs" else "text_only"
         run.findings.append(RunFinding(rule_id=field_step.SETTLEMENT, rule_version="1", severity="warning",
             field_key=CATALOGUE, reason_code=f"marked:{CATALOGUE}:L1:{why}"))
     assert field_step.code_confirmed(run) == frozenset()
-    reasons = ["unresolved_transcription:L1", f"marked:{CATALOGUE}:L1:barcode_differs"]
+    label = run.regions[0].id
+    reasons = [f"unresolved_transcription:{label}", f"marked:{CATALOGUE}:{label}:barcode_differs"]
     assert field_step.split_reasons(run, reasons, mandatory=(CATALOGUE,)) == (reasons, [])
+
+
+def test_the_code_confirms_a_value_whose_relation_is_gone_but_whose_number_is_the_code_s():
+    """Recomputed, not read: the same number with no stored relation is confirmed all the same."""
+    assert field_step.code_confirmed(with_the_code(a_run(), decides=False)) == {CATALOGUE}
+
+
+# ---- a person's pending holds survive every finalize (Codex round 1 on #455) ----------------------
+
+def test_a_pending_approval_survives_research_after_a_retry(tmp_path, monkeypatch):
+    """Through the routes: research leaves an optional field unresolved (the record clears); a person's edit
+    (here the approval hold the decisions route leaves, set by hand) holds it for approval; Retry puts the
+    unresolved field to research again; the research's finalize keeps human_approval_required until a
+    person approves. On main the same research dropped it too (finalize_fields recomputes the reasons), but
+    there a mandatory field's own reason almost always held the record anyway."""
+    from test_approval_and_research import act, queue_in_place, run_to_rest, save_by_hand, unresolved_country
+    from test_step import decide, mounted, review_client
+
+    rig = build_rig(tmp_path, profile=published())
+    mounted(rig, unresolved_country())
+    done = run_to_rest(rig)
+    assert done.run.disposition == Disposition.CLEARED and done.run.fields["country"].state == ValueState.UNRESOLVED
+
+    def a_persons_edit(run):
+        run.reasons, run.disposition = [field_step.APPROVAL], Disposition.REVIEW
+
+    save_by_hand(rig, a_persons_edit, "pending-approval")
+    client = review_client(rig)
+    queue_in_place(monkeypatch)
+    from specimen_digitization.application.workflow import FIELD_RESEARCH
+
+    retried = act(client, rig, "retry", "retry-research")
+    assert FIELD_RESEARCH not in retried.run.completed_steps
+    mounted(rig, Scripted())
+    after = run_to_rest(rig).run
+    assert after.fields["country"].state == ValueState.SUPPORTED
+    assert (after.disposition, after.reasons) == (Disposition.REVIEW, [field_step.APPROVAL])
+    approved = decide(client, rig, "approve-after-retry", "approve")
+    assert (approved.disposition, approved.human_approved) == (Disposition.CLEARED, True)
+
+
+def test_a_location_reassessment_left_unconfirmed_survives_a_recheck_until_approval(tmp_path):
+    _, run = settled_under(tmp_path, everything_settles, published())
+    run.reasons, run.disposition = ["location_reassessment_unconfirmed:city"], Disposition.REVIEW
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.REVIEW, ["location_reassessment_unconfirmed:city"])
+    # The reassessment that settles it names what it still leaves unconfirmed itself.
+    field_step.finalize_fields(run, None, (), today=TODAY, settles_reassessment=True)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    run.reasons = ["location_reassessment_unconfirmed:city"]
+    run.human_approved = True
+    field_step.refinalize(run, today=TODAY)
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+
+
+def test_the_summary_counts_an_optional_fields_doubt_for_its_field(tmp_path):
+    """Codex round 1 on #455: the server's per-field counts read both lists, as they read reason_codes
+    before; the record's reason_codes and disposition read the holding reasons alone."""
+    from specimen_digitization.application.api import summary
+    from specimen_digitization.application.review_summary import project_fields, review_summary
+
+    rig, run = settled_under(tmp_path, taxon_and_habitat_lacking, published())
+    assert run.disposition == Disposition.CLEARED and run.reasons == []
+    listed = summary(rig.specimen, "reviewer")
+    assert listed["reason_codes"] == [] and listed["open_reason_codes"] == run.open_reasons
+    fields = project_fields({key: value.model_dump(mode="json") for key, value in run.fields.items()})
+    assert listed["review_summary"] == review_summary(fields, run.open_reasons)
+    assert listed["review_summary"]["review"] > review_summary(fields, [])["review"]
 
 
 def test_open_reasons_are_left_out_of_a_stored_run_while_empty():

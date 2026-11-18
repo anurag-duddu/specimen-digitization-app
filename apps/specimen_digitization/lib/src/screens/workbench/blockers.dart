@@ -160,6 +160,48 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
   return blockers;
 }
 
+/// The fields that need attention for a reason that does not hold the
+/// record: an optional field's doubt (`open_reason_codes`). Each reads exactly
+/// as the same code does among the blockers, so a marked or open optional
+/// value on a cleared record never shows as settled. A `marked:` code with a
+/// reason this client does not know still needs attention, with generic words.
+/// A date check names every date field the record has. Codes that name no
+/// field (a label's doubt) are left out: they are about a label, not a field.
+List<ClearanceBlocker> fieldAttentionFor(Specimen specimen) {
+  const Set<String> dateChecks = <String>{
+    'date_order',
+    'date_precision_requires_review',
+  };
+  const List<String> dateFields = <String>[
+    'date_visited_from',
+    'date_visited_to',
+    'date_identified',
+  ];
+  final List<ClearanceBlocker> attention = <ClearanceBlocker>[];
+  for (final String code in specimen.openReasonCodes) {
+    final ClearanceBlocker issue = _issueFor(specimen, code);
+    if (issue.fieldKey != null) {
+      attention.add(issue);
+    } else if (dateChecks.contains(code)) {
+      for (final String key in dateFields) {
+        final String? field = _matchingField(specimen, key);
+        if (field == null) continue;
+        attention.add(
+          ClearanceBlocker(
+            message: issue.message,
+            segment: issue.segment,
+            detail: issue.detail,
+            fieldKey: field,
+            kind: ClearanceBlockerKind.field,
+            rawCode: code,
+          ),
+        );
+      }
+    }
+  }
+  return attention;
+}
+
 bool _isContextualFinding(Json finding) =>
     const {'warning', 'info'}.contains(finding['severity']);
 

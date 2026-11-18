@@ -223,6 +223,22 @@ class Specimen {
   List<Json> get observations => objects(data['observations']);
   List<Json> get fields => objects(data['fields']);
   List<Json> get findings => objects(data['validation_findings']);
+
+  /// The optional fields' doubts: they hold no record, but each one still
+  /// marks its field for attention. Read from the summary, else the run.
+  List<String> get openReasonCodes {
+    final Object? listed = data['open_reason_codes'];
+    final Object? run = data['run'];
+    final Object? codes = listed is List
+        ? listed
+        : run is Map
+        ? run['open_reasons']
+        : null;
+    return codes is List
+        ? <String>[for (final Object? code in codes) code.toString()]
+        : const <String>[];
+  }
+
   List<Json> get evidence => objects(data['evidence']);
   List<Json> get audit => objects(data['audit_events']);
 

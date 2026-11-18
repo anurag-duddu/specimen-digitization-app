@@ -4594,15 +4594,21 @@ def language_codes(run) -> frozenset[str]:
 
 
 def code_confirmed(run) -> frozenset[str]:
-    """The catalogue number, when the slide's QR code confirms it (catalogue_code.settle, rule 1): the
-    run's one stored code row decides its supported value and no mark is left on the field. Else
-    nothing."""
+    """The catalogue number, when the slide's QR code confirms it, recomputed on the run as it is now
+    (never from a stored relation alone): the run's one stored code row is of this run's image and
+    one of its labels; the field is supported, settled or as written, with a literal that writes the
+    code's number whole and a value whose number is the code's (catalogue_code.written_whole and
+    number, #452's own comparison); and no mark is on the field. Else nothing."""
     from specimen_digitization.application.barcode import FIELD, stored_code
+    from .catalogue_code import SETTLED, number, written_whole
 
     code = stored_code(run)
     value = run.fields.get(FIELD)
-    if (code is None or value is None or value.state != ValueState.SUPPORTED
-            or value.evidence_relations.get(code.row.id) != "decides"
+    regions = {region.id: region for region in run.regions}
+    if (code is None or value is None or value.state != ValueState.SUPPORTED or value.layer not in SETTLED
+            or code.row.region_id not in regions or code.row.asset_id != regions[code.row.region_id].asset_id
+            or not written_whole(value.literal or "", code.payload)
+            or number(value.normalized or value.parsed or value.literal) != code.payload
             or any(code_.startswith(f"marked:{FIELD}:") for code_ in marked_reasons(run))):
         return frozenset()
     return frozenset({FIELD})
@@ -4677,7 +4683,7 @@ def work_states(run, profile: CollectionProfile, outcomes: Sequence[FieldOutcome
 
 
 def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[FieldOutcome], *,
-        specimen=None, blobs=None, today: date | None = None) -> str | None:
+        specimen=None, blobs=None, today: date | None = None, settles_reassessment: bool = False) -> str | None:
     """Set the run's reasons, disposition and stage; the blocker when it is blocked.
 
     The retained evidence is verified first, as the workflow's finalize does
@@ -4720,7 +4726,8 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     # An optional field research could not finish is that field's doubt; research given up for the
     # run as a whole holds the record (plan WP K1, the coordinator's rulings of 2026-11-18).
     run.open_reasons = [*run.open_reasons, *incomplete_reasons(run, profile, work, by_key, earlier)]
-    human = [*given_up_reason(run, by_key, earlier), *human]
+    human = [*given_up_reason(run, by_key, earlier), *human,
+        *pending_person_holds(run, earlier, settles_reassessment=settles_reassessment)]
     failures = [by_key[key].failure for key in work if work[key] == FAILED]
     if failures:
         operational = [f"{RETRYABLE[by_key[key].failure][0]}:{key}" for key in work if work[key] == FAILED]
@@ -4736,6 +4743,21 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
 
 
 APPROVAL = "human_approval_required"
+# A location family's explicit reassessment left unconfirmed (FieldResearchStep._retained_reassessment).
+REASSESSMENT_UNCONFIRMED = "location_reassessment_unconfirmed"
+
+
+def pending_person_holds(run, earlier: Sequence[str], *, settles_reassessment: bool = False) -> list[str]:
+    """The holds of a person's pending decision that the reasons before this finalize carried
+    (`earlier`), kept until their own resolution, on every path that recomputes the reasons (plan WP
+    K1, Codex round 1 on #455): human_approval_required until a person approves; a location
+    family's location_reassessment_unconfirmed until a person approves or the reassessment that
+    settles it runs (`settles_reassessment`: that step names what it still leaves unconfirmed
+    itself). preserved_human_decision is recomputed from the person's decisions on every finalize."""
+    if run.human_approved:
+        return []
+    return [reason for reason in earlier if reason == APPROVAL
+        or (reason.startswith(REASSESSMENT_UNCONFIRMED + ":") and not settles_reassessment)]
 # An optional field research could not finish (incomplete_reasons): an optional field's doubt.
 INCOMPLETE = "research_incomplete"
 # Research given up for the run as a whole (FieldResearchStep.give_up): it holds the record.
@@ -4805,7 +4827,8 @@ def refinalize(run, *, decided: bool = False, specimen=None, blobs=None, today: 
     follow_sources(run, asset_id=run.regions[0].asset_id if run.regions else None, blobs=blobs)
     finalize_fields(run, None, (), specimen=specimen, blobs=blobs, today=today)
     if pending and not run.human_approved:
-        run.reasons = [*run.reasons, APPROVAL]
+        # finalize_fields keeps a pending approval itself (pending_person_holds); a new one is added.
+        run.reasons = list(dict.fromkeys((*run.reasons, APPROVAL)))
         run.disposition = Disposition.REVIEW
 
 
@@ -5066,7 +5089,7 @@ class FieldResearchStep:
                     asset_id=specimen.asset.id, decisions=decisions, unused=unused)
                 retained = commit(run, research_run, decisions=decisions) if research_run is not run else set()
                 blocker = finalize_fields(run, profile, outcomes, specimen=specimen, blobs=workflow.blobs,
-                    today=workflow.clock().date())
+                    today=workflow.clock().date(), settles_reassessment=research_run is not run)
                 self._retained_reassessment(run, retained)
                 if blocker is not None and research_run is not run and not last_attempt(run):
                     # The ordinary bounded operational retry keeps this explicit

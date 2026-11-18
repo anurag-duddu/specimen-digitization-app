@@ -362,12 +362,15 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
         "disposition": run.disposition,
         "cleared_by": cleared_by(run.disposition, run.human_approved),
         "reason_codes": run.reasons,
+        # The optional fields' doubts (plan WP K1): they hold no record, and they count for the
+        # field's attention as reason_codes do.
+        "open_reason_codes": run.open_reasons,
         "review_summary": review_summary(
             project_fields({
                 key: value.model_dump(mode="json")
                 for key, value in run.fields.items()
             }),
-            run.reasons,
+            [*run.reasons, *run.open_reasons],
         ),
         "blocker": run.blocker,
         "profile_id": run.profile.id,

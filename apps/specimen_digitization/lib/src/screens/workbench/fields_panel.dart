@@ -218,12 +218,21 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     final supplied = widget.issues.where((issue) => issue.fieldKey == key);
     // Standalone panel consumers still get the same presentation adapter as
     // the workbench; raw findings never become primary field copy here.
-    return [
+    final List<ClearanceBlocker> blocking = [
       ...supplied.isNotEmpty
           ? supplied
           : blockersFor(
               widget.specimen,
             ).where((issue) => issue.fieldKey == key),
+    ];
+    final Set<String?> shown = {for (final issue in blocking) issue.rawCode};
+    return [
+      ...blocking,
+      // An optional field's doubt needs the field's attention as a blocking
+      // reason does, although it does not hold the record.
+      ...fieldAttentionFor(widget.specimen).where(
+        (issue) => issue.fieldKey == key && !shown.contains(issue.rawCode),
+      ),
       ...fieldNotesFor(widget.specimen).where((note) => note.fieldKey == key),
     ];
   }

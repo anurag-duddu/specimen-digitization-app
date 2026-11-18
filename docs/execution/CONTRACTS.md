@@ -120,9 +120,15 @@ the coordinator's decision are quoted). A reason about an optional field's
 value no longer holds the record: `field_research.step.split_reasons` keeps it
 in `run.open_reasons`, a list of codes of the same form as `reason_codes`
 (`mandatory_unresolved:<field>` there reads "this field has no supported
-value", as the code always meant). The workspace response carries it inside
-`run`; the summary's `reason_codes` and `disposition` carry only the reasons
-that hold the record, so a cleared record can have open optional fields. The
+value", as the code always meant). Every specimen summary (list items and the
+detail) carries it as additive `open_reason_codes`, and the workspace response
+inside `run`; the summary's `reason_codes` and `disposition` carry only the
+reasons that hold the record, so a cleared record can have open optional
+fields. A field's attention reads both lists: `review_summary`'s per-field
+counts and the app's field rows count a field named by either, exactly as
+they counted `reason_codes` before; the record's blocker list reads
+`reason_codes` alone. The search view (`SpecimenSearch`) and `SearchSpecimens`
+carry it as one nullable last column, `openReasonCodes`. The
 key is omitted while the list is empty, so older snapshots keep their bytes,
 and older clients ignore it. Two new codes: `research_incomplete:<field>`, an
 optional field research could not finish (a failure, a limit, a spent meter, a
