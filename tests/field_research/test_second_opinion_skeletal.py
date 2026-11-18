@@ -656,3 +656,38 @@ def test_a_main_written_approved_record_stays_cleared_on_resume_and_retry(tmp_pa
         "finalized", Disposition.CLEARED, [], [])
     assert run.human_approved and summary(done)["cleared_by"] == "person"
     assert not opinion.requests and so.STEP not in run.attempts
+
+
+@pytest.mark.parametrize("state", ["differs", "not-checked", "switched-off", "erroring"])
+def test_retry_and_resume_of_a_record_cleared_with_second_opinion_flags_never_research_again(tmp_path, monkeypatch,
+        state):
+    """The sign-off reviewer's case on #456 alone: a Retry of a record held only by second-opinion marks ran field
+    research again (requeue_completed_field_research sees a record in review with the IRN unsettled). On the merged
+    tree such a record clears, its flags open; Retry twice and Resume once through the API are rechecks, exactly as
+    #455 alone treats a Retry of a cleared record with open optional fields: research's attempt count and paid
+    calls do not grow, and the second opinion makes at most the one call its `due` rule allows."""
+    from test_step import FIELD_RESEARCH, research_paid
+
+    from specimen_digitization.model_gateway import SECOND_OPINION_ROUTE
+
+    opinion = {"differs": Opinion(agreeing(tmp_path / "values", habitat=MEADOW)),
+               "not-checked": Opinion(full()),
+               "erroring": Opinion(error=RuntimeError("provider_request_failed"))}.get(state)
+    rig = rig_on(tmp_path, switched_off=opinion is None, opinion=opinion)
+    if state == "not-checked":  # classified before #456: no price row, the step ends unconfigured
+        stored = rig.repository.get(rig.principal.scope, rig.specimen.id)
+        stored.run.profile_snapshot["processing"]["price_list"]["models"].pop(SECOND_OPINION_ROUTE)
+        stored.run.profile.execution.price_list["models"].pop(SECOND_OPINION_ROUTE, None)
+        rig.repository.save(rig.principal, stored, stored.version, "old-profile", "old-profile")
+    first = to_end(rig).run
+    assert (first.disposition, first.reasons) == (Disposition.CLEARED, []) and marks(first.open_reasons)
+    research = (first.attempts[FIELD_RESEARCH], len(research_paid(first)))
+    asked = len(opinion.requests) if opinion else 0
+    for action in ("retry", "retry", "resume"):
+        _api(rig, action, monkeypatch)
+        run = to_end(rig).run
+        assert (run.stage, run.disposition, run.reasons) == ("finalized", Disposition.CLEARED, [])
+        assert (run.attempts[FIELD_RESEARCH], len(research_paid(run))) == research
+        assert marks(run.open_reasons) == marks(first.open_reasons)
+    assert (len(opinion.requests) if opinion else 0) == asked <= 1
+    assert len(step_paid(run)) == len(step_paid(first)) <= 1
