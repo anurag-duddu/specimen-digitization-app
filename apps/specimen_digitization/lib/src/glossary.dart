@@ -43,8 +43,14 @@ const Map<String, String> glossary = <String, String>{
       'photographs it may add without uploading them again.',
   // Queue dispositions and operational states.
   'cleared':
-      'A reviewer affirmed this record, and it is recorded against the '
-      'version they affirmed.',
+      'This record is finished, approved by a person or cleared by the '
+      'system, and its status says which when the server reports it.',
+  'approved by a person':
+      'A reviewer approved this record, and the approval is recorded against '
+      'the version they approved.',
+  'cleared by system':
+      'The clearance rules cleared this record with no person, because '
+      'nothing on it was left for a reviewer to decide.',
   'needs review':
       'The server will not clear this record without a person, and the '
       'blockers list says what it is waiting for.',

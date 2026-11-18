@@ -115,6 +115,10 @@ def _raw_grounded(value: FieldValue, run) -> bool:
 
 
 def _disposition(result: Specimen, profile: CollectionProfile, observed_at: float, *, latest_work=None, decision_lookup_ids=None) -> list[str]:
+    from ..application.lane import settle_approval
+
+    # An approval stands only on the values it was given for (lane.settle_approval).
+    settle_approval(result.run)
     """Evaluate all twenty fields, preserving genuine review requirements."""
     run = result.run
     if decision_lookup_ids is not None and not set(decision_lookup_ids) <= {item.id for item in run.lookups}:

@@ -52,8 +52,8 @@ where a later write uses optimistic concurrency.
 | PUT `/uploads/{upload_id}/content` | binary bytes and `Upload-Offset` header | updated offset/revision; authenticated scoped operator; backend-mediated transport |
 | POST `/uploads/{upload_id}/resume` | expected_revision | refreshed scoped resumable upload instructions; stable asset/specimen IDs |
 | POST `/uploads/{upload_id}/complete` | expected_revision, storage generation | server verifies actual bytes/hash/type/dimensions and commits immutable asset; idempotent ingestion enqueue |
-| GET `/specimens` | collection_id, batch_id, state, disposition, date bounds, uploader, score band, issue, profile_version, cursor | authorized specimen summaries |
-| GET `/specimens/{specimen_id}` | none | current summary plus pinned active/latest run, record version and available actions |
+| GET `/specimens` | collection_id, batch_id, state, disposition, date bounds, uploader, score band, issue, profile_version, cursor | authorized specimen summaries, each with `cleared_by` (below) |
+| GET `/specimens/{specimen_id}` | none | current summary, `cleared_by` included, plus pinned active/latest run, record version and available actions |
 | GET `/specimens/{specimen_id}/workspace` | optional run_id | regions, independent observations, transcription versions, candidates, evidence, validations, decisions, disposition and audit timeline; large raw payloads remain references |
 | GET `/assets/{asset_id}/access` | purpose | authenticated API read URL and immutable asset metadata; current scoped membership, plus sensitive-image permission for sensitive or legacy-unknown assets |
 | POST `/specimens/{specimen_id}/classification` | expected_revision, collection_id, reason | new pinned run and superseded downstream references; reviewer or permitted operator |
@@ -62,6 +62,54 @@ where a later write uses optimistic concurrency.
 | POST `/decisions:batch` | reason, decisions[] of specimen_id, expected_revision, base_record_version_id, kind, target_id, before, after, evidence_ids, idempotency_key (1 to 100) | per-decision outcome rows, never a single error; reviewer, checked per record |
 | POST `/runs/{run_id}/actions` | expected_revision, action (`retry`, `resume`, `pause`, `cancel`, `reprocess`), reason | authorized transition and current status; operator/admin per action |
 | GET `/runs/{run_id}/events` | after_sequence, limit | ordered persisted timeline, next retry and actionable blocker; polling is sufficient for first implementation |
+
+### Who cleared a record (`cleared_by`, additive, 2026-11-17)
+
+Every specimen summary (the list items, the detail, and the workspace and
+decision responses that carry the summary) has `cleared_by`: `"person"` when the
+record is cleared and a reviewer's approval stands on it (`run.human_approved`),
+`"system"` when it is cleared and no approval stands (the clearance rules cleared
+it with no person, `field_research.step.finalize_fields`), and `null` when the
+record is not cleared. It is derived from the stored run on every read
+(`application/lane.py` `cleared_by`). A cleared record is `"person"` only
+while its values are the ones a person approved. An `approve` decision records
+`run.approved_values_sha256`, the digest of the run's values
+(`lane.approved_values_digest`: every field's `state`, `literal`, `parsed`,
+`normalized`, `authority_id` and `precision`, and each label's resolved
+transcript text; provenance is left out). Wherever a disposition is decided
+(`lane.settle_approval`, called first by `policy.finalize`,
+`field_research.step.finalize_fields`, which `refinalize` calls, and the
+research harness's canonical materializations), a standing approval whose
+digest no longer matches the values is withdrawn, so the stored
+`human_approved` is false whenever a disposition is stored on changed values.
+A standing approval is withdrawn by a person's later decision on the record (a
+field, transcription, authority, taxonomy, metadata or research-candidate
+decision), whether or not it changes a value, as before this change; and by
+the value test, wherever a disposition is decided, when the values differ from
+those recorded at the approval. A system step that leaves the values as
+approved (a retry, resume, recovery, reconcile or reassessment, or research
+that writes the same values again) keeps it. An approval with no recorded
+digest (every record approved before 2026-11-17) stands, as before: such a
+record keeps `"person"` even if later research changes its values. No
+production record is in that state today: the coordinator's read-only check of
+2026-11-17 found `human_approved` false in all 33 current snapshots.
+`approved_values_sha256` is optional on load and omitted while unset, so older
+snapshots keep their bytes.
+
+Residual risk: every writer dumps the run model, so the stored
+`run.human_approved` is always a JSON boolean. A read-only check of production
+on 2026-11-17 found it a JSON boolean in all 33 specimens' current snapshots
+(all false; the 2 cleared records were cleared with no approval, so they read
+as cleared by the system). For a stored value that is not a boolean, which no
+writer produces, the list answers null and the detail follows the run model's
+coercion (a missing key reads as false, "true" or 1 as true, a null makes the
+record unreadable); `tests/test_cleared_by.py` pins this. Older clients ignore the
+field, as this section's common rules require; a client that reads it treats an
+absent or null value on a cleared record as "not stated", never as either
+answer. The authority: the coordinator put the change to the owner as
+"'Cleared by the system' in the app. The design says 'Green means a human
+affirmed it.'", and to "Go ahead with the plan, including the three rule
+changes?" the owner typed "Yes, go ahead" (2026-11-17, session f9614090).
 
 ### Bulk decisions
 
