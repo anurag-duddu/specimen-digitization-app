@@ -2081,6 +2081,15 @@ def create_app(
             # Arbitrary nested dependency JSON must never alias an immutable
             # repository/read-cache snapshot when a human edit supersedes it.
             s = s.model_copy(deep=True)
+        from ..field_research import second_opinion as field_second_opinion
+
+        if field_second_opinion.open_intent(s.run):
+            # A person's decision while the fields' second opinion's intent is open abandons it here (not
+            # obtained, its reservation held), and the record is finalized as field research left it, so
+            # the decision proceeds as on main (field_research/second_opinion.py, abandon).
+            field_second_opinion.abandon(s.run)
+            if s.run.stage == field_second_opinion.STEP:
+                field_second_opinion.finish(s.run)
         pilot = "evidence_pilot" in s.run.dependencies
         pilot_blocker = s.run.blocker
         pilot_risk = dict(s.run.review_risk)
@@ -2396,6 +2405,15 @@ def create_app(
             s.run.coverage_confirmed = body.after.get("confirmed") is True
         else:
             raise ValueError("Unsupported review decision")
+        if body.kind in {"field", "research_candidate", "authority_resolution", "taxonomy_resolution"}:
+            # A person decided or selected the field, whatever the payload holds: recorded on the run
+            # (run.person_decided_fields), so no second-opinion mark is derived on it, and named in the
+            # audit as recorded so it is never adopted again at load (field_research/second_opinion.py).
+            from ..field_research import second_opinion
+
+            decided = "taxon" if body.kind == "taxonomy_resolution" else body.target_id
+            second_opinion.decided(s.run, decided)
+            audit_after = {**audit_after, second_opinion.DECIDED_MARK: decided}
         if pilot:
             s.run.stage = "processing_blocked"
             s.run.blocker = pilot_blocker

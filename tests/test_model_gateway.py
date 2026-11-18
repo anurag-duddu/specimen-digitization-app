@@ -448,6 +448,7 @@ def test_the_nvidia_option_serves_one_model_on_baseten_through_the_router() -> N
     from specimen_digitization.model_gateway import (
         NVIDIA_HUGGINGFACE_ROUTES,
         READER_HUGGINGFACE_ROUTES,
+        SECOND_OPINION_HUGGINGFACE_ROUTES,
         STAGE_HUGGINGFACE_ROUTES,
     )
 
@@ -488,6 +489,7 @@ def test_the_nvidia_option_serves_one_model_on_baseten_through_the_router() -> N
         **INITIAL_HUGGINGFACE_ROUTES,
         **STAGE_HUGGINGFACE_ROUTES,
         **NVIDIA_HUGGINGFACE_ROUTES,
+        **SECOND_OPINION_HUGGINGFACE_ROUTES,
     }
     assert set(INITIAL_HUGGINGFACE_ROUTES) == {"handwriting-qwen", "handwriting-muse"}
     assert dict(READER_HUGGINGFACE_ROUTES) == {

@@ -167,6 +167,7 @@ def active_routes(stages: Iterable[str]):
     from ..model_gateway import (
         HUGGINGFACE_ROUTES,
         INITIAL_HUGGINGFACE_ROUTES,
+        SECOND_OPINION_HUGGINGFACE_ROUTES,
         STAGE_HUGGINGFACE_ROUTES,
     )
 
@@ -177,5 +178,7 @@ def active_routes(stages: Iterable[str]):
         *INITIAL_HUGGINGFACE_ROUTES,
         *(route for route in added if route not in INITIAL_HUGGINGFACE_ROUTES),
         *(replaced.get(route_id, route_id) for route_id in STAGE_HUGGINGFACE_ROUTES),
+        # Field research's second opinion runs under every option (second_opinion.py).
+        *SECOND_OPINION_HUGGINGFACE_ROUTES,
     ]
     return {route_id: HUGGINGFACE_ROUTES[route_id] for route_id in routes}

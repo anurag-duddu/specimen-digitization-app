@@ -341,14 +341,18 @@ async def authorize_live_research(principal, specimen, binding, *, actor_uid, en
         specimen.id, principal.user_id, route, switch_on=True)
 
 
-def compose_field_research_workflow(ordinary, *, repository, state_backend=None, field_research=None):
+def compose_field_research_workflow(ordinary, *, repository, state_backend=None, field_research=None,
+        second_opinion=None):
     """SPECIMEN_RESEARCH_HARNESS=fields: field research at the plan handover.
 
     The ordinary workflow runs it as its own external, billable step
     (workflow.FIELD_RESEARCH) for a run whose profile names a harness route:
     the step reserves the run's remaining headroom, researches every field in
     memory and is saved once. ``field_research`` replaces the production
-    step (field_research.step.production_step) in tests.
+    step (field_research.step.production_step) in tests. The fields' second
+    opinion runs after it as its own step (application/second_opinion_step.py);
+    ``second_opinion`` replaces its production runner
+    (field_research.second_opinion.production_step) in tests.
 
     A run researched earlier by the six-specialist harness may still hold
     liabilities in its research state; they count against the headroom, as
@@ -365,6 +369,9 @@ def compose_field_research_workflow(ordinary, *, repository, state_backend=None,
 
     ordinary.retained_cost = retained_cost
     ordinary.field_research = production_step() if field_research is None else field_research
+    from specimen_digitization.field_research import second_opinion as opinion
+
+    ordinary.second_opinion = opinion.production_step() if second_opinion is None else second_opinion
     return ordinary
 
 

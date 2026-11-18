@@ -4740,6 +4740,11 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     # approval's ordinary finalize no longer names it).
     if not run.human_approved:
         human += [f"preserved_human_decision:{key}" for key in sorted(human_keys(run) & set(work))]
+    # The second opinion's marks from its stored result and the current values; an open intent ends first.
+    # They join the other reasons before the split, so a mark on an optional field is that field's doubt.
+    from .second_opinion import at_finalize as second_opinion_reasons
+
+    human += second_opinion_reasons(run)
     # An optional field's doubt does not hold the record (plan WP K1): it is kept beside the
     # reasons, and the field keeps its state, value and marks.
     earlier = (*run.reasons, *run.open_reasons)

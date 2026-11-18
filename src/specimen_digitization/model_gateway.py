@@ -185,6 +185,26 @@ NVIDIA_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProx
         ),
     }
 )
+# The fields' second opinion (field_research/second_opinion.py, autonomy lane F1):
+# a strong model fills the record's fields on its own from the label crops and
+# the readers' texts, and a value field research settled is shown as settled
+# only where it agrees. Muse Spark Open 816B on Baseten through the router, as
+# the autonomy program's fields benchmark pinned it on 2026-11-18
+# (~/specimen-golive/runs/autonomy-fields-20261118/candidates.json and
+# probe.json: tool_choice "required", no request options, 8,000 output tokens):
+# 67 of 70 slides answered as a tool call, USD 0.012 a slide at list.
+SECOND_OPINION_ROUTE = "second-opinion-muse-spark"
+SECOND_OPINION_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
+    {
+        SECOND_OPINION_ROUTE: HuggingFaceInferenceRoute(
+            route_id=SECOND_OPINION_ROUTE,
+            logical_capability="field_second_opinion",
+            model_id="meta-models/Muse-Spark-Open-816B-A42B",
+            provider="baseten",
+            transport="router",
+        ),
+    }
+)
 # The routes a profile may name as readers: the initial pair and the option's.
 READER_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
     {
@@ -198,6 +218,7 @@ HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
         **INITIAL_HUGGINGFACE_ROUTES,
         **STAGE_HUGGINGFACE_ROUTES,
         **NVIDIA_HUGGINGFACE_ROUTES,
+        **SECOND_OPINION_HUGGINGFACE_ROUTES,
     }
 )
 

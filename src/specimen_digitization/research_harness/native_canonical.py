@@ -67,9 +67,9 @@ class CanonicalProjectionServicesV1:
             fail("canonical_projector_source_not_qualified")
         from sys import modules
         expected = {
-            "specimen_digitization.application.domain":"7280a14a2d9fd43e717fa870f5ed80f763bc365c71b1f382b174185787763031",  # pragma: allowlist secret (domain source digest)
-            "specimen_digitization.application.storage":"64d919f9d10ac4912b8902e19abab2d5e90978da32d6356c28f0e4c1130e6315",  # pragma: allowlist secret (storage source digest)
-            "specimen_digitization.application.active_graph":"8d025ed19a84e052c24bb72360bae440c8c48f9b6480653b7bfb7e6c86066268",  # pragma: allowlist secret (active graph source digest)
+            "specimen_digitization.application.domain":"bd79252ace7a428413838c0236cbf949b9c22eae45574e753b418ab52cd28fc0",  # pragma: allowlist secret (domain source digest)
+            "specimen_digitization.application.storage":"4d4b52ce96cfb42db34431c518a61ada0284e56002b8b8476eccfa2c4635d5c8",  # pragma: allowlist secret (storage source digest)
+            "specimen_digitization.application.active_graph":"db63b87216ae5501652a2b7a885391e86317c7c13db9ca84bd8049d58b7d7126",  # pragma: allowlist secret (active graph source digest)
         }
         for name,source_sha in expected.items():
             loaded=modules.get(name)

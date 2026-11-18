@@ -210,8 +210,14 @@ def unpack(payload, blobs):
     # the current run is worked on; earlier runs are history and keep their stored form. A run whose
     # stored reasons name no hold keeps its stored form too, so a loaded record equals the record saved
     # (storage.ReviewProofReader compares them); every helper that writes the key adopts first.
+    # A person's field decisions saved before the decision endpoint recorded them on the run are
+    # adopted once, here too (field_research/second_opinion.py, adopt_legacy); nothing else changes.
+    from ..field_research.second_opinion import adopt_legacy as adopt_decided_fields
+
+    # Order: holds read only the stored reasons and decided fields only the audit, neither the other's key.
     if specimen.run.pending_review is None and legacy_holds(specimen.run):
         adopt_legacy(specimen.run)
+    adopt_decided_fields(specimen)
     return specimen
 
 

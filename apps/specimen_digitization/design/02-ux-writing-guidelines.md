@@ -239,6 +239,7 @@ Placement values used below:
 | normalized | **standardized** | yes | Primary (field layer label) | Third layer. Plain word, same meaning. |
 | authority | **authority** | yes | Primary | Genuine domain vocabulary for this audience. Keep. Gloss once: "Authority: the published reference list a value was matched against." |
 | barcode decode (`barcode_differs`) | **the slide's QR code** | yes | Primary | The square code printed on the slide's barcode label, which holds the catalog number. Reviewers see it on the slide, so its everyday name is the one to use; "decode", "payload" and "zxing" stay hidden. |
+| second opinion (`second_opinion_differs`, `second_opinion_not_checked`) | **independent reading** | yes | Primary | A second model that reads the slide's labels on its own and fills the fields without seeing the pipeline's. The reviewer only needs to know another reading disagrees, or did not run; "second opinion", the model's name and "not obtained" stay hidden. |
 | candidate | **suggested match** | yes | Primary | "Candidate" is ambiguous outside the codebase. The action becomes "Use this match". |
 | unmeasured | **not measured** | yes | Primary, in the value slot | Must stay visible. It is the difference between honest absence and a fabricated zero. Never render "0" or an empty string in its place. |
 | uncalibrated | **not calibrated** | yes | Chip next to any score, plus "Why" | Must stay visible. It is the load-bearing caveat on every score in the product. |
