@@ -42,6 +42,8 @@ def settle(literal: str, line: str | None = None):
     ("IX-14-46", "1946-09-14"),          # 105526324, cleared in r2/pair
     ("1X-14-46", "1946-09-14"),          # 105526325, cleared in r1/pair (a 1 written for the I)
     ("5/6/39", "1939-05-06 or 1939-06-05"),   # both orders are exact days
+    ("3-10.VIII.1915", "1915-08-03"),    # a day range: its ends are exact days, Date Visited From and To's
+    ("12-15 June 1946", "1946-06-12"),
 ])
 def test_an_exact_date_is_no_verbatim_dts(literal, iso):
     value, decision = settle(literal)
@@ -65,7 +67,8 @@ def test_a_slide_code_is_no_verbatim_dts(literal, line):
 
 
 @pytest.mark.parametrize("literal", ["XI.'46", "XI.46", "1916", "Nov, Dec 1955", "XI, XII-1955", "III.87",
-    "XII-1970", "Summer 1914", "Avril 1917", "am", "sunrise"])
+    "XII-1970", "Summer 1914", "Summer 1946", "Avril 1917", "am", "sunrise", "10:30", "c. 1946", "46",
+    "12-15 June", "3 Sept. '46 10:30", "early Sept. 1946"])
 def test_wording_that_is_not_an_exact_date_settles_as_written(literal):
     value, decision = settle(literal)
     assert value.state == ValueState.SUPPORTED

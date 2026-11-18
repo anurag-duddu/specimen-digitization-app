@@ -576,7 +576,7 @@ VERBATIM_EXACT_DATE = "verbatim_dts_exact_date"
 VERBATIM_SLIDE_CODE = "verbatim_dts_slide_code"
 VERBATIM_REFUSALS = {
     VERBATIM_EXACT_DATE: ("Verbatim D/T/S holds only date or time wording that is not an exact date "
-        "(PRD.md:529, :540-544): {literal!r} reads as the exact date {iso}, which Date Visited From takes."),
+        "(PRD.md:529, :540-544): {literal!r} reads as the exact date {iso}, which the collecting dates hold."),
     VERBATIM_SLIDE_CODE: ("Verbatim D/T/S never holds a slide code (G45; the ontology's notation slide_code): "
         "{literal!r} is one or is part of one."),
 }
@@ -591,7 +591,9 @@ def _verbatim_dts_refusal(literal: str | None, readings: Sequence[Reading], date
       From or as Date Identified reads it) reads the whole literal, in the readings that write it, as a date
       at day precision ("3 Sept. '46", "IX-14-46", "6-Sept.-1946"). A literal the check reads at month or
       year precision ("XI.46", "1916"), or does not read as a date at all ("Nov, Dec 1955", "Summer 1914",
-      "am"), is left to the field's other rules.
+      "am", "c. 1946", "3 Sept. '46 10:30", a day range with no year), is left to the field's other rules.
+      A day range the check reads with its year ("3-10.VIII.1915", "12-15 June 1946") is refused: its ends
+      are exact days, which Date Visited From and To hold as written (G44).
     """
     from . import checks
 

@@ -238,3 +238,53 @@ def test_another_reader_s_country_still_blocks_a_quoted_lower_place(proof):
     proof.received["county"] = [answer]
     proof.fresh.add(answer.evidence.id)
     assert not qualifies(proof)
+
+
+def written_by_2a(proof, text):
+    """Label 2's reader writes `text` in place of "CANADA"."""
+    proof.readings = (*proof.readings[:2], replace(proof.readings[2], text=text))
+    return proof
+
+
+@pytest.mark.parametrize(("written", "said", "kinds"), [
+    # Near-collisions #451's reviewers used: each quoted text is (or may be) a nation, is not what a reading
+    # writes, or no source places it.
+    ("Iraq", "Iraq", ("country",)),
+    ("Iraq", "Iran", ("country",)),
+    ("Georgia", "Georgia", ("country", "state")),
+    ("D.R.C.", "D.R.C.", ()),
+    ("D.R.C.", "P.R.C.", ()),
+])
+def test_a_quoted_text_that_may_be_a_nation_or_is_unwritten_derives_nothing(proof, written, said, kinds):
+    written_by_2a(proof, written)
+    quoted(proof, said)
+    candidates = tuple(SourceCandidate(said, f"fixture:{said}-{kind}", kind) for kind in kinds)
+    answer = proof.sources._authority("wikidata", said, candidates)
+    if not candidates:
+        answer = replace(answer, status=LookupStatus.NO_MATCH, candidates=())
+    proof.received["county"] = [answer]
+    proof.fresh.add(answer.evidence.id)
+    assert not qualifies(proof)
+
+
+@pytest.mark.parametrize("country", ["settled", "contested_literal", "reader_verbatim"])
+def test_a_country_that_is_settled_or_keeps_a_reader_s_text_is_not_re_derived(proof, country):
+    """The rule reads only an ambiguous country with no literal and no reader's verbatim of its own: a
+    settled country (a mark is a finding beside a supported value, so a marked one too), and a held country
+    that keeps a reader's text, are left as they are."""
+    quoted(proof, "ILLINOIS")
+    proof.run.fields["country"] = {
+        "settled": FieldValue(state=ValueState.SUPPORTED, literal="CANADA", layer="settled"),
+        "contested_literal": FieldValue(state=ValueState.AMBIGUOUS, literal="CANADA"),
+        "reader_verbatim": FieldValue(state=ValueState.AMBIGUOUS, verbatim_by_observation={"obs3": "CANADA"}),
+    }[country]
+    assert not qualifies(proof)
+
+
+def test_a_quoted_lower_place_whose_child_names_no_parent_derives_nothing(proof):
+    """The parent comes from the settled child's own record: a child record with no parents proves nothing."""
+    quoted(proof, "ILLINOIS")
+    source = proof.received["country"][0]
+    proof.received["country"] = [replace(source, candidates=tuple(
+        replace(candidate, parents=()) for candidate in source.candidates))]
+    assert not qualifies(proof)
