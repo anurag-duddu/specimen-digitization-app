@@ -2941,6 +2941,25 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
                 if text]) if outcome.key in put else {}
             _settlement(run, tasks_by_key[outcome.key], outcome, readings=readings, by_name=by_name,
                 sources=received.get(outcome.key, ()), decision=decisions.get(outcome.key, {}), **given)
+    # The catalogue number, where the segment step stored a decode of the slide's QR code, is
+    # compared with it after its expert's answer and its settlement (catalogue_code.settle).
+    from .catalogue_code import FIELD as CATALOGUE, settle as settle_on_the_code
+
+    if CATALOGUE in tasks_by_key and CATALOGUE not in human and units_path(run):
+        # The code can only add a confirmation or a hold: any exception inside it is logged and
+        # the field, its findings and its decision are put back as the rules above left them.
+        kept_value = run.fields.get(CATALOGUE)
+        kept_findings = list(run.findings)
+        kept_decision = dict(decisions.get(CATALOGUE, {}))
+        try:
+            settle_on_the_code(run, tasks_by_key[CATALOGUE], readings,
+                decision=decisions.setdefault(CATALOGUE, {}))
+        except Exception:  # noqa: BLE001 - the code never fails research
+            LOGGER.warning("catalogue number not compared with the slide's QR code", exc_info=True)
+            if kept_value is not None:
+                run.fields[CATALOGUE] = kept_value
+            run.findings[:] = kept_findings
+            decisions[CATALOGUE] = kept_decision
     # The check stage, last: an inference whose rule's conditions all hold fills an open field,
     # cleared, and derivation fills what it lets derive (ontology_checks.infer_feet); then the
     # stage marks what fails a rule of the ontology among the values settled, inferred and
@@ -2976,7 +2995,9 @@ def marked_code(key: str, region_id: str, why: str) -> str:
     """`marked:<field>:<label>:<why>`: the label settled the field on a text that only
     readers that agree or another label back (text_only), or against another backed
     text (conflict); or the label writes a part of a field whose parts lie on different
-    labels, left ambiguous (parts_on_labels, PARTS)."""
+    labels, left ambiguous (parts_on_labels, PARTS); or its readers agree on a catalogue
+    number the slide's QR code contradicts, left ambiguous (barcode_differs,
+    catalogue_code.DIFFERS)."""
     return f"marked:{key}:{region_id}:{why}"
 
 
