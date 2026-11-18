@@ -438,3 +438,38 @@ def test_a_history_restore_returns_a_self_consistent_state(tmp_path):
         [HISTORY_RESTORED], before[2], [])
     approved = decide(client, rig, "approve", "approve")
     assert (approved.disposition, approved.reasons, marks(approved.open_reasons)) == (Disposition.CLEARED, [], [])
+
+
+# ---- Codex round 8 on #456 (d016678b): an unconfirmed location reassessment survives the step --------------
+
+@pytest.mark.parametrize("state", ["agrees", "differs", "not-obtained", "switched-off", "without-the-step"])
+def test_an_unconfirmed_location_reassessment_holds_through_the_step_and_a_resume(tmp_path, monkeypatch, state):
+    """Research leaves the city unproved by a location reassessment (FieldResearchStep._retained_reassessment,
+    after its own finalize). The hold is durable (#455: run.pending_review, derived at every finalize), so the
+    step's finish (the whole refinalize) and a Resume keep it, the second opinion obtained, not obtained or
+    switched off; the record is held exactly as #455 alone holds it ("without-the-step": the second opinion
+    contributes no mark and is never due), and a person's approval clears it."""
+    from specimen_digitization.application.standing_holds import REASSESSMENT_UNCONFIRMED
+    from specimen_digitization.field_research.step import FieldResearchStep
+
+    hold = f"{REASSESSMENT_UNCONFIRMED}:city"
+    original = FieldResearchStep._retained_reassessment
+
+    def leaves_the_city(run, retained, *, replace=False):
+        original(run, {*retained, "city"}, replace=replace)
+
+    monkeypatch.setattr(FieldResearchStep, "_retained_reassessment", staticmethod(leaves_the_city))
+    if state == "without-the-step":
+        monkeypatch.setattr(so, "derived", lambda run, readings=(): [])
+        rig = rig_on(tmp_path, switched_off=True)
+    else:
+        rig = opinion_rig(tmp_path, state)
+    done = to_end(rig).run
+    # The step ran and finished (its stored result), except where it is never due.
+    assert done.stage == "finalized" and (done.second_opinion is None) == (state == "without-the-step")
+    assert (done.disposition, done.reasons, done.pending_review) == (Disposition.REVIEW, [hold], [hold])
+    monkeypatch.setattr(FieldResearchStep, "_retained_reassessment", staticmethod(original))
+    again = resumed(rig).run
+    assert (again.disposition, again.reasons, again.pending_review) == (Disposition.REVIEW, [hold], [hold])
+    approved = decide(review_client(rig), rig, "approve", "approve")
+    assert (approved.disposition, approved.reasons, approved.pending_review) == (Disposition.CLEARED, [], [])
