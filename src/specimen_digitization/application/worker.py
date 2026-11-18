@@ -709,13 +709,14 @@ def _execute_drain(args, deadline):
     from .profile_runtime import published_risk_registry
     from ..research_harness.enablement import research_harness_enabled
 
-    from .model_option import nvidia_stages
+    from .model_option import nvidia_stages, reader_a_route
 
     try:
         settings = drain_settings(os.environ)
         research_harness = research_harness_enabled(os.environ)
-        # published_registry reads it too; checked here so --check-config sees it.
+        # published_registry reads them too; checked here so --check-config sees them.
         nvidia_stages(os.environ)
+        reader_a_route(os.environ)
     except ValueError as exc:
         # The message names the setting, never its value.
         print(json.dumps({

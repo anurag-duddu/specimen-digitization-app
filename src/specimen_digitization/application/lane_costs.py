@@ -436,14 +436,18 @@ def record_step(
     elif step in {"parse", "classify"}:
         # Parse's one model call (extract_with_agent) settles at its reported
         # tokens (`usage`) at the price of the route it calls, the profile's
-        # first route (lane_reservations.step_reservation sizes it the same
-        # way). Without them its whole liability stays held. A refusal of that
-        # call is proof that nothing was billed. Held or refused, a parse call
-        # names that route too, so the cost meter can match it to its model's
-        # bill (it named its step before 2026-10-25: cost_ledger.LEGACY_ROUTES).
+        # first route unless its reader's option names another
+        # (model_gateway.organiser_route; lane_reservations.step_reservation
+        # sizes it the same way). Without them its whole liability stays held. A
+        # refusal of that call is proof that nothing was billed. Held or
+        # refused, a parse call names that route too, so the cost meter can
+        # match it to its model's bill (it named its step before 2026-10-25:
+        # cost_ledger.LEGACY_ROUTES).
+        from ..model_gateway import organiser_route
+
         attempt = run.attempts.get(step, 1)
         if not any(c["step"] == step and c["attempt"] == attempt for c in run.paid_calls):
-            route = run.profile.routes[0] if run.profile.routes else None
+            route = organiser_route(run.profile.routes)
             named = route if step == "parse" and route else step
             if refusal:
                 record_refused(run, step, "model", route_id=named, failure_code=refusal)

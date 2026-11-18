@@ -569,13 +569,29 @@ def published_registry(
 
     With SPECIMEN_NVIDIA_STAGES on (``environ``, the process environment by
     default), each profile loads as its NVIDIA variant (model_option.py); a
-    value it does not know raises.
+    value it does not know raises. With SPECIMEN_READER_A on, each profile loads
+    as its reader-A variant instead (model_option.reader_a_variant); the two
+    switches do not combine.
     """
     import os
 
-    from .model_option import nvidia_stages, nvidia_variant
+    from .model_option import (
+        ModelOptionConfigurationError,
+        READER_A_SETTING,
+        SETTING,
+        nvidia_stages,
+        nvidia_variant,
+        reader_a_route,
+        reader_a_variant,
+    )
 
-    stages = nvidia_stages(os.environ if environ is None else environ)
+    environment = os.environ if environ is None else environ
+    stages = nvidia_stages(environment)
+    reader_a = reader_a_route(environment)
+    if stages and reader_a:
+        raise ModelOptionConfigurationError(
+            f"{READER_A_SETTING} and {SETTING} cannot both be set"
+        )
     bindings = dict(bindings or {})
     content = json.loads(PUBLISHED_PROFILES.read_text())
     if "intake-e2e" in bindings.values():
@@ -585,4 +601,4 @@ def published_registry(
     registry = CollectionProfileRegistry.model_validate(
         dict(content, bindings=bindings)
     )
-    return nvidia_variant(registry, stages)
+    return reader_a_variant(nvidia_variant(registry, stages), reader_a)

@@ -109,12 +109,14 @@ def circuit_for(workflow, principal, run, step):
             tool, {"unconfigured": tool}
         )
     elif step.startswith(("transcribe:", "first_pass:")) or step == "parse":
+        from ..model_gateway import organiser_route
+
         route = (
             step.split(":")[-1]
             if step.startswith("transcribe:")
             else run.profile.first_pass_route
             if step.startswith("first_pass:")
-            else run.profile.routes[0]
+            else organiser_route(run.profile.routes)
         )
         selected = run.dependencies.get("routes", {}).get(route, {})
         provider = selected.get(

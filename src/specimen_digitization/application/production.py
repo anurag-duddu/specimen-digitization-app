@@ -25,6 +25,7 @@ from ..model_gateway import (
     HUGGINGFACE_ROUTES,
     READER_HUGGINGFACE_ROUTES,
     HuggingFaceModelGateway,
+    organiser_route,
 )
 from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt, with_rules
 from ..transcription import build_literal_transcription_agent
@@ -1434,6 +1435,16 @@ class ProductionAdapters:
             }
             for route in run.profile.routes
         }
+        # The organiser (parse) runs on reader A's route, which a reader's
+        # option may replace (model_gateway.organiser_route): that route is
+        # pinned too, so parse is pinned as every reader is. Today's profiles
+        # already pin it as reader A.
+        organiser = organiser_route(run.profile.routes)
+        if organiser is not None and organiser not in routes:
+            routes[organiser] = {
+                "model_id": READER_HUGGINGFACE_ROUTES[organiser].model_id,
+                "provider": READER_HUGGINGFACE_ROUTES[organiser].provider,
+            }
         # A first-pass route is pinned only in its role, with image input; any
         # other stays unpinned, so its step blocks (HARNESS.md section 5).
         first_pass = HUGGINGFACE_ROUTES.get(run.profile.first_pass_route)
@@ -1598,7 +1609,9 @@ class ProductionAdapters:
         gateway = HuggingFaceModelGateway(
             timeout_seconds=specimen.run.profile.execution.external_timeout_seconds / 2
         )
-        for route in specimen.run.profile.routes:
+        routes = specimen.run.profile.routes
+        organiser = organiser_route(routes)
+        for route in dict.fromkeys([*routes, *([organiser] if organiser else [])]):
             selected = gateway.route(route)
             if specimen.run.dependencies.get("routes", {}).get(route) != {
                 "model_id": selected.model_id,

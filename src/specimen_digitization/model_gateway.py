@@ -185,11 +185,38 @@ NVIDIA_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProx
         ),
     }
 )
-# The routes a profile may name as readers: the initial pair and the option's.
+# The reader-A option (application/model_option.py, SPECIMEN_READER_A): a
+# stronger model in reader A's place, behind a switch that is off. Kimi K3.1 Pro
+# on DeepInfra, which already serves reader B, called through the router as
+# "model:provider" (the installed client has no helper for it; this is also how
+# the autonomy program's arbiter benchmark called it, 2026-11-18,
+# ~/specimen-golive/runs/autonomy-arbiter-20261118/). It reasons by default at
+# "max"; the benchmark ran it at "low" with the output tool forced
+# (tool_choice "required", which DeepInfra honoured): 269 of 269 labels
+# answered as a tool call in the pipeline's own shape, 258 completion tokens a
+# call on average and 736 at most (reasoning included), so none would have
+# reached the 4,096-token answer cap that reliability.run_agent_bounded puts on
+# every request. The option is measured on those settings only: a provider move
+# re-measures them or clears them.
+KIMI_MODEL_ID = "moonshotai/Kimi-K3.1-Pro"
+READER_A_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
+    {
+        "handwriting-kimi": HuggingFaceInferenceRoute(
+            route_id="handwriting-kimi",
+            logical_capability="handwriting_transcriber",
+            model_id=KIMI_MODEL_ID,
+            provider="deepinfra",
+            transport="router",
+            request_options=(("reasoning_effort", "low"),),
+        ),
+    }
+)
+# The routes a profile may name as readers: the initial pair and the options'.
 READER_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
     {
         **INITIAL_HUGGINGFACE_ROUTES,
         "handwriting-nemotron": NVIDIA_HUGGINGFACE_ROUTES["handwriting-nemotron"],
+        **READER_A_HUGGINGFACE_ROUTES,
     }
 )
 # Every registered route: a run pinned to any of them resolves.
@@ -198,8 +225,23 @@ HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
         **INITIAL_HUGGINGFACE_ROUTES,
         **STAGE_HUGGINGFACE_ROUTES,
         **NVIDIA_HUGGINGFACE_ROUTES,
+        **READER_A_HUGGINGFACE_ROUTES,
     }
 )
+# The organiser (parse) runs on reader A's route (harness.extract_with_agent).
+# A reader that replaces reader A through the reader-A option leaves the
+# organiser where it was: its route here is the route it runs on instead, so the
+# option changes the reader and nothing else.
+ORGANISER_ROUTES: Mapping[str, str] = MappingProxyType(
+    {"handwriting-kimi": "handwriting-qwen"}
+)
+
+
+def organiser_route(reader_routes) -> str | None:
+    """The route the organiser (parse) calls for a profile's reader routes: the
+    first reader's, unless that reader's option names another (ORGANISER_ROUTES)."""
+    first = reader_routes[0] if reader_routes else None
+    return ORGANISER_ROUTES.get(first, first)
 
 
 class ArgumentPreservingHuggingFaceModel(HuggingFaceModel):
