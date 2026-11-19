@@ -41,6 +41,21 @@ verdict for its current shown value (not obtained, switched off, not run yet, or
 since it was judged); nothing when the recorded verdict for its current value is "agrees". Never
 the catalogue number (its own evidence is the slide's QR code) nor the determiner's IRN.
 
+AN AGREED VALUE AND AN AGREED BLANK CARRY NO FLAG (`unflagged`, called by step.finalize_fields on
+every finalize, after the reasons are split; work package F2, the coordinator's rulings of 2026-11-19
+on lane H1's measurement). Derived from the stored result and the run as it is now; nothing is stored
+or carried, and only the optional fields' doubts (run.open_reasons) are read: a reason that holds the
+record is never touched, and a field the run's own profile makes mandatory is never lifted. With the
+result obtained and nothing the step answers for left unjudged (not `due`), on a run no person
+approved, for a judged field no person holds authority over:
+- `label_unsettled:<field>` is not an open reason for a field settled with a value whose recorded
+  verdict for its current shown value is "agrees", the three date fields excepted (AGREED_VALUE_EXCEPT);
+- `mandatory_unresolved:<field>` and `label_unsettled:<field>` are not open reasons for a field that is
+  blank (`not_present`, nothing shown) where the second opinion's own answer for it is blank too (a
+  null value that does not say UNSURE) and that answer is current (`answer_current`), Verbatim D/T/S
+  excepted (AGREED_BLANK_EXCEPT).
+Every other code stays, every mark among them, and no field, finding or evidence row is touched.
+
 THE COMPARISON (`same`), one strict rule per kind of field, on the value the app shows (normalized,
 else parsed, else literal) against the second opinion's value:
 - dates (Date Visited From and To, Date Identified): both must be ISO dates (YYYY, YYYY-MM or
@@ -68,7 +83,7 @@ import time
 import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
@@ -505,6 +520,117 @@ def reasons(run) -> list[str]:
 def own(code: str) -> bool:
     """Whether a reason code is one of the second opinion's marks."""
     return code.startswith("marked:") and code.endswith((":" + DIFFERS, ":" + NOT_CHECKED))
+
+
+# ---- an agreed value and an agreed blank carry no flag ------------------------------------------------
+
+# Work package F2 (the coordinator's rulings of 2026-11-19 on lane H1's measurement over the 100 truth
+# slides, 83 cleared): a settled value the second opinion agrees with, flagged only by its label's open
+# doubt, was right in 157 of 157 once the three date fields are set aside (both wrong ones were dates:
+# 1974 for 1976); a blank field the second opinion also leaves blank was truly absent in every scored
+# case once Verbatim D/T/S is set aside (both missed values were Verbatim D/T/S).
+AGREED_VALUE_EXCEPT = DATES
+AGREED_BLANK_EXCEPT = frozenset({"verbatim_dts"})
+MANDATORY_UNRESOLVED = "mandatory_unresolved"
+
+
+def _instant(text) -> datetime | None:
+    """An ISO date-time with its offset, or None (a text that is not one decides nothing)."""
+    if not isinstance(text, str):
+        return None
+    try:
+        found = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return found if found.tzinfo is not None else None
+
+
+def answer_current(run) -> bool:
+    """Whether the obtained answer was asked on the run's readings as they are now, by what the stored
+    result and the run record: the labels it was asked on are the run's labels, in the step's order
+    (`labels`, as labels_of numbers them: a correction of regions gives the run other labels); no
+    label's transcript is a person's (Transcript.actor: the request reads the readers' texts only); and
+    no reading is newer than the request (`at`, the step's clock when it started, against each
+    Observation.created_at). Anything it cannot establish (no labels kept, a time that does not read)
+    is not current."""
+    stored = getattr(run, "second_opinion", None)
+    if not isinstance(stored, Mapping) or stored.get("status") != OBTAINED:
+        return False
+    regions = sorted(getattr(run, "regions", None) or (), key=lambda r: (r.order, r.id))
+    labels = stored.get("labels")
+    if not regions or not isinstance(labels, Mapping) or dict(labels) != {
+            str(number): region.id for number, region in enumerate(regions, start=1)}:
+        return False
+    if any(getattr(transcript, "actor", None) for transcript in getattr(run, "transcripts", None) or ()):
+        return False
+    asked = _instant(stored.get("at"))
+    if asked is None:
+        return False
+    for observation in getattr(run, "observations", None) or ():
+        read = _instant(getattr(observation, "created_at", None))
+        if read is None or read > asked:
+            return False
+    return True
+
+
+def _blank_answer(entry) -> bool:
+    """Whether the stored answer's entry for a field is blank: {value, evidence} with no value and no
+    UNSURE (read_answer's rule: a null value whose text starts with UNSURE is unsure, not blank)."""
+    if not isinstance(entry, Mapping) or set(entry) != {"value", "evidence"}:
+        return False
+    value, evidence = entry["value"], entry["evidence"]
+    if not (value is None or isinstance(value, str)) or not isinstance(evidence, str):
+        return False
+    return not (value and value.strip()) and not evidence.strip().upper().startswith("UNSURE")
+
+
+def agreed(run, readings: Sequence[Reading] = (), *, mandatory=()) -> tuple[frozenset[str], frozenset[str]]:
+    """(the fields settled with a value the second opinion agrees with, the blank fields it leaves blank
+    too): the fields the two rules of the module docstring lift flags from, on the run as it is now.
+    Both empty unless the run is on the units path, no person approved it, the stored result is
+    obtained and nothing the step answers for is unjudged (`due`). Never a field the run's profile
+    makes mandatory (`mandatory`), a field the step does not judge (the catalogue number, the IRN), or
+    one a person holds authority over (`authority`)."""
+    from .step import units_path
+
+    nothing = (frozenset(), frozenset())
+    stored = getattr(run, "second_opinion", None)
+    if (not units_path(run) or getattr(run, "human_approved", False) or not isinstance(stored, Mapping)
+            or stored.get("status") != OBTAINED or due(run)):
+        return nothing
+    entries, answer = judged_fields(run), stored.get("answer")
+    current = isinstance(answer, Mapping) and answer_current(run)
+    skip = authority(run, readings) | frozenset(mandatory)
+    values, blanks = set(), set()
+    for key in JUDGED:
+        value = run.fields.get(key)
+        if key in skip or value is None:
+            continue
+        if _settled(value):
+            entry = entries.get(key)
+            if (key not in AGREED_VALUE_EXCEPT and isinstance(entry, Mapping) and entry.get("compared") == shown(value)
+                    and entry.get("verdict") == AGREES_VERDICT):
+                values.add(key)
+        elif (current and key not in AGREED_BLANK_EXCEPT and value.state == ValueState.NOT_PRESENT
+                and shown(value) is None and _blank_answer(answer.get(key))):
+            blanks.add(key)
+    return frozenset(values), frozenset(blanks)
+
+
+def unflagged(run, open_reasons: Sequence[str], *, mandatory=()) -> list[str]:
+    """step.finalize_fields' hook, after the reasons are split: the optional fields' doubts without the
+    flags an agreement makes unnecessary (module docstring): `label_unsettled:<field>` of an agreed
+    value, `label_unsettled:<field>` and `mandatory_unresolved:<field>` of an agreed blank (`agreed`).
+    Every other code is returned as it is, in its place."""
+    from .step import LABEL_UNSETTLED, run_readings
+
+    if not getattr(run, "fields", None) or not open_reasons:
+        return list(open_reasons)
+    values, blanks = agreed(run, run_readings(run), mandatory=mandatory)
+    if not values and not blanks:
+        return list(open_reasons)
+    lifted = {f"{LABEL_UNSETTLED}:{key}" for key in values | blanks} | {f"{MANDATORY_UNRESOLVED}:{key}" for key in blanks}
+    return [reason for reason in open_reasons if reason not in lifted]
 
 
 # Every outcome of a call that was sent is final for the values it asked about (`asked`, kept with the
