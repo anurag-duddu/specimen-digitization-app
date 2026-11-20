@@ -330,10 +330,14 @@ def give(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict | 
 
 
 def forget_stale(run) -> None:
-    """READERS_DIFFER describes a field that holds the number the code gave in place of the
-    readers'. Once the field is no longer that value (a person decided it since), the note goes:
-    step.finalize_fields calls this at every finalize, so the note never stands beside a value it
-    does not describe. A field researched again loses the rule's notes in confirm."""
+    """Remove the rule's own info finding READERS_DIFFER, and nothing else, when the rule no
+    longer applies to the field: the finding is on the run and the catalogue number is no longer
+    the number the code gave (supported, its literal the stored code's payload, the code row its
+    one citation and deciding it), because a person decided the field since or the run holds no
+    such code row. step.finalize_fields calls this at every finalize. It reads the field and
+    changes no field, no other finding, no reason; on a run with no READERS_DIFFER finding (every
+    run with no code row that never had one) it returns at once. PERSON_DIFFERS is not touched
+    here: like every note of the rule it is replaced when the field is researched again (confirm)."""
     findings = getattr(run, "findings", None) or []
     if not any(finding.rule_id == RULE and finding.reason_code == READERS_DIFFER for finding in findings):
         return

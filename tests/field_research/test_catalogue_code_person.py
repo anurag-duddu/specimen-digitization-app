@@ -323,3 +323,77 @@ def test_a_number_given_again_in_one_run_keeps_one_note(tmp_path, monkeypatch, t
     assert notes(run) == [f"barcode_readers_differ:{KEY}"]
     assert [f.reason_code for f in run.findings if f.rule_id == "field_settlement" and f.field_key == KEY] == [
         f"cleared:{KEY}:{run.regions[1].id}"]
+
+
+# ---- catalogue_code.forget_stale, the one call in step.finalize_fields ---------------------------
+
+NO_CODE_ROW = {
+    "readers-agree": ((PRINTED,), catalogue(CODE, CODE)),
+    "readers-differ": ((PRINTED, OTHER), several(CODE, PERSONS)),
+    "another-number": ((OTHER,), catalogue(PERSONS, PERSONS)),
+}
+
+
+@pytest.mark.parametrize("scenario", NO_CODE_ROW)
+def test_the_finalize_time_removal_changes_nothing_on_a_run_with_no_code_row(tmp_path, monkeypatch, scenario):
+    """A run with no code row, researched and applied once, then finalized twice from the same
+    state: with catalogue_code.forget_stale as finalize_fields calls it, and with it switched off.
+    The two records are equal in every stored value (the whole run, dumped)."""
+    import copy
+
+    from test_catalogue_code import rig_with
+    from test_step import TODAY, research
+
+    from specimen_digitization.field_research import catalogue_code
+    from specimen_digitization.field_research.step import apply_outcomes, finalize_fields
+
+    texts, script = NO_CODE_ROW[scenario]
+    rig = rig_with(tmp_path, monkeypatch, *texts)
+    run = rig.specimen.run
+    prepared, outcomes, calls = research(rig, Scripted({KEY: script}))
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls)
+    assert notes(run) == []
+    with_it, without_it = copy.deepcopy(run), copy.deepcopy(run)
+    finalize_fields(with_it, None, outcomes, today=TODAY)
+    monkeypatch.setattr(catalogue_code, "forget_stale", lambda run: None)
+    finalize_fields(without_it, None, outcomes, today=TODAY)
+    assert with_it.stage == "finalized" and with_it.model_dump(mode="json") == without_it.model_dump(mode="json")
+
+
+def test_the_finalize_time_removal_takes_the_one_note_and_only_when_the_rule_no_longer_applies(tmp_path, monkeypatch):
+    """catalogue_code.forget_stale itself. While the field is the number the code gave, the note
+    stays and nothing changes. Once the field is another value (here a person's), exactly the
+    barcode_readers_differ finding goes: every field and every other finding is as it was. A run
+    whose code row is gone loses the note the same way."""
+    from test_catalogue_code import rig_with, with_code
+    from test_step import settle as settle_run
+
+    from specimen_digitization.field_research import catalogue_code
+
+    rig = rig_with(tmp_path, monkeypatch, OTHER)
+    run = rig.specimen.run
+    code = with_code(rig)
+    settle_run(rig, Scripted({KEY: catalogue(PERSONS, PERSONS)}))
+    assert number(run) == (ValueState.SUPPORTED, CODE) and notes(run) == [f"barcode_readers_differ:{KEY}"]
+
+    def state():
+        return ({key: value.model_dump(mode="json") for key, value in run.fields.items()},
+            [finding.model_dump(mode="json") for finding in run.findings], list(run.reasons), list(run.open_reasons))
+
+    before = state()
+    catalogue_code.forget_stale(run)
+    assert state() == before
+    given = run.fields[KEY]
+    run.fields[KEY] = given.model_copy(update={"literal": PERSONS, "parsed": PERSONS, "evidence_ids": [],
+        "evidence_relations": {}, "layer": None, "reason": "A person read the label."})
+    fields, found, reasons, opened = state()
+    catalogue_code.forget_stale(run)
+    assert notes(run) == []
+    assert state() == (fields, [f for f in found if f["reason_code"] != f"barcode_readers_differ:{KEY}"], reasons, opened)
+    # The same when the field is still the given value and the run no longer holds the code row.
+    run.fields[KEY] = given
+    run.findings.append(catalogue_code.RunFinding(rule_id=catalogue_code.RULE, rule_version=catalogue_code.RULE_VERSION,
+        severity="info", field_key=KEY, reason_code=catalogue_code.READERS_DIFFER, evidence_ids=[code.id]))
+    run.evidence[:] = [row for row in run.evidence if row.id != code.id]
+    catalogue_code.forget_stale(run)
+    assert notes(run) == []

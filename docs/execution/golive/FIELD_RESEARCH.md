@@ -2062,16 +2062,30 @@ all equal to the truth.
    0010001 and both readers writing "E. slope Mt. McKinley" over "Davao
    Prov. 0010001", the extent check counted the given digits as a settled
    field's text, marked the precise location and asked its expert again.
-   The order does not reach a later research attempt of the same run. After
-   an attempt that gave the number and was blocked by another field's
-   retryable failure, the retry (or a Resume), and after a finalized record
-   still in review an operator's Retry or a location reassessment, research
-   with the given number as a settled field, as they would with a number the
-   readers settled: its expert is not asked again (on main an open number's
-   expert is), and the checks that read other settled fields' texts read its
-   digits (in the case above the retry marks the precise location and asks
-   its expert again). None of the 151 base and live runs researched in more
-   than one attempt; 5 of the 100 r3 runs did.
+   A later research attempt of the same run, a stated residual (the
+   coordinator's ruling of 2026-11-20, not the owner's words; proposals to
+   give the number only in an attempt that completes research, or to keep
+   and restore the value research left, were put to the coordinator and
+   ruled out: the first does not remove the case for an operator's Retry,
+   the second carries state). The coordinator's reasoning: within one
+   research attempt the code's number is given last, so every other field's
+   checks and the re-ask's trial see exactly what they see on main with the
+   same inputs, which is what the review's findings required. On a later
+   attempt of the same run (a blocked attempt and its retry or a Resume, an
+   operator's Retry of a held record, a location reassessment) the catalogue
+   number is a settled value of the run like any other, and other fields'
+   checks count it as they do on main whenever a reading settled the number:
+   the extent check no longer abstains for a number it can now account for,
+   may mark `precise_location_extent`, and the existing re-ask rule may send
+   its one request. That is the checks working on truer state, not a side
+   effect of the order. It needs a label that writes the catalogue number on
+   a locality line. A second research attempt was measured on 0 of the 151
+   base and live runs and on 5 of the 100 r3 runs. A reviewer of such a
+   record sees a flag on Precise Location with its extent reason
+   (`marked:precise_location:<label>:precise_location_extent`: the locality
+   is cut short before the higher place on its next line), as on any record
+   whose readers settled the number. Also on a later attempt, the number's
+   expert is not asked again, where on main the expert of an open number is.
    Residual risks: a code that is not this slide's catalogue number (a
    sticker that belongs to another specimen) now gives that number and the
    record clears with it, whatever the readers read; and such a code whose
@@ -2263,9 +2277,11 @@ test; no museum image is committed) and
 exclusion, the earlier reviews' cases, and that a run with no code row, and
 every other field, settle exactly as before; every record of a person's
 authority; and Codex's locality case, with the expert requests counted) and
-`tests/field_research/test_catalogue_code_person.py` (10 cases on the
-published profile through the real decision endpoint, Retry and Resume: the
-sign-off review's person sequences, and the rule's notes). Sixteen earlier cases changed
+`tests/field_research/test_catalogue_code_person.py` (14 cases: on the
+published profile through the real decision endpoint, Retry and Resume, the
+sign-off review's person sequences; the rule's notes; and that the one call
+in `finalize_fields` leaves a run with no code row equal in every stored
+value). Sixteen earlier cases changed
 expectation with the rule: each is kept and says what e83c36fd did.
 
 ## The second opinion (2026-11-18)
