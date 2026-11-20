@@ -1,32 +1,74 @@
-"""The slide's QR code (application/barcode.py) checked against the catalogue number, for that field alone.
+"""The slide's QR code (application/barcode.py) and the catalogue number, for that field alone.
 
 The segment step stores an accepted decode of the slide's QR code as one evidence row
-(barcode.record), on the label whose box holds the code. When the run holds one, the
-catalogue number (fmnh_ins_number) is compared with it after the field's expert answer has
-been applied and its labels' settlement recorded (step.apply_outcomes calls settle). The
-expert is not told the decode. The code is compared only with the value field research
-settled; it does not read numbers out of the readers' texts, and it does not supply a value.
-It changes no value layer: it can only add a confirmation or a hold.
+(barcode.record), on the label whose box holds the code. When the run holds one whose payload
+is a well-formed catalogue number (field_validators.CATALOG on the whole payload, its digits
+the payload itself), the catalogue number (fmnh_ins_number) is the code's number. The rule runs
+after the field's expert answer has been applied and its labels' settlement recorded
+(step.apply_outcomes calls settle). The expert is not told the decode. The code is compared
+with, and supplies, whole values only: it reads no number out of the readers' texts and breaks
+no tie among readings. The rule is the coordinator's, of 2026-11-20, under the owner's ruling
+of 2026-11-18 (docs/execution/autonomy/PLAN.md section 4: its row "V3", and the ruling quoted
+below the table), on the measurement that the code equals the truth on all 97 of the 100 truth
+slides that decode.
 
-1. Confirm, when all three hold: the settled value's literal writes the code whole
-   (written_whole); a reading of the code's label holds that literal at an occurrence with no
-   number directly before or after it (_held_whole); and the value's parsed and normalized
-   layers are supported without the code (_unsupported_layers). The code is then a clearing
-   backing of the SOURCE class (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4, rule 3):
-   the field's marked findings (text_only, conflict) become one cleared finding on the code's
-   label, the code row is cited as deciding it, and the reason says the code confirms the
-   number in place of the mark's sentence. Where the literal writes the code whole but another
-   condition fails, nothing changes.
-2. Contradict. The settled value's literal does not write the code whole, whatever its parsed
-   layer reads: the value stays, and is marked for a person
-   (marked:fmnh_ins_number:<label>:barcode_differs, one of the run's reasons). The code row is
-   cited by the mark only, not by the value.
-3. Otherwise nothing changes: no value settled (an ambiguous or unresolved field included: the
-   code breaks no tie), no stored decode, a field a person decided (step.human_keys: settle is
-   not called), a run not on the units path, or a run with a transcript a person decided on
-   any of its labels (Reading.person_decided). In that last case, where the settled value's
-   number is not the code's, the value's reason says so and an info finding (PERSON_DIFFERS)
-   cites the code row.
+1. No value settled: the field is ambiguous, unresolved, not present or blank, or its settled
+   text is no well-formed catalogue number. The field is settled with the code's number
+   (_supply): supported, on the settled layer, its literal and parsed text the code's digits,
+   its label the code's, the code row its one citation, deciding it. The reason says no reading
+   settled the number and the code gives it, and what the readers read where they read
+   something (the field's whole candidates, quoted and never compared). The field's marked
+   findings and its transcript_literal note go; one cleared finding on the code's label cites
+   the code row.
+2. A value settled whose literal does not write the code whole (written_whole), whatever its
+   parsed layer reads: the field takes the code's number in the same way (_supply). The
+   readers' number is kept in the reason and by an info finding (READERS_DIFFER: never a
+   reason, never a hold) that cites the code row and the rows that backed the readers' value.
+   No barcode_differs mark is made.
+3. A value settled whose literal writes the code whole is confirmed when two more conditions
+   hold: a reading of the code's label holds that literal at an occurrence with no number
+   directly before or after it (_held_whole); and the value's parsed and normalized layers are
+   supported without the code (_unsupported_layers). The code is then a clearing backing of the
+   SOURCE class (FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md section 4, rule 3): the field's
+   marked findings (text_only, conflict) become one cleared finding on the code's label, the
+   code row is cited as deciding it, and the reason says the code confirms the number in place
+   of the mark's sentence. Where the literal writes the code whole but another condition
+   fails, nothing changes.
+4. Otherwise nothing changes: no stored decode; one whose payload is no well-formed catalogue
+   number; for rules 1 and 2, one that lies on no label of this run's image (_of_this_run); a
+   field a move or a new run carried from a person (step.human_keys: settle is not called); a
+   run not on the units path; or a run with a transcript a person decided on any of its labels
+   (Reading.person_decided). In that last case, where a settled value's number is not the
+   code's, the value's reason says so and an info finding (PERSON_DIFFERS) cites the code row;
+   a field no reading settled stays as it is.
+
+A person's authority. No part of the rule acts on a field a person holds authority over, read
+through the one function the second opinion reads it through (second_opinion.authority, from
+the run's durable state): a field decided at the decision endpoint (Run.person_decided_fields),
+a carried decision, a research selection a person locked, a field a location reassessment
+protects. Every part of the rule enters through _entry, which returns nothing for such a field:
+the code neither confirms it (no reason, citation or finding of the field changes), nor gives
+it a number, nor replaces its value, nor notes a difference. Research may ask such a field's
+expert again on a Retry (main's task selection, which this rule does not change); whatever that
+leaves is left. The fifth record of authority, a transcript a person decided, is rule 4's: on
+such a run the rule does nothing but its note (PERSON_DIFFERS), as before 2026-11-20. Apart
+from that, the rule only ever removes its own earlier notes (confirm, forget_stale).
+
+Order. step.apply_outcomes calls settle as its last act, after the check stage, so on the
+attempt that researches the catalogue number no other field's check sees a number the code
+gives, and neither does the re-ask's trial, which applies the outcomes on a copy of the run
+(reask.again): every other field's value, state, reason and findings, and the number of expert
+requests, are those of the same run with no code row. On a later research attempt of the same
+run (a Retry or Resume after a blocked attempt, a location reassessment) a number the code gave
+is a settled field like one the readers settled: its expert is not asked again, and the checks
+that read other settled fields' texts read its digits (FIELD_RESEARCH.md says which).
+
+A value the code supplies is on the settled layer with the code's digits as its literal: the
+label carries the code and the code writes the number, so the app's existing basis for a
+catalogue number ("As written") and its note for a cleared finding fit it, and
+step.code_confirmed, recomputed at every finalize from the field and the code row, reads it as
+a number the code confirms. Nothing is stored beyond the field's own value, its findings and
+its citation of the code row.
 
 The rule reads only strings and the run's findings and evidence rows; it builds no evidence
 row. step.apply_outcomes also calls it inside a guard that logs any exception and puts the
@@ -36,21 +78,31 @@ field and its findings back as the existing rules left them, so the code cannot 
 from __future__ import annotations
 
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
-from specimen_digitization.application.barcode import FIELD, stored_code
+from specimen_digitization.application.barcode import FIELD, StoredCode, stored_code
 from specimen_digitization.application.domain import FieldValue, RunFinding, ValueState
 from specimen_digitization.application.field_validators import CATALOG
 
 from .contracts import FieldTask, Reading
 
+# The mark rule 2 made until 2026-11-20: a settled number the code contradicts, held for a
+# person. No run makes it now; a record finalized before keeps it, and the app words it.
 DIFFERS = "barcode_differs"
-# The rule's own finding (info, never a reason): a settled value a person's transcript backs
-# whose number is not the code's.
+# The rule's own findings (info, never a reason): a settled value a person's transcript backs
+# whose number is not the code's; and the readers' settled value the code's number replaced.
 RULE = "barcode_decode"
-RULE_VERSION = "catalogue-number-barcode-v4"
+RULE_VERSION = "catalogue-number-barcode-v5"
 PERSON_DIFFERS = "barcode_person_differs:" + FIELD
+READERS_DIFFER = "barcode_readers_differ:" + FIELD
 SETTLED = ("settled", "verbatim")
+# The rule that decided the field, as the trace names it (step.trace_fields).
+SUPPLIES = "barcode_supplies"
+OVER_READERS = "barcode_over_readers"
+# What the readers read, quoted in a supplied value's reason: at most this many texts, each of
+# at most this many characters.
+QUOTED_TEXTS = 4
+QUOTED_LENGTH = 40
 
 
 def number(text: str | None) -> str | None:
@@ -125,28 +177,112 @@ def _unsupported_layers(run, value: FieldValue) -> bool:
         for row in cited) for text in (value.parsed, value.normalized))
 
 
-def _marked_regions(run) -> list[str]:
-    from .step import SETTLEMENT
+def _of_this_run(run, code: StoredCode) -> bool:
+    """Whether the code row lies on one of the run's labels, of that label's image (as
+    step.code_confirmed reads the row at every finalize)."""
+    regions = {region.id: region for region in run.regions}
+    return code.row.region_id in regions and code.row.asset_id == regions[code.row.region_id].asset_id
 
-    return list(dict.fromkeys(finding.reason_code.split(":")[2] for finding in run.findings
-        if finding.rule_id == SETTLEMENT and finding.field_key == FIELD
-        and finding.reason_code.count(":") >= 2))
+
+def _a_persons(run) -> bool:
+    """Whether a person holds authority over the catalogue number by a record of the run's
+    durable state, through the function the second opinion reads it through
+    (second_opinion.authority, with no readings: a decision at the endpoint, a carried decision,
+    a locked selection, a reassessment's protected field). A person's transcript is _entry's
+    other answer."""
+    from .second_opinion import authority
+
+    return FIELD in authority(run)
 
 
-def settle(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict | None = None) -> bool:
-    """Compare the catalogue number with the run's stored decode by the module's rules 1 and 2;
-    False, changing nothing, where rule 3 leaves the field as it is."""
-    from .step import SETTLEMENT, SETTLEMENT_RULES, cleared_code, marked_code
+def _shown(text: str) -> str:
+    """A text on one line, cut to QUOTED_LENGTH characters: for a reason's sentence."""
+    return " ".join(text.split())[:QUOTED_LENGTH]
 
+
+def _quoted(texts: Iterable[str | None]) -> str:
+    """The texts, each once and in their order, in double quotes and joined in words; at most
+    QUOTED_TEXTS of them. "" when there is none."""
+    kept = list(dict.fromkeys(_shown(text) for text in texts if text and text.strip()))[:QUOTED_TEXTS]
+    quoted = [f'"{text}"' for text in kept]
+    return " and ".join(part for part in (", ".join(quoted[:-1]), *quoted[-1:]) if part)
+
+
+def _supply(run, task: FieldTask, code: StoredCode, current: FieldValue, decision: dict, *, settled: bool) -> bool:
+    """Rules 1 and 2: the field is the code's number, the code row deciding it. `settled`: field
+    research settled a value (supported, settled or as written), which the code's number
+    replaces; its text is kept in the reason and the rows that backed it by READERS_DIFFER."""
+    from .step import SETTLEMENT, SETTLEMENT_RULES, cleared_code
+
+    payload = code.payload
+    earlier = (current.literal or current.normalized or current.parsed) if settled else None
+    # The reasons are shown in the app, so they use its words: "catalog number", "the slide's QR
+    # code" (the client's UX writing guidelines, section 3).
+    if earlier and number(current.normalized or current.parsed or current.literal) is None:
+        reason = (f'The readers\' text, "{_shown(earlier)}", is not a well-formed catalog number. The slide\'s QR '
+            f"code reads {payload} and gives the catalog number.")
+    elif earlier:
+        reason = (f'The readers\' number, "{_shown(earlier)}", differs from the slide\'s QR code, which reads '
+            f"{payload}. The code gives the catalog number.")
+    else:
+        read = _quoted(candidate.literal for candidate in task.candidates)
+        reason = " ".join(part for part in ("No reading settled the catalog number.",
+            f"The readers read {read}." if read else "", f"The slide's QR code gives it: {payload}.") if part)
+    run.findings[:] = [finding for finding in run.findings
+        if not (finding.field_key == FIELD and finding.rule_id in (SETTLEMENT, "transcript_literal"))]
+    run.fields[FIELD] = FieldValue(state=ValueState.SUPPORTED, literal=payload, parsed=payload,
+        evidence_ids=[code.row.id], evidence_relations={code.row.id: "decides"}, reason=reason, layer="settled",
+        source_region_id=code.row.region_id)
+    run.findings.append(RunFinding(rule_id=SETTLEMENT, rule_version=SETTLEMENT_RULES, severity="info",
+        field_key=FIELD, reason_code=cleared_code(FIELD, code.row.region_id), evidence_ids=[code.row.id]))
+    if earlier:
+        rows = {row.id for row in run.evidence}
+        run.findings.append(RunFinding(rule_id=RULE, rule_version=RULE_VERSION, severity="info", field_key=FIELD,
+            reason_code=READERS_DIFFER, evidence_ids=[code.row.id, *(row for row, how in
+                current.evidence_relations.items() if how in ("supports", "decides") and row in rows
+                and row != code.row.id)]))
+    decision["rule"] = OVER_READERS if earlier else SUPPLIES
+    return True
+
+
+def _entry(run, task: FieldTask, readings: Sequence[Reading]) -> tuple[StoredCode, bool] | None:
+    """The one way into the rule, for every part of it (confirm, give): the run's stored decode
+    and whether a person decided a transcript of the run, or None where the whole rule stands
+    aside (rule 4). None: no stored code row, a row on no label, a payload that is not itself a
+    well-formed catalogue number, or a field a person holds authority over (_a_persons). With a
+    person's transcript (True) the rule may only note a difference (confirm) and gives nothing."""
     code = stored_code(run)
     if code is None or task.key != FIELD or code.row.region_id is None:
+        return None
+    if number(code.payload) != code.payload or _a_persons(run):
+        return None
+    return code, any(reading.person_decided for reading in readings)
+
+
+def confirm(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict | None = None) -> bool:
+    """Rule 3, and rule 4's note beside a person's transcript: what the rule did before 2026-11-20
+    besides holding, in the place step.apply_outcomes always called it (after the field's
+    settlement, before the check stage). False where neither applies or the rule stands aside
+    (_entry: a field a person holds authority over is never confirmed). The rule's own notes
+    (PERSON_DIFFERS, READERS_DIFFER) are of the field's last research: they go first, whatever
+    the rule then does, so a field researched again keeps only the note of this research, and
+    none where the rule no longer applies."""
+    from .step import SETTLEMENT, SETTLEMENT_RULES, cleared_code
+
+    if task.key == FIELD:
+        run.findings[:] = [finding for finding in run.findings
+            if not (finding.rule_id == RULE and finding.field_key == FIELD)]
+    entry = _entry(run, task, readings)
+    if entry is None:
         return False
+    code, persons_transcript = entry
     payload, current = code.payload, run.fields.get(FIELD) or FieldValue()
     decision = {} if decision is None else decision
     if current.state != ValueState.SUPPORTED or current.layer not in SETTLED:
         return False
-    if any(reading.person_decided for reading in readings):
-        # Rule 3: a person decided a transcript of the record; the code only notes a difference.
+    if persons_transcript:
+        # Rule 4: a person decided a transcript of the record. The code only notes a difference
+        # from a settled value.
         if number(current.normalized or current.parsed or current.literal) != payload:
             value = current.model_copy(deep=True)
             value.reason = " ".join(part for part in (value.reason, f"The slide's QR code reads {payload}, "
@@ -157,40 +293,81 @@ def settle(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict 
             decision["rule"] = "person_over_barcode"
             return True
         return False
-    regions = _marked_regions(run) or [code.row.region_id]
-    value = current.model_copy(deep=True)
     literal = current.literal or ""
-    if written_whole(literal, payload):
-        held = any(reading.region_id == code.row.region_id and _held_whole(reading.text, literal)
-            for reading in readings)
-        if not held or _unsupported_layers(run, current):
-            # No reading of the code's label holds the literal whole, or the value's own parsed
-            # or normalized layer is unsupported: the field stays as it is with no code.
-            return False
-        # Rule 1: the code confirms the number the label writes.
-        run.findings[:] = [finding for finding in run.findings
-            if not (finding.rule_id == SETTLEMENT and finding.field_key == FIELD)]
-        value.evidence_relations[code.row.id] = "decides"
-        value.evidence_ids = list(dict.fromkeys([*value.evidence_ids, code.row.id]))
-        value.reason = " ".join(part for part in (_without_mark_note(value.reason),
-            f"The slide's QR code confirms this number, {payload}.") if part)
-        run.fields[FIELD] = value
-        run.findings.append(RunFinding(rule_id=SETTLEMENT, rule_version=SETTLEMENT_RULES, severity="info",
-            field_key=FIELD, reason_code=cleared_code(FIELD, code.row.region_id),
-            evidence_ids=[e for e, how in value.evidence_relations.items() if how in ("supports", "decides")]))
-        decision["rule"] = "barcode_confirms"
-        return True
-    # Rule 2: the label's number, as the literal writes it, is not the code written whole
-    # (whatever the value's parsed layer reads): the value stays, marked for a person. The code
-    # row is cited by the mark alone, so it supports none of the value's layers.
+    if number(current.normalized or current.parsed or literal) is None or not written_whole(literal, payload):
+        # Rules 1 and 2 (give), not a confirmation.
+        return False
+    held = any(reading.region_id == code.row.region_id and _held_whole(reading.text, literal)
+        for reading in readings)
+    if not held or _unsupported_layers(run, current):
+        # No reading of the code's label holds the literal whole, or the value's own parsed
+        # or normalized layer is unsupported: the field stays as it is with no code.
+        return False
+    # Rule 3: the code confirms the number the label writes.
+    value = current.model_copy(deep=True)
     run.findings[:] = [finding for finding in run.findings
         if not (finding.rule_id == SETTLEMENT and finding.field_key == FIELD)]
-    value.reason = " ".join(part for part in (_without_mark_note(value.reason), f"The slide's QR code reads "
-        f"{payload}, which differs from the number the label writes. A person compares the label with the "
-        "code.") if part)
+    value.evidence_relations[code.row.id] = "decides"
+    value.evidence_ids = list(dict.fromkeys([*value.evidence_ids, code.row.id]))
+    value.reason = " ".join(part for part in (_without_mark_note(value.reason),
+        f"The slide's QR code confirms this number, {payload}.") if part)
     run.fields[FIELD] = value
-    for region in regions:
-        run.findings.append(RunFinding(rule_id=SETTLEMENT, rule_version=SETTLEMENT_RULES, severity="warning",
-            field_key=FIELD, reason_code=marked_code(FIELD, region, DIFFERS), evidence_ids=[code.row.id]))
-    decision["rule"] = DIFFERS
+    run.findings.append(RunFinding(rule_id=SETTLEMENT, rule_version=SETTLEMENT_RULES, severity="info",
+        field_key=FIELD, reason_code=cleared_code(FIELD, code.row.region_id),
+        evidence_ids=[e for e, how in value.evidence_relations.items() if how in ("supports", "decides")]))
+    decision["rule"] = "barcode_confirms"
     return True
+
+
+def give(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict | None = None) -> bool:
+    """Rules 1 and 2: the code gives the catalogue number where no reading settled a well-formed
+    one, or the settled literal does not write the code whole. The last act of
+    step.apply_outcomes on the run, after the check stage (the module's note on order). False,
+    changing nothing, where the rule stands aside (_entry: a field a person holds authority
+    over among them), on a run with a transcript a person decided, for a row that is not on a
+    label of this run's image, and for a settled number that writes the code whole (rule 3's,
+    confirmed or left as it is)."""
+    entry = _entry(run, task, readings)
+    if entry is None or entry[1]:
+        return False
+    code = entry[0]
+    current = run.fields.get(FIELD) or FieldValue()
+    decision = {} if decision is None else decision
+    settled = current.state == ValueState.SUPPORTED and current.layer in SETTLED
+    well_formed = settled and number(current.normalized or current.parsed or current.literal) is not None
+    if well_formed and written_whole(current.literal or "", code.payload):
+        return False
+    if not _of_this_run(run, code):
+        return False
+    # Rule 1 (no reading settled a well-formed number) or rule 2 (a settled number that is not
+    # the code written whole, whatever the value's parsed layer reads).
+    return _supply(run, task, code, current, decision, settled=settled)
+
+
+def forget_stale(run) -> None:
+    """Remove the rule's own info finding READERS_DIFFER, and nothing else, when the rule no
+    longer applies to the field: the finding is on the run and the catalogue number is no longer
+    the number the code gave (supported, its literal the stored code's payload, the code row its
+    one citation and deciding it), because a person decided the field since or the run holds no
+    such code row. step.finalize_fields calls this at every finalize. It reads the field and
+    changes no field, no other finding, no reason; on a run with no READERS_DIFFER finding (every
+    run with no code row that never had one) it returns at once. PERSON_DIFFERS is not touched
+    here: like every note of the rule it is replaced when the field is researched again (confirm)."""
+    findings = getattr(run, "findings", None) or []
+    if not any(finding.rule_id == RULE and finding.reason_code == READERS_DIFFER for finding in findings):
+        return
+    code, value = stored_code(run), run.fields.get(FIELD)
+    if (code is not None and value is not None and value.state == ValueState.SUPPORTED
+            and value.literal == code.payload and value.evidence_ids == [code.row.id]
+            and value.evidence_relations.get(code.row.id) == "decides"):
+        return
+    run.findings[:] = [finding for finding in findings
+        if not (finding.rule_id == RULE and finding.reason_code == READERS_DIFFER)]
+
+
+def settle(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict | None = None) -> bool:
+    """The whole rule on a run as it is: confirm, else give (rules 1 to 3); False, changing
+    nothing, where rule 4 leaves the field as it is. step.apply_outcomes calls the two parts
+    apart, the check stage between them; a caller with no stage to run between them (a replay of
+    a stored run, a test of the rule alone) calls this."""
+    return confirm(run, task, readings, decision=decision) or give(run, task, readings, decision=decision)

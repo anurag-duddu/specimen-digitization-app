@@ -1966,16 +1966,34 @@ all equal to the truth.
    person's regions keeps them and skips the segment step
    (`human_field_carry.py`, `completed_steps = ["segment"]`), so it is never
    decoded and its catalogue number is settled as before.
-2. **Field research compares it with the catalogue number alone**
-   (`field_research/catalogue_code.py`, called by `step.apply_outcomes`
-   after the field's expert answer and its labels' settlement). The expert
-   is not told the decode. The code is compared only with the value field
-   research settled; the rule does not read numbers out of the readers'
-   texts, and it changes no value layer: it adds a confirmation or a hold.
-   - Confirm, when all three hold: the settled value's literal writes the
-     code whole (in the literal's letters and numbers alone, spaces,
-     punctuation, marks and invisible characters dropped, the code's seven
-     digits have no numeric character right before or after them); a
+2. **Field research settles the catalogue number on it, and no other
+   field** (`field_research/catalogue_code.py`, called by
+   `step.apply_outcomes` after the field's expert answer and its labels'
+   settlement). The expert is not told the decode. Since 2026-11-20 (lane
+   V3; "The code gives the number" below) the catalogue number is the
+   code's number whenever the run holds a stored decode whose payload is
+   itself a well-formed catalogue number. The code is compared with, and
+   gives, whole values only: the rule reads no number out of the readers'
+   texts and breaks no tie among readings.
+   - Rule 1, no value settled: the field is ambiguous, unresolved, not
+     present or blank, or its settled text fails the identifier format.
+     The field is settled with the code's number: supported, on the settled
+     layer, its literal and parsed text the code's digits, on the code's
+     label, the code row its one citation and deciding it. Its reason says
+     no reading settled the number and the code gives it, and quotes what
+     the readers read where the organiser gave the field candidates (whole
+     candidates, quoted and never compared). The field's marked findings go
+     and one `cleared:fmnh_ins_number:<label>` finding cites the code row.
+   - Rule 2, a value settled whose literal does not write the code whole,
+     whatever its parsed layer reads: the field takes the code's number in
+     the same way. The readers' number is kept in the reason and by an info
+     finding, `barcode_readers_differ:fmnh_ins_number`, that cites the code
+     row and the rows that backed the readers' value; it is never a reason
+     and never holds. No `barcode_differs` mark is made.
+   - Rule 3, confirm, when all three hold: the settled value's literal
+     writes the code whole (in the literal's letters and numbers alone,
+     spaces, punctuation, marks and invisible characters dropped, the code's
+     seven digits have no numeric character right before or after them); a
      reading of the code's label holds that literal at an occurrence with no
      number right before or after it (the same projection, applied to the
      text on either side); and the value's parsed and normalized layers are
@@ -1984,35 +2002,116 @@ all equal to the truth.
      code row is cited as deciding it, and the reason says the code confirms
      the number. If the literal writes the code whole but another condition
      fails, nothing changes (an `unsupported_parsed` hold stays as with no
-     code).
-   - Contradict: the settled value's literal does not write the code whole,
-     whatever its parsed layer reads. The value stays and is marked for a
-     person (`marked:fmnh_ins_number:<label>:barcode_differs`, one of the
-     run's reasons); the app says "The catalog number read from the label
-     and the number in the slide's QR code differ. Compare them."
-   - Otherwise nothing changes: no value settled (an ambiguous or
-     unresolved field included), no stored decode, a field a person
-     decided, a run not on the units path, or a run with a transcript a
-     person decided on any of its labels. In that last case, where the
-     settled value's number is not the code's, the value's reason says so
-     and an info finding `barcode_person_differs:fmnh_ins_number` cites the
-     code.
-   Residual risk: a code that is not this slide's catalogue number, whose
-   digits the readers also wrote as the number, confirms that number (and
-   removes its text_only or conflict mark); none of the 100 truth slides
-   carries such a code.
-   The rule builds no evidence row, and `step.apply_outcomes` calls it
-   inside a guard that logs any exception and puts the field, its findings
-   and its decision back as the rules above left them. No other field
-   changes. The barcode label's own `unresolved_transcription` follows the
+     code). Unchanged since 2026-11-17.
+   - Rule 4, otherwise nothing changes: no stored decode; a payload that is
+     no well-formed catalogue number, whole (`barcode.stored_code` already
+     refuses anything but seven digits); for rules 1 and 2, a row that lies
+     on no label of this run's image; a run not on the units path; a run
+     with a transcript a person decided on any of its labels; or, for every
+     part of the rule, a field a person holds authority over. In the
+     transcript's case, where a settled value's number is not the code's,
+     the value's reason says so and an info finding
+     `barcode_person_differs:fmnh_ins_number` cites the code; a field no
+     reading settled stays open.
+   A person's authority over the field is read from the run's durable state
+   through one function, the one the second opinion reads it through
+   (`second_opinion.authority`): a decision made at the decision endpoint
+   (`Run.person_decided_fields`), a decision a move or a new run carried
+   (`step.human_keys`), a research selection a person locked, a field a
+   location reassessment protects. No part of the rule acts on such a
+   field: every part enters through one function (`catalogue_code._entry`),
+   which stands aside for it, so the code neither confirms the field (its
+   reason, citations and findings stay as research left them), nor gives
+   it a number, nor replaces its value, nor notes a difference. The fifth
+   record of authority, a transcript a person decided, is rule 4's own
+   case: there the rule does nothing but its note. Research itself may ask
+   the field's expert again on a Retry (main's task selection, unchanged
+   here: it reads the carry alone); whatever that leaves is left. Codex
+   round 2 found the confirmation still acting on a number a person had
+   saved that equals the code's. That is all this rule promises: research's own answer on such a Retry can still replace
+   what the person saved (a person's number by an open field when the expert
+   names several), as on main. Codex round 1 and the sign-off review of
+   PR #458 found the earlier head reading the carry alone, so that a number
+   a person had saved at the endpoint was replaced by the code's on a Retry,
+   and a later approval cleared the record by a person with the code's
+   number.
+   The rule's two info notes (`barcode_readers_differ`,
+   `barcode_person_differs`) are replaced, never accumulated: a field
+   researched again loses both before the rule acts, and at every finalize
+   `barcode_readers_differ` goes once the field is no longer the number the
+   code gave (`catalogue_code.forget_stale`, called by
+   `step.finalize_fields`; a blocked run is not finalized, so there the note
+   waits for the field's next research).
+   Until 2026-11-20 the code confirmed or held and gave no value: rule 2's
+   case was "contradict" (the value stayed, marked
+   `marked:fmnh_ins_number:<label>:barcode_differs` and held for a person),
+   and rule 1's case changed nothing. No run makes that mark now. A record
+   finalized before keeps the mark until a new run (a settled field is not
+   researched again), and the app still words it ("The catalog number read
+   from the label and the number in the slide's QR code differ. Compare
+   them."). A record finalized before with an open number does not need a
+   new run: while it is in review with no blocker and attempts left, Retry
+   researches its open fields again (a paid research pass for each of them,
+   the number's expert included), and the code gives the number at the end
+   of that pass.
+   Order: `step.apply_outcomes` calls the rule in two parts. The
+   confirmation (rule 3, and the note beside a person's transcript) runs
+   where the rule always ran, after the field's settlement. Rules 1 and 2
+   run as the function's last act, after the check stage. So on the attempt
+   that researches the catalogue number no other field's check sees a
+   number the code gives, and neither does the re-ask's trial, which
+   applies the same outcomes on a copy of the run: every other field's
+   value, state, reason and findings, and the number of expert requests,
+   are those of the same run with no code row. Codex round 1 found the
+   earlier head giving the number before the check stage: with the code
+   0010001 and both readers writing "E. slope Mt. McKinley" over "Davao
+   Prov. 0010001", the extent check counted the given digits as a settled
+   field's text, marked the precise location and asked its expert again.
+   A later research attempt of the same run, a stated residual (the
+   coordinator's ruling of 2026-11-20, not the owner's words; proposals to
+   give the number only in an attempt that completes research, or to keep
+   and restore the value research left, were put to the coordinator and
+   ruled out: the first does not remove the case for an operator's Retry,
+   the second carries state). The coordinator's reasoning: within one
+   research attempt the code's number is given last, so every other field's
+   checks and the re-ask's trial see exactly what they see on main with the
+   same inputs, which is what the review's findings required. On a later
+   attempt of the same run (a blocked attempt and its retry or a Resume, an
+   operator's Retry of a held record, a location reassessment) the catalogue
+   number is a settled value of the run like any other, and other fields'
+   checks count it as they do on main whenever a reading settled the number:
+   the extent check no longer abstains for a number it can now account for,
+   may mark `precise_location_extent`, and the existing re-ask rule may send
+   its one request. That is the checks working on truer state, not a side
+   effect of the order. It needs a label that writes the catalogue number on
+   a locality line. A second research attempt was measured on 0 of the 151
+   base and live runs and on 5 of the 100 r3 runs. A reviewer of such a
+   record sees a flag on Precise Location with its extent reason
+   (`marked:precise_location:<label>:precise_location_extent`: the locality
+   is cut short before the higher place on its next line), as on any record
+   whose readers settled the number. Also on a later attempt, the number's
+   expert is not asked again, where on main the expert of an open number is.
+   Residual risks: a code that is not this slide's catalogue number (a
+   sticker that belongs to another specimen) now gives that number and the
+   record clears with it, whatever the readers read; and such a code whose
+   digits the readers also wrote confirms that number. None of the 97 truth
+   slides that decode carries such a code.
+   The rule builds no evidence row, and `step.apply_outcomes` calls each
+   part of it inside a guard that logs any exception and puts the field,
+   its findings and its decision back as the rules above left them. No
+   other field changes on that attempt. The barcode label's own `unresolved_transcription` follows the
    existing rule (`step.scientific_reasons`): for a label whose transcript
    is unresolved it is raised when no field is drawn from the label, or a
    drawn field is not supported or not grounded in the raw readings, unless
    S1's duplicate-label rule sets it aside because each drawn field has a
    reason of its own; so it comes back where the catalogue number's mark
-   goes and the label's readers still differ (105526522).
-3. **On the last full test, replayed** (R0's method over the stored runs,
-   the decode attached as the segment step would store it):
+   goes and the label's readers still differ (105526522), and where the
+   code gives the number. It does not hold the record then:
+   `step.code_confirmed` reads a number the code gave as one the code
+   confirms.
+3. **On the last full test, replayed, under the rule of 2026-11-17** (R0's
+   method over the stored runs, the decode attached as the segment step
+   would store it; the replay of the rule of 2026-11-20 is below):
    `marked:fmnh_ins_number` falls from 6, 6, 10 and 9 specimens a run to
    1, 2, 2 and 0 (the 2s are 105526487's new `barcode_differs`; the 1 is
    105526446, which does not decode). 104 settled values are confirmed and
@@ -2029,12 +2128,183 @@ all equal to the truth.
    the number across a line break, and a spaced number that made research
    fail. A later attempt must hold all of these, and should compare the
    code with the first pass's reading units for the catalogue number (a
-   whole unit's text), not search the raw text.
+   whole unit's text), not search the raw text. The rule of 2026-11-20
+   breaks no tie either: it picks no reader's text, and gives the code's
+   own number whole; each of those cases is a test of it.
+
+### The code gives the number (2026-11-20, lane V3)
+
+**Authority.** The rule is the coordinator's ruling of 2026-11-20, not the
+owner's own words. It is made under the owner's ruling of 2026-11-18, typed
+after the coordinator reported the barcode rules holding records for a
+person (quoted exactly in `docs/execution/autonomy/PLAN.md` section 4):
+"rather than holding for a person, I'd like you to figure out how to resolve
+these simpler things. I dont see a huge confluct there honestly. When we
+have multiple readers etc it is natural to see different values, we shouldnt
+be paralysed by it, our harness helps in clarifying anyway so the goal is to
+self resolve." His words of 2026-11-17 bind it too: "it is important to not
+make mistakes because people wont trust it"; so it was measured before it
+was built.
+
+The owner's words of 2026-10-26 bear on it as well. They are recorded in
+`docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md`,
+section 1 ("The pipeline, in the owner's words", line 32; that document says
+its quotations are copied as typed), and read, exactly as that line has
+them: "Finally first pass never settles, it has to go to harness(QR is a straight pass, ignore that, I’m talking about specimens data)".
+Reading "a straight pass" as "the code's number is the catalogue number
+without the harness settling it" is the coordinator's reading, not his
+words.
+
+**Why.** On the released code (e83c36fd) a record clears when its catalogue
+number is settled. In the live confirmation run of that code, of the 52
+records finalized when its rows were last read (2026-11-20, the run still
+in progress), 12 were held: 4 with no number settled, 4 as
+`barcode_differs` and 4 over label coverage. The slide's QR code had been
+decoded on all 8 held over the number.
+
+**Measured first** (free, before any code; the 100 truth slides):
+
+| | Slides |
+|---|---|
+| The released segment step stores a decode | 97 |
+| The decode equals the truth's catalogue number | 97 |
+| The decode differs from the truth | 0 |
+| No decode stored (105526336, 105526446, 105526715) | 3 |
+
+In the stored base runs field research settled a number on 91 slides: equal
+to the truth on 88, wrong on 3 (105526356 "4486748" for 4486749, 105526771
+"448634" for 4486334, 105527231 "4465874" for 4485874; each already held as
+`barcode_differs`), and none on 9, of which 8 decode.
+
+**Replayed with the real code** (K1's replay, the decode attached; before is
+e83c36fd, after is this change, replayed again after the review's changes
+with the same figures; the second opinion fed its 95
+stored answers on both sides):
+
+| Stored runs of the 100 truth slides | Clear before | Clear after | Wrong catalogue numbers among cleared, before / after |
+|---|---|---|---|
+| Base (wp26 r1/pair 30 + base70 r1/pair 70) | 83 | 94 | 0 / 0 |
+| r3 (reader A Kimi) | 71 | 83 | 0 / 0 |
+
+Every record that moves goes from needs review to cleared, with the truth's
+number. Base, 11: rule 1 on 105526455, 105526487, 105526563, 105526658,
+105526686, 105526854, 105527051 and 105527241 (no number settled); rule 2
+on 105526356, 105526771 and 105527231 (the three wrong numbers above, each
+replaced by the code's). r3, 12: rule 1 on 105526322, 105526326, 105526330,
+105526455, 105526523, 105526658, 105527144, 105527218 and 105527285; rule 2
+on 105526356, 105526686 ("4456419" for 4486419) and 105527231. Still held
+after, base: label coverage unconfirmed 4; `text_only` on 105526446, which
+does not decode; one run that never finalized.
+
+Nothing else moves, on all 200 replayed runs: every other field's whole
+value is identical (0 differ), every finding that is not the catalogue
+number's is identical, the second opinion's stored result is identical, and
+a second finalize reads the same record. The check stage, run again on
+each of the 189 finalized runs with the number as the code left it and as
+research left it, makes the same marks and leaves the same reasons on all
+189, so the given number would put no field back to its expert on these
+slides. A replay researches nothing, so the expert requests are the stored
+ones on both sides (base 4,142, r3 3,957). The reasons that differ are the
+catalogue number's own, gone (base 16 `mandatory_unresolved` and
+`identifier_format`, 3 `barcode_differs`; r3 18 and 3), and two open
+reasons, new, that hold nothing: `label_unsettled:fmnh_ins_number` (base
+10, r3 9) and the code's label's `unresolved_transcription` (base 2, r3 1).
+They come from the field now being drawn from the code's label: an open
+catalogue number cites no row, so no label counted it.
+
+The records that newly clear bring their other fields' values into the
+cleared set, unchanged. Scored as K1 scored them (`score_k1c.py`, the
+product view, values shown as settled with no mark inside cleared records):
+base 429 right and 5 wrong before, 505 right and 6 wrong after; r3 399 and
+3 before, 477 and 4 after. The one more wrong value is on 105526455, which
+clears on rule 1: Province/State "Utah" where the truth is "Idaho" (the
+second opinion agrees with "Utah", from the printed heading "Siphonaptera
+of Utah"). The value is the same before and after; before, the record that
+carries it was held for its catalogue number. In the base run the app flags
+it (`label_unsettled:province_state`: its label has one reader); in the r3
+run it carries no flag.
+
+On the live rows of the released code read on 2026-11-20 (52 rows, the run
+still in progress; the rule's real function on each row's stored value,
+readings and decode, the finalize predicted from the row's reasons): 40
+clear before, 48 after, 0 wrong catalogue numbers before and after; the
+decode equals the truth on 51 of 51; the 4 records still held are all label
+coverage unconfirmed.
+
+**What the stored rows prove, and what they cannot.** They prove the rule's
+decision and the finalize on real stored fields, readings, regions and
+images: `catalogue_code.settle` and `step.finalize_fields` are the real
+code. They cannot prove: the path through `step.apply_outcomes` (its guard
+and its order after the expert's answer), which the unit tests take; the
+segment step's own decode on the released regions (the replay attaches a
+decode made from the truth set's copy of the image and the stored run's
+regions: 96 base runs and 87 r3 runs, against 97 on the released code's own
+build); the reason's quotation of what the readers read (a stored open
+number cites no organiser row, so no replayed reason quotes any; the live
+rows, which keep the organiser's candidates, do); a field whose research
+failed, and a person's decisions (none in the stored runs); the 1 base and
+10 r3 runs that never finalized, left as stored.
+
+**What follows from it.**
+- The three slides with no decode are unchanged: two clear on their
+  readings as before, and 105526446 stays held by `text_only`. The
+  identifier-format hold stays for a number neither a reading nor the code
+  settles.
+- The value is on the settled layer with the code's digits as its literal,
+  so the app shows it with the basis it shows for every catalogue number
+  ("As written": the label carries the code and the code writes the number)
+  and its cleared finding reads "Confirmed on Label N by the image, a
+  source or a person"; the reason names the QR code. No app change.
+- Nothing is stored beyond the field's value, its findings and its citation
+  of the code row. A settled field is not researched again
+  (`step.build_tasks`), so Retry and Resume keep it; a re-finalize, and so a
+  history restore or a person's decision elsewhere, reads the same record;
+  a person's later decision on the field replaces it, and from then on no
+  part of the code's rule changes that field, its reason, its citations or
+  its settlement findings (`catalogue_code._entry`, reading
+  `second_opinion.authority`); the rule only removes its own earlier info
+  notes from the run.
+- A field whose expert failed with a retryable failure takes the code's
+  number in that attempt; the attempt is blocked for its retry as before,
+  and the retry does not ask the expert again (a later attempt of the run:
+  "Order" above says what else it sees).
+- A person's correction of a number the code gave, saved on the app's
+  prefilled evidence, stays held after the person approves. The app prefills
+  a correction with the field's own rows, and for a code-given number that
+  is the code's own row, which does not hold the person's number: the record
+  is held by `evidence_does_not_support_value:fmnh_ins_number`, where main,
+  whose field cites the readers' rows, clears it by a person. It holds and
+  never overrides: the value is the person's throughout. After a Retry
+  research settles the readers' number on the readers' rows and the record
+  is cleared by a person with the person's number (measured by the sign-off
+  review of ccb026f9 beside origin/main, and by
+  `test_a_correction_on_the_prefilled_evidence_stays_held_after_approval_until_a_retry`).
+  A correction that cites a reader's row is not held.
+- A person's approval given while the number was open is withdrawn when the
+  code gives the number, as for any value research changes after an
+  approval (#450's digest): the record clears by the system's rules and is
+  not shown as approved by a person.
+- A cleared record whose barcode label's readers differ carries
+  `label_unsettled:fmnh_ins_number` among its open reasons (13 of the 94
+  base records that clear; 3 of them already today, where the code
+  confirms), so the app flags the field although the code decides it.
+  `step.label_attention` is unchanged here; lifting that flag is a separate
+  decision.
 
 Tests: `tests/test_barcode.py` (codes made by zxing-cpp's encoder in the
 test; no museum image is committed) and
-`tests/field_research/test_catalogue_code.py` (each rule, and that a run
-with no code row, and every other field, settle exactly as before).
+`tests/field_research/test_catalogue_code.py` (115 cases: each rule and each
+exclusion, the earlier reviews' cases, and that a run with no code row, and
+every other field, settle exactly as before; every record of a person's
+authority; and Codex's locality case, with the expert requests counted) and
+`tests/field_research/test_catalogue_code_person.py` (17 cases: on the
+published profile through the real decision endpoint, Retry and Resume, the
+sign-off review's person sequences, and a person saving the code's own
+number, after research and before it, compared with a record with no code
+row; the rule's notes; and that the one call
+in `finalize_fields` leaves a run with no code row equal in every stored
+value). Sixteen earlier cases changed
+expectation with the rule: each is kept and says what e83c36fd did.
 
 ## The second opinion (2026-11-18)
 

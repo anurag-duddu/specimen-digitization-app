@@ -88,14 +88,16 @@ def coded(rig):
     return rig
 
 
-def rig_of(folder, blanks=(), *, opinion=None, profile=None):
+def rig_of(folder, blanks=(), *, opinion=None, profile=None, code=True):
     """The rig's record with the readers differing and the code confirming the number; `opinion` answers the
-    second opinion's step (None: switched off)."""
+    second opinion's step (None: switched off). `code=False` stores no decode of the slide's QR code: with one, the
+    code gives a record its catalogue number where no reading settled it (catalogue_code, PR #458)."""
     text, other, candidates, script = differing(blanks)
     rig = build_rig(folder, text, other, candidates=candidates, profile=profile or published())
     mounted(rig, script)
     rig.workflow.second_opinion = None if opinion is None else so.SecondOpinionStep(model_factory=opinion.factory)
-    coded(rig)
+    if code:
+        coded(rig)
     rig.clock.now = AHEAD
     return rig
 
@@ -400,7 +402,7 @@ def test_the_catalogue_number_is_never_affected(tmp_path):
     own = [f"{LABEL_UNSETTLED}:{CATALOGUE}", f"{UNRESOLVED}:{CATALOGUE}", f"{UNRESOLVED}:identified_by_irn"]
     assert so.unflagged(run, own, mandatory=()) == own and f"{LABEL_UNSETTLED}:{CATALOGUE}" in run.open_reasons
     blank = dict.fromkeys(BLANKS)
-    lacking = rig_of(tmp_path / "lacking", (*blank, CATALOGUE), opinion=Opinion(answer_of(BLANKS)))
+    lacking = rig_of(tmp_path / "lacking", (*blank, CATALOGUE), opinion=Opinion(answer_of(BLANKS)), code=False)
     held = to_end(lacking).run
     assert held.disposition == Disposition.REVIEW and f"{UNRESOLVED}:{CATALOGUE}" in held.reasons
     assert finalized(held, rules=False).reasons == held.reasons
