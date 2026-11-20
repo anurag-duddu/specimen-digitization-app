@@ -27,7 +27,7 @@ from specimen_digitization.application.storage import Conflict, SQLiteRepository
 from specimen_digitization.application.workflow import Workflow
 
 SCOPE = Scope(organization_id="00000000-0000-4000-8000-000000000001", collection_id="insects")
-ALLOWANCE = 28_000_000
+ALLOWANCE = 40_000_000
 
 
 def ident(name):
