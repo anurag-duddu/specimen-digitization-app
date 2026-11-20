@@ -2222,6 +2222,87 @@ marked or of the wrong format; label coverage unconfirmed; research given
 up; a person's pending approval or another standing hold) stays held
 whatever the second opinion says (`tests/field_research/test_second_opinion_skeletal.py`).
 
+**An agreed value and an agreed blank carry no flag (2026-11-19, work package F2).**
+The name is the work package's; what the rules do is remove named reason
+codes, and a field another open reason still names stays flagged.
+Two rules, the coordinator's rulings on lane H1's measurement over the 100 truth
+slides (not the owner's words; `docs/execution/autonomy/PLAN.md`, F2), derived
+at every finalize from the stored result and the run as it is now
+(`second_opinion.unflagged`, called by `step.finalize_fields` once the reasons
+are split and `label_attention` and `incomplete_reasons` have added theirs).
+Nothing is stored or carried; only the optional fields' doubts
+(`run.open_reasons`) are shortened, so no reason that holds a record, no
+value, state, reason text, mark, finding or evidence row changes, and no
+record clears or holds differently.
+- Rule A, an agreed value: `label_unsettled:<field>` is not an open reason
+  for a field settled with a value whose recorded verdict for its current
+  shown value is "agrees" (the same currency test the marks use: a value
+  changed since it was judged is not agreed). The three date fields are
+  excepted and keep the code. Every other code naming the field stays, a
+  mark among them, so a field another reason still names stays flagged.
+  Rule A is skipped on a run any label of which one reader read (a reason
+  of that finalize, holding or open, is
+  `independent_observations_missing:<label>`: `second_opinion.one_reader`,
+  record level, with no tracing of which field is drawn from which label):
+  every agreed value of such a run keeps its flag.
+- Rule B, an agreed blank: `mandatory_unresolved:<field>` and
+  `label_unsettled:<field>` are not open reasons for a field that is blank
+  (`not_present`, nothing shown) where the second opinion's own answer for
+  the field is blank too: the stored `answer` keeps every one of the 20
+  fields as `{value, evidence}`, and a blank is a null value whose text does
+  not start with UNSURE (`read_answer`'s rule). Verbatim D/T/S and Habitat
+  are excepted and keep their codes whatever the second opinion says.
+  `research_incomplete:<field>`, `taxonomy_unresolved` and every mark stay,
+  so a blank field one of them names stays flagged: a blank Taxon the second
+  opinion also leaves blank loses these two codes and keeps
+  `taxonomy_unresolved`, and the app still flags it.
+  A blank where the second opinion reads a value keeps its codes (a
+  missed-value signal). A one-reader label does not stop rule B.
+- Neither rule applies: to the catalogue number or the determiner's IRN
+  (never judged); to a field the run's own pinned profile makes mandatory
+  (there the code holds the record as before, on the published profile and
+  on an older pinned one alike); to a field a person holds authority over
+  (`second_opinion.authority`); on a run a person approved; on a run not on
+  the units path; while the stored result is not obtained, switched off or
+  unconfigured, or its intent was open (an open intent is abandoned first:
+  not obtained); or while a value the step answers for has no verdict for
+  its current value (`second_opinion.due`: the record's flags are then as
+  without the rules until the step has run again).
+- Rule B also needs the answer current for the run
+  (`second_opinion.answer_current`), by what the stored result and the run
+  record: the labels it was asked on (`labels`) are the run's labels in the
+  step's order; no label's transcript is a person's (`Transcript.actor`: the
+  request reads the two readers' texts only); and no reading is newer than
+  the request (each `Observation.created_at` against the stored `at`, both
+  read as ISO times with an offset). What it cannot establish is not
+  current, and the flags stay. A correction of regions and a Reprocess start
+  a new run, which holds no stored result.
+Two conditions are the coordinator's rulings of 2026-11-20 on the live
+confirmation rows, which held what the replay did not. The one-reader
+condition on rule A: an agreed value needs two independent readings behind
+it. Slide 105526455 settled Province/State "Utah" for Idaho from a label one
+reader read (a printed "Siphonaptera of Utah" form with "Ida" written on
+it); the second opinion, given that one reader's text, agreed, and rule A as
+first ruled would have lifted the value's only flag. Rule B does not take
+the condition: a blank is no wrong value shown as settled, the second
+opinion reads the crops itself, and the 63 blanks it agreed on the replay's
+one-reader records were all truly absent. Habitat as rule B's exception: a
+bare host name is a known miss of field research and of the second opinion
+alike (lane H1: 48 blank Habitats where the truth has a host; slide
+105526418, "CALLOSPERMOPHILUS", blank, agreed blank and missed), so their
+agreement on a blank Habitat proves nothing until hosts are filled.
+Measured on the 100 truth slides (the stored runs replayed on this code with
+the stored second-opinion answers, each run finalized with and without the
+rules: `~/specimen-golive/autonomy-program/F2/`): of 200 runs none differs in
+anything but its open reasons; on the 83 records that clear, rule A removes
+146 flags, all on right values, and rule B 125, all on truly absent values;
+a cleared record's flagged fields go from 11.16 to 7.89 on average. Known
+limits: small samples per field type; the second opinion sees both readers'
+texts, so a misreading both readers share can be agreed. Tests:
+`tests/field_research/test_agreed_no_flag.py`; the two cases at the end of
+`tests/fixtures/field_attention.json` (no code, no attention; no change in
+the app).
+
 **The request.** Route `second-opinion-muse-spark` (Muse Spark Open 816B on
 Baseten through the Hugging Face router; tool choice required, 8,000 output
 tokens, no request options: the fields benchmark's pins; USD 1.25 in and
@@ -3020,14 +3101,14 @@ or fallback, a spent per-field or per-specimen meter among them, is that field's
 | `unsupported_parsed`, `unsupported_normalized`, `unsupported_authority_id`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing` on `fmnh_ins_number` | holds |
 | `unresolved_transcription:<label>`, `independent_observations_missing:<label>`, a label's language rule `<reason>:<label>` | holds when the catalogue number is drawn from the label and the slide's QR code does not confirm it; otherwise (a label only optional fields are drawn from, a label no field is drawn from, a label whose first pass was given up) an optional field's doubt |
 | `raw_provenance_missing:<label>` | holds when the catalogue number is drawn from the label (the code does not stand in for a missing raw reading); otherwise an optional field's doubt |
-| the field codes above on an optional field (`mandatory_unresolved`, `unsupported_*`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing`, `marked`) | an optional field's doubt |
+| the field codes above on an optional field (`mandatory_unresolved`, `unsupported_*`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing`, `marked`) | an optional field's doubt. Since work package F2, `mandatory_unresolved:<field>` is not given for a blank (`not_present`) optional field, Verbatim D/T/S and Habitat excepted, that the obtained, current second opinion also leaves blank ("The second opinion", rule B); on a run whose pinned profile makes the field mandatory it is given and holds as before |
 | `research_incomplete:<optional field>` (new: a failure, a limit, a spent per-field or per-specimen meter, a request too large, an outage or deadline on the last attempt, or the expert's fallback) | an optional field's doubt; the field keeps its own reason (`FIELD_REASONS`) |
 | `taxonomy_unresolved`, `identified_by_irn_identity_unproved` | an optional field's doubt |
 | `elevation_invalid`, `elevation_range`, `elevation_units_conflict`, `date_precision_requires_review`, `date_order` | an optional field's doubt |
 | `field_research_given_up` (new: research given up for the run as a whole) | holds; derived on every finalize from the give-up's finding on the run, which the next research attempt removes |
 | `preserved_human_decision:<field>` | holds (recomputed from a person's decisions on every finalize) |
 | `human_approval_required`, `history_restored_requires_review`, `location_reassessment_unconfirmed:<field>` | holds; derived on every finalize from `run.pending_review` (`application/standing_holds.py`), recorded when a person decides, a history is restored or a reassessment leaves a field unproved, and cleared by a person's approval (the reassessment's entries also by the reassessment that settles them) |
-| `label_unsettled:<field>` (new: a field drawn from a label whose doubt is open, `step.label_attention`) | never holds: the field's attention only |
+| `label_unsettled:<field>` (new: a field drawn from a label whose doubt is open, `step.label_attention`) | never holds: the field's attention only. Since work package F2 it is not given for an optional field settled with a value the second opinion agrees with (the three date fields excepted, and not on a run with a label one reader read), nor for an agreed blank field ("The second opinion", rules A and B); a field another open reason still names stays flagged |
 | an operational failure (`lookup_operational_failure`, `field_research_model_error`, `field_research_timeout` `:<field>`, the blocker) | holds: the run is blocked, as before |
 | `evidence_integrity_failure` | never a reason: the step blocks, as before |
 | ordinary path: `institutional_policy_unapproved`, `mandatory_semantics_unconfirmed`, `evidence_lineage_invalid:<row>`, its capability reason | holds |

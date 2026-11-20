@@ -4753,6 +4753,11 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     by_key = {outcome.key: outcome for outcome in outcomes}
     # An optional field research could not finish is that field's doubt (plan WP K1).
     run.open_reasons = [*run.open_reasons, *incomplete_reasons(run, profile, work, by_key, earlier)]
+    # An agreed value and an agreed blank carry no flag (plan WP F2): derived from the second opinion's
+    # stored result and the fields as they are, on the optional fields' doubts only.
+    from .second_opinion import unflagged
+
+    run.open_reasons = unflagged(run, run.open_reasons, mandatory=profile.mandatory_fields, held=human)
     # The holds derived from the run's own state, never from an earlier reasons list: what a person
     # must still review, research given up for the run (application/standing_holds.py).
     human = [*human, *derived_holds(run)]
