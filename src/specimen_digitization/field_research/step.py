@@ -2942,12 +2942,14 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             _settlement(run, tasks_by_key[outcome.key], outcome, readings=readings, by_name=by_name,
                 sources=received.get(outcome.key, ()), decision=decisions.get(outcome.key, {}), **given)
     # The catalogue number, where the segment step stored a decode of the slide's QR code, is
-    # compared with it after its expert's answer and its settlement (catalogue_code.settle).
+    # settled on it after its expert's answer and its settlement (catalogue_code.settle): the
+    # code gives the number where no reading settled one or the settled number is not the
+    # code's, and confirms a number that writes it whole.
     from .catalogue_code import FIELD as CATALOGUE, settle as settle_on_the_code
 
     if CATALOGUE in tasks_by_key and CATALOGUE not in human and units_path(run):
-        # The code can only add a confirmation or a hold: any exception inside it is logged and
-        # the field, its findings and its decision are put back as the rules above left them.
+        # The code never fails research: any exception inside its rule is logged and the
+        # field, its findings and its decision are put back as the rules above left them.
         kept_value = run.fields.get(CATALOGUE)
         kept_findings = list(run.findings)
         kept_decision = dict(decisions.get(CATALOGUE, {}))
@@ -2958,6 +2960,8 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
             LOGGER.warning("catalogue number not compared with the slide's QR code", exc_info=True)
             if kept_value is not None:
                 run.fields[CATALOGUE] = kept_value
+            else:
+                run.fields.pop(CATALOGUE, None)
             run.findings[:] = kept_findings
             decisions[CATALOGUE] = kept_decision
     # The check stage, last: an inference whose rule's conditions all hold fills an open field,
@@ -2995,9 +2999,10 @@ def marked_code(key: str, region_id: str, why: str) -> str:
     """`marked:<field>:<label>:<why>`: the label settled the field on a text that only
     readers that agree or another label back (text_only), or against another backed
     text (conflict); or the label writes a part of a field whose parts lie on different
-    labels, left ambiguous (parts_on_labels, PARTS); or its readers agree on a catalogue
-    number the slide's QR code contradicts, left ambiguous (barcode_differs,
-    catalogue_code.DIFFERS)."""
+    labels, left ambiguous (parts_on_labels, PARTS); or, on a record finalized before
+    2026-11-20, its readers agree on a catalogue number the slide's QR code contradicts
+    (barcode_differs, catalogue_code.DIFFERS: no run makes that mark now, the field takes
+    the code's number)."""
     return f"marked:{key}:{region_id}:{why}"
 
 
@@ -4598,7 +4603,8 @@ def code_confirmed(run) -> frozenset[str]:
     (never from a stored relation alone): the run's one stored code row is of this run's image and
     one of its labels; the field is supported, settled or as written, with a literal that writes the
     code's number whole and a value whose number is the code's (catalogue_code.written_whole and
-    number, #452's own comparison); and no mark is on the field. Else nothing."""
+    number, #452's own comparison); and no mark is on the field. A number the code itself gave
+    (catalogue_code, rules 1 and 2) is such a value: its literal is the code's digits. Else nothing."""
     from specimen_digitization.application.barcode import FIELD, stored_code
     from .catalogue_code import SETTLED, number, written_whole
 
@@ -4654,8 +4660,8 @@ def split_reasons(run, reasons: Sequence[str], *, mandatory: Iterable[str]) -> t
         if code in LABEL_DOUBTS or code in LABEL_PROVENANCE or code in language:
             keys = label_fields(run, rest)
             if code not in LABEL_PROVENANCE:
-                # The catalogue number the slide's QR code confirms is not the readers' doubt: the
-                # code, read from the image, decides it (catalogue_code, rule 1).
+                # The catalogue number the slide's QR code confirms or gives is not the readers'
+                # doubt: the code, read from the image, decides it (catalogue_code, rules 1 to 3).
                 keys -= code_confirmed(run)
         elif code not in FIELD_DOUBTS:
             holds.append(reason)
