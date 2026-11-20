@@ -389,6 +389,125 @@ def test_the_catalogue_number_is_never_affected(tmp_path):
     assert finalized(held, rules=False).reasons == held.reasons
 
 
+# ---- a label one reader read: neither rule applies on the run (the coordinator's ruling of 2026-11-20) --------
+
+ONE_READER = "independent_observations_missing"
+
+
+def read_by_one_reader(rig, index=0):
+    """The label's two readings come from one model, so no second independent reader read it
+    (step.scientific_reasons: `independent_observations_missing:<label>`); saved before research."""
+    stored = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    run = stored.run
+    mine = [item for item in run.observations if item.region_id == run.regions[index].id]
+    for item in mine[1:]:
+        item.model_id = mine[0].model_id
+    rig.specimen = rig.repository.save(rig.principal, stored, stored.version, "one-reader", "one-reader")
+    return rig
+
+
+def read_by_two_again(run, index=0):
+    """The missing independent reading supplied: the label's readings are two models' again."""
+    mine = [item for item in run.observations if item.region_id == run.regions[index].id]
+    for number, item in enumerate(mine[1:], start=1):
+        item.model_id = f"another-reader-{number}"
+
+
+def a_second_label(monkeypatch):
+    """build_rig's specimen with a second label no field is drawn from (a note both readers read alike)."""
+    import hashlib
+    import io
+
+    import test_step as rig_module
+    from PIL import Image
+
+    from specimen_digitization.application.domain import Observation, Region
+    from specimen_digitization.application.region_pixels import region_png
+
+    original = rig_module.make_specimen
+
+    def make(blobs, text=TEXT, other=None, **kwargs):
+        specimen = original(blobs, text, other, **kwargs)
+        run = specimen.run
+        output = io.BytesIO()
+        Image.new("RGB", (100, 100), "white").save(output, format="JPEG", quality=95)
+        region = Region(asset_id=specimen.asset.id, x=0, y=50, width=100, height=50, order=1,
+            method="synthetic_fixture_region", version="1")
+        crop_png = region_png(Image.open(io.BytesIO(output.getvalue())), region)
+        region.crop_ref = blobs.put(crop_png)
+        run.regions.append(region)
+        for route in run.profile.routes:
+            raw = ("SYNTHETIC FIXTURE " + route + "\nA note").encode()
+            run.observations.append(Observation(region_id=region.id, route_id=route, model_id="synthetic-" + route,
+                provider="synthetic", prompt_version="prompt:" + route,
+                input_sha256=hashlib.sha256(crop_png).hexdigest(), input_asset_id=specimen.asset.id,
+                input_crop_ref=region.crop_ref, literal_text="A note", raw_ref=blobs.put(raw),
+                raw_sha256=hashlib.sha256(raw).hexdigest()))
+            run.completed_steps.append(f"transcribe:{region.id}:{route}")
+        return specimen
+
+    monkeypatch.setattr(rig_module, "make_specimen", make)
+
+
+def test_a_value_on_a_label_one_reader_read_keeps_its_flag_though_the_second_opinion_agrees(tmp_path):
+    """Slide 105526455 on the live rows: Province/State "Utah" for Idaho, agreed by a second opinion that saw
+    one reader's text. Every flag of the run is as without the rules; with the reading supplied they apply."""
+    run = to_end(read_by_one_reader(rig_of(tmp_path, opinion=Opinion(answer_of())))).run
+    label = run.regions[0].id
+    assert (run.disposition, run.reasons, run.second_opinion["status"]) == (Disposition.CLEARED, [], so.OBTAINED)
+    assert f"{ONE_READER}:{label}" in run.open_reasons and not so.due(run)
+    assert run.second_opinion["fields"]["province_state"]["verdict"] == so.AGREES_VERDICT
+    assert lifted(run) == set() and fresh(run)
+    assert codes(LABEL_UNSETTLED, values_of(run)) <= set(run.open_reasons) and values_of(run) <= flagged(run)
+    read_by_two_again(run)
+    field_step.refinalize(run, today=TODAY)
+    assert f"{ONE_READER}:{label}" not in run.open_reasons and fresh(run)
+    assert lifted(run) == codes(LABEL_UNSETTLED, values_of(run)) and not values_of(run) & flagged(run)
+
+
+def test_a_blank_field_on_a_run_with_a_one_reader_label_keeps_its_flags(tmp_path):
+    run = to_end(read_by_one_reader(rig_of(tmp_path, BLANKS, opinion=Opinion(answer_of(BLANKS))))).run
+    assert so.answer_current(run) and not so.due(run) and run.disposition == Disposition.CLEARED
+    assert lifted(run) == set() and fresh(run)
+    assert blank_codes() <= set(run.open_reasons) and AGREED_BLANKS <= flagged(run)
+    read_by_two_again(run)
+    field_step.refinalize(run, today=TODAY)
+    assert lifted(run) == blank_codes() | codes(LABEL_UNSETTLED, values_of(run)) and fresh(run)
+
+
+def test_a_field_drawn_from_another_label_of_a_run_with_a_one_reader_label_keeps_its_flag(tmp_path, monkeypatch):
+    """Record level: the one-reader label is the second, from which no field is drawn; every field is drawn
+    from the first, which both readers read. No flag of the run is lifted until the reading is supplied."""
+    a_second_label(monkeypatch)
+    rig = rig_of(tmp_path / "rig", BLANKS, opinion=Opinion(answer_of(BLANKS)))
+    run = to_end(read_by_one_reader(rig, 1)).run
+    first, second = (region.id for region in sorted(run.regions, key=lambda r: r.order))
+    assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
+    assert f"{ONE_READER}:{second}" in run.open_reasons and f"{ONE_READER}:{first}" not in run.open_reasons
+    assert field_step.label_fields(run, second) == frozenset() and so.answer_current(run) and not so.due(run)
+    assert lifted(run) == set() and fresh(run)
+    assert blank_codes() | codes(LABEL_UNSETTLED, values_of(run)) <= set(run.open_reasons)
+    read_by_two_again(run, 1)
+    field_step.refinalize(run, today=TODAY)
+    assert not any(code.startswith(ONE_READER) for code in run.open_reasons)
+    assert lifted(run) == blank_codes() | codes(LABEL_UNSETTLED, values_of(run))
+
+
+def test_a_one_reader_label_that_holds_the_record_is_read_from_the_holding_reasons_too(tmp_path):
+    run = to_end(rig_of(tmp_path, BLANKS, opinion=Opinion(answer_of(BLANKS)))).run
+    doubts = sorted(blank_codes() | codes(LABEL_UNSETTLED, values_of(run)))
+    mandatory = published().mandatory_fields
+    assert so.unflagged(run, doubts, mandatory=mandatory) == []
+    assert so.unflagged(run, doubts, mandatory=mandatory, held=[f"{ONE_READER}:a-label"]) == doubts
+    assert so.unflagged(run, [*doubts, f"{ONE_READER}:a-label"], mandatory=mandatory) == [*doubts,
+        f"{ONE_READER}:a-label"]
+    readings = field_step.run_readings(run)
+    assert so.agreed(run, readings, mandatory=mandatory, reasons=[f"{ONE_READER}:a-label"]) == (frozenset(),
+        frozenset())
+    assert so.agreed(run, readings, mandatory=mandatory, reasons=["unresolved_transcription:a-label"])[1] == (
+        AGREED_BLANKS)
+
+
 # ---- a person's field, an approved run; derived, never stale -------------------------------------------------
 
 def fresh(run):

@@ -4757,7 +4757,7 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     # stored result and the fields as they are, on the optional fields' doubts only.
     from .second_opinion import unflagged
 
-    run.open_reasons = unflagged(run, run.open_reasons, mandatory=profile.mandatory_fields)
+    run.open_reasons = unflagged(run, run.open_reasons, mandatory=profile.mandatory_fields, held=human)
     # The holds derived from the run's own state, never from an earlier reasons list: what a person
     # must still review, research given up for the run (application/standing_holds.py).
     human = [*human, *derived_holds(run)]

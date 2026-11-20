@@ -47,7 +47,9 @@ on lane H1's measurement). Derived from the stored result and the run as it is n
 or carried, and only the optional fields' doubts (run.open_reasons) are read: a reason that holds the
 record is never touched, and a field the run's own profile makes mandatory is never lifted. With the
 result obtained and nothing the step answers for left unjudged (not `due`), on a run no person
-approved, for a judged field no person holds authority over:
+approved and every label of which two independent readers read (no reason of the run, holding or
+open, is `independent_observations_missing:<label>`: where one reader read a label the second opinion
+saw one reader's text, and its agreement is weaker), for a judged field no person holds authority over:
 - `label_unsettled:<field>` is not an open reason for a field settled with a value whose recorded
   verdict for its current shown value is "agrees", the three date fields excepted (AGREED_VALUE_EXCEPT);
 - `mandatory_unresolved:<field>` and `label_unsettled:<field>` are not open reasons for a field that is
@@ -532,6 +534,17 @@ def own(code: str) -> bool:
 AGREED_VALUE_EXCEPT = DATES
 AGREED_BLANK_EXCEPT = frozenset({"verbatim_dts"})
 MANDATORY_UNRESOLVED = "mandatory_unresolved"
+# The coordinator's ruling of 2026-11-20 on the live confirmation rows: "agreed" needs two independent
+# readings behind it. A label one reader read (step.scientific_reasons' code) gave the second opinion
+# one reader's text only; on the live rows a value on such a label was agreed and wrong (slide
+# 105526455, "Utah" for Idaho: of three agreed values on one-reader labels there, 2 right and 1 wrong).
+# So neither rule applies on a run that carries the code for any label: its flags are as without the rules.
+ONE_READER = "independent_observations_missing"
+
+
+def one_reader(reasons: Sequence[str]) -> bool:
+    """Whether a reason says one reader read a label (`independent_observations_missing:<label>`)."""
+    return any(isinstance(reason, str) and reason.partition(":")[0] == ONE_READER for reason in reasons)
 
 
 def _instant(text) -> datetime | None:
@@ -584,19 +597,21 @@ def _blank_answer(entry) -> bool:
     return not (value and value.strip()) and not evidence.strip().upper().startswith("UNSURE")
 
 
-def agreed(run, readings: Sequence[Reading] = (), *, mandatory=()) -> tuple[frozenset[str], frozenset[str]]:
+def agreed(run, readings: Sequence[Reading] = (), *, mandatory=(),
+        reasons: Sequence[str] = ()) -> tuple[frozenset[str], frozenset[str]]:
     """(the fields settled with a value the second opinion agrees with, the blank fields it leaves blank
     too): the fields the two rules of the module docstring lift flags from, on the run as it is now.
     Both empty unless the run is on the units path, no person approved it, the stored result is
-    obtained and nothing the step answers for is unjudged (`due`). Never a field the run's profile
-    makes mandatory (`mandatory`), a field the step does not judge (the catalogue number, the IRN), or
-    one a person holds authority over (`authority`)."""
+    obtained, nothing the step answers for is unjudged (`due`), and none of the run's `reasons` (this
+    finalize's, holding and open) says one reader read a label (`one_reader`). Never a field the run's
+    profile makes mandatory (`mandatory`), a field the step does not judge (the catalogue number, the
+    IRN), or one a person holds authority over (`authority`)."""
     from .step import units_path
 
     nothing = (frozenset(), frozenset())
     stored = getattr(run, "second_opinion", None)
     if (not units_path(run) or getattr(run, "human_approved", False) or not isinstance(stored, Mapping)
-            or stored.get("status") != OBTAINED or due(run)):
+            or stored.get("status") != OBTAINED or one_reader(reasons) or due(run)):
         return nothing
     entries, answer = judged_fields(run), stored.get("answer")
     current = isinstance(answer, Mapping) and answer_current(run)
@@ -617,16 +632,18 @@ def agreed(run, readings: Sequence[Reading] = (), *, mandatory=()) -> tuple[froz
     return frozenset(values), frozenset(blanks)
 
 
-def unflagged(run, open_reasons: Sequence[str], *, mandatory=()) -> list[str]:
+def unflagged(run, open_reasons: Sequence[str], *, mandatory=(), held: Sequence[str] = ()) -> list[str]:
     """step.finalize_fields' hook, after the reasons are split: the optional fields' doubts without the
     flags an agreement makes unnecessary (module docstring): `label_unsettled:<field>` of an agreed
     value, `label_unsettled:<field>` and `mandatory_unresolved:<field>` of an agreed blank (`agreed`).
-    Every other code is returned as it is, in its place."""
+    `held` is the reasons that hold the record at this finalize: they are only read (a one-reader label
+    that holds the record is a one-reader label too). Every other code is returned as it is, in its
+    place."""
     from .step import LABEL_UNSETTLED, run_readings
 
     if not getattr(run, "fields", None) or not open_reasons:
         return list(open_reasons)
-    values, blanks = agreed(run, run_readings(run), mandatory=mandatory)
+    values, blanks = agreed(run, run_readings(run), mandatory=mandatory, reasons=(*held, *open_reasons))
     if not values and not blanks:
         return list(open_reasons)
     lifted = {f"{LABEL_UNSETTLED}:{key}" for key in values | blanks} | {f"{MANDATORY_UNRESOLVED}:{key}" for key in blanks}
