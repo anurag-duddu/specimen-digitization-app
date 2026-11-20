@@ -46,8 +46,8 @@ PUBLISHED = (
 SCOPE = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
 OTHER_COLLECTION = "00000000-0000-4000-8000-0000000000c9"
 MOMENT = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
-# The pilot profile's program allowance: owner-approved G30 increase to USD 28 (2026-10-17).
-ALLOWANCE = 28_000_000
+# The pilot profile's program allowance (G30), as the published profile loads it.
+ALLOWANCE = published_registry().resolve("insects").profile.processing.program_allowance.allowance_micros
 
 
 def lab(tmp_path, adapters=ProductionLikeAdapters, repository=None):
@@ -96,8 +96,9 @@ def seed(repository, reserved_total_micros):
 
 def test_the_pilot_carries_the_program_allowance():
     allowance = published_registry().resolve("insects").profile.processing.program_allowance
+    # The owner-approved G30 allowance, USD 40 since 2026-11-20 ("Yes, USD 40").
     assert (allowance.allowance_micros, allowance.ledger_collection) == (
-        ALLOWANCE,
+        40_000_000,
         "insects",
     )
 
@@ -297,7 +298,7 @@ def test_retry_after_allowance_increase_keeps_completed_paid_work(tmp_path):
     specimen_id = uploaded(app)
     workflow = app.state.workflow
     specimen = repository.get(SCOPE, specimen_id)
-    specimen.run.profile.execution.program_allowance_micros = 16_000_000
+    specimen.run.profile.execution.program_allowance_micros = 28_000_000
     repository.save(
         principal(), specimen, specimen.version, "old-policy", digest("old-policy")
     )
@@ -316,7 +317,7 @@ def test_retry_after_allowance_increase_keeps_completed_paid_work(tmp_path):
     current = ledger.read()
     repository.put_document(
         SCOPE, LEDGER_KIND, ledger.ident,
-        {**current, "reserved_total_micros": 16_000_000 - 1}, current["revision"],
+        {**current, "reserved_total_micros": 28_000_000 - 1}, current["revision"],
     )
     blocked = workflow.step(principal(), specimen_id)
     assert (blocked.run.stage, blocked.run.blocker) == (
