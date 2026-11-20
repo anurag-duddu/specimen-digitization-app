@@ -658,15 +658,15 @@ def test_a_retry_the_program_allowance_cannot_cover_blocks_and_names_its_cause(
         LEDGER_KIND,
         ProgramLedger,
     )
-    from test_lane_costs import SCOPE, ledger_total
+    from test_lane_costs import PUBLISHED_ALLOWANCE, SCOPE, ledger_total
 
     app, principal, specimen_id, run = first_failure(tmp_path, monkeypatch)
     repository = app.state.workflow.repository
     ledger = ProgramLedger(repository, SCOPE)
     current = ledger.read()
     # Less than one more reservation is left of the program's allowance (the
-    # pilot profile's USD 28, G30; the same literal tests/test_lane_costs.py uses).
-    settled = 28_000_000 - 1
+    # pilot profile's, G30, as tests/test_lane_costs.py loads it).
+    settled = PUBLISHED_ALLOWANCE - 1
     repository.put_document(
         SCOPE,
         LEDGER_KIND,

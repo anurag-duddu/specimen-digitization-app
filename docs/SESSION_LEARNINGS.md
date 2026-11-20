@@ -26594,6 +26594,20 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 - Validation actually run: `test_a_main_stored_run_keeps_its_old_mandatory_set_on_resume_and_retry` (older mandatory grouping, Resume and Retry, held by the not-checked marks, approval clears as the person's); `tests/field_research`, `tests/test_standing_holds.py`, `tests/test_ontology_curator_doc.py`, `tests/test_field_attention_contract.py`: 4,490 passed. No full run (documents and a test only; CI is the complete run).
 - Learning: a test of "older runs" must bind the older profile itself; removing only a price row from the new profile cannot show what the old mandatory set does.
 
+## 2026-11-20 - Autonomy A1: the program allowance to USD 40 (owner-approved)
+
+- Task: lane A1, brief `~/specimen-golive/autonomy-program/A1/BRIEF.md`. Branch `claude/allowance-40` from origin/main e83c36fd (worktree `.claude/worktrees/agent-a27b1bac44b6c0f43`); draft PR, not merged.
+- Outcome: published `program_allowance.allowance_micros` 28000000 -> 40000000 and `MAX_PROGRAM_ALLOWANCE_MICROS` 30_000_000 -> 40_000_000, on the owner's "Yes, USD 40" of 2026-11-20 (session f9614090); the cap's move is the coordinator's necessary consequence, not an owner ruling on G9. Neither source edit was refused or flagged. Tests and dated amendments in APPROVED_RELEASE_BUDGET, PLAN, LANE, DEPLOYMENT and READINESS follow 03173f26's pattern.
+- Evidence: Retry, Resume and Reprocess re-pin a stored run's allowance through `lane.queue` (`application/lane.py` lines 178 and 184, called from `request_processing` in `application/api.py`); only `reassess_locations` restores the old pins.
+- Validation actually run: listed in the PR body. Not run: any paid or live call, any production write or deploy, Flutter (no Dart change).
+- Follow-ups: release and deploy, then Retry or Resume of the 33 records (coordinator); whether the Cloud Billing budget alert is moved is Not confirmed (owner to check).
+
+## 2026-11-20 - Autonomy A1 correction: the broker's cap is not G9 (PR #459, Codex round 1)
+
+- Correction to the A1 entry above (verdict `~/specimen-golive/autonomy-program/reviews/verdict_459_codex_r1.md`, the coordinator's ruling): `MAX_PROGRAM_ALLOWANCE_MICROS` is the research broker's cap, not G9's ceiling. The USD 40 allowance the owner approved on 2026-11-20 exceeds G9's USD 30 ceiling of 2026-10-17; the owner approved the allowance and was told the cap moves with it; he has not restated G9. The code comments, PLAN, LANE, DEPLOYMENT, READINESS and the budget amendment now say exactly that.
+- Fixture headroom in the lane cost, reservation, reader-recovery, tenant budget, allowance and archive tests is computed from the published profile as loaded (`PUBLISHED_ALLOWANCE` in `tests/test_lane_costs.py`); literal 40_000_000 stays only in the boundary test and the one assertion of the published amount.
+- Learning: a fixture that follows a published figure should load it, so the next owner-approved raise touches only the profile, the boundary test and the one amount assertion.
+
 ## 2026-11-20 - Autonomy F2: an agreed value and an agreed blank carry no flag (draft PR #457)
 
 - Task: lane F2, the coordinator's brief `~/specimen-golive/autonomy-program/F2/BRIEF.md` (the two rules are the coordinator's rulings of 2026-11-19 on lane H1's measurement, not the owner's words). Branch `claude/autonomy-f2-agreed-no-flag` from e83c36fd, worktree `.claude/worktrees/f2-agreed-no-flag` (`uv sync --frozen`, zxing-cpp 3.1.1); commits 228c4bb0 (source), 94c59327 (tests), cd38e220 (fixture), 97ef2c09 (documents) and this entry's. Draft PR #457. The session was interrupted several times by the machine sleeping; the first worktree (`agent-adb080fc573f1c07e`) was removed while it held no change.
