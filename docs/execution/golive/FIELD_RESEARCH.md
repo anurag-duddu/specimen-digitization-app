@@ -2006,28 +2006,69 @@ all equal to the truth.
    - Rule 4, otherwise nothing changes: no stored decode; a payload that is
      no well-formed catalogue number, whole (`barcode.stored_code` already
      refuses anything but seven digits); for rules 1 and 2, a row that lies
-     on no label of this run's image; a field a person decided; a run not
-     on the units path; or a run with a transcript a person decided on any
-     of its labels. In that last case, where a settled value's number is
-     not the code's, the value's reason says so and an info finding
+     on no label of this run's image; a run not on the units path; a run
+     with a transcript a person decided on any of its labels; or, for
+     rules 1 and 2, a field a person holds authority over. In the
+     transcript's case, where a settled value's number is not the code's,
+     the value's reason says so and an info finding
      `barcode_person_differs:fmnh_ins_number` cites the code; a field no
      reading settled stays open.
+   A person's authority over the field is read from the run's durable state
+   through one function, the one the second opinion reads it through
+   (`second_opinion.authority`): a decision made at the decision endpoint
+   (`Run.person_decided_fields`), a decision a move or a new run carried
+   (`step.human_keys`), a research selection a person locked, a field a
+   location reassessment protects, and a value on a label whose transcript a
+   person decided. Rules 1 and 2 never act on such a field. Research itself
+   may ask the field's expert again on a Retry (main's task selection,
+   unchanged here: it reads the carry alone); whatever that leaves, the code
+   gives the field no number and replaces no value of it. Codex round 1 on
+   PR #458 found the earlier head reading the carry alone, so that a field a
+   person had set open at the endpoint took the code's number on a Retry.
    Until 2026-11-20 the code confirmed or held and gave no value: rule 2's
    case was "contradict" (the value stayed, marked
    `marked:fmnh_ins_number:<label>:barcode_differs` and held for a person),
    and rule 1's case changed nothing. No run makes that mark now. A record
-   finalized before keeps it until a new run, and the app still words it
-   ("The catalog number read from the label and the number in the slide's
-   QR code differ. Compare them.").
+   finalized before keeps the mark until a new run (a settled field is not
+   researched again), and the app still words it ("The catalog number read
+   from the label and the number in the slide's QR code differ. Compare
+   them."). A record finalized before with an open number does not need a
+   new run: while it is in review with no blocker and attempts left, Retry
+   researches its open fields again (a paid research pass for each of them,
+   the number's expert included), and the code gives the number at the end
+   of that pass.
+   Order: `step.apply_outcomes` calls the rule in two parts. The
+   confirmation (rule 3, and the note beside a person's transcript) runs
+   where the rule always ran, after the field's settlement. Rules 1 and 2
+   run as the function's last act, after the check stage. So on the attempt
+   that researches the catalogue number no other field's check sees a
+   number the code gives, and neither does the re-ask's trial, which
+   applies the same outcomes on a copy of the run: every other field's
+   value, state, reason and findings, and the number of expert requests,
+   are those of the same run with no code row. Codex round 1 found the
+   earlier head giving the number before the check stage: with the code
+   0010001 and both readers writing "E. slope Mt. McKinley" over "Davao
+   Prov. 0010001", the extent check counted the given digits as a settled
+   field's text, marked the precise location and asked its expert again.
+   The order does not reach a later research attempt of the same run. After
+   an attempt that gave the number and was blocked by another field's
+   retryable failure, the retry (or a Resume), and after a finalized record
+   still in review an operator's Retry or a location reassessment, research
+   with the given number as a settled field, as they would with a number the
+   readers settled: its expert is not asked again (on main an open number's
+   expert is), and the checks that read other settled fields' texts read its
+   digits (in the case above the retry marks the precise location and asks
+   its expert again). None of the 151 base and live runs researched in more
+   than one attempt; 5 of the 100 r3 runs did.
    Residual risks: a code that is not this slide's catalogue number (a
    sticker that belongs to another specimen) now gives that number and the
    record clears with it, whatever the readers read; and such a code whose
    digits the readers also wrote confirms that number. None of the 97 truth
    slides that decode carries such a code.
-   The rule builds no evidence row, and `step.apply_outcomes` calls it
-   inside a guard that logs any exception and puts the field, its findings
-   and its decision back as the rules above left them. No other field
-   changes. The barcode label's own `unresolved_transcription` follows the
+   The rule builds no evidence row, and `step.apply_outcomes` calls each
+   part of it inside a guard that logs any exception and puts the field,
+   its findings and its decision back as the rules above left them. No
+   other field changes on that attempt. The barcode label's own `unresolved_transcription` follows the
    existing rule (`step.scientific_reasons`): for a label whose transcript
    is unresolved it is raised when no field is drawn from the label, or a
    drawn field is not supported or not grounded in the raw readings, unless
@@ -2105,7 +2146,8 @@ to the truth on 88, wrong on 3 (105526356 "4486748" for 4486749, 105526771
 `barcode_differs`), and none on 9, of which 8 decode.
 
 **Replayed with the real code** (K1's replay, the decode attached; before is
-e83c36fd, after is this change at 391f7ef5; the second opinion fed its 95
+e83c36fd, after is this change, replayed again after the review's changes
+with the same figures; the second opinion fed its 95
 stored answers on both sides):
 
 | Stored runs of the 100 truth slides | Clear before | Clear after | Wrong catalogue numbers among cleared, before / after |
@@ -2126,7 +2168,12 @@ does not decode; one run that never finalized.
 Nothing else moves, on all 200 replayed runs: every other field's whole
 value is identical (0 differ), every finding that is not the catalogue
 number's is identical, the second opinion's stored result is identical, and
-a second finalize reads the same record. The reasons that differ are the
+a second finalize reads the same record. The check stage, run again on
+each of the 189 finalized runs with the number as the code left it and as
+research left it, makes the same marks and leaves the same reasons on all
+189, so the given number would put no field back to its expert on these
+slides. A replay researches nothing, so the expert requests are the stored
+ones on both sides (base 4,142, r3 3,957). The reasons that differ are the
 catalogue number's own, gone (base 16 `mandatory_unresolved` and
 `identifier_format`, 3 `barcode_differs`; r3 18 and 3), and two open
 reasons, new, that hold nothing: `label_unsettled:fmnh_ins_number` (base
@@ -2181,11 +2228,12 @@ failed, and a person's decisions (none in the stored runs); the 1 base and
   of the code row. A settled field is not researched again
   (`step.build_tasks`), so Retry and Resume keep it; a re-finalize, and so a
   history restore or a person's decision elsewhere, reads the same record;
-  a person's later decision on the field replaces it and is never
-  overridden (`step.human_keys`).
+  a person's later decision on the field replaces it, and the code never
+  acts on that field again (`second_opinion.authority`).
 - A field whose expert failed with a retryable failure takes the code's
   number in that attempt; the attempt is blocked for its retry as before,
-  and the retry does not ask the expert again.
+  and the retry does not ask the expert again (a later attempt of the run:
+  "Order" above says what else it sees).
 - A person's approval given while the number was open is withdrawn when the
   code gives the number, as for any value research changes after an
   approval (#450's digest): the record clears by the system's rules and is
@@ -2199,9 +2247,11 @@ failed, and a person's decisions (none in the stored runs); the 1 base and
 
 Tests: `tests/test_barcode.py` (codes made by zxing-cpp's encoder in the
 test; no museum image is committed) and
-`tests/field_research/test_catalogue_code.py` (104 cases: each rule and each
+`tests/field_research/test_catalogue_code.py` (112 cases: each rule and each
 exclusion, the earlier reviews' cases, and that a run with no code row, and
-every other field, settle exactly as before). Sixteen earlier cases changed
+every other field, settle exactly as before; a person's decision made at
+the real decision endpoint and then Retry; every record of a person's
+authority; and Codex's locality case, with the expert requests counted). Sixteen earlier cases changed
 expectation with the rule: each is kept and says what e83c36fd did.
 
 ## The second opinion (2026-11-18)
