@@ -8,7 +8,10 @@ step.finalize_fields), and they only shorten the optional fields' doubts (run.op
 - rule A: `label_unsettled:<field>` is not an open reason for a field settled with a value the second opinion
   agrees with, the three date fields excepted;
 - rule B: `mandatory_unresolved:<field>` and `label_unsettled:<field>` are not open reasons for a blank field
-  the current, obtained second opinion also leaves blank, Verbatim D/T/S excepted.
+  the current, obtained second opinion also leaves blank, Verbatim D/T/S and Habitat excepted.
+
+Rule A is skipped on a run any label of which one reader read (`independent_observations_missing:<label>`); rule
+B is not (the coordinator's rulings of 2026-11-20 on the live confirmation rows).
 
 Every record here is the field research rig's (test_step.build_rig) on the published profile, taken through the
 workflow with the second opinion's step mounted as in production but for its model. The rig's one label carries
@@ -58,7 +61,8 @@ CATALOGUE = "fmnh_ins_number"
 AHEAD = datetime(2031, 1, 1, tzinfo=timezone.utc)
 # The fields the experts leave blank in the rule B record; the rule's own exception among them.
 BLANKS = ("taxon", "habitat", "verbatim_dts", "collection_code", "date_identified", "collection_method", "country")
-AGREED_BLANKS = frozenset(BLANKS) - {"verbatim_dts"}
+EXCEPTED_BLANKS = frozenset({"verbatim_dts", "habitat"})
+AGREED_BLANKS = frozenset(BLANKS) - EXCEPTED_BLANKS
 MEADOW = {"value": "Synthetic meadow", "evidence": "L1: meadow"}
 LABEL_UNSETTLED, UNRESOLVED = field_step.LABEL_UNSETTLED, "mandatory_unresolved"
 
@@ -252,18 +256,31 @@ def test_a_blank_field_the_second_opinion_also_leaves_blank_carries_no_flag(tmp_
     assert not flagged(run) & (AGREED_BLANKS - {"taxon"})
     # The taxon's own doubt is another code: it stays, and the taxon stays flagged.
     assert "taxonomy_unresolved" in run.open_reasons and "taxon" in flagged(run)
-    # Verbatim D/T/S is the rule's exception; a field left open is not blank.
-    assert blank_codes({"verbatim_dts"}) <= set(run.open_reasons) and "verbatim_dts" in flagged(run)
+    # A field left open is not blank.
     assert run.fields["city"].state == ValueState.UNRESOLVED and f"{UNRESOLVED}:city" in run.open_reasons
+
+
+def test_a_blank_habitat_and_a_blank_verbatim_dts_keep_their_flags_though_the_second_opinion_agrees(tmp_path):
+    """The rule's two exceptions. Verbatim D/T/S: both missed values in lane H1's table. Habitat: a bare host
+    name is a known miss of field research and of the second opinion alike (the live row 105526418,
+    "CALLOSPERMOPHILUS": blank, agreed blank, and missed), so their agreement on a blank Habitat proves nothing."""
+    run = to_end(rig_of(tmp_path, BLANKS, opinion=Opinion(answer_of(BLANKS)))).run
+    answer = run.second_opinion["answer"]
+    assert so.AGREED_BLANK_EXCEPT == EXCEPTED_BLANKS
+    for key in EXCEPTED_BLANKS:
+        assert run.fields[key].state == ValueState.NOT_PRESENT and so._blank_answer(answer[key])
+    assert so.answer_current(run) and not so.due(run)
+    assert not lifted(run) & blank_codes(EXCEPTED_BLANKS) and blank_codes() <= lifted(run)
+    assert blank_codes(EXCEPTED_BLANKS) <= set(run.open_reasons) and EXCEPTED_BLANKS <= flagged(run)
 
 
 @pytest.mark.parametrize("entry", [MEADOW, {"value": None, "evidence": "UNSURE: faint letters"}],
     ids=["a-value", "unsure"])
 def test_a_blank_field_the_second_opinion_reads_a_value_or_is_unsure_on_keeps_its_flags(tmp_path, entry):
     """A blank where the second opinion reads a value is a missed-value signal (68 of 68 in lane H1's table)."""
-    run = to_end(rig_of(tmp_path, BLANKS, opinion=Opinion(answer_of(BLANKS, habitat=entry)))).run
-    assert lifted(run) == blank_codes(AGREED_BLANKS - {"habitat"}) | codes(LABEL_UNSETTLED, values_of(run))
-    assert blank_codes({"habitat"}) <= set(run.open_reasons) and "habitat" in flagged(run)
+    run = to_end(rig_of(tmp_path, BLANKS, opinion=Opinion(answer_of(BLANKS, collection_method=entry)))).run
+    assert lifted(run) == blank_codes(AGREED_BLANKS - {"collection_method"}) | codes(LABEL_UNSETTLED, values_of(run))
+    assert blank_codes({"collection_method"}) <= set(run.open_reasons) and "collection_method" in flagged(run)
 
 
 def a_persons_transcript(run):
@@ -389,7 +406,8 @@ def test_the_catalogue_number_is_never_affected(tmp_path):
     assert finalized(held, rules=False).reasons == held.reasons
 
 
-# ---- a label one reader read: neither rule applies on the run (the coordinator's ruling of 2026-11-20) --------
+# ---- a label one reader read: rule A is skipped on the run, rule B is not (the coordinator's rulings of
+# ---- 2026-11-20) ----------------------------------------------------------------------------------------------
 
 ONE_READER = "independent_observations_missing"
 
@@ -451,7 +469,7 @@ def a_second_label(monkeypatch):
 
 def test_a_value_on_a_label_one_reader_read_keeps_its_flag_though_the_second_opinion_agrees(tmp_path):
     """Slide 105526455 on the live rows: Province/State "Utah" for Idaho, agreed by a second opinion that saw
-    one reader's text. Every flag of the run is as without the rules; with the reading supplied they apply."""
+    one reader's text. No value's flag is lifted on the run; with the reading supplied rule A applies."""
     run = to_end(read_by_one_reader(rig_of(tmp_path, opinion=Opinion(answer_of())))).run
     label = run.regions[0].id
     assert (run.disposition, run.reasons, run.second_opinion["status"]) == (Disposition.CLEARED, [], so.OBTAINED)
@@ -465,11 +483,17 @@ def test_a_value_on_a_label_one_reader_read_keeps_its_flag_though_the_second_opi
     assert lifted(run) == codes(LABEL_UNSETTLED, values_of(run)) and not values_of(run) & flagged(run)
 
 
-def test_a_blank_field_on_a_run_with_a_one_reader_label_keeps_its_flags(tmp_path):
+def test_on_a_run_with_a_one_reader_label_an_agreed_blank_loses_its_flags_and_an_agreed_value_keeps_its(tmp_path):
+    """Rule B does not need two readers: a blank is no wrong value shown as settled, and the second opinion reads
+    the crops itself (63 of 63 truly absent on the base replay's one-reader records). Its two exceptions stand.
+    Rule A is skipped: every agreed value keeps its flag."""
     run = to_end(read_by_one_reader(rig_of(tmp_path, BLANKS, opinion=Opinion(answer_of(BLANKS))))).run
     assert so.answer_current(run) and not so.due(run) and run.disposition == Disposition.CLEARED
-    assert lifted(run) == set() and fresh(run)
-    assert blank_codes() <= set(run.open_reasons) and AGREED_BLANKS <= flagged(run)
+    assert f"{ONE_READER}:{run.regions[0].id}" in run.open_reasons
+    assert lifted(run) == blank_codes() and fresh(run)
+    assert not flagged(run) & (AGREED_BLANKS - {"taxon"})
+    assert blank_codes(EXCEPTED_BLANKS) | codes(LABEL_UNSETTLED, values_of(run)) <= set(run.open_reasons)
+    assert EXCEPTED_BLANKS | values_of(run) <= flagged(run)
     read_by_two_again(run)
     field_step.refinalize(run, today=TODAY)
     assert lifted(run) == blank_codes() | codes(LABEL_UNSETTLED, values_of(run)) and fresh(run)
@@ -477,7 +501,8 @@ def test_a_blank_field_on_a_run_with_a_one_reader_label_keeps_its_flags(tmp_path
 
 def test_a_field_drawn_from_another_label_of_a_run_with_a_one_reader_label_keeps_its_flag(tmp_path, monkeypatch):
     """Record level: the one-reader label is the second, from which no field is drawn; every field is drawn
-    from the first, which both readers read. No flag of the run is lifted until the reading is supplied."""
+    from the first, which both readers read. No value's flag is lifted on the run until the reading is supplied;
+    the agreed blanks' flags go as on any run."""
     a_second_label(monkeypatch)
     rig = rig_of(tmp_path / "rig", BLANKS, opinion=Opinion(answer_of(BLANKS)))
     run = to_end(read_by_one_reader(rig, 1)).run
@@ -485,8 +510,8 @@ def test_a_field_drawn_from_another_label_of_a_run_with_a_one_reader_label_keeps
     assert (run.disposition, run.reasons) == (Disposition.CLEARED, [])
     assert f"{ONE_READER}:{second}" in run.open_reasons and f"{ONE_READER}:{first}" not in run.open_reasons
     assert field_step.label_fields(run, second) == frozenset() and so.answer_current(run) and not so.due(run)
-    assert lifted(run) == set() and fresh(run)
-    assert blank_codes() | codes(LABEL_UNSETTLED, values_of(run)) <= set(run.open_reasons)
+    assert lifted(run) == blank_codes() and fresh(run)
+    assert codes(LABEL_UNSETTLED, values_of(run)) <= set(run.open_reasons) and values_of(run) <= flagged(run)
     read_by_two_again(run, 1)
     field_step.refinalize(run, today=TODAY)
     assert not any(code.startswith(ONE_READER) for code in run.open_reasons)
@@ -497,15 +522,17 @@ def test_a_one_reader_label_that_holds_the_record_is_read_from_the_holding_reaso
     run = to_end(rig_of(tmp_path, BLANKS, opinion=Opinion(answer_of(BLANKS)))).run
     doubts = sorted(blank_codes() | codes(LABEL_UNSETTLED, values_of(run)))
     mandatory = published().mandatory_fields
+    values = sorted(codes(LABEL_UNSETTLED, values_of(run)))
     assert so.unflagged(run, doubts, mandatory=mandatory) == []
-    assert so.unflagged(run, doubts, mandatory=mandatory, held=[f"{ONE_READER}:a-label"]) == doubts
-    assert so.unflagged(run, [*doubts, f"{ONE_READER}:a-label"], mandatory=mandatory) == [*doubts,
+    # Held or open, the code keeps every agreed value's flag; the agreed blanks' flags go either way.
+    assert so.unflagged(run, doubts, mandatory=mandatory, held=[f"{ONE_READER}:a-label"]) == values
+    assert so.unflagged(run, [*doubts, f"{ONE_READER}:a-label"], mandatory=mandatory) == [*values,
         f"{ONE_READER}:a-label"]
     readings = field_step.run_readings(run)
     assert so.agreed(run, readings, mandatory=mandatory, reasons=[f"{ONE_READER}:a-label"]) == (frozenset(),
-        frozenset())
-    assert so.agreed(run, readings, mandatory=mandatory, reasons=["unresolved_transcription:a-label"])[1] == (
         AGREED_BLANKS)
+    assert so.agreed(run, readings, mandatory=mandatory, reasons=["unresolved_transcription:a-label"]) == (
+        frozenset(values_of(run)), AGREED_BLANKS)
 
 
 # ---- a person's field, an approved run; derived, never stale -------------------------------------------------
@@ -571,14 +598,14 @@ def test_a_field_a_person_decided_before_the_step_is_never_lifted(tmp_path):
     rig = rig_of(tmp_path, BLANKS, opinion=Opinion(answer_of(BLANKS)))
     waiting = rig.workflow.step(rig.principal, rig.specimen.id)
     assert waiting.run.stage == so.STEP
-    for key in ("precise_location", "habitat"):
+    for key in ("precise_location", "collection_code"):
         so.decided(waiting.run, key)
     rig.repository.save(rig.principal, waiting, waiting.version, "decided", "decided")
     run = to_end(rig).run
     assert run.second_opinion["status"] == so.OBTAINED and fresh(run)
-    assert lifted(run) == blank_codes(AGREED_BLANKS - {"habitat"}) | codes(LABEL_UNSETTLED,
+    assert lifted(run) == blank_codes(AGREED_BLANKS - {"collection_code"}) | codes(LABEL_UNSETTLED,
         values_of(run) - {"precise_location"})
-    assert {f"{LABEL_UNSETTLED}:precise_location", *blank_codes({"habitat"})} <= set(run.open_reasons)
+    assert {f"{LABEL_UNSETTLED}:precise_location", *blank_codes({"collection_code"})} <= set(run.open_reasons)
 
 
 def test_a_decision_during_the_step_abandons_it_and_no_flag_is_lifted(tmp_path, monkeypatch):
