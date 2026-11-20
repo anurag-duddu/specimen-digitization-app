@@ -2223,6 +2223,8 @@ up; a person's pending approval or another standing hold) stays held
 whatever the second opinion says (`tests/field_research/test_second_opinion_skeletal.py`).
 
 **An agreed value and an agreed blank carry no flag (2026-11-19, work package F2).**
+The name is the work package's; what the rules do is remove named reason
+codes, and a field another open reason still names stays flagged.
 Two rules, the coordinator's rulings on lane H1's measurement over the 100 truth
 slides (not the owner's words; `docs/execution/autonomy/PLAN.md`, F2), derived
 at every finalize from the stored result and the run as it is now
@@ -2250,7 +2252,10 @@ record clears or holds differently.
   fields as `{value, evidence}`, and a blank is a null value whose text does
   not start with UNSURE (`read_answer`'s rule). Verbatim D/T/S and Habitat
   are excepted and keep their codes whatever the second opinion says.
-  `research_incomplete:<field>`, `taxonomy_unresolved` and every mark stay.
+  `research_incomplete:<field>`, `taxonomy_unresolved` and every mark stay,
+  so a blank field one of them names stays flagged: a blank Taxon the second
+  opinion also leaves blank loses these two codes and keeps
+  `taxonomy_unresolved`, and the app still flags it.
   A blank where the second opinion reads a value keeps its codes (a
   missed-value signal). A one-reader label does not stop rule B.
 - Neither rule applies: to the catalogue number or the determiner's IRN
@@ -3103,7 +3108,7 @@ or fallback, a spent per-field or per-specimen meter among them, is that field's
 | `field_research_given_up` (new: research given up for the run as a whole) | holds; derived on every finalize from the give-up's finding on the run, which the next research attempt removes |
 | `preserved_human_decision:<field>` | holds (recomputed from a person's decisions on every finalize) |
 | `human_approval_required`, `history_restored_requires_review`, `location_reassessment_unconfirmed:<field>` | holds; derived on every finalize from `run.pending_review` (`application/standing_holds.py`), recorded when a person decides, a history is restored or a reassessment leaves a field unproved, and cleared by a person's approval (the reassessment's entries also by the reassessment that settles them) |
-| `label_unsettled:<field>` (new: a field drawn from a label whose doubt is open, `step.label_attention`) | never holds: the field's attention only. Since work package F2 it is not given for an optional field settled with a value the second opinion agrees with (the three date fields excepted, and not on a run with a label one reader read), nor for an agreed blank field ("The second opinion", rules A and B) |
+| `label_unsettled:<field>` (new: a field drawn from a label whose doubt is open, `step.label_attention`) | never holds: the field's attention only. Since work package F2 it is not given for an optional field settled with a value the second opinion agrees with (the three date fields excepted, and not on a run with a label one reader read), nor for an agreed blank field ("The second opinion", rules A and B); a field another open reason still names stays flagged |
 | an operational failure (`lookup_operational_failure`, `field_research_model_error`, `field_research_timeout` `:<field>`, the blocker) | holds: the run is blocked, as before |
 | `evidence_integrity_failure` | never a reason: the step blocks, as before |
 | ordinary path: `institutional_policy_unapproved`, `mandatory_semantics_unconfirmed`, `evidence_lineage_invalid:<row>`, its capability reason | holds |
