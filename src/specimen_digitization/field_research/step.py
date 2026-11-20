@@ -2941,29 +2941,35 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
                 if text]) if outcome.key in put else {}
             _settlement(run, tasks_by_key[outcome.key], outcome, readings=readings, by_name=by_name,
                 sources=received.get(outcome.key, ()), decision=decisions.get(outcome.key, {}), **given)
-    # The catalogue number, where the segment step stored a decode of the slide's QR code, is
-    # settled on it after its expert's answer and its settlement (catalogue_code.settle): the
-    # code gives the number where no reading settled one or the settled number is not the
-    # code's, and confirms a number that writes it whole.
-    from .catalogue_code import FIELD as CATALOGUE, settle as settle_on_the_code
+    # The catalogue number, where the segment step stored a decode of the slide's QR code
+    # (field_research/catalogue_code.py). Here, after its expert's answer and its settlement, the
+    # code confirms a settled number that writes it whole (confirm). As this function's last act,
+    # after the check stage, the code gives the number where no reading settled one or the
+    # settled number is not the code's (give): so no other field's check, and no re-ask's trial of
+    # these outcomes on a copy of the run (reask.again), sees a number the code gives.
+    from . import catalogue_code
 
-    if CATALOGUE in tasks_by_key and CATALOGUE not in human and units_path(run):
+    def on_the_code(rule) -> None:
+        if catalogue_code.FIELD not in tasks_by_key or catalogue_code.FIELD in human or not units_path(run):
+            return
         # The code never fails research: any exception inside its rule is logged and the
         # field, its findings and its decision are put back as the rules above left them.
-        kept_value = run.fields.get(CATALOGUE)
+        key = catalogue_code.FIELD
+        kept_value = run.fields.get(key)
         kept_findings = list(run.findings)
-        kept_decision = dict(decisions.get(CATALOGUE, {}))
+        kept_decision = dict(decisions.get(key, {}))
         try:
-            settle_on_the_code(run, tasks_by_key[CATALOGUE], readings,
-                decision=decisions.setdefault(CATALOGUE, {}))
+            rule(run, tasks_by_key[key], readings, decision=decisions.setdefault(key, {}))
         except Exception:  # noqa: BLE001 - the code never fails research
             LOGGER.warning("catalogue number not compared with the slide's QR code", exc_info=True)
             if kept_value is not None:
-                run.fields[CATALOGUE] = kept_value
+                run.fields[key] = kept_value
             else:
-                run.fields.pop(CATALOGUE, None)
+                run.fields.pop(key, None)
             run.findings[:] = kept_findings
-            decisions[CATALOGUE] = kept_decision
+            decisions[key] = kept_decision
+
+    on_the_code(catalogue_code.confirm)
     # The check stage, last: an inference whose rule's conditions all hold fills an open field,
     # cleared, and derivation fills what it lets derive (ontology_checks.infer_feet); then the
     # stage marks what fails a rule of the ontology among the values settled, inferred and
@@ -2979,6 +2985,7 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
         derived = [*derived, *more]
     stage(run, readings=readings, received=received, researched=tasks_by_key, derived=derived, human=human,
         blobs=blobs, decisions=decisions)
+    on_the_code(catalogue_code.give)
     return derived
 
 

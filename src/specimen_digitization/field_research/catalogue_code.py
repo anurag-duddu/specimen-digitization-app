@@ -36,11 +36,28 @@ slides that decode.
    fails, nothing changes.
 4. Otherwise nothing changes: no stored decode; one whose payload is no well-formed catalogue
    number; for rules 1 and 2, one that lies on no label of this run's image (_of_this_run); a
-   field a person decided (step.human_keys: settle is not called); a run not on the units path;
-   or a run with a transcript a person decided on any of its labels (Reading.person_decided).
-   In that last case, where a settled value's number is not the code's, the value's reason
-   says so and an info finding (PERSON_DIFFERS) cites the code row; a field no reading settled
-   stays as it is.
+   field a move or a new run carried from a person (step.human_keys: settle is not called); a
+   run not on the units path; or a run with a transcript a person decided on any of its labels
+   (Reading.person_decided). In that last case, where a settled value's number is not the
+   code's, the value's reason says so and an info finding (PERSON_DIFFERS) cites the code row;
+   a field no reading settled stays as it is.
+
+A person's authority. Rules 1 and 2 never act on a field a person holds authority over, read
+through the one function the second opinion reads it through (second_opinion.authority, from
+the run's durable state): a field decided at the decision endpoint (Run.person_decided_fields),
+a carried decision, a research selection a person locked, a field a location reassessment
+protects, a value on a label whose transcript a person decided. Research may ask such a field's
+expert again on a Retry (main's task selection, which this rule does not change); whatever that
+leaves, the code neither gives the field a number nor replaces its value (_a_persons).
+
+Order. step.apply_outcomes calls settle as its last act, after the check stage, so on the
+attempt that researches the catalogue number no other field's check sees a number the code
+gives, and neither does the re-ask's trial, which applies the outcomes on a copy of the run
+(reask.again): every other field's value, state, reason and findings, and the number of expert
+requests, are those of the same run with no code row. On a later research attempt of the same
+run (a Retry or Resume after a blocked attempt, a location reassessment) a number the code gave
+is a settled field like one the readers settled: its expert is not asked again, and the checks
+that read other settled fields' texts read its digits (FIELD_RESEARCH.md says which).
 
 A value the code supplies is on the settled layer with the code's digits as its literal: the
 label carries the code and the code writes the number, so the app's existing basis for a
@@ -163,6 +180,15 @@ def _of_this_run(run, code: StoredCode) -> bool:
     return code.row.region_id in regions and code.row.asset_id == regions[code.row.region_id].asset_id
 
 
+def _a_persons(run, readings: Sequence[Reading]) -> bool:
+    """Whether a person holds authority over the catalogue number, by the run's durable state,
+    through the function the second opinion reads it through (second_opinion.authority): the
+    code gives such a field no number and replaces no value of it."""
+    from .second_opinion import authority
+
+    return FIELD in authority(run, readings)
+
+
 def _shown(text: str) -> str:
     """A text on one line, cut to QUOTED_LENGTH characters: for a reason's sentence."""
     return " ".join(text.split())[:QUOTED_LENGTH]
@@ -213,24 +239,32 @@ def _supply(run, task: FieldTask, code: StoredCode, current: FieldValue, decisio
     return True
 
 
-def settle(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict | None = None) -> bool:
-    """Settle the catalogue number on the run's stored decode by the module's rules 1 to 3; False,
-    changing nothing, where rule 4 leaves the field as it is."""
-    from .step import SETTLEMENT, SETTLEMENT_RULES, cleared_code
-
+def _decode(run, task: FieldTask):
+    """The run's stored decode when the rule may act on it: one code row, on a label, whose payload
+    is itself a well-formed catalogue number; else None (rule 4)."""
     code = stored_code(run)
     if code is None or task.key != FIELD or code.row.region_id is None:
+        return None
+    return code if number(code.payload) == code.payload else None
+
+
+def confirm(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict | None = None) -> bool:
+    """Rule 3, and rule 4's note beside a person's transcript: what the rule did before 2026-11-20
+    besides holding, in the place step.apply_outcomes always called it (after the field's
+    settlement, before the check stage). False, changing nothing, where neither applies."""
+    from .step import SETTLEMENT, SETTLEMENT_RULES, cleared_code
+
+    code = _decode(run, task)
+    if code is None:
         return False
     payload, current = code.payload, run.fields.get(FIELD) or FieldValue()
-    if number(payload) != payload:
-        # Rule 4: the payload is no well-formed catalogue number, whole.
-        return False
     decision = {} if decision is None else decision
-    settled = current.state == ValueState.SUPPORTED and current.layer in SETTLED
+    if current.state != ValueState.SUPPORTED or current.layer not in SETTLED:
+        return False
     if any(reading.person_decided for reading in readings):
         # Rule 4: a person decided a transcript of the record. The code only notes a difference
-        # from a settled value, and supplies nothing.
-        if settled and number(current.normalized or current.parsed or current.literal) != payload:
+        # from a settled value.
+        if number(current.normalized or current.parsed or current.literal) != payload:
             value = current.model_copy(deep=True)
             value.reason = " ".join(part for part in (value.reason, f"The slide's QR code reads {payload}, "
                 "which differs from this value; a person's transcription stands.") if part)
@@ -240,14 +274,10 @@ def settle(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict 
             decision["rule"] = "person_over_barcode"
             return True
         return False
-    if not settled or number(current.normalized or current.parsed or current.literal) is None:
-        # Rule 1: no reading settled a well-formed number; the code gives it.
-        return _of_this_run(run, code) and _supply(run, task, code, current, decision, settled=settled)
     literal = current.literal or ""
-    if not written_whole(literal, payload):
-        # Rule 2: the label's number, as the settled literal writes it, is not the code written
-        # whole (whatever the value's parsed layer reads): the field takes the code's number.
-        return _of_this_run(run, code) and _supply(run, task, code, current, decision, settled=True)
+    if number(current.normalized or current.parsed or literal) is None or not written_whole(literal, payload):
+        # Rules 1 and 2 (give), not a confirmation.
+        return False
     held = any(reading.region_id == code.row.region_id and _held_whole(reading.text, literal)
         for reading in readings)
     if not held or _unsupported_layers(run, current):
@@ -268,3 +298,34 @@ def settle(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict 
         evidence_ids=[e for e, how in value.evidence_relations.items() if how in ("supports", "decides")]))
     decision["rule"] = "barcode_confirms"
     return True
+
+
+def give(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict | None = None) -> bool:
+    """Rules 1 and 2: the code gives the catalogue number where no reading settled a well-formed
+    one, or the settled literal does not write the code whole. The last act of
+    step.apply_outcomes on the run, after the check stage (the module's note on order). False,
+    changing nothing, on a run with a transcript a person decided, on a field a person holds
+    authority over (_a_persons), for a row that is not on a label of this run's image, and for a
+    settled number that writes the code whole (rule 3's, confirmed or left as it is)."""
+    code = _decode(run, task)
+    if code is None or any(reading.person_decided for reading in readings):
+        return False
+    current = run.fields.get(FIELD) or FieldValue()
+    decision = {} if decision is None else decision
+    settled = current.state == ValueState.SUPPORTED and current.layer in SETTLED
+    well_formed = settled and number(current.normalized or current.parsed or current.literal) is not None
+    if well_formed and written_whole(current.literal or "", code.payload):
+        return False
+    if _a_persons(run, readings) or not _of_this_run(run, code):
+        return False
+    # Rule 1 (no reading settled a well-formed number) or rule 2 (a settled number that is not
+    # the code written whole, whatever the value's parsed layer reads).
+    return _supply(run, task, code, current, decision, settled=settled)
+
+
+def settle(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict | None = None) -> bool:
+    """The whole rule on a run as it is: confirm, else give (rules 1 to 3); False, changing
+    nothing, where rule 4 leaves the field as it is. step.apply_outcomes calls the two parts
+    apart, the check stage between them; a caller with no stage to run between them (a replay of
+    a stored run, a test of the rule alone) calls this."""
+    return confirm(run, task, readings, decision=decision) or give(run, task, readings, decision=decision)

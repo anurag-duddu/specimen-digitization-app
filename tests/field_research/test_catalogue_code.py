@@ -370,8 +370,9 @@ def test_a_literal_the_confirmation_cannot_ground_whole_raises_nothing(tmp_path,
 
 
 def test_an_exception_inside_the_rule_leaves_the_field_as_the_rules_settled_it(tmp_path, monkeypatch, caplog):
-    """The single call site in step.apply_outcomes logs any exception of the rule and puts the
-    field, its findings and its decision back: the code cannot fail research."""
+    """step.apply_outcomes calls each part of the rule (confirm, then give as its last act) inside
+    one guard that logs any exception and puts the field, its findings and its decision back: the
+    code cannot fail research."""
     from specimen_digitization.field_research import catalogue_code
 
     barcode_label(monkeypatch, PRINTED)
@@ -384,7 +385,7 @@ def test_an_exception_inside_the_rule_leaves_the_field_as_the_rules_settled_it(t
         run.findings.clear()
         raise ValueError("substring not found")
 
-    monkeypatch.setattr(catalogue_code, "settle", broken)
+    monkeypatch.setattr(catalogue_code, "confirm", broken)
     coded = build_rig(tmp_path / "coded", FIRST)
     images(coded, lambda unit: UNCERTAIN)
     with_code(coded)
@@ -870,7 +871,8 @@ def test_a_run_with_no_code_row_settles_exactly_as_without_the_rule(tmp_path, mo
     scripts = {KEY: script} if script else {}
     plain = rig_with(tmp_path / "plain", monkeypatch, *texts)
     settle(plain, Scripted(scripts))
-    monkeypatch.setattr(catalogue_code, "settle", lambda *args, **kwargs: False)
+    for part in ("confirm", "give"):
+        monkeypatch.setattr(catalogue_code, part, lambda *args, **kwargs: False)
     without = build_rig(tmp_path / "without", FIRST)
     settle(without, Scripted(scripts))
     assert outcome(plain.specimen.run) == outcome(without.specimen.run)
@@ -905,7 +907,8 @@ def test_a_code_row_on_a_run_of_the_old_path_changes_nothing(tmp_path, monkeypat
     from specimen_digitization.field_research import step as field_step
 
     asked = []
-    monkeypatch.setattr(catalogue_code, "settle", lambda *args, **kwargs: asked.append(args) or False)
+    for part in ("confirm", "give"):
+        monkeypatch.setattr(catalogue_code, part, lambda *args, **kwargs: asked.append(args) or False)
     rig = rig_with(tmp_path, monkeypatch, PRINTED)
     with_code(rig)
     monkeypatch.setattr(field_step, "units_path", lambda run: False)
@@ -918,12 +921,149 @@ def test_a_persons_field_decision_is_never_settled_on_the_code(tmp_path, monkeyp
     from specimen_digitization.field_research import step as field_step
 
     asked = []
-    monkeypatch.setattr(catalogue_code, "settle", lambda *args, **kwargs: asked.append(args) or False)
+    for part in ("confirm", "give"):
+        monkeypatch.setattr(catalogue_code, part, lambda *args, **kwargs: asked.append(args) or False)
     monkeypatch.setattr(field_step, "human_keys", lambda run: frozenset({KEY}))
     rig = rig_with(tmp_path, monkeypatch, PRINTED, OTHER)
     with_code(rig)
     settle(rig, Scripted({KEY: catalogue(CODE, CODE)}))
     assert asked == []
+
+
+def test_a_persons_decision_at_the_endpoint_is_not_replaced_by_the_code_on_retry(tmp_path, monkeypatch):
+    """Codex round 1 on PR #458, finding 1, through the real routes (no stubbed human_keys). The
+    run holds the code row; research leaves the number open and the code gives it. A person then
+    sets the field to ambiguous at the decision endpoint, which records the field on the run
+    (Run.person_decided_fields) and not in the carry manifest step.human_keys reads. Retry, with
+    attempts left, researches the open field again (main's task selection, unchanged), and the
+    expert again leaves it open. The code stands aside from a field a person holds authority over
+    (second_opinion.authority): the field stays open, as with no code row. At b5bdd290 the code's
+    number replaced the person's decision."""
+    from test_approval_and_research import act, queue_in_place, run_to_rest, save_by_hand
+    from test_step import decide, mounted, review_client
+
+    from specimen_digitization.application.domain import FieldValue
+    from specimen_digitization.application.workflow import FIELD_RESEARCH
+
+    rig = rig_with(tmp_path, monkeypatch, PRINTED, OTHER)
+    rows = []
+
+    def segment(run):
+        rows.append(Evidence(kind="derived", asset_id=rig.specimen.asset.id, region_id=run.regions[1].id,
+            source="barcode", locator="check:barcode_decode",
+            excerpt=f"{KEY}: {CODE} (QR code read by zxing-cpp 3.1.1, ladder rung whole)"))
+        run.evidence.append(rows[-1])
+
+    save_by_hand(rig, segment, "segment-code")
+    mounted(rig, Scripted({KEY: several(CODE, "0010007")}))
+    first = run_to_rest(rig).run
+    assert number(first) == (ValueState.SUPPORTED, CODE) and first.fields[KEY].evidence_ids == [rows[0].id]
+    assert first.person_decided_fields == []
+    client = review_client(rig)
+    opened = FieldValue(state=ValueState.AMBIGUOUS, reason="A person: the label and the code differ here.")
+    decided = decide(client, rig, "open-the-number", "field", target_id=KEY,
+        after=opened.model_dump(mode="json", exclude={"evidence_ids"}), evidence_ids=[])
+    assert decided.fields[KEY].state == ValueState.AMBIGUOUS and decided.person_decided_fields == [KEY]
+    assert decided.disposition == Disposition.REVIEW
+    queue_in_place(monkeypatch)
+    retried = act(client, rig, "retry", "retry-the-number")
+    assert FIELD_RESEARCH not in retried.run.completed_steps
+    again = Scripted({KEY: several(CODE, "0010007")})
+    mounted(rig, again)
+    after = run_to_rest(rig).run
+    assert KEY in again.calls
+    value = after.fields[KEY]
+    assert value.state == ValueState.AMBIGUOUS and number(after)[1] != CODE
+    assert rows[0].id not in value.evidence_ids and rows[0].id not in value.evidence_relations
+    assert notes(after) == [] and after.person_decided_fields == [KEY]
+    assert after.disposition == Disposition.REVIEW and f"mandatory_unresolved:{KEY}" in after.reasons
+
+
+@pytest.mark.parametrize("held", ["decided-at-the-endpoint", "a-locked-selection", "protected-by-a-reassessment"])
+@pytest.mark.parametrize("scenario", ["open", "another-number"])
+def test_the_code_stands_aside_from_every_record_of_a_persons_authority(tmp_path, monkeypatch, scenario, held):
+    """The one function the second opinion reads a person's authority through
+    (second_opinion.authority) decides here too: a field decided at the endpoint, a research
+    selection a person locked, a field the location reassessment protects. On each, the code
+    neither gives a number to an open field nor replaces a settled one, and marks nothing; with
+    the record of authority removed, the same row gives the number (the control)."""
+    from specimen_digitization.field_research import catalogue_code
+    from specimen_digitization.field_research import second_opinion
+    from specimen_digitization.field_research import step as field_step
+
+    texts, script = NOT_SUPPLIED[scenario]
+    rig = rig_with(tmp_path, monkeypatch, *texts)
+    run = rig.specimen.run
+    settle(rig, Scripted({KEY: script}))
+    with_code(rig)
+    if held == "decided-at-the-endpoint":
+        second_opinion.decided(run, KEY)
+    elif held == "a-locked-selection":
+        run.dependencies[second_opinion.LOCKS] = {KEY: {"selection_id": "0" * 64, "evidence_id": "e"}}
+    else:
+        run.dependencies["location_reassessment"] = {"attempt": 2, "fields": [], "protected": [KEY]}
+    assert KEY in second_opinion.authority(run, field_step.run_readings(run))
+
+    def state():
+        return (run.fields[KEY].model_dump(), [finding.model_dump() for finding in run.findings])
+
+    before = state()
+    task = field_step.FieldTask(key=KEY, mandatory=True, current=run.fields[KEY], candidates=(), tools=())
+    decision = {}
+    assert catalogue_code.settle(run, task, field_step.run_readings(run), decision=decision) is False
+    assert state() == before and decision == {}
+    run.person_decided_fields = []
+    run.dependencies.pop(second_opinion.LOCKS, None)
+    run.dependencies.pop("location_reassessment", None)
+    assert catalogue_code.settle(run, task, field_step.run_readings(run), decision=decision) is True
+    assert number(run) == (ValueState.SUPPORTED, CODE)
+
+
+def test_the_codes_number_changes_no_other_fields_check_and_asks_no_expert_again(tmp_path):
+    """Codex round 1 on PR #458, finding 2, its exact case. The code is 0010001, research settles
+    no catalogue number, and both readers write "E. slope Mt. McKinley" over "Davao Prov. 0010001".
+    The extent check abstains: the next line holds a number no settled field accounts for. The
+    code gives the catalogue number as the last act on the run, after the check stage and after
+    the re-ask's trial, so neither sees its digits: the precise location's value, reason and
+    findings, every other field, and the number of expert requests are those of a run with no code
+    row (which is main's outcome, as main's rule leaves an open number alone). At b5bdd290 the
+    supplied literal was blanked from the next line, the precise location was marked
+    precise_location_extent and its expert was asked a second time."""
+    from test_elevations_and_extent import DAVAO_AND_PI, LACKS as NOT_THERE, extent_marks
+    from test_handled_before_marked import CUT, FIELDS, locality, seen, settle_reasking
+
+    text = "E. slope Mt. McKinley\nDavao Prov. 0010001\nMindanao, P.I.\n3 Sept. '46\nF.G. Werner"
+    runs = {}
+    for name in ("plain", "coded"):
+        rig = build_rig(tmp_path / name, text)
+        script = locality(CUT)
+        resolver = Scripted({**{key: answering(NOT_THERE) for key in FIELDS}, **DAVAO_AND_PI,
+            "precise_location": script})
+        code = with_code(rig, region=0) if name == "coded" else None
+        settle_reasking(rig, resolver)
+        runs[name] = (rig.specimen.run, script.asked, list(resolver.calls), code)
+    (plain, plain_asked, plain_calls, _), (coded, coded_asked, coded_calls, code) = runs["plain"], runs["coded"]
+    assert plain.fields[KEY].state != ValueState.SUPPORTED and extent_marks(plain) == []
+    assert plain.fields["province_state"].literal == "Davao Prov." and plain.fields["precise_location"].literal == CUT
+    # The code gave the number, and nothing else moved.
+    assert summary(coded) == (ValueState.SUPPORTED, CODE, CODE, None, "settled")
+    assert coded.fields[KEY].evidence_ids == [code.id]
+    assert seen(coded) == seen(plain) and extent_marks(coded) == []
+    assert coded_asked == plain_asked == [None]
+    assert sorted(coded_calls) == sorted(plain_calls)
+    names = {coded.regions[0].id: "L1", plain.regions[0].id: "L1"}
+
+    def others(run):
+        def plainly(text):
+            for region, name in names.items():
+                text = text.replace(region, name)
+            return text
+
+        return ({key: (value.state, value.literal, value.parsed, value.normalized, value.layer, value.reason)
+                for key, value in run.fields.items() if key != KEY},
+            sorted((f.rule_id, plainly(f.reason_code), f.severity) for f in run.findings if f.field_key != KEY))
+
+    assert others(coded) == others(plain)
 
 
 def test_the_rule_changes_no_approved_value(tmp_path, monkeypatch):
