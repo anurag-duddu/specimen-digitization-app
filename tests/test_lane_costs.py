@@ -47,6 +47,10 @@ from test_lane_profile import USER, ProductionLikeAdapters
 from test_lane_trigger import STAGE_COSTS, RecordingDispatcher, intake, specimen_with
 
 SCOPE = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+# The pilot profile's program allowance (G30), as the published profile loads it.
+PUBLISHED_ALLOWANCE = (
+    published_registry().resolve("insects").profile.processing.program_allowance.allowance_micros
+)
 PRICES = PriceList(
     version="lane-test-prices-1",
     as_of="2026-09-23",
@@ -383,9 +387,9 @@ def test_an_unknown_outcome_stays_fully_reserved(tmp_path):
 def test_a_call_that_would_cross_the_cap_is_refused_however_little_was_spent(
     tmp_path,
 ):
-    # Earlier runs settled 20,000 short of the pilot profile's allowance (G30,
-    # USD 40): less than SAM 3's 45,000 reservation is left.
-    settled = 40_000_000 - 20_000
+    # Earlier runs settled 20,000 short of the pilot profile's allowance (G30):
+    # less than SAM 3's 45,000 reservation is left.
+    settled = PUBLISHED_ALLOWANCE - 20_000
     app, principal, row = lab(tmp_path, ledger_total_micros=settled)
     run = app.state.workflow.drain(principal, row["specimen_id"]).run
     assert (run.stage, run.blocker) == ("processing_blocked", "program_allowance_exhausted")

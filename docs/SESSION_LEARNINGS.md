@@ -26601,3 +26601,9 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 - Evidence: Retry, Resume and Reprocess re-pin a stored run's allowance through `lane.queue` (`application/lane.py` lines 178 and 184, called from `request_processing` in `application/api.py`); only `reassess_locations` restores the old pins.
 - Validation actually run: listed in the PR body. Not run: any paid or live call, any production write or deploy, Flutter (no Dart change).
 - Follow-ups: release and deploy, then Retry or Resume of the 33 records (coordinator); whether the Cloud Billing budget alert is moved is Not confirmed (owner to check).
+
+## 2026-11-20 - Autonomy A1 correction: the broker's cap is not G9 (PR #459, Codex round 1)
+
+- Correction to the A1 entry above (verdict `~/specimen-golive/autonomy-program/reviews/verdict_459_codex_r1.md`, the coordinator's ruling): `MAX_PROGRAM_ALLOWANCE_MICROS` is the research broker's cap, not G9's ceiling. The USD 40 allowance the owner approved on 2026-11-20 exceeds G9's USD 30 ceiling of 2026-10-17; the owner approved the allowance and was told the cap moves with it; he has not restated G9. The code comments, PLAN, LANE, DEPLOYMENT, READINESS and the budget amendment now say exactly that.
+- Fixture headroom in the lane cost, reservation, reader-recovery, tenant budget, allowance and archive tests is computed from the published profile as loaded (`PUBLISHED_ALLOWANCE` in `tests/test_lane_costs.py`); literal 40_000_000 stays only in the boundary test and the one assertion of the published amount.
+- Learning: a fixture that follows a published figure should load it, so the next owner-approved raise touches only the profile, the boundary test and the one amount assertion.

@@ -76,8 +76,8 @@ qualification is `scripts/ci/verify.sh` plus the protected workflow checks
 documented in `docs/DEPLOYMENT.md`.
 Root owns the sole SDK/native/full-test slot and any later protected release.
 Static release or compiled SQL still cannot qualify the real ten specimens,
-native authority or cumulative USD 30 headroom (G9, raised from USD 25 on 2026-10-17;
-the research broker's cap is USD 40 since 2026-11-20, moved with G30's allowance, not an owner ruling on G9).
+native authority or cumulative USD 30 headroom (G9, raised from USD 25 on 2026-10-17).
+The USD 40 allowance the owner approved on 2026-11-20 exceeds G9's USD 30 ceiling of 2026-10-17: the owner approved the allowance and was told the research broker's cap moves with it; he has not restated G9.
 
 The retired read-only owner plan used the G9 USD 25 cumulative project billing
 alert, covering infrastructure and models under the 2026-09-23 go-live amendment.

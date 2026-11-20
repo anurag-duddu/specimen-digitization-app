@@ -46,8 +46,8 @@ PUBLISHED = (
 SCOPE = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
 OTHER_COLLECTION = "00000000-0000-4000-8000-0000000000c9"
 MOMENT = datetime(2026, 9, 23, 12, 0, tzinfo=timezone.utc)
-# The pilot profile's program allowance: owner-approved G30 increase to USD 40 (2026-11-20).
-ALLOWANCE = 40_000_000
+# The pilot profile's program allowance (G30), as the published profile loads it.
+ALLOWANCE = published_registry().resolve("insects").profile.processing.program_allowance.allowance_micros
 
 
 def lab(tmp_path, adapters=ProductionLikeAdapters, repository=None):
@@ -96,8 +96,9 @@ def seed(repository, reserved_total_micros):
 
 def test_the_pilot_carries_the_program_allowance():
     allowance = published_registry().resolve("insects").profile.processing.program_allowance
+    # The owner-approved G30 allowance, USD 40 since 2026-11-20 ("Yes, USD 40").
     assert (allowance.allowance_micros, allowance.ledger_collection) == (
-        ALLOWANCE,
+        40_000_000,
         "insects",
     )
 

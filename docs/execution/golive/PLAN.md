@@ -64,7 +64,7 @@ first pull request records that in each affected document with a dated entry.
 | G6 | "graceful failures are important. no data found, an error occurred, retry and so on. I am aware there is not always available data and thats when it goes to the need a human queue. As long as agentic harness is able to resolve it will and it can. We need to have a strong harness layer that will be improved but we need to first have a fully functional one" | nothing |
 | G7 | The LLM first pass and the agentic harness run on a Hugging Face model, through the existing gateway and token | open item in `PRD.md`; no adjudication model was named anywhere |
 | G8 | Mandatory and optional fields for the slide pilot: the owner will supply the list. Until it arrives, the profile is configuration-driven and carries the specification's list (all 20 mandatory, `PRD.md` 12.4) | answered by G42 (2026-09-24) |
-| G9 | Spending ceiling USD 25, cumulative, infrastructure and models together. Raised to USD 30 on 2026-10-17 (note after this table). On 2026-11-20 the research broker's cap moved to USD 40 with G30's allowance: the coordinator's necessary consequence, not an owner ruling on G9 (note after this table) | `APPROVED_RELEASE_BUDGET.md` USD 12 |
+| G9 | Spending ceiling USD 25, cumulative, infrastructure and models together. Raised to USD 30 on 2026-10-17 (note after this table). The USD 40 allowance the owner approved on 2026-11-20 exceeds G9's USD 30 ceiling of 2026-10-17: the owner approved the allowance and was told the research broker's cap moves with it; he has not restated G9 (note after this table) | `APPROVED_RELEASE_BUDGET.md` USD 12 |
 | G10 | Geography lookups use Google Maps as `PRD.md` 12.4 specifies; the owner creates the Maps Platform key | nothing |
 | G11 | Data and runtime releases deploy automatically on merge, like Hosting: once the required checks pass and the PR steward approves, a merge to `main` deploys runtime code and additive schema changes. Branch protection, the required checks, keyless identities and main-only environments stay. Envelopes, cost ledgers, independent-review reports and authorization artifacts retire for this program | `AGENTS.md` deployment paragraph (envelope, independent review), `DEPLOYMENT.md`, `RELEASING.md`, `RELEASE_AUTHORIZATION.md`, `RELEASE_DATA.md`, `RELEASE_RUNTIME.md`, `PROTECTED_RELEASE_HARNESS.md` |
 | G12 | "for location parts in the harness a different approach might be needed, spin this off as a new task". A research session (S8) produces a retrospective georeferencing plan from the owner's charter for the owner to review. Until the owner accepts a plan, the harness keeps geography behind its typed tool interface with the Google Maps tool of G10 as the initial version | nothing; G10 stands until the owner accepts S8's plan |
@@ -280,13 +280,16 @@ exceeds `MAX_PROGRAM_ALLOWANCE_MICROS`, so that cap moves from 30000000 to
 40000000, the least value that admits the approved allowance. The owner approved
 the allowance at USD 40; moving the cap to the same figure is the coordinator's
 necessary consequence, told to the owner in the coordinator's report, not a
-separate owner ruling on G9's ceiling. Existing cumulative ledger charges and
+separate owner ruling on G9's ceiling. The USD 40 allowance the owner approved on 2026-11-20 exceeds G9's USD 30 ceiling of 2026-10-17: the owner approved the allowance and was told the research broker's cap moves with it; he has not restated G9. Existing cumulative ledger charges and
 reservations remain; there is no reset or credit. The USD 1 specimen-run limit
 is unchanged. A stored run keeps the allowance it was queued with until Retry,
 Resume or Reprocess ("Start new run") queues it again: `lane.queue` copies the
 published allowance into the run's execution policy each time, so a blocked run
 retried or resumed after this change is released takes USD 40, as a new run
-does; a location reassessment keeps the run's old pins. Whether the Cloud Billing
+does; a location reassessment keeps the run's old pins. The blocked run can
+proceed by Resume after the runtime release, because requeueing replaces the
+run's execution limits from the published profile (`application/lane.py:178`
+and `:184`; `application/api.py:2868`, `:2951`); a new run is not required. Whether the Cloud Billing
 budget alert is moved is Not confirmed (owner to check).
 
 #### Skeletal records, 2026-11-18 (the autonomy program's work package K1)
@@ -417,9 +420,8 @@ be extracted and shown.
 ### 4.3 Budget
 
 The USD 30 ceiling (G9, raised from USD 25 on 2026-10-17; section 2.1) covers
-everything; since 2026-11-20 the research broker's cap is USD 40, moved with
-G30's allowance (the coordinator's necessary consequence, not an owner ruling on
-G9; section 2.1). The pipeline records every paid
+everything as the owner last ruled it. The USD 40 allowance the owner approved on 2026-11-20 exceeds G9's USD 30 ceiling of 2026-10-17: the owner approved the allowance and was told the research broker's cap moves with it; he has not restated G9. The research broker's cap moved to
+USD 40 with the allowance (section 2.1). The pipeline records every paid
 call's cost on the run and refuses a paid step whose worst-case reservation
 would cross the configured model allowance; a Cloud Billing budget alert
 watches the whole project (its threshold after 2026-10-17 is Not confirmed;

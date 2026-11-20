@@ -49,12 +49,12 @@ def request(rig, number=1, reservation=150_000, actual=10_000, calls=None, fail=
 @pytest.mark.parametrize("allowance, refused", [
     (15_000_000, False),  # The historical G30 pilot allowance remains valid.
     (16_000_000, False),  # The earlier owner-approved cumulative pilot allowance.
-    (25_000_000, False),  # G9's earlier USD 25 ceiling.
+    (25_000_000, False),  # The broker's cap at G9's USD 25 ceiling (2026-09-23).
     (28_000_000, False),  # The earlier owner-approved cumulative pilot allowance (2026-10-17).
-    (30_000_000, False),  # G9's earlier USD 30 ceiling (2026-10-17).
-    (40_000_000, False),  # The owner-approved allowance (G30, 2026-11-20); the cap admits it and no more.
+    (30_000_000, False),  # The broker's cap at G9's USD 30 ceiling (2026-10-17), G9's last ruling.
+    (40_000_000, False),  # The owner-approved allowance (G30, 2026-11-20); the broker's cap admits it and no more.
     (40_000_001, True)])
-def test_the_code_refuses_an_allowance_above_the_g9_ceiling(rig, tmp_path, allowance, refused):
+def test_the_code_refuses_an_allowance_above_the_brokers_cap(rig, tmp_path, allowance, refused):
     run = SimpleNamespace(profile=SimpleNamespace(execution=SimpleNamespace(
         program_allowance_micros=allowance, program_ledger_collection="collection")))
     def build():

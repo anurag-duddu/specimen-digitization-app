@@ -13,6 +13,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 
+from specimen_digitization.application.collection_profiles import published_registry
 from specimen_digitization.application.domain import Scope
 from specimen_digitization.application.lane_allowance import (
     ARCHIVE_BATCH,
@@ -27,7 +28,8 @@ from specimen_digitization.application.storage import Conflict, SQLiteRepository
 from specimen_digitization.application.workflow import Workflow
 
 SCOPE = Scope(organization_id="00000000-0000-4000-8000-000000000001", collection_id="insects")
-ALLOWANCE = 40_000_000
+# The pilot profile's program allowance (G30), as the published profile loads it.
+ALLOWANCE = published_registry().resolve("insects").profile.processing.program_allowance.allowance_micros
 
 
 def ident(name):

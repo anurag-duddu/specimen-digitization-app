@@ -27,7 +27,7 @@ from specimen_digitization.application.tenant_budget import (
 )
 from specimen_digitization.application.workflow import LOST_READING
 
-from test_lane_costs import QWEN, SCOPE, TokenAdapters, priced_registry, priced_run, seed_synthetic_ledger
+from test_lane_costs import PUBLISHED_ALLOWANCE, QWEN, SCOPE, TokenAdapters, priced_registry, priced_run, seed_synthetic_ledger
 from test_lane_drain import NonSensitiveMember
 from test_lane_profile import USER
 from test_lane_trigger import RecordingDispatcher, action, intake, specimen_with
@@ -250,14 +250,14 @@ def test_a_siblings_cap_does_not_apply(tmp_path):
 def test_a_tenant_refusal_comes_before_the_program_allowance_and_holds_nothing(tmp_path):
     # Both would refuse: the cap is checked first, and nothing is reserved anywhere.
     repository = capped(tmp_path, [(ORGANIZATION, 1)])
-    app, specimen_id = lab(tmp_path, repository, program_total=40_000_000)
+    app, specimen_id = lab(tmp_path, repository, program_total=PUBLISHED_ALLOWANCE)
     assert drain(app, specimen_id).blocker == EXHAUSTED
-    assert program_total(repository) == 40_000_000
+    assert program_total(repository) == PUBLISHED_ALLOWANCE
 
 
 def test_the_program_allowance_refusing_parks_no_tenant_hold(tmp_path):
     repository = capped(tmp_path, [(ORGANIZATION, 5_000_000)])
-    app, specimen_id = lab(tmp_path, repository, program_total=40_000_000 - 1)
+    app, specimen_id = lab(tmp_path, repository, program_total=PUBLISHED_ALLOWANCE - 1)
     run = drain(app, specimen_id)
     assert run.blocker == "program_allowance_exhausted"
     # The cap applied, and its ledger was read, before the program's refused:

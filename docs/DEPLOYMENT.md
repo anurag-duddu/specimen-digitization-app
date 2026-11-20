@@ -15,7 +15,8 @@ new release inputs must explicitly select the approved additive contracts.
 > raised from USD 25 on 2026-10-17,
 > [amendment](execution/APPROVED_RELEASE_BUDGET.md#amendment-2026-10-17-g9-and-g30);
 > the research broker's cap moved to USD 40 with G30's allowance on 2026-11-20,
-> [amendment](execution/APPROVED_RELEASE_BUDGET.md#amendment-2026-11-20-g30-and-the-g9-cap)),
+> [amendment](execution/APPROVED_RELEASE_BUDGET.md#amendment-2026-11-20-g30-and-the-research-brokers-cap);
+> The USD 40 allowance the owner approved on 2026-11-20 exceeds G9's USD 30 ceiling of 2026-10-17: the owner approved the allowance and was told the research broker's cap moves with it; he has not restated G9.),
 > trace content follows G3
 > ([amendment](execution/APPROVED_LOGFIRE_TRACING.md#go-live-amendment-2026-09-23-g3)),
 > and data and runtime releases deploy on merge without release inputs (G11).
@@ -542,7 +543,7 @@ inside ordinary pull-request CI.
 > from USD 28 to USD 40 so the 33 records can be re-run: yes (USD 40), or not
 > now?"; the owner answered, exactly: "Yes, USD 40". The research broker's cap
 > moves to USD 40, the least value that admits that allowance: the coordinator's
-> necessary consequence, not a separate owner ruling on G9. Whether the Cloud
+> necessary consequence, not a separate owner ruling on G9. The USD 40 allowance the owner approved on 2026-11-20 exceeds G9's USD 30 ceiling of 2026-10-17: the owner approved the allowance and was told the research broker's cap moves with it; he has not restated G9. Whether the Cloud
 > Billing budget alert is moved is Not confirmed (owner to check).
 
 ### Flutter client

@@ -6,8 +6,9 @@
 > clause keeps its original text and carries a dated note naming the decision.
 > The [go-live amendment](#go-live-amendment-2026-09-23-g9) at the end records
 > the USD 25 ceiling; the [amendment of 2026-10-17](#amendment-2026-10-17-g9-and-g30)
-> raises it to USD 30 (G9); the [amendment of 2026-11-20](#amendment-2026-11-20-g30-and-the-g9-cap)
-> raises the program allowance to USD 40 and the research broker's cap with it. [`golive/RELEASE.md`](golive/RELEASE.md) lists the code
+> raises it to USD 30 (G9); the [amendment of 2026-11-20](#amendment-2026-11-20-g30-and-the-research-brokers-cap)
+> raises the program allowance to USD 40 and the research broker's cap with it.
+> The USD 40 allowance the owner approved on 2026-11-20 exceeds G9's USD 30 ceiling of 2026-10-17: the owner approved the allowance and was told the research broker's cap moves with it; he has not restated G9. [`golive/RELEASE.md`](golive/RELEASE.md) lists the code
 > that still enforces a superseded clause until a later go-live pull request
 > changes it.
 
@@ -254,7 +255,7 @@ instance stays with the infrastructure ceiling. Failed model calls whose
 provider reported their tokens now settle at those tokens. Reservations, the
 USD 1 specimen-run limit and the USD 28 allowance are unchanged.
 
-## Amendment, 2026-11-20 (G30 and the G9 cap)
+## Amendment, 2026-11-20 (G30 and the research broker's cap)
 
 The owner raised the production program allowance (G30, the shared model
 allowance) from USD 28 to USD 40, through one reviewed PR, preserving all
@@ -279,13 +280,17 @@ whose pinned allowance exceeds `MAX_PROGRAM_ALLOWANCE_MICROS`, so that cap moves
 from 30000000 to 40000000, the least value that admits the approved allowance.
 The owner approved the allowance at USD 40; moving the cap to the same figure is
 the coordinator's necessary consequence, told to the owner in the coordinator's
-report, not a separate owner ruling on G9's ceiling. The amendments above state
+report, not a separate owner ruling on G9's ceiling. The USD 40 allowance the owner approved on 2026-11-20 exceeds G9's USD 30 ceiling of 2026-10-17: the owner approved the allowance and was told the research broker's cap moves with it; he has not restated G9. The amendments above state
 the cap, the ceiling and the allowance as they were on their dates. Cumulative
 charges and reservations are retained; the USD 1 specimen-run limit is
 unchanged. A run already stored keeps its pinned allowance until it is queued
 again: Retry, Resume and Start new run re-pin the run's execution limits from the
 published profile (`application/lane.py`, `queue`), so they take USD 40 once this
-change is released; a location reassessment keeps the run's old pins. See the
+change is released; a location reassessment keeps the run's old pins. The
+blocked run can proceed by Resume after the runtime release, because requeueing
+replaces the run's execution limits from the published profile
+(`application/lane.py:178` and `:184`; `application/api.py:2868`, `:2951`); a
+new run is not required. See the
 dated approval in
 [`golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator).
 Whether the Cloud Billing budget alert is moved is Not confirmed (owner to
