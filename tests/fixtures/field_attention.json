@@ -1,5 +1,5 @@
 {
-  "about": "Plan WP K1 (Codex round 2 on PR #455): which fields need attention for a set of reason codes. The server (application/review_summary.attention_fields, tests/test_field_attention_contract.py) and the app (blockers.fieldAttentionFor with the field rows' rule, test/field_attention_contract_test.dart) both read this file, so their one mapping of reason codes to fields cannot disagree. Each case: the record's fields (state, has_value), its open reason codes (`codes`), the reason codes that hold it (`held_codes`, optional: a record on the earlier profile), and the fields that need attention.",
+  "about": "Plan WP K1 (Codex round 2 on PR #455): which fields need attention for a set of reason codes. The server (application/review_summary.attention_fields, tests/test_field_attention_contract.py) and the app (blockers.fieldAttentionFor with the field rows' rule, test/field_attention_contract_test.dart) both read this file, so their one mapping of reason codes to fields cannot disagree. Each case: the record's fields (state, has_value), its open reason codes (`codes`), the reason codes that hold it (`held_codes`, optional: a record on the earlier profile), and the fields that need attention. Work package F2: the server sends no `label_unsettled` code for a settled value the second opinion agrees with (the dates excepted) and no `mandatory_unresolved` or `label_unsettled` code for a blank field it also leaves blank (Verbatim D/T/S excepted); a field with no code and a settled state needs no attention (the last two cases).",
   "cases": [
     {
       "name": "date order on two supported dates",
@@ -239,6 +239,63 @@
       ],
       "attention": [
         "county"
+      ]
+    },
+    {
+      "name": "an agreed value on a label whose doubt is open: no code, no attention (the dates keep theirs)",
+      "fields": {
+        "country": {
+          "state": "supported",
+          "has_value": true
+        },
+        "habitat": {
+          "state": "supported",
+          "has_value": true
+        },
+        "date_visited_from": {
+          "state": "supported",
+          "has_value": true
+        },
+        "fmnh_ins_number": {
+          "state": "supported",
+          "has_value": true
+        }
+      },
+      "codes": [
+        "unresolved_transcription:L2",
+        "label_unsettled:date_visited_from"
+      ],
+      "attention": [
+        "date_visited_from"
+      ]
+    },
+    {
+      "name": "an agreed blank: no code, no attention (Verbatim D/T/S keeps its codes)",
+      "fields": {
+        "county": {
+          "state": "not_present",
+          "has_value": false
+        },
+        "collection_method": {
+          "state": "not_present",
+          "has_value": false
+        },
+        "verbatim_dts": {
+          "state": "not_present",
+          "has_value": false
+        },
+        "country": {
+          "state": "supported",
+          "has_value": true
+        }
+      },
+      "codes": [
+        "unresolved_transcription:L2",
+        "mandatory_unresolved:verbatim_dts",
+        "label_unsettled:verbatim_dts"
+      ],
+      "attention": [
+        "verbatim_dts"
       ]
     }
   ]
