@@ -251,9 +251,15 @@ def _decode(run, task: FieldTask):
 def confirm(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict | None = None) -> bool:
     """Rule 3, and rule 4's note beside a person's transcript: what the rule did before 2026-11-20
     besides holding, in the place step.apply_outcomes always called it (after the field's
-    settlement, before the check stage). False, changing nothing, where neither applies."""
+    settlement, before the check stage). False where neither applies. The rule's own notes
+    (PERSON_DIFFERS, READERS_DIFFER) are of the field's last research: they go first, whatever
+    the rule then does, so a field researched again keeps only the note of this research, and
+    none where the rule no longer applies."""
     from .step import SETTLEMENT, SETTLEMENT_RULES, cleared_code
 
+    if task.key == FIELD:
+        run.findings[:] = [finding for finding in run.findings
+            if not (finding.rule_id == RULE and finding.field_key == FIELD)]
     code = _decode(run, task)
     if code is None:
         return False
@@ -321,6 +327,23 @@ def give(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict | 
     # Rule 1 (no reading settled a well-formed number) or rule 2 (a settled number that is not
     # the code written whole, whatever the value's parsed layer reads).
     return _supply(run, task, code, current, decision, settled=settled)
+
+
+def forget_stale(run) -> None:
+    """READERS_DIFFER describes a field that holds the number the code gave in place of the
+    readers'. Once the field is no longer that value (a person decided it since), the note goes:
+    step.finalize_fields calls this at every finalize, so the note never stands beside a value it
+    does not describe. A field researched again loses the rule's notes in confirm."""
+    findings = getattr(run, "findings", None) or []
+    if not any(finding.rule_id == RULE and finding.reason_code == READERS_DIFFER for finding in findings):
+        return
+    code, value = stored_code(run), run.fields.get(FIELD)
+    if (code is not None and value is not None and value.state == ValueState.SUPPORTED
+            and value.literal == code.payload and value.evidence_ids == [code.row.id]
+            and value.evidence_relations.get(code.row.id) == "decides"):
+        return
+    run.findings[:] = [finding for finding in findings
+        if not (finding.rule_id == RULE and finding.reason_code == READERS_DIFFER)]
 
 
 def settle(run, task: FieldTask, readings: Sequence[Reading], *, decision: dict | None = None) -> bool:

@@ -4734,6 +4734,11 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     adopt_legacy(run)
     if specimen is not None and blobs is not None:
         verify_evidence(specimen, blobs)
+    # The QR code rule's note of the readers' number it replaced goes once the catalogue number is
+    # no longer the number the code gave (a person decided the field since).
+    from .catalogue_code import forget_stale
+
+    forget_stale(run)
     from ..application.lane import settle_approval
 
     # An approval stands only on the values it was given for (lane.settle_approval).
