@@ -42,8 +42,10 @@ class Record:
     """One record on the published profile with a barcode label and its code row, and the routes a
     person and the workflow act through."""
 
-    def __init__(self, tmp_path, monkeypatch, *texts, code=True):
-        barcode_label(monkeypatch, *texts)
+    def __init__(self, tmp_path, monkeypatch, *texts, code=True, label=True):
+        # `label` False for a second record of one test: the barcode label is patched in once.
+        if label:
+            barcode_label(monkeypatch, *texts)
         self.rig = build_rig(tmp_path, FIRST, profile=published_registry().profiles[0])
         queue_in_place(monkeypatch)
         self.client = review_client(self.rig)
@@ -260,6 +262,30 @@ def test_a_correction_saved_on_the_apps_prefilled_evidence_is_not_cleared_with_t
     assert run.disposition == Disposition.REVIEW and record.cleared_by() is None
 
 
+def test_a_correction_on_the_prefilled_evidence_stays_held_after_approval_until_a_retry(tmp_path, monkeypatch):
+    """The sign-off review's round 2 note, as measured. The code gave 0010001, so the field's own
+    row, which the app prefills a correction with, is the code row. A person corrects the number to
+    0010007 on that evidence and approves: the record stays held by
+    evidence_does_not_support_value (the code row does not hold 0010007); it holds, and the code
+    overrides nothing. After a Retry research settles the readers' 0010007 on the readers' rows and
+    the record is cleared by a person with the person's number. (On main the prefilled rows are the
+    readers', so the same correction clears by a person on approval.)"""
+    record = Record(tmp_path, monkeypatch, OTHER)
+    record.research(DIFFERS)
+    the_code_gave(record)
+    record.decide(KEY, PERSONS, cite="own")
+    approved = record.approve()
+    assert number(approved) == (ValueState.SUPPORTED, PERSONS) and approved.human_approved is True
+    assert approved.disposition == Disposition.REVIEW and record.cleared_by() is None
+    assert approved.reasons == [f"evidence_does_not_support_value:{KEY}"]
+    record.act("retry")
+    asked = record.research(DIFFERS)
+    assert KEY in asked.calls
+    run = the_persons(record)
+    assert (run.disposition, run.human_approved, run.reasons, record.cleared_by()) == (
+        Disposition.CLEARED, True, [], "person")
+
+
 def test_research_may_reopen_a_persons_number_and_the_code_still_gives_none(tmp_path, monkeypatch):
     """Main's behaviour, unchanged and not this rule's: the readers differ, the code gives 0010001,
     a person saves 0010007, and on Retry the field's expert names several numbers, so research
@@ -277,6 +303,71 @@ def test_research_may_reopen_a_persons_number_and_the_code_still_gives_none(tmp_
     assert run.disposition == Disposition.REVIEW and f"mandatory_unresolved:{KEY}" in run.reasons
     approved = record.approve()
     assert approved.disposition == Disposition.REVIEW and record.cleared_by() is None
+
+
+def catalogue_view(run):
+    """The catalogue number as a person and the routing see it, with the ids a rig draws named: the
+    whole value, what each cited row is and how it is related, the field's findings with what
+    they cite, and the reasons and open reasons that name the field."""
+    labels = {region.id: f"L{index + 1}" for index, region in enumerate(run.regions)}
+    rows = {row.id: row for row in run.evidence}
+
+    def named(text):
+        for region, name in labels.items():
+            text = text.replace(region, name)
+        return text
+
+    def cited(ids):
+        return [(rows[i].kind, rows[i].source, labels.get(rows[i].region_id)) if i in rows else "missing" for i in ids]
+
+    value = run.fields[KEY]
+    data = value.model_dump(mode="json", exclude={"evidence_ids", "evidence_relations", "source_region_id",
+        "source_observation_id", "verbatim_by_observation", "input_source_by_observation", "settled_observation_ids"})
+    return {"value": data, "cites": cited(value.evidence_ids),
+        "relations": sorted((str(cited([i])[0]), how) for i, how in value.evidence_relations.items()),
+        "label": labels.get(value.source_region_id), "readers": len(value.verbatim_by_observation),
+        "findings": sorted((f.rule_id, named(f.reason_code), f.severity, str(cited(f.evidence_ids)))
+            for f in run.findings if f.field_key == KEY),
+        "reasons": [named(r) for r in run.reasons if KEY in r or r == "identifier_format"],
+        "open_reasons": [named(r) for r in run.open_reasons if KEY in r],
+        "disposition": run.disposition, "approved": run.human_approved,
+        "decided": list(run.person_decided_fields)}
+
+
+SAME = {KEY: catalogue(CODE, CODE), "habitat": CANNOT}
+
+
+@pytest.mark.parametrize("when", ["after-research-then-retry", "before-any-research"])
+def test_a_person_saves_the_codes_own_number_and_the_code_does_not_confirm_it(tmp_path, monkeypatch, when):
+    """Codex round 2 on PR #458. The readers write 0010001, the code row says 0010001, and a person
+    saves 0010001 at the decision endpoint (recorded in Run.person_decided_fields; the value has no
+    research layer). Research then asks the field's expert again (a Retry, or the first research
+    when the decision came first: main's task selection), and the expert resolves 0010001. The
+    whole rule stands aside from a person's field, the confirmation too: the field, its reason, its
+    citations, its findings and its reasons are those of the same sequence on a record with no code
+    row. At ccb026f9 the confirmation changed the reason, added the code row as deciding and
+    replaced the field's settlement findings."""
+    records = {}
+    for name, code in (("coded", True), ("plain", False)):
+        record = Record(tmp_path / name, monkeypatch, PRINTED, code=code, label=code)
+        assert len(record.run.regions) == 2
+        if when == "after-research-then-retry":
+            record.research(SAME)
+            decided = record.decide(KEY, CODE, cite="reader")
+            assert decided.person_decided_fields == [KEY] and decided.fields[KEY].layer is None
+            assert FIELD_RESEARCH not in record.act("retry").completed_steps
+        else:
+            record.decide(KEY, CODE, cite="none")
+        asked = record.research(SAME)
+        assert KEY in asked.calls
+        records[name] = record
+    coded, plain = records["coded"].run, records["plain"].run
+    assert number(coded) == (ValueState.SUPPORTED, CODE)
+    assert records["coded"].code.id not in coded.fields[KEY].evidence_ids
+    assert "QR code" not in coded.fields[KEY].reason and notes(coded) == []
+    assert catalogue_view(coded) == catalogue_view(plain)
+    approved = {name: catalogue_view(record.approve()) for name, record in records.items()}
+    assert approved["coded"] == approved["plain"]
 
 
 def test_the_rules_note_is_replaced_and_never_left_beside_another(tmp_path, monkeypatch):

@@ -980,18 +980,20 @@ def test_a_persons_decision_at_the_endpoint_is_not_replaced_by_the_code_on_retry
 
 
 @pytest.mark.parametrize("held", ["decided-at-the-endpoint", "a-locked-selection", "protected-by-a-reassessment"])
-@pytest.mark.parametrize("scenario", ["open", "another-number"])
+@pytest.mark.parametrize("scenario", ["open", "another-number", "the-codes-own-number"])
 def test_the_code_stands_aside_from_every_record_of_a_persons_authority(tmp_path, monkeypatch, scenario, held):
     """The one function the second opinion reads a person's authority through
     (second_opinion.authority) decides here too: a field decided at the endpoint, a research
     selection a person locked, a field the location reassessment protects. On each, the code
-    neither gives a number to an open field nor replaces a settled one, and marks nothing; with
-    the record of authority removed, the same row gives the number (the control)."""
+    neither gives a number to an open field, nor replaces a settled one, nor confirms a settled
+    number that is its own (Codex round 2 on PR #458: at ccb026f9 the confirmation still acted),
+    and marks nothing; with the record of authority removed, the same row gives or confirms the
+    number (the control)."""
     from specimen_digitization.field_research import catalogue_code
     from specimen_digitization.field_research import second_opinion
     from specimen_digitization.field_research import step as field_step
 
-    texts, script = NOT_SUPPLIED[scenario]
+    texts, script = {**NOT_SUPPLIED, "the-codes-own-number": ((PRINTED,), catalogue(CODE, CODE))}[scenario]
     rig = rig_with(tmp_path, monkeypatch, *texts)
     run = rig.specimen.run
     settle(rig, Scripted({KEY: script}))

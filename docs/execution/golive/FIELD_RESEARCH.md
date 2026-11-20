@@ -2007,8 +2007,8 @@ all equal to the truth.
      no well-formed catalogue number, whole (`barcode.stored_code` already
      refuses anything but seven digits); for rules 1 and 2, a row that lies
      on no label of this run's image; a run not on the units path; a run
-     with a transcript a person decided on any of its labels; or, for
-     rules 1 and 2, a field a person holds authority over. In the
+     with a transcript a person decided on any of its labels; or, for every
+     part of the rule, a field a person holds authority over. In the
      transcript's case, where a settled value's number is not the code's,
      the value's reason says so and an info finding
      `barcode_person_differs:fmnh_ins_number` cites the code; a field no
@@ -2018,12 +2018,17 @@ all equal to the truth.
    (`second_opinion.authority`): a decision made at the decision endpoint
    (`Run.person_decided_fields`), a decision a move or a new run carried
    (`step.human_keys`), a research selection a person locked, a field a
-   location reassessment protects, and a value on a label whose transcript a
-   person decided. Rules 1 and 2 never act on such a field. Research itself
-   may ask the field's expert again on a Retry (main's task selection,
-   unchanged here: it reads the carry alone); whatever that leaves, the code
-   gives the field no number and replaces no value of it. That is all this
-   rule promises: research's own answer on such a Retry can still replace
+   location reassessment protects. No part of the rule acts on such a
+   field: every part enters through one function (`catalogue_code._entry`),
+   which stands aside for it, so the code neither confirms the field (its
+   reason, citations and findings stay as research left them), nor gives
+   it a number, nor replaces its value, nor notes a difference. The fifth
+   record of authority, a transcript a person decided, is rule 4's own
+   case: there the rule does nothing but its note. Research itself may ask
+   the field's expert again on a Retry (main's task selection, unchanged
+   here: it reads the carry alone); whatever that leaves is left. Codex
+   round 2 found the confirmation still acting on a number a person had
+   saved that equals the code's. That is all this rule promises: research's own answer on such a Retry can still replace
    what the person saved (a person's number by an open field when the expert
    names several), as on main. Codex round 1 and the sign-off review of
    PR #458 found the earlier head reading the carry alone, so that a number
@@ -2254,12 +2259,27 @@ failed, and a person's decisions (none in the stored runs); the 1 base and
   of the code row. A settled field is not researched again
   (`step.build_tasks`), so Retry and Resume keep it; a re-finalize, and so a
   history restore or a person's decision elsewhere, reads the same record;
-  a person's later decision on the field replaces it, and the code never
-  acts on that field again (`second_opinion.authority`).
+  a person's later decision on the field replaces it, and from then on no
+  part of the code's rule changes that field, its reason, its citations or
+  its settlement findings (`catalogue_code._entry`, reading
+  `second_opinion.authority`); the rule only removes its own earlier info
+  notes from the run.
 - A field whose expert failed with a retryable failure takes the code's
   number in that attempt; the attempt is blocked for its retry as before,
   and the retry does not ask the expert again (a later attempt of the run:
   "Order" above says what else it sees).
+- A person's correction of a number the code gave, saved on the app's
+  prefilled evidence, stays held after the person approves. The app prefills
+  a correction with the field's own rows, and for a code-given number that
+  is the code's own row, which does not hold the person's number: the record
+  is held by `evidence_does_not_support_value:fmnh_ins_number`, where main,
+  whose field cites the readers' rows, clears it by a person. It holds and
+  never overrides: the value is the person's throughout. After a Retry
+  research settles the readers' number on the readers' rows and the record
+  is cleared by a person with the person's number (measured by the sign-off
+  review of ccb026f9 beside origin/main, and by
+  `test_a_correction_on_the_prefilled_evidence_stays_held_after_approval_until_a_retry`).
+  A correction that cites a reader's row is not held.
 - A person's approval given while the number was open is withdrawn when the
   code gives the number, as for any value research changes after an
   approval (#450's digest): the record clears by the system's rules and is
@@ -2273,13 +2293,15 @@ failed, and a person's decisions (none in the stored runs); the 1 base and
 
 Tests: `tests/test_barcode.py` (codes made by zxing-cpp's encoder in the
 test; no museum image is committed) and
-`tests/field_research/test_catalogue_code.py` (112 cases: each rule and each
+`tests/field_research/test_catalogue_code.py` (115 cases: each rule and each
 exclusion, the earlier reviews' cases, and that a run with no code row, and
 every other field, settle exactly as before; every record of a person's
 authority; and Codex's locality case, with the expert requests counted) and
-`tests/field_research/test_catalogue_code_person.py` (14 cases: on the
+`tests/field_research/test_catalogue_code_person.py` (17 cases: on the
 published profile through the real decision endpoint, Retry and Resume, the
-sign-off review's person sequences; the rule's notes; and that the one call
+sign-off review's person sequences, and a person saving the code's own
+number, after research and before it, compared with a record with no code
+row; the rule's notes; and that the one call
 in `finalize_fields` leaves a run with no code row equal in every stored
 value). Sixteen earlier cases changed
 expectation with the rule: each is kept and says what e83c36fd did.
