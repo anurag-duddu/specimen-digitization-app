@@ -2252,7 +2252,11 @@ record clears or holds differently.
   (there the code holds the record as before, on the published profile and
   on an older pinned one alike); to a field a person holds authority over
   (`second_opinion.authority`); on a run a person approved; on a run not on
-  the units path; while the stored result is not obtained, switched off or
+  the units path; on a run any label of which one reader read (a reason of
+  that finalize, holding or open, is
+  `independent_observations_missing:<label>`: `second_opinion.one_reader`,
+  record level, with no tracing of which field is drawn from which label);
+  while the stored result is not obtained, switched off or
   unconfigured, or its intent was open (an open intent is abandoned first:
   not obtained); or while a value the step answers for has no verdict for
   its current value (`second_opinion.due`: the record's flags are then as
@@ -2266,12 +2270,21 @@ record clears or holds differently.
   read as ISO times with an offset). What it cannot establish is not
   current, and the flags stay. A correction of regions and a Reprocess start
   a new run, which holds no stored result.
+The one-reader condition is the coordinator's ruling of 2026-11-20, on the
+live confirmation rows: "agreed" needs two independent readings behind it.
+Slide 105526455 there settled Province/State "Utah" for Idaho from a label
+one reader read (a printed "Siphonaptera of Utah" form with "Ida" written on
+it); the second opinion, given that one reader's text, agreed, and the rules
+as first ruled would have lifted the value's only flag. On such a run the
+flags are exactly as without the rules.
 Measured on the 100 truth slides (the stored runs replayed on this code with
 the stored second-opinion answers, each run finalized with and without the
 rules: `~/specimen-golive/autonomy-program/F2/`): of 200 runs none differs in
 anything but its open reasons; on the 83 records that clear, rule A removes
-157 flags, all on right values, and rule B 126, all on truly absent values;
-a cleared record's flagged fields go from 11.16 to 7.75 on average. Known
+146 flags, all on right values, and rule B 63, all on truly absent values;
+a cleared record's flagged fields go from 11.16 to 8.64 on average (9 of the
+83 carry a one-reader label and keep every flag: 11 of rule A's and 63 of
+rule B's, all on right or truly absent values there). Known
 limits: small samples per field type; the second opinion sees both readers'
 texts, so a misreading both readers share can be agreed. Tests:
 `tests/field_research/test_agreed_no_flag.py`; the two cases at the end of
