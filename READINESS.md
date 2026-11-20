@@ -76,12 +76,15 @@ qualification is `scripts/ci/verify.sh` plus the protected workflow checks
 documented in `docs/DEPLOYMENT.md`.
 Root owns the sole SDK/native/full-test slot and any later protected release.
 Static release or compiled SQL still cannot qualify the real ten specimens,
-native authority or cumulative USD 30 headroom (G9, raised from USD 25 on 2026-10-17).
+native authority or cumulative USD 30 headroom (G9, raised from USD 25 on 2026-10-17;
+the research broker's cap is USD 40 since 2026-11-20, moved with G30's allowance, not an owner ruling on G9).
 
 The retired read-only owner plan used the G9 USD 25 cumulative project billing
 alert, covering infrastructure and models under the 2026-09-23 go-live amendment.
-G30 retains a production model allowance (USD 28 since 2026-10-17, raised from
-USD 5, then USD 15 on 2026-10-09 and USD 16 on 2026-10-16) and a separate USD 5
+G30 retains a production model allowance (USD 40 since 2026-11-20, the owner's
+"Yes, USD 40" to "Raise the production spending allowance from USD 28 to USD 40?";
+raised from USD 5, then USD 15 on 2026-10-09, USD 16 on 2026-10-16 and USD 28 on
+2026-10-17) and a separate USD 5
 acceptance lab allowance. Historical lab calls do not debit a fabricated production
 predecessor. G11 retires release cost ledgers and release reservations; G30's
 atomic per-call reservations remain. The alert creates no spending authority,

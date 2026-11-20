@@ -154,8 +154,10 @@ What `POST /specimens/{id}/process` does depends on the current run:
   reservations set in the profile under PLAN 4.3's coordinator rulings, not
   provider prices. The owner's decisions here are the cumulative ceiling (G9:
   USD 25 when chosen, USD 30 since 2026-10-17) and the production model
-  allowance within it (G30: USD 5 when chosen, USD 28 since 2026-10-17; PLAN
-  2.1).
+  allowance within it (G30: USD 5 when chosen, USD 28 since 2026-10-17, USD 40
+  since 2026-11-20, the owner's "Yes, USD 40"; PLAN 2.1). The research broker's
+  cap moved to USD 40 with it, the coordinator's necessary consequence, not an
+  owner ruling on G9.
 
 A request copies both into the run's `profile.execution` as
 `approved_cost_limit_micros` and `stage_cost_reservations`. The existing workflow

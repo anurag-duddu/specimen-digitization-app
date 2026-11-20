@@ -13,7 +13,9 @@ new release inputs must explicitly select the approved additive contracts.
 > The ceiling is now USD 30 (G9,
 > [amendment](execution/APPROVED_RELEASE_BUDGET.md#go-live-amendment-2026-09-23-g9);
 > raised from USD 25 on 2026-10-17,
-> [amendment](execution/APPROVED_RELEASE_BUDGET.md#amendment-2026-10-17-g9-and-g30)),
+> [amendment](execution/APPROVED_RELEASE_BUDGET.md#amendment-2026-10-17-g9-and-g30);
+> the research broker's cap moved to USD 40 with G30's allowance on 2026-11-20,
+> [amendment](execution/APPROVED_RELEASE_BUDGET.md#amendment-2026-11-20-g30-and-the-g9-cap)),
 > trace content follows G3
 > ([amendment](execution/APPROVED_LOGFIRE_TRACING.md#go-live-amendment-2026-09-23-g3)),
 > and data and runtime releases deploy on merge without release inputs (G11).
@@ -517,7 +519,7 @@ public image. Never use private specimen material for a smoke test.
 These optional smoke commands are distinct from the user-authorized first-ten
 application pilot. The pilot requires its privately frozen originals, pinned
 provider routes, verified identity/data/runtime prerequisites and the shared
-reservation ledger (G30's allowance, USD 28 since 2026-10-17). It is never run
+reservation ledger (G30's allowance, USD 40 since 2026-11-20). It is never run
 inside ordinary pull-request CI.
 
 > 2026-09-23: Superseded for the go-live program by
@@ -533,6 +535,15 @@ inside ordinary pull-request CI.
 > The pipeline's research broker now refuses an allowance above USD 30. Whether
 > the Cloud Billing budget alert is moved from USD 25 to USD 30 is Not confirmed
 > (owner to check): nothing in the repository holds it.
+>
+> 2026-11-20: The owner raised G30's allowance from USD 28 to USD 40 (PLAN
+> section 2.1, 2026-11-20). The coordinator asked "Raise the production spending
+> allowance from USD 28 to USD 40?" and "Raise the production spending allowance
+> from USD 28 to USD 40 so the 33 records can be re-run: yes (USD 40), or not
+> now?"; the owner answered, exactly: "Yes, USD 40". The research broker's cap
+> moves to USD 40, the least value that admits that allowance: the coordinator's
+> necessary consequence, not a separate owner ruling on G9. Whether the Cloud
+> Billing budget alert is moved is Not confirmed (owner to check).
 
 ### Flutter client
 
