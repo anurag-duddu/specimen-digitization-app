@@ -8,8 +8,9 @@ after the field's expert answer has been applied and its labels' settlement reco
 (step.apply_outcomes calls settle). The expert is not told the decode. The code is compared
 with, and supplies, whole values only: it reads no number out of the readers' texts and breaks
 no tie among readings. The rule is the coordinator's, of 2026-11-20, under the owner's ruling
-of 2026-11-18 (docs/execution/autonomy/PLAN.md, section 1 and the row "V3"), on the measurement
-that the code equals the truth on all 97 of the 100 truth slides that decode.
+of 2026-11-18 (docs/execution/autonomy/PLAN.md section 4: its row "V3", and the ruling quoted
+below the table), on the measurement that the code equals the truth on all 97 of the 100 truth
+slides that decode.
 
 1. No value settled: the field is ambiguous, unresolved, not present or blank, or its settled
    text is no well-formed catalogue number. The field is settled with the code's number
@@ -183,16 +184,18 @@ def _supply(run, task: FieldTask, code: StoredCode, current: FieldValue, decisio
 
     payload = code.payload
     earlier = (current.literal or current.normalized or current.parsed) if settled else None
+    # The reasons are shown in the app, so they use its words: "catalog number", "the slide's QR
+    # code" (the client's UX writing guidelines, section 3).
     if earlier and number(current.normalized or current.parsed or current.literal) is None:
-        reason = (f'The readers\' text, "{_shown(earlier)}", is no well-formed catalogue number. The slide\'s QR '
-            f"code reads {payload} and gives the catalogue number.")
+        reason = (f'The readers\' text, "{_shown(earlier)}", is not a well-formed catalog number. The slide\'s QR '
+            f"code reads {payload} and gives the catalog number.")
     elif earlier:
         reason = (f'The readers\' number, "{_shown(earlier)}", differs from the slide\'s QR code, which reads '
-            f"{payload}. The code gives the catalogue number.")
+            f"{payload}. The code gives the catalog number.")
     else:
         read = _quoted(candidate.literal for candidate in task.candidates)
-        reason = ("No reading settled the catalogue number" + (f" (the readers read {read})" if read else "")
-            + f", so the slide's QR code gives it: {payload}.")
+        reason = " ".join(part for part in ("No reading settled the catalog number.",
+            f"The readers read {read}." if read else "", f"The slide's QR code gives it: {payload}.") if part)
     run.findings[:] = [finding for finding in run.findings
         if not (finding.field_key == FIELD and finding.rule_id in (SETTLEMENT, "transcript_literal"))]
     run.fields[FIELD] = FieldValue(state=ValueState.SUPPORTED, literal=payload, parsed=payload,

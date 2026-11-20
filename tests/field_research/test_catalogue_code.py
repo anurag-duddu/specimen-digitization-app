@@ -157,7 +157,7 @@ def over_readers(run, code, readers, payload=CODE):
     finding that cites the code row first, then the readers' rows, and is no reason."""
     value = supplied(run, code, payload)
     assert value.reason == (f'The readers\' number, "{readers}", differs from the slide\'s QR code, which reads '
-        f"{payload}. The code gives the catalogue number.")
+        f"{payload}. The code gives the catalog number.")
     [(found, severity, cited)] = notes(run)
     assert (found, severity, cited[0]) == (f"barcode_readers_differ:{KEY}", "info", code.id)
     rows = {row.id: row for row in run.evidence}
@@ -272,8 +272,8 @@ def test_the_code_breaks_no_tie(tmp_path, monkeypatch, case):
     settle(coded, Scripted({KEY: several(*options)}))
     run = coded.specimen.run
     value = supplied(run, code)
-    assert value.reason.startswith("No reading settled the catalogue number")
-    assert value.reason.endswith(f", so the slide's QR code gives it: {CODE}.")
+    assert value.reason.startswith("No reading settled the catalog number.")
+    assert value.reason.endswith(f" The slide's QR code gives it: {CODE}.")
     assert notes(run) == []
     assert rest(plain.specimen.run) == rest(run)
 
@@ -485,7 +485,7 @@ def test_one_reader_of_another_number_left_open_takes_the_codes_number(tmp_path,
     code = with_code(rig)
     settle(rig, Scripted({KEY: catalogue("0010007", "0010007")}))
     value = supplied(run, code)
-    assert value.reason.startswith("No reading settled the catalogue number") and notes(run) == []
+    assert value.reason.startswith("No reading settled the catalog number.") and notes(run) == []
 
 
 def test_a_label_no_reader_writes_a_number_on_takes_the_codes_number(tmp_path, monkeypatch):
@@ -503,14 +503,14 @@ def test_a_label_no_reader_writes_a_number_on_takes_the_codes_number(tmp_path, m
     code = with_code(rig)
     settle(rig, Scripted({KEY: LACKS}))
     value = supplied(run, code)
-    assert value.reason == f"No reading settled the catalogue number, so the slide's QR code gives it: {CODE}."
+    assert value.reason == f"No reading settled the catalog number. The slide's QR code gives it: {CODE}."
     assert notes(run) == []
 
 
 @pytest.mark.parametrize(("organised", "state", "read"), [
     # The organiser gave the field each reader's number, as on a real slide: the reason quotes
     # them, each once, whole and never compared.
-    (True, ValueState.AMBIGUOUS, f' (the readers read "{CODE}" and "0010007")'),
+    (True, ValueState.AMBIGUOUS, f' The readers read "{CODE}" and "0010007".'),
     # The organiser gave the field no candidate: nothing is quoted.
     (False, ValueState.UNRESOLVED, ""),
 ])
@@ -530,7 +530,7 @@ def test_a_number_its_expert_cannot_resolve_takes_the_codes_number(tmp_path, mon
     code = with_code(rig)
     settle(rig, Scripted({KEY: answer}))
     value = supplied(run, code)
-    assert value.reason == f"No reading settled the catalogue number{read}, so the slide's QR code gives it: {CODE}."
+    assert value.reason == f"No reading settled the catalog number.{read} The slide's QR code gives it: {CODE}."
     assert len(run.evidence) == len(plain.specimen.run.evidence) + 1
     assert rest(plain.specimen.run) == rest(run)
 
@@ -558,8 +558,8 @@ def test_a_settled_text_that_is_no_well_formed_number_takes_the_codes_number(tmp
     code = with_code(rig)
     settle(rig, Scripted({KEY: catalogue(literal, None)}))
     value = supplied(run, code)
-    assert value.reason == (f'The readers\' text, "{literal}", is no well-formed catalogue number. The slide\'s QR '
-        f"code reads {CODE} and gives the catalogue number.")
+    assert value.reason == (f'The readers\' text, "{literal}", is not a well-formed catalog number. The slide\'s QR '
+        f"code reads {CODE} and gives the catalog number.")
     [(found, severity, cited)] = notes(run)
     assert (found, severity, cited[0]) == (f"barcode_readers_differ:{KEY}", "info", code.id)
 
