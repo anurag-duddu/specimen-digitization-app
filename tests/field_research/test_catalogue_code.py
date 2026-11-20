@@ -50,11 +50,12 @@ OTHER = "FMNHINS\n0010007"
 
 def barcode_label(monkeypatch, *texts):
     """build_rig's specimen with a barcode label (label 2) whose readers read `texts`, one per
-    route; a reader with no text of its own reads the first."""
+    route; a reader with no text of its own reads the first. Bound to the rig's default profile
+    (every field mandatory) unless build_rig is given one."""
     original = rig_module.make_specimen
 
-    def make(blobs, first=FIRST, other=None):
-        specimen = original(blobs, first, other)
+    def make(blobs, first=FIRST, other=None, *, profile=None):
+        specimen = original(blobs, first, other, profile=profile)
         run = specimen.run
         output = io.BytesIO()
         Image.new("RGB", (100, 100), "white").save(output, format="JPEG", quality=95)
@@ -581,6 +582,38 @@ def test_a_number_whose_research_failed_takes_the_codes_number_and_is_not_asked_
     again = Scripted()
     assert settle(rig, again) is None and KEY not in again.calls
     supplied(run, code)
+
+
+@pytest.mark.parametrize(("texts", "script", "rule"), [
+    ((PRINTED, OTHER), several(CODE, "0010007"), "barcode_supplies"),
+    ((OTHER,), catalogue("0010007", "0010007"), "barcode_over_readers"),
+])
+def test_on_the_published_profile_the_record_clears_on_the_codes_number(tmp_path, monkeypatch, texts, script, rule):
+    """The published profile, where the catalogue number is the one mandatory field (the tests
+    above run on the rig's profile, every field mandatory). With no code row an open number holds
+    the record and a wrong settled number clears it; with the code row the record clears by the
+    system on the code's number in both, and the trace names the rule that decided."""
+    from specimen_digitization.application.collection_profiles import published_registry
+    from specimen_digitization.field_research.step import apply_outcomes, finalize_fields
+    from test_step import research
+
+    published = published_registry().profiles[0]
+    assert published.mandatory_fields == (KEY,)
+    barcode_label(monkeypatch, *texts)
+    plain = build_rig(tmp_path / "plain", FIRST, profile=published)
+    settle(plain, Scripted({KEY: script}))
+    open_number = plain.specimen.run.fields[KEY].state != ValueState.SUPPORTED
+    assert (plain.specimen.run.disposition == Disposition.REVIEW) is open_number
+    assert number(plain.specimen.run)[1] != CODE
+    rig = build_rig(tmp_path / "coded", FIRST, profile=published)
+    run = rig.specimen.run
+    code = with_code(rig)
+    prepared, outcomes, calls = research(rig, Scripted({KEY: script}))
+    decisions = {}
+    apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls, decisions=decisions)
+    finalize_fields(run, None, outcomes, specimen=rig.specimen, blobs=rig.blobs, today=rig_module.TODAY)
+    supplied(run, code)
+    assert decisions[KEY]["rule"] == rule and run.human_approved is False
 
 
 def test_a_supplied_number_is_the_same_at_every_later_finalize(tmp_path, monkeypatch):
