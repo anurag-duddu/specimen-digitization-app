@@ -2022,9 +2022,21 @@ all equal to the truth.
    person decided. Rules 1 and 2 never act on such a field. Research itself
    may ask the field's expert again on a Retry (main's task selection,
    unchanged here: it reads the carry alone); whatever that leaves, the code
-   gives the field no number and replaces no value of it. Codex round 1 on
-   PR #458 found the earlier head reading the carry alone, so that a field a
-   person had set open at the endpoint took the code's number on a Retry.
+   gives the field no number and replaces no value of it. That is all this
+   rule promises: research's own answer on such a Retry can still replace
+   what the person saved (a person's number by an open field when the expert
+   names several), as on main. Codex round 1 and the sign-off review of
+   PR #458 found the earlier head reading the carry alone, so that a number
+   a person had saved at the endpoint was replaced by the code's on a Retry,
+   and a later approval cleared the record by a person with the code's
+   number.
+   The rule's two info notes (`barcode_readers_differ`,
+   `barcode_person_differs`) are replaced, never accumulated: a field
+   researched again loses both before the rule acts, and at every finalize
+   `barcode_readers_differ` goes once the field is no longer the number the
+   code gave (`catalogue_code.forget_stale`, called by
+   `step.finalize_fields`; a blocked run is not finalized, so there the note
+   waits for the field's next research).
    Until 2026-11-20 the code confirmed or held and gave no value: rule 2's
    case was "contradict" (the value stayed, marked
    `marked:fmnh_ins_number:<label>:barcode_differs` and held for a person),
@@ -2249,9 +2261,11 @@ Tests: `tests/test_barcode.py` (codes made by zxing-cpp's encoder in the
 test; no museum image is committed) and
 `tests/field_research/test_catalogue_code.py` (112 cases: each rule and each
 exclusion, the earlier reviews' cases, and that a run with no code row, and
-every other field, settle exactly as before; a person's decision made at
-the real decision endpoint and then Retry; every record of a person's
-authority; and Codex's locality case, with the expert requests counted). Sixteen earlier cases changed
+every other field, settle exactly as before; every record of a person's
+authority; and Codex's locality case, with the expert requests counted) and
+`tests/field_research/test_catalogue_code_person.py` (10 cases on the
+published profile through the real decision endpoint, Retry and Resume: the
+sign-off review's person sequences, and the rule's notes). Sixteen earlier cases changed
 expectation with the rule: each is kept and says what e83c36fd did.
 
 ## The second opinion (2026-11-18)
