@@ -2074,11 +2074,21 @@ self resolve." His words of 2026-11-17 bind it too: "it is important to not
 make mistakes because people wont trust it"; so it was measured before it
 was built.
 
+The owner's words of 2026-10-26 bear on it as well. They are recorded in
+`docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md`,
+section 1 ("The pipeline, in the owner's words", line 32; that document says
+its quotations are copied as typed), and read, exactly as that line has
+them: "Finally first pass never settles, it has to go to harness(QR is a straight pass, ignore that, I’m talking about specimens data)".
+Reading "a straight pass" as "the code's number is the catalogue number
+without the harness settling it" is the coordinator's reading, not his
+words.
+
 **Why.** On the released code (e83c36fd) a record clears when its catalogue
-number is settled. In the live confirmation run of that code, of the 49
-records finalized when this was measured, 11 were held: 4 with no number
-settled, 3 as `barcode_differs` and 4 over label coverage. The slide's QR
-code had been decoded on all 7 held over the number.
+number is settled. In the live confirmation run of that code, of the 52
+records finalized when its rows were last read (2026-11-20, the run still
+in progress), 12 were held: 4 with no number settled, 4 as
+`barcode_differs` and 4 over label coverage. The slide's QR code had been
+decoded on all 8 held over the number.
 
 **Measured first** (free, before any code; the 100 truth slides):
 
@@ -2136,11 +2146,11 @@ carries it was held for its catalogue number. In the base run the app flags
 it (`label_unsettled:province_state`: its label has one reader); in the r3
 run it carries no flag.
 
-On the live rows of the released code read on 2026-11-20 (58 rows, the run
+On the live rows of the released code read on 2026-11-20 (52 rows, the run
 still in progress; the rule's real function on each row's stored value,
-readings and decode, the finalize predicted from the row's reasons): 38
-clear before, 45 after, 0 wrong catalogue numbers before and after; the
-decode equals the truth on 57 of 57; the 4 records still held are all label
+readings and decode, the finalize predicted from the row's reasons): 40
+clear before, 48 after, 0 wrong catalogue numbers before and after; the
+decode equals the truth on 51 of 51; the 4 records still held are all label
 coverage unconfirmed.
 
 **What the stored rows prove, and what they cannot.** They prove the rule's
