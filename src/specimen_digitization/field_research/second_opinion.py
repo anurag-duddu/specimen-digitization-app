@@ -73,9 +73,13 @@ approved, for a judged field no person holds authority over:
   on a run every label of which two independent readers read (no reason of the run, holding or open,
   is `independent_observations_missing:<label>`: where one reader read a label the second opinion saw
   one reader's text, and its agreement on a value is weaker); and, for Habitat (READERS_MUST_WRITE,
-  lane H4), only where every reader of the labels the value rests on writes the value's text, letter
-  case and spacing aside (agreement.reader_writes): where a reader writes another text there, the
-  label's doubt is about this very value, and the flag stays;
+  lane H4), only where every reading of the labels the value rests on (step.run_readings: a label's
+  decided transcript and each raw reading with text) holds the value's text as whole words somewhere
+  in it, letter case and spacing aside (agreement.reader_writes). The flag stays where a reading of
+  such a label does not hold that text anywhere in it. A known limit: the reading's whole text is
+  searched, not the Habitat's place, so a reader's other spelling of the Habitat is not noticed
+  where the value's text stands elsewhere in that reader's reading of the label; and an observation
+  with no text is no reading and takes no part;
 - `mandatory_unresolved:<field>` and `label_unsettled:<field>` are not open reasons for a field that is
   blank (`not_present`, nothing shown) where the second opinion's own answer for it is blank too (a
   null value that does not say UNSURE) and that answer is current (`answer_current`), Verbatim D/T/S
@@ -561,8 +565,8 @@ AGREED_VALUE_EXCEPT = DATES
 # readers wrote a host's species differently, the first pass named one reader's text, the second
 # opinion gave the same text, and rule A lifted the label's flag from a Habitat the truth sheet reads
 # otherwise: the one wrong Habitat of that run with no flag. For the fields named here an agreed value
-# keeps `label_unsettled:<field>` where a reader of a label the value rests on does not write its text
-# (_a_reader_differs). Measured free on that run's 99 answers (autonomy-program/H4/flag_rule_*.json):
+# keeps `label_unsettled:<field>` where a reading of a label the value rests on does not hold its text
+# anywhere in it (_a_reader_differs; the limits are in the module docstring). Measured free on that run's 99 answers (autonomy-program/H4/flag_rule_*.json):
 # one flag gained, on that record; none on its 44 right Habitats; none on the stored records.
 READERS_MUST_WRITE = frozenset({"habitat"})
 # Habitat (the coordinator's ruling of 2026-11-20 on the live confirmation rows): a bare host name is a
@@ -637,9 +641,12 @@ def _blank_answer(entry) -> bool:
 
 
 def _a_reader_differs(run, key: str, readings: Sequence[Reading]) -> bool:
-    """Whether a reader of a label the field's value rests on (_labels) does not write the value's
-    literal, letter case and spacing aside (agreement.reader_writes). False for a value with no
-    literal, or that rests on no label with a reading."""
+    """Whether a reading of a label the field's value rests on (_labels; `readings` are
+    step.run_readings', so a label's decided transcript and each raw reading with text) does not
+    hold the value's literal as whole words anywhere in it, letter case and spacing aside
+    (agreement.reader_writes; a hyphen or another mark more or less is another text). The whole
+    reading is searched, not the value's place in it. False for a value with no literal, or that
+    rests on no label with a reading."""
     from .agreement import reader_writes
 
     literal = run.fields[key].literal or ""
@@ -656,8 +663,8 @@ def agreed(run, readings: Sequence[Reading] = (), *, mandatory=(),
     Both empty unless the run is on the units path, no person approved it, the stored result is
     obtained and nothing the step answers for is unjudged (`due`). No value when one of the run's
     `reasons` (this finalize's, holding and open) says one reader read a label (`one_reader`); the
-    blanks do not depend on it. No Habitat value (READERS_MUST_WRITE) where a reader of a label it
-    rests on writes another text there (_a_reader_differs). Never a field the run's profile makes mandatory (`mandatory`), a field
+    blanks do not depend on it. No Habitat value (READERS_MUST_WRITE) where a reading of a label it
+    rests on does not hold the value's text anywhere in it (_a_reader_differs). Never a field the run's profile makes mandatory (`mandatory`), a field
     the step does not judge (the catalogue number, the IRN), or one a person holds authority over
     (`authority`)."""
     from .step import units_path

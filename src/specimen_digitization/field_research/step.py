@@ -878,6 +878,9 @@ YEAR_HELD = "This text holds the year the value found for {other} took from its 
 # collection code "CNHM. E Slope Mt.", the organiser's candidate, beside its
 # precise location "E Slope Mt.\nMcKinley, Davao Prov.".
 RUNS_INTO = "This text runs into the value found for {other}."
+# A habitat read from the transcript over consecutive lines (agreement.GIVES_WAY) whose text another
+# field's answer of the same attempt also gives, although that answer settled no value (_taken).
+ANSWERED = "This text, read over consecutive lines, is also in the answer given for {other}."
 
 
 class Taken(NamedTuple):
@@ -886,11 +889,13 @@ class Taken(NamedTuple):
     RUNS_INTO) rather than one holding its text (TAKEN); `year` "mine" for a
     date whose year from the next line the other field holds (YEAR_TAKEN),
     "theirs" for a field holding the year a date settled first took from its
-    next line (YEAR_HELD)."""
+    next line (YEAR_HELD); `answer` for a habitat read over consecutive lines
+    whose text the other field's answer gives without settling (ANSWERED)."""
 
     other: str
     partly: bool = False
     year: str = ""
+    answer: bool = False
 
 
 def _inside_a_token(text: str, index: int) -> bool:
@@ -1045,8 +1050,29 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     beside its precise location "E Slope Mt.\\nMcKinley, Davao Prov." (run
     629f91eb on 616ae010). A place that holds another field's whole text,
     or lies wholly inside it, still yields, as does one beside a value
-    settled before this attempt or by a person."""
-    from .agreement import FIELD_KINDS, TRANSCRIPT, literal_basis, may_share_text, written_runs, year_below
+    settled before this attempt or by a person.
+
+    A habitat this attempt's answer read from the transcript over consecutive lines
+    (agreement.GIVES_WAY: a literal with a line break, which only agreement.ACROSS_LINES lets
+    the habitat hold and origin/main 3eb37c11 refused) claims no text against another field
+    (lane H4, the coordinator's ruling of 2026-11-21 on review round 1 of #464): this guard
+    decides every other field as if that habitat answer had settled nothing. Its own text is
+    still guarded, and more widely: it goes to review where another kind of field's settled
+    text overlaps it (TAKEN; RUNS_INTO where a value this attempt settles overlaps it only
+    partly), and where the literal of another kind of field's resolved answer
+    of this attempt does, whole tokens in the readings of the labels that answer names,
+    although that answer settles nothing (ANSWERED). A habitat on one line, and one that is a
+    whole organiser candidate, claim text as before; so does a habitat an earlier attempt
+    settled, over consecutive lines or not, as any value settled before this attempt does."""
+    from .agreement import (
+        FIELD_KINDS,
+        GIVES_WAY,
+        TRANSCRIPT,
+        literal_basis,
+        may_share_text,
+        written_runs,
+        year_below,
+    )
 
     evidence = {item.id: item for item in run.evidence}
     by_name = {reading.name: reading for reading in readings}
@@ -1061,6 +1087,9 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     mine_texts: dict[str, tuple[str, set]] = {}
     # The dates whose text in `mine` is the year they take from the next line.
     borrowed: set[str] = set()
+    # Where each resolved answer's literal stands, whatever its basis and whether or not it
+    # settles: the text a habitat read over consecutive lines gives way to (`silent`).
+    answered: dict[str, frozenset] = {}
     for outcome in outcomes:
         answer = outcome.answer
         if outcome.failure is not None or answer is None:
@@ -1087,11 +1116,15 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             continue
         named = [by_name[n] for n in dict.fromkeys(names) if n in by_name and literal in by_name[n].text]
         task = tasks_by_key.get(outcome.key)
+        if task is not None and named:
+            answered[outcome.key] = _occurrences(literal,
+                [r for r in readings if r.region_id in {n.region_id for n in named}])
         if task is not None and named and literal_basis(task, readings, literal, named) == TRANSCRIPT:
             regions = {r.region_id for r in named}
             mine[outcome.key] = frozenset((r.name, start, end) for r in readings if r.region_id in regions
                 for start, end in written_runs(outcome.key, r.text, literal))
             mine_texts[outcome.key] = (literal, regions)
+            answered[outcome.key] |= mine[outcome.key]
         elif task is not None and named and (below := year_below(task, readings, literal, named)):
             # The year a date's literal takes from the next line (agreement.year_below)
             # is text the organiser gave no field: another field's settled text on it takes it, as text
@@ -1105,13 +1138,18 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
         if key not in researched and _claims_text(key, value, human):
             claims.append((key, _value_spans(value, readings, evidence)))
             claim_texts.append((key, value.literal, _value_regions(value, readings, evidence)))
+    # The fields whose answer of this attempt, read from the transcript over consecutive lines,
+    # claims no text against another field (the docstring's last paragraph).
+    silent = {key for key, (literal, _) in mine_texts.items()
+        if key in GIVES_WAY and key not in borrowed and "\n" in literal}
     taken: dict[str, Taken] = {}
     yielded: dict[str, str] = {}
     for key, spans in mine.items():
         place = FIELD_KINDS.get(key) == "place"
-        partial, other = [], None
+        partial, other, runs_into = [], None, False
         for (claimant, theirs), (_, their_text, their_regions) in zip(claims, claim_texts, strict=True):
-            if claimant == key or may_share_text(key, claimant) or not _overlap(spans, theirs):
+            if (claimant == key or claimant in silent or may_share_text(key, claimant)
+                    or not _overlap(spans, theirs)):
                 continue
             if _keeps_an_elevation(key, *mine_texts[key], claimant, their_text, their_regions):
                 continue
@@ -1119,13 +1157,17 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
                 partial.append(claimant)
                 continue
             other = claimant
+            # A habitat that gives way to a value this attempt settles and overlaps only partly
+            # runs into it, as the reviewed head 3df404ea said of one beside a place (RUNS_INTO).
+            runs_into = key in silent and claimant in settled and _partly(spans, theirs)
             break
         if other is None:
             literal, regions = mine_texts[key]
             other = next((claimant for claimant, text, theirs in claim_texts if claimant != key
-                and not may_share_text(key, claimant) and regions & theirs and _spelled_alike(literal, text)), None)
+                and claimant not in silent and not may_share_text(key, claimant) and regions & theirs
+                and _spelled_alike(literal, text)), None)
         if other is not None:
-            taken[key] = Taken(other, year="mine" if key in borrowed else "")
+            taken[key] = Taken(other, partly=runs_into, year="mine" if key in borrowed else "")
         else:
             for claimant in partial:
                 yielded.setdefault(claimant, key)
@@ -1134,6 +1176,11 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
         # when its own text read from the transcript also met that place.
         if claimant not in taken or taken[claimant].other == key:
             taken[claimant] = Taken(key, partly=True)
+    for key in sorted(silent - taken.keys()):
+        other = next((other for other, theirs in answered.items() if other != key
+            and not may_share_text(key, other) and _overlap(mine[key], theirs)), None)
+        if other is not None:
+            taken[key] = Taken(other, answer=True)
     # A date an earlier attempt settled on a year it took from the next line keeps that year: a
     # field this attempt settles on text over it is taken, whatever its basis, as within one
     # attempt (the coordinator's ruling on #444's round 1: whichever settled first).
@@ -1230,7 +1277,8 @@ def _taken_value(task, outcome, taker: Taken, evidence) -> FieldValue:
 
     answer = outcome.answer
     cited = [e for e in answer.source_evidence_ids if e in evidence and evidence[e].kind != "literal"]
-    reason = (RUNS_INTO if taker.partly else {"mine": YEAR_TAKEN, "theirs": YEAR_HELD}.get(taker.year, TAKEN)).format(
+    reason = (RUNS_INTO if taker.partly else ANSWERED if taker.answer
+        else {"mine": YEAR_TAKEN, "theirs": YEAR_HELD}.get(taker.year, TAKEN)).format(
         other=FIELD_LABELS.get(taker.other, taker.other))
     return _unsettled(task, ValueState.UNRESOLVED, literal=task.current.literal, cited=cited,
         reason=f"{reason} {answer.explanation}")
@@ -3546,13 +3594,29 @@ def _organiser_texts(task: FieldTask, readings: Sequence[Reading]) -> list[tuple
     return [(text, spans) for text, spans in found if text and text.strip()]
 
 
+def _over_lines(run, key: str, value: FieldValue, human: frozenset[str]) -> bool:
+    """Whether a stored value is a habitat research settled on text its expert read from the
+    transcript over consecutive lines (agreement.GIVES_WAY; lane H4): its literal holds a line
+    break, no person decided it, and the run keeps the finding of a literal read from the
+    transcript for the field (_from_the_transcript). origin/main 3eb37c11 settled no such value:
+    it read a habitat from the transcript within one line only."""
+    from .agreement import GIVES_WAY
+
+    return (key in GIVES_WAY and key not in human and bool(value.literal) and "\n" in value.literal
+        and any(finding.reason_code == transcript_code(key) for finding in run.findings))
+
+
 def _settled_claims(run, readings: Sequence[Reading]) -> list[tuple[str, str, frozenset]]:
     """Each settled value's field and literal, with where the literal stands
-    (_claims_text, _value_spans): the text the run's settled values hold."""
+    (_claims_text, _value_spans): the text the run's settled values hold. A
+    habitat settled on text read over consecutive lines (_over_lines) holds
+    none here: rule A marks no other field absent because of it, as on
+    origin/main 3eb37c11, where that habitat did not settle (lane H4, the
+    coordinator's ruling of 2026-11-21 on review round 1 of #464)."""
     evidence = {item.id: item for item in run.evidence}
     human = human_keys(run)
     return [(key, value.literal, _value_spans(value, readings, evidence)) for key, value in run.fields.items()
-        if _claims_text(key, value, human)]
+        if _claims_text(key, value, human) and not _over_lines(run, key, value, human)]
 
 
 # Punctuation and spaces at the start and at the end of a text, which rule A's

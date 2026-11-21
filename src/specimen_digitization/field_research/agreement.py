@@ -481,6 +481,12 @@ def verbatim_runs(text: str, literal: str) -> list[tuple[int, int]]:
 # check refused the whole name and accepted one line of it). Every other
 # field, places among them, keeps its literal on one line.
 ACROSS_LINES = frozenset({"precise_location", "habitat"})
+# The field of ACROSS_LINES whose literal over consecutive lines gives way where it shares text
+# with another field's (step._taken): the habitat, which origin/main 3eb37c11 kept on one line,
+# so that accepting a host over two lines changes no other field's outcome for the same answers
+# (the coordinator's ruling of 2026-11-21 on review round 1 of #464). The precise location keeps
+# the rules it had.
+GIVES_WAY = frozenset({"habitat"})
 # What each of those fields' text is called where the check tells its expert so
 # (literal_refusal's retry and experts._Expert._validate_resolved's).
 ACROSS_LINES_TEXT = {"precise_location": "A locality", "habitat": "A host or a habitat"}
@@ -1316,18 +1322,22 @@ def agreement_key(text: str) -> str:
 
 
 def reader_writes(text: str, literal: str) -> bool:
-    """Whether a reading writes the literal as whole words, letter case and spacing aside
-    (agreement_key's rule for readers that agree: "Shrubs" for "shrubs", "Sp.30" for "sp. 30", a
-    line break for a space): a letter or a digit stands neither right before nor right after it
-    ("Mus" is not written in "Museum"), and a letter or a punctuation mark more or less is another
-    text ("LIPEUS" does not write "LIPYCUS"). False for a literal with no text."""
+    """Whether a reading holds the literal's text as whole words anywhere in it, letter case and
+    spacing aside (agreement_key's rule for readers that agree: "Shrubs" for "shrubs", "Sp.30" for
+    "sp. 30", a line break for a space or for nothing): a letter or a digit stands neither right
+    before nor right after it ("Mus" is not written in "Museum"), and a letter, a hyphen or another
+    punctuation mark more or less is another text ("LIPEUS" does not write "LIPYCUS", nor "SYLVI-
+    LAGUS" "SYLVILAGUS"). Both sides are folded the same way, by agreement_key's own steps: NFC,
+    then str.casefold (the reading keeps its spaces and line breaks so that whole words can be
+    told; the literal loses them, agreement_key). So a letter whose folded form is longer than the
+    letter (U+00DF, the sharp s, folds to "ss") is the same text on both sides. The place of the
+    text in the reading is not looked at: a reading that holds the same text for something else
+    writes it. False for a literal with no text."""
     key = agreement_key(literal)
     if not key:
         return False
-    pattern = re.compile(r"(?<![^\W_])" + r"\s*".join(re.escape(char) for char in key) + r"(?![^\W_])",
-        re.IGNORECASE)
-    return any(agreement_key(match.group()) == key
-        for match in pattern.finditer(unicodedata.normalize("NFC", text)))
+    pattern = re.compile(r"(?<![^\W_])" + r"\s*".join(re.escape(char) for char in key) + r"(?![^\W_])")
+    return pattern.search(unicodedata.normalize("NFC", text).casefold()) is not None
 
 
 def _spelling(task: FieldTask, name: str, texts: Iterable[str]) -> str:
