@@ -2625,8 +2625,7 @@ there (105526348, 105526356, 105526392, 105526468, 105527285). Tests:
 
 When the mark is current. The mark is derived at finalize, as every open
 reason is. Guaranteed: a save that follows a finalize of the run as saved
-carries what a fresh finalize of that state gives (the G51 reviewer, round
-2: of 249 finalized states in his sequences, 247 equal a fresh finalize; the
+carries what a fresh finalize of that state gives (the G51 reviewer, round 2: of the 249 finalized states of his round-2 sequences, 247 equal a fresh finalize; the
 other two are the restore window's, below). Not guaranteed: a save that does
 not follow a finalize keeps the open reasons of an earlier finalize, on
 origin/main and on this branch alike and for every open reason, until the
@@ -2643,11 +2642,9 @@ complete:
 
 - a history restore (`history_restore.py:62`, `api.py:1573-1580`): the
   record is held for review, or blocked when the restored run had a blocker,
-  and then stays blocked until Retry, Resume or an approval after the repair
-  (a decision does not end that window);
+  and then stays blocked until the Retry or Resume after the repair (a decision does not end that window; an approval ends it only when the blocker was a lost blob's `evidence_integrity_failure`);
 - a decision other than an approval or a capability deferral that arrives on
-  a run whose stage is not `finalized` (`api.py:2423`; an approval finalizes
-  at any stage, and a decision arriving at `field_second_opinion` is moved
+  a run whose stage is not `finalized` (`api.py:2423`; an approval reaches the finalize at any stage, where `step.refinalize` still returns early on a blocker other than a repaired `evidence_integrity_failure`, and a decision arriving at `field_second_opinion` is moved
   to `finalized` first, `api.py:2092`): after a transcript decision (stage
   `parse`); after Retry or Resume before any worker step (stage `pending`);
   on a paused or cancelled run, at rest, possibly indefinitely (the worker
@@ -2661,17 +2658,11 @@ complete:
   round 3; the saved revision keeps the mark beside the stored second
   opinion, and the worker's finalize removes it (tested);
 - graph-limit recovery (`active_graph.py:237-264`, used by
-  `save_recoverably`): when a save exceeds the record's graph or snapshot
-  limit, the working copy is discarded, the prior snapshot is reloaded, its
-  approval withdrawn, and it is saved `processing_blocked` with the limit as
-  its blocker and no finalize, found by Codex in round 3; read from the
-  code, not run;
+  `save_recoverably`): when a save exceeds the record's graph or snapshot limit, the working copy is discarded, the prior snapshot is reloaded, its approval withdrawn, and it is saved `processing_blocked` with the limit as its blocker and no finalize, found by Codex in round 3; run by the G51 reviewer in round 4: an oversized decision returns 200, is discarded, the prior snapshot is saved blocked and its approval withdrawn; Retry ends it;
 - a worker block the worker does not end by itself, for example
   `step_budget_exhausted` after a decision on a pending run
   (`workflow.py:921`, `workflow.py:978`; later steps return at
-  `workflow.py:726`; automatic recovery does not take a completed-research
-  recheck, `workflow.py:2141-2147`), found by Codex in round 3; read from
-  the code, not run.
+  `workflow.py:726`; automatic recovery does not take a completed-research recheck, `workflow.py:2141-2147`), found by Codex in round 3; run by the G51 reviewer in round 4: with the step allowance used up (set by a direct save standing in for repeated rechecks), Resume, a Habitat decision and a worker step left the run blocked with the mark on the person's field; Retry, Resume and an approval did not end it.
 
 When a finalize ends a window it recomputes the mark. Tested here: after a
 restore to an approved revision, Resume gives the mark, and approving again
@@ -2690,11 +2681,7 @@ it through the ordinary policy's finalize, as on origin/main; after a lost
 blob, a field decision after the repair does not end it (the run is still
 blocked), an approval does.
 
-Measured, not proven: in the G51 reviewer's round-3 sequences
-(`reviews/verdict_463_g51_r3.md`: 65 sequences per tree through the API and
-workflow, 186 noted states, among them decisions on runs at `pending`,
-`parse`, `plan` and `field_second_opinion` and restores of a run with a
-blocker) no state was `cleared` with a stale or missing mark, and Codex's
+Measured, not proven: in the G51 reviewer's round-4 sequences (`reviews/verdict_463_g51_r4.md`: 86 sequences per tree through the API and workflow, 249 noted states) no state was `cleared` with a stale or missing mark, and Codex's
 static trace of round 3 found no counterexample. origin/main's own open
 reasons wait the same way (the G51 reviewer's probes of origin/main,
 `codex_seq_main.txt` and `windows_main.txt`: after the restore, 12
