@@ -222,6 +222,30 @@ above do not change.
 - `Run.coverage_check` (G15): the check's version, outcome, region count, the
   full-image cross-check's result, reason codes, the evidence blob's ref and
   digest, and when it ran.
+  - Under a coverage rule with `min_region_short_side_fraction` (0.03 in the
+    published profile since lane L1, 2026-11-21), two additive keys:
+    `min_region_short_side_fraction`, the fraction used, and
+    `not_counted_regions`, a list of `{id, box}` (box `[x, y, width, height]`
+    in original pixels) for each label region whose shorter side is under that
+    fraction of the image's shorter side. Those regions are left out of
+    `region_count` only; they stay in `Run.regions` and are read, stored and
+    shown, and the geometry issues and the full-image cross-check still see
+    them. A rule without the value counts every region, and its record has
+    neither key. The version stays `coverage-check-v1`: the keys are additive
+    and a rule without the value checks exactly as before, so a stored
+    `coverage-check-v1` record still loads and reads as it did.
+  - Authority: the coverage values (1 to 3 regions, concept "text", 0.5
+    score, 50 % inside) are provisional values from a coordinator ruling of
+    2026-09-23 (`status/coordinator.md` 23-24: "G15 check built with
+    provisional values (1-3 regions, "text", 0.5 score, 50% inside); S7
+    calibrates; OWNER SIGN-OFF on the final values before production."); no
+    owner sign-off of final values is recorded (DEC-7 is open). The 0.03 is
+    likewise provisional, a coordinator ruling of 2026-11-21 measured on the
+    100 truth slides; it is not an owner sign-off.
+  - Known gap, measured and not changed: the full-image cross-check (concept
+    `text`, threshold 0.5) counted no detection on any of the 100 truth slides
+    (highest score 0.214), so today the region count is the only part of the
+    check that can fail.
 - The profile identity after classify, as `pin_dependencies` pins it again:
   `Run.profile.id`, `Run.profile.version`, `Run.profile_snapshot`,
   `Run.profile_registry_version`, and `Run.dependencies["profile_snapshot_sha256"]`
@@ -773,8 +797,8 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   check's reason code, `label_coverage_unconfirmed` today (`policy.py` 35-36),
   is also in `decision.reason_codes`.
   - `region_count`'s detail is `{found, min, max, reason_codes}`: the merged
-    region count, and the profile's allowed range, null when the check did not
-    record it. Its codes come from `zero_regions`, `region_out_of_bounds` and
+    region count (regions too thin to hold a label left out, section 4.1), and
+    the profile's allowed range, null when the check did not record it. Its codes come from `zero_regions`, `region_out_of_bounds` and
     `label_region_count_out_of_range`.
   - `full_image`'s detail is `{counted, outside, threshold,
     min_inside_fraction, reason_codes}`: the label-like detections at or above
