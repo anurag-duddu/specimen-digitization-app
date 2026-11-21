@@ -166,12 +166,15 @@ PUBLISHED_RULE = RULE.model_copy(update={"min_region_short_side_fraction": 0.03}
 
 def test_the_pilot_pins_the_approved_starting_values():
     settings = published_registry().resolve("insects").profile.segmentation_settings
-    assert settings.coverage == CoverageRule.model_validate(PUBLISHED_RULE.model_dump())
+    expected = PUBLISHED_RULE.model_copy(update={"merge_iou": 0.6})
+    assert settings.coverage == CoverageRule.model_validate(expected.model_dump())
     published, base = settings.coverage.model_dump(), RULE.model_dump()
     assert {k for k in published if published[k] != base.get(k)} == {
-        "min_region_short_side_fraction"
+        "min_region_short_side_fraction",
+        "merge_iou",
     }
     assert settings.coverage.min_region_short_side_fraction == 0.03
+    assert settings.coverage.merge_iou == 0.6
 
 
 def test_coverage_rules_are_consistent():
@@ -381,3 +384,102 @@ def test_the_segment_step_uses_the_rule_the_run_pinned():
         item = sized([LABEL_A, LABEL_B, BARCODE, STRIP], *SLIDE, rule=rule)
         check_run(item)
         assert item.run.coverage_check["region_count"] == count
+
+
+# The same label boxed twice is counted once (the coordinator's ruling of
+# 2026-11-21, lane L3; provisional, not an owner sign-off): the published
+# merge_iou is 0.6. Count only: both boxes stay in run.regions.
+def published_rule():
+    return published_registry().resolve("insects").profile.segmentation_settings.coverage
+
+
+# Measured on truth slide 105527007 (1788 x 639): a barcode label, a left label,
+# and the right-hand label boxed twice, as its outer card and its inner frame
+# (IoU 0.7847); three labels on the truth sheet.
+SLIDE_007 = (1788, 639)
+BARCODE_007, LEFT_007 = (1103, 417, 95, 165), (6, 51, 544, 538)
+CARD_007, FRAME_007 = (1204, 23, 576, 562), (1240, 49, 505, 503)
+
+
+def test_the_published_rule_counts_a_label_and_its_inner_frame_once():
+    # Measured on truth slide 105526361 (1757 x 630): a barcode label and one
+    # label boxed twice (IoU 0.7731); two labels on the truth sheet.
+    card, frame = (1174, 23, 574, 569), (1211, 50, 504, 501)
+    assert intersection_over_union(card, frame) == pytest.approx(0.7731, abs=1e-4)
+    item = sized([(1068, 427, 97, 173), card, frame], 1757, 630, rule=published_rule())
+    segmentation = dict(item.run.segmentation)
+    check_coverage(published_rule(), item)
+    evidence = item.run.coverage_check
+    assert evidence["region_count"] == 2
+    assert evidence["outcome"] == "confirmed"
+    # Count only: both boxes are still regions of the run, nothing is left out
+    # as thin, and the segmentation evidence is untouched.
+    assert [(r.x, r.y, r.width, r.height) for r in item.run.regions][1:] == [card, frame]
+    assert evidence["not_counted_regions"] == []
+    assert item.run.segmentation == segmentation
+
+
+def test_three_labels_and_a_duplicate_count_three_and_confirm():
+    item = sized([BARCODE_007, LEFT_007, CARD_007, FRAME_007], *SLIDE_007, rule=published_rule())
+    check_coverage(published_rule(), item)
+    assert item.run.coverage_confirmed is True
+    assert item.run.coverage_check["region_count"] == 3
+    assert item.run.coverage_check["reason_codes"] == []
+    assert len(item.run.regions) == 4
+
+
+def test_a_rule_with_merge_iou_09_behaves_as_before():
+    # PUBLISHED_RULE is the rule PR #460 published (0.9 and the 0.03 fraction).
+    item = sized([BARCODE_007, LEFT_007, CARD_007, FRAME_007], *SLIDE_007, rule=PUBLISHED_RULE)
+    check_coverage(PUBLISHED_RULE, item)
+    assert item.run.coverage_confirmed is False
+    assert item.run.coverage_check["region_count"] == 4
+    assert "label_region_count_out_of_range" in item.run.coverage_check["reason_codes"]
+
+
+def test_a_duplicate_and_a_thin_strip_together_count_three():
+    strip = (243, 0, 473, 11)
+    item = sized([BARCODE_007, LEFT_007, CARD_007, FRAME_007, strip], *SLIDE_007, rule=published_rule())
+    check_coverage(published_rule(), item)
+    evidence = item.run.coverage_check
+    assert item.run.coverage_confirmed is True
+    assert evidence["region_count"] == 3
+    assert [n["box"] for n in evidence["not_counted_regions"]] == [list(strip)]
+    assert len(item.run.regions) == 5
+
+
+def test_two_different_labels_touching_stay_two():
+    # Measured on truth slide 105527165: a label and the barcode label beside
+    # it, IoU 0.0496, the largest IoU of two different labels on the 100 slides.
+    label, barcode = (1232, 21, 541, 560), (1120, 398, 202, 178)
+    assert intersection_over_union(label, barcode) == pytest.approx(0.0496, abs=1e-4)
+    assert merged_count([label, barcode], published_rule().merge_iou) == 2
+
+
+def test_a_pair_exactly_at_the_published_value_counts_once():
+    # The comparison is "at or over" (IoU >= merge_iou): 6000 / 10000 is 0.6
+    # exactly in floating point, so the pair merges; just under it does not.
+    at, under = (0, 0, 100, 60), (0, 0, 100, 59)
+    assert intersection_over_union((0, 0, 100, 100), at) == 0.6
+    assert merged_count([(0, 0, 100, 100), at], published_rule().merge_iou) == 1
+    assert merged_count([(0, 0, 100, 100), under], published_rule().merge_iou) == 2
+
+
+def test_a_box_around_two_equal_labels_stays_apart_from_them():
+    # Each label overlaps the box around both at IoU exactly 0.5, under 0.6:
+    # three counted regions (at 0.5 the chain would have counted one).
+    left, right, around = (0, 20, 400, 360), (400, 20, 400, 360), (0, 20, 800, 360)
+    assert intersection_over_union(left, around) == 0.5
+    assert intersection_over_union(right, around) == 0.5
+    item = sized([left, right, around], 1000, 400, rule=published_rule())
+    check_coverage(published_rule(), item)
+    assert item.run.coverage_check["region_count"] == 3
+    assert item.run.coverage_confirmed is True
+
+
+def test_overlaps_chain_into_one_region():
+    # Transitive: a ~ b and b ~ c merge although a and c overlap under 0.6.
+    a, b, c = (0, 0, 100, 100), (20, 0, 100, 100), (40, 0, 100, 100)
+    assert intersection_over_union(a, b) >= 0.6 and intersection_over_union(b, c) >= 0.6
+    assert intersection_over_union(a, c) < 0.6
+    assert merged_count([a, b, c], published_rule().merge_iou) == 1
