@@ -197,6 +197,42 @@ def test_the_name_after_the_heading_settles_through_the_step(tmp_path):
     assert (run.fields["habitat"].state, run.fields["habitat"].literal) == (ValueState.SUPPORTED, "Mus")
 
 
+# ---- a record researched before the change --------------------------------------------------------------------
+
+def test_a_finalize_alone_leaves_a_stored_habitat_as_it_is(tmp_path):
+    """A Habitat stored before the change, one that starts with the heading among them, is touched by no finalize:
+    the acceptance check runs where an answer is applied (step.apply_outcomes), never in step.refinalize. (The
+    stored runs of the 100 truth slides, replayed: ~/specimen-golive/autonomy-program/H4/replay_h4_v2.txt.)"""
+    from test_step import TODAY
+
+    rig = build_rig(tmp_path, HEADED_TEXT, HEADED_TEXT, candidates=COLLECTORS)
+    run = rig.specimen.run
+    settle(rig, Scripted({"habitat": answering(resolved("Mus", "1A", "1B"))}))
+    stored = run.fields["habitat"]
+    stored.literal = stored.parsed = "Host: Mus"
+    before = stored.model_dump(mode="json")
+    reasons = (list(run.reasons), list(run.open_reasons))
+    field_step.refinalize(run, today=TODAY)
+    assert run.fields["habitat"].model_dump(mode="json") == before
+    assert (list(run.reasons), list(run.open_reasons)) == reasons
+
+
+def test_research_asks_the_habitat_expert_again_only_where_the_habitat_is_no_settled_value(tmp_path):
+    """Which stored records get the new instructions without a new run: a research attempt (a Retry that requeues
+    field research, workflow.requeue_completed_field_research) makes a task for every field but a person's and one
+    an earlier attempt settled (step.build_tasks). A settled Habitat, right or wrong, is not asked again; a blank or
+    open one is. origin/main's rule, unchanged: pinned here because the release's effect on stored records rests on
+    it."""
+    rig = build_rig(tmp_path, HEADED_TEXT, HEADED_TEXT, candidates=COLLECTORS)
+    run = rig.specimen.run
+    settle(rig, Scripted({"habitat": answering(resolved("Mus", "1A", "1B"))}))
+    assert run.fields["habitat"].state == ValueState.SUPPORTED
+    assert "habitat" not in {task.key for task in field_step.build_tasks(run)[1]}
+    for state in (ValueState.NOT_PRESENT, ValueState.UNRESOLVED, ValueState.AMBIGUOUS):
+        run.fields["habitat"] = FieldValue(state=state)
+        assert "habitat" in {task.key for task in field_step.build_tasks(run)[1]}, state
+
+
 # ---- the habitat expert's instructions -----------------------------------------------------------------------
 
 HOST_NOTATION = ('- "Host", "ex.", "on", "from": before a name, the specimen\'s host (associatedTaxa), never its taxon '
