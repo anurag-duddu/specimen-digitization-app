@@ -154,7 +154,7 @@ def test_published_prices_a_run_still_holding_its_segmentation_reservation_sends
 ):
     # The published pilot profile: a first pass holds 318,670 micro-USD and the
     # specimen's limit is USD 1, so a third attempt goes out only while the run
-    # otherwise holds under 43,990 (1,000,000 less three reservations). This
+    # otherwise holds at most 43,990 (1,000,000 less three reservations). This
     # lab's segmentation stays held at its full 182,321 reservation (as a run
     # whose SAM 3 call reported no instance time), so: the first label's first
     # pass times out twice, each attempt held in full; the third attempt does
@@ -213,7 +213,7 @@ def test_published_prices_a_run_whose_segmentation_settled_small_sends_three_fir
     tmp_path, monkeypatch
 ):
     # The same prices and limit, the segmentation settled at 2,600 micro-USD:
-    # the run otherwise holds under 43,990, so all three attempts are sent
+    # the run otherwise holds at most 43,990, so all three attempts are sent
     # (958,610 held in all), the label is given up on the timeout itself, and
     # the second label's first pass and the organiser's extraction find no room
     # left: both are given up unsent as `cost_budget_exhausted`.
