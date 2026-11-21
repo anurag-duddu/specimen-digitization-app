@@ -560,9 +560,11 @@ def _refusal(task, answer, *, readings, by_name, sources, elevations=None, date_
     received = list(sources)
     by_id = {item.evidence.id: item for item in received if item.evidence is not None}
     cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
+    # Before the guard on shared text (_first_pass) a habitat that starts with the heading "Host"
+    # is not refused for it: it settles there as on origin/main 3eb37c11 and claims its text.
     return refusal(task, readings, literal=literal, named=named, value=answer.value,
         authority_id=answer.authority_id, cited=cited, received=received, elevations=elevations,
-        date_rules=date_rules)
+        date_rules=date_rules, heading=not _BEFORE_GUARD.get())
 
 
 def _place_texts(run, tasks_by_key: Mapping[str, FieldTask], readings) -> dict[str, dict[str, frozenset[str]]]:
@@ -761,7 +763,10 @@ def _unplaced_text(run, readings: Sequence[Reading], places: Mapping[str, Mappin
     organiser candidates (_candidates), and the literals and verbatims of
     every supported value. A value not settled holds nothing: the country
     expert's own "Canada", kept as an unresolved literal, is still weighed
-    (finding 2).
+    (finding 2). Nor does a habitat settled on text read from the transcript
+    over consecutive lines (_over_lines; lane H4, round 2 of #464's review):
+    its lines are weighed as on origin/main 3eb37c11, which refused that
+    answer.
 
     What is left, split at commas, semicolons, colons, brackets and
     slashes, is weighed group by group, with any date, elevation or range in
@@ -787,8 +792,10 @@ def _unplaced_text(run, readings: Sequence[Reading], places: Mapping[str, Mappin
         for texts in places.get(key, {}).values() for text in texts}
     held = {text for texts_by_reading in places.values() for texts in texts_by_reading.values() for text in texts}
     held |= {candidate.literal for found in _candidates(run, readings).values() for candidate in found}
-    for value in run.fields.values():
-        if value.state == ValueState.SUPPORTED:
+    human = human_keys(run)
+    for key, value in run.fields.items():
+        # A habitat settled on text read over consecutive lines holds nothing here (_over_lines).
+        if value.state == ValueState.SUPPORTED and not _over_lines(run, key, value, human):
             held |= {text for text in (value.literal, *value.verbatim_by_observation.values()) if text}
     parts = {part.strip() for text in held for part in text.split("\n") if part.strip()}
 
@@ -1053,8 +1060,9 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     settled before this attempt or by a person.
 
     A habitat this attempt's answer read from the transcript over consecutive lines
-    (agreement.GIVES_WAY: a literal with a line break, which only agreement.ACROSS_LINES lets
-    the habitat hold and origin/main 3eb37c11 refused) claims no text against another field
+    (agreement.GIVES_WAY: a literal with a line break that is no whole organiser candidate,
+    which only agreement.ACROSS_LINES lets the habitat hold; origin/main 3eb37c11 refused it
+    as text read from the transcript on more than one line) claims no text against another field
     (lane H4, the coordinator's ruling of 2026-11-21 on review round 1 of #464): this guard
     decides every other field as if that habitat answer had settled nothing. Its own text is
     still guarded, and more widely: it goes to review where another kind of field's settled
@@ -1341,6 +1349,15 @@ TRANSCRIPT_RULES = "field-research-transcript-v1"
 # Set while _first_pass applies the answers to a copy of the run: no Logfire
 # event is made for a value that pass settles (_from_the_transcript).
 _FIRST_PASS: ContextVar[bool] = ContextVar("field_research_first_pass", default=False)
+# True only inside _first_pass, the application on a copy whose settled values the guard on shared
+# text reads (_taken). There the habitat's heading refusal (agreement.HOST_HEADING) is left out, so
+# a habitat origin/main 3eb37c11 settled, heading and all, still claims in the guard the text it
+# claimed there, and every other field of the attempt is taken or not as on origin/main (lane H4,
+# the coordinator's ruling of 2026-11-21 on review round 2 of #464). The application to the record
+# refuses it: the Habitat is never shown with the heading. A re-ask's trial (reask._trial) sets
+# _FIRST_PASS for the whole application and not this, so its final application refuses as the
+# record's does.
+_BEFORE_GUARD: ContextVar[bool] = ContextVar("field_research_before_guard", default=False)
 
 
 def transcript_code(key: str) -> str:
@@ -2691,15 +2708,18 @@ def _first_pass(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[Fi
     with no field taken (_apply_answers), on a copy of the run's fields,
     evidence, findings and lookups, writing no blob and making no Logfire
     event (_FIRST_PASS). The run itself is left as it was. Returns the values
-    that settle: supported, in a settled layer (SETTLED_LAYERS)."""
+    that settle: supported, in a settled layer (SETTLED_LAYERS). One check is
+    left out here and made where the answers are applied to the record: the
+    habitat's heading refusal (_BEFORE_GUARD)."""
     copy = run.model_copy(update={
         "fields": {key: value.model_copy(deep=True) for key, value in run.fields.items()},
         "evidence": list(run.evidence), "findings": list(run.findings), "lookups": list(run.lookups)})
-    marker = _FIRST_PASS.set(True)
+    marker, before = _FIRST_PASS.set(True), _BEFORE_GUARD.set(True)
     try:
         applied, _ = _apply_answers(copy, tasks_by_key, ordered, taken={},
             evidence={item.id: item for item in copy.evidence}, blobs=None, decisions={}, **common)
     finally:
+        _BEFORE_GUARD.reset(before)
         _FIRST_PASS.reset(marker)
     return {key: copy.fields[key] for key in applied
         if copy.fields[key].state == ValueState.SUPPORTED and copy.fields[key].layer in SETTLED_LAYERS}
@@ -3494,7 +3514,10 @@ def _genus_on_a_label(run, readings: Sequence[Reading]) -> str | None:
       value of another field cites, at the literal offsets its locator names in the reading it
       names (organiser.parse_locator), else where that reading's label writes the row's excerpt in
       the readings the row cites; and each reader's verbatim of that value, where that reader's
-      text writes it. The same text elsewhere is not accounted for;
+      text writes it. The same text elsewhere is not accounted for. A habitat settled on text
+      read from the transcript over consecutive lines (_over_lines) accounts for nothing: its
+      words may be a genus as on origin/main 3eb37c11, which refused that answer (lane H4,
+      round 2 of #464);
     - a whole token of an ontology notation ("CNHM", "Prov.", "det.", the sex signs; "C." accounts
       for "C" alone), a code with no genus (checks.NO_GENUS), a catalogue number with its prefix
       (field_validators.CATALOG: "FMNHINS 4486784"), or a keyed line's key (one of the 20 fields'
@@ -3538,8 +3561,10 @@ def _genus_on_a_label(run, readings: Sequence[Reading]) -> str | None:
         for pattern in patterns:
             for match in pattern.finditer(reading.text):
                 mark(reading, *match.span())
+    human = human_keys(run)
     for key, value in run.fields.items():
-        if key == "taxon" or value.state != ValueState.SUPPORTED:
+        # A habitat settled on text read over consecutive lines accounts for nothing (_over_lines).
+        if key == "taxon" or value.state != ValueState.SUPPORTED or _over_lines(run, key, value, human):
             continue
         for item in (rows[i] for i in value.evidence_ids if i in rows and rows[i].kind == "literal"):
             location = parse_locator(item.locator)
@@ -3598,8 +3623,13 @@ def _over_lines(run, key: str, value: FieldValue, human: frozenset[str]) -> bool
     """Whether a stored value is a habitat research settled on text its expert read from the
     transcript over consecutive lines (agreement.GIVES_WAY; lane H4): its literal holds a line
     break, no person decided it, and the run keeps the finding of a literal read from the
-    transcript for the field (_from_the_transcript). origin/main 3eb37c11 settled no such value:
-    it read a habitat from the transcript within one line only."""
+    transcript for the field (_from_the_transcript). origin/main 3eb37c11 read a habitat from the
+    transcript within one line only; a habitat with a line break settled there only as a whole
+    organiser candidate, which leaves no such finding and is not such a value. Wherever a settled
+    value's text relaxes another field's decision such a habitat counts for nothing (the
+    coordinator's ruling of 2026-11-21 on review round 2 of #464): _settled_claims,
+    _unplaced_text, _genus_on_a_label, and as a claimant in _taken (there by the answer of the
+    attempt, `silent`)."""
     from .agreement import GIVES_WAY
 
     return (key in GIVES_WAY and key not in human and bool(value.literal) and "\n" in value.literal
@@ -3609,9 +3639,9 @@ def _over_lines(run, key: str, value: FieldValue, human: frozenset[str]) -> bool
 def _settled_claims(run, readings: Sequence[Reading]) -> list[tuple[str, str, frozenset]]:
     """Each settled value's field and literal, with where the literal stands
     (_claims_text, _value_spans): the text the run's settled values hold. A
-    habitat settled on text read over consecutive lines (_over_lines) holds
-    none here: rule A marks no other field absent because of it, as on
-    origin/main 3eb37c11, where that habitat did not settle (lane H4, the
+    habitat settled on text read from the transcript over consecutive lines
+    (_over_lines) holds none here: rule A marks no other field absent because
+    of it, as on origin/main 3eb37c11, which refused that answer (lane H4, the
     coordinator's ruling of 2026-11-21 on review round 1 of #464)."""
     evidence = {item.id: item for item in run.evidence}
     human = human_keys(run)

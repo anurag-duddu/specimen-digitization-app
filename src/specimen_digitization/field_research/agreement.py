@@ -482,10 +482,12 @@ def verbatim_runs(text: str, literal: str) -> list[tuple[int, int]]:
 # field, places among them, keeps its literal on one line.
 ACROSS_LINES = frozenset({"precise_location", "habitat"})
 # The field of ACROSS_LINES whose literal over consecutive lines gives way where it shares text
-# with another field's (step._taken): the habitat, which origin/main 3eb37c11 kept on one line,
-# so that accepting a host over two lines changes no other field's outcome for the same answers
-# (the coordinator's ruling of 2026-11-21 on review round 1 of #464). The precise location keeps
-# the rules it had.
+# with another field's (step._taken): the habitat. origin/main 3eb37c11 read a habitat from the
+# transcript within one line only (a habitat literal with a line break settled there only as a
+# whole organiser candidate of each reading it names, and still does, with the claims it had),
+# so that accepting a host read over two lines changes no other field's outcome for the same
+# answers (the coordinator's ruling of 2026-11-21 on review round 1 of #464). The precise
+# location keeps the rules it had.
 GIVES_WAY = frozenset({"habitat"})
 # What each of those fields' text is called where the check tells its expert so
 # (literal_refusal's retry and experts._Expert._validate_resolved's).
@@ -711,7 +713,7 @@ def host_heading(literal: str | None) -> bool:
 
 
 def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
-        named: Sequence[Reading], elevations=None, date_rules=None) -> Refusal | None:
+        named: Sequence[Reading], elevations=None, date_rules=None, heading: bool = True) -> Refusal | None:
     """Why the answer's literal may not settle the field, or None: it must be
     a whole candidate literal of each reading it names, whichever reader
     wrote it (no reader is preferred: the owner, 2026-10-25), or text each
@@ -739,11 +741,12 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     ontology_checks.without_role) settles nothing (ROLE_ONLY: the marker is the role the ontology's
     notation collected_by names, plan WP 2.3c). A habitat literal that starts with the heading
     "Host" settles nothing either (HOST_HEADING, host_heading: the answer is refused, never rewritten;
-    lane H4 of the autonomy program). A date field's literal that
+    lane H4 of the autonomy program); `heading` false leaves that one check out, which only the
+    step's pass before its guard on shared text does (step._first_pass). A date field's literal that
     extends a candidate by the year starting the next line passes where `date_rules`, the profile's,
     read it as one date (next_line_year)."""
     basis = literal_basis(task, readings, literal, named)
-    if task.key == HOST_FIELD and host_heading(literal):
+    if heading and task.key == HOST_FIELD and host_heading(literal):
         return Refusal(HOST_HEADING, f"{literal!r} starts with the heading \"Host\", which is not part of the "
             "host's name. Give the name written after the heading as the literal, whole (it may stand on the "
             "heading's line or on the lines below it), and leave the heading out; a written \"Ex.\", \"Ex:\", "
@@ -2554,15 +2557,15 @@ def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
 def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         named: Sequence[Reading], value: str | None, authority_id: str | None,
         cited: Sequence[SourceAnswer], received: Sequence[SourceAnswer], elevations=None,
-        date_rules=None) -> Refusal | None:
+        date_rules=None, heading: bool = True) -> Refusal | None:
     """Why a resolved answer may not settle its field, or None.
 
     `named` are the readings the answer names (each already writes the
     literal), `cited` the source answers it cites and `received` every source
-    answer its field received; `elevations` and `date_rules` as literal_refusal
-    takes them."""
+    answer its field received; `elevations`, `date_rules` and `heading` as
+    literal_refusal takes them."""
     refused = literal_refusal(task, readings, literal=literal, named=named, elevations=elevations,
-        date_rules=date_rules)
+        date_rules=date_rules, heading=heading)
     if refused is not None:
         return refused
     # The answer's literal is offered to every label, whatever readings it names.

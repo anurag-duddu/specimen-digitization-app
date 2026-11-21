@@ -2,8 +2,10 @@
 autonomy program, fix round 1 of PR #464, 2026-11-21; the coordinator's ruling, not the owner's words).
 
 The ruling: for the same expert answers, no field other than Habitat ends differently from origin/main 3eb37c11.
-origin/main reads a habitat from the transcript within one line only, so it refuses a habitat literal that holds a
-line break; the lane accepts one over consecutive lines (agreement.ACROSS_LINES). On the reviewed head 3df404ea such a
+origin/main reads a habitat from the transcript within one line only, so it refuses a habitat literal with a line
+break that is text read from the transcript (one that is a whole organiser candidate of each reading it names settles
+there, and still does, with the claims it had); the lane accepts one read over consecutive lines
+(agreement.ACROSS_LINES). On the reviewed head 3df404ea such a
 literal settled provisionally (step._first_pass) and the guard on shared text (step._taken) then sent ANOTHER field's
 answer on the same text to review (round 1 of the review, finding 1). Now that literal claims no text against
 another field (agreement.GIVES_WAY), it goes to review itself where its text is in another kind of field's settled
@@ -159,9 +161,9 @@ METHOD_CANDIDATE = [*COLLECTORS, *(("collection_method", name, HOST, HOST) for n
 
 def test_rule_a_marks_no_field_absent_because_a_habitat_over_two_lines_holds_its_text(tmp_path):
     """The organiser offered the host's two lines as the collecting method; the method's expert finds none; the
-    habitat's expert settles those lines. origin/main refuses that habitat, so rule A declines the method (the
-    organiser found text for it) and it stays for a person. On 3df404ea the settled habitat held the text and
-    rule A marked the method not on the label. Now rule A declines as on origin/main."""
+    habitat's expert settles those lines, which no habitat candidate holds. origin/main refuses that habitat, so
+    rule A declines the method (the organiser found text for it) and it stays for a person. On 3df404ea the settled
+    habitat held the text and rule A marked the method not on the label. Now rule A declines as on origin/main."""
     rig = build_rig(tmp_path, METHOD_LINES, METHOD_LINES, candidates=METHOD_CANDIDATE)
     run = rig.specimen.run
     prepared, outcomes, calls = research(rig, Scripted({"collection_method": answering(LACKS),
