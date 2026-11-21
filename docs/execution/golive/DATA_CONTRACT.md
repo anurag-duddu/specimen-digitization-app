@@ -372,9 +372,12 @@ above do not change.
     `processing_blocked`, approved and not cleared, and "Start new run"
     worked on it, after which its detail returned 200. So after rolling the
     server back below this change, a held record whose run was pinned with
-    the value cannot be opened until it has a new run, and a new run is the
-    expected way forward for records whose runs were pinned with the value;
-    it is not a tested guarantee for every record.
+    the value returned 422 for its detail and workspace as stored, until an
+    action through the API changed its state (in the probe: a Retry; or a
+    coverage decision and an approval; or "Start new run"), after which its
+    detail returned 200. A new run is the expected way forward for records
+    whose runs were pinned with the value; it is not a tested guarantee for
+    every record.
   - Authority: the coverage values (1 to 3 regions, concept "text", 0.5
     score, 50 % inside) are provisional values from a coordinator ruling of
     2026-09-23 (`status/coordinator.md` 23-24: "G15 check built with
