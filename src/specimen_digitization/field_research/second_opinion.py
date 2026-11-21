@@ -54,9 +54,10 @@ value stays blank (the second opinion's value is a possibility, never evidence),
 no field, finding or evidence row is touched. Derived at finalize, as every open reason is: a save that
 follows a finalize carries what a fresh finalize gives; a save with no finalize keeps an earlier
 finalize's open reasons, as on origin/main for every open reason, until the next finalize recomputes
-them. Examples found in the reviews, not a complete list: a history restore; a decision other than an
-approval or a capability deferral on a run whose stage is not `finalized` (application/api.py,
-apply_decision); refinalize's early return on a blocked run; graph-limit recovery
+them. Examples found in the reviews, not a complete list, among them: a history restore; a decision
+other than an approval or a capability deferral on a run whose stage is not `finalized` (application/api.py,
+apply_decision), among them a pending, running, paused, cancelled or blocked run and one after a
+transcript decision; refinalize's early return on a blocked run; graph-limit recovery
 (active_graph.save_recoverably); a worker block the worker does not end by itself
 (tests/field_research/test_blank_second_opinion_fills.py, the windows section).
 

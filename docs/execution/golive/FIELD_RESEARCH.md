@@ -2631,24 +2631,30 @@ other two are the restore window's, below). Not guaranteed: a save that does
 not follow a finalize keeps the open reasons of an earlier finalize, on
 origin/main and on this branch alike and for every open reason, until the
 next finalize, which recomputes the mark from the record as it then is and
-may give it or give none. The worker ends some such windows when it reaches
-a finalize; a run it blocks first stays blocked with the stored open
-reasons, and some windows last until a person acts, which may be never.
+may give it or give none. The guarantee holds one way only: a save with no
+finalize can still equal a fresh finalize (after Retry with no decision, or
+a restore to a revision no person approved: the G51 reviewer, round 3). The
+worker ends some such windows when it reaches a finalize; a run it blocks
+first keeps the stored open reasons while it is blocked, and some windows
+last until a person acts, which may be never.
 
 Known examples, found in the reviews of this PR; the list is not claimed
 complete:
 
 - a history restore (`history_restore.py:62`, `api.py:1573-1580`): the
-  record is held for review, or blocked when the restored run had a blocker;
+  record is held for review, or blocked when the restored run had a blocker,
+  and then stays blocked until Retry, Resume or an approval after the repair
+  (a decision does not end that window);
 - a decision other than an approval or a capability deferral that arrives on
   a run whose stage is not `finalized` (`api.py:2423`; an approval finalizes
   at any stage, and a decision arriving at `field_second_opinion` is moved
   to `finalized` first, `api.py:2092`): after a transcript decision (stage
   `parse`); after Retry or Resume before any worker step (stage `pending`);
   on a paused or cancelled run, at rest, possibly indefinitely (the worker
-  returns at `workflow.py:726`); on a blocked run, until the Retry or Resume
-  after the repair (`step.refinalize` returns early on a run with a blocker,
-  `step.py:4846`);
+  returns at `workflow.py:726`; a person resumes, retries or approves it,
+  and reprocess is named here from the code only: it was not run); on a
+  blocked run, until the Retry or Resume after the repair (`step.refinalize`
+  returns early on a run with a blocker, `step.py:4846`);
 - a field decision on the taxon or another looked-up field after a
   transcript decision removed field research from the completed steps
   (`api.py:2247`, then `api.py:2163` sets stage `lookup`), found by Codex in
@@ -2668,20 +2674,27 @@ complete:
   the code, not run.
 
 When a finalize ends a window it recomputes the mark. Tested here: after a
-restore to an approved revision, Resume gives the mark and approving again
-gives none (an approved run gets no mark); after a transcript decision the
-worker's finalize removes it (the answer is no longer current); after a
-decision on the marked field (on a paused or cancelled run, after Retry or
-Resume, while a blob is lost), the finalize that follows gives no mark on
-that person's field, and the record then waits for that person's approval
-(`standing_holds.person_acted`). The G51 reviewer's round-2 notes add: after
-a restore, a decision on another field also gives the mark; an approval
-inside the transcript window ends it through the ordinary policy's finalize,
-as on origin/main; after a lost blob, a field decision after the repair does
-not end it (the run is still blocked), an approval does.
+restore to an approved revision, Resume gives the mark, and approving again
+gives none (an approved run gets no mark) while the record clears by that
+person's approval; after a transcript decision the worker's finalize removes
+it (the answer is no longer current); after a decision on the marked field
+(on a paused or cancelled run, after Retry or Resume, while a blob is lost),
+the finalize that follows gives no mark on that person's field, and the
+record then waits for that person's approval
+(`standing_holds.person_acted`). The G51 reviewer's notes add (rounds 2 and
+3): after a restore, a decision on another field also gives the mark, and a
+decision on the field itself gives no mark and does not clear the record,
+which stays `needs_human_review`, held by `history_restored_requires_review`
+and `human_approval_required`; an approval inside the transcript window ends
+it through the ordinary policy's finalize, as on origin/main; after a lost
+blob, a field decision after the repair does not end it (the run is still
+blocked), an approval does.
 
-Measured, not proven: in the G51 reviewer's sequences (28 per tree in round
-2) no record had the disposition `cleared` inside such a window, and Codex's
+Measured, not proven: in the G51 reviewer's round-3 sequences
+(`reviews/verdict_463_g51_r3.md`: 65 sequences per tree through the API and
+workflow, 186 noted states, among them decisions on runs at `pending`,
+`parse`, `plan` and `field_second_opinion` and restores of a run with a
+blocker) no state was `cleared` with a stale or missing mark, and Codex's
 static trace of round 3 found no counterexample. origin/main's own open
 reasons wait the same way (the G51 reviewer's probes of origin/main,
 `codex_seq_main.txt` and `windows_main.txt`: after the restore, 12
