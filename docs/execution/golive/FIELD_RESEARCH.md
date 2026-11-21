@@ -127,7 +127,17 @@ handover runs field research instead of the six specialists:
    branch and the like) is the collection method, never the habitat, and
    that when the only text offered for the habitat is a method the label
    lacks one: in the real run of 529f8033c 105526328's habitat expert still
-   confirmed the organiser's "trap".
+   confirmed the organiser's "trap". Since lane H3 (the coordinator's ruling
+   of 2026-11-21; not the owner's words) the habitat brief also says a host
+   is the habitat: the name after a host marker (on its line or the next),
+   or an animal's name written on its own, copied whole as written, a
+   written "Ex."/"Ex:"/"ex"/"On" kept and a printed "Host"/"Host:" heading
+   left out, as the truth sheets write hosts. The ontology's `host_marker`
+   notation still renders "[no field]" into every expert's instructions; the
+   brief's rule says it means only that a host is never the specimen's taxon.
+   The museum's published records differ: lane M0 found their hosts published
+   as associated taxa and none of 104 published Habitat values a host; the
+   20-field profile has no associated-taxa field.
 3. **One expert per field.** Every field gets its own Pydantic AI agent
    (`field_<key>`), its own instructions (shared rules plus the field's brief)
    and only its approved tools. All experts run at once. After the step has
@@ -2421,8 +2431,10 @@ for its current shown value is "differs";
 `marked:<field>:<label>:second_opinion_not_checked` when there is no
 recorded verdict for its current shown value (not obtained, switched off,
 not run yet, or the value changed since it was judged); nothing when it is
-"agrees", and nothing for the catalogue number, the IRN, or an open or blank
-field. Because each mark is derived from the current value it cannot go
+"agrees", and nothing for the catalogue number or the IRN. A judged field
+left without a value (blank, "not on the label", or open) gets
+`marked:<field>::second_opinion_differs`, with no label, when the obtained
+and current answer gives it a value (lane H3, below). Because each mark is derived from the current value it cannot go
 stale: a value research changes on a retry is "not checked" until the step
 runs again, which it does when the recorded verdicts no longer cover the
 settled values. A person's authority is one function
@@ -2572,6 +2584,47 @@ texts, so a misreading both readers share can be agreed. Tests:
 `tests/field_research/test_agreed_no_flag.py`; the two cases at the end of
 `tests/fixtures/field_attention.json` (no code, no attention; no change in
 the app).
+
+**A blank the second opinion fills is flagged** (`second_opinion.filled`,
+called by `step.finalize_fields` on every finalize after the reasons are
+split and the holds derived; lane H3, the coordinator's ruling of
+2026-11-21 on lane H2's measurement, an engineering fix, not the owner's
+words). A judged field the record leaves without a value (blank, "not on
+the label", or open) for which the second opinion's own answer gives a
+value gains the open reason `marked:<field>::second_opinion_differs` (no
+label: a blank has no value to rest on one), so the app flags the field.
+Only a flag: the value stays blank (the second opinion's value is a
+possibility, never evidence), nothing is held, `cleared_by` and the
+disposition do not change, and the field's state, reason and evidence stay
+research's. The field's stored reason and its check row
+(`check:not_on_label`) still say "Not on the label": they record what
+research's expert answered and what the readings were checked for, and a
+rule derived at finalize does not rewrite them (rewriting would carry state
+from one finalize to the next). The mark beside them says that an
+independent reading gives a value, and the app's field row shows the mark's
+words ("An independent reading of the labels gives a different value. Check
+this value against the image."). The conditions are rule B's and the marks': the run is on the
+units path and no person approved it; the result is obtained and current
+(`answer_current`) and the step is not due; never the catalogue number or
+the IRN, a field the run's own profile makes mandatory (so it never holds),
+a field a person holds authority over, or a field that already needs
+attention by `review_summary.attention_fields` over this finalize's reasons
+and the fields' states (a field is flagged once). This reverses, for this
+one case, the limit PR #455 wrote (marks only on a field settled with a
+value); PR #457's test already called such a blank "a missed-value signal",
+but a blank `step.mark_not_on_label` marks has no flag to keep. Measured
+free (`~/specimen-golive/autonomy-program/H3/replay_h3.txt`, the stored runs
+of the 100 truth slides finalized again by this code with their stored
+answers, `H3/scripts/replay_h3.py` and `compare_h3.py`): 53 flags gained,
+all Habitat, all on cleared records, all where the truth has a value (the
+second opinion's value right by `second_opinion.same` on 46, wrong on 7),
+none where the truth is blank; dispositions and `cleared_by` unchanged on
+100 of 100 and every part of the stored run but its open reasons equal on
+100 of 100; flagged fields per cleared record 7.55 to 8.08 (the app's
+mapping, the IRN left out). Tests:
+`tests/field_research/test_blank_second_opinion_fills.py`; one case in
+`tests/fixtures/field_attention.json` and one in the app's
+`second_opinion_test.dart` (no change in the app's code).
 
 **The request.** Route `second-opinion-muse-spark` (Muse Spark Open 816B on
 Baseten through the Hugging Face router; tool choice required, 8,000 output

@@ -225,6 +225,12 @@ system fills the field from other fields, where the file has one.
   fields, only Identified by IRN holds one
   (`specimen.yaml:287` (`The EMu Parties record number (IRN)`)). The owner's ruling below covers
   one printed heading.
+- **Habitat and hosts**: the file's Habitat holds "habitat, host or substrate", while its
+  `host_marker` notation (below) names no field. Since 2026-11-21 (lane H3, the coordinator's
+  ruling, not the owner's) the habitat expert's brief settles it for that expert: a host is the
+  habitat, copied as written (`src/specimen_digitization/field_research/prompts/habitat.txt:6`
+  (`- A host is the habitat`)). The file's notation is unchanged. The museum's published records
+  hold hosts as associated taxa, not in Habitat; none of the 20 fields is an associated-taxa field.
 
 ### Values the system fills in
 
