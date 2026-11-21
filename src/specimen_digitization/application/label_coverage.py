@@ -30,8 +30,9 @@ def intersection_over_union(a, b):
     return overlap / (area(a) + area(b) - overlap)
 
 
-def merged_count(boxes, threshold):
-    """Boxes overlapping at IoU >= threshold, transitively, count as one label."""
+def merged_groups(boxes, same):
+    """The boxes' groups (lists of indices, in box order): boxes for which
+    `same(a, b)` holds, transitively, are one group."""
     parents = list(range(len(boxes)))
 
     def root(index):
@@ -42,9 +43,37 @@ def merged_count(boxes, threshold):
 
     for i, first in enumerate(boxes):
         for j in range(i + 1, len(boxes)):
-            if intersection_over_union(first, boxes[j]) >= threshold:
+            if same(first, boxes[j]):
                 parents[root(i)] = root(j)
-    return len({root(index) for index in range(len(boxes))})
+    groups = {}
+    for index in range(len(boxes)):
+        groups.setdefault(root(index), []).append(index)
+    return list(groups.values())
+
+
+def merged_count(boxes, threshold):
+    """Boxes overlapping at IoU >= threshold, transitively, count as one label."""
+    return len(
+        merged_groups(
+            boxes, lambda a, b: intersection_over_union(a, b) >= threshold
+        )
+    )
+
+
+def nested_duplicate(a, b, rule) -> bool:
+    """Whether two boxes are one label boxed twice, one inside the other: at
+    least rule.min_containment of the smaller box's area inside the larger,
+    and IoU at least rule.min_iou. Exact (integer areas against the values as
+    written, no float rounding); a pair exactly at a value meets it."""
+    width = min(a[0] + a[2], b[0] + b[2]) - max(a[0], b[0])
+    height = min(a[1] + a[3], b[1] + b[3]) - max(a[1], b[1])
+    if width <= 0 or height <= 0:
+        return False
+    overlap = width * height
+    union = area(a) + area(b) - overlap
+    return overlap >= Fraction(str(rule.min_containment)) * min(
+        area(a), area(b)
+    ) and overlap >= Fraction(str(rule.min_iou)) * union
 
 
 def covered_fraction(box, cover):
@@ -118,9 +147,15 @@ def check_coverage(rule: CoverageRule, specimen) -> None:
     thin, kept = [], []
     for r in run.regions:
         (thin if too_thin(r, asset.width, asset.height, fraction) else kept).append(r)
-    region_count = merged_count(
-        [(r.x, r.y, r.width, r.height) for r in kept], rule.merge_iou
-    )
+    nested = rule.nested_duplicate
+
+    def same(a, b):
+        return intersection_over_union(a, b) >= rule.merge_iou or (
+            nested is not None and nested_duplicate(a, b, nested)
+        )
+
+    groups = merged_groups([(r.x, r.y, r.width, r.height) for r in kept], same)
+    region_count = len(groups)
     reasons = [
         issue
         for issue in geometry.issues
@@ -156,6 +191,21 @@ def check_coverage(rule: CoverageRule, specimen) -> None:
                 ],
             }
             if fraction is not None
+            else {}
+        ),
+        # Present only under a rule with the nested-duplicate value: the values
+        # used, and each group of regions counted as one label (they stay in
+        # run.regions).
+        **(
+            {
+                "nested_duplicate": nested.model_dump(mode="json"),
+                "merged_regions": [
+                    [kept[index].id for index in group]
+                    for group in groups
+                    if len(group) > 1
+                ],
+            }
+            if nested is not None
             else {}
         ),
         "evidence_ref": run.segmentation.get("blob_ref"),

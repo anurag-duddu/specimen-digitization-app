@@ -166,15 +166,17 @@ PUBLISHED_RULE = RULE.model_copy(update={"min_region_short_side_fraction": 0.03}
 
 def test_the_pilot_pins_the_approved_starting_values():
     settings = published_registry().resolve("insects").profile.segmentation_settings
-    expected = PUBLISHED_RULE.model_copy(update={"merge_iou": 0.6})
-    assert settings.coverage == CoverageRule.model_validate(expected.model_dump())
+    nested = {"min_containment": 0.95, "min_iou": 0.6}
+    expected = {**PUBLISHED_RULE.model_dump(), "nested_duplicate": nested}
+    assert settings.coverage == CoverageRule.model_validate(expected)
     published, base = settings.coverage.model_dump(), RULE.model_dump()
     assert {k for k in published if published[k] != base.get(k)} == {
         "min_region_short_side_fraction",
-        "merge_iou",
+        "nested_duplicate",
     }
     assert settings.coverage.min_region_short_side_fraction == 0.03
-    assert settings.coverage.merge_iou == 0.6
+    assert settings.coverage.nested_duplicate.model_dump() == nested
+    assert settings.coverage.merge_iou == RULE.merge_iou
 
 
 def test_coverage_rules_are_consistent():
@@ -386,55 +388,150 @@ def test_the_segment_step_uses_the_rule_the_run_pinned():
         assert item.run.coverage_check["region_count"] == count
 
 
+
 # The same label boxed twice is counted once (the coordinator's ruling of
-# 2026-11-21, lane L3; provisional, not an owner sign-off): the published
-# merge_iou is 0.6. Count only: both boxes stay in run.regions.
+# 2026-11-21, lane L3, review round 1 of #461; provisional, not an owner
+# sign-off): one box drawn inside the other, as the label finder's outer card
+# and inner frame. merge_iou stays 0.9; the rule's nested_duplicate value counts
+# such a pair once. Count only: both boxes stay in run.regions.
+from pydantic import ValidationError  # noqa: E402
+
+from specimen_digitization.application.collection_profiles import (  # noqa: E402
+    NestedDuplicateRule,
+)
+from specimen_digitization.application.label_coverage import (  # noqa: E402
+    merged_groups,
+    nested_duplicate,
+)
+
+NESTED = NestedDuplicateRule(min_containment=0.95, min_iou=0.6)
+
+
 def published_rule():
     return published_registry().resolve("insects").profile.segmentation_settings.coverage
 
 
+def count(boxes, rule=None):
+    """The check's own merge, as check_coverage makes it."""
+    rule = rule or published_rule()
+    return len(
+        merged_groups(
+            boxes,
+            lambda a, b: intersection_over_union(a, b) >= rule.merge_iou
+            or (rule.nested_duplicate is not None and nested_duplicate(a, b, rule.nested_duplicate)),
+        )
+    )
+
+
 # Measured on truth slide 105527007 (1788 x 639): a barcode label, a left label,
 # and the right-hand label boxed twice, as its outer card and its inner frame
-# (IoU 0.7847); three labels on the truth sheet.
+# (IoU 0.7847, the frame wholly inside the card); three labels on the truth sheet.
 SLIDE_007 = (1788, 639)
 BARCODE_007, LEFT_007 = (1103, 417, 95, 165), (6, 51, 544, 538)
 CARD_007, FRAME_007 = (1204, 23, 576, 562), (1240, 49, 505, 503)
+# Measured on truth slide 105526361 (1757 x 630): a barcode label and one label
+# boxed twice (IoU 0.7731, the frame wholly inside the card); two labels.
+SLIDE_361 = (1757, 630)
+BARCODE_361, CARD_361, FRAME_361 = (1068, 427, 97, 173), (1174, 23, 574, 569), (1211, 50, 504, 501)
 
 
-def test_the_published_rule_counts_a_label_and_its_inner_frame_once():
-    # Measured on truth slide 105526361 (1757 x 630): a barcode label and one
-    # label boxed twice (IoU 0.7731); two labels on the truth sheet.
-    card, frame = (1174, 23, 574, 569), (1211, 50, 504, 501)
-    assert intersection_over_union(card, frame) == pytest.approx(0.7731, abs=1e-4)
-    item = sized([(1068, 427, 97, 173), card, frame], 1757, 630, rule=published_rule())
+def test_the_published_rule_counts_slide_105527007_s_card_and_frame_once():
+    item = sized([BARCODE_007, LEFT_007, CARD_007, FRAME_007], *SLIDE_007, rule=published_rule())
     segmentation = dict(item.run.segmentation)
     check_coverage(published_rule(), item)
     evidence = item.run.coverage_check
-    assert evidence["region_count"] == 2
-    assert evidence["outcome"] == "confirmed"
-    # Count only: both boxes are still regions of the run, nothing is left out
-    # as thin, and the segmentation evidence is untouched.
-    assert [(r.x, r.y, r.width, r.height) for r in item.run.regions][1:] == [card, frame]
+    assert item.run.coverage_confirmed is True
+    assert evidence["region_count"] == 3
+    assert evidence["reason_codes"] == []
+    card, frame = item.run.regions[2], item.run.regions[3]
+    assert evidence["merged_regions"] == [[card.id, frame.id]]
+    assert evidence["nested_duplicate"] == {"min_containment": 0.95, "min_iou": 0.6}
+    # Count only: both boxes are still regions of the run, nothing is left out as
+    # thin, and the segmentation evidence is untouched.
+    assert len(item.run.regions) == 4
     assert evidence["not_counted_regions"] == []
     assert item.run.segmentation == segmentation
 
 
-def test_three_labels_and_a_duplicate_count_three_and_confirm():
-    item = sized([BARCODE_007, LEFT_007, CARD_007, FRAME_007], *SLIDE_007, rule=published_rule())
+def test_the_published_rule_counts_slide_105526361_s_card_and_frame_once():
+    assert intersection_over_union(CARD_361, FRAME_361) == pytest.approx(0.7731, abs=1e-4)
+    item = sized([BARCODE_361, CARD_361, FRAME_361], *SLIDE_361, rule=published_rule())
     check_coverage(published_rule(), item)
-    assert item.run.coverage_confirmed is True
-    assert item.run.coverage_check["region_count"] == 3
-    assert item.run.coverage_check["reason_codes"] == []
-    assert len(item.run.regions) == 4
+    evidence = item.run.coverage_check
+    assert evidence["region_count"] == 2
+    assert evidence["outcome"] == "confirmed"
+    assert evidence["merged_regions"] == [[item.run.regions[1].id, item.run.regions[2].id]]
+    assert len(item.run.regions) == 3
 
 
-def test_a_rule_with_merge_iou_09_behaves_as_before():
-    # PUBLISHED_RULE is the rule PR #460 published (0.9 and the 0.03 fraction).
-    item = sized([BARCODE_007, LEFT_007, CARD_007, FRAME_007], *SLIDE_007, rule=PUBLISHED_RULE)
-    check_coverage(PUBLISHED_RULE, item)
-    assert item.run.coverage_confirmed is False
+def test_four_diagonal_labels_stay_four_and_are_held():
+    # Codex's round-1 counterexample on #461: four separate narrow labels tilted
+    # 45 degrees, whose axis-aligned boxes overlap consecutively at IoU 0.6807
+    # (202500 / 297500) with 0.81 of each box inside the next. Under merge_iou
+    # 0.6 alone (#461's first design) they chained into one label and coverage
+    # was confirmed; box IoU alone is not a duplicate's identity.
+    boxes = [(100, 250, 500, 500), (150, 200, 500, 500), (200, 150, 500, 500), (250, 100, 500, 500)]
+    assert intersection_over_union(boxes[0], boxes[1]) == pytest.approx(202500 / 297500)
+    lowered = PUBLISHED_RULE.model_copy(update={"merge_iou": 0.6})
+    assert count(boxes, lowered) == 1
+    item = sized(boxes, 1000, 1000, rule=published_rule())
+    check_coverage(published_rule(), item)
     assert item.run.coverage_check["region_count"] == 4
+    assert item.run.coverage_confirmed is False
     assert "label_region_count_out_of_range" in item.run.coverage_check["reason_codes"]
+    assert item.run.coverage_check["merged_regions"] == []
+
+
+def test_a_box_wholly_inside_another_at_iou_exactly_0_6_counts_once():
+    # Exact arithmetic: 6000 * 1 >= 0.6 * 10000, as written; just under, 5900
+    # against 10000, the pair is two.
+    outer = (0, 0, 100, 100)
+    assert nested_duplicate(outer, (0, 0, 100, 60), NESTED) is True
+    assert nested_duplicate(outer, (0, 0, 100, 59), NESTED) is False
+    assert count([outer, (0, 0, 100, 60)]) == 1
+    assert count([outer, (0, 0, 100, 59)]) == 2
+
+
+def test_containment_exactly_at_0_95_counts_once_and_just_under_does_not():
+    # The inner box is 100 x 80; 76 of its 80 rows inside the outer box is 0.95
+    # (IoU 7600 / 10400, about 0.73); 75 rows is 0.9375 (IoU about 0.71).
+    outer = (0, 0, 100, 100)
+    at, under = (0, 24, 100, 80), (0, 25, 100, 80)
+    assert nested_duplicate(outer, at, NESTED) is True
+    assert nested_duplicate(outer, under, NESTED) is False
+    assert intersection_over_union(outer, under) < 0.9
+    assert count([outer, at]) == 1
+    assert count([outer, under]) == 2
+
+
+def test_a_box_around_two_equal_labels_counts_three():
+    # Each label is wholly inside the box around both, but at IoU 0.5, under 0.6.
+    left, right, around = (0, 20, 400, 360), (400, 20, 400, 360), (0, 20, 800, 360)
+    item = sized([left, right, around], 1000, 400, rule=published_rule())
+    check_coverage(published_rule(), item)
+    assert item.run.coverage_check["region_count"] == 3
+    assert item.run.coverage_check["merged_regions"] == []
+
+
+def test_a_large_and_a_small_label_inside_one_spanning_box_count_two():
+    # The spanning box holds the large label at IoU 0.8 (144000 / 180000) and is
+    # counted with it; the small label (IoU 10000 / 180000 with the box) stays
+    # apart. Two, the number of labels; the spanning box is not a label of its
+    # own, so the count is right here, though the box is counted with the large
+    # label rather than set aside.
+    large, small, spanning = (0, 0, 400, 360), (400, 0, 100, 100), (0, 0, 500, 360)
+    item = sized([large, small, spanning], 1000, 400, rule=published_rule())
+    check_coverage(published_rule(), item)
+    assert item.run.coverage_check["region_count"] == 2
+    assert item.run.coverage_check["merged_regions"] == [
+        [item.run.regions[0].id, item.run.regions[2].id]
+    ]
+
+
+def test_a_small_sticker_inside_a_large_label_counts_two():
+    # Containment 1.0, IoU 3200 / 144000: two labels.
+    label, sticker = (0, 0, 400, 360), (50, 50, 80, 40)
+    assert count([label, sticker]) == 2
 
 
 def test_a_duplicate_and_a_thin_strip_together_count_three():
@@ -445,41 +542,74 @@ def test_a_duplicate_and_a_thin_strip_together_count_three():
     assert item.run.coverage_confirmed is True
     assert evidence["region_count"] == 3
     assert [n["box"] for n in evidence["not_counted_regions"]] == [list(strip)]
+    assert evidence["merged_regions"] == [[item.run.regions[2].id, item.run.regions[3].id]]
     assert len(item.run.regions) == 5
 
 
+def test_a_rule_without_the_nested_value_counts_as_before():
+    # PUBLISHED_RULE is #460's published rule (0.9 and the 0.03 fraction).
+    item = sized([BARCODE_007, LEFT_007, CARD_007, FRAME_007], *SLIDE_007, rule=PUBLISHED_RULE)
+    check_coverage(PUBLISHED_RULE, item)
+    evidence = item.run.coverage_check
+    assert item.run.coverage_confirmed is False
+    assert evidence["region_count"] == 4
+    assert "nested_duplicate" not in evidence and "merged_regions" not in evidence
+    assert "nested_duplicate" not in PUBLISHED_RULE.model_dump(mode="json")
+
+
 def test_two_different_labels_touching_stay_two():
-    # Measured on truth slide 105527165: a label and the barcode label beside
-    # it, IoU 0.0496, the largest IoU of two different labels on the 100 slides.
+    # Measured on truth slide 105527165: the largest IoU of two different labels
+    # on the 100 slides (0.0496), 0.446 of the barcode label's box inside.
     label, barcode = (1232, 21, 541, 560), (1120, 398, 202, 178)
     assert intersection_over_union(label, barcode) == pytest.approx(0.0496, abs=1e-4)
-    assert merged_count([label, barcode], published_rule().merge_iou) == 2
+    assert count([label, barcode]) == 2
 
 
-def test_a_pair_exactly_at_the_published_value_counts_once():
-    # The comparison is "at or over" (IoU >= merge_iou): 6000 / 10000 is 0.6
-    # exactly in floating point, so the pair merges; just under it does not.
-    at, under = (0, 0, 100, 60), (0, 0, 100, 59)
-    assert intersection_over_union((0, 0, 100, 100), at) == 0.6
-    assert merged_count([(0, 0, 100, 100), at], published_rule().merge_iou) == 1
-    assert merged_count([(0, 0, 100, 100), under], published_rule().merge_iou) == 2
+def test_chains_join_the_two_tests():
+    # Transitive across both tests: a frame inside a card (nested) and the card
+    # at IoU 0.9 or more with a third box are one group.
+    # The frame is 0.9375 inside the shifted box at IoU about 0.58: no direct link.
+    card, frame, shifted = (0, 0, 100, 100), (0, 0, 80, 80), (5, 0, 100, 100)
+    assert nested_duplicate(card, frame, NESTED) and intersection_over_union(card, shifted) >= 0.9
+    assert not nested_duplicate(frame, shifted, NESTED)
+    assert intersection_over_union(frame, shifted) < 0.9
+    assert count([frame, card, shifted]) == 1
 
 
-def test_a_box_around_two_equal_labels_stays_apart_from_them():
-    # Each label overlaps the box around both at IoU exactly 0.5, under 0.6:
-    # three counted regions (at 0.5 the chain would have counted one).
-    left, right, around = (0, 20, 400, 360), (400, 20, 400, 360), (0, 20, 800, 360)
-    assert intersection_over_union(left, around) == 0.5
-    assert intersection_over_union(right, around) == 0.5
-    item = sized([left, right, around], 1000, 400, rule=published_rule())
-    check_coverage(published_rule(), item)
-    assert item.run.coverage_check["region_count"] == 3
-    assert item.run.coverage_confirmed is True
+def test_a_stored_check_without_the_nested_keys_still_loads():
+    stored = {
+        "version": "coverage-check-v1",
+        "outcome": "confirmed",
+        "region_count": 3,
+        "min_label_regions": 1,
+        "max_label_regions": 3,
+        "cross_check": {"concept": "text", "threshold": 0.5, "min_inside_fraction": 0.5,
+            "counted": 0, "uncovered_boxes": []},
+        "reason_codes": [],
+        "min_region_short_side_fraction": 0.03,
+        "not_counted_regions": [],
+        "evidence_ref": "e" * 64,
+        "evidence_sha256": "e" * 64,
+        "checked_at": "2026-11-21T00:00:00Z",
+    }
+    run = Run.model_validate({"coverage_check": stored})
+    assert Run.model_validate(run.model_dump(mode="json")).coverage_check == stored
+    # A stored rule without the value loads and serialises without it.
+    pinned = CoverageRule.model_validate(PUBLISHED_RULE.model_dump(mode="json"))
+    assert pinned.nested_duplicate is None
+    assert "nested_duplicate" not in pinned.model_dump(mode="json")
 
 
-def test_overlaps_chain_into_one_region():
-    # Transitive: a ~ b and b ~ c merge although a and c overlap under 0.6.
-    a, b, c = (0, 0, 100, 100), (20, 0, 100, 100), (40, 0, 100, 100)
-    assert intersection_over_union(a, b) >= 0.6 and intersection_over_union(b, c) >= 0.6
-    assert intersection_over_union(a, c) < 0.6
-    assert merged_count([a, b, c], published_rule().merge_iou) == 1
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"min_containment": 0.95},
+        {"min_iou": 0.6},
+        {"min_containment": 0, "min_iou": 0.6},
+        {"min_containment": 0.95, "min_iou": 1.5},
+        {"min_containment": 0.95, "min_iou": 0.6, "extra": 1},
+    ],
+)
+def test_the_nested_values_are_validated_together(value):
+    with pytest.raises(ValidationError):
+        CoverageRule.model_validate({**PUBLISHED_RULE.model_dump(), "nested_duplicate": value})

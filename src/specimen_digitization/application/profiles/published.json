@@ -143,10 +143,14 @@
           "version": "coverage-check-v1",
           "min_label_regions": 1,
           "max_label_regions": 3,
-          "merge_iou": 0.6,
+          "merge_iou": 0.9,
           "cross_check_threshold": 0.5,
           "min_inside_fraction": 0.5,
-          "min_region_short_side_fraction": 0.03
+          "min_region_short_side_fraction": 0.03,
+          "nested_duplicate": {
+            "min_containment": 0.95,
+            "min_iou": 0.6
+          }
         }
       },
       "tools": [
