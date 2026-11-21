@@ -2819,7 +2819,8 @@ repeat it as for every field).
   such answer of the measured run that ran on to a state's name.
 - A habitat over lines gives way (`GIVES_WAY`, `step._taken`; fix round 1 of #464, the coordinator's ruling of
   2026-11-21: for the same expert answers no field other than Habitat ends differently from origin/main 3eb37c11,
-  which refused every habitat literal with a line break). The step applies every answer of an attempt once on a
+  which refused a habitat literal with a line break unless it was a whole organiser candidate of each reading it
+  names; such a candidate settled there and still does, with the claims it had). The step applies every answer of an attempt once on a
   copy of the record (`_first_pass`), then the guard on shared text compares them, then they are applied to the
   record. In that guard a habitat this attempt's answer read from the transcript over consecutive lines claims no
   text: every other field is decided as if that answer had settled nothing. The Habitat itself goes to review,
@@ -2829,9 +2830,29 @@ repeat it as for every field).
   as holding another field's organiser text (`step._settled_claims`, `_over_lines`). A habitat on one line, and one
   that is a whole organiser candidate, behave in the guard as on origin/main. The expert is not sent back: the
   guard runs once every field's expert has finished. Not covered: a retry after an operational failure, where a
-  Habitat an earlier attempt settled over lines holds its text as any value settled before the attempt does; and a
-  line no other field answers or holds, which an over-long habitat literal can still take (PLAN.md "H4", "Review
+  Habitat an earlier attempt settled over lines holds its text as any value settled before the attempt does (the
+  retried field then goes to review; the run-the-code reviewer's 8 two-attempt sequences on 19761d59 found no flag
+  of origin/main's lost, and, where the retried field is the catalogue number, a record held here that origin/main
+  clears, none the other way); and a line no other field answers or holds, which an over-long habitat literal can
+  still take (the reviewer's round-2 probe on 19761d59: of 2,665 habitat answers made of two and of three
+  consecutive lines of the 99 records' readings, 506 settle with no flag from field research; PLAN.md "H4", "Review
   round 1"). Tests: `tests/field_research/test_habitat_over_lines_gives_way.py`.
+- No other field's decision (fix round 2 of #464; the coordinator's ruling of 2026-11-21: for the same expert
+  answers a field other than Habitat ends as on origin/main). A habitat settled on text read from the transcript
+  over consecutive lines (`step._over_lines`: a line break, not a person's, and the run's finding of a literal read
+  from the transcript) counts for nothing wherever a settled value's text relaxes another field's decision: besides
+  the guard and rule A's mark above, it holds no text on a line of places (`step._unplaced_text`: on 19761d59, in a
+  retry, a settled "Canada" over "Marmota" let the Province/State and the County settle where origin/main refuses
+  them for want of a country) and accounts for no word before owner decision B clears a code with no genus
+  (`step._genus_on_a_label`: on 19761d59, in one attempt, "sp. 22" cleared beside a host over two lines). A habitat
+  that starts with the heading "Host" is not refused for it in the pass before the guard (`step._first_pass`,
+  `step._BEFORE_GUARD`; `literal_refusal`'s `heading`), so it claims there the text it claimed on origin/main (on
+  19761d59 a Collection Code or a Taxon on the same text settled, or kept its own reason, where origin/main sent it
+  to review); the application to the record refuses it. Limits, each toward review: outside the guard a
+  heading-refused Habitat no longer accounts for words (decision B) or holds another field's organiser text (rule
+  A), within one attempt too; and the label's code, PLAN.md "H4", "Review round 2", with the table of the readers
+  found (`~/specimen-golive/autonomy-program/H4/settled_text_consumers.txt`). Tests:
+  `tests/field_research/test_habitat_changes_no_other_field.py`.
 - `literal_refusal` refuses a habitat literal that starts with the heading "Host" (`HOST_HEADING`,
   `host_heading`: the whole word, letter case and the punctuation around it aside; "Hosts" and "on host" are not it):
   the expert is sent back with the reason, and where the step applies such an answer the Habitat stays unresolved.
@@ -2850,8 +2871,9 @@ reading holding U+00DF, U+0130 or U+FB01 did not write its own text), and spaces
 the same words with the line break at another place are the same text, while a hyphen that breaks a word at a
 line's end where the value has none is another. Two known limits: the reading's whole text is searched, not the
 Habitat's place, so a reader's other spelling of the host is not noticed where the same word stands elsewhere in
-that reader's reading of the label; and an observation with no text is no reading and takes no part. The case it
-answers: the two readers write a host's species
+that reader's reading of the label; and an observation with no text is no reading and takes no part. Only those
+three letters are pinned: by the run-the-code reviewer's round-2 probe a reading that writes U+0390 in upper case
+does not match the lower-case value, and the flag is then kept. The case it answers: the two readers write a host's species
 differently, the first pass's unit names one reader's text so the label settles cleared, and the second opinion
 gives that same text; the label's doubt is then about the value itself. It does not catch a Habitat every reader and
 the second opinion read alike and wrongly.
@@ -2861,18 +2883,21 @@ slides, launched by the coordinator: f54e941d (USD 0.2034 at list) and a28cf3f5,
 `~/specimen-golive/runs/autonomy-habitat3-20261121/logs/analysis.txt`): Habitat right on 49 (10 on the stored
 records), wrong on 6 (6), every wrong or partial one flagged, missing on 37 (76), of which 35 flagged, right blank on
 7 of 7; no record's disposition, `cleared_by`, holding reasons or other field differs from the same record finalized
-with nothing researched. "Right" is by the program's comparison, `second_opinion.same` (letters and digits only):
+with nothing researched. "Right" is by the program's comparison, `second_opinion.same` (for Habitat,
+`second_opinion.folded` on both sides: accents and letter case folded; letters and digits kept, with a "." or ","
+between two digits and a "-" or "+" right before a digit; every other character dropped):
 by exact text 44 are right and 4 of the other 5 carry no flag (a letter's case, a full stop, a space; PLAN.md "H4"
 lists them). In both runs the second
 opinion's judgement of a new Habitat was taken from the answer the stored run already holds, through the released
 step: by its contract its request holds none of the pipeline's fields (`second_opinion.py:26-27`), so that answer is
-an answer to the same request; it is one stored sample, not a new call. Free, on the source of a4d76aee (fix round 1;
+an answer to the same request; it is one stored sample, not a new call. Free, on the source of c34e9527 (fix round 2;
 `prompts/habitat.txt` unchanged since the measured run): the real finalize replayed on the stored runs of the 100
-truth slides gives origin/main's record on 100 of 100 (`~/specimen-golive/autonomy-program/H4/replay_h4_fix1.txt`);
+truth slides gives origin/main's record on 100 of 100 (`~/specimen-golive/autonomy-program/H4/replay_h4_fix2.txt`);
 run 3's recorded answers replayed give run 3's own record on 99 of 99, and the rule A condition adds one flag on
-them, on the one wrong Habitat that would have had none, and none on the 49 right ones (`H4/flag_rule_fix1.txt`);
+them, on the one wrong Habitat that would have had none, and none on the 49 right ones (`H4/flag_rule_fix2.txt`);
 with every field's recorded answer applied in one attempt, every field other than Habitat equals origin/main's on
-99 of 99 records under each of four habitat answers (`H4/differential_fix1.txt`).
+99 of 99 records under each of four habitat answers and under two constructed ones where they can be built (13 and
+26 records; `H4/differential_fix2.txt`).
 
 **Known limits.** 22 of the 37 missing are names the expert still answers `label_lacks_value` for; 10 of those
 explanations say that no host marker stands before the name (a rough keyword count,
@@ -2882,7 +2907,7 @@ flagged, in the second. 10 are `one_reader` refusals (one reader's text that not
 unchanged). Three of the six wrong values are partial names. A stored Habitat
 can hold a line break; the app's field row shows every line when open and at most two lines when collapsed
 (`fields_panel.dart:488`; `specimen_ui`'s `UiDisclosureStyle.summaryMaxLines`), as for a precise location (run by
-the run-the-code reviewer of #464 in a widget test of his own, 8 cases at 900 and 360 wide, kept in his probes
+the run-the-code reviewer of #464 in a widget test of its own, 8 cases at 900 and 360 wide, kept in its probes
 folder and not in the app's tests: PLAN.md "H4"). A finalize alone changes no stored Habitat value, state or
 reason; it can keep a Habitat's `label_unsettled` flag that origin/main lifted, by the rule A condition, which is
 derived at every finalize (none on the 100 stored truth runs: a measurement of those). `prompts/precise_location.txt` still says a locality may run over lines "unlike
