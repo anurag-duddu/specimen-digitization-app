@@ -4779,6 +4779,11 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     # The holds derived from the run's own state, never from an earlier reasons list: what a person
     # must still review, research given up for the run (application/standing_holds.py).
     human = [*human, *derived_holds(run)]
+    # A blank field for which the second opinion gives a value is flagged (lane H3): derived from its
+    # stored result and the fields as they are, an optional field's doubt only, once per field.
+    from .second_opinion import filled
+
+    run.open_reasons = [*run.open_reasons, *filled(run, (*human, *run.open_reasons), mandatory=profile.mandatory_fields)]
     failures = [by_key[key].failure for key in work if work[key] == FAILED]
     if failures:
         operational = [f"{RETRYABLE[by_key[key].failure][0]}:{key}" for key in work if work[key] == FAILED]

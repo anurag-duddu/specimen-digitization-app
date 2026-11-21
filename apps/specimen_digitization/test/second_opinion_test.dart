@@ -85,6 +85,37 @@ void main() {
     });
   }
 
+  // Lane H3: a blank field the independent reading gives a value for is
+  // marked with no label (`marked:<field>::second_opinion_differs`). It
+  // flags the blank field on a cleared record in the same words, and its
+  // chip names no label.
+  test(
+    'a blank field the second opinion fills is flagged, naming no label',
+    () {
+      const String blank = 'marked:habitat::second_opinion_differs';
+      final Specimen cleared = Specimen(<String, dynamic>{
+        ...held(blank).data,
+        'fields': <Json>[
+          <String, dynamic>{'field_key': 'habitat', 'state': 'not_present'},
+        ],
+        'disposition': 'cleared',
+        'reason_codes': <String>[],
+        'open_reason_codes': <String>[blank],
+      });
+      expect(blockersFor(cleared), isEmpty);
+      final List<ClearanceBlocker> attention = fieldAttentionFor(cleared);
+      expect(attention, hasLength(1));
+      expect(attention.single.fieldKey, 'habitat');
+      expect(attention.single.detail, secondOpinionDiffersWords);
+      final String? phrase = settlementPhrase(cleared, blank);
+      expect(
+        phrase,
+        endsWith('is marked for review: an independent reading differs'),
+      );
+      expect(phrase, isNot(contains('Label')));
+    },
+  );
+
   test('the reason chips say why in a short phrase', () {
     expect(
       settlementPhrase(held(differs), differs),
