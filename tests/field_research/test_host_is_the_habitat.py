@@ -235,6 +235,7 @@ def test_the_habitat_brief_states_each_point_of_the_ruling():
     # A name after a marker, on its line or below it; a non-insect animal's name with no marker.
     assert "on the marker's line or on the lines right below it" in which
     assert "the name of an animal that is no insect" in which and "written with no marker" in which
+    assert "the specimens are insects, so the specimen's own taxon is an insect's name, never another animal's" in which
     assert "also where the units' fields advice or note, the organiser or other_fields give it as the taxon" in which
     assert which.endswith("answer sources_cannot_resolve and quote it.")
     # Whole, the written marker kept, the heading left out.

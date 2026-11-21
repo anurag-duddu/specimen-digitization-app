@@ -38,7 +38,7 @@ MAIN = {
     'fmnh_ins_number': "sha256:da01681d168299baafa34ff2117eab96265a734d57cf75624f9be772d8230cb3",
     'collectors': "sha256:e1b9b9928944865f9526e7ecb60f1447ff188ed210d43d33dbebea04a61b318d",
     'collection_code': "sha256:27e9950e9407223f3e6563a3b94fbe8dc000fd46a33b51cc043a39af6e15c161",
-    'habitat': "sha256:200004ea4992bf5a1975e6628f21072e1916aa648447f91ccd5bae4caaf282b7",
+    'habitat': "sha256:b856a4b232b7de3ebb9c1c1467f811357966d3e1eea606ffb4a1c5ef4e05bc82",
     'collection_method': "sha256:e3c8ad333b32c9b727f931db2500d0d43af0fa737073b00bf6f8967d4e221aa5",
     'verbatim_dts': "sha256:a667ea32eee99494dfec46883dd1f93e11ced0aa42a765e2dcbe6b3fa475e3ea",
     'identified_by_irn': "sha256:a49fc2b103c5a02408b8713705ff53f61977b686af2063d6c2f227ec26092483",
