@@ -1355,7 +1355,10 @@ _FIRST_PASS: ContextVar[bool] = ContextVar("field_research_first_pass", default=
 # where a RESOLVED habitat answer that starts with the heading reaches the step (a recorded answer
 # applied again, a test, a rig's dry run), it settles on the copy as on origin/main 3eb37c11 and
 # claims in the guard the text it claimed there; the application to the record refuses it, so
-# that answer settles no Habitat with the heading (lane H4, round 2 of #464's review). It does NOT act on
+# that answer settles no Habitat on a literal that starts with the heading. A refused Habitat is
+# unresolved and keeps the literal the organiser gave it, heading and all, as after any refused
+# answer, so the app can show "Unresolved" beside such a text (lane H4, rounds 2 and 3 of #464's
+# review; the run-the-code reviewer ran it). It does NOT act on
 # the resolver's path: there the expert's own check refuses such an answer and sends the expert
 # back, and an expert that repeats the heading through its retries leaves the resolver's fallback
 # as its outcome (sources_cannot_resolve, no literal), which claims nothing (round 3; a stated
@@ -4734,18 +4737,51 @@ def code_confirmed(run) -> frozenset[str]:
 LABEL_UNSETTLED = "label_unsettled"
 
 
+def _unread_labels(run) -> frozenset[str]:
+    """The labels whose transcription is unresolved, by scientific_reasons' two tests of a label
+    (203-217), whether or not that function then gives the label's code: a label whose first pass
+    was given up on and no person has transcribed since, and a label with no transcript or with a
+    transcript that is not resolved or has no text."""
+    given_up = given_up_regions(run)
+    found = set()
+    for region in run.regions:
+        transcripts = [item for item in run.transcripts if item.region_id == region.id]
+        if region.id in given_up and not (transcripts and all(
+                getattr(item, "actor", None) and item.resolved and item.text for item in transcripts)):
+            found.add(region.id)
+        elif not transcripts or any(not item.resolved or not item.text for item in transcripts):
+            found.add(region.id)
+    return frozenset(found)
+
+
 def label_attention(run, open_reasons: Sequence[str]) -> list[str]:
     """`label_unsettled:<field>` for each field drawn from a label whose doubt is an open reason
     (a label's reading doubt, its language rule, its raw provenance), in field order: the label's
     doubt holds no record, and each field it reaches needs a person's attention all the same. Every
     consumer reads the field from the code itself (review_summary, the app's field rows), so the
-    server and the app cannot map it differently. The label's own code stays beside them."""
+    server and the app cannot map it differently. The label's own code stays beside them.
+
+    And, whether or not the label's code is an open reason, for a habitat research settled on text
+    read from the transcript over consecutive lines (_over_lines) that is drawn from a label whose
+    transcription is unresolved (_unread_labels), on a run no person approved (lane H4, the
+    coordinator's ruling R3' of 2026-11-22 on round 3 of #464's review). scientific_reasons gives a
+    label's code only where a field drawn from it is not settled, so such a habitat, the only
+    field drawn from its label or drawn beside settled fields, got no flag where its readers
+    differ, a value origin/main 3eb37c11 refused and flagged; only this field's code is added, no
+    label's and no other field's. Rule A lifts it as it lifts any `label_unsettled:<field>`, and
+    for the habitat only where every reading of its labels holds the value's text
+    (second_opinion.agreed)."""
     language = language_codes(run)
     reached: set[str] = set()
     for reason in open_reasons:
         code, _, rest = reason.partition(":")
         if code in LABEL_DOUBTS or code in LABEL_PROVENANCE or code in language:
             reached |= label_fields(run, rest)
+    if not getattr(run, "human_approved", False):
+        human = human_keys(run)
+        over = {key for key, value in run.fields.items() if _over_lines(run, key, value, human)} - reached
+        if over:
+            reached |= {key for region in _unread_labels(run) for key in over & label_fields(run, region)}
     return [f"{LABEL_UNSETTLED}:{key}" for key in run.fields if key in reached]
 
 

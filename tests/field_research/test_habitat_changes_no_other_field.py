@@ -249,7 +249,8 @@ def test_limit_a_heading_habitat_accounts_for_no_word_so_the_code_goes_to_review
     """Stated as it is. origin/main settles "Host: Mus", which accounts for "Mus", and decision B clears the code
     "sp. 22". Here the Habitat is refused for the heading at the application to the record, "Mus" may then be the
     specimen's genus, and the Taxon stays unresolved: another field ends otherwise than on origin/main, toward review
-    (as on 19761d59). The heading Habitat claims only in the guard; it is never a settled value."""
+    (as on 19761d59). A heading answer given to the step claims in the guard and is refused at the application
+    to the record: it settles no value."""
     run = code_beside(tmp_path, "Host: Mus", "Host: Mus")
     assert run.fields["habitat"].state == ValueState.UNRESOLVED
     assert (run.fields["taxon"].state, run.fields["taxon"].literal) == (ValueState.UNRESOLVED, "sp. 22")
