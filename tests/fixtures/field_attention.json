@@ -242,6 +242,25 @@
       ]
     },
     {
+      "name": "a blank field the second opinion gives a value for, on a cleared record (lane H3: the mark names no label)",
+      "fields": {
+        "habitat": {
+          "state": "not_present",
+          "has_value": false
+        },
+        "country": {
+          "state": "supported",
+          "has_value": true
+        }
+      },
+      "codes": [
+        "marked:habitat::second_opinion_differs"
+      ],
+      "attention": [
+        "habitat"
+      ]
+    },
+    {
       "name": "an agreed value on a label whose doubt is open: no code, no attention (the dates keep theirs)",
       "fields": {
         "country": {

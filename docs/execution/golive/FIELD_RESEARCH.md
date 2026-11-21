@@ -2421,8 +2421,11 @@ for its current shown value is "differs";
 `marked:<field>:<label>:second_opinion_not_checked` when there is no
 recorded verdict for its current shown value (not obtained, switched off,
 not run yet, or the value changed since it was judged); nothing when it is
-"agrees", and nothing for the catalogue number, the IRN, or an open or blank
-field. Because each mark is derived from the current value it cannot go
+"agrees", and nothing for the catalogue number or the IRN. A judged field
+shown blank (not present, "not on the label" among them, not applicable,
+or supported with no text; an open field's state already flags it) gets
+`marked:<field>::second_opinion_differs`, with no label, when the obtained
+and current answer gives it a value (lane H3, below). Because each mark is derived from the current value it cannot go
 stale: a value research changes on a retry is "not checked" until the step
 runs again, which it does when the recorded verdicts no longer cover the
 settled values. A person's authority is one function
@@ -2572,6 +2575,124 @@ texts, so a misreading both readers share can be agreed. Tests:
 `tests/field_research/test_agreed_no_flag.py`; the two cases at the end of
 `tests/fixtures/field_attention.json` (no code, no attention; no change in
 the app).
+
+**A blank the second opinion fills is flagged** (`second_opinion.filled`,
+called by `step.finalize_fields` on every finalize after the reasons are
+split and the holds derived; lane H3, the coordinator's ruling of
+2026-11-21 on lane H2's measurement, an engineering fix, not the owner's
+words). A judged field the record shows blank (not present, "not on the
+label" among them, not applicable, or supported with no text; an open field
+is skipped, as its state already flags it) for which the second opinion's own answer gives a
+value gains the open reason `marked:<field>::second_opinion_differs` (no
+label: a blank has no value to rest on one), so the app flags the field.
+Only a flag: the value stays blank (the second opinion's value is a
+possibility, never evidence), nothing is held, `cleared_by` and the
+disposition do not change, and the field's state, reason and evidence stay
+research's. The field's stored reason and its check row
+(`check:not_on_label`) still say "Not on the label": they record what
+research's expert answered and what the readings were checked for, and a
+rule derived at finalize does not rewrite them (rewriting would carry state
+from one finalize to the next). The mark beside them says that an
+independent reading gives a value, and the app's field row shows the mark's
+words ("An independent reading of the labels gives a different value. Check
+this value against the image."). On a blank its first sentence is true (the
+reading gives a value where the record shows none); the second asks a
+person to check "this value" on a field that shows none, which states nothing
+false but reads oddly; no app wording changed. The conditions are rule B's and the marks': the run is on the
+units path and no person approved it; the result is obtained and current
+(`answer_current`) and the step is not due; never the catalogue number or
+the IRN, a field the run's own profile makes mandatory (so it never holds),
+a field a person holds authority over, or a field that already needs
+attention by `review_summary.attention_fields` over this finalize's reasons
+and the fields' states (a field is flagged once). This reverses, for this
+one case, the limit PR #455 wrote (marks only on a field settled with a
+value); PR #457's test already called such a blank "a missed-value signal",
+but a blank `step.mark_not_on_label` marks has no flag to keep. Measured
+free (`~/specimen-golive/autonomy-program/H3/replay_h3.txt`, the stored runs
+of the 100 truth slides finalized again by this code with their stored
+answers, `H3/scripts/replay_h3.py` and `compare_h3.py`): 53 flags gained,
+all Habitat, all on cleared records, all where the truth has a value (the
+second opinion's value right by `second_opinion.same` on 46, wrong on 7),
+none where the truth is blank; dispositions and `cleared_by` unchanged on
+100 of 100 and every part of the stored run but its open reasons equal on
+100 of 100; flagged fields per cleared record 7.55 to 8.08 (the app's
+mapping, the IRN left out). Residual: 5 cleared records whose truth has a
+Habitat keep it blank with no flag, as the second opinion gave no value
+there (105526348, 105526356, 105526392, 105526468, 105527285). Tests:
+`tests/field_research/test_blank_second_opinion_fills.py`; one case in
+`tests/fixtures/field_attention.json` and one in the app's
+`second_opinion_test.dart` (no change in the app's code).
+
+When the mark is current. The mark is derived at finalize, as every open
+reason is. Guaranteed: a save that follows a finalize of the run as saved
+carries what a fresh finalize of that state gives (the G51 reviewer, round 2: of the 249 finalized states of his round-2 sequences, 247 equal a fresh finalize; the
+other two are the restore window's, below). Not guaranteed: a save that does
+not follow a finalize keeps the open reasons of an earlier finalize, on
+origin/main and on this branch alike and for every open reason, until the
+next finalize, which recomputes the mark from the record as it then is and
+may give it or give none. The guarantee holds one way only: a save with no
+finalize can still equal a fresh finalize (after Retry with no decision, or
+a restore to a revision no person approved: the G51 reviewer, round 3). The
+worker ends some such windows when it reaches a finalize; a run it blocks
+first keeps the stored open reasons while it is blocked, and some windows
+last until a person acts, which may be never.
+
+Known examples, found in the reviews of this PR; the list is not claimed
+complete:
+
+- a history restore (`history_restore.py:62`, `api.py:1573-1580`): the
+  record is held for review, or blocked when the restored run had a blocker,
+  and then stays blocked until the Retry or Resume after the repair (a decision does not end that window; an approval ends it only when the blocker was a lost blob's `evidence_integrity_failure`);
+- a decision other than an approval or a capability deferral that arrives on
+  a run whose stage is not `finalized` (`api.py:2423`; an approval reaches the finalize at any stage, where `step.refinalize` still returns early on a blocker other than a repaired `evidence_integrity_failure`, and a decision arriving at `field_second_opinion` is moved
+  to `finalized` first, `api.py:2092`): after a transcript decision (stage
+  `parse`); after Retry or Resume before any worker step (stage `pending`);
+  on a paused or cancelled run, at rest, possibly indefinitely (the worker
+  returns at `workflow.py:726`; a person resumes, retries or approves it,
+  and reprocess is named here from the code only: it was not run); on a
+  blocked run, until the Retry or Resume after the repair (`step.refinalize`
+  returns early on a run with a blocker, `step.py:4846`);
+- a field decision on the taxon or another looked-up field after a
+  transcript decision removed field research from the completed steps
+  (`api.py:2247`, then `api.py:2163` sets stage `lookup`), found by Codex in
+  round 3; the saved revision keeps the mark beside the stored second
+  opinion, and the worker's finalize removes it (tested);
+- graph-limit recovery (`active_graph.py:237-264`, used by
+  `save_recoverably`): when a save exceeds the record's graph or snapshot limit, the working copy is discarded, the prior snapshot is reloaded, its approval withdrawn, and it is saved `processing_blocked` with the limit as its blocker and no finalize, found by Codex in round 3; run by the G51 reviewer in round 4: an oversized decision returns 200, is discarded, the prior snapshot is saved blocked and its approval withdrawn; Retry ends it;
+- a worker block the worker does not end by itself, for example
+  `step_budget_exhausted` after a decision on a pending run
+  (`workflow.py:921`, `workflow.py:978`; later steps return at
+  `workflow.py:726`; automatic recovery does not take a completed-research recheck, `workflow.py:2141-2147`), found by Codex in round 3; run by the G51 reviewer in round 4: with the step allowance used up (set by a direct save standing in for repeated rechecks), Resume, a Habitat decision and a worker step left the run blocked with the mark on the person's field; Retry, Resume and an approval did not end it.
+
+When a finalize ends a window it recomputes the mark. Tested here: after a
+restore to an approved revision, Resume gives the mark, and approving again
+gives none (an approved run gets no mark) while the record clears by that
+person's approval; after a transcript decision the worker's finalize removes
+it (the answer is no longer current); after a decision on the marked field
+(on a paused or cancelled run, after Retry or Resume, while a blob is lost),
+the finalize that follows gives no mark on that person's field, and the
+record then waits for that person's approval
+(`standing_holds.person_acted`). The G51 reviewer's notes add (rounds 2 and
+3): after a restore, a decision on another field also gives the mark, and a
+decision on the field itself gives no mark and does not clear the record,
+which stays `needs_human_review`, held by `history_restored_requires_review`
+and `human_approval_required`; an approval inside the transcript window ends
+it through the ordinary policy's finalize, as on origin/main; after a lost
+blob, a field decision after the repair does not end it (the run is still
+blocked), an approval does.
+
+Measured, not proven: in the G51 reviewer's round-4 sequences (`reviews/verdict_463_g51_r4.md`: 86 sequences per tree through the API and workflow, 249 noted states) no state was `cleared` with a stale or missing mark, and Codex's
+static trace of round 3 found no counterexample. origin/main's own open
+reasons wait the same way (the G51 reviewer's probes of origin/main,
+`codex_seq_main.txt` and `windows_main.txt`: after the restore, 12
+`label_unsettled` codes a fresh finalize lifts and PR #455's
+`marked:city:<label>:second_opinion_differs` missing; after the transcript
+decision, 8 stale codes, #455's mark among them; after Retry and a decision,
+#455's mark on a person's City). Making these saves recompute the open
+reasons is a change to origin/main's mechanism for every reason, ruled out
+of this PR by the coordinator (a recorded follow-up). The windows section of
+`tests/field_research/test_blank_second_opinion_fills.py` pins several of
+these windows through the real API.
 
 **The request.** Route `second-opinion-muse-spark` (Muse Spark Open 816B on
 Baseten through the Hugging Face router; tool choice required, 8,000 output

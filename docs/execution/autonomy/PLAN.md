@@ -104,6 +104,7 @@ fields already on the not-on-the-label list (C1, C4a, C4b and C4c wait: section 
 | F2 an agreed value and an agreed blank carry no flag | The coordinator's two rulings of 2026-11-19 on lane H1's measurement (not the owner's words), under the owner's ruling of 2026-11-18 and rule changes 1 and 2 of section 1; display-level and reversible. Derived at every finalize from the second opinion's stored result and the run as it is now; nothing stored; only `run.open_reasons` is shortened. **Rule A**: `label_unsettled:<field>` is not an open reason for a field settled with a value whose recorded verdict for its current shown value is "agrees", the three date fields excepted; skipped on a run any label of which one reader read (an `independent_observations_missing:<label>` reason, holding or open). **Rule B**: `mandatory_unresolved:<field>` and `label_unsettled:<field>` are not open reasons for a blank (`not_present`) field, Verbatim D/T/S and Habitat excepted, that the obtained second opinion, current for the run (the same labels, no transcript a person bound, no reading newer than the request), also leaves blank. Neither applies to the catalogue number, a field the run's own pinned profile makes mandatory, a person's field, an approved run, or while the second opinion is not obtained or leaves a value unjudged. Marks, `research_incomplete`, `taxonomy_unresolved` and the labels' own codes stay, so a field another open reason still names stays flagged (a blank Taxon keeps `taxonomy_unresolved`): the rules remove the named codes, not every flag. See "F2" below. | `field_research/second_opinion.py` (`unflagged`, `agreed`, `answer_current`), one call in `field_research/step.py` `finalize_fields`; `tests/field_research/test_agreed_no_flag.py`; `tests/fixtures/field_attention.json` | Each test fails on e83c36fd. On the 100 truth slides replayed (200 stored runs, each finalized with and without the rules) no record differs in anything but its open reasons; on the 83 that clear, rule A removes 146 flags (0 on a wrong value) and rule B 125 (0 on a missed value); flagged fields per cleared record 11.16 to 7.89. |
 | L1 a region too thin to hold a label is not counted as a label | The coordinator's ruling of 2026-11-21 (not the owner's words; an engineering fix of a label-finder artefact, not an owner sign-off of the coverage values, whose range of 1 to 3 is unchanged). In `label_coverage.check_coverage`, a label region whose shorter side is under `CoverageRule.min_region_short_side_fraction` (new, optional; 0.03 in the published profile) of the image's shorter side is left out of the region count; it is still stored, read and shown, and the geometry issues, the full-image cross-check and `merge_iou` are untouched. `run.coverage_check` records the fraction and the regions not counted. A rule without the value counts every region, so a stored run (which keeps the rule it pinned) checks as before. "Count only" means the region count: a run whose count is then in range has its coverage confirmed, with every consequence of a confirmed coverage, the not-on-the-label mark among them (the coordinator's ruling of 2026-11-21; below). | `application/label_coverage.py`, `application/collection_profiles.py`, `application/profiles/published.json`, `tests/test_lane_coverage.py` | Replay on the 100 truth slides (below): 94 to 98 records clear, 0 wrong catalogue numbers; 105527007 (one label drawn twice) stays held |
 | L3 the same label boxed twice is counted once | The coordinator's ruling of 2026-11-21 on review round 1 of #461 (not the owner's words; an engineering fix of a label-finder artefact, provisional, not an owner sign-off of the coverage values). A new optional value of the coverage rule, `CoverageRule.nested_duplicate` (`min_containment`, `min_iou`, both required; 0.95 and 0.6 in the published profile): two label regions count as one label when at least 0.95 of the smaller box lies inside the larger and their IoU is at least 0.6, as the label finder's outer card and inner frame of one label do. `merge_iou` stays 0.9. Merges chain across both tests, after the thin regions are left out. Count only: both boxes stay in `run.regions` and are read, stored and shown; `run.coverage_check` adds `nested_duplicate` and `merged_regions` under a rule with the value. #461 first lowered `merge_iou` to 0.6; Codex's round 1 showed four separate diagonal labels whose boxes overlap at IoU 0.68 chaining into one label and confirming coverage, so IoU alone was dropped. A stored run keeps the rule it pinned; the consequences of a confirmed coverage are as in L1's row. | `application/collection_profiles.py`, `application/label_coverage.py`, `application/profiles/published.json`, `tests/test_lane_coverage.py`, `tests/field_research/test_duplicate_label_coverage.py` | Measured (`autonomy-program/L3/scripts/measure.py`, the 269 stored regions of the 100 truth slides): 24 overlapping pairs; two duplicates (outer card and inner frame of one Lewis label, the frame wholly inside: 105527007 IoU 0.7847, 105526361 IoU 0.7731), both meeting the rule; the other 22 are different labels (seen: L2 looked at six, the G51 review of #461 at all 22, each a barcode label's box touching a large label's box), at most 0.491 of the smaller box inside the other and IoU at most 0.0496, none meeting it. Replay (`L3/scripts/replay_l3.py`, the real `check_coverage` with each tree's published rule, then the real `finalize_fields` on the stored rows, origin/main 106cebd7 against this change): 98 to 99 records clear, 0 wrong catalogue numbers; 105527007 4 to 3 regions, now cleared; 105526361 3 to 2, cleared before and after; no other slide's coverage, count, disposition, reasons or shown field moves. On 105527007 every shown value that differs from the truth is flagged by an open reason naming its field: among them Date Visited From and To shown 1974-04-27 for the truth's 1976-04-27 (`label_unsettled:date_visited_from` and `label_unsettled:date_visited_to`); the two readers read that label's year as 1994 and 1974 on its outer box and 1970 and 1976 on its inner box. Residual risks: merges chain, so any number of separate narrow labels at an angle whose boxes nest link by link (each link: IoU 0.9 or more, or 0.95 inside at IoU 0.6 or more) would count as one, which can release a count hold (no such link between different labels among the 269 regions or in P1), and every box would still be read and shown; two duplicate examples only, both the same card-and-frame pattern; rolling back below this change needs a new run for runs pinned with the value. Details: DATA_CONTRACT.md 4.1 |
+| H3 a blank field the second opinion gives a value for is flagged | The coordinator's rulings of 2026-11-21 on lane H2's measurement and on the paid habitat rerun (engineering fixes, not the owner's words). `second_opinion.filled`, at every finalize after the split and the derived holds: a judged field shown blank (not present, "not on the label" among them, not applicable, or supported with no text; an open field is already flagged by its state) for which the obtained, current second opinion gives a value gains the open reason `marked:<field>::second_opinion_differs` (a flag only: the value stays blank; never a mandatory field, a person's field, an approved run, a run off the units path or while the step is due, or a field already flagged). Measured and NOT shipped: a rule in `prompts/habitat.txt` that a host is the habitat (reverted; see "H3" below). The museum's published records hold hosts as associated taxa and never in Habitat (lane M0); the 20-field profile has no such field. | `field_research/second_opinion.py`, `field_research/step.py` (`finalize_fields`), `tests/field_research/test_blank_second_opinion_fills.py`, `tests/fixtures/field_attention.json`, the app's `test/second_opinion_test.dart` | Free replay on the 100 truth slides: 53 flags gained, all Habitat, 0 where the truth is blank, dispositions unchanged on 100 of 100; 5 Habitats the truth fills stay blank with no flag (the second opinion gave no value). The prompt rule's paid rerun on the 99 cleared records: wrong Habitats 6 to 19, so it does not ship |
 
 The owner's ruling of 2026-11-18, typed in session f9614090 (quoted exactly):
 
@@ -347,6 +348,136 @@ held a record; the cross-check still holds a record when a detection at or over 
 A real label
 thinner than 3 % of the image's shorter side would not be counted (none seen in 269 regions); it would still be read and
 shown.
+
+### H3: a blank field the second opinion gives a value for is flagged
+
+Authority. The coordinator's rulings of 2026-11-21 (not the owner's words): on lane H2's diagnosis, engineering fixes of
+the pipeline against the repository's own written requirement; on the paid habitat rerun, that the prompt change does
+not ship. Lane M0's ruling H (`~/specimen-golive/autonomy-program/M0/meanings.txt`), settled from the repository's
+sources (`habitat.txt:1`, "The habitat, host or substrate the label writes"; the ontology's rule that a host is never
+the specimen's taxon; `taxon.txt`, a common name is not a taxon), puts a host in Habitat as written. The difference M0
+recorded stands: the museum's published flea records hold hosts as associated taxa ("Ectoparasite Of"), and none of
+the 104 Habitat values M0 read there is a host; the 20-field profile has no associated-taxa field. That is a point for
+the owner, not a ruling of his.
+
+Why (lane H2, `~/specimen-golive/autonomy-program/H2/notes.txt`, recounted with `h2_detail.py` and `blank_net.py`). Of
+the 99 records the second confirmation run cleared (confirmation 3's six replacing theirs), the truth has a Habitat on
+92: 16 were shown, 76 were blank, and every one of the 76 is a host. 58 of the 76 were blank with no flag, their reason
+"Not on the label", though both readers read the host line. The habitat expert's instructions contradict themselves:
+its brief and the ontology's field row say "habitat, host or substrate", while the ontology's `host_marker` notation
+says a host has no field. Over all fields of the 99 records, 706 blanks carried no flag by lane H2's rule
+(`H2/blank_net_check.py`: an open reason's code naming the field), 704 by the app's own mapping
+(`H3/scripts/blank_counts.py`, `review_summary.attention_fields`: `date_precision_requires_review` flags two blank
+identification dates); the stored second opinion gives a value on 53 of them, all Habitat, all real misses; nothing flagged them, because the second opinion's marks were for a
+settled value only (PR #455) and `step.mark_not_on_label` had left the blank no flag to keep.
+
+The flag, free replay (`~/specimen-golive/autonomy-program/H3/scripts/replay_h3.py`: each stored run of the 100 truth
+slides copied, then `step.finalize_fields` with its stored second-opinion answer, once with origin/main's code and once
+with this code; `compare_h3.py` against the truth):
+
+| Measure (`H3/replay_h3.txt`) | origin/main | this code |
+|---|---|---|
+| Records that clear | 99 of 100 | 99 of 100 |
+| Flags gained | | 53, all Habitat, all on cleared records |
+| Of them, the truth has a value (second opinion's value right by `second_opinion.same`, wrong) | | 53 (46, 7) |
+| Of them, the truth is blank | | 0 |
+| Flagged fields per cleared record (the app's mapping, the IRN left out) | 7.55, median 7 | 8.08, median 8 |
+| Records whose run differs in anything but its open reasons | | 0 of 100 |
+
+The main-code replay equals the stored rows on 100 of 100. Residual: 5 cleared records whose truth has a Habitat keep
+it blank with no flag, because the stored second opinion gave no value there (105526348, 105526356, 105526392,
+105526468, 105527285). No existing test's expectation changed: the pin PR #455 wrote (`test_second_opinion.py`,
+`test_a_field_another_rule_marks_and_an_open_or_blank_field_get_no_mark`) gives every field a blank answer, so it still
+holds.
+
+When the mark is current. The mark is derived at finalize, as every open reason is. Guaranteed: a save that follows a
+finalize of the run as saved carries what a fresh finalize of that state gives (the G51 reviewer, round 2: of the 249 finalized states of his round-2 sequences, 247 equal a fresh finalize; the other two are the restore window's, below). Not
+guaranteed: a save that does not follow a finalize keeps the open reasons of an earlier finalize, on origin/main and on
+this branch alike and for every open reason, until the next finalize, which recomputes the mark from the record as it
+then is and may give it or give none. The guarantee holds one way only: a save with no finalize can still equal a fresh
+finalize (after Retry with no decision, or a restore to a revision no person approved: the G51 reviewer, round 3). The
+worker ends some such windows when it reaches a finalize; a run it blocks first keeps the stored open reasons while it
+is blocked, and some windows last until a person acts, which may be never.
+
+Known examples, found in the reviews of this PR; the list is not claimed complete:
+
+- a history restore (`history_restore.py:62`, `api.py:1573-1580`): the record is held for review, or blocked when the
+  restored run had a blocker, and then stays blocked until the Retry or Resume after the repair (a decision does not end that window; an approval ends it only when the blocker was a lost blob's `evidence_integrity_failure`);
+- a decision other than an approval or a capability deferral that arrives on a run whose stage is not `finalized`
+  (`api.py:2423`; an approval reaches the finalize at any stage, where `step.refinalize` still returns early on a blocker other than a repaired `evidence_integrity_failure`, and a decision arriving at `field_second_opinion` is moved to
+  `finalized` first, `api.py:2092`): after a transcript decision (stage `parse`); after Retry or Resume before any
+  worker step (stage `pending`); on a paused or cancelled run, at rest, possibly indefinitely (the worker returns at
+  `workflow.py:726`; a person resumes, retries or approves it, and reprocess is named here from the code only: it was
+  not run); on a blocked run, until the Retry or Resume after the repair (`step.refinalize` returns early on a run with
+  a blocker, `step.py:4846`);
+- a field decision on the taxon or another looked-up field after a transcript decision removed field research from the
+  completed steps (`api.py:2247`, then `api.py:2163` sets stage `lookup`), found by Codex in round 3; the saved revision
+  keeps the mark beside the stored second opinion, and the worker's finalize removes it (tested);
+- graph-limit recovery (`active_graph.py:237-264`, used by `save_recoverably`): when a save exceeds the record's graph or snapshot limit, the working copy is discarded, the prior snapshot is reloaded, its approval withdrawn, and it is saved `processing_blocked` with the limit as its blocker and no finalize, found by Codex in round 3; run by the G51 reviewer in round 4: an oversized decision returns 200, is discarded, the prior snapshot is saved blocked and its approval withdrawn; Retry ends it;
+- a worker block the worker does not end by itself, for example `step_budget_exhausted` after a decision on a pending
+  run (`workflow.py:921`, `workflow.py:978`; later steps return at `workflow.py:726`; automatic recovery does not take a
+  completed-research recheck, `workflow.py:2141-2147`), found by Codex in round 3; run by the G51 reviewer in round 4: with the step allowance used up (set by a direct save standing in for repeated rechecks), Resume, a Habitat decision and a worker step left the run blocked with the mark on the person's field; Retry, Resume and an approval did not end it.
+
+When a finalize ends a window it recomputes the mark. Tested here: after a restore to an approved revision, Resume gives
+the mark, and approving again gives none (an approved run gets no mark) while the record clears by that person's
+approval; after a transcript decision the worker's finalize removes it (the answer is no longer current); after a
+decision on the marked field (on a paused or cancelled run, after Retry or Resume, while a blob is lost), the finalize
+that follows gives no mark on that person's field, and the record then waits for that person's approval
+(`standing_holds.person_acted`). The G51 reviewer's notes add (rounds 2 and 3): after a restore, a decision on another
+field also gives the mark, and a decision on the field itself gives no mark and does not clear the record, which stays
+`needs_human_review`, held by `history_restored_requires_review` and `human_approval_required`; an approval inside the
+transcript window ends it through the ordinary policy's finalize, as on origin/main; after a lost blob, a field decision
+after the repair does not end it (the run is still blocked), an approval does.
+
+Measured, not proven: in the G51 reviewer's round-4 sequences (`reviews/verdict_463_g51_r4.md`: 86 sequences per tree through the API and workflow, 249 noted states) no state was `cleared` with a stale or missing mark, and
+Codex's static trace of round 3 found no counterexample. origin/main's own open reasons wait the same way (the G51
+reviewer's probes of origin/main, `codex_seq_main.txt` and `windows_main.txt`: after the restore, 12 `label_unsettled`
+codes a fresh finalize lifts and PR #455's `marked:city:<label>:second_opinion_differs` missing; after the transcript
+decision, 8 stale codes, #455's mark among them; after Retry and a decision, #455's mark on a person's City). Making
+these saves recompute the open reasons is a change to origin/main's mechanism for every reason, ruled out of this PR by
+the coordinator (a recorded follow-up). The windows section of `tests/field_research/test_blank_second_opinion_fills.py`
+pins several of these windows through the real API. See FIELD_RESEARCH.md "When the mark is current".
+
+The prompt rule, measured and not shipped. A line in `prompts/habitat.txt` (commit 294afc5c, reverted by a later
+commit) said a host is the habitat: the name after a host marker, on its line or the next, or an animal's name written
+on its own, copied whole as written, a written "Ex."/"Ex:"/"ex"/"On" kept and a printed "Host"/"Host:" heading left
+out. Measured by a habitat-only paid rerun on the 99 cleared records (`~/specimen-golive/runs/autonomy-habitat-20261121/`,
+`analyse_habitat.py`, `analysis.json`): the habitat expert alone asked again with the line, each record settled and
+finalized by the real code, the second opinion asked again on the 13 records it left due. Cost at list USD 0.3492
+(habitat expert 0.2197 on 99, second opinion 0.1296 on 13; ledger phase `habitat`).
+
+| Habitat against the truth, 99 records | stored | the flag alone | the flag and the prompt line |
+|---|---|---|---|
+| right | 10 | 10 | 14 |
+| right blank (the truth has none) | 7 | 7 | 7 |
+| missing, not flagged | 58 | 5 | 4 |
+| missing, flagged | 18 | 71 | 55 |
+| wrong (every one flagged) | 6 | 6 | 19 |
+
+Why it does not ship (the coordinator's ruling). The expert still answered `label_lacks_value` on 53 records, bare
+names among them: one line in its brief does not overcome the ontology's `host_marker` notation ("[no field]" in its
+instructions). Of the 17 it newly resolved, 4 are right and 13 are partial or malformed, so it traded flagged blanks for
+flagged wrong values: a name over two lines settled as one line ("Meriones" for "Meriones LIBYCUS", "Ex. Neotoma" for
+"Ex. Neotoma floridana", "EX: RATTUS"), a word broken by a hyphen ("Cavia mustel-"), and a printed heading kept
+("Host: CRICETULUS", "HOST: coyote") against the line's own words. What the code shows about the truncation (read, not
+built or tested): the expert's own literal is the one line, while its explanation names the whole host (105527218:
+"Host: / Meriones / LIBYCUS"). A resolved literal must appear exactly in every reading it names
+(`experts.py:595-602`, `literal_not_in_reading`), and a literal given with a space for a line break is mapped back to
+the readings' text only for the fields in `agreement.ACROSS_LINES`, which holds the precise location alone
+(`agreement.py:479`, checked at `agreement.py:530`; `experts.py:559-571`, `_across_lines`). So "Meriones LIBYCUS",
+joined with a space as the measured line told the expert, is not in a reading that writes "Meriones" and "LIBYCUS" on
+two lines, and is refused; a one-line literal passes. That is consistent with the 2 to 3
+model calls these answers took; the refusals themselves were not recorded by the rig.
+
+Known follow-up. Hosts reaching Habitat as values needs the ontology's `host_marker` entry changed (it renders into 21
+prompts: all 20 experts' and the first pass's), multi-line hosts accepted as the precise location's are, and a full
+measured rerun. That is beyond the program's remaining test budget and needs the owner's approval of more test money.
+
+Known follow-ups, not built here: (a) saves without a finalize (the examples under "When the mark is current" above,
+among them a history restore and a decision other than an approval or a capability deferral on a run whose stage is not
+`finalized`; a decision arriving at `field_second_opinion` is moved to `finalized` first) keep an earlier finalize's
+open reasons (origin/main's mechanism, for every open reason, not only this mark); (b) the app's instruction "Check this
+value against the image" on a field that shows no value (not false; wording for a blank).
 
 ### S1's replay (free, real code, wp26's 120 specimen-runs)
 
