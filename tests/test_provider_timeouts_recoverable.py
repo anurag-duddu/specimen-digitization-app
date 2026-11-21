@@ -31,6 +31,7 @@ the published pilot profile's prices and pins, both ledgers wired as production
 wires them. No network.
 """
 
+import hashlib
 import traceback
 
 import httpx
@@ -47,7 +48,7 @@ from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.application.api import SYNTHETIC_COLLECTION
 
 import test_rate_limit_refusal
-from test_extraction_recovery import extraction_findings, extraction_lab, parse_calls
+from test_extraction_recovery import ExtractionLab, extraction_findings, extraction_lab, parse_calls
 from test_first_pass_given_up import GIVEN_UP, first_pass_step, given_up_findings
 from test_lane_reservations import with_models
 from test_lane_routes import FIRST_PASS_RESERVATION, PARSE_RESERVATION, start
@@ -148,15 +149,18 @@ def test_a_first_pass_whose_provider_times_out_is_retried_then_given_up_when_thr
     no_canary(run)
 
 
-def test_at_the_published_prices_a_first_pass_timing_out_sends_two_attempts_and_the_rest_go_unsent(
+def test_published_prices_a_run_still_holding_its_segmentation_reservation_sends_two_first_pass_attempts(
     tmp_path, monkeypatch
 ):
     # The published pilot profile: a first pass holds 318,670 micro-USD and the
-    # specimen's limit is USD 1. Two labels. The first label's first pass times
-    # out twice, each attempt held in full; the third attempt does not fit the
-    # specimen's limit and is not sent, so the label is given up on
-    # `cost_budget_exhausted`; the second label's first pass is given up unsent
-    # for the same reason. Before: blocked after the first attempt.
+    # specimen's limit is USD 1, so a third attempt goes out only while the run
+    # otherwise holds under 43,990 (1,000,000 less three reservations). This
+    # lab's segmentation stays held at its full 182,321 reservation (as a run
+    # whose SAM 3 call reported no instance time), so: the first label's first
+    # pass times out twice, each attempt held in full; the third attempt does
+    # not fit and is given up unsent as `cost_budget_exhausted`; the second
+    # label's first pass is given up unsent for the same reason. Before:
+    # blocked after the first attempt.
     adapters = ChildLab(LocalBlobs(tmp_path / "blobs"), first_passes=4)
     adapters.regions = 2
     workflow, principal, ident, backend = lab(tmp_path, monkeypatch, adapters, "client_timeout")
@@ -184,6 +188,63 @@ def test_at_the_published_prices_a_first_pass_timing_out_sends_two_attempts_and_
     ]
     both_ledgers_hold(last, step, (1, 2), FIRST_PASS_RESERVATION)
     assert not any(k.startswith("first_pass:" + second) for k in last.research["ordinary_reservations"])
+    no_canary(run)
+
+
+class SettledSegmentation(ExtractionLab):
+    """The lab with first passes in the real child, the organiser's `parse`
+    extraction present (answering with no candidates if ever sent), and the
+    segmentation settled at the instance time SAM 3 reports, as production's
+    adapter records it (production.py, `segmentation["instance"]`;
+    lane_costs.record_segmentation): a warm instance, 5 s idle, 20 s request."""
+
+    def segment(self, specimen):
+        regions = super().segment(specimen)
+        raw = b"fixture segmentation record"
+        specimen.run.segmentation = {
+            "blob_ref": self.blobs.put(raw), "sha256": hashlib.sha256(raw).hexdigest(),
+            "input_sha256": specimen.asset.sha256, "elapsed_seconds": 20.0,
+            "instance": {"first": False, "idle_seconds": 5.0, "request_seconds": 20.0},
+        }
+        return regions
+
+
+def test_published_prices_a_run_whose_segmentation_settled_small_sends_three_first_pass_attempts(
+    tmp_path, monkeypatch
+):
+    # The same prices and limit, the segmentation settled at 2,600 micro-USD:
+    # the run otherwise holds under 43,990, so all three attempts are sent
+    # (958,610 held in all), the label is given up on the timeout itself, and
+    # the second label's first pass and the organiser's extraction find no room
+    # left: both are given up unsent as `cost_budget_exhausted`.
+    adapters = SettledSegmentation(LocalBlobs(tmp_path / "blobs"))
+    adapters.child_first_passes, adapters.regions = 9, 2
+    workflow, principal, ident, backend = lab(tmp_path, monkeypatch, adapters, "client_timeout")
+
+    *retried, last = drains(workflow, principal, ident, backend)
+
+    run = last.run
+    first, second = (r.id for r in run.regions)
+    step = "first_pass:" + first
+    assert [(c["cost_basis"], c["cost_micros"]) for c in run.paid_calls if c["step"] == "segment"] == [
+        ("computed", 2_600)
+    ]
+    assert [(d.run.stage, d.run.blocker) for d in retried] == [("retry_scheduled", TIMEOUT)] * 2
+    assert requests(tmp_path, "first_pass") == 3
+    assert (run.stage, run.blocker) == ("finalized", None)
+    assert run.attempts[step] == 3 and "first_pass:" + second not in run.attempts
+    assert "parse" not in run.attempts
+    assert given_up_findings(run) == [
+        (GIVEN_UP, "warning", f"{GIVEN_UP}:{first}:{TIMEOUT}"),
+        (GIVEN_UP, "warning", f"{GIVEN_UP}:{second}:cost_budget_exhausted"),
+    ]
+    assert extraction_findings(run) == ["extraction_given_up:cost_budget_exhausted"]
+    assert ledger_rows([c for c in run.paid_calls if c["step"].startswith("first_pass:")]) == [
+        (n, "failed", "reserved", FIRST_PASS_RESERVATION, None, TIMEOUT) for n in (1, 2, 3)
+    ]
+    assert parse_calls(run) == []
+    assert run.usage.reserved_cost_micros == 2_600 + 3 * FIRST_PASS_RESERVATION == 958_610
+    both_ledgers_hold(last, step, (1, 2, 3), FIRST_PASS_RESERVATION)
     no_canary(run)
 
 

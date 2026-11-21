@@ -180,8 +180,9 @@ and the organiser to keep every unknown outcome as a block. Paths are under
   (first_pass.py:338-353); a changed pinned route blocks the organiser as
   `pinned_model_route_changed_requires_new_run` (production.py:1601-1607).
 
-A first pass given up on records the `first_pass_given_up` finding and leaves the
-label's readings unresolved (below); an extraction given up on records
+A first pass given up on records the `first_pass_given_up` finding; the label's
+transcript is resolved only where its readers agree, and the label keeps the
+`unresolved_transcription` reason either way (below); an extraction given up on records
 `extraction_given_up` and `parse` goes on with its deterministic parse and no
 model candidates (workflow.py:1414-1440). Either way the run goes on to its queue
 decision. A block produces no queue disposition.
@@ -241,12 +242,20 @@ extraction ended `worker_call_failed`, blocked as `external_outcome_unknown` and
 held for a person. Any other transport error (`httpx.ReadError`, `ConnectError`)
 is unchanged. Measured at the published pilot prices through the real child
 (`tests/test_provider_timeouts_recoverable.py`): a reader makes 3 attempts held
-at 20,000 micro-USD each; the organiser 3 at 58,164; a first pass holds 318,670
-per attempt, so on a specimen with a USD 1 limit only 2 attempts are sent (about
-USD 0.64 held, where the block held one reservation), the third does not fit and
-is given up on unsent as `cost_budget_exhausted`, and every later label's first
-pass on that specimen is given up on unsent the same way; 3 attempts are sent
-only where three reservations fit.
+at 20,000 micro-USD each; the organiser 3 at 58,164. A first pass holds 318,670
+per attempt against the specimen's USD 1 limit, so how many attempts go out
+depends on what the run already holds: a third attempt goes out only while the
+run otherwise holds under 43,990 micro-USD (1,000,000 less three reservations).
+A run that still holds its segmentation reservation (182,321, as when SAM 3
+reported no instance time; also a cold start settled at 115,360, the G51
+reviewer's probe) sends 2 attempts (about USD 0.64 held, where the block held
+one reservation); the third is given up on unsent as `cost_budget_exhausted`. A
+run whose segmentation settled at a warm instance's reported time (2,600;
+production's adapter records that report, production.py:1783-1797) sends 3
+(958,610 held in all, about USD 0.96), the label is given up on
+`provider_deadline_outcome_unknown`, and the organiser's extraction is then
+given up on unsent as `cost_budget_exhausted`. In both cases every later label's
+first pass on that specimen is given up on unsent as `cost_budget_exhausted`.
 
 What such a record shows (the G51 reviewer's probes of 2026-11-21,
 `~/specimen-golive/autonomy-program/R2/g51_probes/`: a two-label slide with a real
@@ -255,9 +264,12 @@ QR code and the real segment step, the published profile, the real child raising
 can end cleared by the system when its catalogue number settles, for example
 from the slide's QR code: the clearing rule is the coordinator's ruling of
 2026-11-18 under the owner's words recorded in PROGRAM.md section 1 ("As long as
-the mandatory ones are filled it should be cleared."). With the first pass given
-up on, every field drawn from a given-up label is flagged (`label_unsettled`) and
-no value shows without a flag. With the organiser given up on, the flags equal a
+the mandatory ones are filled it should be cleared."). With a first pass given
+up on, every field drawn from a given-up label is flagged (`label_unsettled`);
+where every label's first pass was given up on, no value shows without a flag,
+while a label whose first pass answered shows its values as in a normal run (4
+of the reviewer's 24 runs: nine fields, or the catalogue number). With the
+organiser given up on, the flags equal a
 normal run's; a field only the organiser finds is blank and flagged; where a
 label's readers differ, the label's doubt is not raised, though the differing
 fields are blank and flagged. No value is shown that no reading or the code
@@ -299,19 +311,27 @@ pass was answered HTTP 429 on all three attempts and dead-lettered the run as
 (`reliability.failure_is_retryable`: a rate limit, timeout or provider error,
 HTTP 402 included), the ordinary first pass is given up on as a reader
 is: its step completes with no decision and the run goes on through
-`adjudicate`, `parse` and field research. The label's transcript has no text and
-no `decision_kind`, and keeps its readings as its alternatives. A warning
+`adjudicate`, `parse` and field research. At `adjudicate` a label whose readers
+agree gets a resolved transcript (`identical_readings`, workflow.py:1344-1352,
+first_pass.py:959); otherwise its transcript stays unresolved. A warning
 finding `first_pass_given_up:{region}:{code}` beside the record names the label
-and the failure. The queue decision sends the record to review with
-`unresolved_transcription:{region}`, which field research gives such a label
-however its fields settle: no first pass compared its readings. A 429 refused
-before any answer still costs nothing (`cost_basis: refused`); any other
-given-up attempt stays reserved in full and is recorded `failed` with its
-`failure_code`. An authentication or authorization error,
-`model_request_rejected`, `model_malformed_response`, an invalid child result,
-incomplete child cleanup and a first pass of the evidence pilot still block
+and the failure. Field research gives such a label the
+`unresolved_transcription:{region}` reason however its fields settle, unless a
+person has since transcribed it (`field_research/step.py:4395-4401`): no first
+pass compared its readings. Keeping the reason is not holding the record: the
+reason holds the record only where the label's fields include a mandatory one,
+the catalogue number counting only when the slide's QR code does not confirm or
+give it (`split_reasons`, step.py:4664-4686); otherwise it is an open reason,
+and with no other holding reason the record is cleared by the system
+(step.py:4769-4791). A 429 refused before any answer still costs nothing
+(`cost_basis: refused`); any other given-up attempt stays reserved in full and
+is recorded `failed` with its `failure_code`. A malformed answer is given up on
+at once (above). An authentication or authorization error,
+`model_request_rejected`, an invalid child result, incomplete child cleanup
+(model_runtime.py:239-242) and a first pass of the evidence pilot still block
 and name their cause. The rule is
-`Workflow.first_pass_has_no_attempt_left`.
+`Workflow.first_pass_has_no_attempt_left`; a first pass the run's limits leave
+no room for is given up on unsent (above).
 
 **Ordinary first-pass transient recovery** (camera intake, 2026-10-11).
 `reliability.first_pass_failure_is_recoverable` permits the existing bounded
@@ -321,11 +341,15 @@ saves one decision per region. It does not publish or create a specimen.
 Uncertain billing still holds the entire original reservation, and each new
 attempt reserves again against all existing limits. A known first-request 429
 refusal remains zero-cost even if the elapsed deadline was exceeded. The
-published run cap can stop processing before all attempts are used; that is an
-operational budget block, not a final review disposition. Historical persisted
-unknown outcomes are not automatically unblocked, and this exception does not
-apply to the organiser, research, publication, the evidence pilot or a child
-whose termination cannot be confirmed. Offline regressions exercise the real
+published run cap can stop the retries before all attempts are used: the next
+attempt is then given up on unsent as `cost_budget_exhausted` (workflow.py:966-969),
+not blocked. An unknown outcome stored by an earlier release is made due again
+by the drain only where the run shows its cause or it is a legacy row
+(`unknown_outcome_recoverable`, workflow.py:515-529); one marked held stays for a
+person. The organiser's extraction has its own rule
+(`extraction_failure_is_recoverable`, above); this exception does not apply to
+research, publication, the evidence pilot or a child whose termination cannot be
+confirmed. Offline regressions exercise the real
 isolated child and dispatched worker; they are not live-device acceptance.
 
 **Stuck first passes go on by themselves** (2026-10-12; replaces the run-cap
