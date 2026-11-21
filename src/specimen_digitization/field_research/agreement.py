@@ -1315,6 +1315,21 @@ def agreement_key(text: str) -> str:
     return "".join(unicodedata.normalize("NFC", text).casefold().split())
 
 
+def reader_writes(text: str, literal: str) -> bool:
+    """Whether a reading writes the literal as whole words, letter case and spacing aside
+    (agreement_key's rule for readers that agree: "Shrubs" for "shrubs", "Sp.30" for "sp. 30", a
+    line break for a space): a letter or a digit stands neither right before nor right after it
+    ("Mus" is not written in "Museum"), and a letter or a punctuation mark more or less is another
+    text ("LIPEUS" does not write "LIPYCUS"). False for a literal with no text."""
+    key = agreement_key(literal)
+    if not key:
+        return False
+    pattern = re.compile(r"(?<![^\W_])" + r"\s*".join(re.escape(char) for char in key) + r"(?![^\W_])",
+        re.IGNORECASE)
+    return any(agreement_key(match.group()) == key
+        for match in pattern.finditer(unicodedata.normalize("NFC", text)))
+
+
 def _spelling(task: FieldTask, name: str, texts: Iterable[str]) -> str:
     """The reader's own spelling a label settles on when its readers agree:
     the reader's candidate literal (the organiser's first, when the reader

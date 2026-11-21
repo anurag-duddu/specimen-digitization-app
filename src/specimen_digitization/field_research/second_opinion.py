@@ -72,7 +72,10 @@ approved, for a judged field no person holds authority over:
   verdict for its current shown value is "agrees", the three date fields excepted (AGREED_VALUE_EXCEPT),
   on a run every label of which two independent readers read (no reason of the run, holding or open,
   is `independent_observations_missing:<label>`: where one reader read a label the second opinion saw
-  one reader's text, and its agreement on a value is weaker);
+  one reader's text, and its agreement on a value is weaker); and, for Habitat (READERS_MUST_WRITE,
+  lane H4), only where every reader of the labels the value rests on writes the value's text, letter
+  case and spacing aside (agreement.reader_writes): where a reader writes another text there, the
+  label's doubt is about this very value, and the flag stays;
 - `mandatory_unresolved:<field>` and `label_unsettled:<field>` are not open reasons for a field that is
   blank (`not_present`, nothing shown) where the second opinion's own answer for it is blank too (a
   null value that does not say UNSURE) and that answer is current (`answer_current`), Verbatim D/T/S
@@ -553,6 +556,15 @@ def own(code: str) -> bool:
 # 1974 for 1976); a blank field the second opinion also leaves blank was truly absent in every scored
 # case once Verbatim D/T/S is set aside (both missed values were Verbatim D/T/S).
 AGREED_VALUE_EXCEPT = DATES
+# Habitat (lane H4 of the autonomy program, the coordinator's ruling of 2026-11-21 on the second paid
+# habitat rerun, ~/specimen-golive/runs/autonomy-habitat2-20261121): on truth slide 105527313 the two
+# readers wrote a host's species differently, the first pass named one reader's text, the second
+# opinion gave the same text, and rule A lifted the label's flag from a Habitat the truth sheet reads
+# otherwise: the one wrong Habitat of that run with no flag. For the fields named here an agreed value
+# keeps `label_unsettled:<field>` where a reader of a label the value rests on does not write its text
+# (_a_reader_differs). Measured free on that run's 99 answers (autonomy-program/H4/flag_rule_*.json):
+# one flag gained, on that record; none on its 44 right Habitats; none on the stored records.
+READERS_MUST_WRITE = frozenset({"habitat"})
 # Habitat (the coordinator's ruling of 2026-11-20 on the live confirmation rows): a bare host name is a
 # known miss of both field research and the second opinion (lane H1: 48 blank Habitats where the truth
 # has a host; live row 105526418, "CALLOSPERMOPHILUS", blank, agreed blank, and missed), so their
@@ -624,6 +636,19 @@ def _blank_answer(entry) -> bool:
     return not (value and value.strip()) and not evidence.strip().upper().startswith("UNSURE")
 
 
+def _a_reader_differs(run, key: str, readings: Sequence[Reading]) -> bool:
+    """Whether a reader of a label the field's value rests on (_labels) does not write the value's
+    literal, letter case and spacing aside (agreement.reader_writes). False for a value with no
+    literal, or that rests on no label with a reading."""
+    from .agreement import reader_writes
+
+    literal = run.fields[key].literal or ""
+    if not literal.strip():
+        return False
+    labels = set(_labels(run, key, readings))
+    return any(not reader_writes(reading.text, literal) for reading in readings if reading.region_id in labels)
+
+
 def agreed(run, readings: Sequence[Reading] = (), *, mandatory=(),
         reasons: Sequence[str] = ()) -> tuple[frozenset[str], frozenset[str]]:
     """(the fields settled with a value the second opinion agrees with, the blank fields it leaves blank
@@ -631,7 +656,8 @@ def agreed(run, readings: Sequence[Reading] = (), *, mandatory=(),
     Both empty unless the run is on the units path, no person approved it, the stored result is
     obtained and nothing the step answers for is unjudged (`due`). No value when one of the run's
     `reasons` (this finalize's, holding and open) says one reader read a label (`one_reader`); the
-    blanks do not depend on it. Never a field the run's profile makes mandatory (`mandatory`), a field
+    blanks do not depend on it. No Habitat value (READERS_MUST_WRITE) where a reader of a label it
+    rests on writes another text there (_a_reader_differs). Never a field the run's profile makes mandatory (`mandatory`), a field
     the step does not judge (the catalogue number, the IRN), or one a person holds authority over
     (`authority`)."""
     from .step import units_path
@@ -653,7 +679,8 @@ def agreed(run, readings: Sequence[Reading] = (), *, mandatory=(),
         if _settled(value):
             entry = entries.get(key)
             if (two_readers and key not in AGREED_VALUE_EXCEPT and isinstance(entry, Mapping)
-                    and entry.get("compared") == shown(value) and entry.get("verdict") == AGREES_VERDICT):
+                    and entry.get("compared") == shown(value) and entry.get("verdict") == AGREES_VERDICT
+                    and not (key in READERS_MUST_WRITE and _a_reader_differs(run, key, readings))):
                 values.add(key)
         elif (current and key not in AGREED_BLANK_EXCEPT and value.state == ValueState.NOT_PRESENT
                 and shown(value) is None and _blank_answer(answer.get(key))):
