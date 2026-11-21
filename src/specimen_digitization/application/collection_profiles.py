@@ -78,6 +78,18 @@ class Sam3Parameters(FrozenRecord):
         }
 
 
+class NestedDuplicateRule(FrozenRecord):
+    """The same label boxed twice, one box drawn inside the other (the label
+    finder's outer card and inner frame): two label regions count as one label
+    when at least `min_containment` of the smaller box's area lies inside the
+    larger and their IoU is at least `min_iou`. Both values are set together.
+    A provisional value by the coordinator's ruling of 2026-11-21 (lane L3),
+    not an owner sign-off."""
+
+    min_containment: float = Field(gt=0, le=1)
+    min_iou: float = Field(gt=0, le=1)
+
+
 class CoverageRule(FrozenRecord):
     """G15's automatic label-coverage check (LANE.md T3). The values are the
     approved starting values; the owner signs off the final ones after the lab."""
@@ -97,6 +109,11 @@ class CoverageRule(FrozenRecord):
     # not an owner sign-off. A rule without it counts every region.
     min_region_short_side_fraction: float | None = Field(
         default=None, gt=0, lt=1, exclude_if=lambda value: value is None
+    )
+    # Two label regions that are one box inside the other count once (see
+    # NestedDuplicateRule). A rule without it counts as merge_iou alone does.
+    nested_duplicate: NestedDuplicateRule | None = Field(
+        default=None, exclude_if=lambda value: value is None
     )
 
     @model_validator(mode="after")
