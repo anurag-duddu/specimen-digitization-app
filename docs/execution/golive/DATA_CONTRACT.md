@@ -287,56 +287,86 @@ above do not change.
     forward after rolling the server back below this change, for records
     whose runs were pinned with the value; it is not a tested guarantee for
     every record.
-  - The same label boxed twice is counted once (lane L3, 2026-11-21):
-    `merge_iou` is 0.6 in the published profile (it was 0.9). Label regions
-    overlapping at an IoU of 0.6 or more count as one label, transitively (a
-    and b at 0.6 or more, b and c at 0.6 or more: one label, whatever a and
-    c's IoU), after the thin regions are left out (`label_coverage.merged_count`,
-    "at or over"). Count only: both boxes stay in `Run.regions` and are read,
-    stored and shown; the record gains no key, and the merge shows only in
-    `region_count`. The consequences of a confirmed coverage are those stated
-    above for the thin-region rule. A stored run keeps the rule it was pinned
-    with, as above. Measured on the 100 truth slides
-    (`autonomy-program/L3/scripts/measure.py`: every pair of the 269 stored
-    regions, IoU and the share of the smaller box inside the larger, and the
-    real `check_coverage` with the published rule at each value): 24 pairs
+  - The same label boxed twice is counted once (lane L3, 2026-11-21): under
+    a coverage rule with `nested_duplicate` (`{min_containment, min_iou}`,
+    both required; 0.95 and 0.6 in the published profile), two label regions
+    also count as one label when at least `min_containment` of the smaller
+    box's area lies inside the larger and their IoU is at least `min_iou`
+    (`label_coverage.nested_duplicate`, exact arithmetic on the integer areas;
+    a pair exactly at a value meets it). `merge_iou` stays 0.9. The thin
+    regions are left out first; then a pair is merged when its IoU is at or
+    over `merge_iou` or it meets the nested rule, and merges chain (a with b
+    and b with c: one label). Count only: both boxes stay in `Run.regions` and
+    are read, stored and shown, and the geometry issues and the cross-check
+    see every region. Under such a rule the record has two more keys:
+    `nested_duplicate`, the values used, and `merged_regions`, each group of
+    two or more region ids counted as one label (by either test). A rule
+    without the value counts as before and its record has neither key; the
+    version stays `coverage-check-v1` for the reason given above for the
+    thin-region keys. The consequences of a confirmed coverage are those
+    stated above for the thin-region rule. A stored run keeps the rule it was
+    pinned with; "Start new run" binds the published one.
+  - Why containment, not IoU alone: #461 first lowered `merge_iou` to 0.6.
+    Codex's review (round 1) gave four separate narrow labels tilted 45
+    degrees whose axis-aligned boxes, (100, 250, 500, 500), (150, 200, 500,
+    500), (200, 150, 500, 500) and (250, 100, 500, 500), overlap one after the
+    next at IoU 0.6807 with 0.81 of each inside the next: at 0.6 they chained
+    into one label and coverage was confirmed with no duplicate involved. Under
+    the nested rule they stay four and the record is held
+    (`tests/test_lane_coverage.py`). The measured artefact is one box drawn
+    inside the other.
+  - Measured on the 100 truth slides (`autonomy-program/L3/scripts/measure.py`:
+    every pair of the 269 stored regions, its IoU and the share of the
+    smaller box inside the larger, and the real `check_coverage`): 24 pairs
     overlap at all. Two are the same Lewis label boxed twice, its outer card
-    and its inner frame: 105527007 (IoU 0.7847) and 105526361 (IoU 0.7731),
-    the smaller box wholly inside the larger. The other 22 are two different
-    labels, at IoU 0.0496 or less (six of them a barcode label's box touching
-    a large label's box, looked at one by one in lane L2; the other 16 under
-    0.25 of the smaller box inside the larger). At 0.7, 0.6, 0.5, 0.3 and 0.1
-    the same two slides change count and no other: 105527007 4 to 3, its
-    coverage now confirmed; 105526361 3 to 2, confirmed before and after. Why
-    0.6 and not 0.5 (the coordinator's ruling): a box drawn around two equal
-    neighbouring labels overlaps each of them at IoU exactly 0.5, and with the
-    "at or over" comparison and the chaining merge, 0.5 would count the three
-    boxes as one; 0.6 keeps them three, which can only hold a record, never
-    clear one, and still lies far from both measured groups (different labels
-    at most 0.0496, the duplicates 0.7731 and 0.7847). Residual risks: two
-    different labels overlapping at an IoU of 0.6 or more would count once
-    (none seen; largest 0.0496), and both would still be read and shown; the
-    evidence is two duplicates, both the same card-and-frame pattern. Both
-    boxes are read, so the readers' text of that label reaches field research
-    twice. On 105526361 (cleared with the duplicate before this change) the
-    four readings of the two boxes are identical, and the stored field
-    reasons cite them as "All four readings of labels 2 and 3". On 105527007
-    the four readings of the collecting year differ (1994 and 1974 on the
-    outer box, 1970 and 1976 on the inner; truth 1976), and in the replay the
-    record clears showing Date Visited From and To 1974-04-27, each flagged by
-    an open reason naming its field (`label_unsettled:date_visited_from`,
-    `:date_visited_to`). In the test rig a label boxed twice and read alike
-    changes no field's state, value or reason
-    (`tests/field_research/test_duplicate_label_coverage.py`). The nine
-    held production records of `autonomy-program/P1/held_regions.json` (boxes
-    only) do not change count at any of those values (largest IoU 0.0278).
-    Rollback: the field existed before this change, with the same validation.
-    A probe (`autonomy-program/L3/scripts/rollback_probe.py`) pinned stored
-    truth slide 105527007 with this change's published profile and read it
-    with the code before this change: the Specimen validated,
-    `pinned_risk_resolution` resolved, and `check_run` counted 3 regions,
-    coverage confirmed. Retry and Resume through the API on that code were not
-    run.
+    and its inner frame, the frame wholly inside the card: 105527007 (IoU
+    0.7847) and 105526361 (IoU 0.7731); both meet the nested rule. The other
+    22 are two different labels, at most 0.491 of the smaller box inside the
+    other and IoU at most 0.0496; none meets it. That they are different
+    labels was seen, not inferred: lane L2's diagnosis looked at the six with
+    the most overlap, and the G51 review of #461's first head looked at all
+    22; each is a barcode label's box touching a large label's box. Under the published rule exactly those two
+    slides change count: 105527007 4 to 3, its coverage now confirmed;
+    105526361 3 to 2, confirmed before and after. The nine held production
+    records of `autonomy-program/P1/held_regions.json` (boxes only) have no
+    pair that meets the rule (largest share inside 0.071, largest IoU 0.0278)
+    and do not change count.
+  - Residual risks. Merges chain, so any number of boxes can be counted as
+    one label, as long as every box is joined to the group by at least one
+    link; each link is a pair with an IoU of 0.9 or more, or a pair with one
+    box at least 0.95 inside the other and an IoU of at least 0.6 (so the
+    smaller box has at least 0.6 of the larger's area). Boxes of different
+    labels can form such links: narrow labels at an angle side by side, each
+    shorter one at least about 0.78 of the next one's length, whose
+    axis-aligned boxes nest; any number of them would count as one (pinned
+    as a stated residual in `tests/test_lane_coverage.py` with two boxes and
+    with three chained), which can release a count hold; every box is still
+    read and shown. No such link between different labels is among the 269 regions or
+    in `P1/held_regions.json`. The
+    evidence for the rule is two duplicates, both the same card-and-frame
+    pattern. Both boxes of a duplicate are read, so the readers' text of that
+    label reaches field research twice. On 105526361 (cleared with the
+    duplicate before this change) the four readings of the two boxes are
+    identical, and the stored field reasons cite them as "All four readings
+    of labels 2 and 3". On 105527007 the four readings of the collecting year
+    differ (1994 and 1974 on the outer box, 1970 and 1976 on the inner; truth
+    1976), and in the replay the record clears showing Date Visited From and
+    To 1974-04-27, each flagged by an open reason naming its field
+    (`label_unsettled:date_visited_from`, `:date_visited_to`). In the test rig
+    a label boxed twice and read alike changes no field's state, value or
+    reason (`tests/field_research/test_duplicate_label_coverage.py`).
+  - Rollback: code before this change cannot process a run pinned with a rule
+    that has `nested_duplicate`. A probe on this design's source (head
+    eeaca817; `autonomy-program/L3/rollback_r1/`,
+    lane L1's G51 probe `test_stored.py` with one record of the rig's label,
+    two half labels and an inner frame, written by this change and continued
+    by origin/main 106cebd7) found Retry, Resume and a region correction end
+    `processing_blocked` with `evidence_integrity_failure`; the record's
+    detail returned 200 at each step; "Start new run" worked on the probed
+    record, which had no person's decisions, and bound the older rule (count
+    4, held). A new run is therefore the expected way forward after rolling
+    the server back below this change, for records whose runs were pinned
+    with the value; it is not a tested guarantee for every record.
   - Authority: the coverage values (1 to 3 regions, concept "text", 0.5
     score, 50 % inside) are provisional values from a coordinator ruling of
     2026-09-23 (`status/coordinator.md` 23-24: "G15 check built with
@@ -344,9 +374,10 @@ above do not change.
     calibrates; OWNER SIGN-OFF on the final values before production."); no
     owner sign-off of final values is recorded (DEC-7 is open). The 0.03 is
     likewise provisional, a coordinator ruling of 2026-11-21 measured on the
-    100 truth slides; it is not an owner sign-off. So is the `merge_iou` of
-    0.6 (lane L3), a coordinator ruling of 2026-11-21 fixing a label-finder
-    artefact, measured on the same slides; it is not an owner sign-off.
+    100 truth slides; it is not an owner sign-off. So is the
+    `nested_duplicate` value of 0.95 and 0.6 (lane L3), a coordinator ruling
+    of 2026-11-21 on review round 1 of #461 fixing a label-finder artefact,
+    measured on the same slides; it is not an owner sign-off.
   - Known gap, measured and not changed: the full-image cross-check (concept
     `text`, threshold 0.5) counted no detection on any of the 100 truth slides
     (110 detections, highest score 0.2139, threshold 0.5), so on those

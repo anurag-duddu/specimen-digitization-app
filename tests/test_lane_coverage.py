@@ -613,3 +613,22 @@ def test_a_stored_check_without_the_nested_keys_still_loads():
 def test_the_nested_values_are_validated_together(value):
     with pytest.raises(ValidationError):
         CoverageRule.model_validate({**PUBLISHED_RULE.model_dump(), "nested_duplicate": value})
+
+
+def test_a_stated_residual_two_parallel_diagonal_labels_with_nested_boxes_count_once():
+    # A residual risk, pinned so that it is stated, not fixed: two separate narrow
+    # labels at 45 degrees, side by side (the shorter 0.8 of the longer's length,
+    # its centre 40 px across from the longer's), have axis-aligned boxes one
+    # wholly inside the other at IoU 0.64 (160000 / 250000), and count as one
+    # label. No such pair is among the 269 regions of the 100 truth slides
+    # (different labels there: at most 0.491 of the smaller box inside the other).
+    longer, shorter = (100, 100, 500, 500), (178, 122, 400, 400)
+    assert intersection_over_union(longer, shorter) == 0.64
+    assert nested_duplicate(longer, shorter, NESTED) is True
+    assert count([longer, shorter]) == 1
+    # Chained, any number join: a third, shorter label whose box nests in the
+    # second's (IoU 0.766) joins both, though its box and the longer's are only
+    # at IoU 0.49.
+    third = (200, 150, 350, 350)
+    assert nested_duplicate(shorter, third, NESTED) and not nested_duplicate(longer, third, NESTED)
+    assert count([longer, shorter, third]) == 1
