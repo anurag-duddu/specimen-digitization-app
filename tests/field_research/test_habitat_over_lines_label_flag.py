@@ -218,3 +218,71 @@ def test_limit_a_habitat_on_one_line_keeps_origin_mains_rule(tmp_path, monkeypat
     assert (run.fields["habitat"].state, run.fields["habitat"].literal) == (ValueState.SUPPORTED, "Mus musculus")
     assert codes(run) == [] and "habitat" not in flagged(run)
     assert field_step.label_attention(run, []) == []
+
+
+# ---- the two conditions, each as the code has it --------------------------------------------------------------
+
+def test_which_labels_count_as_unread(tmp_path, monkeypatch):
+    """step._unread_labels, the label's condition of the rule, by step.scientific_reasons' two tests of a label:
+    (a) its first pass was given up on (a `first_pass` give-up finding for it and no first-pass decision) and no
+    person has transcribed it since (a transcript of the label with a person as its actor, resolved, with text);
+    (b) else: it has no transcript, or a transcript of it is not resolved or has no text. The record of the first
+    shape: label 1 is read alike (resolved), label 2's readers differ (not resolved)."""
+    from specimen_digitization.application import first_pass
+    from specimen_digitization.application.domain import RunFinding
+
+    (first, other), scripts, image, _ = SHAPES["the-only-field-drawn"]
+    run = finished(tmp_path, monkeypatch, first, other, scripts, image=image)
+    label_1, label_2 = (region.id for region in run.regions)
+    assert field_step._unread_labels(run) == {label_2}
+    transcripts = {item.region_id: item for item in run.transcripts}
+    assert transcripts[label_1].resolved and not transcripts[label_2].resolved
+
+    def after(change):
+        copy = run.model_copy(deep=True)
+        change(copy, {item.region_id: item for item in copy.transcripts})
+        return field_step._unread_labels(copy), field_step.label_attention(copy, [])
+
+    def read(copy, by, text=LABEL_2):
+        by[label_2].resolved, by[label_2].text = True, text
+
+    # (b) resolved with text: the label is read, and the Habitat gets no flag from this rule.
+    assert after(read) == (frozenset(), [])
+    # (b) resolved with no text, not resolved though it has text, or no transcript at all: unread.
+    assert after(lambda copy, by: read(copy, by, "")) == (frozenset({label_2}), [FLAG])
+    assert after(lambda copy, by: (read(copy, by), setattr(by[label_2], "resolved", False))) == (
+        frozenset({label_2}), [FLAG])
+    assert after(lambda copy, by: copy.transcripts.remove(by[label_2])) == (frozenset({label_2}), [FLAG])
+
+    # (a) given up: unread although its transcript is resolved, until a person's transcript of it stands.
+    def given_up(copy, by, *, person=False):
+        read(copy, by)
+        copy.first_pass_decisions[:] = [item for item in copy.first_pass_decisions if item.region_id != label_2]
+        copy.findings.append(RunFinding(rule_id=first_pass.GIVEN_UP, rule_version="test", severity="warning",
+            reason_code=f"{first_pass.GIVEN_UP}:{label_2}"))
+        if person:
+            by[label_2].actor = "a-person"
+
+    assert after(given_up) == (frozenset({label_2}), [FLAG])
+    assert after(lambda copy, by: given_up(copy, by, person=True)) == (frozenset(), [])
+
+
+def test_the_rule_needs_a_run_no_person_approved_and_a_value_research_settled_over_lines(tmp_path, monkeypatch):
+    """`run.human_approved` true: nothing is added (an approval's own finalize decides what a person reviews). A
+    value that is no step._over_lines value gets nothing either: a literal on one line, a habitat a person decided
+    (step.human_keys), or one the run holds no transcript-literal finding for."""
+    (first, other), scripts, image, _ = SHAPES["the-only-field-drawn"]
+    run = finished(tmp_path, monkeypatch, first, other, scripts, image=image)
+    assert not run.human_approved and field_step.label_attention(run, []) == [FLAG]
+
+    def changed(change):
+        copy = run.model_copy(deep=True)
+        change(copy)
+        return field_step.label_attention(copy, [])
+
+    assert changed(lambda copy: setattr(copy, "human_approved", True)) == []
+    assert changed(lambda copy: setattr(copy.fields["habitat"], "literal", "Mus musculus")) == []
+    code = field_step.transcript_code("habitat")
+    assert any(finding.reason_code == code for finding in run.findings)
+    assert changed(lambda copy: copy.findings.__setitem__(slice(None),
+        [finding for finding in copy.findings if finding.reason_code != code])) == []
