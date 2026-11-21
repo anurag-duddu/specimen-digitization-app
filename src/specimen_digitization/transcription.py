@@ -119,9 +119,16 @@ def build_literal_transcription_agent(
     route_id: str,
     prompt: ResolvedPrompt,
 ) -> Agent[None, LiteralTranscription]:
-    """Build a stably named agent for the Logfire Agents view."""
+    """Build a stably named agent for the Logfire Agents view.
+
+    The HTTP client's own timeout (httpx.TimeoutException, no TimeoutError) is
+    made a TimeoutError beneath PrivateProviderModel, as the field experts'
+    is (experts.ClientTimeouts), so run_agent_bounded reports it as a timeout
+    and not as an unmapped provider failure."""
+    from .field_research.experts import ClientTimeouts
+
     agent = Agent(
-        PrivateProviderModel(gateway.model_for(route_id)),
+        PrivateProviderModel(ClientTimeouts(gateway.model_for(route_id))),
         name=_agent_name(route_id),
         output_type=LiteralTranscription,
         instructions=prompt.text,

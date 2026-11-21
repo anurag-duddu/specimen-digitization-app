@@ -59,8 +59,12 @@ def refusing_model_child(payload):
     `http_<status>` answers every request with that HTTP status. `malformed`
     answers, with usage, an output the step refuses, twice (the agent's output
     retry). `answer_then_429` gives that answer once, then answers the output
-    retry with HTTP 429. Each request is counted in a file beside the blobs.
+    retry with HTTP 429. `client_timeout` raises the HTTP client's own read
+    timeout (httpx.ReadTimeout) and `client_read_error` another transport error
+    (httpx.ReadError), each carrying a canary that must not cross the child.
+    Each request is counted in a file beside the blobs.
     """
+    import httpx
     from pydantic_ai.exceptions import ModelHTTPError
     from pydantic_ai.messages import ModelResponse, ToolCallPart
     from pydantic_ai.models.function import FunctionModel
@@ -87,6 +91,10 @@ def refusing_model_child(payload):
                 answered = any(m.kind == "response" for m in messages)
                 if kind.startswith("http_"):
                     raise ModelHTTPError(int(kind[5:]), route_id, body="provider_request_failed")
+                if kind == "client_timeout":
+                    raise httpx.ReadTimeout("PRIVATE-TIMEOUT-CANARY")
+                if kind == "client_read_error":
+                    raise httpx.ReadError("PRIVATE-READ-ERROR-CANARY")
                 if kind == "answer_then_429" and answered:
                     raise ModelHTTPError(429, route_id, body="provider_request_failed")
                 return ModelResponse(
