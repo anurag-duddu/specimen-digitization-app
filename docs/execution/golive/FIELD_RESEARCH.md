@@ -127,17 +127,7 @@ handover runs field research instead of the six specialists:
    branch and the like) is the collection method, never the habitat, and
    that when the only text offered for the habitat is a method the label
    lacks one: in the real run of 529f8033c 105526328's habitat expert still
-   confirmed the organiser's "trap". Since lane H3 (the coordinator's ruling
-   of 2026-11-21; not the owner's words) the habitat brief also says a host
-   is the habitat: the name after a host marker (on its line or the next),
-   or an animal's name written on its own, copied whole as written, a
-   written "Ex."/"Ex:"/"ex"/"On" kept and a printed "Host"/"Host:" heading
-   left out, as the truth sheets write hosts. The ontology's `host_marker`
-   notation still renders "[no field]" into every expert's instructions; the
-   brief's rule says it means only that a host is never the specimen's taxon.
-   The museum's published records differ: lane M0 found their hosts published
-   as associated taxa and none of 104 published Habitat values a host; the
-   20-field profile has no associated-taxa field.
+   confirmed the organiser's "trap".
 3. **One expert per field.** Every field gets its own Pydantic AI agent
    (`field_<key>`), its own instructions (shared rules plus the field's brief)
    and only its approved tools. All experts run at once. After the step has
@@ -2603,7 +2593,10 @@ rule derived at finalize does not rewrite them (rewriting would carry state
 from one finalize to the next). The mark beside them says that an
 independent reading gives a value, and the app's field row shows the mark's
 words ("An independent reading of the labels gives a different value. Check
-this value against the image."). The conditions are rule B's and the marks': the run is on the
+this value against the image."). On a blank its first sentence is true (the
+reading gives a value where the record shows none); the second asks a
+person to check "this value" on a field that shows none, which states nothing
+false but reads oddly; no app wording changed. The conditions are rule B's and the marks': the run is on the
 units path and no person approved it; the result is obtained and current
 (`answer_current`) and the step is not due; never the catalogue number or
 the IRN, a field the run's own profile makes mandatory (so it never holds),
@@ -2621,7 +2614,9 @@ second opinion's value right by `second_opinion.same` on 46, wrong on 7),
 none where the truth is blank; dispositions and `cleared_by` unchanged on
 100 of 100 and every part of the stored run but its open reasons equal on
 100 of 100; flagged fields per cleared record 7.55 to 8.08 (the app's
-mapping, the IRN left out). Tests:
+mapping, the IRN left out). Residual: 5 cleared records whose truth has a
+Habitat keep it blank with no flag, as the second opinion gave no value
+there (105526348, 105526356, 105526392, 105526468, 105527285). Tests:
 `tests/field_research/test_blank_second_opinion_fills.py`; one case in
 `tests/fixtures/field_attention.json` and one in the app's
 `second_opinion_test.dart` (no change in the app's code).
