@@ -352,3 +352,115 @@ def test_a_history_restore_gives_the_restored_states_own_reasons(tmp_path, whole
     assert run.person_decided_fields == [] and run.second_opinion == revision.run.second_opinion
     assert (run.disposition, run.reasons) == (Disposition.REVIEW, [HISTORY_RESTORED])
     assert run.open_reasons == revision.run.open_reasons and MARK in run.open_reasons and fresh(run)
+
+
+# ---- two actions that save without a finalize, and a blocked decision: origin/main's own mechanism -------------
+#
+# The mark is derived at finalize, as every open reason is. A history restore saves the restored snapshot's open
+# reasons as they were (history_restore.restored_specimen; api.py's restore route), and a transcript decision sets the
+# stage to `parse`, so the decision's own finalize does not run (api.py apply_decision). Until the next finalize the
+# stored open reasons are the snapshot's or the earlier finalize's, for this mark as for every other open reason on
+# origin/main. A decision while a blob is lost blocks the run, and refinalize returns early on a blocked run. These tests
+# pin that window through the real API and workflow; they do not change it (the coordinator's ruling of 2026-11-21).
+
+def queued(monkeypatch):
+    """The API's queue as the worker's tests stand it in: the run is pending, and the rig's workflow takes it."""
+    from datetime import datetime as clock
+
+    from specimen_digitization.application import api as app_api
+
+    def queue(specimen, registry, actor):
+        specimen.run.stage, specimen.run.queued_at = "pending", clock.now(timezone.utc).isoformat()
+
+    monkeypatch.setattr(app_api, "queue", queue)
+
+
+def act(client, rig, action, key):
+    """A run action (retry, resume) through the actions route."""
+    from test_step import ORG
+
+    current = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    response = client.post(f"/v1/organizations/{ORG}/runs/{current.run.id}/actions",
+        headers={"Authorization": "Bearer reviewer", "Idempotency-Key": key},
+        json={"expected_revision": current.version, "action": action, "reason": "Again."})
+    assert response.status_code == 200, response.text
+    return to_end(rig).run
+
+
+def restore(client, rig, revision, key):
+    from test_step import ORG
+
+    current = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    response = client.post(f"/v1/organizations/{ORG}/specimens/{current.id}/history:restore",
+        headers={"Authorization": "Bearer reviewer", "Idempotency-Key": key},
+        json={"expected_revision": current.version, "base_record_version_id": f"{current.run.id}:{current.version}",
+            "source_revision": revision, "reset_to_initial": False, "reason": "Back"})
+    assert response.status_code == 200, response.text
+    return rig.repository.get(rig.principal.scope, rig.specimen.id).run
+
+
+def test_a_restore_to_an_approved_revision_saves_its_open_reasons_and_the_next_finalize_gives_the_mark(
+        tmp_path, whole, monkeypatch):
+    """The window is origin/main's mechanism: the restore copies the approved snapshot's open reasons (an approved run
+    has no mark) and resets the approval, without a finalize; the record is held by history_restored_requires_review;
+    the next finalize (Resume) gives the mark a fresh finalize gives."""
+    queued(monkeypatch)
+    rig = rig_of(tmp_path, opinion=Opinion(answer_of(habitat=HOST)))
+    assert MARK in to_end(rig).run.open_reasons
+    client = review_client(rig)
+    approved = decide(client, rig, "approve", "approve")
+    assert approved.human_approved and MARK not in approved.open_reasons
+    revision = rig.repository.get(rig.principal.scope, rig.specimen.id).version
+    confirm(client, rig, "precise_location", "field-precise-location")
+    run = restore(client, rig, revision, "restore")
+    assert not run.human_approved and run.reasons == [HISTORY_RESTORED]
+    assert MARK not in run.open_reasons and MARK in finalized(run).open_reasons
+    resumed_ = act(client, rig, "resume", "resume")
+    assert MARK in resumed_.open_reasons and resumed_.reasons == [HISTORY_RESTORED] and fresh(resumed_)
+
+
+def test_a_transcript_decision_keeps_the_mark_while_running_and_the_next_finalize_removes_it(
+        tmp_path, whole, monkeypatch):
+    """The window is origin/main's mechanism: a transcript decision through the endpoint sets the stage to parse and
+    saves the earlier open reasons; the revision saved while the run is running still carries the mark; the worker's
+    next finalize removes it (the answer is no longer current: a person's transcript), and Resume, Retry and the
+    approval keep it gone."""
+    queued(monkeypatch)
+    rig = rig_of(tmp_path, opinion=Opinion(answer_of(habitat=HOST)))
+    first = to_end(rig).run
+    assert MARK in first.open_reasons
+    client = review_client(rig)
+    running = decide(client, rig, "transcript", "transcription", target_id=first.regions[0].id,
+        after={"text": NO_HABITAT, "state": "supported"})
+    assert running.stage == "parse" and running.disposition is None and MARK in running.open_reasons
+    mounted(rig, Scripted({"habitat": LACKS}))
+    done = to_end(rig).run
+    assert done.stage == "finalized" and not so.answer_current(done) and MARK not in done.open_reasons
+    for action in ("resume", "retry"):
+        again = act(client, rig, action, action)
+        assert MARK not in again.open_reasons and fresh(again)
+    approved = decide(client, rig, "approve", "approve")
+    assert approved.human_approved and MARK not in approved.open_reasons
+
+
+def test_a_decision_on_the_marked_field_while_a_blob_is_lost_keeps_the_mark_until_the_retry_after_repair(
+        tmp_path, whole, monkeypatch):
+    """The window is origin/main's mechanism: the decision's integrity check blocks the run (evidence_integrity_failure)
+    and refinalize returns early on a blocked run, so the mark stays on the person's field; once the blob is back, the
+    Retry's finalize takes it (the field is the person's)."""
+    import shutil
+
+    queued(monkeypatch)
+    rig = rig_of(tmp_path, opinion=Opinion(answer_of(habitat=HOST)))
+    first = to_end(rig).run
+    assert MARK in first.open_reasons
+    client = review_client(rig)
+    path = rig.blobs.root / first.observations[0].raw_ref
+    hidden = tmp_path / "hidden-blob"
+    shutil.move(path, hidden)
+    blocked = confirm(client, rig, "habitat", "field-habitat")
+    assert blocked.stage == "processing_blocked" and blocked.blocker == "evidence_integrity_failure"
+    assert "habitat" in blocked.person_decided_fields and MARK in blocked.open_reasons
+    shutil.move(hidden, path)
+    repaired = act(client, rig, "retry", "retry")
+    assert repaired.stage == "finalized" and MARK not in repaired.open_reasons and fresh(repaired)

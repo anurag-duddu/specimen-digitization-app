@@ -43,14 +43,18 @@ the catalogue number (its own evidence is the slide's QR code) nor the determine
 
 A BLANK THE SECOND OPINION FILLS IS FLAGGED (`filled`, called by step.finalize_fields on every finalize,
 after the reasons are split and the holds derived; lane H3, the coordinator's ruling of 2026-11-21).
-The marks above are for a field settled with a value. A judged field the record leaves without a value
-(blank, "not on the label", or open) for which the obtained, current answer (`answer_current`, not
-`due`) gives a value gains `marked:<field>::second_opinion_differs` (no label: there is no value to rest
+The marks above are for a field settled with a value. A judged field the record shows blank (state
+not_present, not_applicable, or supported with no text: "not on the label" among them; an open field's
+state already flags it) for which the obtained, current answer (`answer_current`, not `due`) gives a
+value gains `marked:<field>::second_opinion_differs` (no label: there is no value to rest
 on one) as an open reason, on a run on the units path no person approved, unless a person holds
 authority over the field, the run's profile makes it mandatory, or it already needs attention
 (review_summary.attention_fields over this finalize's reasons and the fields' states). Only a flag: the
 value stays blank (the second opinion's value is a possibility, never evidence), nothing is held, and
-no field, finding or evidence row is touched.
+no field, finding or evidence row is touched. Derived at finalize, as every open reason is: an action
+that saves without a finalize (a history restore, a transcript decision) or a finalize a blocked run
+skips leaves the stored open reasons as they were until the next finalize, as on origin/main for every
+open reason (tests/field_research/test_blank_second_opinion_fills.py, the last three tests).
 
 AN AGREED VALUE AND AN AGREED BLANK CARRY NO FLAG (`unflagged`, called by step.finalize_fields on
 every finalize, after the reasons are split; work package F2, the coordinator's rulings of 2026-11-19
@@ -673,7 +677,8 @@ def unflagged(run, open_reasons: Sequence[str], *, mandatory=(), held: Sequence[
 # ---- a blank field the second opinion fills is flagged ------------------------------------------------
 
 # Lane H3 (the coordinator's ruling of 2026-11-21 on lane H2's measurement over the 99 cleared records of
-# the 100 truth slides): 706 fields were blank with no flag; the stored second opinion gave a value on 53,
+# the 100 truth slides): 706 fields were blank with no flag by lane H2's rule (H2/blank_net_check.py), 704
+# by the app's mapping (H3/scripts/blank_counts.py); the stored second opinion gave a value on 53,
 # all Habitat, all real misses (the truth has a host there), none where the truth is blank. A blank
 # step.mark_not_on_label had marked "Not on the label" carried no flag, so nothing pointed a reviewer at
 # the field; `filled` gives it one. The value stays blank: the second opinion's value is never evidence.
@@ -688,8 +693,8 @@ def _gives_value(entry) -> bool:
 def filled(run, reasons: Sequence[str], *, mandatory=()) -> list[str]:
     """step.finalize_fields' hook, after the reasons are split and the holds derived: a mark,
     `marked:<field>::second_opinion_differs` (no label: the field has no value to rest on one), for
-    each judged field the record leaves without a value (not settled: blank, "not on the label",
-    open) for which the second opinion's own answer gives a value, so the app flags the field. An
+    each judged field the record shows blank (not settled: not_present, "not on the label" among
+    them, not_applicable, or supported with no text; an open field is skipped, its state flags it) for which the second opinion's own answer gives a value, so the app flags the field. An
     optional field's doubt: the caller adds it to run.open_reasons, and it holds nothing.
 
     Derived from the stored result and the run as it is now; nothing is stored or carried. Nothing on

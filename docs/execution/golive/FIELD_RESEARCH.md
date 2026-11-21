@@ -2422,7 +2422,8 @@ for its current shown value is "differs";
 recorded verdict for its current shown value (not obtained, switched off,
 not run yet, or the value changed since it was judged); nothing when it is
 "agrees", and nothing for the catalogue number or the IRN. A judged field
-left without a value (blank, "not on the label", or open) gets
+shown blank (not present, "not on the label" among them, not applicable,
+or supported with no text; an open field's state already flags it) gets
 `marked:<field>::second_opinion_differs`, with no label, when the obtained
 and current answer gives it a value (lane H3, below). Because each mark is derived from the current value it cannot go
 stale: a value research changes on a retry is "not checked" until the step
@@ -2579,8 +2580,9 @@ the app).
 called by `step.finalize_fields` on every finalize after the reasons are
 split and the holds derived; lane H3, the coordinator's ruling of
 2026-11-21 on lane H2's measurement, an engineering fix, not the owner's
-words). A judged field the record leaves without a value (blank, "not on
-the label", or open) for which the second opinion's own answer gives a
+words). A judged field the record shows blank (not present, "not on the
+label" among them, not applicable, or supported with no text; an open field
+is skipped, as its state already flags it) for which the second opinion's own answer gives a
 value gains the open reason `marked:<field>::second_opinion_differs` (no
 label: a blank has no value to rest on one), so the app flags the field.
 Only a flag: the value stays blank (the second opinion's value is a
@@ -2620,6 +2622,37 @@ there (105526348, 105526356, 105526392, 105526468, 105527285). Tests:
 `tests/field_research/test_blank_second_opinion_fills.py`; one case in
 `tests/fixtures/field_attention.json` and one in the app's
 `second_opinion_test.dart` (no change in the app's code).
+
+When the mark is current. Like every open reason it is derived at
+finalize. Every action that ends in a finalize (research and its recheck,
+Retry, Resume, the second opinion's step, a person's field decision, an
+approval and its withdrawal) gives what a fresh finalize of the stored
+state gives: the G51 reviewer of round 1 found this on all 149 finalized
+states of his sequences through the API and workflow
+(`~/specimen-golive/autonomy-program/reviews/g51_probes/g51_463/`). Three
+cases do not end in one, on origin/main and on this branch alike, and the
+stored open reasons wait for the next finalize: (i) a history restore
+copies the restored snapshot's open reasons and resets the approval
+without a finalize (`history_restore.py:62`, `api.py:1573-1580`); after a
+restore to an approved revision the mark is absent, the record is held by
+`history_restored_requires_review`, and the next finalize (Resume, Retry, a
+decision) gives the mark; (ii) a transcript decision sets the stage to
+`parse`, so the decision's own finalize is skipped (`api.py:2257`,
+`api.py:2423`): while the run is `running`, until the worker's next
+finalize, the saved revision keeps the mark, which that finalize removes;
+(iii) a person's decision on the marked field while a blob is lost blocks
+the run (`evidence_integrity_failure`) and `refinalize` returns early on a
+blocked run (`step.py:4846`): the mark stays on the person's field until
+the Retry after the repair. The reviewer's probe of origin/main shows its
+own open reasons doing the same: after (i), 12 `label_unsettled` codes a
+fresh finalize lifts and PR #455's `marked:city:<label>:second_opinion_differs`
+missing; after (ii), 8 stale codes, PR #455's mark among them
+(`codex_seq_main.txt`). In each window the record is not at rest: held for
+review after a restore, running after a transcript decision, blocked
+after a lost blob. Making those actions recompute the open reasons is a
+change to origin/main's mechanism for every reason, not made here (the
+coordinator's ruling of 2026-11-21). Pinned through the real API by the
+last three tests of `tests/field_research/test_blank_second_opinion_fills.py`.
 
 **The request.** Route `second-opinion-muse-spark` (Muse Spark Open 816B on
 Baseten through the Hugging Face router; tool choice required, 8,000 output

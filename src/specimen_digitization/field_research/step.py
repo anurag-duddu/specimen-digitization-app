@@ -4784,7 +4784,7 @@ def finalize_fields(run, profile: CollectionProfile | None, outcomes: Sequence[F
     from .second_opinion import filled
 
     run.open_reasons = [*run.open_reasons, *filled(run, (*human, *run.open_reasons), mandatory=profile.mandatory_fields)]
-    failures =[by_key[key].failure for key in work if work[key] == FAILED]
+    failures = [by_key[key].failure for key in work if work[key] == FAILED]
     if failures:
         operational = [f"{RETRYABLE[by_key[key].failure][0]}:{key}" for key in work if work[key] == FAILED]
         blocker = next(code for failure, (code, _) in RETRYABLE.items() if failure in failures)
