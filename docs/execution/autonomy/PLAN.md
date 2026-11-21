@@ -326,8 +326,8 @@ not tested, that flag is a person's, from `api.py:2729` or `api.py:2405`, so the
 `scripts/qa/live/human_review.py:229` (a QA script that refuses human-review evidence unless the saved flag is true: QA
 acceptance, not a record's clearing). The list comes from `grep -rn "coverage_confirmed" src scripts
 apps/specimen_digitization/lib` (tests left out); every other hit is the declaration (`domain.py:520`) or a write
-(`label_coverage.py:133`, `api.py:2405`, `api.py:2729`, `workflow.py:1170`, `evidence_pilot.py:254`), besides the test
-fixture `scripts/lab/test_lab_checks.py:94`; the Dart app has no hit (it sends a person's `coverage` decision). Worked case,
+(`label_coverage.py:133`, `api.py:2405`, `api.py:2729`, `workflow.py:1170`, `evidence_pilot.py:254`), and the search's
+remaining hits are 4 fixture writes in test files under `scripts` (`scripts/lab/test_lab_checks.py:94`, `scripts/qa/live/test_human_review.py:104`, `:110` and `:234`), 17 in all; the Dart app has no hit (it sends a person's `coverage` decision). Worked case,
 pinned by `tests/field_research/test_thin_region_coverage.py`: three labels and a thin region both readers read as clean
 text, habitat's expert answering `label_lacks_value`; before, count 4, held, habitat's reason "No reading writes a
 habitat."; after, count 3, cleared, "Not on the label: ..." with a `check:not_on_label` row. None of the seven measured

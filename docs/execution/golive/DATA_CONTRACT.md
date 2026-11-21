@@ -266,8 +266,9 @@ above do not change.
     `label_coverage.py:133` (this check), `api.py:2405` (a person's coverage
     decision), `api.py:2729` (a person's region correction),
     `workflow.py:1170` (the synthetic profile), `evidence_pilot.py:254` (the
-    evidence pilot clears it); and the test fixture
-    `scripts/lab/test_lab_checks.py:94`. The Dart app has no hit: it sends a
+    evidence pilot clears it). The search gives 17 hits: the 7 reads above,
+    those 6, and 4 fixture writes in test files under `scripts`:
+    `scripts/lab/test_lab_checks.py:94`, `scripts/qa/live/test_human_review.py:104`, `:110` and `:234`. The Dart app has no hit: it sends a
     person's coverage decision (kind `coverage`) and reads no flag. Worked case: three labels and a
     thin region both readers read as clean text, habitat's expert answering
     `label_lacks_value`: before, count 4, held, habitat's reason "No reading
