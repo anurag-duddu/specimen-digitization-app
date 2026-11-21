@@ -50,7 +50,7 @@ import test_rate_limit_refusal
 from test_extraction_recovery import extraction_findings, extraction_lab, parse_calls
 from test_first_pass_given_up import GIVEN_UP, first_pass_step, given_up_findings
 from test_lane_reservations import with_models
-from test_lane_routes import PARSE_RESERVATION, start
+from test_lane_routes import FIRST_PASS_RESERVATION, PARSE_RESERVATION, start
 from test_rate_limit_refusal import MUSE, ChildLab, drains, lab, ledger_rows, requests
 
 TIMEOUT = "provider_deadline_outcome_unknown"
@@ -61,9 +61,20 @@ def no_canary(run):
     assert CANARY not in run.model_dump_json()
 
 
+def both_ledgers_hold(last, step, attempts, reserved):
+    """Every attempt held in full in the research ledger (never settled) and the
+    program ledger equal to the run's own held total."""
+    reservations = last.research["ordinary_reservations"]
+    assert [reservations[f"{step}:{n}"] for n in attempts] == [
+        {"reserved_micros": reserved, "settled_micros": None}
+    ] * len(attempts)
+    assert last.program == last.run.usage.reserved_cost_micros
+
+
 def three_first_passes_fit(monkeypatch):
     """Three held first-pass attempts fit the run's limit when the route's
-    context is small (test_first_pass_given_up's provider-error test)."""
+    context is small (test_first_pass_given_up's provider-error test). At the
+    published prices only two do: see the published-prices test below."""
     registry = with_models(
         published_registry({SYNTHETIC_COLLECTION: "insects"}),
         **{"first-pass-glm": {"context_tokens": 32_768}},
@@ -99,15 +110,17 @@ def test_a_reader_whose_provider_times_out_records_a_timeout_and_is_given_up(tmp
     assert ledger_rows([c for c in run.paid_calls if c["step"] == step]) == [
         (n, "failed", "reserved", reading, None, TIMEOUT) for n in (1, 2, 3)
     ]
-    reservations = last.research["ordinary_reservations"]
-    assert [reservations[f"{step}:{n}"]["settled_micros"] for n in (1, 2, 3)] == [None] * 3
+    both_ledgers_hold(last, step, (1, 2, 3), reading)
     no_canary(run)
 
 
-def test_a_first_pass_whose_provider_times_out_is_retried_then_given_up(tmp_path, monkeypatch):
+def test_a_first_pass_whose_provider_times_out_is_retried_then_given_up_when_three_attempts_fit(
+    tmp_path, monkeypatch
+):
     # Before: the first attempt blocked the run as `external_outcome_unknown`
     # (the child's `worker_call_failed`), held for a person: no retry, and an
-    # operator's Retry refused.
+    # operator's Retry refused. What the code allows when three reservations
+    # fit the run's limit (the route's context made small).
     three_first_passes_fit(monkeypatch)
     adapters = ChildLab(LocalBlobs(tmp_path / "blobs"), first_passes=3)
     workflow, principal, ident, backend = lab(tmp_path, monkeypatch, adapters, "client_timeout")
@@ -131,6 +144,46 @@ def test_a_first_pass_whose_provider_times_out_is_retried_then_given_up(tmp_path
     assert ledger_rows([c for c in run.paid_calls if c["step"] == step]) == [
         (n, "failed", "reserved", reserved, None, TIMEOUT) for n in (1, 2, 3)
     ]
+    both_ledgers_hold(last, step, (1, 2, 3), reserved)
+    no_canary(run)
+
+
+def test_at_the_published_prices_a_first_pass_timing_out_sends_two_attempts_and_the_rest_go_unsent(
+    tmp_path, monkeypatch
+):
+    # The published pilot profile: a first pass holds 318,670 micro-USD and the
+    # specimen's limit is USD 1. Two labels. The first label's first pass times
+    # out twice, each attempt held in full; the third attempt does not fit the
+    # specimen's limit and is not sent, so the label is given up on
+    # `cost_budget_exhausted`; the second label's first pass is given up unsent
+    # for the same reason. Before: blocked after the first attempt.
+    adapters = ChildLab(LocalBlobs(tmp_path / "blobs"), first_passes=4)
+    adapters.regions = 2
+    workflow, principal, ident, backend = lab(tmp_path, monkeypatch, adapters, "client_timeout")
+
+    *retried, last = drains(workflow, principal, ident, backend)
+
+    run = last.run
+    first, second = (r.id for r in run.regions)
+    step = "first_pass:" + first
+    assert [(d.run.stage, d.run.blocker) for d in retried] == [("retry_scheduled", TIMEOUT)] * 2
+    assert requests(tmp_path, "first_pass") == 2
+    assert (run.stage, run.blocker) == ("finalized", None)
+    assert run.disposition is not None
+    assert run.attempts[step] == 2 and step in run.completed_steps
+    assert "first_pass:" + second not in run.attempts
+    assert step_reservation(run, step) == FIRST_PASS_RESERVATION == 318_670
+    assert run.profile.execution.approved_cost_limit_micros == 1_000_000
+    assert given_up_findings(run) == [
+        (GIVEN_UP, "warning", f"{GIVEN_UP}:{first}:cost_budget_exhausted"),
+        (GIVEN_UP, "warning", f"{GIVEN_UP}:{second}:cost_budget_exhausted"),
+    ]
+    # The two sent attempts are held in full; nothing is recorded for the unsent.
+    assert ledger_rows([c for c in run.paid_calls if c["step"].startswith("first_pass:")]) == [
+        (n, "failed", "reserved", FIRST_PASS_RESERVATION, None, TIMEOUT) for n in (1, 2)
+    ]
+    both_ledgers_hold(last, step, (1, 2), FIRST_PASS_RESERVATION)
+    assert not any(k.startswith("first_pass:" + second) for k in last.research["ordinary_reservations"])
     no_canary(run)
 
 
@@ -148,8 +201,7 @@ def test_an_extraction_whose_provider_times_out_is_retried_then_given_up(tmp_pat
     assert run.attempts["parse"] == 3 and "parse" in run.completed_steps
     assert extraction_findings(run) == [f"extraction_given_up:{TIMEOUT}"]
     assert parse_calls(run) == [(n, "failed", "reserved", PARSE_RESERVATION, TIMEOUT) for n in (1, 2, 3)]
-    for attempt in (1, 2, 3):
-        assert last.research["ordinary_reservations"][f"parse:{attempt}"]["settled_micros"] is None
+    both_ledgers_hold(last, "parse", (1, 2, 3), PARSE_RESERVATION)
     no_canary(run)
 
 
