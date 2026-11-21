@@ -159,9 +159,19 @@ def test_region_count_outside_the_expectation_fails(regions, reason):
     assert item.run.coverage_check["reason_codes"][0] == "label_coverage_unconfirmed"
 
 
+# The published rule: RULE plus the provisional thin-region fraction (the
+# coordinator's ruling of 2026-11-21; the range and every other value as RULE).
+PUBLISHED_RULE = RULE.model_copy(update={"min_region_short_side_fraction": 0.03})
+
+
 def test_the_pilot_pins_the_approved_starting_values():
     settings = published_registry().resolve("insects").profile.segmentation_settings
-    assert settings.coverage == RULE
+    assert settings.coverage == CoverageRule.model_validate(PUBLISHED_RULE.model_dump())
+    published, base = settings.coverage.model_dump(), RULE.model_dump()
+    assert {k for k in published if published[k] != base.get(k)} == {
+        "min_region_short_side_fraction"
+    }
+    assert settings.coverage.min_region_short_side_fraction == 0.03
 
 
 def test_coverage_rules_are_consistent():
@@ -215,3 +225,159 @@ def test_the_segment_step_records_a_failed_check_and_the_run_goes_on(tmp_path):
     assert stepped.run.coverage_confirmed is False
     assert stepped.run.coverage_check["reason_codes"][0] == "label_coverage_unconfirmed"
     assert stepped.run.stage == "transcribe"
+
+
+# A region too thin to hold a label is not counted as a label (the coordinator's
+# ruling of 2026-11-21, lane L1). Count only: the region stays in run.regions.
+THIN_RULE = PUBLISHED_RULE
+
+
+def sized(regions, width, height, *, rule=THIN_RULE, cross=()):
+    item = specimen(regions, list(cross), rule=rule)
+    item.asset = item.asset.model_copy(update={"width": width, "height": height})
+    return item
+
+
+# Measured on truth slide 105527060 (1763 x 616): three labels and a strip
+# 11 px tall along the top edge, read "[unreadable]" by both readers.
+SLIDE = (1763, 616)
+LABEL_A, LABEL_B, BARCODE = (21, 16, 517, 573), (1216, 32, 542, 570), (1120, 405, 93, 187)
+STRIP = (243, 0, 473, 11)
+
+
+def test_a_strip_beside_three_labels_is_not_counted():
+    item = sized([LABEL_A, LABEL_B, BARCODE, STRIP], *SLIDE)
+    check_coverage(THIN_RULE, item)
+    evidence = item.run.coverage_check
+    assert item.run.coverage_confirmed is True
+    assert evidence["outcome"] == "confirmed"
+    assert evidence["region_count"] == 3
+    assert evidence["reason_codes"] == []
+    strip = item.run.regions[3]
+    assert evidence["not_counted_regions"] == [{"id": strip.id, "box": list(STRIP)}]
+    assert evidence["min_region_short_side_fraction"] == 0.03
+    # Count only: the strip is still a region of the run.
+    assert len(item.run.regions) == 4
+
+
+def test_a_strip_beside_two_labels_counts_two():
+    item = sized([LABEL_A, LABEL_B, STRIP], *SLIDE)
+    check_coverage(THIN_RULE, item)
+    assert item.run.coverage_confirmed is True
+    assert item.run.coverage_check["region_count"] == 2
+    assert len(item.run.coverage_check["not_counted_regions"]) == 1
+
+
+def test_a_strip_as_the_only_region_is_held():
+    item = sized([STRIP], *SLIDE)
+    check_coverage(THIN_RULE, item)
+    assert item.run.coverage_confirmed is False
+    assert item.run.coverage_check["region_count"] == 0
+    assert item.run.coverage_check["reason_codes"] == [
+        "label_coverage_unconfirmed",
+        "label_region_count_out_of_range",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("short_side", "counted"),
+    # 3 % of a 1000 px shorter side is 30 px: a region exactly at the fraction is
+    # counted (the rule is "under"), one pixel thinner is not.
+    [(30, 1), (29, 0)],
+)
+def test_a_region_exactly_at_the_fraction_is_counted(short_side, counted):
+    item = sized([(0, 0, 400, short_side)], 3000, 1000)
+    check_coverage(THIN_RULE, item)
+    assert item.run.coverage_check["region_count"] == counted
+    assert len(item.run.coverage_check["not_counted_regions"]) == 1 - counted
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "box", "thin"),
+    [
+        # Landscape: the image's shorter side is its height (600; 3 % is 18 px).
+        (2000, 600, (100, 0, 900, 17), True),
+        (2000, 600, (100, 0, 900, 18), False),
+        # Portrait: the image's shorter side is its width (600 again), and a
+        # tall narrow region's shorter side is its width.
+        (600, 2000, (0, 100, 17, 900), True),
+        (600, 2000, (0, 100, 18, 900), False),
+        # A region 17 px tall on a portrait image is measured against the width.
+        (600, 2000, (0, 0, 500, 17), True),
+    ],
+)
+def test_portrait_and_landscape_use_the_shorter_sides(width, height, box, thin):
+    label = (0, 300, 500, 250) if width > height else (50, 1000, 500, 250)
+    item = sized([label, box], width, height)
+    check_coverage(THIN_RULE, item)
+    assert item.run.coverage_check["region_count"] == (1 if thin else 2)
+
+
+def test_a_rule_without_the_fraction_counts_every_region():
+    item = sized([LABEL_A, LABEL_B, BARCODE, STRIP], *SLIDE, rule=RULE)
+    check_coverage(RULE, item)
+    evidence = item.run.coverage_check
+    assert item.run.coverage_confirmed is False
+    assert evidence["region_count"] == 4
+    assert "label_region_count_out_of_range" in evidence["reason_codes"]
+    # The record keeps today's keys only.
+    assert "not_counted_regions" not in evidence
+    assert "min_region_short_side_fraction" not in evidence
+    assert "min_region_short_side_fraction" not in RULE.model_dump()
+
+
+def test_a_thin_region_still_counts_for_the_cross_check_and_the_geometry():
+    # Text detected inside the strip is covered by it: the cross-check is untouched.
+    item = sized(
+        [LABEL_A, STRIP], *SLIDE, cross=[((300, 0, 200, 10), 0.9)]
+    )
+    check_coverage(THIN_RULE, item)
+    assert item.run.coverage_check["cross_check"]["uncovered_boxes"] == []
+    assert item.run.coverage_confirmed is True
+
+
+def test_thin_regions_are_left_out_before_the_merge():
+    # Two thin boxes that would merge, beside one label: the count is 1.
+    item = sized([LABEL_A, STRIP, (243, 0, 473, 10)], *SLIDE)
+    check_coverage(THIN_RULE, item)
+    assert item.run.coverage_check["region_count"] == 1
+    assert len(item.run.coverage_check["not_counted_regions"]) == 2
+
+
+def test_a_stored_check_without_the_new_keys_still_loads():
+    stored = {
+        "version": "coverage-check-v1",
+        "outcome": "unconfirmed",
+        "region_count": 4,
+        "min_label_regions": 1,
+        "max_label_regions": 3,
+        "cross_check": {
+            "concept": "text",
+            "threshold": 0.5,
+            "min_inside_fraction": 0.5,
+            "counted": 0,
+            "uncovered_boxes": [],
+        },
+        "reason_codes": ["label_coverage_unconfirmed", "label_region_count_out_of_range"],
+        "evidence_ref": "e" * 64,
+        "evidence_sha256": "e" * 64,
+        "checked_at": "2026-11-20T00:00:00Z",
+    }
+    run = Run.model_validate({"coverage_check": stored})
+    assert run.coverage_check == stored
+    assert Run.model_validate(run.model_dump(mode="json")).coverage_check == stored
+    # A stored rule without the field loads, and keeps counting every region.
+    pinned = SegmentationSettings.model_validate(
+        {"prompt": "label", "coverage": RULE.model_dump(mode="json")}
+    )
+    assert pinned.coverage.min_region_short_side_fraction is None
+    assert "min_region_short_side_fraction" not in pinned.model_dump(mode="json")["coverage"]
+
+
+def test_the_segment_step_uses_the_rule_the_run_pinned():
+    from specimen_digitization.application.label_coverage import check_run
+
+    for rule, count in ((RULE, 4), (THIN_RULE, 3)):
+        item = sized([LABEL_A, LABEL_B, BARCODE, STRIP], *SLIDE, rule=rule)
+        check_run(item)
+        assert item.run.coverage_check["region_count"] == count

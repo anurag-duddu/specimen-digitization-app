@@ -8,6 +8,8 @@ signs off the final values once the acceptance lab has measured them.
 
 from __future__ import annotations
 
+from fractions import Fraction
+
 from .collection_profiles import CoverageRule
 from .domain import now
 from .image_quality import RegionBox, check_regions
@@ -73,6 +75,19 @@ def covered_fraction(box, cover):
     return inside / area(box)
 
 
+def too_thin(region, image_width, image_height, fraction) -> bool:
+    """Whether a region's shorter side is under the fraction of the image's.
+
+    Exact (the fraction as written, no float rounding); a region exactly at
+    the fraction is counted, since the rule is "under".
+    """
+    if fraction is None:
+        return False
+    return min(region.width, region.height) < Fraction(str(fraction)) * min(
+        image_width, image_height
+    )
+
+
 def check_coverage(rule: CoverageRule, specimen) -> None:
     """Set the run's coverage from the rule and record the evidence (S5's shape)."""
     run, asset = specimen.run, specimen.asset
@@ -97,7 +112,15 @@ def check_coverage(rule: CoverageRule, specimen) -> None:
         for detection in counted
         if covered_fraction(detection["box"], labels) < rule.min_inside_fraction
     ]
-    region_count = merged_count(labels, rule.merge_iou)
+    fraction = rule.min_region_short_side_fraction
+    # A region too thin to hold a label is not counted (count only: the
+    # geometry issues and the cross-check above still see every region).
+    thin, kept = [], []
+    for r in run.regions:
+        (thin if too_thin(r, asset.width, asset.height, fraction) else kept).append(r)
+    region_count = merged_count(
+        [(r.x, r.y, r.width, r.height) for r in kept], rule.merge_iou
+    )
     reasons = [
         issue
         for issue in geometry.issues
@@ -123,6 +146,18 @@ def check_coverage(rule: CoverageRule, specimen) -> None:
             "uncovered_boxes": uncovered,
         },
         "reason_codes": ["label_coverage_unconfirmed", *reasons] if reasons else [],
+        # Present only under a rule with the fraction: the regions too thin to
+        # hold a label, which the count left out (they stay in run.regions).
+        **(
+            {
+                "min_region_short_side_fraction": fraction,
+                "not_counted_regions": [
+                    {"id": r.id, "box": [r.x, r.y, r.width, r.height]} for r in thin
+                ],
+            }
+            if fraction is not None
+            else {}
+        ),
         "evidence_ref": run.segmentation.get("blob_ref"),
         "evidence_sha256": run.segmentation.get("sha256"),
         "checked_at": now(),
