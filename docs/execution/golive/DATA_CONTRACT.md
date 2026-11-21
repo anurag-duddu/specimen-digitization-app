@@ -234,6 +234,38 @@ above do not change.
     neither key. The version stays `coverage-check-v1`: the keys are additive
     and a rule without the value checks exactly as before, so a stored
     `coverage-check-v1` record still loads and reads as it did.
+  - "Count only" means the region count. A run whose count is then in range
+    has its coverage confirmed, and every consequence of a confirmed coverage
+    follows as on any confirmed run (the coordinator's ruling of 2026-11-21 on
+    review round 1 of #460: the thin region is still read, and its text is
+    still part of what the readers, the organiser and the experts see; the
+    code before this change already behaves so for two labels and such a
+    region). What reads `Run.coverage_confirmed`:
+    `application/policy.py:51` (`evaluate`: the ordinary path's clearing gate,
+    `label_coverage_unconfirmed`); `field_research/step.py:3341`
+    (`_whole_label_read`: every label read whole, which opens the
+    not-on-the-label mark at `step.py:4032`, `mark_not_on_label`, its
+    `check:not_on_label` row and its "Not on the label" reason);
+    `field_research/step.py:4378` (`scientific_reasons`: the units path's
+    `label_coverage_unconfirmed`, which holds the record);
+    `research_harness/canonical_materialization.py:142` and
+    `research_harness/canonical_materialization_v2.py:202` (the harness
+    producers' `label_coverage_unconfirmed`). Worked case: three labels and a
+    thin region both readers read as clean text, habitat's expert answering
+    `label_lacks_value`: before, count 4, held, habitat's reason "No reading
+    writes a habitat."; after, count 3, cleared, "Not on the label: ..." with
+    a `check:not_on_label` row
+    (`tests/field_research/test_thin_region_coverage.py`). None of the seven
+    measured strips reaches it: each is `[unreadable]`, so
+    `_whole_label_read` is false and the habitat is as before.
+  - Rollback: code before this change cannot process a run this change
+    pinned. The G51 review's probe (`autonomy-program/L1/g51_probes/probes/
+    test_stored.py`, records written by #460's head and continued by
+    b35e823e) found Retry, Resume and a region correction end
+    `processing_blocked` with `evidence_integrity_failure`, and one held
+    record's detail returned 422; "Start new run" works. Rolling the server
+    back below this change needs a new run on records whose runs were pinned
+    with the value.
   - Authority: the coverage values (1 to 3 regions, concept "text", 0.5
     score, 50 % inside) are provisional values from a coordinator ruling of
     2026-09-23 (`status/coordinator.md` 23-24: "G15 check built with
@@ -244,8 +276,10 @@ above do not change.
     100 truth slides; it is not an owner sign-off.
   - Known gap, measured and not changed: the full-image cross-check (concept
     `text`, threshold 0.5) counted no detection on any of the 100 truth slides
-    (highest score 0.214), so today the region count is the only part of the
-    check that can fail.
+    (110 detections, highest score 0.2139, threshold 0.5), so on those
+    slides the region count was the only part of the check that held a
+    record. The cross-check still holds a record when a detection at or over
+    the threshold lies outside the labels.
 - The profile identity after classify, as `pin_dependencies` pins it again:
   `Run.profile.id`, `Run.profile.version`, `Run.profile_snapshot`,
   `Run.profile_registry_version`, and `Run.dependencies["profile_snapshot_sha256"]`
