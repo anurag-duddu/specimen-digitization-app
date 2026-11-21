@@ -41,6 +41,17 @@ verdict for its current shown value (not obtained, switched off, not run yet, or
 since it was judged); nothing when the recorded verdict for its current value is "agrees". Never
 the catalogue number (its own evidence is the slide's QR code) nor the determiner's IRN.
 
+A BLANK THE SECOND OPINION FILLS IS FLAGGED (`filled`, called by step.finalize_fields on every finalize,
+after the reasons are split and the holds derived; lane H3, the coordinator's ruling of 2026-11-21).
+The marks above are for a field settled with a value. A judged field the record leaves without a value
+(blank, "not on the label", or open) for which the obtained, current answer (`answer_current`, not
+`due`) gives a value gains `marked:<field>::second_opinion_differs` (no label: there is no value to rest
+on one) as an open reason, on a run on the units path no person approved, unless a person holds
+authority over the field, the run's profile makes it mandatory, or it already needs attention
+(review_summary.attention_fields over this finalize's reasons and the fields' states). Only a flag: the
+value stays blank (the second opinion's value is a possibility, never evidence), nothing is held, and
+no field, finding or evidence row is touched.
+
 AN AGREED VALUE AND AN AGREED BLANK CARRY NO FLAG (`unflagged`, called by step.finalize_fields on
 every finalize, after the reasons are split; work package F2, the coordinator's rulings of 2026-11-19
 on lane H1's measurement). Derived from the stored result and the run as it is now; nothing is stored
@@ -657,6 +668,60 @@ def unflagged(run, open_reasons: Sequence[str], *, mandatory=(), held: Sequence[
         return list(open_reasons)
     lifted = {f"{LABEL_UNSETTLED}:{key}" for key in values | blanks} | {f"{MANDATORY_UNRESOLVED}:{key}" for key in blanks}
     return [reason for reason in open_reasons if reason not in lifted]
+
+
+# ---- a blank field the second opinion fills is flagged ------------------------------------------------
+
+# Lane H3 (the coordinator's ruling of 2026-11-21 on lane H2's measurement over the 99 cleared records of
+# the 100 truth slides): 706 fields were blank with no flag; the stored second opinion gave a value on 53,
+# all Habitat, all real misses (the truth has a host there), none where the truth is blank. A blank
+# step.mark_not_on_label had marked "Not on the label" carried no flag, so nothing pointed a reviewer at
+# the field; `filled` gives it one. The value stays blank: the second opinion's value is never evidence.
+
+
+def _gives_value(entry) -> bool:
+    """Whether the stored answer's entry for a field gives a value (a string with text; read_answer's
+    rule: a value is stripped, and an empty one is none)."""
+    return isinstance(entry, Mapping) and isinstance(entry.get("value"), str) and bool(entry["value"].strip())
+
+
+def filled(run, reasons: Sequence[str], *, mandatory=()) -> list[str]:
+    """step.finalize_fields' hook, after the reasons are split and the holds derived: a mark,
+    `marked:<field>::second_opinion_differs` (no label: the field has no value to rest on one), for
+    each judged field the record leaves without a value (not settled: blank, "not on the label",
+    open) for which the second opinion's own answer gives a value, so the app flags the field. An
+    optional field's doubt: the caller adds it to run.open_reasons, and it holds nothing.
+
+    Derived from the stored result and the run as it is now; nothing is stored or carried. Nothing on
+    a run off the units path, or that a person approved, or whose stored result is not obtained (not
+    obtained, switched off, not run), or while the step is due, or when the answer was not asked on
+    the run's readings as they are now (`answer_current`). Never a field the run's profile makes
+    mandatory (`mandatory`: no hold), the catalogue number or the IRN (not judged), a field a person
+    holds authority over (`authority`), or a field that already needs attention by the one mapping of
+    reasons to fields the app follows (review_summary.attention_fields over `reasons`, the holding
+    reasons and the open ones of this finalize, and the fields' states): a field is flagged once.
+    No field, finding or evidence row is touched; the field's value, state and reason stay research's."""
+    from specimen_digitization.application.review_summary import attention_fields, project_fields
+
+    from .step import marked_code, run_readings, units_path
+
+    stored = getattr(run, "second_opinion", None)
+    if (not getattr(run, "fields", None) or not units_path(run) or getattr(run, "human_approved", False)
+            or not isinstance(stored, Mapping) or stored.get("status") != OBTAINED or due(run)):
+        return []
+    answer = stored.get("answer")
+    if not isinstance(answer, Mapping) or not answer_current(run):
+        return []
+    flagged = attention_fields(project_fields({key: value.model_dump(mode="json") for key, value in run.fields.items()}),
+        list(reasons))
+    skip = authority(run, run_readings(run)) | frozenset(mandatory) | frozenset(flagged)
+    found = []
+    for key in JUDGED:
+        value = run.fields.get(key)
+        if key in skip or value is None or _settled(value) or not _gives_value(answer.get(key)):
+            continue
+        found.append(marked_code(key, "", DIFFERS))
+    return found
 
 
 # Every outcome of a call that was sent is final for the values it asked about (`asked`, kept with the
