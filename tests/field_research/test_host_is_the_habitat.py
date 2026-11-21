@@ -204,6 +204,7 @@ HOST_NOTATION = ('- "Host", "ex.", "on", "from": before a name, the specimen\'s 
 HOST_RULES = (
     "- A host is this field's value: ",
     "- A host is the name written after a host marker (",
+    "- A host needs no marker. ",
     "- Copy the host whole, as the label writes it: ",
     "- A host or a habitat the label writes over consecutive lines (",
 )
@@ -227,24 +228,36 @@ def test_only_the_habitat_brief_carries_the_host_rules_and_the_host_notation_is_
 
 def test_the_habitat_brief_states_each_point_of_the_ruling():
     brief = instructions("habitat").split(f"Field: {FIELD_LABELS['habitat']} (habitat)", 1)[1]
-    is_value, which, whole, lines = (next(line for line in brief.splitlines() if line.startswith(rule))
+    is_value, marked, bare, whole, lines = (next(line for line in brief.splitlines() if line.startswith(rule))
         for rule in HOST_RULES)
     # The contradiction with the notation is resolved for this field in plain words.
     assert 'mark a host "[no field]" and "never its taxon"; for this field that means one thing only' in is_value
     assert "never answer label_lacks_value for a label that writes one" in is_value
-    # A name after a marker, on its line or below it; a non-insect animal's name with no marker.
-    assert "on the marker's line or on the lines right below it" in which
-    assert "the name of an animal that is no insect" in which and "written with no marker" in which
-    assert "the specimens are insects, so the specimen's own taxon is an insect's name, never another animal's" in which
-    assert "also where the units' fields advice or note, the organiser or other_fields give it as the taxon" in which
-    assert which.endswith("answer sources_cannot_resolve and quote it.")
-    # Whole, the written marker kept, the heading left out.
+    # A name after a marker, on its line or below it.
+    assert marked.endswith("on the marker's line or on the lines right below it.")
+    # A non-insect animal's name with no marker, wherever it stands. The second paid rerun's expert knew such
+    # names for a mammal's and still answered label_lacks_value, for the three reasons the rule now names.
+    assert "the specimens are insects, so the specimen's own taxon is an insect's name, never another animal's" in bare.replace(
+        "The specimens", "the specimens")
+    assert "a name you know for a mammal's, a bird's or another animal's that is no insect" in bare
+    assert "is the host, wherever it stands on the labels" in bare
+    assert "none of these is a reason to answer label_lacks_value: that no marker stands before it; that it reads like " \
+        "the label's identification or taxon; that the units' fields advice or note, the organiser or other_fields " \
+        "give it as the taxon or say that no field holds it" in bare
+    # A name the expert cannot place is never guessed.
+    assert "(an abbreviated genus you cannot expand with certainty, a word you do not know), do not guess" in bare
+    assert bare.endswith("answer sources_cannot_resolve and quote it.")
+    # Whole, the written marker kept, the heading left out, the value the literal itself.
     assert 'with a written "Ex.", "Ex:", "ex" or "On" before the name kept in the literal' in whole
     assert 'A heading "Host" or "Host:" before the name, in any letter case, is left out' in whole
     assert "an answer that starts with that heading is refused" in whole
+    assert "The name stops before another field's text: a place, a date, a collector or a number on the next line" in whole
+    assert "Never shorten the name to the part two readers write alike" in whole
+    assert whole.endswith("Leave value and authority_id empty: this field's value is always the literal itself, never "
+        "the name in another form (joined on one line, without its marker, in another letter case).")
     # Over consecutive lines, against the shared rule.
     assert "may run over them, whatever the shared rules say of two lines" in lines
     assert "with each line break (or a space for each) and the hyphen where the label breaks a word" in lines
     assert lines.endswith("Never answer the first line alone of a name the label goes on with on the next.")
     # Patterns only (test_experts.test_no_brief_gives_an_example_a_model_could_take_for_label_text covers names).
-    assert '"<Genus>" over "<species>"' in lines and '"Ex. <name>"' in which
+    assert '"<Genus>" over "<species>"' in lines and '"Ex. <name>"' in marked and '"<Genus> <species>"' in bare
