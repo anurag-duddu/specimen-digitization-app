@@ -354,14 +354,16 @@ def test_a_history_restore_gives_the_restored_states_own_reasons(tmp_path, whole
     assert run.open_reasons == revision.run.open_reasons and MARK in run.open_reasons and fresh(run)
 
 
-# ---- two actions that save without a finalize, and a blocked decision: origin/main's own mechanism -------------
+# ---- the windows: saves with no finalize, origin/main's own mechanism ----------------------------------------
 #
-# The mark is derived at finalize, as every open reason is. A history restore saves the restored snapshot's open
-# reasons as they were (history_restore.restored_specimen; api.py's restore route), and a transcript decision sets the
-# stage to `parse`, so the decision's own finalize does not run (api.py apply_decision). Until the next finalize the
-# stored open reasons are the snapshot's or the earlier finalize's, for this mark as for every other open reason on
-# origin/main. A decision while a blob is lost blocks the run, and refinalize returns early on a blocked run. These tests
-# pin that window through the real API and workflow; they do not change it (the coordinator's ruling of 2026-11-21).
+# The mark is derived at finalize, as every open reason is. The decisions endpoint finalizes only an approval, a
+# capability deferral or a run whose stage is `finalized` when the decision arrives (api.py apply_decision);
+# step.refinalize returns early on a blocked run; a history restore saves the restored snapshot's open reasons with no
+# finalize (history_restore.restored_specimen). So after a restore, a transcript decision (stage `parse`), or a decision
+# on a paused, cancelled or blocked run, the stored open reasons are an earlier finalize's until the next finalize,
+# which recomputes them; on origin/main for every open reason alike. These tests pin each window through the real API
+# and workflow; they do not change it (the coordinator's ruling of 2026-11-21; ~/specimen-golive/autonomy-program/
+# H3/save_paths_r2.txt classifies every save of a Run).
 
 def queued(monkeypatch):
     """The API's queue as the worker's tests stand it in: the run is pending, and the rig's workflow takes it."""
@@ -413,7 +415,7 @@ def test_a_restore_to_an_approved_revision_saves_its_open_reasons_and_the_next_f
     revision = rig.repository.get(rig.principal.scope, rig.specimen.id).version
     confirm(client, rig, "precise_location", "field-precise-location")
     run = restore(client, rig, revision, "restore")
-    assert not run.human_approved and run.reasons == [HISTORY_RESTORED]
+    assert not run.human_approved and run.reasons == [HISTORY_RESTORED] and run.disposition == Disposition.REVIEW
     assert MARK not in run.open_reasons and MARK in finalized(run).open_reasons
     resumed_ = act(client, rig, "resume", "resume")
     assert MARK in resumed_.open_reasons and resumed_.reasons == [HISTORY_RESTORED] and fresh(resumed_)
@@ -460,7 +462,78 @@ def test_a_decision_on_the_marked_field_while_a_blob_is_lost_keeps_the_mark_unti
     shutil.move(path, hidden)
     blocked = confirm(client, rig, "habitat", "field-habitat")
     assert blocked.stage == "processing_blocked" and blocked.blocker == "evidence_integrity_failure"
+    assert blocked.disposition is None
     assert "habitat" in blocked.person_decided_fields and MARK in blocked.open_reasons
     shutil.move(hidden, path)
     repaired = act(client, rig, "retry", "retry")
     assert repaired.stage == "finalized" and MARK not in repaired.open_reasons and fresh(repaired)
+
+
+@pytest.mark.parametrize("action", ["pause", "cancel"])
+def test_a_field_decision_on_a_paused_or_cancelled_run_keeps_the_mark_until_a_person_continues_the_run(
+        tmp_path, whole, monkeypatch, action):
+    """The window is origin/main's mechanism: the decisions endpoint finalizes only an approval or a run whose stage is
+    finalized when the decision arrives, so a field decision on a paused or cancelled run saves the stored open reasons
+    as they were (status paused or cancelled, disposition null); the worker does not advance such a run, so the
+    window lasts until a person continues it. Resume (pause) or Retry (cancel) then finalizes, and the field is the
+    person's: no mark."""
+    from specimen_digitization.application.lane import run_status
+
+    queued(monkeypatch)
+    rig = rig_of(tmp_path, opinion=Opinion(answer_of(habitat=HOST)))
+    assert MARK in to_end(rig).run.open_reasons
+    client = review_client(rig)
+    stopped = act(client, rig, action, action)
+    assert stopped.stage == ("paused" if action == "pause" else "cancelled") and stopped.disposition is None
+    decided = confirm(client, rig, "habitat", "field-habitat")
+    assert "habitat" in decided.person_decided_fields and MARK in decided.open_reasons
+    assert decided.disposition is None and run_status(decided) == stopped.stage and decided.blocker is None
+    # The worker leaves it as it is.
+    assert MARK in to_end(rig).run.open_reasons
+    continued = act(client, rig, "resume" if action == "pause" else "retry", "continue")
+    assert continued.stage == "finalized" and MARK not in continued.open_reasons and fresh(continued)
+
+
+def test_a_restore_to_an_approved_revision_then_approving_again_ends_the_window_with_no_mark(
+        tmp_path, whole, monkeypatch):
+    """The finalize after a restore recomputes the mark from the record as it then is: approving again finalizes an
+    approved run, for which the second opinion derives nothing, so the stale window ends with no mark, as a fresh
+    finalize gives."""
+    queued(monkeypatch)
+    rig = rig_of(tmp_path, opinion=Opinion(answer_of(habitat=HOST)))
+    assert MARK in to_end(rig).run.open_reasons
+    client = review_client(rig)
+    decide(client, rig, "approve", "approve")
+    revision = rig.repository.get(rig.principal.scope, rig.specimen.id).version
+    confirm(client, rig, "precise_location", "field-precise-location")
+    restored = restore(client, rig, revision, "restore")
+    assert restored.reasons == [HISTORY_RESTORED] and MARK not in restored.open_reasons
+    again = decide(client, rig, "approve-again", "approve")
+    assert again.human_approved and again.reasons == [] and MARK not in again.open_reasons
+    assert again.open_reasons == finalized(again).open_reasons and fresh(again)
+
+
+@pytest.mark.parametrize("action", ["retry", "resume"])
+def test_a_field_decision_after_retry_or_resume_before_any_worker_step_keeps_the_mark_until_the_worker_finalizes(
+        tmp_path, whole, monkeypatch, action):
+    """The window is origin/main's mechanism: Retry or Resume on a completed record saves stage pending with no
+    disposition; a field decision before any worker step is not finalized (the stage is not `finalized`), so the saved
+    revision keeps the mark on the person's field; the worker's next finalize removes it (a person's field)."""
+    queued(monkeypatch)
+    rig = rig_of(tmp_path, opinion=Opinion(answer_of(habitat=HOST)))
+    assert MARK in to_end(rig).run.open_reasons
+    client = review_client(rig)
+    current = rig.repository.get(rig.principal.scope, rig.specimen.id)
+    from test_step import ORG
+
+    response = client.post(f"/v1/organizations/{ORG}/runs/{current.run.id}/actions",
+        headers={"Authorization": "Bearer reviewer", "Idempotency-Key": action},
+        json={"expected_revision": current.version, "action": action, "reason": "Again."})
+    assert response.status_code == 200, response.text
+    pending = rig.repository.get(rig.principal.scope, rig.specimen.id).run
+    assert pending.stage == "pending" and pending.disposition is None
+    decided = confirm(client, rig, "habitat", "field-habitat")
+    assert decided.stage == "pending" and decided.disposition is None
+    assert "habitat" in decided.person_decided_fields and MARK in decided.open_reasons
+    done = to_end(rig).run
+    assert done.stage == "finalized" and MARK not in done.open_reasons and fresh(done)
