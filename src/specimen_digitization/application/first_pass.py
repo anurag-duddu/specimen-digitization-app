@@ -356,7 +356,11 @@ def _prepared(adapter, specimen, region, readings):
     # before it is sent, and each answer's tokens, capped by the provider.
     prices = run.profile.execution.price_list or {}
     price = prices.get("models", {}).get(route_id) or {}
-    model = PrivateProviderModel(gateway.model_for(route_id))
+    # The HTTP client's own timeout is a timeout (experts.ClientTimeouts), as
+    # the reader's is (transcription.build_literal_transcription_agent).
+    from ..field_research.experts import ClientTimeouts
+
+    model = PrivateProviderModel(ClientTimeouts(gateway.model_for(route_id)))
     if bound := price.get("max_input_tokens") or price.get("context_tokens"):
         model = InputBoundModel(model, bound, image_rule(prices, route_id))
     return SimpleNamespace(

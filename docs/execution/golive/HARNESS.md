@@ -136,7 +136,9 @@ below); an authentication or authorization
 error blocks at once, and so does a request the provider refuses as invalid
 (HTTP 400, 404, 413 or 422), as `model_request_rejected`, since asking again
 repeats it. A timeout or a server error may follow an accepted, billable call,
-so it is `external_outcome_unknown` and waits for the operator. A response that
+so its outcome is unknown: held at its full reservation, retried, and given up on
+at the last attempt (a first pass and the organiser's extraction as a reader is,
+below; see **A provider call that times out**). A response that
 still fails validation after Pydantic AI's one output retry is
 `model_malformed_response`, a known operational block that accepts retry; this
 applies to the legacy extraction call in `parse` (`harness.py`) and the first
@@ -188,6 +190,25 @@ reader of the evidence pilot, whose exact cohort
 reservations and zero retries never replay a paid call (a pilot reader that is
 stopped by its limits ends as `external_outcome_unknown` too). A run that was
 already blocked as `external_outcome_unknown` stays so.
+
+**A provider call that times out** (2026-11-21; the coordinator's engineering
+ruling, "a timeout is a timeout", not an owner ruling; it adds no adjudication or
+queue rule). The HTTP client's own timeout (`httpx.ReadTimeout`, `ConnectTimeout`,
+`WriteTimeout`, `PoolTimeout`, none of them a `TimeoutError`) on a reader, a first
+pass or the organiser's extraction is made `TimeoutError("provider_request_timeout")`
+beneath `PrivateProviderModel` by the field experts' wrapper
+(`field_research.experts.ClientTimeouts`, used in
+`transcription.build_literal_transcription_agent`, `first_pass` and
+`harness.extract_with_agent`), so `reliability.run_agent_bounded` reports it as
+`provider_deadline_outcome_unknown`: an unknown outcome, each attempt held at its
+full reservation, retried up to `max_attempts` and then given up on, and the run
+goes on to its queue decision. Before, `PrivateProviderModel` made it a bare
+`RuntimeError("provider_request_failed")` and the isolated child ended
+`worker_failed`: a reader recorded `reader_worker_failed` (the same attempts and
+end), while a first pass or an extraction ended `worker_call_failed`, blocked as
+`external_outcome_unknown` and held for a person (an operator's Retry refused). Any
+other transport error (`httpx.ReadError`, `ConnectError`) is unchanged. Tests:
+`tests/test_provider_timeouts_recoverable.py`.
 
 **A reading whose worker stopped** (G6, 2026-10-11). The workflow saves a
 reading's intent (`external_outcome_unknown` and a lease) before the call and
