@@ -356,17 +356,25 @@ above do not change.
     a label boxed twice and read alike changes no field's state, value or
     reason (`tests/field_research/test_duplicate_label_coverage.py`).
   - Rollback: code before this change cannot process a run pinned with a rule
-    that has `nested_duplicate`. A probe on this design's source (head
-    eeaca817; `autonomy-program/L3/rollback_r1/`,
-    lane L1's G51 probe `test_stored.py` with one record of the rig's label,
-    two half labels and an inner frame, written by this change and continued
-    by origin/main 106cebd7) found Retry, Resume and a region correction end
-    `processing_blocked` with `evidence_integrity_failure`; the record's
-    detail returned 200 at each step; "Start new run" worked on the probed
-    record, which had no person's decisions, and bound the older rule (count
-    4, held). A new run is therefore the expected way forward after rolling
-    the server back below this change, for records whose runs were pinned
-    with the value; it is not a tested guarantee for every record.
+    that has `nested_duplicate`. Two probes, each with records written by
+    this change and continued through the API by origin/main 106cebd7. The
+    builder's (head eeaca817; `autonomy-program/L3/rollback_r1/`, lane L1's
+    G51 probe `test_stored.py`), one record, cleared when written (the rig's
+    label, two half labels and an inner frame): Retry, Resume and a region
+    correction ended `processing_blocked` with `evidence_integrity_failure`;
+    that record's detail returned 200 at each step; "Start new run" worked on
+    it (no person's decisions) and bound the older rule (count 4, held). The
+    G51 review of #461 round 2 (head 2b428778), three records: the same for
+    Retry, Resume and a region correction; a record held for review (four
+    real labels) returned 422 for its detail and its workspace before any
+    action (`nested_duplicate`: "Extra inputs are not permitted"), a coverage
+    decision and an approval on it returned 200 and left it
+    `processing_blocked`, approved and not cleared, and "Start new run"
+    worked on it, after which its detail returned 200. So after rolling the
+    server back below this change, a held record whose run was pinned with
+    the value cannot be opened until it has a new run, and a new run is the
+    expected way forward for records whose runs were pinned with the value;
+    it is not a tested guarantee for every record.
   - Authority: the coverage values (1 to 3 regions, concept "text", 0.5
     score, 50 % inside) are provisional values from a coordinator ruling of
     2026-09-23 (`status/coordinator.md` 23-24: "G15 check built with
