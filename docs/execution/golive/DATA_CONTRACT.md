@@ -287,6 +287,56 @@ above do not change.
     forward after rolling the server back below this change, for records
     whose runs were pinned with the value; it is not a tested guarantee for
     every record.
+  - The same label boxed twice is counted once (lane L3, 2026-11-21):
+    `merge_iou` is 0.6 in the published profile (it was 0.9). Label regions
+    overlapping at an IoU of 0.6 or more count as one label, transitively (a
+    and b at 0.6 or more, b and c at 0.6 or more: one label, whatever a and
+    c's IoU), after the thin regions are left out (`label_coverage.merged_count`,
+    "at or over"). Count only: both boxes stay in `Run.regions` and are read,
+    stored and shown; the record gains no key, and the merge shows only in
+    `region_count`. The consequences of a confirmed coverage are those stated
+    above for the thin-region rule. A stored run keeps the rule it was pinned
+    with, as above. Measured on the 100 truth slides
+    (`autonomy-program/L3/scripts/measure.py`: every pair of the 269 stored
+    regions, IoU and the share of the smaller box inside the larger, and the
+    real `check_coverage` with the published rule at each value): 24 pairs
+    overlap at all. Two are the same Lewis label boxed twice, its outer card
+    and its inner frame: 105527007 (IoU 0.7847) and 105526361 (IoU 0.7731),
+    the smaller box wholly inside the larger. The other 22 are two different
+    labels, at IoU 0.0496 or less (six of them a barcode label's box touching
+    a large label's box, looked at one by one in lane L2; the other 16 under
+    0.25 of the smaller box inside the larger). At 0.7, 0.6, 0.5, 0.3 and 0.1
+    the same two slides change count and no other: 105527007 4 to 3, its
+    coverage now confirmed; 105526361 3 to 2, confirmed before and after. Why
+    0.6 and not 0.5 (the coordinator's ruling): a box drawn around two equal
+    neighbouring labels overlaps each of them at IoU exactly 0.5, and with the
+    "at or over" comparison and the chaining merge, 0.5 would count the three
+    boxes as one; 0.6 keeps them three, which can only hold a record, never
+    clear one, and still lies far from both measured groups (different labels
+    at most 0.0496, the duplicates 0.7731 and 0.7847). Residual risks: two
+    different labels overlapping at an IoU of 0.6 or more would count once
+    (none seen; largest 0.0496), and both would still be read and shown; the
+    evidence is two duplicates, both the same card-and-frame pattern. Both
+    boxes are read, so the readers' text of that label reaches field research
+    twice. On 105526361 (cleared with the duplicate before this change) the
+    four readings of the two boxes are identical, and the stored field
+    reasons cite them as "All four readings of labels 2 and 3". On 105527007
+    the four readings of the collecting year differ (1994 and 1974 on the
+    outer box, 1970 and 1976 on the inner; truth 1976), and in the replay the
+    record clears showing Date Visited From and To 1974-04-27, each flagged by
+    an open reason naming its field (`label_unsettled:date_visited_from`,
+    `:date_visited_to`). In the test rig a label boxed twice and read alike
+    changes no field's state, value or reason
+    (`tests/field_research/test_duplicate_label_coverage.py`). The nine
+    held production records of `autonomy-program/P1/held_regions.json` (boxes
+    only) do not change count at any of those values (largest IoU 0.0278).
+    Rollback: the field existed before this change, with the same validation.
+    A probe (`autonomy-program/L3/scripts/rollback_probe.py`) pinned stored
+    truth slide 105527007 with this change's published profile and read it
+    with the code before this change: the Specimen validated,
+    `pinned_risk_resolution` resolved, and `check_run` counted 3 regions,
+    coverage confirmed. Retry and Resume through the API on that code were not
+    run.
   - Authority: the coverage values (1 to 3 regions, concept "text", 0.5
     score, 50 % inside) are provisional values from a coordinator ruling of
     2026-09-23 (`status/coordinator.md` 23-24: "G15 check built with
@@ -294,7 +344,9 @@ above do not change.
     calibrates; OWNER SIGN-OFF on the final values before production."); no
     owner sign-off of final values is recorded (DEC-7 is open). The 0.03 is
     likewise provisional, a coordinator ruling of 2026-11-21 measured on the
-    100 truth slides; it is not an owner sign-off.
+    100 truth slides; it is not an owner sign-off. So is the `merge_iou` of
+    0.6 (lane L3), a coordinator ruling of 2026-11-21 fixing a label-finder
+    artefact, measured on the same slides; it is not an owner sign-off.
   - Known gap, measured and not changed: the full-image cross-check (concept
     `text`, threshold 0.5) counted no detection on any of the 100 truth slides
     (110 detections, highest score 0.2139, threshold 0.5), so on those
