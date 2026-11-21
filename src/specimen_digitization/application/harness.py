@@ -297,10 +297,13 @@ def extract_with_agent(gateway, blobs, specimen):
     prompt = ResolvedPrompt.model_validate(
         run.dependencies["prompts"][PromptName.STRUCTURED_EXTRACTION.value]
     )
+    from ..field_research.experts import ClientTimeouts
     from ..provider_privacy import PrivateProviderModel, agent_instrumentation
 
+    # The HTTP client's own timeout is a timeout (experts.ClientTimeouts), as
+    # the reader's is (transcription.build_literal_transcription_agent).
     agent = Agent(
-        PrivateProviderModel(gateway.model_for(run.profile.routes[0])),
+        PrivateProviderModel(ClientTimeouts(gateway.model_for(run.profile.routes[0]))),
         output_type=ExtractionOutput,
         instructions=prompt.text,
         name="insects_bounded_extractor",

@@ -128,31 +128,65 @@ finalize**): a pick stood only when every material difference's verdict
 supported the picked reader (`first_pass.supports`), and otherwise every
 reading became a `raw_reading` handoff.
 
-**Failures** (G6, QUE-005, PRD section 15). For the first pass, the organiser
-and the legacy extraction call (a reader's are below): a rate limit or another
-provider error, HTTP 402 included, is retried with backoff through the workflow's
-existing retry, then blocks as operational (a first pass is given up on instead,
-below); an authentication or authorization
-error blocks at once, and so does a request the provider refuses as invalid
-(HTTP 400, 404, 413 or 422), as `model_request_rejected`, since asking again
-repeats it. A timeout or a server error may follow an accepted, billable call,
-so it is `external_outcome_unknown` and waits for the operator. A response that
-still fails validation after Pydantic AI's one output retry is
-`model_malformed_response`, a known operational block that accepts retry; this
-applies to the legacy extraction call in `parse` (`harness.py`) and the first
-pass too. A missing pinned route or prompt blocks as
-`pinned_model_route_unavailable` or `pinned_prompt_unavailable`. None of these
-blocks produces a queue disposition.
+**Failures** (G6, QUE-005, PRD section 15). Rewritten on 2026-11-21 (lane R2) to
+say what the code does; three of its earlier statements were already wrong before
+the timeout change and are corrected here: a malformed answer was said to block
+and accept Retry, an extraction's cap hit to block as `external_outcome_unknown`,
+and the organiser to keep every unknown outcome as a block. Paths are under
+`src/specimen_digitization/application/`. For an ordinary first pass
+(`first_pass:<region>`) and the organiser's extraction call in `parse`
+(`harness.extract_with_agent`), outside the evidence pilot
+(`reliability.first_pass_failure_is_recoverable`,
+`extraction_failure_is_recoverable`, reliability.py:163-203), a reader's are below:
 
-An answer cut off at its output cap is not malformed but a cap hit (above): an
-incomplete tool call, or a last response whose finish reason is `length`, raises
-Pydantic AI's own `UsageLimitExceeded`, as the run's token and request limits do
-(agreed with S3, 2026-09-25). The readers' calls and the legacy extraction call
-share this split. PLAN 4.3 makes a reader stopped by its token cap a failed
-reading: its step completes with no observation (`ReadingStopped`, from #153's
-re-cut #232) and is not asked again; the legacy extraction call has no cap
-handler, so a cap hit there, a length stop included, blocks as
-`external_outcome_unknown`.
+- A rate limit, a server error (5xx), HTTP 402 or a timeout
+  (`failure_is_retryable`, reliability.py:215-231) is retried with backoff
+  (`Workflow.schedule_retry`, workflow.py:2278-2296). Each attempt reserves its
+  cost again; an attempt whose outcome is unknown (a 5xx, a timeout) keeps its
+  reservation in full, and a 429 that answered the call's first request is a
+  refusal that costs nothing (DATA_CONTRACT.md). The attempt that uses up
+  `max_attempts` is given up on (`first_pass_has_no_attempt_left`,
+  workflow.py:2314-2346; `extraction_has_no_attempt_left`, workflow.py:2348-2367).
+- An answer still invalid after Pydantic AI's one output retry is
+  `model_malformed_response` (reliability.py:397-404) and is given up on at once,
+  never retried (workflow.py:2339, 2364).
+- An answer cut off at its output cap (an incomplete tool call, or a last
+  response whose finish reason is `length`) raises Pydantic AI's own
+  `UsageLimitExceeded`, as the run's token and request limits do
+  (reliability.py:385-396; agreed with S3, 2026-09-25). A first pass so stopped
+  completes with no picked reading and the label's alignment units
+  (first_pass.py:818-822); an extraction so stopped raises `ReadingStopped`
+  (harness.py:322-326) and is given up on at once (workflow.py:2362-2363). A
+  reader so stopped is a failed reading (below).
+- The model child that ends at its deadline or exits after it started
+  (`deadline_exceeded`, `worker_process_exit`) is an unknown outcome, retried and
+  given up on as above (`model_runtime.child_without_answer`,
+  model_runtime.py:151-178). A child that fails any other way
+  (`worker_call_failed`: an exception it does not map, malformed input, invalid
+  IPC; model_runtime.py:243-254) blocks the run as `external_outcome_unknown`,
+  held for a person (workflow.py:1727-1735): an operator's Retry is refused
+  (api.py:405-414, 2844-2845), and only an administrator's reconcile can run the
+  step once more, a first pass only (`RECONCILABLE_READ_PREFIXES`,
+  workflow.py:2494); the drain never makes a held block due again
+  (`Workflow.recover_blocked`, workflow.py:2158-2161), so nothing lifts such a block
+  at `parse`.
+- A step the run's own limits leave no room for (`UNAFFORDABLE`,
+  workflow.py:390-397) is given up on unsent (workflow.py:966-973).
+- An authentication or authorization error, and a request the provider refuses
+  as invalid (HTTP 400, 404, 413 or 422: `model_request_rejected`), block at once
+  and name their cause, since asking again repeats them.
+- A missing pinned route or prompt blocks a first pass as
+  `pinned_model_route_unavailable` or `pinned_prompt_unavailable`
+  (first_pass.py:338-353); a changed pinned route blocks the organiser as
+  `pinned_model_route_changed_requires_new_run` (production.py:1601-1607).
+
+A first pass given up on records the `first_pass_given_up` finding; the label's
+transcript is resolved only where its readers agree on a text that is not empty
+and no reader marks an unreadable span, and the label keeps the
+`unresolved_transcription` reason either way (below); an extraction given up on records
+`extraction_given_up` and `parse` goes on with its deterministic parse and no
+model candidates (workflow.py:1414-1440). Either way the run goes on to its queue
+decision. A block produces no queue disposition.
 
 **A reader's failures** (G6, 2026-10-09). A reading is a pure read: the parent
 saves its observation only after the call returns, so asking again cannot corrupt
@@ -165,8 +199,10 @@ effect timeout keeps its observation. The workflow retries the step through its
 existing retry (`max_attempts`, backing off); each attempt reserves its cost
 again, and an attempt whose outcome is unknown keeps its reservation in full
 (PLAN 4.3). When the attempts are used up, the step completes with no
-observation, as for a cap hit, and the queue decision sends the record to review
-with `independent_observations_missing:{region}`; a region no reader could read
+observation, as for a cap hit, and the queue decision names
+`independent_observations_missing:{region}` among the record's holding or open
+reasons (it can still clear by the rule below; the C4 run of 2026-11-21 cleared
+slide 105526335 so); a region no reader could read
 keeps a transcript with no text and no readings. Every reading that gave no
 observation is recorded in `paid_calls` as `failed` with its `failure_code`, and
 its reservation stays held in full (`cost_basis: reserved`), except an attempt
@@ -182,12 +218,64 @@ for a region no reader read (the decision is refused, 422, and the record is
 unchanged: verification would refuse text with no reading to trace to); an
 abstention still can be recorded.
 The rule is `reliability.reader_failure_is_recoverable`; ordinary first-pass
-comparisons have the narrower recovery rule below. The organiser, field research
-and every effectful step keep their unknown outcome as a block, and so does a
+comparisons and the organiser's extraction have the narrower rules above. Field
+research and every effectful step keep their unknown outcome as a block, and so does a
 reader of the evidence pilot, whose exact cohort
 reservations and zero retries never replay a paid call (a pilot reader that is
 stopped by its limits ends as `external_outcome_unknown` too). A run that was
 already blocked as `external_outcome_unknown` stays so.
+
+**A provider call that times out** (2026-11-21; the coordinator's engineering
+ruling, "a timeout is a timeout", not an owner ruling; it adds no adjudication or
+queue rule). The HTTP client's own timeout (`httpx.ReadTimeout`, `ConnectTimeout`,
+`WriteTimeout`, `PoolTimeout`, none of them a `TimeoutError`) on a reader, a first
+pass or the organiser's extraction is made `TimeoutError("provider_request_timeout")`
+beneath `PrivateProviderModel` by the field experts' wrapper
+(`field_research.experts.ClientTimeouts`, used in
+`transcription.build_literal_transcription_agent`, `first_pass` and
+`harness.extract_with_agent`), so `reliability.run_agent_bounded` reports it as
+`provider_deadline_outcome_unknown`: an unknown outcome, each attempt held at its
+full reservation, retried and given up on by the rules above. Before,
+`PrivateProviderModel` made it a bare `RuntimeError("provider_request_failed")`
+and the isolated child ended `worker_failed`: a reader recorded
+`reader_worker_failed` (the same attempts and end), while a first pass or an
+extraction ended `worker_call_failed`, blocked as `external_outcome_unknown` and
+held for a person. Any other transport error (`httpx.ReadError`, `ConnectError`)
+is unchanged. Measured at the published pilot prices through the real child
+(`tests/test_provider_timeouts_recoverable.py`): a reader makes 3 attempts held
+at 20,000 micro-USD each; the organiser 3 at 58,164. A first pass holds 318,670
+per attempt against the specimen's USD 1 limit, so how many attempts go out
+depends on what the run already holds: a third attempt goes out only while the
+run otherwise holds at most 43,990 micro-USD (1,000,000 less three reservations).
+A run that still holds its segmentation reservation (182,321, as when SAM 3
+reported no instance time; also a cold start settled at 115,360, the G51
+reviewer's probe) sends 2 attempts (about USD 0.64 held, where the block held
+one reservation); the third is given up on unsent as `cost_budget_exhausted`. A
+run whose segmentation settled at a warm instance's reported time (2,600;
+production's adapter records that report, production.py:1783-1797) sends 3
+(958,610 held in all, about USD 0.96), the label is given up on
+`provider_deadline_outcome_unknown`, and the organiser's extraction is then
+given up on unsent as `cost_budget_exhausted`. In both cases every later label's
+first pass on that specimen is given up on unsent as `cost_budget_exhausted`.
+
+What such a record shows (the G51 reviewer's probes of 2026-11-21,
+`~/specimen-golive/autonomy-program/R2/g51_probes/`: a two-label slide with a real
+QR code and the real segment step, the published profile, the real child raising
+`httpx.ReadTimeout`; field experts scripted, the second opinion not mounted). It
+can end cleared by the system when its catalogue number settles, for example
+from the slide's QR code: the clearing rule is the coordinator's ruling of
+2026-11-18 under the owner's words recorded in PROGRAM.md section 1 ("As long as
+the mandatory ones are filled it should be cleared."). With a first pass given
+up on, every field drawn from a given-up label is flagged (`label_unsettled`);
+where every label's first pass was given up on, no value shows without a flag,
+while a label whose first pass answered shows its values as in a normal run (4
+of the reviewer's 24 runs: nine fields, or the catalogue number). With the
+organiser given up on, the flags equal a
+normal run's; a field only the organiser finds is blank and flagged; where a
+label's readers differ, the label's doubt is not raised, though the differing
+fields are blank and flagged. No value is shown that no reading or the code
+supports. This is not a new end state: before this change the same record
+followed an HTTP 504 on every attempt.
 
 **A reading whose worker stopped** (G6, 2026-10-11). The workflow saves a
 reading's intent (`external_outcome_unknown` and a lease) before the call and
@@ -205,13 +293,15 @@ instead of parking the run (`Workflow._settle_lost_reading`):
   in full.
 - Its effect timeout counts as spent active time.
 - The reading is asked again within `max_attempts`. After the last attempt its
-  step completes with no observation and the record goes to review as above.
+  step completes with no observation and the record goes on to its queue
+  decision as above (where it can be held or cleared).
 
 Any other step whose worker stopped after saving its intent, and a reader of
 the evidence pilot, still parks as `external_outcome_unknown`. So does a
 reading during which the worker's own code (not the child) raises an
 unexpected exception. A run already parked that way stays parked until an
-administrator reconciles it. Specimen 105526322 is one: a release before the
+administrator reconciles it; reconciling is possible at a reading or a first
+pass only (`RECONCILABLE_READ_PREFIXES`, workflow.py:2494). Specimen 105526322 is one: a release before the
 reader rules blocked it on 2026-10-09. Reconciling reads the label again, and a
 failure of that reading follows the reader rules above, so a reading that keeps
 timing out ends and the run goes on.
@@ -223,19 +313,29 @@ pass was answered HTTP 429 on all three attempts and dead-lettered the run as
 (`reliability.failure_is_retryable`: a rate limit, timeout or provider error,
 HTTP 402 included), the ordinary first pass is given up on as a reader
 is: its step completes with no decision and the run goes on through
-`adjudicate`, `parse` and field research. The label's transcript has no text and
-no `decision_kind`, and keeps its readings as its alternatives. A warning
+`adjudicate`, `parse` and field research. At `adjudicate` a label whose readers
+agree, on a text that is not empty, with no reader marking an unreadable span,
+gets a resolved transcript (workflow.py:1344-1352); otherwise its transcript
+stays unresolved. Either way its decision kind is `identical_readings` where
+the readers agree (first_pass.py:959). A warning
 finding `first_pass_given_up:{region}:{code}` beside the record names the label
-and the failure. The queue decision sends the record to review with
-`unresolved_transcription:{region}`, which field research gives such a label
-however its fields settle: no first pass compared its readings. A 429 refused
-before any answer still costs nothing (`cost_basis: refused`); any other
-given-up attempt stays reserved in full and is recorded `failed` with its
-`failure_code`. An authentication or authorization error,
-`model_request_rejected`, `model_malformed_response`, an invalid child result,
-incomplete child cleanup and a first pass of the evidence pilot still block
+and the failure. Field research gives such a label the
+`unresolved_transcription:{region}` reason however its fields settle, unless a
+person has since transcribed it (`field_research/step.py:4395-4401`): no first
+pass compared its readings. Keeping the reason is not holding the record: the
+reason holds the record only where the label's fields include a mandatory one,
+the catalogue number counting only when the slide's QR code does not confirm or
+give it (`split_reasons`, step.py:4664-4686); otherwise it is an open reason,
+and with no other holding reason the record is cleared by the system
+(step.py:4769-4791). A 429 refused before any answer still costs nothing
+(`cost_basis: refused`); any other given-up attempt stays reserved in full and
+is recorded `failed` with its `failure_code`. A malformed answer is given up on
+at once (above). An authentication or authorization error,
+`model_request_rejected`, an invalid child result, incomplete child cleanup
+(model_runtime.py:239-242) and a first pass of the evidence pilot still block
 and name their cause. The rule is
-`Workflow.first_pass_has_no_attempt_left`.
+`Workflow.first_pass_has_no_attempt_left`; a first pass the run's limits leave
+no room for is given up on unsent (above).
 
 **Ordinary first-pass transient recovery** (camera intake, 2026-10-11).
 `reliability.first_pass_failure_is_recoverable` permits the existing bounded
@@ -245,11 +345,15 @@ saves one decision per region. It does not publish or create a specimen.
 Uncertain billing still holds the entire original reservation, and each new
 attempt reserves again against all existing limits. A known first-request 429
 refusal remains zero-cost even if the elapsed deadline was exceeded. The
-published run cap can stop processing before all attempts are used; that is an
-operational budget block, not a final review disposition. Historical persisted
-unknown outcomes are not automatically unblocked, and this exception does not
-apply to the organiser, research, publication, the evidence pilot or a child
-whose termination cannot be confirmed. Offline regressions exercise the real
+published run cap can stop the retries before all attempts are used: the next
+attempt is then given up on unsent as `cost_budget_exhausted` (workflow.py:966-969),
+not blocked. An unknown outcome stored by an earlier release is made due again
+by the drain only where the attempt is recorded as unanswered, or where no kind
+is recorded at all (a legacy row) (`unknown_outcome_recoverable`,
+workflow.py:515-529); one recorded as held stays for a person. The organiser's extraction has its own rule
+(`extraction_failure_is_recoverable`, above); this exception does not apply to
+research, publication, the evidence pilot or a child whose termination cannot be
+confirmed. Offline regressions exercise the real
 isolated child and dispatched worker; they are not live-device acceptance.
 
 **Stuck first passes go on by themselves** (2026-10-12; replaces the run-cap
