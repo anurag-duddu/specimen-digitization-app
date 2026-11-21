@@ -742,7 +742,9 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     notation collected_by names, plan WP 2.3c). A habitat literal that starts with the heading
     "Host" settles nothing either (HOST_HEADING, host_heading: the answer is refused, never rewritten;
     lane H4 of the autonomy program); `heading` false leaves that one check out, which only the
-    step's pass before its guard on shared text does (step._first_pass). A date field's literal that
+    step's pass before its guard on shared text does (step._first_pass), for a resolved heading
+    answer that reaches the step; the expert's own check (experts._Expert) takes the default and
+    refuses. A date field's literal that
     extends a candidate by the year starting the next line passes where `date_rules`, the profile's,
     read it as one date (next_line_year)."""
     basis = literal_basis(task, readings, literal, named)
@@ -1329,8 +1331,9 @@ def reader_writes(text: str, literal: str) -> bool:
     spacing aside (agreement_key's rule for readers that agree: "Shrubs" for "shrubs", "Sp.30" for
     "sp. 30", a line break for a space or for nothing): a letter or a digit stands neither right
     before nor right after it ("Mus" is not written in "Museum"), and a letter, a hyphen or another
-    punctuation mark more or less is another text ("LIPEUS" does not write "LIPYCUS", nor "SYLVI-
-    LAGUS" "SYLVILAGUS"). Both sides are folded the same way, by agreement_key's own steps: NFC,
+    punctuation mark more or less INSIDE the literal's text is another text ("LIPEUS" does not
+    write "LIPYCUS", nor "SYLVI-LAGUS" "SYLVILAGUS"); a mark right before or right after it is not
+    looked at ("Mus." and "(Mus" write "Mus"). Both sides are folded the same way, by agreement_key's own steps: NFC,
     then str.casefold (the reading keeps its spaces and line breaks so that whole words can be
     told; the literal loses them, agreement_key). So a letter whose folded form is longer than the
     letter (U+00DF, the sharp s, folds to "ss") is the same text on both sides. The place of the

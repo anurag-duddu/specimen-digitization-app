@@ -560,8 +560,9 @@ def _refusal(task, answer, *, readings, by_name, sources, elevations=None, date_
     received = list(sources)
     by_id = {item.evidence.id: item for item in received if item.evidence is not None}
     cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
-    # Before the guard on shared text (_first_pass) a habitat that starts with the heading "Host"
-    # is not refused for it: it settles there as on origin/main 3eb37c11 and claims its text.
+    # Before the guard on shared text (_first_pass) a resolved habitat answer that starts with the
+    # heading "Host" is not refused for it: where its other checks pass it settles on the copy, as
+    # on origin/main 3eb37c11, and claims its text (_BEFORE_GUARD says where this applies).
     return refusal(task, readings, literal=literal, named=named, value=answer.value,
         authority_id=answer.authority_id, cited=cited, received=received, elevations=elevations,
         date_rules=date_rules, heading=not _BEFORE_GUARD.get())
@@ -1351,12 +1352,17 @@ TRANSCRIPT_RULES = "field-research-transcript-v1"
 _FIRST_PASS: ContextVar[bool] = ContextVar("field_research_first_pass", default=False)
 # True only inside _first_pass, the application on a copy whose settled values the guard on shared
 # text reads (_taken). There the habitat's heading refusal (agreement.HOST_HEADING) is left out, so
-# a habitat origin/main 3eb37c11 settled, heading and all, still claims in the guard the text it
-# claimed there, and every other field of the attempt is taken or not as on origin/main (lane H4,
-# the coordinator's ruling of 2026-11-21 on review round 2 of #464). The application to the record
-# refuses it: the Habitat is never shown with the heading. A re-ask's trial (reask._trial) sets
-# _FIRST_PASS for the whole application and not this, so its final application refuses as the
-# record's does.
+# where a RESOLVED habitat answer that starts with the heading reaches the step (a recorded answer
+# applied again, a test, a rig's dry run), it settles on the copy as on origin/main 3eb37c11 and
+# claims in the guard the text it claimed there; the application to the record refuses it, so
+# that answer settles no Habitat with the heading (lane H4, round 2 of #464's review). It does NOT act on
+# the resolver's path: there the expert's own check refuses such an answer and sends the expert
+# back, and an expert that repeats the heading through its retries leaves the resolver's fallback
+# as its outcome (sources_cannot_resolve, no literal), which claims nothing (round 3; a stated
+# limit by the coordinator's ruling of 2026-11-21, pinned in
+# tests/field_research/test_habitat_changes_no_other_field.py). A re-ask's trial (reask._trial)
+# sets _FIRST_PASS for the whole application and not this, so its final application refuses as
+# the record's does.
 _BEFORE_GUARD: ContextVar[bool] = ContextVar("field_research_before_guard", default=False)
 
 
@@ -2710,7 +2716,8 @@ def _first_pass(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[Fi
     event (_FIRST_PASS). The run itself is left as it was. Returns the values
     that settle: supported, in a settled layer (SETTLED_LAYERS). One check is
     left out here and made where the answers are applied to the record: the
-    habitat's heading refusal (_BEFORE_GUARD)."""
+    habitat's heading refusal (_BEFORE_GUARD), which matters only where a
+    resolved answer with the heading reaches the step."""
     copy = run.model_copy(update={
         "fields": {key: value.model_copy(deep=True) for key, value in run.fields.items()},
         "evidence": list(run.evidence), "findings": list(run.findings), "lookups": list(run.lookups)})
@@ -3625,11 +3632,13 @@ def _over_lines(run, key: str, value: FieldValue, human: frozenset[str]) -> bool
     break, no person decided it, and the run keeps the finding of a literal read from the
     transcript for the field (_from_the_transcript). origin/main 3eb37c11 read a habitat from the
     transcript within one line only; a habitat with a line break settled there only as a whole
-    organiser candidate, which leaves no such finding and is not such a value. Wherever a settled
-    value's text relaxes another field's decision such a habitat counts for nothing (the
-    coordinator's ruling of 2026-11-21 on review round 2 of #464): _settled_claims,
-    _unplaced_text, _genus_on_a_label, and as a claimant in _taken (there by the answer of the
-    attempt, `silent`)."""
+    organiser candidate, which leaves no such finding and is not such a value. In the readers
+    found where a settled value's text relaxes another field's decision, such a habitat counts for
+    nothing, the whole value (its literal, each reader's verbatim of it, its label rows): the
+    coordinator's rulings of 2026-11-21 on review rounds 2 and 3 of #464. The readers found:
+    _settled_claims (rule A's mark), _unplaced_text (a line of places), _genus_on_a_label
+    (owner decision B), ontology_checks.stage (the precise location's extent check), and, by the
+    answer of the attempt (`silent`), the claimants of _taken."""
     from .agreement import GIVES_WAY
 
     return (key in GIVES_WAY and key not in human and bool(value.literal) and "\n" in value.literal

@@ -644,7 +644,8 @@ def _a_reader_differs(run, key: str, readings: Sequence[Reading]) -> bool:
     """Whether a reading of a label the field's value rests on (_labels; `readings` are
     step.run_readings', so a label's decided transcript and each raw reading with text) does not
     hold the value's literal as whole words anywhere in it, letter case and spacing aside
-    (agreement.reader_writes; a hyphen or another mark more or less is another text). The whole
+    (agreement.reader_writes; a hyphen or another mark more or less inside the value's text is
+    another text, a mark right before or after it is not looked at). The whole
     reading is searched, not the value's place in it. False for a value with no literal, or that
     rests on no label with a reading."""
     from .agreement import reader_writes

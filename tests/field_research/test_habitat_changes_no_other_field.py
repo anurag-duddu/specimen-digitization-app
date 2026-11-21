@@ -3,20 +3,30 @@ program, fix round 2 of PR #464, 2026-11-21; the coordinator's ruling, not the o
 
 The lane changes what a Habitat answer does in two ways, and round 2 of the review showed each reaching another field:
 
-- A Habitat origin/main settled and this lane refuses: one that starts with the heading "Host". On 19761d59 the
-  refusal kept it out of the settled values the guard on shared text reads (step._taken), so a field whose answer
-  rests on the same text settled where origin/main sent it to review. Now the heading refusal is left out of the
-  pass before the guard (step._first_pass, step._BEFORE_GUARD): the Habitat claims there the text it claimed on
-  origin/main, and is refused where the answers are applied to the record.
-- A Habitat origin/main refused and this lane settles: text read from the transcript over consecutive lines. Wherever
-  a settled value's text relaxes another field's decision it counts for nothing (step._over_lines): round 1 did so
-  for the guard and for rule A's not-on-the-label mark (test_habitat_over_lines_gives_way.py); round 2 for the text a
-  line of places holds (step._unplaced_text, Codex's finding) and for the words a settled value accounts for before
-  owner decision B clears a code with no genus (step._genus_on_a_label, found by this lane's own enumeration of the
-  readers, ~/specimen-golive/autonomy-program/H4/settled_text_consumers.txt).
+- A Habitat origin/main settled and this lane refuses: one that starts with the heading "Host". ONE STATED LIMIT, in
+  either direction (the coordinator's ruling of round 3): a field whose decision reads a settled Habitat's text is
+  decided beside a Habitat that did not settle, which can send it to review where origin/main settled it, or lose a
+  refusal, reason or mark origin/main gives. On the resolver's path (production) the expert's own check refuses
+  such an answer and sends the expert back; an expert that repeats the heading through its retries leaves the
+  resolver's fallback as the Habitat's outcome, which claims nothing in the guard. Where a RESOLVED heading answer
+  reaches the step directly (a recorded answer applied again; these tests; a rig's dry run), round 2 left the
+  step's heading refusal out of the pass before the guard (step._first_pass, step._BEFORE_GUARD), so there the
+  Habitat claims in the guard the text it claimed on origin/main and is refused at the application to the record.
+  The tests of the first section inject resolved outcomes at the step and show that path only; the tests named
+  "through the resolver" run the expert's check and its retries with a stand-in model.
+- A Habitat origin/main refused and this lane settles: text read from the transcript over consecutive lines. In the
+  readers found where a settled value's text relaxes another field's decision it counts for nothing, the whole
+  value, its literal, each reader's verbatim of it and its label rows (step._over_lines): round 1 did so for the
+  guard and for rule A's not-on-the-label mark (test_habitat_over_lines_gives_way.py); round 2 for the text a line
+  of places holds (step._unplaced_text, Codex's finding) and for the words a settled value accounts for before
+  owner decision B clears a code with no genus (step._genus_on_a_label, found by this lane's own list of the
+  readers, ~/specimen-golive/autonomy-program/H4/settled_text_consumers.txt); round 3 for the texts the precise
+  location's extent check blanks from the line after the locality (ontology_checks.stage, Codex's finding: another
+  reader's verbatim on one line).
 
 What origin/main 3eb37c11 and the reviewed head 19761d59 do with each case was run on those trees:
-~/specimen-golive/autonomy-program/H4/fix2_probe_*.txt. The label texts are made up.
+~/specimen-golive/autonomy-program/H4/fix2_probe_*.txt and, for round 3, fix3_probe_*.txt (origin/main, 575367fe and
+this lane's head). The label texts are made up.
 """
 
 from __future__ import annotations
@@ -68,7 +78,7 @@ def settled_with(tmp_path, text, habitat, answers=None):
     return runs
 
 
-# ---- the heading: a claim origin/main's Habitat made --------------------------------------------------------------
+# ---- the heading, where a RESOLVED answer reaches the step: a claim origin/main's Habitat made --------------------
 
 def test_the_heading_check_is_left_out_only_where_the_caller_says_so():
     """The expert's own check and the application to the record refuse the heading (the default); only the step's
@@ -88,8 +98,9 @@ HOST_CODE = TEXT.replace("collection_code: SYNTHETIC\n", "").replace("habitat: S
 def test_a_heading_habitat_still_takes_the_text_it_took_on_origin_main_from_the_collection_code(tmp_path):
     """Codex's round-2 sequence: both readers write "Host: CNHM", neither field has a candidate, the code's expert
     answers "CNHM" and the habitat's "Host: CNHM". origin/main: both settle before the guard and each goes to review
-    naming the other. 19761d59: the heading refusal came first, so the code settled. Now the code goes to review as
-    on origin/main, and the Habitat, never settled with the heading, goes to review too."""
+    naming the other. 19761d59: the heading refusal came first, so the code settled. Now, for these two RESOLVED
+    outcomes given to the step, the code goes to review as on origin/main, and the Habitat goes to review too. On
+    the resolver's path the same model answers end otherwise: test_limit_an_expert_that_repeats_the_heading..."""
     rig = build_rig(tmp_path, HOST_CODE, HOST_CODE, candidates=COLLECTORS)
     run = rig.specimen.run
     settle(rig, Scripted({"collection_code": answering(resolved("CNHM")), "habitat": answering(resolved("Host: CNHM"))}))
@@ -232,7 +243,7 @@ def test_a_habitat_on_one_line_accounts_for_its_words_as_on_origin_main(tmp_path
     assert (taxon.state, taxon.literal, taxon.reason) == (ValueState.SUPPORTED, "sp. 22", field_step.UNMATCHED)
 
 
-# ---- what remains of the heading refusal outside the guard: stated limits, each toward review ---------------------
+# ---- the heading limit at the step: two cases that go toward review (it runs the other way too: the last section) --
 
 def test_limit_a_heading_habitat_accounts_for_no_word_so_the_code_goes_to_review(tmp_path):
     """Stated as it is. origin/main settles "Host: Mus", which accounts for "Mus", and decision B clears the code
@@ -263,3 +274,152 @@ def test_limit_rule_a_declines_a_field_whose_organiser_text_is_the_heading_habit
     assert run.fields["habitat"].state == ValueState.UNRESOLVED
     assert decisions["collection_method"] == {"rule": "A_declined:organiser_found_text"}
     assert "collection_method" not in cleared_as_not_on_label(run)
+
+
+# ---- the precise location's extent mark: each text of a settled value (round 3) -----------------------------------
+
+MCKINLEY_HOST = "E. slope Mt. McKinley\nDavao Prov.\nMus\nmusculus\nMindanao, P.I.\n3 Sept. '46\nF.G. Werner"
+
+
+def davao_run(tmp_path, monkeypatch, text, other, habitat, candidates=COLLECTORS):
+    """105526321's locality with its province "Davao Prov." and country "P.I." settled, the Precise Location
+    answered its first line, the Habitat answered `habitat`. The image names each unit both readers write alike
+    but the province's, as a first pass unsure of that line would."""
+    import test_step
+    from test_elevations_and_extent import DAVAO_AND_PI
+    from test_precise_location_extent import whole
+    from test_step import DavaoProvince
+
+    from specimen_digitization.field_research.contracts import FIELD_TOOLS
+
+    seen = test_step.seen_units
+
+    def province_uncertain(units):
+        named = seen(units)
+        return named.model_copy(update={"units": [
+            before if {span.text for span in before.readers.values()} <= {"Davao", "Prov."} else after
+            for before, after in zip(units.units, named.units, strict=True)]})
+
+    monkeypatch.setattr(test_step, "seen_units", province_uncertain)
+    rig = build_rig(tmp_path, text, other, candidates=candidates)
+    run = rig.specimen.run
+    fields = [key for key in FIELD_TOOLS if key != "identified_by_irn"]
+    settle(rig, Scripted({**{key: answering(LACKS) for key in fields}, **DAVAO_AND_PI,
+        "precise_location": whole("E. slope Mt. McKinley"), "habitat": answering(habitat)}),
+        tools=DavaoProvince(rig.blobs))
+    return run
+
+
+def extent_marks(run):
+    from specimen_digitization.field_research.ontology_checks import CHECK_STAGE
+
+    return [finding.reason_code for finding in run.findings
+        if finding.rule_id == CHECK_STAGE and finding.field_key == "precise_location"]
+
+
+def test_a_habitat_over_two_lines_blanks_no_text_from_the_line_after_the_locality(tmp_path, monkeypatch):
+    """Codex's round-3 sequence. Two raw readers (they differ on the collector's line, so no transcript is decided)
+    write "E. slope Mt. McKinley" / "Davao Prov." / "Mus" / "musculus"; the province is settled; the organiser
+    offered "Davao Prov." as the Habitat for reader 1B only; the Habitat answers "Mus" over "musculus" naming 1A and
+    settles on the image. The settled value keeps 1B's candidate as that reader's verbatim (step._lineage), a text on
+    ONE line. origin/main refuses the Habitat and marks the Precise Location cut short before the province's line.
+    On 575367fe the extent check blanked "Davao Prov." from 1B's line as the Habitat's text and abstained. Now the
+    whole value counts for nothing there, the verbatims with the literal, and the mark stands as on origin/main."""
+    other = MCKINLEY_HOST.replace("F.G. Werner", "F.G. Wermer")
+    run = davao_run(tmp_path, monkeypatch, MCKINLEY_HOST, other,
+        FieldAnswer(outcome="resolved", literal="Mus\nmusculus", reading_names=["1A"], explanation="As written."),
+        candidates=[*COLLECTORS, ("habitat", "1B", "Davao Prov.", "Davao Prov.")])
+    habitat = run.fields["habitat"]
+    assert (habitat.state, habitat.literal) == (ValueState.SUPPORTED, "Mus\nmusculus")
+    assert sorted(habitat.verbatim_by_observation.values()) == ["Davao Prov.", "Mus\nmusculus"]
+    place = run.fields["precise_location"]
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, "E. slope Mt. McKinley")
+    assert extent_marks(run) == [field_step.marked_code("precise_location", run.regions[0].id, "precise_location_extent")]
+
+
+# ---- the heading as ONE stated limit: through the real resolver, and the extent mark ------------------------------
+
+def expert_answering(*literals):
+    """A field's expert through the real resolver (experts.make_resolver: the expert's own check and its retries),
+    with a stand-in model that answers `literals` in turn as resolved, the last again on every later request; no
+    network. Returns (the expert, the literals the model has answered)."""
+    from pydantic_ai.messages import ModelResponse, ToolCallPart
+    from pydantic_ai.models.function import FunctionModel
+
+    from specimen_digitization.field_research import experts
+    from specimen_digitization.field_research.budget import CostMeter
+
+    asked: list[str] = []
+
+    def model(messages, info):
+        literal = literals[min(len(asked), len(literals) - 1)]
+        asked.append(literal)
+        return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, {"outcome": "resolved",
+            "literal": literal, "reading_names": ["1A", "1B"], "explanation": "As the label writes it."})])
+
+    resolver = experts.make_resolver(model_factory=lambda: FunctionModel(model),
+        meter=CostMeter(1_000_000, input_micros_per_million=200_000, output_micros_per_million=600_000))
+
+    async def expert(task, readings, tools):
+        return await resolver(task, readings, {}, tools=tools)
+
+    return expert, asked
+
+
+def through_the_resolver(tmp_path, *habitat_answers):
+    from test_step import research
+
+    rig = build_rig(tmp_path, HOST_CODE, HOST_CODE, candidates=COLLECTORS)
+    run = rig.specimen.run
+    habitat, asked = expert_answering(*habitat_answers)
+    code, _ = expert_answering("CNHM")
+    prepared, outcomes, calls = research(rig, Scripted({"habitat": habitat, "collection_code": code}))
+    [received] = [outcome for outcome in outcomes if outcome.key == "habitat"]
+    field_step.apply_outcomes(run, None, prepared[1], outcomes, blobs=rig.blobs, calls=calls)
+    return run, received, asked
+
+
+def test_limit_an_expert_that_repeats_the_heading_makes_no_claim_so_the_code_settles(tmp_path):
+    """The stated limit of the heading, on the resolver's path (Codex round 3, finding 1; the coordinator's ruling
+    R2: no code for it). Both readers write "Host: CNHM"; the code's model answers "CNHM"; the habitat's model
+    answers "Host: CNHM" on every request. The expert's own check refuses each such answer and sends the expert
+    back; after its retries the resolver's fallback is the Habitat's outcome (sources_cannot_resolve, no literal),
+    so the step receives no resolved Habitat, no claim is made in the guard, and the Collection Code settles.
+    origin/main accepts the Habitat's first answer and sends both fields to review (fix3_probe_resolver_*.txt).
+    The pass before the guard (step._BEFORE_GUARD) acts only where a resolved heading answer reaches the step."""
+    from specimen_digitization.field_research import experts
+
+    run, received, asked = through_the_resolver(tmp_path, "Host: CNHM")
+    assert len(asked) > 1 and set(asked) == {"Host: CNHM"}
+    assert (received.answer.outcome, received.answer.literal, received.fallback) == ("sources_cannot_resolve", None, True)
+    assert received.answer.explanation == experts.UNCHECKED
+    code, habitat = run.fields["collection_code"], run.fields["habitat"]
+    assert (code.state, code.literal) == (ValueState.SUPPORTED, "CNHM")
+    assert (habitat.state, habitat.literal) == (ValueState.UNRESOLVED, None)
+
+
+def test_an_expert_that_leaves_the_heading_out_when_sent_back_claims_the_name_in_the_guard(tmp_path):
+    """The habitat's model answers "Host: CNHM", is sent back by the expert's check, and answers "CNHM". That
+    answer is applied by the ordinary rules: read from the transcript on one line, as the code's is, so each goes
+    to review naming the other, as on origin/main (where the first answer was accepted and did the same)."""
+    run, received, asked = through_the_resolver(tmp_path, "Host: CNHM", "CNHM")
+    assert asked == ["Host: CNHM", "CNHM"]
+    assert (received.answer.outcome, received.answer.literal, received.fallback) == ("resolved", "CNHM", False)
+    code, habitat = run.fields["collection_code"], run.fields["habitat"]
+    assert code.state == ValueState.UNRESOLVED and code.reason.startswith(field_step.TAKEN.format(other="Habitat"))
+    assert habitat.state == ValueState.UNRESOLVED
+    assert habitat.reason.startswith(field_step.TAKEN.format(other="Collection Code"))
+
+
+def test_limit_a_refused_heading_habitat_is_not_blanked_so_the_extent_check_abstains(tmp_path, monkeypatch):
+    """The stated limit, the other direction, at the step (Codex round 3, finding 2, second sequence). The line
+    after the locality is "Host: Mus Davao Prov.", the province settled. origin/main settles the Habitat "Host:
+    Mus"; with that text blanked the line is the province's alone and the Precise Location is marked cut short.
+    Here the Habitat is refused, "Host" and "Mus" stay on the line, and the check abstains: a mark origin/main gives
+    is not given."""
+    text = "E. slope Mt. McKinley\nHost: Mus Davao Prov.\nMindanao, P.I.\n3 Sept. '46\nF.G. Werner"
+    run = davao_run(tmp_path, monkeypatch, text, None, resolved("Host: Mus"))
+    assert run.fields["habitat"].state == ValueState.UNRESOLVED
+    assert (run.fields["precise_location"].state, run.fields["precise_location"].literal) == (
+        ValueState.SUPPORTED, "E. slope Mt. McKinley")
+    assert extent_marks(run) == []
