@@ -90,6 +90,14 @@ class CoverageRule(FrozenRecord):
     # Cross-check detections at this score or more must lie inside the labels.
     cross_check_threshold: float = Field(gt=0, lt=1)
     min_inside_fraction: float = Field(gt=0, le=1)
+    # A label region whose shorter side is under this share of the image's
+    # shorter side is not counted in the label-region count; it is still
+    # stored, read and shown. A provisional value by the coordinator's ruling of
+    # 2026-11-21 (a label-finder artefact: thin strips along the image edge),
+    # not an owner sign-off. A rule without it counts every region.
+    min_region_short_side_fraction: float | None = Field(
+        default=None, gt=0, lt=1, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def ordered_range(self):

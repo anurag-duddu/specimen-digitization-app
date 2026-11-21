@@ -222,6 +222,85 @@ above do not change.
 - `Run.coverage_check` (G15): the check's version, outcome, region count, the
   full-image cross-check's result, reason codes, the evidence blob's ref and
   digest, and when it ran.
+  - Under a coverage rule with `min_region_short_side_fraction` (0.03 in the
+    published profile since lane L1, 2026-11-21), two additive keys:
+    `min_region_short_side_fraction`, the fraction used, and
+    `not_counted_regions`, a list of `{id, box}` (box `[x, y, width, height]`
+    in original pixels) for each label region whose shorter side is under that
+    fraction of the image's shorter side. Those regions are left out of
+    `region_count` only; they stay in `Run.regions` and are read, stored and
+    shown, and the geometry issues and the full-image cross-check still see
+    them. A rule without the value counts every region, and its record has
+    neither key. The version stays `coverage-check-v1`: the keys are additive
+    and a rule without the value checks exactly as before, so a stored
+    `coverage-check-v1` record still loads and reads as it did.
+  - "Count only" means the region count. A run whose count is then in range
+    has its coverage confirmed, and every consequence of a confirmed coverage
+    follows as on any confirmed run (the coordinator's ruling of 2026-11-21 on
+    review round 1 of #460: the thin region is still read, and its text is
+    still part of what the readers, the organiser and the experts see; the
+    code before this change already behaves so for two labels and such a
+    region). What reads `Run.coverage_confirmed`:
+    `application/policy.py:51` (`evaluate`: the ordinary path's clearing gate,
+    `label_coverage_unconfirmed`); `field_research/step.py:3341`
+    (`_whole_label_read`: every label read whole, which opens the
+    not-on-the-label mark at `step.py:4032`, `mark_not_on_label`, its
+    `check:not_on_label` row and its "Not on the label" reason);
+    `field_research/step.py:4378` (`scientific_reasons`: the units path's
+    `label_coverage_unconfirmed`, which holds the record);
+    `research_harness/canonical_materialization.py:142` and
+    `research_harness/canonical_materialization_v2.py:202` (the harness
+    producers' `label_coverage_unconfirmed`);
+    `application/human_field_carry.py:423` (`keep_regions`: "Start new run"
+    on a record whose regions a person corrected copies the old run's flag,
+    a confirmation or a withdrawal, into the new run and skips segmentation;
+    read from the code, not tested, the flag it copies is a person's, set by
+    the regions decision at `api.py:2729` or a later coverage decision at
+    `api.py:2405`, so the thin-region rule does not reach it);
+    `scripts/qa/live/human_review.py:229` (a QA script that refuses
+    human-review evidence unless the saved run's flag is true: it gates QA
+    acceptance, not a record's clearing). The list comes from `grep -rn
+    "coverage_confirmed" src scripts apps/specimen_digitization/lib` (tests
+    left out; at #460's round-2 head); every other hit is the field's
+    declaration or a write: `domain.py:520` (declaration),
+    `label_coverage.py:133` (this check), `api.py:2405` (a person's coverage
+    decision), `api.py:2729` (a person's region correction),
+    `workflow.py:1170` (the synthetic profile), `evidence_pilot.py:254` (the
+    evidence pilot clears it). The search gives 17 hits: the 7 reads above,
+    those 6, and 4 fixture writes in test files under `scripts`:
+    `scripts/lab/test_lab_checks.py:94`, `scripts/qa/live/test_human_review.py:104`, `:110` and `:234`. The Dart app has no hit: it sends a
+    person's coverage decision (kind `coverage`) and reads no flag. Worked case: three labels and a
+    thin region both readers read as clean text, habitat's expert answering
+    `label_lacks_value`: before, count 4, held, habitat's reason "No reading
+    writes a habitat."; after, count 3, cleared, "Not on the label: ..." with
+    a `check:not_on_label` row
+    (`tests/field_research/test_thin_region_coverage.py`). None of the seven
+    measured strips reaches it: each is `[unreadable]`, so
+    `_whole_label_read` is false and the habitat is as before.
+  - Rollback: code before this change cannot process a run this change
+    pinned. The G51 review's probe (`autonomy-program/L1/g51_probes/probes/
+    test_stored.py`, records written by #460's head and continued by
+    b35e823e) found Retry, Resume and a region correction end
+    `processing_blocked` with `evidence_integrity_failure`, and one held
+    record's detail returned 422; "Start new run" works on the probed record,
+    which had no person's decisions. A new run is therefore the expected way
+    forward after rolling the server back below this change, for records
+    whose runs were pinned with the value; it is not a tested guarantee for
+    every record.
+  - Authority: the coverage values (1 to 3 regions, concept "text", 0.5
+    score, 50 % inside) are provisional values from a coordinator ruling of
+    2026-09-23 (`status/coordinator.md` 23-24: "G15 check built with
+    provisional values (1-3 regions, "text", 0.5 score, 50% inside); S7
+    calibrates; OWNER SIGN-OFF on the final values before production."); no
+    owner sign-off of final values is recorded (DEC-7 is open). The 0.03 is
+    likewise provisional, a coordinator ruling of 2026-11-21 measured on the
+    100 truth slides; it is not an owner sign-off.
+  - Known gap, measured and not changed: the full-image cross-check (concept
+    `text`, threshold 0.5) counted no detection on any of the 100 truth slides
+    (110 detections, highest score 0.2139, threshold 0.5), so on those
+    slides the region count was the only part of the check that held a
+    record. The cross-check still holds a record when a detection at or over
+    the threshold lies outside the labels.
 - The profile identity after classify, as `pin_dependencies` pins it again:
   `Run.profile.id`, `Run.profile.version`, `Run.profile_snapshot`,
   `Run.profile_registry_version`, and `Run.dependencies["profile_snapshot_sha256"]`
@@ -773,8 +852,8 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   check's reason code, `label_coverage_unconfirmed` today (`policy.py` 35-36),
   is also in `decision.reason_codes`.
   - `region_count`'s detail is `{found, min, max, reason_codes}`: the merged
-    region count, and the profile's allowed range, null when the check did not
-    record it. Its codes come from `zero_regions`, `region_out_of_bounds` and
+    region count (regions too thin to hold a label left out, section 4.1), and
+    the profile's allowed range, null when the check did not record it. Its codes come from `zero_regions`, `region_out_of_bounds` and
     `label_region_count_out_of_range`.
   - `full_image`'s detail is `{counted, outside, threshold,
     min_inside_fraction, reason_codes}`: the label-like detections at or above
