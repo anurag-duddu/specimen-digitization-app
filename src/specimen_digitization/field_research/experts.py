@@ -557,9 +557,10 @@ class _Expert:
             **({"value": role.name} if answer.value == answer.literal else {})})
 
     def _across_lines(self, answer: FieldAnswer) -> FieldAnswer:
-        """A precise location written over consecutive lines, given with a
-        space for a line break (or a line break for a space), as the text the
-        readings it names write (agreement.across_lines): e98a924c's "E Slope
+        """A precise location, or a habitat (a host's name), written over
+        consecutive lines (agreement.ACROSS_LINES), given with a space for a line
+        break (or a line break for a space), as the text the readings it names
+        write (agreement.across_lines): e98a924c's "E Slope
         Mt. McKinley, Davao Prov." is "E Slope Mt.\\nMcKinley, Davao Prov." in
         every reader. The answer as it is otherwise."""
         literal = answer.literal
@@ -597,7 +598,7 @@ class _Expert:
                     f"Reading {reading.name} does not contain the literal {literal!r} exactly. "
                     "Copy the literal character for character from the readings you name, "
                     "and name only readings that contain it."
-                    + (" A locality written over consecutive lines is copied with its line breaks "
+                    + (f" {agreement.ACROSS_LINES_TEXT[key]} written over consecutive lines is copied with its line breaks "
                        "(or a space for each), and every reading you name writes it the same way."
                        if key in agreement.ACROSS_LINES else "")
                 )

@@ -290,6 +290,7 @@ HOLDS_A_RANGE = "This text holds a range of dates or elevations, which is anothe
 # The units path (the ontology's notation collected_by, plan WP 2.3c): a collectors literal that
 # is a collected_by marker alone ("leg.") names no one.
 ROLE_ONLY = "This text is the collectors' role marker alone, which names no one."
+HOST_HEADING = "This text starts with the heading \"Host\", which is not part of the host's name."
 HOLDS = {written.ELEVATION: HOLDS_AN_ELEVATION, written.DATE: HOLDS_A_DATE, written.RANGE: HOLDS_A_RANGE}
 # The unit each elevation field holds (application.derivations.UNITS), and
 # its name in the experts' retry.
@@ -474,9 +475,15 @@ def verbatim_runs(text: str, literal: str) -> list[tuple[int, int]]:
 # precise location, the label's verbatim locality, which labels often write
 # over two lines (e98a924c's "E Slope Mt." / "McKinley, Davao Prov.", the
 # organiser's two candidates "Seliban Riv." and "Mt. Apo" on 2b02009d's two
-# lines; the third rerun of 2026-10-18). Every other field, places among
-# them, keeps its literal on one line.
-ACROSS_LINES = frozenset({"precise_location"})
+# lines; the third rerun of 2026-10-18); and the habitat, where a label writes
+# a host's name over two lines, a genus above its species (lane H4 of the
+# autonomy program, 2026-11-21: in the habitat-only rerun of that day the
+# check refused the whole name and accepted one line of it). Every other
+# field, places among them, keeps its literal on one line.
+ACROSS_LINES = frozenset({"precise_location", "habitat"})
+# What each of those fields' text is called where the check tells its expert so
+# (literal_refusal's retry and experts._Expert._validate_resolved's).
+ACROSS_LINES_TEXT = {"precise_location": "A locality", "habitat": "A host or a habitat"}
 
 
 def _flat(text: str) -> str:
@@ -682,6 +689,21 @@ def next_line_year(task: FieldTask, readings: Sequence[Reading], literal: str, n
         and all(reading.precision == "day" and "split_lines" in reading.via for reading in found.readings))
 
 
+# The field that holds a host as written (the ontology's habitat row: "The habitat, host or
+# substrate the label writes"), and the heading a label may print or write before the host's
+# name, which is not part of it (host_heading).
+HOST_FIELD = "habitat"
+_HOST_HEADING = re.compile(r"[^\w]*host(?![^\W_])", re.IGNORECASE)
+
+
+def host_heading(literal: str | None) -> bool:
+    """Whether a text starts with the heading "Host": the whole word, letter case aside, with or
+    without punctuation around it ("Host <name>", "HOST: <name>", "Host:<name>", "(host) <name>",
+    "Host" alone). A word that only starts with it ("Hosts", "Hostel") is none, nor is the word
+    anywhere after the first ("on host <name>")."""
+    return bool(literal) and _HOST_HEADING.match(literal) is not None
+
+
 def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         named: Sequence[Reading], elevations=None, date_rules=None) -> Refusal | None:
     """Why the answer's literal may not settle the field, or None: it must be
@@ -709,10 +731,17 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     elevation rule only, a date or a range in it passing as on main. A
     collectors literal that is a collected_by marker alone ("leg.", "coll.", "Coll.";
     ontology_checks.without_role) settles nothing (ROLE_ONLY: the marker is the role the ontology's
-    notation collected_by names, plan WP 2.3c). A date field's literal that
+    notation collected_by names, plan WP 2.3c). A habitat literal that starts with the heading
+    "Host" settles nothing either (HOST_HEADING, host_heading: the answer is refused, never rewritten;
+    lane H4 of the autonomy program). A date field's literal that
     extends a candidate by the year starting the next line passes where `date_rules`, the profile's,
     read it as one date (next_line_year)."""
     basis = literal_basis(task, readings, literal, named)
+    if task.key == HOST_FIELD and host_heading(literal):
+        return Refusal(HOST_HEADING, f"{literal!r} starts with the heading \"Host\", which is not part of the "
+            "host's name. Give the name written after the heading as the literal, whole (it may stand on the "
+            "heading's line or on the lines below it), and leave the heading out; a written \"Ex.\", \"Ex:\", "
+            "\"ex\" or \"On\" before the name stays. Answer label_lacks_value when no name follows the heading.")
     if task.key == "collectors":
         from .ontology_checks import without_role
 
@@ -748,7 +777,7 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
         "this field another field's text, or a place of another kind), the literal may be text "
         "that each reading you name writes itself for this field: whole words within one line, "
         "cutting no word and no candidate. "
-        + ("A locality written over consecutive lines may run over them: copy those lines as the "
+        + (f"{ACROSS_LINES_TEXT[task.key]} written over consecutive lines may run over them: copy those lines as the "
            "reading writes them, holding whole candidates in their order on the label and cutting none. "
            if task.key in ACROSS_LINES else "")
         + "Copy it and name only readings that have it, or answer "

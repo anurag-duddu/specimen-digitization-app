@@ -3097,7 +3097,7 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
 
 def _across_lines(outcomes: Sequence[FieldOutcome], by_name: Mapping[str, Reading]) -> tuple[FieldOutcome, ...]:
     """Each resolved answer of a field whose literal may run over consecutive
-    lines (agreement.ACROSS_LINES: precise location) with its literal as the
+    lines (agreement.ACROSS_LINES: precise location and habitat) with its literal as the
     readings it names write it (agreement.across_lines), when it gives a
     space for a line break or a line break for a space, as the experts'
     check gives it (experts._Expert._across_lines); every other outcome as
@@ -4125,7 +4125,7 @@ REFUSALS = ("DIFFER", "LABELS_DIFFER", "PERSON_DECIDED", "NOT_CANDIDATE", "PART_
     "HOST_NAME", "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
     "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "A_DISTANCE", "HOLDS_AN_ELEVATION",
     "HOLDS_A_DATE", "HOLDS_A_RANGE", "FIRST_LEVEL_TOO", "NO_PROVINCE", "IS_THE_PROVINCE", "ONE_READER",
-    "TEXTS_CONTESTED", "TIED", "ROLE_ONLY")
+    "TEXTS_CONTESTED", "TIED", "ROLE_ONLY", "HOST_HEADING")
 # A lookup's status as a field's trace names it. Logfire's default scrubber
 # replaces any attribute whose value holds "auth" or "credential", so the two
 # refusals (HTTP 401 and 403) are renamed.
