@@ -2810,7 +2810,8 @@ repeat it as for every field).
 - `ACROSS_LINES` holds `habitat` beside `precise_location`: a habitat literal that holds a line break is a run of
   whole words over consecutive lines of each reading it names (`written_runs`, `runs_across_lines`), an answer that
   gives a space for a line break is read as the text every reading it names writes so (`across_lines`), and a
-  literal over lines holds whole organiser candidates in their order and cuts none (`_cut_candidate`). The value
+  literal over lines holds whole organiser candidates in their order and cuts none (`_cut_candidate`, the precise
+  location's code path, which no test here exercises with habitat candidates). The value
   keeps the line break as the readings write it, as a precise location's does. A word the label breaks with a hyphen
   keeps its hyphen. Readers that write the lines differently write no one text, and an answer naming both is sent
   back. The first line alone of a two-line name, and a name with the next line added, still pass this check: only
@@ -2833,7 +2834,8 @@ the second opinion read alike and wrongly.
 slides, launched by the coordinator: f54e941d (USD 0.2034 at list) and a28cf3f5, which ships (USD 0.2076;
 `~/specimen-golive/runs/autonomy-habitat3-20261121/logs/analysis.txt`): Habitat right on 49 (10 on the stored
 records), wrong on 6 (6), every wrong or partial one flagged, missing on 37 (76), of which 35 flagged, right blank on
-7 of 7; no record's disposition, `cleared_by`, holding reasons or other field differs. In both runs the second
+7 of 7; no record's disposition, `cleared_by`, holding reasons or other field differs from the same record finalized
+with nothing researched. In both runs the second
 opinion's judgement of a new Habitat was taken from the answer the stored run already holds, through the released
 step: by its contract its request holds none of the pipeline's fields (`second_opinion.py:26-27`), so that answer is
 an answer to the same request; it is one stored sample, not a new call. Free: the real finalize replayed on the stored runs of the
@@ -2845,15 +2847,16 @@ on its one wrong Habitat that would have had none, and none on its 49 right ones
 explanations say that no host marker stands before the name (a rough keyword count,
 `~/specimen-golive/autonomy-program/H4/lacks_explanations.txt`), which the brief says is no reason. The same printed
 label went both ways within a run, and 2 Habitats that were right in the first of the two runs were missing, and
-flagged, in the second. 10 are
-labels one reader read (`one_reader`, unchanged). Three of the six wrong values are partial names. A stored Habitat
+flagged, in the second. 10 are `one_reader` refusals (one reader's text that nothing else backs; the rule is
+unchanged). Three of the six wrong values are partial names. A stored Habitat
 can hold a line break; the app's field row shows every line when open and at most two lines when collapsed
 (`fields_panel.dart:488`; `specimen_ui`'s `UiDisclosureStyle.summaryMaxLines`), as for a precise location (read from
 the code, not run for this change). `prompts/precise_location.txt` still says a locality may run over lines "unlike
 any other field"; it was not edited, so that every other prompt text stays byte-identical. A record researched
-before this change keeps its Habitat until research asks the habitat expert again: a new run, or a Retry that
-requeues field research on a record in review (`workflow.requeue_completed_field_research`), and then only where the
-stored Habitat is not a settled value (`step.build_tasks`). Tests:
+before this change keeps its Habitat until research asks the habitat expert again: a new run (unless a person
+decided the field), or a Retry that requeues field research on a record in review
+(`workflow.requeue_completed_field_research`), and on a Retry only where the stored Habitat is not a settled value
+(`step.build_tasks`). Tests:
 `tests/field_research/test_host_is_the_habitat.py`, `tests/field_research/test_agreed_habitat_readers.py`.
 
 ## Fields the label does not state (owner, 2026-10-09)
