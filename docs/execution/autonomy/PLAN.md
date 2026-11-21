@@ -663,7 +663,8 @@ What stays missing in run 3 (37: 35 flagged, 2 not; the run's rows and `results/
 unchanged); 4 where the readers write the name differently (`differ`, left to a person with each reader's text); 1
 accepted by the expert's check and refused by the step (`taken`: 105526361's answer ran the genus on to the next
 line's state name, text the stored record's settled Province/State holds, as the reason says; in that rig the
-habitat alone was asked, so the other fields were values settled before the attempt). The two not flagged are 105526348 ("SPETYTO") and 105526468
+habitat alone was asked, so the other fields were values settled before the attempt).
+The two not flagged are 105526348 ("SPETYTO") and 105526468
 ("RODENTS"): the expert answered `label_lacks_value`, so the field reads "Not on the label", and the stored second
 opinion gives no Habitat there, so PR #463's flag has nothing to rest on. The 22 are the failure run 2 showed on 28
 records (a keyword count of the explanations, rough, `H4/scripts/classify_lacks.py`, `H4/lacks_explanations.txt`: in
@@ -795,8 +796,8 @@ attempt and asked it again in the retry, so the two trees do not apply the same 
 
 `agreement.reader_writes` folded one side (both reviewers). The literal was folded into the pattern and the reading
 searched as written, so a reading holding a letter whose folded form is longer than the letter did not write its own
-text and the Habitat kept its flag though every reader wrote it (a flag too many, never one too few). Both sides are
-now folded by `agreement.agreement_key`'s own steps, NFC then `str.casefold`. Pinned for three letters by code point,
+text and the Habitat kept its flag though every reader wrote it. The error could only keep a flag: a match was
+confirmed by comparing the two folded keys. Both sides are now folded by `agreement.agreement_key`'s own steps, NFC then `str.casefold`. Pinned for three letters by code point,
 U+00DF, U+0130 and U+FB01, in the function and through the workflow (no claim about any other letter). After the fix
 the replays of run 3's and of run 2's recorded answers each still add one Habitat flag, on 105527313, and none on a
 right Habitat (`H4/flag_rule_fix1.txt`). The constructed cases, decided as the code does them and pinned
@@ -805,8 +806,8 @@ right Habitat (`H4/flag_rule_fix1.txt`). The constructed cases, decided as the c
 | A reading of the Habitat's label, against the value | Counts as | The flag |
 |---|---|---|
 | another letter case; a space more or less; a line break where the value has a space; the same words with the line break at another place | the same text | lifted |
-| a full stop or another mark right after the text | the same text (the mark is outside it) | lifted |
-| a hyphen breaking a word at a line's end where the value has none, or the reverse; any mark more or less inside the text; a letter otherwise | another text | kept |
+| a full stop or another mark right after the value's text, which the value does not hold | the same text (the mark is outside it) | lifted |
+| a hyphen breaking a word at a line's end where the value has none, or the reverse; a mark the value's text holds, its last among them, that the reading lacks or writes otherwise; a letter otherwise | another text | kept |
 | another text for the Habitat, and the value's text on another line of that reading | written (the whole reading is searched) | lifted: a known limit |
 | an observation with no text | no reading; it takes no part | judged on the other readings: a known limit |
 
@@ -831,10 +832,10 @@ done here.
 A line break in an exported Habitat. No export of a specimen's fields to EMu or to a file was found in
 `src/specimen_digitization` (searched for "emu", "export" and "csv"; 19 files there mention EMu and were not all
 read), so what a line break becomes in an export is not established. Read, not run, for what they do to a value's
-text: `application/projection.py:684` and `:725` carry a value's literal as it is; `research_harness/
-canonical_materialization.py:174` and `canonical_materialization_v2.py:238` strip a settled text only to test it
-against placeholders; `application/field_model.py:383` folds a text for a comparison key only. None of those lines
-replaces a line break.
+text: `application/projection.py:684` and `:725` carry a value's literal as it is;
+`research_harness/canonical_materialization.py:174` and `canonical_materialization_v2.py:238` strip a settled text
+only to test it against placeholders; `application/field_model.py:383` folds a text for a comparison key only. None
+of those lines replaces a line break.
 
 Left as it is, and recorded as follow-ups: the ontology's `host_marker` entry and comment and the shared rule "never
 spanning two lines" (the habitat brief overrides both in words); `prompts/precise_location.txt`, whose line 9 says a
@@ -843,8 +844,8 @@ edited because every other prompt text had to stay byte-identical; the 22 bare n
 partial names; the line break in a stored Habitat; and, from review round 1: the rule A condition's two limits (the
 whole reading is searched; an observation with no text takes no part), the over-long literals no other field's text
 stops, the retry path above, the premise that the specimens are insects, the heading test's refusal of "Host plant
-...", and the display test, which is in the reviewer's probes folder and not in the app's tests. After release the Logfire mirror of `field-expert--habitat` is to
-be refreshed to the released text (sha256 e44404d7...).
+...", and the display test, which is in the reviewer's probes folder and not in the app's tests. After release the
+Logfire mirror of `field-expert--habitat` is to be refreshed to the released text (sha256 e44404d7...).
 
 Tests: `tests/field_research/test_host_is_the_habitat.py` (29; on origin/main's source 26 fail,
 `H4/red_on_main_v3.txt`), `tests/field_research/test_agreed_habitat_readers.py` (35) and
