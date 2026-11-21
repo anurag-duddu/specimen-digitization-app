@@ -319,7 +319,15 @@ the organiser and the experts see; origin/main already behaves so for two labels
 `application/policy.py:51` (the ordinary path's clearing gate), `field_research/step.py:3341` (`_whole_label_read`, which
 opens the not-on-the-label mark at `step.py:4032`), `field_research/step.py:4378` (the units path's
 `label_coverage_unconfirmed`), `research_harness/canonical_materialization.py:142` and
-`research_harness/canonical_materialization_v2.py:202` (the harness producers' `label_coverage_unconfirmed`). Worked case,
+`research_harness/canonical_materialization_v2.py:202` (the harness producers' `label_coverage_unconfirmed`),
+`application/human_field_carry.py:423` (`keep_regions`: "Start new run" on a record whose regions a person corrected
+copies the old run's flag, a confirmation or a withdrawal, into the new run and skips segmentation; read from the code,
+not tested, that flag is a person's, from `api.py:2729` or `api.py:2405`, so the thin-region rule does not reach it) and
+`scripts/qa/live/human_review.py:229` (a QA script that refuses human-review evidence unless the saved flag is true: QA
+acceptance, not a record's clearing). The list comes from `grep -rn "coverage_confirmed" src scripts
+apps/specimen_digitization/lib` (tests left out); every other hit is the declaration (`domain.py:520`) or a write
+(`label_coverage.py:133`, `api.py:2405`, `api.py:2729`, `workflow.py:1170`, `evidence_pilot.py:254`), besides the test
+fixture `scripts/lab/test_lab_checks.py:94`; the Dart app has no hit (it sends a person's `coverage` decision). Worked case,
 pinned by `tests/field_research/test_thin_region_coverage.py`: three labels and a thin region both readers read as clean
 text, habitat's expert answering `label_lacks_value`; before, count 4, held, habitat's reason "No reading writes a
 habitat."; after, count 3, cleared, "Not on the label: ..." with a `check:not_on_label` row. None of the seven measured
@@ -328,8 +336,9 @@ mirror).
 
 Rollback: code before this change cannot process a run this change pinned (the G51 review's probe, records written by
 #460's head continued by b35e823e: Retry, Resume and a region correction end `processing_blocked` with
-`evidence_integrity_failure`, one held record's detail returned 422, "Start new run" works). Rolling the server back below
-this change needs a new run on records whose runs were pinned with the value.
+`evidence_integrity_failure`, one held record's detail returned 422, "Start new run" works on the probed record, which had no person's decisions). A new run is therefore the expected way
+forward after rolling the server back below this change, for records whose runs were pinned with the value; it is not a
+tested guarantee for every record.
 
 Known gap, measured and not changed: on the 100 truth slides the full-image cross-check counted no detection (110
 detections, highest score 0.2139, threshold 0.5), so on those slides the region count was the only part of the check that

@@ -250,7 +250,25 @@ above do not change.
     `label_coverage_unconfirmed`, which holds the record);
     `research_harness/canonical_materialization.py:142` and
     `research_harness/canonical_materialization_v2.py:202` (the harness
-    producers' `label_coverage_unconfirmed`). Worked case: three labels and a
+    producers' `label_coverage_unconfirmed`);
+    `application/human_field_carry.py:423` (`keep_regions`: "Start new run"
+    on a record whose regions a person corrected copies the old run's flag,
+    a confirmation or a withdrawal, into the new run and skips segmentation;
+    read from the code, not tested, the flag it copies is a person's, set by
+    the regions decision at `api.py:2729` or a later coverage decision at
+    `api.py:2405`, so the thin-region rule does not reach it);
+    `scripts/qa/live/human_review.py:229` (a QA script that refuses
+    human-review evidence unless the saved run's flag is true: it gates QA
+    acceptance, not a record's clearing). The list comes from `grep -rn
+    "coverage_confirmed" src scripts apps/specimen_digitization/lib` (tests
+    left out; at #460's round-2 head); every other hit is the field's
+    declaration or a write: `domain.py:520` (declaration),
+    `label_coverage.py:133` (this check), `api.py:2405` (a person's coverage
+    decision), `api.py:2729` (a person's region correction),
+    `workflow.py:1170` (the synthetic profile), `evidence_pilot.py:254` (the
+    evidence pilot clears it); and the test fixture
+    `scripts/lab/test_lab_checks.py:94`. The Dart app has no hit: it sends a
+    person's coverage decision (kind `coverage`) and reads no flag. Worked case: three labels and a
     thin region both readers read as clean text, habitat's expert answering
     `label_lacks_value`: before, count 4, held, habitat's reason "No reading
     writes a habitat."; after, count 3, cleared, "Not on the label: ..." with
@@ -263,9 +281,11 @@ above do not change.
     test_stored.py`, records written by #460's head and continued by
     b35e823e) found Retry, Resume and a region correction end
     `processing_blocked` with `evidence_integrity_failure`, and one held
-    record's detail returned 422; "Start new run" works. Rolling the server
-    back below this change needs a new run on records whose runs were pinned
-    with the value.
+    record's detail returned 422; "Start new run" works on the probed record,
+    which had no person's decisions. A new run is therefore the expected way
+    forward after rolling the server back below this change, for records
+    whose runs were pinned with the value; it is not a tested guarantee for
+    every record.
   - Authority: the coverage values (1 to 3 regions, concept "text", 0.5
     score, 50 % inside) are provisional values from a coordinator ruling of
     2026-09-23 (`status/coordinator.md` 23-24: "G15 check built with
