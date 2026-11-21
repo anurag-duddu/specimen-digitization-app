@@ -390,19 +390,53 @@ it blank with no flag, because the stored second opinion gave no value there (10
 `test_a_field_another_rule_marks_and_an_open_or_blank_field_get_no_mark`) gives every field a blank answer, so it still
 holds.
 
-When the mark is current. It is derived at finalize, as every open reason is. By the code's rule (the decisions
-endpoint finalizes only an approval, a capability deferral or a run whose stage is `finalized`, `api.py:2423`;
-`step.refinalize` returns early on a blocked run, `step.py:4846`; a history restore saves with no finalize) and the
-enumeration of every save of a Run in `~/specimen-golive/autonomy-program/H3/save_paths_r2.txt`, the stored open
-reasons can be an earlier finalize's after a restore (held for review), after a transcript decision or Retry or Resume
-followed by a decision before any worker step (running or pending: the worker's next finalize ends it), after Pause or
-Cancel and a decision (paused or cancelled, at rest: it lasts until a person continues the run, possibly never), and on a
-blocked run (until the Retry after the repair). The G51 reviewer of round 2 found, on 28 sequences per tree, no record
-sitting `cleared` with a stale or missing mark in any of them. The finalize that ends a window recomputes the mark from
-the record as it then is: after a restore, Resume gives it, an approval or a decision on the field gives none.
-origin/main's own codes wait the same way (the G51 reviewer's `codex_seq_main.txt` and `windows_main.txt`). Not changed
-here (the coordinator's ruling); see FIELD_RESEARCH.md "When the mark is current"; pinned by the windows section of
-`test_blank_second_opinion_fills.py`.
+When the mark is current. The mark is derived at finalize, as every open reason is. Guaranteed: a save that follows a
+finalize of the run as saved carries what a fresh finalize of that state gives (the G51 reviewer, round 2: of 249
+finalized states in his sequences, 247 equal a fresh finalize; the other two are the restore window's, below). Not
+guaranteed: a save that does not follow a finalize keeps the open reasons of an earlier finalize, on origin/main and on
+this branch alike and for every open reason, until the next finalize, which recomputes the mark from the record as it
+then is and may give it or give none. The worker ends some such windows when it reaches a finalize; a run it blocks
+first stays blocked with the stored open reasons, and some windows last until a person acts, which may be never.
+
+Known examples, found in the reviews of this PR; the list is not claimed complete:
+
+- a history restore (`history_restore.py:62`, `api.py:1573-1580`): the record is held for review, or blocked when the
+  restored run had a blocker;
+- a decision other than an approval or a capability deferral that arrives on a run whose stage is not `finalized`
+  (`api.py:2423`; an approval finalizes at any stage, and a decision arriving at `field_second_opinion` is moved to
+  `finalized` first, `api.py:2092`): after a transcript decision (stage `parse`); after Retry or Resume before any
+  worker step (stage `pending`); on a paused or cancelled run, at rest, possibly indefinitely (the worker returns at
+  `workflow.py:726`); on a blocked run, until the Retry or Resume after the repair (`step.refinalize` returns early on a
+  run with a blocker, `step.py:4846`);
+- a field decision on the taxon or another looked-up field after a transcript decision removed field research from the
+  completed steps (`api.py:2247`, then `api.py:2163` sets stage `lookup`), found by Codex in round 3; the saved revision
+  keeps the mark beside the stored second opinion, and the worker's finalize removes it (tested);
+- graph-limit recovery (`active_graph.py:237-264`, used by `save_recoverably`): when a save exceeds the record's graph
+  or snapshot limit, the working copy is discarded, the prior snapshot is reloaded, its approval withdrawn, and it is
+  saved `processing_blocked` with the limit as its blocker and no finalize, found by Codex in round 3; read from the
+  code, not run;
+- a worker block the worker does not end by itself, for example `step_budget_exhausted` after a decision on a pending
+  run (`workflow.py:921`, `workflow.py:978`; later steps return at `workflow.py:726`; automatic recovery does not take a
+  completed-research recheck, `workflow.py:2141-2147`), found by Codex in round 3; read from the code, not run.
+
+When a finalize ends a window it recomputes the mark. Tested here: after a restore to an approved revision, Resume gives
+the mark and approving again gives none (an approved run gets no mark); after a transcript decision the worker's
+finalize removes it (the answer is no longer current); after a decision on the marked field (on a paused or cancelled
+run, after Retry or Resume, while a blob is lost), the finalize that follows gives no mark on that person's field, and
+the record then waits for that person's approval (`standing_holds.person_acted`). The G51 reviewer's round-2 notes add:
+after a restore, a decision on another field also gives the mark; an approval inside the transcript window ends it
+through the ordinary policy's finalize, as on origin/main; after a lost blob, a field decision after the repair does not
+end it (the run is still blocked), an approval does.
+
+Measured, not proven: in the G51 reviewer's sequences (28 per tree in round 2) no record had the disposition `cleared`
+inside such a window, and Codex's static trace of round 3 found no counterexample. origin/main's own open reasons wait
+the same way (the G51 reviewer's probes of origin/main, `codex_seq_main.txt` and `windows_main.txt`: after the restore,
+12 `label_unsettled` codes a fresh finalize lifts and PR #455's `marked:city:<label>:second_opinion_differs` missing;
+after the transcript decision, 8 stale codes, #455's mark among them; after Retry and a decision, #455's mark on a
+person's City). Making these saves recompute the open reasons is a change to origin/main's mechanism for every reason,
+ruled out of this PR by the coordinator (a recorded follow-up). The windows section of
+`tests/field_research/test_blank_second_opinion_fills.py` pins several of these windows through the real API. See
+FIELD_RESEARCH.md "When the mark is current".
 
 The prompt rule, measured and not shipped. A line in `prompts/habitat.txt` (commit 294afc5c, reverted by a later
 commit) said a host is the habitat: the name after a host marker, on its line or the next, or an animal's name written
@@ -439,9 +473,10 @@ Known follow-up. Hosts reaching Habitat as values needs the ontology's `host_mar
 prompts: all 20 experts' and the first pass's), multi-line hosts accepted as the precise location's are, and a full
 measured rerun. That is beyond the program's remaining test budget and needs the owner's approval of more test money.
 
-Known follow-ups, not built here: (a) a history restore, and a decision on a run whose stage is not `finalized` (after a
-transcript decision, Retry, Resume, Pause or Cancel, or on a blocked run), save without recomputing the open reasons
-(origin/main's mechanism, for every open reason, not only this mark); (b) the app's instruction "Check this
+Known follow-ups, not built here: (a) saves without a finalize (the examples under "When the mark is current" above,
+among them a history restore and a decision other than an approval or a capability deferral on a run whose stage is not
+`finalized`; a decision arriving at `field_second_opinion` is moved to `finalized` first) keep an earlier finalize's
+open reasons (origin/main's mechanism, for every open reason, not only this mark); (b) the app's instruction "Check this
 value against the image" on a field that shows no value (not false; wording for a blank).
 
 ### S1's replay (free, real code, wp26's 120 specimen-runs)

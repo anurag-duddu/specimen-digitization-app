@@ -51,13 +51,14 @@ on one) as an open reason, on a run on the units path no person approved, unless
 authority over the field, the run's profile makes it mandatory, or it already needs attention
 (review_summary.attention_fields over this finalize's reasons and the fields' states). Only a flag: the
 value stays blank (the second opinion's value is a possibility, never evidence), nothing is held, and
-no field, finding or evidence row is touched. Derived at finalize, as every open reason is: a save with
-no finalize leaves the stored open reasons as they were until the next finalize, as on origin/main for
-every open reason. The decisions endpoint finalizes only an approval, a capability deferral or a run
-whose stage is `finalized` (application/api.py, apply_decision); refinalize returns early on a blocked
-run; a history restore saves with no finalize. So after a restore, a transcript decision, or a
-decision on a paused, cancelled or blocked run, the mark waits for the next finalize, which recomputes
-it (tests/field_research/test_blank_second_opinion_fills.py, the windows section).
+no field, finding or evidence row is touched. Derived at finalize, as every open reason is: a save that
+follows a finalize carries what a fresh finalize gives; a save with no finalize keeps an earlier
+finalize's open reasons, as on origin/main for every open reason, until the next finalize recomputes
+them. Examples found in the reviews, not a complete list: a history restore; a decision other than an
+approval or a capability deferral on a run whose stage is not `finalized` (application/api.py,
+apply_decision); refinalize's early return on a blocked run; graph-limit recovery
+(active_graph.save_recoverably); a worker block the worker does not end by itself
+(tests/field_research/test_blank_second_opinion_fills.py, the windows section).
 
 AN AGREED VALUE AND AN AGREED BLANK CARRY NO FLAG (`unflagged`, called by step.finalize_fields on
 every finalize, after the reasons are split; work package F2, the coordinator's rulings of 2026-11-19

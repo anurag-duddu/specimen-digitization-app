@@ -362,8 +362,8 @@ def test_a_history_restore_gives_the_restored_states_own_reasons(tmp_path, whole
 # finalize (history_restore.restored_specimen). So after a restore, a transcript decision (stage `parse`), or a decision
 # on a paused, cancelled or blocked run, the stored open reasons are an earlier finalize's until the next finalize,
 # which recomputes them; on origin/main for every open reason alike. These tests pin each window through the real API
-# and workflow; they do not change it (the coordinator's ruling of 2026-11-21; ~/specimen-golive/autonomy-program/
-# H3/save_paths_r2.txt classifies every save of a Run).
+# and workflow; they do not change it (the coordinator's ruling of 2026-11-21). The windows here are examples found in
+# the reviews of PR #463, not a complete list.
 
 def queued(monkeypatch):
     """The API's queue as the worker's tests stand it in: the run is pending, and the rig's workflow takes it."""
@@ -537,3 +537,24 @@ def test_a_field_decision_after_retry_or_resume_before_any_worker_step_keeps_the
     assert "habitat" in decided.person_decided_fields and MARK in decided.open_reasons
     done = to_end(rig).run
     assert done.stage == "finalized" and MARK not in done.open_reasons and fresh(done)
+
+
+def test_a_field_decision_after_a_transcript_decision_moves_the_run_to_lookup_and_keeps_the_mark_until_the_worker_finalizes(
+        tmp_path, whole, monkeypatch):
+    """The window is origin/main's mechanism: a transcript decision removes field research from the completed steps
+    (api.py, the transcription branch), so a decision on the taxon that follows it sets the stage to `lookup` and is not
+    finalized; the saved revision keeps the mark beside the stored second opinion. The worker's next finalize removes
+    it (the answer is no longer current)."""
+    queued(monkeypatch)
+    rig = rig_of(tmp_path, opinion=Opinion(answer_of(habitat=HOST)))
+    first = to_end(rig).run
+    assert MARK in first.open_reasons
+    client = review_client(rig)
+    decide(client, rig, "transcript", "transcription", target_id=first.regions[0].id,
+        after={"text": NO_HABITAT, "state": "supported"})
+    taxon = confirm(client, rig, "taxon", "field-taxon")
+    assert field_step.STEP not in taxon.completed_steps and taxon.stage == "lookup" and taxon.disposition is None
+    assert taxon.second_opinion["status"] == so.OBTAINED and MARK in taxon.open_reasons
+    mounted(rig, Scripted({"habitat": LACKS}))
+    done = to_end(rig).run
+    assert done.stage == "finalized" and MARK not in done.open_reasons
