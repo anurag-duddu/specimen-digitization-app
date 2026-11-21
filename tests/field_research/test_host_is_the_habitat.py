@@ -199,10 +199,13 @@ def test_the_name_after_the_heading_settles_through_the_step(tmp_path):
 
 # ---- a record researched before the change --------------------------------------------------------------------
 
-def test_a_finalize_alone_leaves_a_stored_habitat_as_it_is(tmp_path):
-    """A Habitat stored before the change, one that starts with the heading among them, is touched by no finalize:
-    the acceptance check runs where an answer is applied (step.apply_outcomes), never in step.refinalize. (The
-    stored runs of the 100 truth slides, replayed: ~/specimen-golive/autonomy-program/H4/replay_h4_v2.txt.)"""
+def test_a_finalize_alone_leaves_a_stored_habitats_value_state_and_reason(tmp_path):
+    """A Habitat stored before the change, one that starts with the heading among them, keeps its value, state and
+    reason through a finalize: the acceptance check runs where an answer is applied (step.apply_outcomes), never in
+    step.refinalize; and this record's reasons do not move. (The stored runs of the 100 truth slides, replayed:
+    ~/specimen-golive/autonomy-program/H4/replay_h4_fix1.txt.) A finalize can still keep a Habitat's
+    `label_unsettled` flag that origin/main lifted, by the rule A condition, which is derived at every finalize:
+    test_agreed_habitat_readers.py."""
     from test_step import TODAY
 
     rig = build_rig(tmp_path, HEADED_TEXT, HEADED_TEXT, candidates=COLLECTORS)
