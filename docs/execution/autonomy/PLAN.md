@@ -661,8 +661,8 @@ What a release does to records already stored (tested in `tests/field_research/t
   (`H4/replay_h4_v2.txt`, lane H3's `replay_h3.py`); the rule A condition adds no flag there
   (`H4/flag_rule_run3.txt`). Two of those stored Habitats start with the heading ("Host:", "Host: LIBYCUS") and stay
   as stored.
-- A record keeps its Habitat until field research asks the habitat expert again. A new run asks every field. A Retry
-  asks again only where `workflow.requeue_completed_field_research` requeues field research (the record is in review,
+- A record keeps its Habitat until field research asks the habitat expert again. A new run asks it again, unless a
+  person decided the field (`step.build_tasks` makes no task for a person's field). A Retry asks again only where `workflow.requeue_completed_field_research` requeues field research (the record is in review,
   not cleared, with field research completed, no blocker, no person's field lock, an attempt left and a field
   unresolved, ambiguous or unknown), and then `step.build_tasks` makes a task for every field but a person's and one
   an earlier attempt settled: a stored Habitat VALUE, right or wrong, is not asked again; a blank or open one is. A

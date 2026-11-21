@@ -2835,8 +2835,8 @@ slides, launched by the coordinator: f54e941d (USD 0.2034 at list) and a28cf3f5,
 records), wrong on 6 (6), every wrong or partial one flagged, missing on 37 (76), of which 35 flagged, right blank on
 7 of 7; no record's disposition, `cleared_by`, holding reasons or other field differs. In both runs the second
 opinion's judgement of a new Habitat was taken from the answer the stored run already holds, through the released
-step: its request never holds the pipeline's fields (`second_opinion.py:26-27`), so that answer is an answer to the
-same request; it is one stored sample, not a new call. Free: the real finalize replayed on the stored runs of the
+step: by its contract its request holds none of the pipeline's fields (`second_opinion.py:26-27`), so that answer is
+an answer to the same request; it is one stored sample, not a new call. Free: the real finalize replayed on the stored runs of the
 100 truth slides gives origin/main's record on 100 of 100
 (`~/specimen-golive/autonomy-program/H4/replay_h4_v2.txt`); the rule A condition adds one flag on that run's answers,
 on its one wrong Habitat that would have had none, and none on its 49 right ones (`H4/flag_rule_run3.txt`).
