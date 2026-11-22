@@ -235,7 +235,9 @@ def run_readings(run) -> tuple[Reading, ...]:
 
 
 def human_keys(run) -> frozenset[str]:
-    """Fields a person decided (human_field_carry): never researched or changed."""
+    """Fields whose decision by a person was carried into the run (human_field_carry): never
+    researched or changed. A decision a person makes on the run at the decision endpoint is not
+    among them (Run.person_decided_fields)."""
     carried = run.dependencies.get(CARRY_KEY) or {}
     return frozenset(carried) if isinstance(carried, Mapping) else frozenset()
 
@@ -299,7 +301,8 @@ def _without_roles(candidates: Sequence[Candidate]) -> list[Candidate]:
 def build_tasks(run, profile: CollectionProfile | None = None):
     """``(readings, tasks, context)`` for a run after parse.
 
-    One task per profile field, except a field a person decided and a field an
+    One task per profile field, except a field whose person's decision was
+    carried into the run (human_keys) and a field an
     earlier attempt already settled (a retry researches only the rest).
     ``context`` is every field's value as the organiser (or an earlier attempt)
     left it. The collectors' candidates leave out the marker of their role
@@ -461,7 +464,7 @@ def _literal_row(key: str, reading: Reading, literal: str, asset_id, blobs, *, t
     """A label row for a reading the expert named that no organiser row covers.
     For a literal the expert read in the transcript itself, not an organiser
     candidate (agreement.TRANSCRIPT), the row cites its first run of whole
-    words (agreement.verbatim_runs), and its record says so ("basis":
+    words (agreement.written_runs), and its record says so ("basis":
     "transcript")."""
     from .agreement import written_runs
 
@@ -1026,7 +1029,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     transcript (agreement.literal_basis: TRANSCRIPT) when that same text is
     claimed for a field of another kind (agreement.may_share_text), each
     with that other field. The text is the literal's runs of whole words
-    (agreement.verbatim_runs) in the readings of the labels its answer
+    (agreement.written_runs) in the readings of the labels its answer
     names. Only a settled value claims text, where it overlaps that text in
     the same reading: another field's value this attempt's answers settle
     (`settled`: _first_pass, before this guard), wherever its literal stands
@@ -2356,7 +2359,8 @@ def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence
     """Each outcome, in `ordered` (the places from the country down), as its
     field's value (_field_value), a field in `taken` as text another kind of
     field claims (_taken_value), then the places settled on initials alone
-    made ambiguous (_corroborate). A field a person decided is left as it is.
+    made ambiguous (_corroborate). A field in `human` (human_keys: a decision
+    carried into the run) is left as it is.
     A field in `put` (the units path: its expert's several_possibilities answer, which
     the outcome in `ordered` puts to the rule, _by_rule) whose rule's answer does not
     settle (it is refused, or its text is another kind of field's, `taken`) takes the
@@ -2937,13 +2941,16 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     check's parse gets a "derived" row when the check, run again on the
     literal, gives that value. A resolved answer the agreement rules refuse
     (agreement.refusal: a literal that is neither a whole candidate of the
-    readings it names nor whole words of one line of each, readers that
+    readings it names nor whole words of one line of each, or of consecutive
+    lines for a field in agreement.ACROSS_LINES, readers that
     differ where the settlement rule settles no text, a place no place
     source confirms), whose place does not
     lie in the country and province settled for its reading (_misfit, after
     the places above it), or whose literal, read from the transcript, is
     text another kind of field's settled value claims (_taken, judged on
-    what the answers settle without it: _first_pass), is ambiguous or
+    what the answers settle without it: _first_pass; a habitat read over
+    consecutive lines also where the text is in another kind of field's
+    resolved answer, ANSWERED), is ambiguous or
     unresolved instead; a place settled on initials that no place below it
     confirms is ambiguous (_corroborate, once every place is in). A literal
     read from the transcript that settles is marked so
@@ -4826,7 +4833,9 @@ def code_confirmed(run) -> frozenset[str]:
     return frozenset({FIELD})
 
 
-# A field drawn from a label whose doubt is open (label_attention): `label_unsettled:<field>`.
+# A field drawn from a label whose doubt is open, and a habitat research settled over consecutive
+# lines that is drawn from a label whose transcription is unresolved (label_attention):
+# `label_unsettled:<field>`.
 LABEL_UNSETTLED = "label_unsettled"
 
 

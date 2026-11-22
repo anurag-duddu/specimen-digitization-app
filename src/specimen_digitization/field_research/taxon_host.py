@@ -1,7 +1,9 @@
 """The host a label writes, which is never the specimen's taxon (the ontology's rule host_is_no_taxon).
 
 A host is the animal or plant the specimen was taken from: Darwin Core's associatedTaxa holds
-it, never the specimen's scientificName, and none of the profile's 20 fields holds it. A label
+it, never the specimen's scientificName; the profile's 20 fields include no associated-taxa
+field. Since lane H4 of the autonomy program the habitat's expert answers a host's name, as the
+label writes it, as the Habitat value (prompts/habitat.txt); it is never the Taxon. A label
 writes it after a host marker, the ontology's notation host_marker ("Host Thomomys", "Ex. Canis
 familiaris", "ex Peromyscus leucopus"). The markers are read from that notation, the one source
 of the label's notations (plan WP 2.2).

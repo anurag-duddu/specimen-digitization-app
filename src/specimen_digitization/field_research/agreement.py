@@ -19,7 +19,9 @@ fields' outcomes:
    "E.slope" differ. Or else, read from the transcript (literal_basis,
    TRANSCRIPT; coordinator's ruling of 2026-10-09): each of those readings
    writes the literal as a run of whole words within one line
-   (verbatim_runs), and it cuts or extends none of that reading's
+   (verbatim_runs), or, for a field in ACROSS_LINES (the precise location
+   and the habitat) whose literal holds a line break, over consecutive
+   lines (written_runs), and it cuts or extends none of that reading's
    candidates (_cut_candidate); a taxon so read must sit in no longer name
    on its reading (_longer_written), a date or an elevation so read is
    never one end of a range its clause writes, joined in any of the
@@ -622,8 +624,9 @@ def literal_basis(task: FieldTask, readings: Sequence[Reading], literal: str,
     """Where the answer's literal comes from. CANDIDATE: it is a whole
     candidate literal of every reading it names (candidate_literal).
     TRANSCRIPT: it is not, but each of those readings writes it as a run of
-    whole words within one line (verbatim_runs; for precise location, over
-    consecutive lines when it holds a line break: written_runs), and it cuts
+    whole words within one line (verbatim_runs; for a field in ACROSS_LINES,
+    the precise location and the habitat, over consecutive lines when it
+    holds a line break: written_runs), and it cuts
     or extends no
     candidate of that reading (_cut_candidate): the expert read it in the
     transcript itself (the owner's design: experts with every raw
@@ -719,7 +722,9 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     wrote it (no reader is preferred: the owner, 2026-10-25), or text each
     of those readings
     writes as a run of whole words
-    within one line that cuts or extends no candidate of it (literal_basis),
+    within one line (over consecutive lines for a field in ACROSS_LINES, the
+    precise location and the habitat, whose literal holds a line break:
+    written_runs) that cuts or extends no candidate of it (literal_basis),
     never a shorter or longer piece of a candidate (B2); for a taxon, a
     candidate whose quote writes a longer name from it on is such a piece too
     (_part_of_name), as is text read from a reading that writes a longer
@@ -1838,7 +1843,7 @@ def labels_by_rule(task: FieldTask, regions: Mapping[str, Sequence[Reading]],
         writers: dict[str, set[str]] = {}
         if bound:
             # Offered text as the field writes it (written_runs: over consecutive lines for a
-            # precise location), and the person's texts inside another of them set aside.
+            # field in ACROSS_LINES), and the person's texts inside another of them set aside.
             each, blocked = [frozenset(set(literals.get(reading.name, ())) | {collapse(reading.text[start:end])
                 for text in offered for start, end in written_runs(task.key, reading.text, text)})
                 for reading in group], ()

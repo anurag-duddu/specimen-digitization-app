@@ -6,7 +6,9 @@ with fresh context and shows in Logfire as its own agent. An answer is checked
 against the readings and against what this expert's own tools returned before
 it is accepted: the literal must occur in the readings it names and be a whole
 organiser candidate literal of each, or text each writes as whole words within
-one line that cuts no candidate (agreement.literal_refusal), a value that
+one line (over consecutive lines for a field in agreement.ACROSS_LINES, the
+precise location and the habitat) that cuts no candidate, and a habitat's
+literal never starts with the heading "Host" (agreement.literal_refusal), a value that
 differs from it must be a source candidate or a deterministic check's output, a
 taxon is GBIF's decision for the whole name that candidate writes, and the
 agreement rules hold (agreement.refusal). A field-level problem never raises;
@@ -611,7 +613,8 @@ class _Expert:
             names.append(reading.name)
         named = [self.by_label[_label(name)] for name in answer.reading_names]
         # The literal is a whole organiser candidate of the readings it names,
-        # or whole words of one line of each (agreement.literal_refusal). No
+        # or whole words of one line of each, or of consecutive lines for a field in
+        # agreement.ACROSS_LINES (agreement.literal_refusal). No
         # field has settled yet: on the units path a precise location's
         # elevation the rule could keep passes here, and the step decides on
         # what the elevation fields settle (agreement.ANY_ELEVATION).

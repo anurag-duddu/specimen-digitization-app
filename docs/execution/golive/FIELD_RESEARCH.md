@@ -558,7 +558,11 @@ handover runs field research instead of the six specialists:
      answer names; or another field's value settled before this attempt or
      by a person (supported, in the verbatim or settled layer, or a
      person's value that is not derived: `step._claims_text`), in the
-     readings of its labels. What this attempt settles is found by applying
+     readings of its labels. (One exception since lane H4, "A host the
+     label writes is the Habitat" below: a habitat this attempt's answer
+     read from the transcript over consecutive lines claims no text, and
+     gives way to another kind of field's resolved answer of the same
+     attempt, whether or not that answer settles.) What this attempt settles is found by applying
      every answer once, before the guard, on a copy of the run
      (`step._first_pass`: no blob is written, no Logfire event is made, and
      the run is left as it was); the answers are then applied for real
@@ -1205,7 +1209,9 @@ handover runs field research instead of the six specialists:
        what the fields hold, where the line writes it: every field's
        organiser candidates, and the literals and verbatims of every
        supported value, never of a value left unsettled, so the country
-       expert's own unresolved "Canada" holds nothing (finding 2). It then
+       expert's own unresolved "Canada" holds nothing (finding 2); nor,
+       since lane H4, of a habitat research settled over consecutive lines
+       (`step._over_lines`). It then
        weighs what is left group by group, split at commas, semicolons,
        colons, brackets and slashes, after setting aside each date,
        elevation or range a group holds ("1948" of "Canada 1948", "1200 ft"
@@ -3067,7 +3073,8 @@ elevation is derived first, and only for a field a person has not decided):
    in this attempt, an earlier one or by a person, letter case and the
    punctuation around it aside, and stands, less that punctuation, where
    that literal stands (`step._held_by_another_kind`, `step._bare`;
-   settled as `step._claims_text` says): 105526328's "trap", which the
+   settled as `step._claims_text` says; since lane H4 a habitat research
+   settled over consecutive lines is not counted, `step._settled_claims`): 105526328's "trap", which the
    organiser offered as the habitat, once the collecting method settles
    on "trap"; "IV-24-48" offered as the collection code once the date
    settles on it; "trampa de luz" (or "Trampa de luz." beside the settled
@@ -3594,7 +3601,8 @@ neither clears on the units path, since WP 1.8 the only one. There, rule B, by e
 specimen writes a word that may be a genus. Such a word is any run of
 letters, of any case, other than a `checks.NOT_GENERA` word or a Roman
 numeral I to XII, that no single span holds whole. The spans are a
-settled field's occurrence where its provenance places it, a whole
+settled field's occurrence where its provenance places it (since lane H4
+not a habitat research settled over consecutive lines, `step._over_lines`), a whole
 notation token, a code with no genus, a catalogue number with its prefix,
 or a keyed line's key; a unit's span carries to another reader there only
 when that reader writes the same words, each at most one character apart
@@ -3688,7 +3696,7 @@ or fallback, a spent per-field or per-specimen meter among them, is that field's
 | `field_research_given_up` (new: research given up for the run as a whole) | holds; derived on every finalize from the give-up's finding on the run, which the next research attempt removes |
 | `preserved_human_decision:<field>` | holds (recomputed from a person's decisions on every finalize) |
 | `human_approval_required`, `history_restored_requires_review`, `location_reassessment_unconfirmed:<field>` | holds; derived on every finalize from `run.pending_review` (`application/standing_holds.py`), recorded when a person decides, a history is restored or a reassessment leaves a field unproved, and cleared by a person's approval (the reassessment's entries also by the reassessment that settles them) |
-| `label_unsettled:<field>` (new: a field drawn from a label whose doubt is open, `step.label_attention`) | never holds: the field's attention only. Since work package F2 it is not given for an optional field settled with a value the second opinion agrees with (the three date fields excepted, and not on a run with a label one reader read), nor for an agreed blank field ("The second opinion", rules A and B); a field another open reason still names stays flagged |
+| `label_unsettled:<field>` (new: a field drawn from a label whose doubt is open, `step.label_attention`; since lane H4 also a Habitat research settled over consecutive lines that is drawn from a label whose transcription is unresolved, whether or not that label's doubt is an open reason) | never holds: the field's attention only. Since work package F2 it is not given for an optional field settled with a value the second opinion agrees with (the three date fields excepted, not on a run with a label one reader read, and for Habitat only where every reading of the labels the value rests on holds the value's text), nor for an agreed blank field ("The second opinion", rules A and B); a field another open reason still names stays flagged |
 | an operational failure (`lookup_operational_failure`, `field_research_model_error`, `field_research_timeout` `:<field>`, the blocker) | holds: the run is blocked, as before |
 | `evidence_integrity_failure` | never a reason: the step blocks, as before |
 | ordinary path: `institutional_policy_unapproved`, `mandatory_semantics_unconfirmed`, `evidence_lineage_invalid:<row>`, its capability reason | holds |

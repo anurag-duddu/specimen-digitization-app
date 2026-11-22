@@ -451,7 +451,10 @@ and `test_the_organisers_refused_call_costs_nothing`.
   row (#146; `tests/test_projection_writer.py`). Other records already
   change `run.dependencies` after it is written: `ordinary_cost_settlements`
   for priced calls, and `automatic_recoveries` and `route_repins` (#315) for
-  recovered or re-pinned runs; not changed here.
+  recovered or re-pinned runs; not changed here. (Since PR #464 one more:
+  `field_research_over_lines`, field research's mark of a habitat it settled
+  over consecutive lines, written and removed after the row may have been
+  written: FIELD_RESEARCH.md, "A host the label writes is the Habitat".)
 - Legacy rows (the coordinator's decision of 2026-10-12, the owner having
   delegated technical decisions; replaces the second review round's stricter
   rule). An unknown attempt with no kind was saved by code before this record

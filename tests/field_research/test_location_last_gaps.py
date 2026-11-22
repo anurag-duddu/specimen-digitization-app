@@ -392,7 +392,8 @@ def test_a_run_of_whole_words_over_consecutive_lines():
     assert agreement.runs_across_lines(MCKINLEY, "Slope Mt.\nMcKin") == []
     assert agreement.runs_across_lines("Seliban Riv.\n\nMt. Apo", "Seliban Riv.\n\nMt. Apo") == []
     assert agreement.runs_across_lines(MCKINLEY, "E Slope Mt.") == []
-    # Only precise location runs over lines; every other field keeps one line.
+    # Only a field in agreement.ACROSS_LINES runs over lines (the precise location here; since lane H4 the habitat
+    # too); a field outside it, as the city, keeps one line.
     assert agreement.written_runs("precise_location", MCKINLEY, MCKINLEY_LINES) == [(6, 6 + len(MCKINLEY_LINES))]
     assert agreement.written_runs("city", MCKINLEY, MCKINLEY_LINES) == []
 
@@ -462,7 +463,7 @@ def test_the_organisers_two_lines_joined_in_their_order_settle_the_precise_locat
     ("precise_location", "Seliban Riv.\nMt."),
     # A piece of the two lines, on one: still a candidate's piece ("Riv." of "Seliban Riv.").
     ("precise_location", "Riv."),
-    # Every other field keeps its literal on one line.
+    # A field outside agreement.ACROSS_LINES keeps its literal on one line.
     ("city", APO_3A),
 ], ids=["cuts-a-candidate", "piece-of-a-candidate", "city-over-two-lines"])
 def test_a_literal_over_lines_still_cuts_no_candidate_and_only_a_locality_runs_over_lines(key, literal):
