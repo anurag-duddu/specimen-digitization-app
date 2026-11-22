@@ -625,11 +625,11 @@ notations:
     source:
       - src/specimen_digitization/field_research/prompts/taxon.txt:5
       - src/specimen_digitization/field_research/prompts/taxon.txt:8-9
-  # A host, the animal or plant the specimen was taken from (WP 2.T): Darwin Core
-  # holds it as associatedTaxa, "host:" its example's relation, never as the
-  # specimen's scientificName, the name the labels give the specimen itself; none
-  # of the profile's 20 fields holds it. The units-wp15c labels write "Host
-  # Thomomys", "Ex. Canis familiaris" and "ex Peromyscus leucopus".
+  # A host, the animal or plant the specimen was taken from (WP 2.T): Darwin Core holds it as
+  # associatedTaxa, "host:" its example's relation, never as the specimen's scientificName, the
+  # name the labels give the specimen itself; the profile's 20 fields include no associated-taxa
+  # field (since PR #464 the habitat's own brief has its expert copy a host's name as the Habitat
+  # value). The units-wp15c labels write "Host Thomomys", "Ex. Canis familiaris" and "ex Peromyscus leucopus".
   - id: host_marker
     written: ["Host", "ex.", "on", "from"]
     periods_optional: true

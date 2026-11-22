@@ -6,7 +6,8 @@ from the second opinion's stored result and the run as it is now (second_opinion
 step.finalize_fields), and they only shorten the optional fields' doubts (run.open_reasons):
 
 - rule A: `label_unsettled:<field>` is not an open reason for a field settled with a value the second opinion
-  agrees with, the three date fields excepted;
+  agrees with, the three date fields excepted (and, since lane H4, for Habitat only where every reading of the
+  labels the value rests on holds the value's text: test_agreed_habitat_readers.py);
 - rule B: `mandatory_unresolved:<field>` and `label_unsettled:<field>` are not open reasons for a blank field
   the current, obtained second opinion also leaves blank, Verbatim D/T/S and Habitat excepted.
 

@@ -51,7 +51,8 @@ The checks:
 - precise_location_extent (`_extent_marks`, WP 2.3b): a settled precise location whose literal,
   wherever a reading of its label writes it, ends its line before a line that goes on with a
   settled province or country the literal does not write, and with nothing but other settled
-  fields' texts, place unit words and punctuation besides, is marked as cut short; otherwise the
+  fields' texts (a habitat for which step._over_lines is true is none of them: `stage`),
+  place unit words and punctuation besides, is marked as cut short; otherwise the
   check abstains.
 
 The stage also adds the sentence "Basis: derived, rule <id>." (DERIVED_RULES) to the reason of
@@ -934,7 +935,8 @@ def _extent_marks(fields: Mapping[str, FieldValue], readings: Sequence[Reading],
     of its labels (step._value_regions) writes it exactly; at every place each writes it, the
     literal ends its line (only white space follows on that line) and the reading's next line
     continues the locality with a settled province or country, with nothing but other settled
-    fields' texts, place unit words and punctuation besides (_continues): "E. slope Mt.
+    fields' texts (of `fields`, which stage passes without a habitat for which step._over_lines
+    is true), place unit words and punctuation besides (_continues): "E. slope Mt.
     McKinley" before "Davao Prov.", the province settled. Otherwise the check abstains: "Los
     Banos, Philippines" before "University of the Philippines" and "Yepocapa, Chimaltenango,
     Guatemala" before "Guatemala Exped. 1948" (the literal writes the country already), a next
@@ -1043,9 +1045,16 @@ def stage(run, *, readings: Sequence[Reading], received: Mapping[str, Sequence[S
     what it saw (STAGE_SAW), which the units path's one re-ask tells the field's expert
     (field_research/reask.py)."""
     from .agreement import PLACE_ORDER
-    from .step import marked_code
+    from .step import _over_lines, marked_code
 
     rows = {item.id: item for item in run.evidence}
+    # The extent check blanks other settled fields' texts from the line after the locality. A
+    # habitat settled on text read from the transcript over consecutive lines is no such field
+    # there (step._over_lines): the whole value counts for nothing, its literal and each reader's
+    # verbatim of it, so the check marks the precise location as on origin/main 3eb37c11, which
+    # refused that answer (lane H4, round 3 of #464's review: another reader's organiser candidate,
+    # kept as that reader's verbatim on one line, blanked a settled province's text).
+    beside = {key: value for key, value in run.fields.items() if not _over_lines(run, key, value, human)}
     answers = [answer for found in received.values() for answer in found]
     have = {answer.evidence.id for answer in answers if answer.evidence is not None}
     cited = [i for key in PLACE_ORDER if settled(value := run.fields.get(key)) for i in value.evidence_ids
@@ -1064,7 +1073,7 @@ def stage(run, *, readings: Sequence[Reading], received: Mapping[str, Sequence[S
     made: list[str] = []
     present = {(finding.field_key, finding.reason_code) for finding in run.findings if finding.rule_id == CHECK_STAGE}
     for mark in [*_place_marks(run.fields, answers, human, tally), *_date_marks(run.fields, human),
-            *_extent_marks(run.fields, readings, rows, human)]:
+            *_extent_marks(beside, readings, rows, human)]:
         _with_sentence(run.fields[mark.field], mark.sentence)
         if decisions is not None:
             decisions.setdefault(mark.field, {}).setdefault(STAGE_CHECK, mark.check)

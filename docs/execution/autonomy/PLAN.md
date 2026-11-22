@@ -101,10 +101,11 @@ fields already on the not-on-the-label list (C1, C4a, C4b and C4c wait: section 
 | V3 the slide's QR code settles the catalogue number | The coordinator's ruling of 2026-11-20 (not the owner's words), under the owner's ruling of 2026-11-18 quoted below this table, typed after the coordinator reported the barcode rules holding records for a person. The owner's words of 2026-10-26 bear on it too, as `docs/product-requirements/FIRST_PASS_UNITS_AND_SPECIMEN_ONTOLOGY.md` section 1 records them at line 32, copied as typed: "Finally first pass never settles, it has to go to harness(QR is a straight pass, ignore that, I’m talking about specimens data)"; reading "a straight pass" as "the code's number is the catalogue number without the harness settling it" is the coordinator's reading, not his words. It changes V2b's comparison (the row above): where the run holds a stored decode whose payload is itself a well-formed catalogue number, the catalogue number is the code's number. Rule 1: no value settled (ambiguous, unresolved, not present, blank, or failing the identifier format): the code gives the number. Rule 2: a settled value whose literal does not write the code whole takes the code's number; the readers' number is kept in the reason and in an info finding (`barcode_readers_differ:fmnh_ins_number`, never a reason, never a hold); no `barcode_differs` mark is made (a record finalized before keeps its mark until a new run). Rule 3: a settled value that writes the code whole is confirmed, as in V2b. Rule 4, unchanged: a run with a transcript a person decided on any label, a run not on the units path, no stored decode. No part of the rule, the confirmation included, acts on a field a person holds authority over, read from the run's durable state through the function the second opinion uses (`second_opinion.authority`: a decision at the endpoint, a carried decision, a locked selection, a reassessment's protected field; every part of the rule enters through `catalogue_code._entry`); rules 1 and 2 run as the last act of `step.apply_outcomes`, after the check stage, so on the attempt that researches the number no other field's check and no re-ask sees a number the code gives (Codex round 1 on PR #458; a later research attempt of the same run does see it as a settled field: FIELD_RESEARCH.md, "Order"). The code gives whole values only: no number is read out of the readers' texts and no tie among readings is broken. A supplied value is supported, on the settled layer, its literal the code's digits, the code row its one citation and deciding it; nothing else is stored, so every later finalize reads the same record (`step.code_confirmed`). The app shows it with the basis of every catalogue number ("As written": the label carries the code); no app change. | `field_research/catalogue_code.py`; `step.py` (comments, and the guard's restore of an absent field) | Measured first: the released segment step stores a decode on 97 of the 100 truth slides, all 97 equal to the truth; no decode on 105526336, 105526446, 105526715 (unchanged: two clear on their readings, one stays held by `text_only`). Replay with the real code, before e83c36fd and after: base 83 to 94 records clear, r3 71 to 83; wrong catalogue numbers among cleared records 0 before and after; every record that moves goes to cleared with the truth's number (base: 8 by rule 1, 3 by rule 2). Nothing else moves on the 200 replayed runs: 0 other fields, 0 other findings, the second opinion's result identical; the reasons that differ are the catalogue number's own, plus two open reasons that hold nothing (`label_unsettled:fmnh_ins_number`, the code's label's `unresolved_transcription`). Values shown with no mark inside cleared records, as K1 scored them: base 429 right and 5 wrong to 505 and 6; r3 399 and 3 to 477 and 4 (the one more is 105526455's Province/State "Utah" for "Idaho", unchanged by this package, in a record that now clears). Tests: `tests/field_research/test_catalogue_code.py`, 115 cases, and `test_catalogue_code_person.py`, 17 cases, the person sequences through the real decision endpoint and Retry. A later research attempt of the same run reads a given number as a settled field, a stated residual by the coordinator's ruling (FIELD_RESEARCH.md); sixteen earlier cases changed expectation with the rule and are kept. Residual risk: a slide whose QR sticker belongs to another specimen now clears with the sticker's number; none in the 97. Details: `docs/execution/golive/FIELD_RESEARCH.md`, "The code gives the number (2026-11-20, lane V3)". |
 | K1 skeletal records (this pull request) | The owner's ruling of 2026-11-18 (section 1, quoted there). **The profile**: `zoology_insects_slides` 1.0.0 makes `fmnh_ins_number` its only mandatory field; the nineteen others are optional, in the same order, then `identified_by_irn` (edited in place, as every earlier change to this profile was. A run keeps the clearance profile it was bound with through Retry and Resume (`lane.queue` renews only the execution limits; classify is not run again); only a new run binds the published profile: Reprocess (the app's "Start new run", `POST /runs/{run_id}/actions` with `reprocess`), whose classify step binds it (`test_lane_allowance.test_a_new_run_of_an_existing_specimen_binds_the_published_profile`); a regions decision's new run keeps the old profile). **The disposition**: every field a label writes is still checked and gets the same reasons as before (`policy.checked_fields`, `step.finalize_fields`); `step.split_reasons` then keeps an optional field's doubt in the new additive `run.open_reasons` and lets the record clear; the classification of every reason code is below. **Failures**: an optional field research could not finish (a failure or its expert's fallback) is that field's doubt, `research_incomplete:<field>` in `open_reasons`; research given up for the run as a whole holds (`field_research_given_up`); a label no field is drawn from holds nothing (the coordinator's rulings of 2026-11-18). **Removed**: S1's `no_specimen_value` guard (the coordinator added it on 2026-11-17; the owner's "Where there is no field related data on the lable, nothing to do, it will get cleared" removes it). The ordinary path (`policy.finalize`) splits the same way. No field's state, value, marks or findings change. **Codex round 1 (head cbb3b10d), fixed**: the QR code's confirmation is recomputed on the run as it is each time (`step.code_confirmed`: the decode's number against the current value, no mark, the decode row of this run's image and labels), never read from a relation; a person's pending approval and a location reassessment left unconfirmed survive every finalize until their own resolution (`step.pending_person_holds`; main had the same gap, closed there by other holds in practice); a field's attention in the app and the server's per-field counts read `open_reason_codes` as well as `reason_codes` (`blockers.fieldAttentionFor`, `review_summary`, the search projections' new last column `openReasonCodes`), while the record's disposition and blocker list read `reason_codes` alone. **Codex round 2 (head 74a77105), fixed**: standing holds are defined by construction (`application/standing_holds.py`): every reason a path outside the clearance rules writes (`human_approval_required`, `history_restored_requires_review`, `location_reassessment_unconfirmed:*`) is carried through every recomputation and kept beside a blocker until its own event, and `tests/test_standing_holds.py` scans the source for every writer of a run's reasons; the app takes record blocking from `reason_codes` alone (a transcription or finding blocks only when the server holds its code); one mapping of reason codes to fields, pinned for server and app by `tests/fixtures/field_attention.json`, with `label_unsettled:<field>` naming each field an open label doubt reaches. **Codex round 3 (head f9317b87), fixed by changing the principle**: a hold is never carried from one reasons list to the next; it is derived on every finalize from durable state on the run (`run.pending_review`, the give-up finding), so a blocker may replace the reasons freely. A run stored before the key adopts the holds its stored reasons name, once. | `application/profiles/published.json`, `field_research/step.py`, `application/policy.py`, `application/harness.py` (the extraction request lists the same fields as before), `application/domain.py` (one optional key), the app's `blockers.dart` (one reason's words added, one removed), PRD QUE-002 and 12.4, golive PLAN 2.1/G19/stage 8/4.2, FIELD_RESEARCH.md, CONTRACTS.md | Unit tests: each reason kind classified both ways; the published profile against the profile with every field mandatory, field for field, the same reasons split; a label with only the catalogue number clears; research given up for the run holds through refinalize; an optional field's failure stays open with its reason. The field-mechanics tests (`test_step.py`'s rig and the files built on it) run on the profile with every field mandatory (`test_step.field_mechanics_profile`), so every pinned case, the "expert wrong" ones included, keeps its field held or marked exactly as before. Replay over the 100 truth slides below. |
 | F1 the fields' second opinion | An engineering change (the owner has not ruled on it or its model); its structure is the coordinator's ruling of 2026-11-18 after two review rounds. **Its own workflow step** `field_second_opinion`, after field research has completed for the run (its step or recheck finalized it: no retryable research failure pending) and before the record is finalized: the run waits at that stage with no disposition; the step is optional and obeys every guard a mandatory paid step obeys (attempts; steps, two external calls, reserved tokens and active time; a price row; the cost ceiling; room below the record's size limit), then reserves two requests' worst case (USD 0.12, a malformed answer is asked again once) on the monthly caps and the program's allowance inside one handler; an intent with status `asking`, a lease and an attempt but no blocker; a deadline that bounds the crop read, the request (as the experts' are) and the client's closing; ledgers settled only after the result's save; a bounded stored answer (20 values and texts, 300 characters each); every outcome of a sent call final for the values it asked (asked again only for a field never asked or changed since); when nothing of the step can be saved, the record is finalized as main would (except within a few bytes of the limit, where main's own next write blocks too). One request to Muse Spark Open 816B on Baseten (route `second-opinion-muse-spark`, priced in the published price list): the label crops, the readers' texts and the fields benchmark's instruction, never the pipeline's fields; the answer must satisfy the tool schema field by field (all 20 fields, each `{value, evidence}`), else it is asked again once, and a second malformed answer is "not obtained". **Its failure never blocks the run**: switched off, attempts used, a run limit, money, a provider error (HTTP 402 included), a timeout, a second malformed answer, a result over the record's size limit or any exception ends it "not obtained" and the record is finalized in the same save with research's stage and blocker; a person's decision while the intent is open abandons it at the endpoint, and anything else that finalizes the run abandons it first, held in full on the run and the ledgers; a lost outcome (worker deadline, crash, the save failing) is found after the lease, held in full and finalized. **One stored result** `Run.second_opinion` (optional, omitted while unset): the status, each judged field's compared value, the second opinion's value and text and the verdict, and the answer inline; no finding, mark, evidence row or field is written. **Marks derived at every finalize** (`step.finalize_fields`): `marked:<field>:<label>:second_opinion_differs` where the recorded verdict for the field's current value differs, `..._not_checked` where there is none; nothing where it agrees, for the catalogue number, the IRN, an open or blank field, a field another rule marks, or a field a person holds authority over (decided at the endpoint, `Run.person_decided_fields`; carried; locked; a person's transcript; reassessment-protected). Legacy decisions are adopted once at load from the review audit; a history restore returns the revision's own result and list. With K1 (the same pull request, #455, which includes #456) a mark on an optional field is that field's flag, not a hold: an agreed value is shown as settled; a differing or unchecked one is settled and flagged on its field; the record clears on its catalogue number, which the second opinion never judges, so on the published profile no second-opinion mark holds a record. A run is judged by its own pinned profile: on a run whose profile makes a field mandatory, any mark on that field holds the record, the second opinion's included; a new run (Reprocess, the app's "Start new run") takes the published skeletal profile, where only the catalogue number is mandatory and no second-opinion mark can hold. A record stored before this change keeps its old mandatory set on Resume or Retry: the second opinion ends `unconfigured`, its settled fields read "not checked", and those marks hold under the old profile; it clears by the new rule only on a new run, or by a person's approval. | `application/second_opinion_step.py`, `application/workflow.py` (the step's registration), `field_research/second_opinion.py`, `prompts/second_opinion.txt`, `step.py` (five lines in `finalize_fields`, before its `split_reasons`), `storage.work_available_at` and `lane_worker.waiting_until` (an open intent waits for its lease), `research_harness/workflow_bridge.py`, `active_graph.py` (adoption at load), `api.py` (decided), `domain.py` (two optional keys), `model_gateway.py`, `model_option.active_routes`, `profiles/published.json` (price row), the app's `blockers.dart` and `settlement_codes.dart` | The fields benchmark (2026-11-18, 67 slides answered by Muse Spark): on the cleared records the base pipeline's 355 unmarked values held 39 wrong, the 299 agreed 5; with the r3 readers 336 and 33, agreed 280 and 2. This code's replay of the same stored answers: base 273 still shown, 4 wrong (9 with the locality compared exactly), 60 differ (35 wrong), 22 not checked (four answers refused as malformed, all right); r3 265 shown, 2 wrong (6 exact), 58 differ (31 wrong), 13 not checked; 95 % upper bound of wrong among shown near 3 %. Residual risk: a misreading both readers share and the second opinion copies (two dates of two slides); padding of crops over 40:1 not measured; a legacy decision followed by a restore before it is adopted again (production holds none). |
-| F2 an agreed value and an agreed blank carry no flag | The coordinator's two rulings of 2026-11-19 on lane H1's measurement (not the owner's words), under the owner's ruling of 2026-11-18 and rule changes 1 and 2 of section 1; display-level and reversible. Derived at every finalize from the second opinion's stored result and the run as it is now; nothing stored; only `run.open_reasons` is shortened. **Rule A**: `label_unsettled:<field>` is not an open reason for a field settled with a value whose recorded verdict for its current shown value is "agrees", the three date fields excepted; skipped on a run any label of which one reader read (an `independent_observations_missing:<label>` reason, holding or open). **Rule B**: `mandatory_unresolved:<field>` and `label_unsettled:<field>` are not open reasons for a blank (`not_present`) field, Verbatim D/T/S and Habitat excepted, that the obtained second opinion, current for the run (the same labels, no transcript a person bound, no reading newer than the request), also leaves blank. Neither applies to the catalogue number, a field the run's own pinned profile makes mandatory, a person's field, an approved run, or while the second opinion is not obtained or leaves a value unjudged. Marks, `research_incomplete`, `taxonomy_unresolved` and the labels' own codes stay, so a field another open reason still names stays flagged (a blank Taxon keeps `taxonomy_unresolved`): the rules remove the named codes, not every flag. See "F2" below. | `field_research/second_opinion.py` (`unflagged`, `agreed`, `answer_current`), one call in `field_research/step.py` `finalize_fields`; `tests/field_research/test_agreed_no_flag.py`; `tests/fixtures/field_attention.json` | Each test fails on e83c36fd. On the 100 truth slides replayed (200 stored runs, each finalized with and without the rules) no record differs in anything but its open reasons; on the 83 that clear, rule A removes 146 flags (0 on a wrong value) and rule B 125 (0 on a missed value); flagged fields per cleared record 11.16 to 7.89. |
+| F2 an agreed value and an agreed blank carry no flag | The coordinator's two rulings of 2026-11-19 on lane H1's measurement (not the owner's words), under the owner's ruling of 2026-11-18 and rule changes 1 and 2 of section 1; display-level and reversible. Derived at every finalize from the second opinion's stored result and the run as it is now; nothing stored; only `run.open_reasons` is shortened. **Rule A**: `label_unsettled:<field>` is not an open reason for a field settled with a value whose recorded verdict for its current shown value is "agrees", the three date fields excepted; skipped on a run any label of which one reader read (an `independent_observations_missing:<label>` reason, holding or open); since lane H4, for Habitat only where every reading of the labels the value rests on holds the value's text (row H4). **Rule B**: `mandatory_unresolved:<field>` and `label_unsettled:<field>` are not open reasons for a blank (`not_present`) field, Verbatim D/T/S and Habitat excepted, that the obtained second opinion, current for the run (the same labels, no transcript a person bound, no reading newer than the request), also leaves blank. Neither applies to the catalogue number, a field the run's own pinned profile makes mandatory, a person's field, an approved run, or while the second opinion is not obtained or leaves a value unjudged. Marks, `research_incomplete`, `taxonomy_unresolved` and the labels' own codes stay, so a field another open reason still names stays flagged (a blank Taxon keeps `taxonomy_unresolved`): the rules remove the named codes, not every flag. See "F2" below. | `field_research/second_opinion.py` (`unflagged`, `agreed`, `answer_current`), one call in `field_research/step.py` `finalize_fields`; `tests/field_research/test_agreed_no_flag.py`; `tests/fixtures/field_attention.json` | Each test fails on e83c36fd. On the 100 truth slides replayed (200 stored runs, each finalized with and without the rules) no record differs in anything but its open reasons; on the 83 that clear, rule A removes 146 flags (0 on a wrong value) and rule B 125 (0 on a missed value); flagged fields per cleared record 11.16 to 7.89. |
 | L1 a region too thin to hold a label is not counted as a label | The coordinator's ruling of 2026-11-21 (not the owner's words; an engineering fix of a label-finder artefact, not an owner sign-off of the coverage values, whose range of 1 to 3 is unchanged). In `label_coverage.check_coverage`, a label region whose shorter side is under `CoverageRule.min_region_short_side_fraction` (new, optional; 0.03 in the published profile) of the image's shorter side is left out of the region count; it is still stored, read and shown, and the geometry issues, the full-image cross-check and `merge_iou` are untouched. `run.coverage_check` records the fraction and the regions not counted. A rule without the value counts every region, so a stored run (which keeps the rule it pinned) checks as before. "Count only" means the region count: a run whose count is then in range has its coverage confirmed, with every consequence of a confirmed coverage, the not-on-the-label mark among them (the coordinator's ruling of 2026-11-21; below). | `application/label_coverage.py`, `application/collection_profiles.py`, `application/profiles/published.json`, `tests/test_lane_coverage.py` | Replay on the 100 truth slides (below): 94 to 98 records clear, 0 wrong catalogue numbers; 105527007 (one label drawn twice) stays held |
 | L3 the same label boxed twice is counted once | The coordinator's ruling of 2026-11-21 on review round 1 of #461 (not the owner's words; an engineering fix of a label-finder artefact, provisional, not an owner sign-off of the coverage values). A new optional value of the coverage rule, `CoverageRule.nested_duplicate` (`min_containment`, `min_iou`, both required; 0.95 and 0.6 in the published profile): two label regions count as one label when at least 0.95 of the smaller box lies inside the larger and their IoU is at least 0.6, as the label finder's outer card and inner frame of one label do. `merge_iou` stays 0.9. Merges chain across both tests, after the thin regions are left out. Count only: both boxes stay in `run.regions` and are read, stored and shown; `run.coverage_check` adds `nested_duplicate` and `merged_regions` under a rule with the value. #461 first lowered `merge_iou` to 0.6; Codex's round 1 showed four separate diagonal labels whose boxes overlap at IoU 0.68 chaining into one label and confirming coverage, so IoU alone was dropped. A stored run keeps the rule it pinned; the consequences of a confirmed coverage are as in L1's row. | `application/collection_profiles.py`, `application/label_coverage.py`, `application/profiles/published.json`, `tests/test_lane_coverage.py`, `tests/field_research/test_duplicate_label_coverage.py` | Measured (`autonomy-program/L3/scripts/measure.py`, the 269 stored regions of the 100 truth slides): 24 overlapping pairs; two duplicates (outer card and inner frame of one Lewis label, the frame wholly inside: 105527007 IoU 0.7847, 105526361 IoU 0.7731), both meeting the rule; the other 22 are different labels (seen: L2 looked at six, the G51 review of #461 at all 22, each a barcode label's box touching a large label's box), at most 0.491 of the smaller box inside the other and IoU at most 0.0496, none meeting it. Replay (`L3/scripts/replay_l3.py`, the real `check_coverage` with each tree's published rule, then the real `finalize_fields` on the stored rows, origin/main 106cebd7 against this change): 98 to 99 records clear, 0 wrong catalogue numbers; 105527007 4 to 3 regions, now cleared; 105526361 3 to 2, cleared before and after; no other slide's coverage, count, disposition, reasons or shown field moves. On 105527007 every shown value that differs from the truth is flagged by an open reason naming its field: among them Date Visited From and To shown 1974-04-27 for the truth's 1976-04-27 (`label_unsettled:date_visited_from` and `label_unsettled:date_visited_to`); the two readers read that label's year as 1994 and 1974 on its outer box and 1970 and 1976 on its inner box. Residual risks: merges chain, so any number of separate narrow labels at an angle whose boxes nest link by link (each link: IoU 0.9 or more, or 0.95 inside at IoU 0.6 or more) would count as one, which can release a count hold (no such link between different labels among the 269 regions or in P1), and every box would still be read and shown; two duplicate examples only, both the same card-and-frame pattern; rolling back below this change needs a new run for runs pinned with the value. Details: DATA_CONTRACT.md 4.1 |
 | H3 a blank field the second opinion gives a value for is flagged | The coordinator's rulings of 2026-11-21 on lane H2's measurement and on the paid habitat rerun (engineering fixes, not the owner's words). `second_opinion.filled`, at every finalize after the split and the derived holds: a judged field shown blank (not present, "not on the label" among them, not applicable, or supported with no text; an open field is already flagged by its state) for which the obtained, current second opinion gives a value gains the open reason `marked:<field>::second_opinion_differs` (a flag only: the value stays blank; never a mandatory field, a person's field, an approved run, a run off the units path or while the step is due, or a field already flagged). Measured and NOT shipped: a rule in `prompts/habitat.txt` that a host is the habitat (reverted; see "H3" below). The museum's published records hold hosts as associated taxa and never in Habitat (lane M0); the 20-field profile has no such field. | `field_research/second_opinion.py`, `field_research/step.py` (`finalize_fields`), `tests/field_research/test_blank_second_opinion_fills.py`, `tests/fixtures/field_attention.json`, the app's `test/second_opinion_test.dart` | Free replay on the 100 truth slides: 53 flags gained, all Habitat, 0 where the truth is blank, dispositions unchanged on 100 of 100; 5 Habitats the truth fills stay blank with no flag (the second opinion gave no value). The prompt rule's paid rerun on the 99 cleared records: wrong Habitats 6 to 19, so it does not ship |
+| H4 a host the label writes is the Habitat value | The coordinator's rulings of 2026-11-21 (not the owner's words; the owner has not ruled on where a host belongs): the lane's, that the habitat expert answers a label's host as the Habitat, as written, by a change confined to its own instructions and the habitat field's acceptance code; and, after the lane's two paid runs, that it ships with one condition inside rule A. **The brief** (`prompts/habitat.txt`, five rules): a host is this field's value; the name after a host marker, or a non-insect animal's name with no marker, wherever it stands; copied whole, a written "Ex."/"Ex:"/"ex"/"On" kept, a "Host" heading left out, `value` empty; over consecutive lines where the label writes it so; a name the expert cannot place is not guessed. **Acceptance, habitat only**: a literal may run over consecutive lines as the precise location's does (`agreement.ACROSS_LINES`); one that starts with the heading "Host" is refused, never rewritten (`HOST_HEADING`); a habitat read over consecutive lines claims no text against another field and goes to review itself where its text is another kind of field's settled value or resolved answer of the same attempt (`agreement.GIVES_WAY`, `step._taken`; fix round 1 of #464), and, in the readers found where a settled value's text relaxes another field's decision (the guard, rule A's mark, a line of places, owner decision B, the precise location's extent check), the whole value counts for nothing (`step._over_lines`; fix rounds 2 and 3). The heading refusal is one stated limit for other fields, in either direction ("H4" below, "Review round 3"). A habitat settled over lines (`step._over_lines`) that is drawn from a label whose transcription is unresolved carries `label_unsettled:habitat` unless rule A lifts it (`step.label_attention`; fix round 3, item M). **Inside rule A (F2)**: an agreed Habitat keeps `label_unsettled:habitat` where a reading of a label it rests on does not hold the value's text anywhere in it, letter case and spacing aside (`second_opinion.READERS_MUST_WRITE`, `agreement.reader_writes`); a reading that holds the same text elsewhere on the label counts as writing it (a known limit). Every other prompt text is byte-identical (33 of 34). Left in place: the ontology's `host_marker` entry ("[no field]", 21 prompts); the museum's published records hold hosts as associated taxa and never in Habitat (lane M0): a point for the owner, not a ruling of his. | `field_research/prompts/habitat.txt`, `field_research/agreement.py`, `experts.py`, `step.py`, `second_opinion.py`; `tests/field_research/test_host_is_the_habitat.py`, `test_agreed_habitat_readers.py`, `test_habitat_over_lines_gives_way.py`, `test_habitat_changes_no_other_field.py`, `test_habitat_over_lines_label_flag.py`, `test_units_instructions.py` (the habitat pin) | Paid habitat-only rerun of a28cf3f5 on the 99 cleared records of the 100 truth slides (USD 0.2076 at list; the second opinion judged on the stored answers): by the program's comparison `second_opinion.same` (letter case, accents, spacing and most marks aside: the exact rule is under "H4" below) right Habitats 10 to 49, wrong 6 (6 before), every wrong or partial one flagged, missing 76 to 37 (35 flagged), right blank 7 of 7; by exact text 44 right and 11 wrong, 4 of them with no flag in the paid run (a letter's case, a full stop, a space) and 3 on the head of fix round 3; no record's disposition, `cleared_by`, holding reasons or other field differs. Free, on the source of a8e8a76d (fix round 3): run 3's recorded answers replayed give the same six numbers by `same` and run 3's own record on 96 of 99, the three others gaining `label_unsettled:habitat` and nothing else (item M); with every field's recorded answer applied in one attempt, every field other than Habitat equals origin/main's on 99 of 99 records under each of four habitat answers, and on 13 of 13 and 26 of 26 records under two constructed ones (a heading answer, an answer run on to the next line). See "H4" below |
 
 The owner's ruling of 2026-11-18, typed in session f9614090 (quoted exactly):
 
@@ -140,7 +141,7 @@ The classification is the coordinator's rulings of 2026-11-18 (the coordinator's
 | `field_research_given_up` (new: research given up for the run as a whole) | holds; derived on every finalize from the give-up's finding on the run, which the next research attempt removes |
 | `preserved_human_decision:<field>` | holds (recomputed from a person's decisions on every finalize) |
 | `human_approval_required`, `history_restored_requires_review`, `location_reassessment_unconfirmed:<field>` | holds; derived on every finalize from `run.pending_review` (`application/standing_holds.py`), recorded when a person decides, a history is restored or a reassessment leaves a field unproved, and cleared by a person's approval (the reassessment's entries also by the reassessment that settles them) |
-| `label_unsettled:<field>` (new: a field drawn from a label whose doubt is open, `step.label_attention`) | never holds: the field's attention only |
+| `label_unsettled:<field>` (new: a field drawn from a label whose doubt is open, `step.label_attention`; since lane H4 also a Habitat for which `step._over_lines` is true that is drawn from a label whose transcription is unresolved, row H4) | never holds: the field's attention only |
 | an operational failure (`lookup_operational_failure`, `field_research_model_error`, `field_research_timeout` `:<field>`, the blocker) | holds: the run is blocked, as before |
 | `evidence_integrity_failure` | never a reason: the step blocks, as before |
 | ordinary path: `institutional_policy_unapproved`, `mandatory_semantics_unconfirmed`, `evidence_lineage_invalid:<row>`, its capability reason | holds |
@@ -463,8 +464,8 @@ flagged wrong values: a name over two lines settled as one line ("Meriones" for 
 built or tested): the expert's own literal is the one line, while its explanation names the whole host (105527218:
 "Host: / Meriones / LIBYCUS"). A resolved literal must appear exactly in every reading it names
 (`experts.py:595-602`, `literal_not_in_reading`), and a literal given with a space for a line break is mapped back to
-the readings' text only for the fields in `agreement.ACROSS_LINES`, which holds the precise location alone
-(`agreement.py:479`, checked at `agreement.py:530`; `experts.py:559-571`, `_across_lines`). So "Meriones LIBYCUS",
+the readings' text only for the fields in `agreement.ACROSS_LINES`, which held the precise location alone at that
+head (lane H4 adds the habitat: "H4" below; `agreement.py:479` there, checked at `agreement.py:530`; `experts.py:559-571`, `_across_lines`). So "Meriones LIBYCUS",
 joined with a space as the measured line told the expert, is not in a reading that writes "Meriones" and "LIBYCUS" on
 two lines, and is refused; a one-line literal passes. That is consistent with the 2 to 3
 model calls these answers took; the refusals themselves were not recorded by the rig.
@@ -472,12 +473,934 @@ model calls these answers took; the refusals themselves were not recorded by the
 Known follow-up. Hosts reaching Habitat as values needs the ontology's `host_marker` entry changed (it renders into 21
 prompts: all 20 experts' and the first pass's), multi-line hosts accepted as the precise location's are, and a full
 measured rerun. That is beyond the program's remaining test budget and needs the owner's approval of more test money.
+(2026-11-21, later: lane H4 reached hosts as Habitat values without changing the `host_marker` entry, by the habitat
+brief and the habitat field's acceptance alone, measured by habitat-only reruns; see "H4" below.)
 
 Known follow-ups, not built here: (a) saves without a finalize (the examples under "When the mark is current" above,
 among them a history restore and a decision other than an approval or a capability deferral on a run whose stage is not
 `finalized`; a decision arriving at `field_second_opinion` is moved to `finalized` first) keep an earlier finalize's
 open reasons (origin/main's mechanism, for every open reason, not only this mark); (b) the app's instruction "Check this
 value against the image" on a field that shows no value (not false; wording for a blank).
+
+### H4: a host the label writes is the Habitat, as written
+
+Authority. Two rulings of the coordinator's, of 2026-11-21 (not the owner's words): for the lane, that the habitat
+expert answers a label's host as the Habitat value, as written (the name whole across its lines, a written "Ex.",
+"Ex:", "ex" or "On" kept, a "Host" heading left out), by a change confined to the habitat expert's own instructions
+and the acceptance code for the habitat field, every other prompt text byte-identical; and, after the lane's two
+paid runs, that head a28cf3f5 ships with one condition inside rule A (F2) added for Habitat. The coordinator's
+rulings of the same day on review rounds 1 and 2 of #464 (again the coordinator's, not the owner's) are under
+"Review round 1" and "Review round 2" below. The requirement is the
+repository's own (`habitat.txt:1` and the ontology's habitat row, "The habitat, host or substrate the label writes";
+lane M0's ruling H). The owner's words that bear on it are in the program's record
+(`~/specimen-golive/autonomy-program/PROGRAM.md` section 1 and its entry of 2026-11-21): the test budget, "Yes, USD
+40", and, to the coordinator's question "Raise the test budget from USD 40 to USD 46 so hosts can fill Habitat as
+values?", "Yes, USD 46". He has not ruled on where a host belongs.
+
+An open point for the owner, not a ruling of his. The museum's published flea records hold hosts as associated taxa
+("Ectoparasite Of") and none of the 104 Habitat values lane M0 read there is a host; the ontology's `host_marker` entry (`ontology/specimen.yaml`) gives a host no field (`fields: []`) and still renders
+"[no field]" into every expert's instructions; this program's truth
+sheets put the host in Habitat, and so does this change. The contradiction is left in the ontology on purpose: its
+entry renders into 21 prompts, and changing it needs a measured rerun of every field. The habitat brief says in words
+what the notation means for its field.
+
+Why (lane H4's free diagnosis of lane H3's paid rerun, `~/specimen-golive/autonomy-program/H4/diagnosis.txt`,
+`H4/scripts/diagnose.py`; that rig had stored no refusals, so the acceptance check was run again locally on answers
+the expert could have given). Of the 53 `label_lacks_value` answers, 7 were right (the truth has no Habitat) and 46
+were hosts: 44 answered in one model call with nothing refused, 45 were names with no marker before them, the
+expert's explanation called the name the taxon on 38, and the units over the host carried the fields advice `taxon`
+on 35. The right answer would have passed the acceptance check on 29 and been refused on 17 (8 over consecutive
+lines, 3 where the readers differ, 6 that no reading writes whole). Of the 13 partial or malformed hosts, 10 were one
+line of a name written over two: the whole name was refused with a space for the line break
+(`literal_not_in_reading`) and with the line break (`not_candidate`), and the one-line piece was accepted; 2 kept a
+"Host" heading the measured line told the expert to leave out; 1 had a second line both readers read otherwise than
+the truth.
+
+The change (`field_research/prompts/habitat.txt`, `agreement.py`, `experts.py`, `step.py`, `second_opinion.py`).
+
+- The habitat brief gains five rules after its line 5 (lines 1 and 4, which the ontology cites, keep their place): a
+  host is this field's value, and the notation's "[no field]" and "never its taxon" mean only that a host is never
+  the taxon; a host is the name after a host marker, on its line or the lines right below; a host needs no marker (a
+  name the expert knows for a non-insect animal's is the host wherever it stands, a missing marker, an
+  identification-like place and the units', the organiser's or `other_fields`' taxon advice being no reason for
+  `label_lacks_value`; a name it cannot place is not guessed: `sources_cannot_resolve`); copy it whole, the written
+  marker kept, the heading left out, the name ending before another field's text, `value` left empty; a host or a
+  habitat over consecutive lines may run over them.
+- Acceptance, for the habitat alone: `agreement.ACROSS_LINES` holds `habitat` beside `precise_location`, so a habitat
+  literal may run over consecutive lines of a reading and an answer that gives a space for a line break is read as
+  the text the readings write (`written_runs`, `across_lines`, `_cut_candidate`; `experts._Expert._across_lines`,
+  `step._across_lines`); the two sentences the precise location's expert is told keep their wording
+  (`ACROSS_LINES_TEXT`). `agreement.literal_refusal` refuses a habitat literal that starts with the heading "Host"
+  (`HOST_HEADING`, `host_heading`; trace code `host_heading`), in the expert's check and again in the step; the
+  answer is refused, never rewritten. The test is `re.match(r"[^\w]*host(?![^\W_])", literal, re.IGNORECASE)`: the
+  word "host" at the literal's start, after any marks, with no letter or digit right after it. So it also refuses a
+  habitat that begins "Host plant ...", "Host-plant ...", "Host tree ...", "Host's nest ..." or "host_nest ..." (the
+  run-the-code reviewer's constructed answers, `reviews/g51_probes/g51_464/out/check_cmp.txt`: each ends not settled
+  and flagged, never rewritten, where origin/main settled the text as given), and passes "Hosta leaves", "Hostel
+  garden", "Host2 burrow", "In host burrow", "Ex host nest" and a heading in French, German or Spanish ("Wirt:",
+  "Hospedero:"; the same file). The words the expert is told on that refusal are the ones run 3 ran with and were
+  not changed.
+- Text shared with another field (fix round 1; `agreement.GIVES_WAY`, `step._taken`, `step._settled_claims`). The
+  order in `step.apply_outcomes`: every answer of the attempt is first applied on a copy of the record
+  (`_first_pass`), where a habitat literal over consecutive lines settles provisionally; the guard on shared text
+  (`_taken`) then compares the answers of that one attempt; then the answers are applied to the record
+  (`_apply_answers`). A habitat this attempt's answer read from the transcript over consecutive lines claims no text
+  in that guard: every other field is decided as if that answer had settled nothing. The Habitat itself goes to
+  review (unresolved and flagged, its reason naming the other field) where its text overlaps another kind of
+  field's settled text, or the literal of another kind of field's resolved answer of the same attempt even when
+  that answer settles nothing. Rule A's not-on-the-label mark does not count such a Habitat as holding another
+  field's organiser text. A habitat on one line, and one that is a whole organiser candidate, keep origin/main's
+  behaviour in the guard. The expert is not told and does not answer again: the guard runs after every field's
+  expert has finished.
+- Other fields' decisions (fix rounds 2 and 3; the cases and the limits are under "Review round 2" and "Review
+  round 3"). The aim: for the same expert answers a field other than Habitat ends as on origin/main. It is enforced
+  in code for a habitat settled on text read from the transcript over consecutive lines: in the readers found where
+  a settled value's text relaxes another field's decision, the whole value counts for nothing, its literal, each
+  reader's verbatim of it and its label rows (`step._over_lines`). The readers found: the guard above, rule A's
+  not-on-the-label mark, the text a line of places holds (`step._unplaced_text`), the words a settled value accounts
+  for before owner decision B clears a code with no genus (`step._genus_on_a_label`), and the texts the precise
+  location's extent check blanks from the line after the locality (`ontology_checks.stage`). For a habitat that
+  starts with the heading "Host" it is not enforced: that is one stated limit, in either direction ("Review round
+  3"). Where a resolved heading answer is applied to the step directly, the refusal is left out of the pass before
+  the guard (`step._first_pass`, `step._BEFORE_GUARD`), so there it claims in the guard the text it claimed on
+  origin/main; on the resolver's path the expert's own check refuses it first.
+- Inside rule A (`second_opinion.agreed`, `READERS_MUST_WRITE`, `_a_reader_differs`): an agreed Habitat loses
+  `label_unsettled:habitat` only where every reading of the labels the value rests on holds the value's text as
+  whole words somewhere in it, letter case and spacing aside (`agreement.reader_writes`); the flag stays where a
+  reading of such a label does not hold that text anywhere in it. What is compared, as the code has it: the readings
+  are `step.run_readings`' on the labels `second_opinion._labels` gives for the value (a label's decided transcript
+  and each raw reading with text); both sides are folded by `agreement.agreement_key`'s own steps (NFC, then
+  `str.casefold`), and spaces and line breaks are left aside, so the same words with the line break at another place
+  are the same text; a letter, a hyphen or another mark more or less inside the text is another text, so a reader
+  who breaks a word with a hyphen at a line's end, where the value has none, keeps the flag; a reading with text
+  that does not hold the value's text counts as writing another. Known limits, stated and not fixed (the
+  coordinator's ruling of 2026-11-21 on the review: wording, not a rule on places): the reading's whole text is
+  searched, not the Habitat's place, so a reader's other spelling of the host is not noticed where the same word
+  stands elsewhere in that reader's reading of the label (the run-the-code reviewer's case: the second reader writes
+  "Coyole" for the host and "Coyote Creek" on the locality's line; the flag is lifted, as on origin/main); and an
+  observation with no text is no reading, so the condition is then judged on the other readings alone (the run says
+  one reader read a label by its observations' routes and models, not by their text: `step.scientific_reasons`).
+  The condition keeps a flag finalize gives. Finalize gives `label_unsettled:habitat` from the label's code (when
+  `step.scientific_reasons` gives one is set out under "Review round 2", "The label's code": in item M's measured
+  shapes, `H4/fix3_probe_label_*.txt`, a label not given up on with the Habitat drawn from it and every drawn field settled, it gives none) and, since fix round 3, for a habitat settled over lines (`step._over_lines`), from
+  the label's unresolved transcription itself (next bullet); a habitat on one line keeps origin/main's rule, so
+  where its label's code is not given it has no flag to keep, and a habitat that is a whole organiser candidate over two lines keeps origin/main's rule too (`step._settled` does not mark it, so it is no `step._over_lines` value): in the run-the-code reviewer's round-4 record `candidate_two_lines`, its readers differing, it settles with no flag on ad71a6dc and on origin/main alike (`reviews/g51_probes/g51_464/r4/out/r4_label_cmp.txt` and `r4_label_head.txt`: its measurement, not this lane's). Rule A is unchanged for every other field.
+- The Habitat's own label flag (fix round 3, item M; `step.label_attention`, `step._unread_labels`). After a finalize
+  a habitat that `step._over_lines` names (research settled it on text read from the transcript over consecutive
+  lines; the test, since fix round 6: the habitat; not in the caller's set of decisions carried into the run (`step.human_keys`); a literal with a line break; and research's mark of the value, `run.dependencies["field_research_over_lines"]`, which holds for the habitat the digest of this value's literal and of each reader's verbatim of it, is written where `step._settled` settles a habitat read from the transcript over consecutive lines, and is withdrawn where a person decides the field at the decision endpoint (`second_opinion.decided`): ruling R5 under
+  "Review round 3", which replaced round 5's R4') and that is drawn from a label whose transcription is unresolved carries
+  `label_unsettled:habitat`, whatever the other fields drawn from that label are, on a run no person approved
+  (`run.human_approved` false), unless rule A lifts it. "Drawn from" is `step.label_fields`: the value's source
+  region is the label, a reading of the label is among its verbatims, or it cites a row of the label. "Transcription
+  unresolved" is `step.scientific_reasons`' two tests of a label, whether or not that function then gives the
+  label's code: the label's first pass was given up on (a give-up finding and no first-pass decision for it) and no
+  person has transcribed it since; or else the label has no transcript, or a transcript of it is not resolved or has
+  no text. Only this field's code is added: no label's code and no other field's. The app flags the field from the
+  code itself (`review_summary.attention_fields`); no Dart file changes.
+
+Prompt texts (`H4/prompt_digests_v2.txt`, lane H3's `scripts/prompt_digests.py` on origin/main 3eb37c11 and on
+a28cf3f5): 34 texts rendered, 33 byte-identical, `field-expert--habitat` alone moved (sha256 8844565e... to
+e44404d7...); the second opinion's `INSTRUCTION_SHA256` unchanged. The pin `MAIN['habitat']`
+(`tests/field_research/test_units_instructions.py`) is recomputed as `sha256(instructions("habitat"))`: the one
+existing test whose expectation changed.
+
+The measurements. Every run is on the 99 records the second confirmation run cleared (confirmation 3's six replacing
+theirs), the habitat expert alone asked again, each record settled and finalized by the real code; Habitat is judged
+against the truth by `second_opinion.same`; "flagged" is `review_summary.attention_fields`. Each paid run was launched
+by the coordinator.
+
+| Habitat against the truth, 99 records | stored | origin/main (PR #463's flag) | lane H3's line (not shipped) | run 2, f54e941d | run 2's answers, with the rule A condition | run 3, a28cf3f5 (ships) |
+|---|---|---|---|---|---|---|
+| right | 10 | 10 | 14 | 44 | 44 | 49 |
+| right blank (the truth has none) | 7 | 7 | 7 | 7 | 7 | 7 |
+| missing, not flagged | 58 | 5 | 4 | 4 | 4 | 2 |
+| missing, flagged | 18 | 71 | 55 | 38 | 38 | 35 |
+| wrong, flagged | 6 | 6 | 19 | 5 | 6 | 6 |
+| wrong, not flagged | 0 | 0 | 0 | 1 | 0 | 0 |
+| Cost at list, USD | | | 0.3492 | 0.2034 | 0 (a replay) | 0.2076 |
+
+Sources: lane H3's line, `~/specimen-golive/runs/autonomy-habitat-20261121/logs/coordinator_analyse.log`; run 2,
+`~/specimen-golive/runs/autonomy-habitat2-20261121/logs/analysis.txt` (code f54e941d: the first four host rules and
+the acceptance code, without the rule A condition; 132 requests); run 2's answers replayed with the condition,
+`H4/replay2_0c51e021_analysis.txt` (free: `habitat_rig.py --replay2` of the third rig applies run 2's recorded
+answers through commit 0c51e021 with no model; the same replay through f54e941d equals run 2's own record on 99 of
+99, `H4/flag_rule.txt`); run 3, `~/specimen-golive/runs/autonomy-habitat3-20261121/logs/analysis.txt` (code a28cf3f5,
+all 99 asked again because the instructions changed; 132 requests). In runs 2 and 3: 99 of 99 records cleared, as
+before; no record's disposition, `cleared_by`, holding reasons or other field (state, values, layer, reason, evidence
+count) differs from the same record finalized by the code under test with nothing researched; 99 of 99 catalogue
+numbers equal the truth. Flagged fields per record in run 3: 7.84 on average, median 8 (origin/main: 8.08, median 8);
+on run 3's answers replayed through a8e8a76d, the source of fix round 3: 7.85, median 8
+(`H4/replay_run3_fix3_analysis.txt`).
+
+The comparison rule, and both counts. "Right" in the table is `second_opinion.same` against the truth's value or its
+literal: for Habitat that is `second_opinion.folded` on both sides, equal and not empty. As the code has it
+(`second_opinion.py`, `folded`): the text is decomposed (NFKD) and its combining marks dropped, then case-folded; of
+what is left it keeps each letter and each digit, a "." or a "," that stands between two digits, and a "-" or a "+"
+that stands right before a digit; every other character is dropped. So spaces, line breaks, a hyphen that is not
+before a digit, a full stop that is not between digits and the other marks are left aside, while "host 1.2" and
+"host 12" are two values. By
+exact text (the shown Habitat with each run of white space, a line break among them, as one space, equal character
+for character to the truth's value or its literal; the run-the-code reviewer's rule) run 3 is 44 right, 7 right
+blank, 2 missing and not flagged, 35 missing and flagged, 7 wrong and flagged, 4 wrong and NOT flagged, against 49 /
+7 / 2 / 35 / 6 / 0 by `same` (`H4/scripts/exact_text.py`, `H4/exact_text_run3.txt`, on run 3's rows and on their
+free replay; the reviewer's script gives the same, `reviews/g51_probes/g51_464/out/recompute_run3.txt`). By head: by
+`same` it is 49 / 7 / 2 / 35 / 6 / 0 on each head measured; by exact text it is 44 / 7 / 2 / 35 / 7 / 4 in the paid
+run of a28cf3f5 and on its answers replayed through a4d76aee, c34e9527 (the source of 575367fe) and 81a9944e
+(`H4/exact_text_run3.txt`, `H4/exact_text_run3_fix2.txt`, `H4/exact_text_run3_fix3_81a9944e.txt`), and 44 / 7 / 2 /
+35 / 8 / 3 on its answers replayed through a8e8a76d, the source of fix round 3 with item M
+(`H4/exact_text_run3_fix3.txt`): one record, 105526658, moved from "wrong, not flagged" to "wrong, flagged"
+("Review round 3", item M). The five right by
+`same` only, with what each reader's line writes (the stored rows' readings; the labels were not looked at for this
+table, so "the label as written" is not established for any of them):
+
+| Slide | Shown | Truth | What the two readers write | Flag |
+|---|---|---|---|---|
+| 105526322 | shrubs, mostly forest | Shrubs, Mostly forest | "shrubs, mostly forest" and "Shrubs, mostly forest": the shown text is the first reader's line; neither writes the truth's capital M. The stored value, not from this run | none |
+| 105526658 | "REITHRODONTOMYS" / "MEGALOTIS." | REITHRODONTOMYS MEGALOTIS | "MEGALOTIS." and "MEGALOTIS" with a raised dot (U+00B7): the shown text is the first reader's lines, full stop kept; the truth has no mark there | none in the paid run; `label_unsettled` on the head of fix round 3 (item M) |
+| 105526760 | coyote | Coyote | "HOST: coyote" and "HOST: Coyote": the shown text is the first reader's; the truth's capital is the second reader's | none |
+| 105526822 | "Eastern" / "cotton tail" | Eastern Cottontail | "HOST Eastern" / "cotton tail" and "HOST Eastern" / "Cottontail": the shown text is the first reader's; the truth's one word is the second reader's | none |
+| 105526835 | "EX: SYLVI LAGUS FLORI-" / "DANUS ALACER" | EX: SYLVILAGUS FLORIDANUS ALACER | "EX: SYLVI LAGUS FLORI-" and "EX: SYLVILAGUS FLORI-", each over "DANUS ALACER": the shown text is the first reader's, with a space the second does not write and the hyphen at the line's end | `second_opinion_differs`, `label_unsettled` |
+
+In the paid run four of the five carried no flag. On three the readers' texts are the same by the rule A
+condition's folding (letter case and spacing aside). On the fourth, 105526658, a reading lacks the value's text (a
+raised dot for the full stop), and it carried no flag because finalize gave its label no code: every field drawn
+from that label is settled. Item M of "Review round 3" gives such a Habitat its flag, so on the head of fix round 3
+three of the five carry no flag. A Habitat counted right here can differ from the truth sheet in letter case,
+spacing, a line break, a hyphen at a line's end or a mark.
+
+How the second opinion judged a new Habitat in runs 2 and 3, and the limit of it. The rigs ran the released second
+opinion step with a stand-in model that answers the second opinion answer the stored run already holds (mode
+"stored", free), and the step judged the new Habitat against it. The justification is the step's own contract
+(`field_research/second_opinion.py:26-27`: "The request carries nothing of the pipeline's fields (`request_parts`
+reads only the crops and the observations' texts)"): the stored answer is an answer to the request a new call would
+send. The limit: it is the stored run's one sample, not a new one; a new call could answer otherwise, for Habitat and
+for other fields (in lane H3's rerun, which asked again on 13 records, the open reasons of other fields changed on
+2 of them, 105526344 and 105527285: `coordinator_analyse.log` there). In run 3, 35
+records were due: 33 judged so, 2 not asked because their stored run holds no second opinion answer (105526356,
+105526392; their new Habitats, both right, carry `second_opinion_not_checked`).
+
+The rule A condition, measured free (`H4/scripts/measure_flag_rule.py`, `H4/flag_rule.txt`, `H4/flag_rule_run3.txt`).
+In run 2 one wrong Habitat carried no flag: 105527313, "Meriones" over "LIPYCUS" for the truth's "Meriones LIBYCUS".
+Its two readers wrote the species differently ("LIPEUS", "LIPYCUS"); the first pass's unit named one reader's text,
+so the settlement rule cleared it on the image (`agreement._settle_by_rule`); the label's transcription being
+unresolved, finalize gave `label_unsettled:habitat`, and rule A lifted it because the stored second opinion read
+"LIPYCUS" too (that reader is the profile's Muse reader and the second opinion's route is a Muse model as well).
+On run 2's 99 answers the condition gains 1
+Habitat flag, on that record, and none on the 44 right Habitats; on run 3's 99 answers 1, on that record, and none on
+the 49 right; on the stored records of the 100 truth slides finalized again, none. The wider candidate, Habitat among
+rule A's exceptions as the dates are, gains 23 flags on run 2's answers, 22 of them on right Habitats, and 4 on the
+stored records, all on right values; it was not built. What the condition does not catch: a Habitat every reader and
+the second opinion read alike and wrongly; this change adds no flag for it. And, as first built, the condition kept
+a flag only where finalize gave one: `label_unsettled:habitat` came from the label's code, and
+`step.scientific_reasons` gives the label's code by the branches set out under "Review round 2", "The label's code": for a label that is not in the given-up branch (its first pass was not given up on, or it has a transcript and every transcript of it is a person's, resolved and with text) and whose transcription is unresolved, it gives no label's code where a field is drawn from the label and every drawn field whose work is terminal is supported and is grounded in a raw reading or a derived value. 105527313's flag existed
+because an unsettled Date Identified is drawn from the same label; with the Habitat the only field drawn, or drawn
+beside settled fields, a Habitat whose readers differ had no flag (the run-the-code reviewer's round 3, run through
+the workflow). Item M of "Review round 3" gives a Habitat settled over lines (`step._over_lines`) its flag from the label's unresolved
+transcription itself. A habitat on ONE line keeps origin/main's rule: there as here a one-line value the image
+backs, its readers differing, can settle with no flag where no unsettled field is drawn from its label; a habitat that is a whole organiser candidate over two lines keeps origin/main's rule too (`step._settled` does not mark it, so it is no `step._over_lines` value): in the run-the-code reviewer's round-4 record `candidate_two_lines`, its readers differing, it settles with no flag on ad71a6dc and on origin/main alike (`reviews/g51_probes/g51_464/r4/out/r4_label_cmp.txt` and `r4_label_head.txt`: its measurement, not this lane's).
+
+The free upper bound (`habitat_rig.py --oracle`, the truth's host answered exactly as a reading writes it, through
+the real check, step and second opinion step; `~/specimen-golive/runs/autonomy-habitat3-20261121/logs/check.txt`):
+right 64, wrong 1 (flagged), missing and flagged 27, missing and not flagged 0, right blank 7. It says what the
+acceptance code lets a right answer reach, not what the model answers.
+
+What stays missing in run 3 (37: 35 flagged, 2 not; the run's rows and `results/refusals.jsonl`): 22
+`label_lacks_value` (20 in one call with nothing refused; 2 after an answer of its own was refused for its form); 10
+`one_reader` (the label's one reader's text, which neither the image nor another label backs: the existing rule,
+unchanged); 4 where the readers write the name differently (`differ`, left to a person with each reader's text); 1
+accepted by the expert's check and refused by the step (`taken`: 105526361's answer ran the genus on to the next
+line's state name, text the stored record's settled Province/State holds, as the reason says; in that rig the
+habitat alone was asked, so the other fields were values settled before the attempt).
+The two not flagged are 105526348 ("SPETYTO") and 105526468
+("RODENTS"): the expert answered `label_lacks_value`, so the field reads "Not on the label", and the stored second
+opinion gives no Habitat there, so PR #463's flag has nothing to rest on. The 22 are the failure run 2 showed on 28
+records (a keyword count of the explanations, rough, `H4/scripts/classify_lacks.py`, `H4/lacks_explanations.txt`: in
+run 3, 10 say that no host marker stands before the name, 6 call the name the taxon, 6 say neither; in run 2, 13, 11
+and 4). The same printed label went both ways in each run ("OCTODON DEGUS": right on 7 records of run 3 and
+`label_lacks_value` on 7).
+
+The six wrong or partial Habitats of run 3, each flagged (`logs/analysis.txt` there):
+
+| Slide | Shown | Truth | Cause | Flag |
+|---|---|---|---|---|
+| 105526733 | "Cavia mustel-" / "oides" | Cavia musteloides new subsp. | partial: both readers go on "new subsp."; the expert stopped at the species | `second_opinion_differs`, `label_unsettled` |
+| 105526854 | "Cavia mustel-" / "oides" | Cavia musteloides new subsp. | partial: the readers write the rest differently ("new ssp.", "new subsp.") | `text_only`, `label_unsettled` |
+| 105526931 | ex: Thomasomys | Ex: Thomasomys sp. B | partial: both readers read the next line "sp. 13" | `second_opinion_differs`, `label_unsettled` |
+| 105526972 | Ex: Zorroquacho | Ex: Zorroguacho | one reader's letter; the stored value, unchanged | `second_opinion_differs`, `label_unsettled` |
+| 105527276 | "LIBYCUS" / "Meriones persicus" | Meriones LIBYCUS | the label writes "LIBYCUS" beside the heading and "Meriones persicus" below it | `second_opinion_differs`, `label_unsettled` |
+| 105527313 | "Meriones" / "LIPYCUS" | Meriones LIBYCUS | the readers differ on the species; neither reads the truth's | `label_unsettled` (the rule A condition) |
+
+Run-to-run variation. Between run 2 and run 3 (`logs/analysis.txt`, "AGAINST RUN 2"): 42 right Habitats stayed
+right, 7 missing became right, and 2 right became missing and flagged: 105526771 ("Homo sapiens") and 105527021
+("OCTODON DEGUS"). In both the run-3 expert named the animal and answered `label_lacks_value` because no host marker
+stands before the name, the reasoning the second version of the brief forbids and that 13 answers of run 2 gave
+under the first version (the same keyword count). Whether those two moved because of the new wording or because it was a new sample was not
+determined: the two runs differ in instructions, and no run repeated one set of instructions.
+
+Four open reasons that name a label. In runs 2 and 3, four records gain `unresolved_transcription:<label>`
+(105527218, 105527231, 105527247, 105527313). It is origin/main's rule, unchanged (`step.scientific_reasons`,
+`field_research/step.py:4412` and `:4538-4539`; its branches are set out under "Review round 2", "The label's
+code"): nothing shorter than those branches is claimed here. On each of the four the label's two readers differ on some
+line (on 105527313 on the host's species too; the lines are in `H4/iteration2.txt`). Traced with one print added to
+that function in the process (`H4/scripts/label_reason_trace.py`, `H4/label_reason_trace.txt`): on the stored record
+the one field drawn from the label is Date Identified, which has a reason of its own where the rule decides, so the
+label's reason was left out; after the habitat answer is applied the Habitat is drawn from it too and has none, so
+the label's reason stands. The app flags no field by the code itself
+(`review_summary.attention_fields` gives a label's code no field): the fields come through `label_unsettled:<field>`,
+which rule A lifts from the three right Habitats and, by the condition, leaves on 105527313. 82 of the 99 records
+carry such a code on origin/main's record already (120 codes); after run 3, 84 records and 124 codes (the `replayed`
+and `after` dumps of `results/habitat3.jsonl`).
+
+A stored Habitat can now hold a line break ("<Genus>" over "<species>"), as a precise location's value does; in run
+3, 24 of the 55 Habitats shown hold one, none more than one. What the app shows was run by the run-the-code reviewer
+of #464 (its widget test on Flutter 3.38.5, 8 cases, four Habitat texts at 900 and at 360 wide:
+`reviews/g51_probes/g51_464/flutter/g51_464_two_line_habitat_test.dart`, output `out/flutter_test.txt`; the test
+prints what it measures and lives in that folder only, not in the app's tests): a two-line Habitat shows both lines
+collapsed and open at both widths; a three-line one shows two lines and an ellipsis collapsed and all three open.
+Read from the code, as before: the field row's expanded value is a plain `Text` with no line limit
+(`apps/specimen_digitization/lib/src/screens/workbench/fields_panel.dart:488`), so every line shows; the collapsed
+row's summary shows at most two lines and then an ellipsis (`UiDisclosureStyle.summaryMaxLines`,
+`packages/specimen_ui/lib/src/controls/overlays/disclosure.dart:126` and `:257-258`), so a two-line host shows whole
+where the row is wide enough for each line; the correction box for the label wording grows to four lines
+(`fields_panel.dart:1050`, `:1136`). The same widgets show a precise location, with no branch by field. The truth
+sheets write such a host with a space; `second_opinion.same` (the rule above: spaces and line breaks are dropped)
+judges the two equal. Whether
+Habitat should be shown or exported with a space for the line break is not decided here.
+
+What a release does to records already stored (tested in `tests/field_research/test_host_is_the_habitat.py`).
+
+- A finalize alone changes no stored Habitat value, state or reason: no expert is asked, and the acceptance check
+  runs where an answer is applied (`step.apply_outcomes`), never in `step.refinalize`. It can change the Habitat's
+  flag: the rule A condition is derived at every finalize, so a record stored under origin/main with a supported
+  Habitat, a doubt open on its label, an agreeing second opinion and a reading of that label that does not hold the
+  Habitat's text keeps `label_unsettled:habitat` at its next finalize under this change, where origin/main lifted
+  it (`tests/field_research/test_agreed_habitat_readers.py`,
+  `test_an_agreed_habitat_keeps_its_labels_flag_where_a_reader_writes_another_text`). On the stored runs of the 100
+  truth slides no such record was found: the real finalize replayed gives, on the source of a4d76aee, the same
+  record as origin/main in every part of the dump, open reasons among them, on 100 of 100 (`H4/replay_h4_fix1.txt`,
+  lane H3's `replay_h3.py`), and the condition adds no flag there (`H4/flag_rule_fix1.txt`). That is a measurement
+  of those 100 records, not of the records in production. Two of those stored Habitats start with the heading
+  ("Host:", "Host: LIBYCUS") and stay as stored.
+- A record keeps its Habitat until field research asks the habitat expert again. A new run asks it again, unless a
+  person's decision of the field was carried into it (`step.human_keys`; `step.build_tasks` makes no task for such a field). A Retry asks again only where `workflow.requeue_completed_field_research` requeues field research (the record is in review,
+  not cleared, with field research completed, no blocker, no person's field lock, an attempt left and a field
+  unresolved, ambiguous or unknown), and then `step.build_tasks` makes a task for every field but one whose decision was carried into the run and one
+  an earlier attempt settled: a stored Habitat VALUE, right or wrong, is not asked again; a blank or open one is. A
+  Retry on a cleared record applies the rules only (`test_step.py`,
+  `test_a_retry_action_on_a_cleared_researched_run_only_applies_the_rules_again`).
+- When an answer that starts with the heading is applied again, the step refuses it: the rigs' dry run applies each
+  stored habitat answer of the 99 records and, on this code, 96 are identical to the stored record finalized again, 1
+  has the same reasons in another order, and the 2 stored "Host" answers are refused, leaving the Habitat unresolved
+  (`~/specimen-golive/runs/autonomy-habitat3-20261121/logs/check.txt`).
+
+Review round 1 of #464 (Codex and the run-the-code reviewer, both on 3df404ea, both asking for changes:
+`~/specimen-golive/autonomy-program/reviews/verdict_464_codex_r1.md`, `verdict_464_g51_r1.md`; the rulings on them are
+the coordinator's, of 2026-11-21, in `H4/FIX_R1.md`, not the owner's). The source of fix round 1 is commit a4d76aee;
+the two commits after it, 0dca5c88 and 19761d59, change documents and one test's name and docstring
+(`tests/field_research/test_host_is_the_habitat.py`), and no source. `prompts/habitat.txt` did not change, so the habitat instructions are the
+text run 3 measured (sha256 e44404d7...; `H4/prompt_digests_fix1.txt`: 33 of 34 texts byte-identical to origin/main).
+
+A Habitat over lines beside another field's text (Codex's finding 1). The ruling: for the same expert answers no
+field other than Habitat ends differently from origin/main; a Habitat accepted only by the across-lines rule that
+shares text with another field's answer gives way. What each tree does, run through the real step on made-up labels
+(`H4/scripts/probe_shared.py`, `probe_rule_a.py`; outputs `H4/fix1_probe_main-3eb37c11.txt`,
+`fix1_probe_3df404ea.txt`, `fix1_probe_fix1.txt`; pinned in
+`tests/field_research/test_habitat_over_lines_gives_way.py`):
+
+| Case | origin/main 3eb37c11 | 3df404ea | a4d76aee |
+|---|---|---|---|
+| (i) The Collection Code alone on its line, the host's two lines below; the Habitat answer runs over all three | the code settles; the Habitat is refused (not this field's text) | both go to review, each naming the other | the code settles; the Habitat goes to review, naming the code |
+| (ii) The Habitat answer runs over the Taxon's line and the next; the Taxon's own check refuses its answer | the Taxon is unresolved with its own reason; the Habitat is refused | the Taxon's reason says Habitat holds its text; the Habitat settles | the Taxon as on origin/main; the Habitat goes to review ("also in the answer given for Taxon") |
+| (iii) The Habitat answer holds the two-line Precise Location whole | the Precise Location settles; the Habitat is refused | both go to review | the Precise Location settles; the Habitat goes to review |
+| (iii) The Habitat answer overlaps the Precise Location's second line only | the Precise Location settles; the Habitat is refused | the Precise Location settles (a place overlapped only partly stands, `step._partly`); the Habitat goes to review | as 3df404ea |
+| (iv) The host's two lines alone, beside the code or beside the Precise Location | the other field settles; the Habitat is refused | both settle | both settle |
+| Rule A: the organiser gave the collecting method the host's two lines, the method's expert finds none, the Habitat settles those lines | rule A declines the method (the organiser found text for it) | the method is marked not on the label | rule A declines, as on origin/main |
+
+On origin/main a habitat literal with a line break read from the transcript never reached the guard: the acceptance
+check refused it; one that is a whole organiser candidate of each reading it names was accepted there, and still is,
+with the claims it had (the run-the-code reviewer ran it on origin/main,
+`reviews/g51_probes/g51_464/r2/out/main_candidate.txt`; by its `out/cands.txt` none of the 1,159 candidates of the 99
+stored runs holds a line break). Between
+two other fields that may not share text, origin/main's guard sends a field read from the transcript to review where
+another kind of field's settled text overlaps its text (both, where both were read from the transcript) and lets a
+place stand that the other overlaps only partly; that is unchanged.
+
+The differential (`H4/scripts/differential.py`, `H4/differential_fix1.txt`; free). For each of the 99 cleared
+records, every field's recorded expert answer (confirmation 2's or 3's row) is applied in ONE attempt by the real
+`step.apply_outcomes` and `step.finalize_fields`, starting from the revision saved before field research, with the
+habitat answer in four variants: withheld, the confirmation's, run 2's, run 3's. On the source of a4d76aee every
+field other than Habitat (state, literal, parsed, normalized, layer, reason, evidence rows) equals origin/main's with
+the same habitat answer on 99 of 99 records in each variant, and equals origin/main's with the habitat answer
+withheld on 99 of 99 in each (396 of 396 applications). The same held on 3df404ea: among these recorded answers no
+Habitat over lines takes another field's text (one, 105526361's, runs into the Precise Location and goes to review
+on both heads), so the recorded answers do not show round 1's finding; the constructed cases above do. Its limit:
+the rows keep no cited source answers, so an answer that needs one (a place's, a taxon's) is refused alike on each
+tree. Run 3's recorded answers replayed through a4d76aee as the rig applied them (the habitat alone, on the stored
+record) give run 3's own record, whole dump, on 99 of 99, and its table, 49 / 7 / 2 / 35 / 6 / 0
+(`H4/flag_rule_fix1.txt`, `H4/replay_run3_fix1_analysis.txt`): fix round 1 changes no Habitat outcome of run 3.
+
+One path the ruling's sentence does not decide, left as it is and pinned
+(`test_a_habitat_an_earlier_attempt_settled_over_two_lines_holds_its_text_in_a_retry`): the guard compares the
+answers of one attempt. Where an attempt settles a Habitat over two lines and fails another field for a reason the
+workflow retries, the retry does not ask the Habitat again (`step.build_tasks`), and a field it asks whose answer,
+read from the transcript, lies in the Habitat's lines goes to review, as beside any value settled before the attempt
+(origin/main's rule there: the value settled first holds). origin/main would have refused that Habitat in the first
+attempt and asked it again in the retry, so the two trees do not apply the same answers. What the run-the-code
+reviewer measured of this limit on 19761d59 (8 two-attempt sequences on both trees,
+`reviews/g51_probes/g51_464/r2/out/retry2_head.txt` and `retry2_main.txt`; its counts): the retried field ends in
+review and flagged, not settled; no flag origin/main shows is lost; and where the retried field is the catalogue
+number, the head HOLDS a record that origin/main clears, while no record clears on the head that origin/main holds.
+
+`agreement.reader_writes` folded one side (both reviewers). The literal was folded into the pattern and the reading
+searched as written, so a reading holding a letter whose folded form is longer than the letter did not write its own
+text and the Habitat kept its flag though every reader wrote it. The error could only keep a flag: a match was
+confirmed by comparing the two folded keys. Both sides are now folded by `agreement.agreement_key`'s own steps, NFC then `str.casefold`. Pinned for three letters by code point,
+U+00DF, U+0130 and U+FB01, in the function and through the workflow (no claim about any other letter; the
+run-the-code reviewer's round 2 found one case that does not match, a reading that writes U+0390 in upper case
+against the lower-case value: the flag is then kept, `reviews/g51_probes/g51_464/r2/out/writes_edge2_head.txt`). After
+the fix
+the replays of run 3's and of run 2's recorded answers each still add one Habitat flag, on 105527313, and none on a
+right Habitat (`H4/flag_rule_fix1.txt`). The constructed cases, decided as the code does them and pinned
+(`tests/field_research/test_agreed_habitat_readers.py`):
+
+| A reading of the Habitat's label, against the value | Counts as | The flag |
+|---|---|---|
+| another letter case; a space more or less; a line break where the value has a space; the same words with the line break at another place | the same text | lifted |
+| a full stop or another mark right after the value's text, which the value does not hold | the same text (the mark is outside it) | lifted |
+| a hyphen breaking a word at a line's end where the value has none, or the reverse; a mark the value's text holds, its last among them, that the reading lacks or writes otherwise; a letter otherwise | another text | kept |
+| another text for the Habitat, and the value's text on another line of that reading | written (the whole reading is searched) | lifted: a known limit |
+| an observation with no text | no reading; it takes no part | judged on the other readings: a known limit |
+
+Residuals the run-the-code reviewer measured on 3df404ea (46 constructed answers through the expert's check and the
+step on both trees, `reviews/g51_probes/g51_464/out/check_cmp.txt`; its counts, not claimed complete, and not run
+again on a4d76aee). The head accepts and shows a three-line literal ("Mus" / "musculus" / "brown form"), a host run on
+to an unkeyed locality line or an unkeyed date line, and a heading line above the name ("LEWIS COLLECTION" /
+"MARMOTA"), each refused on origin/main; where no other field's answer or value holds those lines, as in its rig,
+field research gives them no flag, so only the second opinion can flag them (a verdict that differs, or not
+checked). A host run on to a line another field settled (a keyed locality line, a keyed date line, the collectors'
+line, a state name) was refused by the step (`taken`); after fix round 1 that is the rule in "The change" above: the
+Habitat gives way to another kind of field's settled text or resolved answer of the same attempt, and a line no
+other field answers or holds is not protected. The reviewer's round-2 count of that limit, on 19761d59 (its probe,
+`reviews/g51_probes/g51_464/r2/out/differential2_cmp.txt`, not this lane's): of 2,665 habitat answers made of each
+run of two and of three consecutive lines of each reading of the 99 records, applied with every other field's
+recorded answer, 506 settle with no flag from field research (316 of two lines, 190 of three), so only the second
+opinion can flag them. A label one reader read switches rule A off for every value on both trees
+(`second_opinion.one_reader`; read from the code by the reviewer).
+
+The premise "The specimens are insects" (`prompts/habitat.txt` line 8). `prompts.instructions(key)` takes the field
+alone, so the sentence is rendered whatever the run's profile. One profile is published, `zoology_insects_slides`
+(`src/specimen_digitization/application/profiles/published.json`). A profile for specimens that are not insects
+would be given a false premise: before one is published the sentence has to come from the profile. A follow-up, not
+done here.
+
+A line break in an exported Habitat. No export of a specimen's fields to EMu or to a file was found in
+`src/specimen_digitization` (searched for "emu", "export" and "csv"; 19 files there mention EMu and were not all
+read), so what a line break becomes in an export is not established. Read, not run, for what they do to a value's
+text: `application/projection.py:684` and `:725` carry a value's literal as it is;
+`research_harness/canonical_materialization.py:174` and `canonical_materialization_v2.py:238` strip a settled text
+only to test it against placeholders; `application/field_model.py:383` folds a text for a comparison key only. None
+of those lines replaces a line break.
+
+Review round 2 of #464 (Codex and the run-the-code reviewer, both on 19761d59, both asking for changes:
+`~/specimen-golive/autonomy-program/reviews/verdict_464_codex_r2.md`, `verdict_464_g51_r2.md`; the rulings on them are
+the coordinator's, of 2026-11-21, in `H4/FIX_R2.md`, not the owner's). The source of fix round 2 is commit c34e9527.
+`prompts/habitat.txt` did not change (sha256 e44404d7...; `H4/prompt_digests_fix2.txt`, on that commit's source: 33 of
+34 texts byte-identical to origin/main).
+
+The principle (the coordinator's ruling). For the same expert answers a field other than Habitat ends as on
+origin/main 3eb37c11. The lane changes what a Habitat answer does in two ways. A Habitat origin/main refused and the
+lane settles (text read from the transcript over consecutive lines, no whole organiser candidate): in the readers
+found where a settled value's text relaxes another field's decision it counts for nothing (`step._over_lines`), in the attempt that
+settles it and as a stored value afterwards; where a settled value's text sends another field to review, round 1's
+rule stands within the attempt (it claims nothing) and a value an earlier attempt settled keeps origin/main's rule
+for such values (the retry limit, toward review). A Habitat origin/main settled and the lane refuses (one that
+starts with the heading "Host"): as round 2 had it, it still claims, in the guard on shared text, the text it
+claimed on origin/main, and stays refused. Round 3 showed that this holds where a resolved heading answer is
+applied to the step directly and not on the resolver's path, and the coordinator then ruled the heading one stated
+limit in either direction ("Review round 3", R2): read the heading rows of this section with that.
+
+Codex's two sequences were run on three trees before anything was built, and both came out as it read them from the
+code; the run-the-code reviewer's 51 same-attempt cases held neither a heading answer nor the place case. The made-up
+labels, with RESOLVED outcomes given to the real step (`H4/scripts/probe_heading.py`, `probe_unplaced.py`, `probe_genus.py`,
+`probe_heading_limits.py`; outputs `H4/fix2_probe_*_main-3eb37c11.txt`, `*_19761d59.txt` and `*_fix2.txt`, the last
+on the working tree whose source c34e9527 commits; pinned in
+`tests/field_research/test_habitat_changes_no_other_field.py`):
+
+| Case | origin/main 3eb37c11 | 19761d59 | c34e9527 |
+|---|---|---|---|
+| Codex 1. Both readers write "Host: CNHM"; the Collection Code answers "CNHM", the Habitat "Host: CNHM" | both go to review, each naming the other | the code settles; the Habitat goes to review | both go to review, as on origin/main |
+| The Taxon answers the host's name, the Habitat "Host: <that name>" | the Taxon goes to review, its reason naming Habitat; the Habitat settles with the heading | the Taxon keeps its own check's reason; the Habitat is refused for the heading | the Taxon as on origin/main; the Habitat refused for the heading |
+| A heading Habitat that shares no text | settles with the heading | refused; no other field moves | as 19761d59 |
+| A heading Habitat over two lines, over the code's text or sharing none | refused (text read over a line break); the code settles | refused; the code settles | the same |
+| Codex 2, a retry. "USA: Canada" / "Marmota" / "Ill." / "Coles Co."; in attempt 1 the Habitat answers "Canada" over "Marmota" and the two lower place experts time out; the retry answers them | Province/State and County refused for want of a country | both settle | both refused, as on origin/main |
+| The same label, every expert answering in one attempt | refused | refused | refused |
+| A code with no genus ("sp. 22") and a host over two lines, one attempt | the Taxon stays unresolved ("Mus" may be a genus) | the Taxon clears as written, unmatched | unresolved, as on origin/main |
+
+The mechanisms. For the heading, one that writes no second path for "would it have settled": the step's
+heading refusal is left out of the application on a copy that feeds the guard (`step._first_pass`, under
+`step._BEFORE_GUARD`; `agreement.literal_refusal` and `agreement.refusal` take `heading`), so the answer settles
+there as on origin/main, `step._taken` reads its claim, and the application to the record refuses it. The expert's
+own check, with its words, is as it was; a re-ask's trial (`reask._trial`) applies the whole step and so refuses at
+its own application as the record's does. Where the heading Habitat is itself taken by the other field's settled
+text, its reason is the guard's, as on origin/main; where it is not, the heading's. For the Habitat over lines, the
+existing test of a stored value (`step._over_lines`; as it stands since fix round 6: the habitat; not in the caller's set of decisions carried into the run (`step.human_keys`); a literal with a line break; and research's mark of the value, `run.dependencies["field_research_over_lines"]`, which holds for the habitat the digest of this value's literal and of each reader's verbatim of it, is written where `step._settled` settles a habitat read from the transcript over consecutive lines, and is withdrawn where a person decides the field at the decision endpoint (`second_opinion.decided`)) now also leaves it out of `step._unplaced_text`'s held text and of
+`step._genus_on_a_label`'s accounted words. In Codex's place sequence the difference arises in a retry: within one
+attempt the places are applied before the habitat, and the check runs where a place answer is applied
+(`step._misfit` is the one caller of `step._confirmed_country` in `src`), not at a finalize (both pinned). The Taxon
+case arises within one attempt, the habitat being applied before the taxon; it was found by the enumeration below,
+not by a reviewer.
+
+The readers of another field's text (`H4/settled_text_consumers.txt`: the search commands, then what they found;
+not a claim that no other reader exists). Ten rows read every field's value: the guard on this attempt's values and
+on stored ones, the text a line of places holds, rule A's settled claims, decision B's accounted words, the texts set
+aside for the country's alternatives, the precise location's extent mark, the fields drawn from a label, the context
+given to the experts, and the Retry's test of states; the other functions that read fields name fields the habitat
+is not among. For a Habitat over lines (`step._over_lines`), as the readers stand after round 3: the whole value counts for nothing
+in five rows where a settled text relaxes another field (the guard, by the attempt's answer; the place line; rule
+A's mark; decision B; the precise location's extent check); one row, the texts set aside for the country's
+alternatives, reads a value's literal within one line and none of its verbatims, so it cannot see such a value; it
+still sends another field to review in a retry (round 1's limit) and through the label's code (below). (Round 2's
+own summary here said four rows, and that the extent check could not see a text with a line break: wrong, since a
+Habitat over lines can keep another reader's verbatim on one line, which that check reads; "Review round 3".) For a heading Habitat whose resolved answer is applied to the step directly: it claims in the guard as on
+origin/main (not so on the resolver's path: "Review round 3").
+
+What remains, stated as limits, each with its direction.
+- Beside a heading Habitat that does not settle, two cases at the step go toward review, also within one attempt:
+  origin/main's settled "Host: Mus" accounts for "Mus", so decision B clears a code with no genus, and holds another
+  field's organiser text, so rule A marks that field not on the label; here the Habitat is refused and both stay
+  for a person (`H4/fix2_probe_heading_limits_*.txt`; pinned by two `test_limit_...` tests; the same on 19761d59).
+  This contradicts "a field other than Habitat ends as on origin/main". The coordinator's ruling on it, R2 of
+  "Review round 3": the heading is one stated limit, and it runs the other way too.
+- In a later attempt a heading Habitat is unresolved here and settled on origin/main, so the Retry asks it again
+  here and not there: the trees then apply different answers. origin/main's stored value sends a retried field on
+  its text to review; here the retry's habitat answer claims through the guard (the same heading answer: the other
+  field goes to review as on origin/main; no value: nothing is claimed).
+- The label's code. `step.scientific_reasons` gives `unresolved_transcription:<label>`, label by label: (1) for a label whose first pass
+  was given up on, unless it has a transcript and every transcript of it is a person's, resolved and with text:
+  whatever its fields (the
+  run-the-code reviewer's round 5 ran one whose only drawn field is supported and grounded in a raw reading: the code
+  is given, `reviews/g51_probes/g51_464/r5/out/r5_given_up_head.txt`); (2) otherwise, for a label with no
+  transcript or with one not resolved or with no text: (a) where no field is drawn from it (the determiner's IRN is not counted as drawn); (b) where a drawn field
+  whose work is terminal is not supported, or is neither grounded in a raw reading nor a supported derived value,
+  unless every drawn field has a review reason of its own (the strict-duplicate rule); (c) otherwise, that is where
+  a field is drawn and every drawn field whose work is terminal is supported and is grounded or derived, no code. A
+  drawn field whose work is not terminal is not looked at. (Rounds 3 and 4 wrote a short form, "none where every
+  drawn field is supported and grounded": false for branch (1). The round-4 wording was the coordinator's, in
+  `H4/FIX_R4.md`; corrected in round 5.) What the lane's change does to this code is stated for measured records only. In run 3, 4 records gain the label's
+  code: a Date Identified that is not supported is drawn from the same label as the newly settled Habitat, which has
+  no review reason of its own, so branch (2b) gives the code and the fields drawn from the label gain `label_unsettled`
+  (toward review; "Four open reasons" above, `H4/label_reason_trace.txt`). In the shapes of item M's table ("Review
+  round 3": a label not given up on; the Habitat the only field drawn from it, or drawn beside a field that is
+  supported and grounded in a raw reading) the label's code is not given on 575367fe or after, by branch (2c), where
+  origin/main gives it in the rows the table shows (`H4/fix3_probe_label_*.txt`). For a label in branch (1) the code
+  is given whatever the Habitat is. Round 2 called that code "the record's own, which
+  flags no field": the run-the-code reviewer's round 3 showed the Habitat itself then carried no flag where its
+  readers differ. It was first ruled to stand (R3) and then ruled a defect (R3', "Review round 3", item M): the
+  Habitat now gets its own flag there; the label's code is still not given.
+- The retry limit of round 1, the over-long literals and the rule A condition's limits stand as stated above.
+
+Evidence on the source of c34e9527 (free; `H4/code-r2` is a git archive of its `src`).
+- The differential (`H4/scripts/differential.py`, `H4/differential_fix2.txt`): every field's recorded answer applied
+  in one attempt, with the habitat answer withheld, the confirmation's, run 2's and run 3's (99 records each), and
+  two answers constructed from run 3's answer and the record's own readings: the text from a "Host" heading to the
+  literal's end where the readings write the heading right before it (13 records; 12 of those answers hold a line
+  break, which origin/main refuses as text read over lines, and one, "HOST: coyote", settles there; this head
+  refuses the 13 for the heading, so the rule for a claim origin/main's Habitat made is exercised on that one
+  record), and the literal run on over the next line where the host is on one line (26 records: origin/main refuses
+  the 26; here 4 settle, 16 run into another field's value and 6 are taken). Every field other than Habitat
+  equals origin/main's with the same answers, and origin/main's with the habitat answer withheld, in each: 435 of
+  435 applications. The same holds on 19761d59 (the second half of the file): these records and answers hold
+  neither of Codex's cases. What the constructed answers can show is that a heading answer or an answer run on over
+  the next line, on these labels and beside these recorded answers, changes no other field; they cannot show an
+  answer that needs a cited source (the rows keep none, so it is refused alike on each tree), a retry, or other
+  answers than the recorded ones.
+- Run 3's recorded answers replayed as the rig applied them: run 3's own record, whole dump, on 99 of 99; 49 / 7 / 2
+  / 35 / 6 / 0 by `second_opinion.same` and 44 / 7 / 2 / 35 / 7 / 4 by exact text (`H4/flag_rule_fix2.txt`,
+  `H4/exact_text_run3_fix2.txt`, `H4/replay_run3_fix2_analysis.txt`). The rule A condition adds one flag on run 3's
+  answers and one on run 2's, both on 105527313, none on a right Habitat.
+- The 100 stored truth runs finalized again equal origin/main's in every part of the dump on 100 of 100
+  (`H4/replay_h4_fix2.txt`).
+- Not run by this lane: the run-the-code reviewer's 51 cases and 8 retry sequences on c34e9527. The source changes
+  of this round act in three places: the guard, when a Habitat answer starts with the heading "Host"; the text a
+  line of places holds, when a Habitat over lines (`step._over_lines`) is a stored value; decision B's accounted words, when such a Habitat
+  is settled. Which of the reviewer's cases reach one of them was not determined here.
+
+Review round 3 of #464 (Codex on 575367fe, asking for changes:
+`~/specimen-golive/autonomy-program/reviews/verdict_464_codex_r3.md`; the rulings are the coordinator's, of
+2026-11-21, in `H4/FIX_R3.md`, not the owner's). The source of fix round 3 is commits 81a9944e (the extent check, the heading's tests and comments) and a8e8a76d (item M,
+after the run-the-code reviewer's verdict, `reviews/verdict_464_g51_r3.md`). `prompts/habitat.txt` did not change
+(sha256 e44404d7...; `H4/prompt_digests_fix3.txt`, on a8e8a76d's source: 33 of 34 texts byte-identical to
+origin/main).
+
+The rulings.
+- R1. The aim is unchanged: for the same expert answers a field other than Habitat ends as on origin/main. It is
+  enforced in code for the Habitat origin/main refused and this lane settles (text read from the transcript over
+  consecutive lines): in the readers found where a settled value's text relaxes another field's decision, such a
+  Habitat counts for nothing, the whole value (its literal, each reader's verbatim of it, its label rows) and not
+  its literal alone. The readers found are named in "The change" above and listed, with the searches that found
+  them, in `H4/settled_text_consumers.txt`.
+- R2. The heading is one stated limit, in either direction, and gets no more code. In production an answer reaches
+  the step through the expert's own check (`experts._Expert._validate_resolved`), which refuses a habitat literal
+  that starts with the heading and sends the expert back. Where the expert leaves the heading out in a later
+  answer and that answer passes the check, it is applied by the ordinary rules. The limit applies wherever no later RESOLVED answer of that attempt passes the check (the expert repeats the heading, or its later resolved answers are refused for another reason, or it answers that the sources cannot resolve it, an answer the check does not refuse and that stands as the outcome): the Habitat does not settle, where
+  origin/main would have settled the first answer if its other checks pass. (R2 as the coordinator first wrote it,
+  in `H4/FIX_R3.md`, said "where it repeats the heading through its retries": that wording was the coordinator's
+  and too narrow, by Codex's round 4; R2 stands, with its condition restated so by the coordinator.) A field whose decision reads a
+  settled Habitat's text is then decided beside a Habitat that did not settle, and that can go either way for it:
+  toward review (decision B's accounted words; rule A's not-on-the-label mark; the text a line of places holds), or
+  a refusal, a reason or a mark origin/main gives is lost (the guard on shared text: the Habitat makes no claim, so
+  a Collection Code or a Taxon on the same text can settle; the precise location's extent mark: the heading's line
+  is not blanked, so the check abstains). It is the rule origin/main applies beside a Habitat answer its expert's
+  check refuses. The step's own heading refusal and `step._BEFORE_GUARD` (round 2) stay as built: they act where a
+  resolved heading answer is applied to the step directly (a recorded answer applied again; tests that give the
+  step outcomes; a rig's dry run), not on the resolver's path.
+- R3, replaced on 2026-11-21 by R3' after the run-the-code reviewer's round-3 verdict
+  (`reviews/verdict_464_g51_r3.md`). R3 said the label's code where a settled Habitat is the only field drawn from a
+  label stands. R3': a Habitat settled over lines (`step._over_lines`) that is drawn from a label whose transcription is unresolved must
+  carry `label_unsettled:habitat` after a finalize, whatever the other fields drawn from that label are, unless rule
+  A lifts it; no field other than Habitat gains or loses a flag, a reason or a mark; a habitat on one line keeps
+  origin/main's rule. Item M below.
+- R4, of 2026-11-21, on review round 4 (`H4/FIX_R4.md`, "ADDED"), REPLACED the same day by R4' on review round 5
+  (`H4/FIX_R5.md`; Codex's verdict `reviews/verdict_464_codex_r5.md`). R4 said the code stands where
+  `step._over_lines` looked only at a decision carried into the run (`step.human_keys`), so that a Habitat a person
+  confirmed or changed on the run was still such a value and kept `label_unsettled:habitat` until approval. R4 was the
+  coordinator's mistake, by the coordinator's own word. Codex's round 5 read, and this lane then ran on three trees
+  (`H4/fix5_probe_person_extent_*.txt`), what it cost: research settles the Habitat "Mus" on ONE line beside the
+  province ("Davao Prov. Mus" / "musculus"), a person extends it to two lines at the decision endpoint, a Retry
+  answers the Precise Location: origin/main marks the Precise Location cut short before the province's line; on
+  61f3fdb8 the person's value was a `step._over_lines` value, the extent check left it out and the mark was lost.
+- R4', of 2026-11-21, on review round 5, REPLACED the same day by R5 on review round 6. R4' said `step._over_lines` is
+  false for a Habitat a person holds authority over by the run's durable record (`second_opinion.authority(run)`, no
+  readings). That record is kept per field and nothing clears it, so a Habitat research settled over lines AFTER a
+  person's earlier decision of the field was taken for the person's. R4' was the coordinator's mistake, by the
+  coordinator's own word (`H4/FIX_R6.md`). Its intent stands under R5: a Habitat a person confirmed or changed at the
+  decision endpoint is the person's value, is read as any settled value and gets no code from item M.
+- R5, of 2026-11-21, on review round 6 (`H4/FIX_R6.md`; `reviews/verdict_464_codex_r6.md`,
+  `reviews/verdict_464_g51_r6.md`). `step._over_lines` is a test of the stored VALUE, not of the field's history.
+  P1: it is true only for a stored value that is the value research settled on text read from the transcript over
+  consecutive lines, as research left it; neither the per-field finding nor a person's per-field record decides it.
+  P2: a person's decision of the field at the decision endpoint after that makes the value the person's. P3: research
+  settling the Habitat over lines again (`step._over_lines`) after such a decision makes it research's again, whatever
+  `Run.person_decided_fields` still holds. P4: durable across save and load, a Retry, a second finalize, a re-parse;
+  a decision carried into a run stays left out by the caller's set. P5: a record that never held such a Habitat is
+  stored as on origin/main. The test as coded: the habitat; not in the caller's set of decisions carried into the run (`step.human_keys`); a literal with a line break; and research's mark of the value, `run.dependencies["field_research_over_lines"]`, which holds for the habitat the digest of this value's literal and of each reader's verbatim of it, is written where `step._settled` settles a habitat read from the transcript over consecutive lines, and is withdrawn where a person decides the field at the decision endpoint (`second_opinion.decided`). The finding
+  `transcript_literal:habitat` and `second_opinion.authority` take no part in it. The four readers that call
+  `step._over_lines` are `step._settled_claims`, `step._unplaced_text`, `step._genus_on_a_label` and
+  `ontology_checks.stage`; the guard on shared text (`step._taken`) does not call it: within an attempt it goes by
+  the answer (`silent`), and a stored Habitat, a person's or research's, claims its text there as any stored value
+  does (the retry limit). What was run for each requirement is under "Review round 6" below.
+- R6, of 2026-11-22, on the hand-back of fix round 6 (the coordinator's ruling, not the owner's words; it is in the
+  PR body's "Review round 6" and in `H4/FIX_R7.md`). The one difference from origin/main that remains after a person
+  confirms a Habitat research settled over lines (`step._over_lines`) stands as a stated limit: this change's Retry does not ask that
+  Habitat again and reads it as any settled value, where origin/main's Retry asks a person's Habitat again and
+  unsettles it. The coordinator's reasons: the value is the one a person confirmed at the decision endpoint, so it
+  is read as any settled value (the intent of R4', kept by R5); the rule that a field an attempt of research settled
+  is not asked again is origin/main's and is unchanged; and the record still holds `human_approval_required` after
+  that Retry (`H4/fix6_probe_b2_b4_b6u_fix6.txt`). The limit reaches the disposition: "Review round 6" below.
+
+What was run first (three trees: origin/main 3eb37c11, 575367fe, and the working tree whose source 81a9944e
+commits; `H4/fix3_probe_extent_*.txt`, `H4/fix3_probe_resolver_*.txt`; pinned in
+`tests/field_research/test_habitat_changes_no_other_field.py`):
+
+| Case | origin/main 3eb37c11 | 575367fe | 81a9944e |
+|---|---|---|---|
+| Codex's extent sequence, a Habitat over lines. Two raw readers write "E. slope Mt. McKinley" / "Davao Prov." / "Mus" / "musculus"; the province is settled; the organiser offered "Davao Prov." as the Habitat for reader 1B only; the Habitat answers "Mus" over "musculus" naming 1A and settles on the image, keeping 1B's "Davao Prov." as that reader's verbatim | the Habitat is refused; the Precise Location is marked cut short | the mark is lost: the extent check blanks "Davao Prov." as the Habitat's text and abstains | marked, as on origin/main |
+| The same label read alike by both readers (a decided transcript: no verbatims are kept), or with no habitat candidate | marked | marked | marked |
+| Codex's extent sequence, the heading, at the step. The line after the locality is "Host: Mus Davao Prov."; the Habitat answers "Host: Mus" | the Habitat settles; the Precise Location is marked | the Habitat is refused; no mark | as 575367fe: the stated limit |
+| Codex's "Host: CNHM" through the real resolver, the habitat's stand-in model answering the heading on every request | the first answer is accepted; both fields go to review | 3 requests, then the resolver's fallback; the Collection Code settles, the Habitat is unresolved | as 575367fe: the stated limit |
+| The same, the model leaving the heading out in its second answer | the first answer is accepted; both go to review | the second answer, "CNHM", is applied; both go to review | the same |
+
+Codex's over-lines sequence reproduced only with two RAW readers: where a transcript is decided the settled value
+keeps no reader's verbatim (`step._lineage`). The fix: `ontology_checks.stage` gives the extent check the fields
+without a habitat that `step._over_lines` names, so neither its literal nor a verbatim of it is blanked; that is
+the smallest way found to tell such a value inside `ontology_checks`, which has the run and its findings in `stage`
+and only a mapping of fields below it. Through the resolver nothing worse than R2 says was seen in these two runs: no
+Habitat stored with the heading, the same disposition on each tree under the rig's profile and under the published
+one, and the Collection Code settled on a value its own check accepts.
+
+The re-read of the readers (`H4/settled_text_consumers.txt`, each row now says which texts of a value it reads).
+One miss: the extent check read a reader's verbatim, where round 2's table had considered the literal. The place
+line and decision B read verbatims or label rows too and already skipped the whole value. The guard (this
+attempt's values and stored ones), rule A's claims and the country's set-aside texts read the literal alone. The
+label's code reads no text.
+
+The heading limit, measured in run 3 (`H4/heading_refusals_run3.txt`, `H4/scripts/heading_refusals_run3.py`, from
+the rig's `results/refusals.jsonl` and `results/habitat3.jsonl`): the expert's check refused 11 habitat answers for
+the heading on 11 of the 99 records, once each. 5 then settled the name alone. 6 ended with no Habitat settled: the
+name alone was next refused `one_reader`, and the outcome was `sources_cannot_resolve`. Those six are records where
+a heading answer was refused and no later resolved answer passed. Whether the limit bit there turns on what origin/main
+would have done with the heading answer, and that was run, free and offline (`H4/scripts/heading_on_main.py`,
+`H4/heading_on_main_run3.txt`: origin/main 3eb37c11's own `experts._Expert.validate` on each of the 11 recorded
+heading answers, with that record's readings and candidates): origin/main's check accepts none of the 11, so none
+of those 6; it refuses 5 as `one_reader`, 5 as `not_candidate` and 1 as `literal_not_in_reading`. So in run 3 no
+record had a heading answer that origin/main would have settled and this lane left unsettled. That is a count of
+one run, not a bound; and it does not need the heading to be repeated: Codex's round-4 sequence, the heading once
+and then a literal no reading writes, run through the real resolver, ends with the fallback and the Collection
+Code settled, where origin/main accepts the first answer and sends both to review
+(`H4/scripts/probe_resolver_once.py`, `H4/fix4_probe_resolver_once.txt`; run, not pinned by a test).
+
+Two docstrings said that a punctuation mark more or less is another text for the rule A condition
+(`agreement.reader_writes`, `second_opinion._a_reader_differs`). As the code and its test have it: a mark more or
+less inside the value's text is another text; a mark right before or right after it is not looked at.
+
+Item M (ruling R3'): the Habitat's own label flag. The run-the-code reviewer ran 105527313's shape through the
+workflow with the second opinion agreeing and the Habitat the only field drawn from its label
+(`reviews/g51_probes/g51_464/r3/probes/test_r3_label.py`, `out/r3_label.txt`): origin/main ends the Habitat
+ambiguous and flagged, with the label's code; 575367fe ended it supported over its two lines with no open reason
+and no flag, in four shapes. Rebuilt here and run on three trees (`H4/scripts/probe_label_flag.py`,
+`H4/fix3_probe_label_*.txt`; pinned through the workflow in
+`tests/field_research/test_habitat_over_lines_label_flag.py`). The record's open reasons, label 2 being the host's
+label:
+
+| Shape | origin/main 3eb37c11 | 575367fe | a8e8a76d |
+|---|---|---|---|
+| The readers differ on the host's second line, the image names the first reader's; the Habitat the only field drawn from label 2 | Habitat ambiguous: `unresolved_transcription:<label 2>`, `mandatory_unresolved:habitat` | Habitat settled; none | `label_unsettled:habitat` |
+| The same, a resolved answer naming the first reader | Habitat unresolved: the same two codes | none | `label_unsettled:habitat` |
+| The readers differ on the host; a settled Collection Method is drawn from label 2 too | Habitat ambiguous: `mandatory_unresolved:habitat` | none | `label_unsettled:habitat` |
+| The readers differ on the host; label 2's Collection Method is ambiguous with no value | `unresolved_transcription:<label 2>`, `mandatory_unresolved:collection_method`, `mandatory_unresolved:habitat` | `mandatory_unresolved:collection_method` | `mandatory_unresolved:collection_method`, `label_unsettled:habitat` |
+| The readers differ on another line of label 2 only; the second opinion agrees | Habitat unresolved: `unresolved_transcription:<label 2>`, `mandatory_unresolved:habitat` | none | none (the flag is given and rule A lifts it) |
+| The same; the second opinion gives another host | as above | `marked:habitat:<label 2>:second_opinion_differs` | that mark and `label_unsettled:habitat` |
+| Label 2's readers alike | `mandatory_unresolved:habitat` | none | none |
+| The host on one line, the readers differing on another line or on the host | Habitat settled; none | none | none |
+
+The mechanism: `step.label_attention` gives the Habitat's own code (the conditions are in "The change" above, each
+pinned: `test_which_labels_count_as_unread`,
+`test_the_rule_needs_a_run_no_person_approved_and_a_value_research_settled_over_lines`). It was chosen over giving
+the label's code where such a Habitat is drawn from the label, which would have given `label_unsettled` to every
+other field drawn from that label too. The label's code is therefore still not given in these shapes, where
+origin/main gives it in some of them (the table). Derived at each finalize from the run as it is; a second finalize gives the
+same (pinned).
+
+What item M moves when run 3's recorded answers are replayed (`H4/item_m_diff.txt`). The coordinator's brief
+predicted that a flag on a right Habitat would move none of the six numbers. That holds by `second_opinion.same`
+(49 / 7 / 2 / 35 / 6 / 0, unchanged) and not by exact text: one record moved, 105526658, in the direction of a flag.
+It is right by `same` and wrong by exact text (a full stop), a reading lacks its text, and it had no flag; by exact
+text the six are now 44 / 7 / 2 / 35 / 8 / 3 where they were 44 / 7 / 2 / 35 / 7 / 4. The builder stopped without
+pushing, as the brief's stop rule said, and the coordinator ruled on 2026-11-21 that the table is accepted: it is
+the change item M asks for. The paid run's own record is the 7 / 4 one. The replay through a8e8a76d equals the paid
+run's record, whole dump, on 96 of 99; the three others differ by one added open reason each,
+`label_unsettled:habitat`, and in nothing else: 105526658 (no flag before), 105527285 and 105527297 (each already
+flagged by `marked:habitat:<label>:text_only`). For run 2: 96 of 99, the three being 105527285, 105527297 and
+105527313 (the last by the rule A condition, as before). By `same` the 49 right Habitats of run 3 were 33 not
+flagged and 16 flagged; they are 32 and 17. Flagged fields per record: 7.84 to 7.85 on average, median 8 before and
+after. No label's code is added, and no other field's flagged state differs in either replay
+(`H4/flag_rule_fix3.txt`).
+
+The heading, two more facts from the run-the-code reviewer's round 3 (its measurements, not this lane's). A Habitat
+refused for the heading is not settled with it; an unresolved Habitat keeps the literal the organiser gave it,
+heading and all, and the app then shows "Unresolved" beside that text
+(`reviews/g51_probes/g51_464/r3/out/r3_heading.txt`, `out/flutter_unresolved_heading.txt`); a comment in `step.py` that said the Habitat is "never
+shown with the heading" was wrong and is corrected. And a heading refusal can HOLD a record origin/main clears: the
+label's code holds the record where that label carries the catalogue number and no code confirms it (its sequence
+`heading_by_rule_candidates`, `out/r3_cmp_main_head.txt`): part of the one heading limit, toward review. With the
+retry limit of round 1, its two-attempt differential (`out/differential3_cmp.txt`: 1,580 sequences per tree, the
+Habitat settled first and each other field retried with its recorded answer): 0 fields more relaxed on 575367fe, 267
+toward review by the retry limit and what follows from it, one record held that origin/main clears.
+
+Not run by this lane: the reviewer's 41 round-3 sequences and its label test on a8e8a76d. Item M adds one open
+reason, `label_unsettled:habitat`, to a record whose Habitat is settled over lines (`step._over_lines`) on a label whose transcription is
+unresolved, where rule A does not lift it; its label test's four differing shapes are expected to show that code
+and a flagged Habitat, and any of its 41 sequences that ends with such a Habitat to gain it. Nothing else of what
+they print is expected to move; that was not checked by running them.
+
+Evidence. On the source of 81a9944e, before item M (`H4/code-r3`): run 3's recorded answers replayed give run 3's
+own record on 99 of 99, 49 / 7 / 2 / 35 / 6 / 0 by `second_opinion.same` and 44 / 7 / 2 / 35 / 7 / 4 by exact text
+(`H4/flag_rule_fix3_81a9944e.txt`, `H4/exact_text_run3_fix3_81a9944e.txt`). On the source of a8e8a76d, which the
+head of fix round 3, 359a57f3, has (`H4/code-r3m`; the two commits after it, 6d103ac3 and 359a57f3, change tests and
+documents; ad71a6dc and the commits of fix round 4 after them also change comments and docstrings in
+`src/specimen_digitization/field_research/step.py`, docstrings in three of the lane's test files and, in
+`tests/field_research/test_habitat_over_lines_label_flag.py`, a helper and one new test, and no executable line of
+`src`: `H4/fix4_ast_equal.txt`; fix round 5's source commit, 56b5638f, then adds one condition to `step._over_lines`,
+and its evidence is under "Review round 5" below; fix round 6's, ac433861, replaces that condition by the mark of
+the value, and its evidence is under "Review round 6"): the differential with the
+six habitat answers, every field other than Habitat equal to origin/main's in 435 of 435 applications
+(`H4/differential_fix3.txt`); run 3's recorded answers replayed, 49 / 7 / 2 / 35 / 6 / 0 by `same`, 44 / 7 / 2 / 35
+/ 8 / 3 by exact text, the paid run's own record on 96 of 99 (`H4/flag_rule_fix3.txt`,
+`H4/exact_text_run3_fix3.txt`); the 100 stored truth runs finalized again, equal to origin/main's on 100, none
+gaining the flag (`H4/replay_h4_fix3.txt`); 33 of 34 prompt texts byte-identical (`H4/prompt_digests_fix3.txt`).
+
+Left as it is, and recorded as follow-ups: the ontology's `host_marker` entry and the shared rule "never
+spanning two lines" (the habitat brief overrides both in words); `prompts/precise_location.txt`, whose line 9 says a
+locality may run over lines "unlike any other field", which is no longer exact (the habitat does too) and was not
+edited because every other prompt text had to stay byte-identical; the 22 bare names the expert still leaves out; the
+partial names; the line break in a stored Habitat; and, from review round 1: the rule A condition's two limits (the
+whole reading is searched; an observation with no text takes no part), the over-long literals no other field's text
+stops, the retry path above, the premise that the specimens are insects, the heading test's refusal of "Host plant
+...", and the display test, which is in the reviewer's probes folder and not in the app's tests; and, from review
+round 2 and 3: the label's own code, still not given in the shapes of item M's table (a label whose first pass was not
+given up on; a settled Habitat the only field drawn from it, or drawn beside a field that is supported and grounded in a raw
+reading: `H4/fix3_probe_label_*.txt`; the Habitat over lines (`step._over_lines`) now has its own flag there; a habitat on one line, and
+one that is a whole organiser candidate over two lines, keep origin/main's rule); and the heading as one stated limit for other fields, in either direction. After release the
+Logfire mirror of `field-expert--habitat` is to be refreshed to the released text (sha256 e44404d7...).
+
+Tests: `tests/field_research/test_host_is_the_habitat.py` (29; on origin/main's source 26 fail,
+`H4/red_on_main_v3.txt`), `tests/field_research/test_agreed_habitat_readers.py` (35) and
+`tests/field_research/test_habitat_over_lines_gives_way.py` (9): of the 44 in the last two, 33 fail on origin/main's
+source and 11 on 3df404ea's (`H4/red_fix1_main-3eb37c11.txt`, `H4/red_fix1_head-3df404ea.txt`); and
+`tests/field_research/test_habitat_changes_no_other_field.py` (12): 9 fail on origin/main's source and 5 on
+19761d59's (`H4/red_fix2_main-3eb37c11.txt`, `H4/red_fix2_head-19761d59.txt`), and 4 more in round 3 (16): of those 4,
+all fail on origin/main's source and 1 on 575367fe's, the other 3 pinning the heading limit, which holds on that
+head too (`H4/red_fix3_main-3eb37c11.txt`, `H4/red_fix3_head-575367fe.txt`); and
+`tests/field_research/test_habitat_over_lines_label_flag.py` (12, item M): 10 fail on origin/main's source and 9 on
+575367fe's (`H4/red_fix3_label_main-3eb37c11.txt`, `H4/red_fix3_label_head-575367fe.txt`); the others pin cases the
+change leaves alone or limits stated above. Fix round 4 adds one test to that file (13), a person's decisions of the
+Habitat through the decision endpoint: it pins behaviour item M's source already has, so the 13 pass on ad71a6dc's
+source; 10 of the 13 fail on 575367fe's and 11 on origin/main's, the new test among them on both
+(`H4/fix4_person_decision_on_ad71a6dc.txt`, `_on_575367fe.txt`, `_on_main-3eb37c11.txt`). Fix round 5 flips that test
+(a person's Habitat gets no flag from item M; the file still has 13) and adds one to
+`tests/field_research/test_habitat_changes_no_other_field.py` (17), Codex's round-5 sequence through the decision
+endpoint and a Retry: both fail on 61f3fdb8's source and the other 28 of the two files pass there; on origin/main's
+source neither can run as written, each calls `step._over_lines`, which that source does not have
+(`H4/red_fix5_head-61f3fdb8.txt`, `H4/red_fix5_main-3eb37c11.txt`). Fix round 6 adds
+`tests/field_research/test_habitat_over_lines_is_the_stored_value.py` (6 cases in 5 test functions) and changes one assertion of
+`test_habitat_over_lines_label_flag.py`: the counts are under "Review round 6". Program test spend after run 3, recomputed from every program ledger
+(`~/specimen-golive/runs/autonomy-habitat3-20261121/program_spend.py`): USD 35.9114 booked, USD 36.7314 with
+unanswered reader calls at their full reservation.
+
+Review round 5 of #464 (Codex and the run-the-code reviewer, both on 61f3fdb8, both asking for changes:
+`reviews/verdict_464_codex_r5.md`, `reviews/verdict_464_g51_r5.md`; the coordinator's rulings, not the owner's
+words: `H4/FIX_R5.md`). One behavioural finding, Codex's, and sentences.
+
+- Codex's sequence, which it read and did not run, was run here on three sources through the workflow, the decision
+  endpoint and a Retry (`H4/scripts/test_fix5_person_extent.py`; `H4/fix5_probe_person_extent_main-3eb37c11.txt`,
+  `_61f3fdb8.txt`, `_fix5.txt`; the same with the image unsure of the province's units). It reproduces as read. After
+  the Retry the Precise Location is settled on "E. slope Mt. McKinley" on each; origin/main gives it the mark
+  `precise_location_extent`; 61f3fdb8 gives none; the source of 56b5638f gives the mark. On 61f3fdb8 the person's
+  Habitat also carried `label_unsettled:habitat` from the decision on; on the other two it does not.
+- Ruling R4' replaces R4 ("Review round 3", the rulings). The code of round 5: one condition in `step._over_lines`,
+  `key not in second_opinion.authority(run)`, evaluated last, with no readings. (Replaced in round 6: ruling R5.)
+- The run-the-code reviewer's sequences, copies of its probes run on the source of 56b5638f
+  (`H4/scripts/run_g51_copy.sh`; its own folders are not written to). Its three extent sequences, in which the
+  Precise Location is settled before the person's decision: the extent marks equal its origin/main output at 7 of 7
+  steps in each, and its 61f3fdb8 output likewise (`H4/fix5_g51_person_extent_fix5.txt`). Its guard sequence
+  (research settles "Mus" over "musculus", a person confirms it, a Retry in which the Collection Code answers "Mus"):
+  as on 61f3fdb8, the Habitat is not asked again, holds its text as a stored value, and the Collection Code goes to
+  review, where origin/main's Retry asks the Habitat again, refuses the answer and settles the Collection Code
+  (`H4/fix5_g51_person_guard_fix5.txt`, `_61f3fdb8.txt`; the reviewer's `r5/out/r5_person_guard_main.txt`): toward
+  review, the retry limit of round 1.
+- Sentences corrected. The short form of `step.scientific_reasons`' label code (false for the given-up branch; the
+  round-4 wording was the coordinator's): the branches in full under "The label's code"; round 6 lists the sentences of
+  this PR on that code that it found, with the branches each covers (`H4/fix6_label_code_sentences.txt`). "The same test in each" of the readers found (false for the guard, which does not call
+  `step._over_lines`): the four readers that call it are named. The heading's condition: "no later RESOLVED answer of
+  that attempt passes the check"; an answer that the sources cannot resolve it is not refused and stands as the
+  outcome.
+- Evidence on the source of 56b5638f (`H4/code-r5`), all free. The differential with the six habitat answers: 435 of
+  435 (`H4/differential_fix5.txt`). Run 3's recorded answers replayed: 49 / 7 / 2 / 35 / 6 / 0 by `same`, 44 / 7 / 2
+  / 35 / 8 / 3 by exact text, the paid run's own record on 96 of 99 (105526658, 105527285, 105527297); run 2's: 44 /
+  7 / 4 / 38 / 6 / 0, 96 of 99 (`H4/flag_rule_fix5.txt`, `H4/exact_text_run3_fix5.txt`). Row by row both replays
+  equal those through a8e8a76d, the two clock fields aside (`H4/fix5_stop_rule_check.txt`). The 100 stored truth runs
+  finalized again: equal to origin/main's on 100 (`H4/replay_h4_fix5.txt`); none of the 100 holds a person's authority
+  over any field, and none is approved (`H4/fix5_person_authority_stored.txt`), so the condition changes nothing on
+  them. 33 of 34 prompt texts byte-identical, the habitat's `e44404d7...` (`H4/prompt_digests_fix5.txt`).
+
+Review round 6 of #464 (Codex and the run-the-code reviewer, both on d4225535, both asking for changes:
+`reviews/verdict_464_codex_r6.md`, `reviews/verdict_464_g51_r6.md`; the coordinator's rulings, not the owner's
+words: `H4/FIX_R6.md`). One behavioural finding, the same from both, and two sentences of Codex's.
+
+- The hole. Under R4' `step._over_lines` was false for a field in `second_opinion.authority(run)`, and
+  `Run.person_decided_fields` is only ever added to. A Habitat research settles over lines after a person's decision
+  of an EARLIER value of the field was therefore read as the person's: the four readers counted it and item M gave
+  it no code. Reachable two ways. Codex's (read, not run by it): a person confirms a one-line Habitat; a
+  transcription decision makes parse and research run again; research settles two lines. The run-the-code
+  reviewer's (run by it): research leaves the Habitat unsettled; a person decides it; a Retry asks it again and
+  research settles two lines. That origin/main's Retry asks a Habitat a person decided on the run again where no
+  attempt settled it (`step.build_tasks` leaves out a carried decision and a field an attempt settled), and that a
+  refused answer then leaves the person's text unresolved, is origin/main's behaviour and not this change's; it is
+  what makes the second sequence reachable, and nothing here changes it.
+- Run first, on three sources: origin/main 3eb37c11, d4225535 and ac433861 (the round's source commit), through the
+  workflow, the decision endpoint, a transcription decision and a Retry. B.1, B.5 and B.6 are copies of the
+  reviewer's probes (`H4/scripts/run_g51_copy6.sh`; its folders are not written to); B.2, B.4 and B.6 on an unread
+  label are `H4/scripts/test_fix6_sequences.py`; B.3 is round 5's probe.
+
+| Sequence | origin/main 3eb37c11 | d4225535 | ac433861 |
+|---|---|---|---|
+| B.1 Codex's, two readers, the collectors settling after the re-parse (`H4/fix6_probe_b1_codex_reparse_*.txt`; 8 variants: readers, profile, with and without the field decision) | the Habitat refused; the Taxon unresolved in 8 of 8 | the Habitat settled, read as the person's; the Taxon "sp. 22" SETTLED in 2 of 8 (two readers, with the field decision, either profile) | the Habitat settled, research's (`_over_lines` true); the Taxon unresolved in 8 of 8 |
+| B.2 the same, then the person confirms the two lines, then a Retry (`H4/fix6_probe_b2_b4_b6u_*.txt`) | the Retry asks the person's Habitat again, refuses the answer, leaves it unresolved; the Taxon unresolved | the Taxon settled since the re-parse; the Habitat not asked again | the mark withdrawn at the confirmation; the Habitat not asked again and still the person's; the Taxon asked again, unresolved |
+| B.3 round 5's: a person extends a one-line Habitat; a Retry answers the Precise Location (`H4/fix6_probe_b3_person_extent_*.txt`) | the extent mark | the extent mark | the extent mark |
+| B.4 research settles two lines beside the province; a person confirms them; read back; Retry; second finalize | the Habitat refused by research; the person's value asked again by the Retry and left unresolved; the Precise Location settled, no extent mark | `label_unsettled:habitat` until the confirmation, none after; the Habitat not asked again; the Precise Location settled, no extent mark; a second finalize gives the same reasons | as d4225535 at every step; the mark present before the confirmation and absent after |
+| B.6 the reviewer's (`H4/fix6_probe_b6_reasked_*.txt`; both profiles, with and without the decision) | the Habitat unresolved; the Collection Method held (`mandatory_unresolved:collection_method`); under the rig's profile the record stays in review after approval | the Collection Method cleared as not on the label, unflagged; under the rig's profile the record CLEARS after approval | the Collection Method held as on origin/main; under the rig's profile the record stays in review after approval |
+| B.6 on a label whose readers differ on another line, then the person confirms research's two lines, then a second Retry (`H4/fix6_probe_b2_b4_b6u_*.txt`) | as B.6; the second Retry asks the person's Habitat again and leaves it unresolved; the Collection Method held | no `label_unsettled:habitat` on research's two lines; the Collection Method cleared at the first Retry | `label_unsettled:habitat` on research's two lines (item M) and the Collection Method held; after the confirmation the mark and the flag are gone; the second Retry asks the Collection Method again and clears it as not on the label |
+
+  B.4 does not tell the sources apart for the extent check: the person's two-line texts are not found within the
+  province's one line, so the check abstains on each; B.3 does. B.5: the reviewer's person probe and guard probe on
+  ac433861 print what its own outputs for d4225535 print, generated ids aside (`H4/fix6_g51_r4_person_fix6.txt`,
+  `H4/fix6_g51_r5_person_guard_fix6.txt`); its sixteen caller sequences, compared by its own script, differ from
+  origin/main in nothing in 12, and the 4 place-line sequences stop at the Retry with a 409 on every tree, as it
+  reported (`H4/fix6_g51_callers_cmp.txt`).
+- A difference that remains, stated. After a person confirms the two lines research settled, the Habitat is the
+  person's and a Retry does not ask it again (an attempt settled the field); it is then read as any settled value.
+  In the last row the second Retry therefore clears the Collection Method as not on the label, where origin/main's
+  Retry asks the person's Habitat again, leaves it unresolved, and holds the Collection Method. The two sources apply
+  different habitat answers there; the difference follows from origin/main's Retry of a person's Habitat, above.
+  It stands as a stated limit by ruling R6 ("Review round 3", the rulings), and it reaches the disposition.
+  The run-the-code reviewer's round 7 ran that sequence to the approval on both profiles (`reviews/g51_probes/g51_464/r7/out/r7_r5_main.txt`, `r7_r5_head.txt`, its `limit_r6`; its run, not this lane's): after the person's confirmation and the Retry the record holds `human_approval_required` on each source and cannot clear with no person's approval; under the published profile both sources clear at the approval; under a profile where the Collection Method is mandatory (the rig's) the record then clears at the person's approval here and stays in review on origin/main (`mandatory_unresolved:collection_method`, `mandatory_unresolved:habitat`).
+- The mechanism (R5; the one the coordinator suggested). `step._settled`, the one function that makes a resolved
+  answer a supported value, writes the mark for a field in `agreement.GIVES_WAY` where the literal was read from the
+  transcript and holds a line break, and removes it where it settles the field any other way.
+  `second_opinion.decided`, which the endpoint calls for each deciding kind, withdraws it for the decided field. The
+  pass before the guard (`step._first_pass`) gets its own `dependencies` mapping, so what it settles marks the copy.
+  A stale mark (the value replaced with no withdrawal) names no stored value unless literal and every verbatim are
+  the same text again. The writers of the Habitat and the places that reset or copy `run.dependencies` that were found, with
+  what the mechanism does there and which were run, and what each way a person comes to hold a Habitat does to it:
+  `H4/fix6_writers.txt` (written before the code).
+- What the stored record gains. A record whose Habitat research settles on text read from the transcript over lines holds one more key in
+  `run.dependencies`, `field_research_over_lines`. The entry is removed where a person decides the field and where
+  research settles the Habitat any other way (on one line, as a whole organiser candidate); it stays, stale and
+  naming no stored value, where a later attempt or a re-parse leaves the Habitat unsettled, absent or taken with no
+  call of `step._settled` (run in round 7: `H4/fix7_probe_stale_mark.txt`). A record that never held such a Habitat
+  has no such key. The lifetime in full: the comment at `step.OVER_LINES`. Run 3's recorded answers
+  replayed: 24 of the 99 records gain it; run 2's: 23 of 99; no other `dependencies` key differs from the stored
+  record's, and the 75 and 76 records without the mark hold the stored record's keys (`H4/fix6_marker_count.txt`).
+  The API's detail read, the SQLite store and the stored JSON carry the key through the lane's tests; the full suite
+  runs the canonical projections and the active graph. A record a head of this PR before round 6 produced (the
+  rigs' paid runs) holds no mark: its over-lines Habitat is not such a value until research settles it again. No
+  such record is in production: the lane is not released.
+- Tests, through the workflow and the decision endpoint
+  (`tests/field_research/test_habitat_over_lines_is_the_stored_value.py`, 6 cases in 5 test functions): Codex's sequence with P2 after P3 and a
+  Retry; the reviewer's sequence on a label read alike and on an unread one, with P2 after P3 and a second Retry; the
+  mark's withdrawal for the decided field, its durability and a stale mark; a re-parse with no decision; no new key
+  on a record that never held such a Habitat. A move to the units path and a reprocess are not run. One test of `test_habitat_over_lines_label_flag.py` made a value no such value by removing the finding;
+  it removes the mark now. On d4225535's source 6 of the 36 tests of the three changed files fail: the three sequence
+  cases at the other field (the Taxon settled; the Collection Method cleared), and the three tests of the mark,
+  which that source does not write; "no new key" passes there (`H4/red_fix6_head-d4225535.txt`). On origin/main's
+  source 31 of the 36 fail (`H4/red_fix6_main-3eb37c11.txt`).
+- Evidence on the source of ac433861 (`H4/code-r6`), all free. The differential: 435 of 435
+  (`H4/differential_fix6.txt`). Run 3's recorded answers replayed: 49 / 7 / 2 / 35 / 6 / 0 by `same`, 44 / 7 / 2 / 35
+  / 8 / 3 by exact text, the paid run's own record on 96 of 99 (105526658, 105527285, 105527297, one added code
+  each; the comparison is of stage, disposition, reasons, open reasons, fields and findings, and does not hold
+  `run.dependencies`: the mark is counted apart, above); run 2's: 44 / 7 / 4 / 38 / 6 / 0, 96 of 99
+  (`H4/flag_rule_fix6.txt`, `H4/exact_text_run3_fix6.txt`). Row by row both replays equal those through 56b5638f,
+  the two clock fields aside; the stop rule did not fire (`H4/fix6_stop_rule_check.txt`). The 100 stored truth runs
+  finalized again: the whole record equal to origin/main's on 100, and the whole Run model, `dependencies` with it,
+  unchanged by the finalize but for open reasons on 100 (`H4/replay_h4_fix6.txt`). 33 of 34 prompt texts
+  byte-identical, the habitat's `e44404d7...` (`H4/prompt_digests_fix6.txt`).
+- Codex's sentences. The label's code: the sentences found that this PR adds about when `step.scientific_reasons` gives it are
+  listed with the branches each covers, and those not true as written were corrected
+  (`H4/fix6_label_code_sentences.txt`). "This head's
+  source": each number in the body names the source it was measured on.
+
+Review rounds 7 and 8 of #464 (words only; the full suite ran on 7d92da4b, round 6's head, and the heads of rounds 7 and 8
+differ from that one in comments, docstrings and documents only: `H4/fix7_ast_equal.txt`, `H4/fix8_ast_equal.txt`).
+Round 7 (Codex and the run-the-code reviewer on 7d92da4b; the reviewer approved it): the mark's lifetime had been
+stated falsely both ways and is stated in full in the comment at `step.OVER_LINES`
+(`H4/fix7_mark_lifetime_sentences.txt`, `H4/fix7_probe_stale_mark.txt`); ruling R6 and its reach are above. Round 8
+(Codex on cdf2716f; the reviewer approved cdf2716f): six docstrings and comments of origin/main still gave the
+one-line rule with the precise location as its only exception. Sentences origin/main had that this PR's code
+made stale were then searched for by nine families, each with a `git grep` pattern, and those found were listed
+(`H4/fix8_stale_origin_sentences.txt`); the list claims no completeness, and Codex's round 9 found one it had missed
+(PRD.md's statement of rule A). With that one the list has 69 entries, 67 of
+origin/main's sentences and 2 of this PR's own lines (listed for their family's question): 34 false or inexact at
+cdf2716f and corrected, 28 true and left (the 2 among them), 6 left because they are prompt text, ontology data, a
+page held to that data or a test's name, and 1 a dated design record (the script's counts, in that file). No prompt text
+changed: the rendered prompts equal origin/main's on 33 of 34, the habitat's `e44404d7...`
+(`H4/prompt_digests_fix8.txt`).
+
+Review round 9 of #464 (Codex on 19c13fdd, three findings, each on sentences; the run-the-code reviewer approved
+19c13fdd; words only: `H4/fix9_ast_equal.txt`). Round 8's own words named the habitat a rule leaves out or flags as
+"settled over consecutive lines" where the code tests `step._over_lines`: the sentences found that name that class
+are listed with how each names it and what was corrected (`H4/fix9_over_lines_phrase.txt`). Four descriptions in the tree, and one in the PR body, of the two
+host comments that round 8 had changed were corrected. They and what else was read again and changed:
+`H4/fix9_selfcheck.txt`.
 
 ### S1's replay (free, real code, wp26's 120 specimen-runs)
 

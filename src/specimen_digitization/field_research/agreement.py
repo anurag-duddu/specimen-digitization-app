@@ -19,7 +19,9 @@ fields' outcomes:
    "E.slope" differ. Or else, read from the transcript (literal_basis,
    TRANSCRIPT; coordinator's ruling of 2026-10-09): each of those readings
    writes the literal as a run of whole words within one line
-   (verbatim_runs), and it cuts or extends none of that reading's
+   (verbatim_runs), or, for a field in ACROSS_LINES (the precise location
+   and the habitat) whose literal holds a line break, over consecutive
+   lines (written_runs), and it cuts or extends none of that reading's
    candidates (_cut_candidate); a taxon so read must sit in no longer name
    on its reading (_longer_written), a date or an elevation so read is
    never one end of a range its clause writes, joined in any of the
@@ -290,6 +292,7 @@ HOLDS_A_RANGE = "This text holds a range of dates or elevations, which is anothe
 # The units path (the ontology's notation collected_by, plan WP 2.3c): a collectors literal that
 # is a collected_by marker alone ("leg.") names no one.
 ROLE_ONLY = "This text is the collectors' role marker alone, which names no one."
+HOST_HEADING = "This text starts with the heading \"Host\", which is not part of the host's name."
 HOLDS = {written.ELEVATION: HOLDS_AN_ELEVATION, written.DATE: HOLDS_A_DATE, written.RANGE: HOLDS_A_RANGE}
 # The unit each elevation field holds (application.derivations.UNITS), and
 # its name in the experts' retry.
@@ -474,9 +477,23 @@ def verbatim_runs(text: str, literal: str) -> list[tuple[int, int]]:
 # precise location, the label's verbatim locality, which labels often write
 # over two lines (e98a924c's "E Slope Mt." / "McKinley, Davao Prov.", the
 # organiser's two candidates "Seliban Riv." and "Mt. Apo" on 2b02009d's two
-# lines; the third rerun of 2026-10-18). Every other field, places among
-# them, keeps its literal on one line.
-ACROSS_LINES = frozenset({"precise_location"})
+# lines; the third rerun of 2026-10-18); and the habitat, where a label writes
+# a host's name over two lines, a genus above its species (lane H4 of the
+# autonomy program, 2026-11-21: in the habitat-only rerun of that day the
+# check refused the whole name and accepted one line of it). Every other
+# field, places among them, keeps its literal on one line.
+ACROSS_LINES = frozenset({"precise_location", "habitat"})
+# The field of ACROSS_LINES whose answer read from the transcript over consecutive lines gives way
+# where it shares text with another field's (step._taken): the habitat. origin/main 3eb37c11 read a
+# habitat from the transcript within one line only (a habitat literal with a line break settled
+# there only as a whole organiser candidate of each reading it names, and still does, with the
+# claims it had), so that accepting a host read over two lines changes no other field's outcome for
+# the same answers (the coordinator's ruling of 2026-11-21 on review round 1 of #464). The precise
+# location keeps the rules it had.
+GIVES_WAY = frozenset({"habitat"})
+# What each of those fields' text is called where the check tells its expert so
+# (literal_refusal's retry and experts._Expert._validate_resolved's).
+ACROSS_LINES_TEXT = {"precise_location": "A locality", "habitat": "A host or a habitat"}
 
 
 def _flat(text: str) -> str:
@@ -607,8 +624,9 @@ def literal_basis(task: FieldTask, readings: Sequence[Reading], literal: str,
     """Where the answer's literal comes from. CANDIDATE: it is a whole
     candidate literal of every reading it names (candidate_literal).
     TRANSCRIPT: it is not, but each of those readings writes it as a run of
-    whole words within one line (verbatim_runs; for precise location, over
-    consecutive lines when it holds a line break: written_runs), and it cuts
+    whole words within one line (verbatim_runs; for a field in ACROSS_LINES,
+    the precise location and the habitat, over consecutive lines when it
+    holds a line break: written_runs), and it cuts
     or extends no
     candidate of that reading (_cut_candidate): the expert read it in the
     transcript itself (the owner's design: experts with every raw
@@ -682,14 +700,31 @@ def next_line_year(task: FieldTask, readings: Sequence[Reading], literal: str, n
         and all(reading.precision == "day" and "split_lines" in reading.via for reading in found.readings))
 
 
+# The field that holds a host as written (the ontology's habitat row: "The habitat, host or
+# substrate the label writes"), and the heading a label may print or write before the host's
+# name, which is not part of it (host_heading).
+HOST_FIELD = "habitat"
+_HOST_HEADING = re.compile(r"[^\w]*host(?![^\W_])", re.IGNORECASE)
+
+
+def host_heading(literal: str | None) -> bool:
+    """Whether a text starts with the heading "Host": the whole word, letter case aside, with or
+    without punctuation around it ("Host <name>", "HOST: <name>", "Host:<name>", "(host) <name>",
+    "Host" alone). A word that only starts with it ("Hosts", "Hostel") is none, nor is the word
+    anywhere after the first ("on host <name>")."""
+    return bool(literal) and _HOST_HEADING.match(literal) is not None
+
+
 def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
-        named: Sequence[Reading], elevations=None, date_rules=None) -> Refusal | None:
+        named: Sequence[Reading], elevations=None, date_rules=None, heading: bool = True) -> Refusal | None:
     """Why the answer's literal may not settle the field, or None: it must be
     a whole candidate literal of each reading it names, whichever reader
     wrote it (no reader is preferred: the owner, 2026-10-25), or text each
     of those readings
     writes as a run of whole words
-    within one line that cuts or extends no candidate of it (literal_basis),
+    within one line (over consecutive lines for a field in ACROSS_LINES, the
+    precise location and the habitat, whose literal holds a line break:
+    written_runs) that cuts or extends no candidate of it (literal_basis),
     never a shorter or longer piece of a candidate (B2); for a taxon, a
     candidate whose quote writes a longer name from it on is such a piece too
     (_part_of_name), as is text read from a reading that writes a longer
@@ -709,10 +744,20 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     elevation rule only, a date or a range in it passing as on main. A
     collectors literal that is a collected_by marker alone ("leg.", "coll.", "Coll.";
     ontology_checks.without_role) settles nothing (ROLE_ONLY: the marker is the role the ontology's
-    notation collected_by names, plan WP 2.3c). A date field's literal that
+    notation collected_by names, plan WP 2.3c). A habitat literal that starts with the heading
+    "Host" settles nothing either (HOST_HEADING, host_heading: the answer is refused, never rewritten;
+    lane H4 of the autonomy program); `heading` false leaves that one check out, which only the
+    step's pass before its guard on shared text does (step._first_pass), for a resolved heading
+    answer that reaches the step; the expert's own check (experts._Expert) takes the default and
+    refuses. A date field's literal that
     extends a candidate by the year starting the next line passes where `date_rules`, the profile's,
     read it as one date (next_line_year)."""
     basis = literal_basis(task, readings, literal, named)
+    if heading and task.key == HOST_FIELD and host_heading(literal):
+        return Refusal(HOST_HEADING, f"{literal!r} starts with the heading \"Host\", which is not part of the "
+            "host's name. Give the name written after the heading as the literal, whole (it may stand on the "
+            "heading's line or on the lines below it), and leave the heading out; a written \"Ex.\", \"Ex:\", "
+            "\"ex\" or \"On\" before the name stays. Answer label_lacks_value when no name follows the heading.")
     if task.key == "collectors":
         from .ontology_checks import without_role
 
@@ -748,7 +793,7 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
         "this field another field's text, or a place of another kind), the literal may be text "
         "that each reading you name writes itself for this field: whole words within one line, "
         "cutting no word and no candidate. "
-        + ("A locality written over consecutive lines may run over them: copy those lines as the "
+        + (f"{ACROSS_LINES_TEXT[task.key]} written over consecutive lines may run over them: copy those lines as the "
            "reading writes them, holding whole candidates in their order on the label and cutting none. "
            if task.key in ACROSS_LINES else "")
         + "Copy it and name only readings that have it, or answer "
@@ -1286,6 +1331,26 @@ def agreement_key(text: str) -> str:
     return "".join(unicodedata.normalize("NFC", text).casefold().split())
 
 
+def reader_writes(text: str, literal: str) -> bool:
+    """Whether a reading holds the literal's text as whole words anywhere in it, letter case and
+    spacing aside (agreement_key's rule for readers that agree: "Shrubs" for "shrubs", "Sp.30" for
+    "sp. 30", a line break for a space or for nothing): a letter or a digit stands neither right
+    before nor right after it ("Mus" is not written in "Museum"), and a letter, a hyphen or another
+    punctuation mark more or less INSIDE the literal's text is another text ("LIPEUS" does not
+    write "LIPYCUS", nor "SYLVI-LAGUS" "SYLVILAGUS"); a mark right before or right after it is not
+    looked at ("Mus." and "(Mus" write "Mus"). Both sides are folded the same way, by agreement_key's own steps: NFC,
+    then str.casefold (the reading keeps its spaces and line breaks so that whole words can be
+    told; the literal loses them, agreement_key). So a letter whose folded form is longer than the
+    letter (U+00DF, the sharp s, folds to "ss") is the same text on both sides. The place of the
+    text in the reading is not looked at: a reading that holds the same text for something else
+    writes it. False for a literal with no text."""
+    key = agreement_key(literal)
+    if not key:
+        return False
+    pattern = re.compile(r"(?<![^\W_])" + r"\s*".join(re.escape(char) for char in key) + r"(?![^\W_])")
+    return pattern.search(unicodedata.normalize("NFC", text).casefold()) is not None
+
+
 def _spelling(task: FieldTask, name: str, texts: Iterable[str]) -> str:
     """The reader's own spelling a label settles on when its readers agree:
     the reader's candidate literal (the organiser's first, when the reader
@@ -1778,7 +1843,7 @@ def labels_by_rule(task: FieldTask, regions: Mapping[str, Sequence[Reading]],
         writers: dict[str, set[str]] = {}
         if bound:
             # Offered text as the field writes it (written_runs: over consecutive lines for a
-            # precise location), and the person's texts inside another of them set aside.
+            # field in ACROSS_LINES), and the person's texts inside another of them set aside.
             each, blocked = [frozenset(set(literals.get(reading.name, ())) | {collapse(reading.text[start:end])
                 for text in offered for start, end in written_runs(task.key, reading.text, text)})
                 for reading in group], ()
@@ -2500,15 +2565,15 @@ def parents_refusal(key: str, candidate: SourceCandidate, basis: str, *,
 def refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         named: Sequence[Reading], value: str | None, authority_id: str | None,
         cited: Sequence[SourceAnswer], received: Sequence[SourceAnswer], elevations=None,
-        date_rules=None) -> Refusal | None:
+        date_rules=None, heading: bool = True) -> Refusal | None:
     """Why a resolved answer may not settle its field, or None.
 
     `named` are the readings the answer names (each already writes the
     literal), `cited` the source answers it cites and `received` every source
-    answer its field received; `elevations` and `date_rules` as literal_refusal
-    takes them."""
+    answer its field received; `elevations`, `date_rules` and `heading` as
+    literal_refusal takes them."""
     refused = literal_refusal(task, readings, literal=literal, named=named, elevations=elevations,
-        date_rules=date_rules)
+        date_rules=date_rules, heading=heading)
     if refused is not None:
         return refused
     # The answer's literal is offered to every label, whatever readings it names.

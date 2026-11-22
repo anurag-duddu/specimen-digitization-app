@@ -235,7 +235,9 @@ def run_readings(run) -> tuple[Reading, ...]:
 
 
 def human_keys(run) -> frozenset[str]:
-    """Fields a person decided (human_field_carry): never researched or changed."""
+    """Fields whose decision by a person was carried into the run (human_field_carry): never
+    researched or changed. A decision a person makes on the run at the decision endpoint is not
+    among them (Run.person_decided_fields)."""
     carried = run.dependencies.get(CARRY_KEY) or {}
     return frozenset(carried) if isinstance(carried, Mapping) else frozenset()
 
@@ -299,7 +301,8 @@ def _without_roles(candidates: Sequence[Candidate]) -> list[Candidate]:
 def build_tasks(run, profile: CollectionProfile | None = None):
     """``(readings, tasks, context)`` for a run after parse.
 
-    One task per profile field, except a field a person decided and a field an
+    One task per profile field, except a field whose person's decision was
+    carried into the run (human_keys) and a field an
     earlier attempt already settled (a retry researches only the rest).
     ``context`` is every field's value as the organiser (or an earlier attempt)
     left it. The collectors' candidates leave out the marker of their role
@@ -461,7 +464,7 @@ def _literal_row(key: str, reading: Reading, literal: str, asset_id, blobs, *, t
     """A label row for a reading the expert named that no organiser row covers.
     For a literal the expert read in the transcript itself, not an organiser
     candidate (agreement.TRANSCRIPT), the row cites its first run of whole
-    words (agreement.verbatim_runs), and its record says so ("basis":
+    words (agreement.written_runs), and its record says so ("basis":
     "transcript")."""
     from .agreement import written_runs
 
@@ -560,9 +563,12 @@ def _refusal(task, answer, *, readings, by_name, sources, elevations=None, date_
     received = list(sources)
     by_id = {item.evidence.id: item for item in received if item.evidence is not None}
     cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
+    # Before the guard on shared text (_first_pass) a resolved habitat answer that starts with the
+    # heading "Host" is not refused for it: where its other checks pass it settles on the copy, as
+    # on origin/main 3eb37c11, and claims its text (_BEFORE_GUARD says where this applies).
     return refusal(task, readings, literal=literal, named=named, value=answer.value,
         authority_id=answer.authority_id, cited=cited, received=received, elevations=elevations,
-        date_rules=date_rules)
+        date_rules=date_rules, heading=not _BEFORE_GUARD.get())
 
 
 def _place_texts(run, tasks_by_key: Mapping[str, FieldTask], readings) -> dict[str, dict[str, frozenset[str]]]:
@@ -761,7 +767,10 @@ def _unplaced_text(run, readings: Sequence[Reading], places: Mapping[str, Mappin
     organiser candidates (_candidates), and the literals and verbatims of
     every supported value. A value not settled holds nothing: the country
     expert's own "Canada", kept as an unresolved literal, is still weighed
-    (finding 2).
+    (finding 2). Nor does a habitat settled on text read from the transcript
+    over consecutive lines (_over_lines; lane H4, round 2 of #464's review):
+    its lines are weighed as on origin/main 3eb37c11, which refused that
+    answer.
 
     What is left, split at commas, semicolons, colons, brackets and
     slashes, is weighed group by group, with any date, elevation or range in
@@ -787,8 +796,10 @@ def _unplaced_text(run, readings: Sequence[Reading], places: Mapping[str, Mappin
         for texts in places.get(key, {}).values() for text in texts}
     held = {text for texts_by_reading in places.values() for texts in texts_by_reading.values() for text in texts}
     held |= {candidate.literal for found in _candidates(run, readings).values() for candidate in found}
-    for value in run.fields.values():
-        if value.state == ValueState.SUPPORTED:
+    human = human_keys(run)
+    for key, value in run.fields.items():
+        # A habitat settled on text read over consecutive lines holds nothing here (_over_lines).
+        if value.state == ValueState.SUPPORTED and not _over_lines(run, key, value, human):
             held |= {text for text in (value.literal, *value.verbatim_by_observation.values()) if text}
     parts = {part.strip() for text in held for part in text.split("\n") if part.strip()}
 
@@ -878,6 +889,9 @@ YEAR_HELD = "This text holds the year the value found for {other} took from its 
 # collection code "CNHM. E Slope Mt.", the organiser's candidate, beside its
 # precise location "E Slope Mt.\nMcKinley, Davao Prov.".
 RUNS_INTO = "This text runs into the value found for {other}."
+# A habitat read from the transcript over consecutive lines (agreement.GIVES_WAY) whose text another
+# field's answer of the same attempt also gives, although that answer settled no value (_taken).
+ANSWERED = "This text, read over consecutive lines, is also in the answer given for {other}."
 
 
 class Taken(NamedTuple):
@@ -886,11 +900,13 @@ class Taken(NamedTuple):
     RUNS_INTO) rather than one holding its text (TAKEN); `year` "mine" for a
     date whose year from the next line the other field holds (YEAR_TAKEN),
     "theirs" for a field holding the year a date settled first took from its
-    next line (YEAR_HELD)."""
+    next line (YEAR_HELD); `answer` for a habitat read over consecutive lines
+    whose text the other field's answer gives without settling (ANSWERED)."""
 
     other: str
     partly: bool = False
     year: str = ""
+    answer: bool = False
 
 
 def _inside_a_token(text: str, index: int) -> bool:
@@ -1013,7 +1029,7 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     transcript (agreement.literal_basis: TRANSCRIPT) when that same text is
     claimed for a field of another kind (agreement.may_share_text), each
     with that other field. The text is the literal's runs of whole words
-    (agreement.verbatim_runs) in the readings of the labels its answer
+    (agreement.written_runs) in the readings of the labels its answer
     names. Only a settled value claims text, where it overlaps that text in
     the same reading: another field's value this attempt's answers settle
     (`settled`: _first_pass, before this guard), wherever its literal stands
@@ -1045,8 +1061,30 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     beside its precise location "E Slope Mt.\\nMcKinley, Davao Prov." (run
     629f91eb on 616ae010). A place that holds another field's whole text,
     or lies wholly inside it, still yields, as does one beside a value
-    settled before this attempt or by a person."""
-    from .agreement import FIELD_KINDS, TRANSCRIPT, literal_basis, may_share_text, written_runs, year_below
+    settled before this attempt or by a person.
+
+    A habitat this attempt's answer read from the transcript over consecutive lines
+    (agreement.GIVES_WAY: a literal with a line break that is no whole organiser candidate,
+    which only agreement.ACROSS_LINES lets the habitat hold; origin/main 3eb37c11 refused it
+    as text read from the transcript on more than one line) claims no text against another field
+    (lane H4, the coordinator's ruling of 2026-11-21 on review round 1 of #464): this guard
+    decides every other field as if that habitat answer had settled nothing. Its own text is
+    still guarded, and more widely: it goes to review where another kind of field's settled
+    text overlaps it (TAKEN; RUNS_INTO where a value this attempt settles overlaps it only
+    partly), and where the literal of another kind of field's resolved answer
+    of this attempt does, whole tokens in the readings of the labels that answer names,
+    although that answer settles nothing (ANSWERED). A habitat on one line, and one that is a
+    whole organiser candidate, claim text as before; so does a habitat an earlier attempt
+    settled, over consecutive lines or not, as any value settled before this attempt does."""
+    from .agreement import (
+        FIELD_KINDS,
+        GIVES_WAY,
+        TRANSCRIPT,
+        literal_basis,
+        may_share_text,
+        written_runs,
+        year_below,
+    )
 
     evidence = {item.id: item for item in run.evidence}
     by_name = {reading.name: reading for reading in readings}
@@ -1061,6 +1099,9 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
     mine_texts: dict[str, tuple[str, set]] = {}
     # The dates whose text in `mine` is the year they take from the next line.
     borrowed: set[str] = set()
+    # Where each resolved answer's literal stands, whatever its basis and whether or not it
+    # settles: the text a habitat read over consecutive lines gives way to (`silent`).
+    answered: dict[str, frozenset] = {}
     for outcome in outcomes:
         answer = outcome.answer
         if outcome.failure is not None or answer is None:
@@ -1087,11 +1128,15 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
             continue
         named = [by_name[n] for n in dict.fromkeys(names) if n in by_name and literal in by_name[n].text]
         task = tasks_by_key.get(outcome.key)
+        if task is not None and named:
+            answered[outcome.key] = _occurrences(literal,
+                [r for r in readings if r.region_id in {n.region_id for n in named}])
         if task is not None and named and literal_basis(task, readings, literal, named) == TRANSCRIPT:
             regions = {r.region_id for r in named}
             mine[outcome.key] = frozenset((r.name, start, end) for r in readings if r.region_id in regions
                 for start, end in written_runs(outcome.key, r.text, literal))
             mine_texts[outcome.key] = (literal, regions)
+            answered[outcome.key] |= mine[outcome.key]
         elif task is not None and named and (below := year_below(task, readings, literal, named)):
             # The year a date's literal takes from the next line (agreement.year_below)
             # is text the organiser gave no field: another field's settled text on it takes it, as text
@@ -1105,13 +1150,18 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
         if key not in researched and _claims_text(key, value, human):
             claims.append((key, _value_spans(value, readings, evidence)))
             claim_texts.append((key, value.literal, _value_regions(value, readings, evidence)))
+    # The fields whose answer of this attempt, read from the transcript over consecutive lines,
+    # claims no text against another field (the docstring's last paragraph).
+    silent = {key for key, (literal, _) in mine_texts.items()
+        if key in GIVES_WAY and key not in borrowed and "\n" in literal}
     taken: dict[str, Taken] = {}
     yielded: dict[str, str] = {}
     for key, spans in mine.items():
         place = FIELD_KINDS.get(key) == "place"
-        partial, other = [], None
+        partial, other, runs_into = [], None, False
         for (claimant, theirs), (_, their_text, their_regions) in zip(claims, claim_texts, strict=True):
-            if claimant == key or may_share_text(key, claimant) or not _overlap(spans, theirs):
+            if (claimant == key or claimant in silent or may_share_text(key, claimant)
+                    or not _overlap(spans, theirs)):
                 continue
             if _keeps_an_elevation(key, *mine_texts[key], claimant, their_text, their_regions):
                 continue
@@ -1119,13 +1169,17 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
                 partial.append(claimant)
                 continue
             other = claimant
+            # A habitat that gives way to a value this attempt settles and overlaps only partly
+            # runs into it, as the reviewed head 3df404ea said of one beside a place (RUNS_INTO).
+            runs_into = key in silent and claimant in settled and _partly(spans, theirs)
             break
         if other is None:
             literal, regions = mine_texts[key]
             other = next((claimant for claimant, text, theirs in claim_texts if claimant != key
-                and not may_share_text(key, claimant) and regions & theirs and _spelled_alike(literal, text)), None)
+                and claimant not in silent and not may_share_text(key, claimant) and regions & theirs
+                and _spelled_alike(literal, text)), None)
         if other is not None:
-            taken[key] = Taken(other, year="mine" if key in borrowed else "")
+            taken[key] = Taken(other, partly=runs_into, year="mine" if key in borrowed else "")
         else:
             for claimant in partial:
                 yielded.setdefault(claimant, key)
@@ -1134,6 +1188,11 @@ def _taken(run, tasks_by_key: Mapping[str, FieldTask], outcomes: Sequence[FieldO
         # when its own text read from the transcript also met that place.
         if claimant not in taken or taken[claimant].other == key:
             taken[claimant] = Taken(key, partly=True)
+    for key in sorted(silent - taken.keys()):
+        other = next((other for other, theirs in answered.items() if other != key
+            and not may_share_text(key, other) and _overlap(mine[key], theirs)), None)
+        if other is not None:
+            taken[key] = Taken(other, answer=True)
     # A date an earlier attempt settled on a year it took from the next line keeps that year: a
     # field this attempt settles on text over it is taken, whatever its basis, as within one
     # attempt (the coordinator's ruling on #444's round 1: whichever settled first).
@@ -1230,7 +1289,8 @@ def _taken_value(task, outcome, taker: Taken, evidence) -> FieldValue:
 
     answer = outcome.answer
     cited = [e for e in answer.source_evidence_ids if e in evidence and evidence[e].kind != "literal"]
-    reason = (RUNS_INTO if taker.partly else {"mine": YEAR_TAKEN, "theirs": YEAR_HELD}.get(taker.year, TAKEN)).format(
+    reason = (RUNS_INTO if taker.partly else ANSWERED if taker.answer
+        else {"mine": YEAR_TAKEN, "theirs": YEAR_HELD}.get(taker.year, TAKEN)).format(
         other=FIELD_LABELS.get(taker.other, taker.other))
     return _unsettled(task, ValueState.UNRESOLVED, literal=task.current.literal, cited=cited,
         reason=f"{reason} {answer.explanation}")
@@ -1293,6 +1353,26 @@ TRANSCRIPT_RULES = "field-research-transcript-v1"
 # Set while _first_pass applies the answers to a copy of the run: no Logfire
 # event is made for a value that pass settles (_from_the_transcript).
 _FIRST_PASS: ContextVar[bool] = ContextVar("field_research_first_pass", default=False)
+# True only inside _first_pass, the application on a copy whose settled values the guard on shared
+# text reads (_taken). There the habitat's heading refusal (agreement.HOST_HEADING) is left out, so
+# where a RESOLVED habitat answer that starts with the heading reaches the step (a recorded answer
+# applied again, a test, a rig's dry run), it settles on the copy as on origin/main 3eb37c11 and
+# claims in the guard the text it claimed there; the application to the record refuses it, so
+# that answer settles no Habitat on a literal that starts with the heading. A refused Habitat is
+# unresolved and keeps the literal the organiser gave it, heading and all, as after any refused
+# answer, so the app can show "Unresolved" beside such a text (lane H4, rounds 2 and 3 of #464's
+# review; the run-the-code reviewer ran it). It does NOT act on
+# the resolver's path: there the expert's own check refuses such an answer and sends the expert
+# back, and where no later RESOLVED answer of that attempt passes the check (the expert repeats
+# the heading, or its later resolved answers are refused for another reason, or it answers that
+# the sources cannot resolve it, which the check does not refuse and which stands as the
+# outcome) the Habitat does not settle and claims nothing, where origin/main
+# would have settled the first answer if its other checks pass (rounds 3 and 4; a stated limit by
+# the coordinator's ruling of 2026-11-21; the repeating case is pinned in
+# tests/field_research/test_habitat_changes_no_other_field.py). A re-ask's trial (reask._trial)
+# sets _FIRST_PASS for the whole application and not this, so its final application refuses as
+# the record's does.
+_BEFORE_GUARD: ContextVar[bool] = ContextVar("field_research_before_guard", default=False)
 
 
 def transcript_code(key: str) -> str:
@@ -1314,6 +1394,70 @@ def _from_the_transcript(run, key: str, named: Sequence[Reading], rows: Sequence
     if not _FIRST_PASS.get():
         logfire.info("field_research literal read from the transcript: {field_key}", field_key=key,
             reading_names=[reading.name for reading in named], literal_basis="transcript")
+
+
+# The lane's own record of a habitat research settled on text read from the transcript over
+# consecutive lines (lane H4, ruling R5 of round 6 of #464's review; _over_lines): in
+# run.dependencies, per field, a digest of the value as _settled made it. A test of the stored
+# VALUE: no per-field history (the finding transcript_literal:<field>, Run.person_decided_fields)
+# takes part, since each outlives the value it was written for.
+#
+# The entry's lifetime:
+# - WRITTEN by _settled, for a field in agreement.GIVES_WAY, where it settles a literal read from
+#   the transcript that holds a line break: the field's entry is the digest of that value.
+# - REMOVED by _settled where it settles the field any other way (a literal on one line, a whole
+#   organiser candidate), and by second_opinion.decided for the field a person decides at the
+#   decision endpoint (withdraw_over_lines).
+# - NOT removed where an attempt or a re-parse leaves the field with no _settled call: unsettled
+#   (unresolved, ambiguous), absent (the label lacks it) or taken by the guard. The entry then
+#   stays and is stale: it names no stored value unless literal and every verbatim are the same
+#   text again (_over_lines compares digests).
+# - The key itself is removed when its last entry is, and does not survive the pin of a run's
+#   dependencies (Workflow's step pin_dependencies replaces the whole mapping, before any field
+#   of the run is researched). A run that NEVER held such a habitat has no such key; a run that
+#   held one may keep the key after the value is gone, as above.
+OVER_LINES = "field_research_over_lines"
+
+
+def _value_digest(value: FieldValue) -> str:
+    """The digest of a value's literal and of each reader's verbatim of it."""
+    parts = [value.literal or "", *(f"{reader}\x00{text or ''}"
+        for reader, text in sorted((value.verbatim_by_observation or {}).items()))]
+    return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
+
+
+def _over_lines_marks(run) -> dict[str, str]:
+    held = (getattr(run, "dependencies", None) or {}).get(OVER_LINES)
+    return dict(held) if isinstance(held, Mapping) else {}
+
+
+def _note_over_lines(run, key: str, value: FieldValue | None) -> None:
+    """Set the field's entry of OVER_LINES to the digest of `value`, or remove it (`value` None).
+    For a field in agreement.GIVES_WAY only. The mapping is replaced, never changed in place (a
+    copy of the run may share the old one), and the key is removed when its last entry is. When
+    this is called, and when it is not, so that an entry stays behind: the comment at
+    OVER_LINES."""
+    from .agreement import GIVES_WAY
+
+    if key not in GIVES_WAY:
+        return
+    marks = _over_lines_marks(run)
+    if value is None and key not in marks:
+        return
+    marks.pop(key, None)
+    if value is not None:
+        marks[key] = _value_digest(value)
+    if marks:
+        run.dependencies[OVER_LINES] = marks
+    else:
+        run.dependencies.pop(OVER_LINES, None)
+
+
+def withdraw_over_lines(run, key: str) -> None:
+    """A person decided the field at the decision endpoint (second_opinion.decided, which every
+    deciding kind reaches): the value is the person's from then until research settles the field
+    again, so the field's entry of OVER_LINES is removed."""
+    _note_over_lines(run, key, None)
 
 
 def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rules=None) -> FieldValue | None:
@@ -1388,10 +1532,14 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
             f"{ROLE_NOTATION}): the name is settled without it.")
     # A field no source or check supplies is the label's text as written (G38's
     # verbatim layer); any other is settled by its sources and checks.
-    return FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed=parsed, normalized=normalized,
+    settled = FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed=parsed, normalized=normalized,
         authority_id=answer.authority_id, evidence_ids=list(relations), evidence_relations=relations,
         reason=reason, layer="settled" if task.tools else "verbatim",
         **_lineage(named, literal, others))
+    # A habitat read from the transcript over consecutive lines is marked as this value; any other
+    # habitat this settles (a whole organiser candidate, a literal on one line) removes the mark.
+    _note_over_lines(run, task.key, settled if transcript and "\n" in literal else None)
+    return settled
 
 
 def _locates(row: Evidence, reading: Reading, literal: str) -> bool:
@@ -2211,7 +2359,8 @@ def _apply_answers(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence
     """Each outcome, in `ordered` (the places from the country down), as its
     field's value (_field_value), a field in `taken` as text another kind of
     field claims (_taken_value), then the places settled on initials alone
-    made ambiguous (_corroborate). A field a person decided is left as it is.
+    made ambiguous (_corroborate). A field in `human` (human_keys: a decision
+    carried into the run) is left as it is.
     A field in `put` (the units path: its expert's several_possibilities answer, which
     the outcome in `ordered` puts to the rule, _by_rule) whose rule's answer does not
     settle (it is refused, or its text is another kind of field's, `taken`) takes the
@@ -2643,15 +2792,21 @@ def _first_pass(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[Fi
     with no field taken (_apply_answers), on a copy of the run's fields,
     evidence, findings and lookups, writing no blob and making no Logfire
     event (_FIRST_PASS). The run itself is left as it was. Returns the values
-    that settle: supported, in a settled layer (SETTLED_LAYERS)."""
+    that settle: supported, in a settled layer (SETTLED_LAYERS). One check is
+    left out here and made where the answers are applied to the record: the
+    habitat's heading refusal (_BEFORE_GUARD), which matters only where a
+    resolved answer with the heading reaches the step."""
     copy = run.model_copy(update={
         "fields": {key: value.model_copy(deep=True) for key, value in run.fields.items()},
-        "evidence": list(run.evidence), "findings": list(run.findings), "lookups": list(run.lookups)})
-    marker = _FIRST_PASS.set(True)
+        "evidence": list(run.evidence), "findings": list(run.findings), "lookups": list(run.lookups),
+        # The copy's own mapping: what this pass settles over lines marks the copy (OVER_LINES).
+        "dependencies": dict(run.dependencies)})
+    marker, before = _FIRST_PASS.set(True), _BEFORE_GUARD.set(True)
     try:
         applied, _ = _apply_answers(copy, tasks_by_key, ordered, taken={},
             evidence={item.id: item for item in copy.evidence}, blobs=None, decisions={}, **common)
     finally:
+        _BEFORE_GUARD.reset(before)
         _FIRST_PASS.reset(marker)
     return {key: copy.fields[key] for key in applied
         if copy.fields[key].state == ValueState.SUPPORTED and copy.fields[key].layer in SETTLED_LAYERS}
@@ -2786,13 +2941,16 @@ def apply_outcomes(run, profile: CollectionProfile | None, tasks: Sequence[Field
     check's parse gets a "derived" row when the check, run again on the
     literal, gives that value. A resolved answer the agreement rules refuse
     (agreement.refusal: a literal that is neither a whole candidate of the
-    readings it names nor whole words of one line of each, readers that
+    readings it names nor whole words of one line of each, or of consecutive
+    lines for a field in agreement.ACROSS_LINES, readers that
     differ where the settlement rule settles no text, a place no place
     source confirms), whose place does not
     lie in the country and province settled for its reading (_misfit, after
     the places above it), or whose literal, read from the transcript, is
     text another kind of field's settled value claims (_taken, judged on
-    what the answers settle without it: _first_pass), is ambiguous or
+    what the answers settle without it: _first_pass; a habitat read over
+    consecutive lines also where the text is in another kind of field's
+    resolved answer, ANSWERED), is ambiguous or
     unresolved instead; a place settled on initials that no place below it
     confirms is ambiguous (_corroborate, once every place is in). A literal
     read from the transcript that settles is marked so
@@ -3097,7 +3255,7 @@ def _settlement(run, task, outcome: FieldOutcome, *, readings, by_name, sources,
 
 def _across_lines(outcomes: Sequence[FieldOutcome], by_name: Mapping[str, Reading]) -> tuple[FieldOutcome, ...]:
     """Each resolved answer of a field whose literal may run over consecutive
-    lines (agreement.ACROSS_LINES: precise location) with its literal as the
+    lines (agreement.ACROSS_LINES: precise location and habitat) with its literal as the
     readings it names write it (agreement.across_lines), when it gives a
     space for a line break or a line break for a space, as the experts'
     check gives it (experts._Expert._across_lines); every other outcome as
@@ -3446,7 +3604,10 @@ def _genus_on_a_label(run, readings: Sequence[Reading]) -> str | None:
       value of another field cites, at the literal offsets its locator names in the reading it
       names (organiser.parse_locator), else where that reading's label writes the row's excerpt in
       the readings the row cites; and each reader's verbatim of that value, where that reader's
-      text writes it. The same text elsewhere is not accounted for;
+      text writes it. The same text elsewhere is not accounted for. A habitat settled on text
+      read from the transcript over consecutive lines (_over_lines) accounts for nothing: its
+      words may be a genus as on origin/main 3eb37c11, which refused that answer (lane H4,
+      round 2 of #464);
     - a whole token of an ontology notation ("CNHM", "Prov.", "det.", the sex signs; "C." accounts
       for "C" alone), a code with no genus (checks.NO_GENUS), a catalogue number with its prefix
       (field_validators.CATALOG: "FMNHINS 4486784"), or a keyed line's key (one of the 20 fields'
@@ -3490,8 +3651,10 @@ def _genus_on_a_label(run, readings: Sequence[Reading]) -> str | None:
         for pattern in patterns:
             for match in pattern.finditer(reading.text):
                 mark(reading, *match.span())
+    human = human_keys(run)
     for key, value in run.fields.items():
-        if key == "taxon" or value.state != ValueState.SUPPORTED:
+        # A habitat settled on text read over consecutive lines accounts for nothing (_over_lines).
+        if key == "taxon" or value.state != ValueState.SUPPORTED or _over_lines(run, key, value, human):
             continue
         for item in (rows[i] for i in value.evidence_ids if i in rows and rows[i].kind == "literal"):
             location = parse_locator(item.locator)
@@ -3546,13 +3709,56 @@ def _organiser_texts(task: FieldTask, readings: Sequence[Reading]) -> list[tuple
     return [(text, spans) for text, spans in found if text and text.strip()]
 
 
+def _over_lines(run, key: str, value: FieldValue, human: frozenset[str]) -> bool:
+    """Whether a stored value IS the habitat research settled on text its expert read from the
+    transcript over consecutive lines (agreement.GIVES_WAY; lane H4), as research left it. A test
+    of the stored value (the coordinator's ruling R5 of 2026-11-21 on round 6 of #464's review):
+    the field is not in `human` (the caller's set: a decision carried into the run), the literal
+    holds a line break, and research's mark for the field (run.dependencies[OVER_LINES], written
+    by _settled where it settles such a literal) holds the digest of this value, its literal and
+    each reader's verbatim of it (_value_digest).
+
+    So: a value a person confirmed or changed at the decision endpoint is the person's, not such
+    a value, whatever its text (second_opinion.decided withdraws the mark for the decided field);
+    a habitat research settles so after that, in a Retry or after a re-parse, is
+    research's again, whatever Run.person_decided_fields still holds (_settled writes the mark
+    anew); and a mark left behind by a value that was replaced with no withdrawal names no stored
+    value unless literal and every verbatim are the same text again. Two records kept per FIELD
+    decided this before and each outlived the value it was written for: the finding
+    transcript_literal:<field> (through round 4; round 5's sequence, a one-line value a person
+    extended) and second_opinion.authority (round 5's ruling R4', replaced by R5; round 6's
+    sequences, a decision of an earlier value). Neither takes part now. The finding keeps
+    origin/main's meaning, a literal the field's expert read from the transcript on this run.
+    Pinned through the workflow and the decision endpoint in
+    tests/field_research/test_habitat_over_lines_is_the_stored_value.py.
+
+    origin/main 3eb37c11 read a habitat from the
+    transcript within one line only; a habitat with a line break settled there only as a whole
+    organiser candidate, which _settled does not mark and which is not such a value. In the readers
+    found where a settled value's text relaxes another field's decision, such a habitat counts for
+    nothing, the whole value (its literal, each reader's verbatim of it, its label rows): the
+    coordinator's rulings of 2026-11-21 on review rounds 2 and 3 of #464. The readers found:
+    _settled_claims (rule A's mark), _unplaced_text (a line of places), _genus_on_a_label
+    (owner decision B) and ontology_checks.stage (the precise location's extent check) call this
+    function. The guard, _taken, does not: within an attempt it goes by the answer (`silent`),
+    and a stored habitat claims its text there as any stored value does."""
+    from .agreement import GIVES_WAY
+
+    return (key in GIVES_WAY and key not in human and bool(value.literal) and "\n" in value.literal
+        and _over_lines_marks(run).get(key) == _value_digest(value))
+
+
 def _settled_claims(run, readings: Sequence[Reading]) -> list[tuple[str, str, frozenset]]:
     """Each settled value's field and literal, with where the literal stands
-    (_claims_text, _value_spans): the text the run's settled values hold."""
+    (_claims_text, _value_spans): the text the run's settled values hold. A
+    habitat settled on text read from the transcript over consecutive lines
+    (_over_lines) holds none here: rule A marks no other field absent because
+    of it, as on origin/main 3eb37c11, which refused that answer (lane H4, the
+    coordinator's ruling of 2026-11-21 on review round 1 of #464)."""
     evidence = {item.id: item for item in run.evidence}
     human = human_keys(run)
     return [(key, value.literal, _value_spans(value, readings, evidence)) for key, value in run.fields.items()
-        if _claims_text(key, value, human)]
+        if _claims_text(key, value, human) and not _over_lines(run, key, value, human)]
 
 
 # Punctuation and spaces at the start and at the end of a text, which rule A's
@@ -4125,7 +4331,7 @@ REFUSALS = ("DIFFER", "LABELS_DIFFER", "PERSON_DECIDED", "NOT_CANDIDATE", "PART_
     "HOST_NAME", "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
     "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "A_DISTANCE", "HOLDS_AN_ELEVATION",
     "HOLDS_A_DATE", "HOLDS_A_RANGE", "FIRST_LEVEL_TOO", "NO_PROVINCE", "IS_THE_PROVINCE", "ONE_READER",
-    "TEXTS_CONTESTED", "TIED", "ROLE_ONLY")
+    "TEXTS_CONTESTED", "TIED", "ROLE_ONLY", "HOST_HEADING")
 # A lookup's status as a field's trace names it. Logfire's default scrubber
 # replaces any attribute whose value holds "auth" or "credential", so the two
 # refusals (HTTP 401 and 403) are renamed.
@@ -4627,8 +4833,27 @@ def code_confirmed(run) -> frozenset[str]:
     return frozenset({FIELD})
 
 
-# A field drawn from a label whose doubt is open (label_attention): `label_unsettled:<field>`.
+# A field drawn from a label whose doubt is open, and a habitat for which _over_lines is true
+# that is drawn from a label whose transcription is unresolved (label_attention):
+# `label_unsettled:<field>`.
 LABEL_UNSETTLED = "label_unsettled"
+
+
+def _unread_labels(run) -> frozenset[str]:
+    """The labels whose transcription is unresolved, by scientific_reasons' two tests of a label
+    (203-217), whether or not that function then gives the label's code: a label whose first pass
+    was given up on and no person has transcribed since, and a label with no transcript or with a
+    transcript that is not resolved or has no text."""
+    given_up = given_up_regions(run)
+    found = set()
+    for region in run.regions:
+        transcripts = [item for item in run.transcripts if item.region_id == region.id]
+        if region.id in given_up and not (transcripts and all(
+                getattr(item, "actor", None) and item.resolved and item.text for item in transcripts)):
+            found.add(region.id)
+        elif not transcripts or any(not item.resolved or not item.text for item in transcripts):
+            found.add(region.id)
+    return frozenset(found)
 
 
 def label_attention(run, open_reasons: Sequence[str]) -> list[str]:
@@ -4636,13 +4861,37 @@ def label_attention(run, open_reasons: Sequence[str]) -> list[str]:
     (a label's reading doubt, its language rule, its raw provenance), in field order: the label's
     doubt holds no record, and each field it reaches needs a person's attention all the same. Every
     consumer reads the field from the code itself (review_summary, the app's field rows), so the
-    server and the app cannot map it differently. The label's own code stays beside them."""
+    server and the app cannot map it differently. The label's own code stays beside them.
+
+    And, whether or not the label's code is an open reason, for a habitat research settled on text
+    read from the transcript over consecutive lines (_over_lines) that is drawn from a label whose
+    transcription is unresolved (_unread_labels), on a run no person approved (lane H4, the
+    coordinator's ruling R3' of 2026-11-21 on round 3 of #464's review). _over_lines is a test of
+    the stored value: a Habitat a person confirmed or changed at the decision endpoint, or one
+    carried into the run, gets no code from this rule; one research marks again (_settled)
+    after a person's decision comes under it again (ruling R5 of the same day, round 6, which replaces R4').
+    For a label that is not in scientific_reasons' given-up
+    branch (its first pass was not given up on, or it has a transcript and every transcript of it
+    is a person's, resolved and with text) and whose transcription is unresolved, scientific_reasons gives no label's code
+    where a field is drawn from the label and every drawn field whose work is terminal is supported
+    and is grounded in a raw reading or a derived value (its branches in full:
+    docs/execution/autonomy/PLAN.md, "H4", "The label's code"), so such a
+    habitat, the only field drawn from its label or drawn beside settled fields, got no flag where
+    its readers differ, a value origin/main 3eb37c11 refused and flagged; only this field's code is added, no
+    label's and no other field's. Rule A lifts it as it lifts any `label_unsettled:<field>`, and
+    for the habitat only where every reading of its labels holds the value's text
+    (second_opinion.agreed)."""
     language = language_codes(run)
     reached: set[str] = set()
     for reason in open_reasons:
         code, _, rest = reason.partition(":")
         if code in LABEL_DOUBTS or code in LABEL_PROVENANCE or code in language:
             reached |= label_fields(run, rest)
+    if not getattr(run, "human_approved", False):
+        human = human_keys(run)
+        over = {key for key, value in run.fields.items() if _over_lines(run, key, value, human)} - reached
+        if over:
+            reached |= {key for region in _unread_labels(run) for key in over & label_fields(run, region)}
     return [f"{LABEL_UNSETTLED}:{key}" for key in run.fields if key in reached]
 
 
