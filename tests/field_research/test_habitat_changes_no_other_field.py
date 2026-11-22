@@ -354,9 +354,10 @@ def test_a_habitat_a_person_extends_over_two_lines_is_read_by_the_extent_check_a
     blanked from that line and the province stands alone on it. On 61f3fdb8 the person's value, with its line break
     and the run's finding, was a step._over_lines value, the extent check left the whole Habitat out, "Mus" stayed
     beside the province and the check abstained: the mark was lost (run on three trees:
-    ~/specimen-golive/autonomy-program/H4/fix5_probe_person_extent_*.txt). Now step._over_lines is false for a field
-    a person holds authority over (second_opinion.authority; the coordinator's ruling R4' of 2026-11-21, not the
-    owner's words), and the mark stands as on origin/main. Red on 61f3fdb8's source. On origin/main's source it
+    ~/specimen-golive/autonomy-program/H4/fix5_probe_person_extent_*.txt). Now a person's decision of the field
+    withdraws research's mark of the value, so step._over_lines is false for the person's value (the coordinator's
+    ruling R5 of round 6, not the owner's words; round 5's R4' did it by second_opinion.authority, a record that
+    outlives the value), and the extent mark stands as on origin/main. Red on 61f3fdb8's source. On origin/main's source it
     cannot run as written (no step._over_lines, which this test calls); the probe above shows the mark given there."""
     from test_elevations_and_extent import DAVAO_AND_PI
     from test_precise_location_extent import whole

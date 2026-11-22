@@ -444,9 +444,14 @@ def authority(run, readings: Sequence[Reading] = ()) -> set[str]:
 
 
 def decided(run, key: str) -> None:
-    """The decision endpoint: a person decided the field `key`; recorded on the run, durably."""
+    """The decision endpoint: a person decided the field `key`; recorded on the run, durably. The
+    value is the person's from here on: research's mark of a habitat it settled over consecutive
+    lines is withdrawn for the field (step.withdraw_over_lines; lane H4)."""
+    from .step import withdraw_over_lines
+
     if key not in run.person_decided_fields:
         run.person_decided_fields = [*run.person_decided_fields, key]
+    withdraw_over_lines(run, key)
 
 
 def _legacy_decision(event, run_id: str) -> str | None:

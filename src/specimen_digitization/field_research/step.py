@@ -1393,6 +1393,54 @@ def _from_the_transcript(run, key: str, named: Sequence[Reading], rows: Sequence
             reading_names=[reading.name for reading in named], literal_basis="transcript")
 
 
+# The lane's own record of a habitat research settled on text read from the transcript over
+# consecutive lines (lane H4, ruling R5 of round 6 of #464's review; _over_lines): in
+# run.dependencies, per field, a digest of the value as _settled made it. A test of the stored
+# VALUE: no per-field history (the finding transcript_literal:<field>, Run.person_decided_fields)
+# takes part, since each outlives the value it was written for.
+OVER_LINES = "field_research_over_lines"
+
+
+def _value_digest(value: FieldValue) -> str:
+    """The digest of a value's literal and of each reader's verbatim of it."""
+    parts = [value.literal or "", *(f"{reader}\x00{text or ''}"
+        for reader, text in sorted((value.verbatim_by_observation or {}).items()))]
+    return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
+
+
+def _over_lines_marks(run) -> dict[str, str]:
+    held = (getattr(run, "dependencies", None) or {}).get(OVER_LINES)
+    return dict(held) if isinstance(held, Mapping) else {}
+
+
+def _note_over_lines(run, key: str, value: FieldValue | None) -> None:
+    """Set the field's entry of OVER_LINES to the digest of `value`, or remove it (`value` None).
+    For a field in agreement.GIVES_WAY only. The mapping is replaced, never changed in place (a
+    copy of the run may share the old one), and the key is removed when it holds no entry, so a
+    run with no such value has no such key."""
+    from .agreement import GIVES_WAY
+
+    if key not in GIVES_WAY:
+        return
+    marks = _over_lines_marks(run)
+    if value is None and key not in marks:
+        return
+    marks.pop(key, None)
+    if value is not None:
+        marks[key] = _value_digest(value)
+    if marks:
+        run.dependencies[OVER_LINES] = marks
+    else:
+        run.dependencies.pop(OVER_LINES, None)
+
+
+def withdraw_over_lines(run, key: str) -> None:
+    """A person decided the field at the decision endpoint (second_opinion.decided, which every
+    deciding kind reaches): the value is the person's from then until research settles the field
+    again, so the field's entry of OVER_LINES is removed."""
+    _note_over_lines(run, key, None)
+
+
 def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rules=None) -> FieldValue | None:
     """A resolved answer as a supported value, or None when its literal is not in
     the readings it names (the experts' check, repeated here). A literal the
@@ -1465,10 +1513,14 @@ def _settled(run, task, outcome, *, by_name, evidence, asset_id, blobs, date_rul
             f"{ROLE_NOTATION}): the name is settled without it.")
     # A field no source or check supplies is the label's text as written (G38's
     # verbatim layer); any other is settled by its sources and checks.
-    return FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed=parsed, normalized=normalized,
+    settled = FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed=parsed, normalized=normalized,
         authority_id=answer.authority_id, evidence_ids=list(relations), evidence_relations=relations,
         reason=reason, layer="settled" if task.tools else "verbatim",
         **_lineage(named, literal, others))
+    # A habitat read from the transcript over consecutive lines is marked as this value; any other
+    # habitat this settles (a whole organiser candidate, a literal on one line) removes the mark.
+    _note_over_lines(run, task.key, settled if transcript and "\n" in literal else None)
+    return settled
 
 
 def _locates(row: Evidence, reading: Reading, literal: str) -> bool:
@@ -2726,7 +2778,9 @@ def _first_pass(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[Fi
     resolved answer with the heading reaches the step."""
     copy = run.model_copy(update={
         "fields": {key: value.model_copy(deep=True) for key, value in run.fields.items()},
-        "evidence": list(run.evidence), "findings": list(run.findings), "lookups": list(run.lookups)})
+        "evidence": list(run.evidence), "findings": list(run.findings), "lookups": list(run.lookups),
+        # The copy's own mapping: what this pass settles over lines marks the copy (OVER_LINES).
+        "dependencies": dict(run.dependencies)})
     marker, before = _FIRST_PASS.set(True), _BEFORE_GUARD.set(True)
     try:
         applied, _ = _apply_answers(copy, tasks_by_key, ordered, taken={},
@@ -3633,31 +3687,31 @@ def _organiser_texts(task: FieldTask, readings: Sequence[Reading]) -> list[tuple
 
 
 def _over_lines(run, key: str, value: FieldValue, human: frozenset[str]) -> bool:
-    """Whether a stored value is a habitat research settled on text its expert read from the
-    transcript over consecutive lines (agreement.GIVES_WAY; lane H4), by this test: its literal
-    holds a line break, the run keeps the finding of a literal read from the transcript for the
-    field (_from_the_transcript), and no person holds authority over the field by the run's
-    durable record: not in `human` (the caller's set of a person's fields) and not in second_opinion.authority(run),
-    called with no readings (a decision a move or a new run carried, a research selection a person
-    locked, the location reassessment's protected fields, and a field a person decided at the
-    decision endpoint, Run.person_decided_fields). A habitat research settles from a label whose
-    transcript a person decided is still research's value, so no readings are passed. A Habitat a
-    person confirms or changes on the run is therefore no such value, whatever its text: the
-    readers named below read it as any settled value, and label_attention gives it no code of its
-    own (the coordinator's ruling R4' of 2026-11-21 on round 5 of #464's review; it replaces R4 of
-    round 4, under which a decision on the run was not looked at: Codex's round 5 showed a person
-    extending a one-line Habitat to two lines then lost the Precise Location the extent mark
-    origin/main gives). Pinned through the decision endpoint for the extent check and for the
-    code (tests/field_research/test_habitat_changes_no_other_field.py,
-    test_habitat_over_lines_label_flag.py); for the other readers by this one test only. The
-    finding is per field, not per value: it says the field took a literal read from the transcript
-    on this run, not that the stored value is that literal. This file drops it in two functions
-    that take a settled place back (_corroborate, _only_a_place_above); a person's decision at
-    the decision endpoint keeps it (asserted in test_habitat_changes_no_other_field.py's test of
-    a Habitat a person extends).
+    """Whether a stored value IS the habitat research settled on text its expert read from the
+    transcript over consecutive lines (agreement.GIVES_WAY; lane H4), as research left it. A test
+    of the stored value (the coordinator's ruling R5 of 2026-11-21 on round 6 of #464's review):
+    the field is not in `human` (the caller's set: a decision carried into the run), the literal
+    holds a line break, and research's mark for the field (run.dependencies[OVER_LINES], written
+    by _settled where it settles such a literal) holds the digest of this value, its literal and
+    each reader's verbatim of it (_value_digest).
+
+    So: a value a person confirmed or changed at the decision endpoint is the person's, not such
+    a value, whatever its text (second_opinion.decided withdraws the mark for the decided field);
+    a habitat research settles over lines after that, in a Retry or after a re-parse, is
+    research's again, whatever Run.person_decided_fields still holds (_settled writes the mark
+    anew); and a mark left behind by a value that was replaced with no withdrawal names no stored
+    value unless literal and every verbatim are the same text again. Two records kept per FIELD
+    decided this before and each outlived the value it was written for: the finding
+    transcript_literal:<field> (through round 4; round 5's sequence, a one-line value a person
+    extended) and second_opinion.authority (round 5's ruling R4', replaced by R5; round 6's
+    sequences, a decision of an earlier value). Neither takes part now. The finding keeps
+    origin/main's meaning, a literal the field's expert read from the transcript on this run.
+    Pinned through the workflow and the decision endpoint in
+    tests/field_research/test_habitat_over_lines_is_the_stored_value.py.
+
     origin/main 3eb37c11 read a habitat from the
     transcript within one line only; a habitat with a line break settled there only as a whole
-    organiser candidate, which leaves no such finding and is not such a value. In the readers
+    organiser candidate, which _settled does not mark and which is not such a value. In the readers
     found where a settled value's text relaxes another field's decision, such a habitat counts for
     nothing, the whole value (its literal, each reader's verbatim of it, its label rows): the
     coordinator's rulings of 2026-11-21 on review rounds 2 and 3 of #464. The readers found:
@@ -3666,11 +3720,9 @@ def _over_lines(run, key: str, value: FieldValue, human: frozenset[str]) -> bool
     function. The guard, _taken, does not: within an attempt it goes by the answer (`silent`),
     and a stored habitat claims its text there as any stored value does."""
     from .agreement import GIVES_WAY
-    from .second_opinion import authority
 
     return (key in GIVES_WAY and key not in human and bool(value.literal) and "\n" in value.literal
-        and any(finding.reason_code == transcript_code(key) for finding in run.findings)
-        and key not in authority(run))
+        and _over_lines_marks(run).get(key) == _value_digest(value))
 
 
 def _settled_claims(run, readings: Sequence[Reading]) -> list[tuple[str, str, frozenset]]:
@@ -4789,11 +4841,11 @@ def label_attention(run, open_reasons: Sequence[str]) -> list[str]:
     And, whether or not the label's code is an open reason, for a habitat research settled on text
     read from the transcript over consecutive lines (_over_lines) that is drawn from a label whose
     transcription is unresolved (_unread_labels), on a run no person approved (lane H4, the
-    coordinator's ruling R3' of 2026-11-21 on round 3 of #464's review). _over_lines leaves out a
-    Habitat a person holds authority over by the run's record (second_opinion.authority with no
-    readings: a carried decision, and a decision made on the run at the decision endpoint), so a
-    Habitat a person confirmed or changed gets no code from this rule (ruling R4' of the same day,
-    round 5, which replaces round 4's R4). For a label that is not in scientific_reasons' given-up
+    coordinator's ruling R3' of 2026-11-21 on round 3 of #464's review). _over_lines is a test of
+    the stored value: a Habitat a person confirmed or changed at the decision endpoint, or one
+    carried into the run, gets no code from this rule; a Habitat research settles over lines
+    after a person's decision does (ruling R5 of the same day, round 6, which replaces R4').
+    For a label that is not in scientific_reasons' given-up
     branch (its first pass was not given up on, or it has a transcript and every transcript of it
     is a person's, resolved and with text) and whose transcription is unresolved, scientific_reasons gives no label's code
     where a field is drawn from the label and every drawn field whose work is terminal is supported

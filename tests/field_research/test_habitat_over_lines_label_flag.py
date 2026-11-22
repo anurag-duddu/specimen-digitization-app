@@ -207,9 +207,9 @@ def test_a_label_both_readers_read_alike_gives_no_flag(tmp_path, monkeypatch):
 
 def test_an_approved_run_and_a_habitat_decision_carried_into_the_run_get_no_flag_from_this_rule(tmp_path, monkeypatch):
     """On the record of the first shape: once a person approved the run, this rule adds nothing; and it adds nothing
-    for a Habitat whose decision was CARRIED INTO the run by a reprocess (step.human_keys, one of the records
-    step._over_lines tests through second_opinion.authority). The carried decision is injected at step.human_keys
-    here, not made by a reprocess. A decision a person makes ON the run, through the decision endpoint: the next
+    for a Habitat whose decision was CARRIED INTO the run by a reprocess (step.human_keys, the set each caller
+    passes to step._over_lines). The carried decision is injected at step.human_keys here, not made by a
+    reprocess. A decision a person makes ON the run, through the decision endpoint: the next
     test."""
     (first, other), scripts, image, _ = SHAPES["the-only-field-drawn"]
     run = finished(tmp_path, monkeypatch, first, other, scripts, image=image)
@@ -223,14 +223,15 @@ def test_an_approved_run_and_a_habitat_decision_carried_into_the_run_get_no_flag
 
 def test_a_habitat_a_person_decides_on_the_run_gets_no_flag_from_this_rule(tmp_path, monkeypatch):
     """Through the decision endpoint, nothing patched (the run-the-code reviewer's round 4 sequence, on the record of
-    the first shape). A decision made on the run is recorded in Run.person_decided_fields, which
-    second_opinion.authority(run) holds, and step._over_lines is false for a field a person holds authority over:
+    the first shape). A person's decision of the field at the decision endpoint withdraws research's mark of the
+    value (second_opinion.decided, step.withdraw_over_lines), so the value is no step._over_lines value any more:
     research's Habitat carries the flag; a person confirms it unchanged and the flag is gone; a person changes it to
     the other reader's two lines and no flag is given; the person approves the record and none is given. The record
     waits for that approval from the first decision on (`human_approval_required`). The coordinator's ruling R4' of
     2026-11-21 on round 5 of #464's review (not the owner's words). In round 4 this test pinned the opposite, under
-    ruling R4, which R4' replaces: the flag stayed until approval, because step._over_lines looked at step.human_keys
-    only. Red on 61f3fdb8's source (the flag stays). On origin/main's source it cannot run as written: that source
+    ruling R4, which R4' replaced: the flag stayed until approval, because step._over_lines looked at step.human_keys
+    only. Round 5 made it false by second_opinion.authority (R4'); round 6 by the mark (ruling R5, which replaces
+    R4': tests/field_research/test_habitat_over_lines_is_the_stored_value.py). Red on 61f3fdb8's source (the flag stays). On origin/main's source it cannot run as written: that source
     has no step._over_lines, which this test calls. ~/specimen-golive/autonomy-program/H4/red_fix5_*.txt."""
     (first, other), scripts, image, _ = SHAPES["the-only-field-drawn"]
     rig = finished_rig(tmp_path, monkeypatch, first, other, scripts, image=image)
@@ -333,8 +334,10 @@ def test_which_labels_count_as_unread(tmp_path, monkeypatch):
 
 def test_the_rule_needs_a_run_no_person_approved_and_a_value_research_settled_over_lines(tmp_path, monkeypatch):
     """`run.human_approved` true: nothing is added (an approval's own finalize decides what a person reviews). A
-    value that is no step._over_lines value gets nothing either: a literal on one line, a habitat a person holds
-    authority over by the run's record (second_opinion.authority; the two tests above), or one the run holds no transcript-literal finding for."""
+    value that is no step._over_lines value gets nothing either: a literal on one line, a habitat a person decided
+    (the two tests above), or one research's mark of the value (run.dependencies[step.OVER_LINES]) does not name:
+    the mark gone, with the finding of a literal read from the transcript still there. Until round 6 that finding
+    decided it, and this test removed the finding; ruling R5 made step._over_lines a test of the stored value."""
     (first, other), scripts, image, _ = SHAPES["the-only-field-drawn"]
     run = finished(tmp_path, monkeypatch, first, other, scripts, image=image)
     assert not run.human_approved and field_step.label_attention(run, []) == [FLAG]
@@ -346,7 +349,6 @@ def test_the_rule_needs_a_run_no_person_approved_and_a_value_research_settled_ov
 
     assert changed(lambda copy: setattr(copy, "human_approved", True)) == []
     assert changed(lambda copy: setattr(copy.fields["habitat"], "literal", "Mus musculus")) == []
-    code = field_step.transcript_code("habitat")
-    assert any(finding.reason_code == code for finding in run.findings)
-    assert changed(lambda copy: copy.findings.__setitem__(slice(None),
-        [finding for finding in copy.findings if finding.reason_code != code])) == []
+    assert any(finding.reason_code == field_step.transcript_code("habitat") for finding in run.findings)
+    assert "habitat" in run.dependencies[field_step.OVER_LINES]
+    assert changed(lambda copy: copy.dependencies.pop(field_step.OVER_LINES)) == []
