@@ -7,8 +7,9 @@ The lane changes what a Habitat answer does in two ways, and round 2 of the revi
   either direction (the coordinator's ruling of round 3): a field whose decision reads a settled Habitat's text is
   decided beside a Habitat that did not settle, which can send it to review where origin/main settled it, or lose a
   refusal, reason or mark origin/main gives. On the resolver's path (production) the expert's own check refuses
-  such an answer and sends the expert back; an expert that repeats the heading through its retries leaves the
-  resolver's fallback as the Habitat's outcome, which claims nothing in the guard. Where a RESOLVED heading answer
+  such an answer and sends the expert back; where no later answer of that attempt passes the check (the expert
+  repeats the heading, or its later answers are refused for another reason, or it then answers that the sources
+  cannot resolve it) the Habitat does not settle and claims nothing in the guard. Where a RESOLVED heading answer
   reaches the step directly (a recorded answer applied again; these tests; a rig's dry run), round 2 left the
   step's heading refusal out of the pass before the guard (step._first_pass, step._BEFORE_GUARD), so there the
   Habitat claims in the guard the text it claimed on origin/main and is refused at the application to the record.
@@ -381,8 +382,11 @@ def through_the_resolver(tmp_path, *habitat_answers):
 
 
 def test_limit_an_expert_that_repeats_the_heading_makes_no_claim_so_the_code_settles(tmp_path):
-    """The stated limit of the heading, on the resolver's path (Codex round 3, finding 1; the coordinator's ruling
-    R2: no code for it). Both readers write "Host: CNHM"; the code's model answers "CNHM"; the habitat's model
+    """One case of the stated limit of the heading, on the resolver's path (Codex round 3, finding 1; the
+    coordinator's ruling R2: no code for it). The limit applies wherever no later answer of the attempt passes the
+    expert's check; repeating the heading is one way, a later answer refused for another reason is another (Codex
+    round 4; run, not pinned: ~/specimen-golive/autonomy-program/H4/fix4_probe_resolver_once.txt).
+    Both readers write "Host: CNHM"; the code's model answers "CNHM"; the habitat's model
     answers "Host: CNHM" on every request. The expert's own check refuses each such answer and sends the expert
     back; after its retries the resolver's fallback is the Habitat's outcome (sources_cannot_resolve, no literal),
     so the step receives no resolved Habitat, no claim is made in the guard, and the Collection Code settles.

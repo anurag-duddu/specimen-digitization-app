@@ -581,8 +581,9 @@ The change (`field_research/prompts/habitat.txt`, `agreement.py`, `experts.py`, 
   "Coyole" for the host and "Coyote Creek" on the locality's line; the flag is lifted, as on origin/main); and an
   observation with no text is no reading, so the condition is then judged on the other readings alone (the run says
   one reader read a label by its observations' routes and models, not by their text: `step.scientific_reasons`).
-  The condition keeps a flag finalize gives. Finalize gives `label_unsettled:habitat` from the label's code (given
-  where a field drawn from the label is not settled) and, since fix round 3, for a habitat settled over lines, from
+  The condition keeps a flag finalize gives. Finalize gives `label_unsettled:habitat` from the label's code (when
+  `step.scientific_reasons` gives one is set out under "Review round 2", "The label's code": it gives none where
+  every field drawn from the label is supported and grounded in a raw reading) and, since fix round 3, for a habitat settled over lines, from
   the label's unresolved transcription itself (next bullet); a habitat on one line keeps origin/main's rule, so
   where its label's code is not given it has no flag to keep. Rule A is unchanged for every other field.
 - The Habitat's own label flag (fix round 3, item M; `step.label_attention`, `step._unread_labels`). After a finalize
@@ -690,8 +691,9 @@ the 49 right; on the stored records of the 100 truth slides finalized again, non
 rule A's exceptions as the dates are, gains 23 flags on run 2's answers, 22 of them on right Habitats, and 4 on the
 stored records, all on right values; it was not built. What the condition does not catch: a Habitat every reader and
 the second opinion read alike and wrongly; this change adds no flag for it. And, as first built, the condition kept
-a flag only where finalize gave one: `label_unsettled:habitat` came from the label's code, which
-`step.scientific_reasons` gives only where a field drawn from the label is not settled. 105527313's flag existed
+a flag only where finalize gave one: `label_unsettled:habitat` came from the label's code, and
+`step.scientific_reasons` gives no label's code where every field drawn from the label is supported and grounded in
+a raw reading (its branches: "Review round 2", "The label's code"). 105527313's flag existed
 because an unsettled Date Identified is drawn from the same label; with the Habitat the only field drawn, or drawn
 beside settled fields, a Habitat whose readers differ had no flag (the run-the-code reviewer's round 3, run through
 the workflow). Item M of "Review round 3" gives a Habitat settled over lines its flag from the label's unresolved
@@ -738,8 +740,10 @@ determined: the two runs differ in instructions, and no run repeated one set of 
 
 Four open reasons that name a label. In runs 2 and 3, four records gain `unresolved_transcription:<label>`
 (105527218, 105527231, 105527247, 105527313). It is origin/main's rule, unchanged (`step.scientific_reasons`,
-`field_research/step.py:4412` and `:4538-4539`): a label whose transcription is unresolved gets the reason unless
-every field drawn from it has a review reason of its own. On each of the four the label's two readers differ on some
+`field_research/step.py:4412` and `:4538-4539`; its branches are set out under "Review round 2", "The label's
+code"): for a label whose transcription is unresolved and from which a field is drawn that is not supported, the
+reason is given unless every field drawn from the label has a review reason of its own; where every field drawn
+from it is supported and grounded in a raw reading, no reason is given. On each of the four the label's two readers differ on some
 line (on 105527313 on the host's species too; the lines are in `H4/iteration2.txt`). Traced with one print added to
 that function in the process (`H4/scripts/label_reason_trace.py`, `H4/label_reason_trace.txt`): on the stored record
 the one field drawn from the label is Date Identified, which has a reason of its own where the rule decides, so the
@@ -955,10 +959,13 @@ not a claim that no other reader exists). Ten rows read every field's value: the
 on stored ones, the text a line of places holds, rule A's settled claims, decision B's accounted words, the texts set
 aside for the country's alternatives, the precise location's extent mark, the fields drawn from a label, the context
 given to the experts, and the Retry's test of states; the other functions that read fields name fields the habitat
-is not among. For a Habitat over lines: it counts for nothing in the four rows where a settled text relaxes another
-field (the guard, the place line, rule A, decision B); two rows cannot see a text with a line break (they look
-within one line); it still sends another field to review in a retry (round 1's limit) and through the label's code
-(below). For a heading Habitat whose resolved answer is applied to the step directly: it claims in the guard as on
+is not among. For a Habitat over lines, as the readers stand after round 3: the whole value counts for nothing
+in five rows where a settled text relaxes another field (the guard, by the attempt's answer; the place line; rule
+A's mark; decision B; the precise location's extent check); one row, the texts set aside for the country's
+alternatives, reads a value's literal within one line and none of its verbatims, so it cannot see such a value; it
+still sends another field to review in a retry (round 1's limit) and through the label's code (below). (Round 2's
+own summary here said four rows, and that the extent check could not see a text with a line break: wrong, since a
+Habitat over lines can keep another reader's verbatim on one line, which that check reads; "Review round 3".) For a heading Habitat whose resolved answer is applied to the step directly: it claims in the guard as on
 origin/main (not so on the resolver's path: "Review round 3").
 
 What remains, stated as limits, each with its direction.
@@ -973,9 +980,11 @@ What remains, stated as limits, each with its direction.
   its text to review; here the retry's habitat answer claims through the guard (the same heading answer: the other
   field goes to review as on origin/main; no value: nothing is claimed).
 - The label's code. `step.scientific_reasons` gives `unresolved_transcription:<label>` for a label whose first pass
-  was given up on and no person transcribed since; and, for another label whose transcription is unresolved, where
-  no field is drawn from it, or where a field drawn from it is not supported (or not grounded in a raw reading) and
-  not every drawn field has a reason of its own. So a settled Habitat drawn from such a label adds the label's code only
+  was given up on and no person has transcribed since, whatever its fields; and, for another label with no
+  transcript or with one not resolved or with no text: where no field is drawn from it; or where a drawn field
+  whose work is terminal is not supported, or is not grounded in a raw reading and is no derived value, unless
+  every drawn field has a review reason of its own (the strict-duplicate rule). So it gives none where every drawn
+  field is supported and grounded. So a settled Habitat drawn from such a label adds the label's code only
   where another field with a value from that label is unsettled (then the fields drawn from the label gain
   `label_unsettled`: toward review, 4 records in run 3, "Four open reasons" above); where the Habitat is the only
   field drawn from the label, or the others drawn are settled, the label's code is not given, where origin/main,
@@ -1028,9 +1037,12 @@ The rulings.
 - R2. The heading is one stated limit, in either direction, and gets no more code. In production an answer reaches
   the step through the expert's own check (`experts._Expert._validate_resolved`), which refuses a habitat literal
   that starts with the heading and sends the expert back. Where the expert leaves the heading out in a later
-  answer, that answer is applied by the ordinary rules. Where it repeats the heading through its retries, the
-  resolver's fallback is applied (`sources_cannot_resolve`, no literal): the Habitat does not settle, where
-  origin/main would have settled the first such answer if its other checks pass. A field whose decision reads a
+  answer and that answer passes the check, it is applied by the ordinary rules. The limit applies wherever no later
+  answer of that attempt passes the check (the expert repeats the heading, or its later answers are refused for
+  another reason, or it then answers that the sources cannot resolve it): the Habitat does not settle, where
+  origin/main would have settled the first answer if its other checks pass. (R2 as the coordinator first wrote it,
+  in `H4/FIX_R3.md`, said "where it repeats the heading through its retries": that wording was the coordinator's
+  and too narrow, by Codex's round 4; R2 stands, with its condition restated so by the coordinator.) A field whose decision reads a
   settled Habitat's text is then decided beside a Habitat that did not settle, and that can go either way for it:
   toward review (decision B's accounted words; rule A's not-on-the-label mark; the text a line of places holds), or
   a refusal, a reason or a mark origin/main gives is lost (the guard on shared text: the Habitat makes no claim, so
@@ -1074,9 +1086,18 @@ label's code reads no text.
 
 The heading limit, measured in run 3 (`H4/heading_refusals_run3.txt`, `H4/scripts/heading_refusals_run3.py`, from
 the rig's `results/refusals.jsonl` and `results/habitat3.jsonl`): the expert's check refused 11 habitat answers for
-the heading on 11 of the 99 records, once each; none repeated the heading (5 then settled the name alone; 6 were
-next refused `one_reader` and ended `sources_cannot_resolve`). So the limit needs an expert that repeats the heading
-through every retry: 0 of 11 in that run. That is a count of one run, not a bound.
+the heading on 11 of the 99 records, once each. 5 then settled the name alone. 6 ended with no Habitat settled: the
+name alone was next refused `one_reader`, and the outcome was `sources_cannot_resolve`. Those six are records where
+a heading answer was refused and no later answer passed. Whether the limit bit there turns on what origin/main
+would have done with the heading answer, and that was run, free and offline (`H4/scripts/heading_on_main.py`,
+`H4/heading_on_main_run3.txt`: origin/main 3eb37c11's own `experts._Expert.validate` on each of the 11 recorded
+heading answers, with that record's readings and candidates): origin/main's check accepts none of the 11, so none
+of those 6; it refuses 5 as `one_reader`, 5 as `not_candidate` and 1 as `literal_not_in_reading`. So in run 3 no
+record had a heading answer that origin/main would have settled and this lane left unsettled. That is a count of
+one run, not a bound; and it does not need the heading to be repeated: Codex's round-4 sequence, the heading once
+and then a literal no reading writes, run through the real resolver, ends with the fallback and the Collection
+Code settled, where origin/main accepts the first answer and sends both to review
+(`H4/scripts/probe_resolver_once.py`, `H4/fix4_probe_resolver_once.txt`; run, not pinned by a test).
 
 Two docstrings said that a punctuation mark more or less is another text for the rule A condition
 (`agreement.reader_writes`, `second_opinion._a_reader_differs`). As the code and its test have it: a mark more or

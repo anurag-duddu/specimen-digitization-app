@@ -2,8 +2,10 @@
 `label_unsettled:habitat` unless rule A lifts it (lane H4 of the autonomy program, fix round 3 of PR #464, 2026-11-21;
 the coordinator's ruling R3', not the owner's words).
 
-Why. step.scientific_reasons gives a label's code (`unresolved_transcription:<label>`) only where a field drawn from
-the label is not settled, and step.label_attention gave `label_unsettled:<field>` only from that code. A Habitat this
+Why. step.scientific_reasons gives no label's code (`unresolved_transcription:<label>`) where every field drawn from
+the label is supported and grounded in a raw reading (its other branches: docs/execution/autonomy/PLAN.md, "H4", "The
+label's code"), and step.label_attention gave `label_unsettled:<field>` for a field drawn from a label one of whose
+own codes is an open reason, and for no other. A Habitat this
 lane settles over lines, the only field drawn from its label or drawn beside settled fields, therefore got no flag
 where its two readers write it differently and the image backs one of them: the shape of truth slide 105527313, whose
 flag came only from an unsettled Date Identified drawn from the same label. origin/main 3eb37c11 refuses that Habitat

@@ -1360,9 +1360,11 @@ _FIRST_PASS: ContextVar[bool] = ContextVar("field_research_first_pass", default=
 # answer, so the app can show "Unresolved" beside such a text (lane H4, rounds 2 and 3 of #464's
 # review; the run-the-code reviewer ran it). It does NOT act on
 # the resolver's path: there the expert's own check refuses such an answer and sends the expert
-# back, and an expert that repeats the heading through its retries leaves the resolver's fallback
-# as its outcome (sources_cannot_resolve, no literal), which claims nothing (round 3; a stated
-# limit by the coordinator's ruling of 2026-11-21, pinned in
+# back, and where no later answer of that attempt passes the check (the expert repeats the
+# heading, or its later answers are refused for another reason, or it then answers that the
+# sources cannot resolve it) the Habitat does not settle and claims nothing, where origin/main
+# would have settled the first answer if its other checks pass (rounds 3 and 4; a stated limit by
+# the coordinator's ruling of 2026-11-21; the repeating case is pinned in
 # tests/field_research/test_habitat_changes_no_other_field.py). A re-ask's trial (reask._trial)
 # sets _FIRST_PASS for the whole application and not this, so its final application refuses as
 # the record's does.
@@ -4764,10 +4766,11 @@ def label_attention(run, open_reasons: Sequence[str]) -> list[str]:
     And, whether or not the label's code is an open reason, for a habitat research settled on text
     read from the transcript over consecutive lines (_over_lines) that is drawn from a label whose
     transcription is unresolved (_unread_labels), on a run no person approved (lane H4, the
-    coordinator's ruling R3' of 2026-11-21 on round 3 of #464's review). scientific_reasons gives a
-    label's code only where a field drawn from it is not settled, so such a habitat, the only
-    field drawn from its label or drawn beside settled fields, got no flag where its readers
-    differ, a value origin/main 3eb37c11 refused and flagged; only this field's code is added, no
+    coordinator's ruling R3' of 2026-11-21 on round 3 of #464's review). scientific_reasons gives no
+    label's code where every field drawn from the label is supported and grounded in a raw reading
+    (its other branches: docs/execution/autonomy/PLAN.md, "H4", "The label's code"), so such a
+    habitat, the only field drawn from its label or drawn beside settled fields, got no flag where
+    its readers differ, a value origin/main 3eb37c11 refused and flagged; only this field's code is added, no
     label's and no other field's. Rule A lifts it as it lifts any `label_unsettled:<field>`, and
     for the habitat only where every reading of its labels holds the value's text
     (second_opinion.agreed)."""

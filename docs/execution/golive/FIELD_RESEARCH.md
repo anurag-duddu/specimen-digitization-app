@@ -2855,9 +2855,10 @@ repeat it as for every field).
   `~/specimen-golive/autonomy-program/H4/settled_text_consumers.txt`.
 - The heading is one stated limit for other fields, in either direction (the coordinator's ruling, no code for
   it). The expert's own check refuses a habitat literal that starts with the heading and sends the expert back;
-  where the expert then leaves the heading out, that answer is applied by the ordinary rules; where it repeats the
-  heading through its retries, the resolver's fallback is applied (`sources_cannot_resolve`) and the Habitat does
-  not settle, where origin/main would have settled the first such answer if its other checks pass. A field whose
+  where the expert then leaves the heading out and that answer passes the check, it is applied by the ordinary
+  rules; where no later answer of that attempt passes the check (the expert repeats the heading, or its later
+  answers are refused for another reason, or it then answers that the sources cannot resolve it), the Habitat does
+  not settle, where origin/main would have settled the first answer if its other checks pass. A field whose
   decision reads a settled Habitat's text is then decided beside a Habitat that did not settle: toward review
   (decision B's accounted words, rule A's mark, a line of places), or a refusal, a reason or a mark origin/main
   gives is lost (the guard: no claim is made, so a Collection Code or a Taxon on the same text can settle; the
@@ -2865,8 +2866,10 @@ repeat it as for every field).
   applied to the step directly (a recorded answer applied again, a test, a rig's dry run) the step refuses it at
   the application to the record and not in the pass before the guard (`step._first_pass`, `step._BEFORE_GUARD`;
   `literal_refusal`'s `heading`), so on that path it claims in the guard the text it claimed on origin/main. In run
-  3 the expert's check refused 11 habitat answers for the heading on 11 of 99 records, once each, and none was
-  repeated: a count of one run. A Habitat refused for the heading is not settled with it; unresolved, it keeps the
+  3 the expert's check refused 11 habitat answers for the heading on 11 of 99 records, once each; 5 then settled the
+  name alone and 6 ended with no Habitat settled; origin/main's own check, run free on those 11 answers, accepts
+  none of them (`~/specimen-golive/autonomy-program/H4/heading_on_main_run3.txt`), so in that run no record had a
+  heading answer origin/main would have settled: a count of one run. A Habitat refused for the heading is not settled with it; unresolved, it keeps the
   literal the organiser gave it, heading and all, and the app shows "Unresolved" beside that text; and a heading
   refusal can hold a record origin/main clears, where the label's code holds a record whose catalogue number is on
   that label and no code confirms it (both run by the run-the-code reviewer in round 3). PLAN.md "H4", "Review
@@ -2900,8 +2903,9 @@ the second opinion read alike and wrongly.
 
 **The Habitat's own label flag** (`step.label_attention`, `step._unread_labels`; fix round 3 of #464, the
 coordinator's ruling of 2026-11-21). The condition above keeps a flag finalize gives, and finalize gave
-`label_unsettled:habitat` only from the label's code, which `step.scientific_reasons` gives only where a field
-drawn from the label is not settled. So a Habitat settled over lines whose readers differ, the only field drawn
+`label_unsettled:habitat` from the label's code and from nothing else; `step.scientific_reasons` gives no label's
+code where every field drawn from the label is supported and grounded in a raw reading (its branches: PLAN.md "H4",
+"Review round 2", "The label's code"). So a Habitat settled over lines whose readers differ, the only field drawn
 from its label or drawn beside settled fields, had no flag (the run-the-code reviewer's round 3, through the
 workflow; origin/main refuses that Habitat and flags it). Now, after a finalize, a habitat that `step._over_lines`
 names and that is drawn from a label whose transcription is unresolved carries `label_unsettled:habitat`, whatever
