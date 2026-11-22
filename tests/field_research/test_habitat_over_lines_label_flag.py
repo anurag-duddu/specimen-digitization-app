@@ -2,8 +2,9 @@
 `label_unsettled:habitat` unless rule A lifts it (lane H4 of the autonomy program, fix round 3 of PR #464, 2026-11-21;
 the coordinator's ruling R3', not the owner's words).
 
-Why. For a label that is not in step.scientific_reasons' given-up branch (its first pass was not given up on, or a
-person has transcribed it since with a resolved text) and whose transcription is unresolved, that function gives no
+Why. For a label that is not in step.scientific_reasons' given-up branch (its first pass was not given up on, or it
+has a transcript and every transcript of it is a person's, resolved and with text) and whose transcription is
+unresolved, that function gives no
 label's code (`unresolved_transcription:<label>`) where a field is drawn from the label and every drawn field whose
 work is terminal is supported and is grounded in a raw reading or a derived value (its branches in full:
 docs/execution/autonomy/PLAN.md, "H4", "The label's code"), and step.label_attention gave `label_unsettled:<field>` for a field drawn from a label one of whose

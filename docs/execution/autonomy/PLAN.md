@@ -694,7 +694,7 @@ rule A's exceptions as the dates are, gains 23 flags on run 2's answers, 22 of t
 stored records, all on right values; it was not built. What the condition does not catch: a Habitat every reader and
 the second opinion read alike and wrongly; this change adds no flag for it. And, as first built, the condition kept
 a flag only where finalize gave one: `label_unsettled:habitat` came from the label's code, and
-`step.scientific_reasons` gives the label's code by the branches set out under "Review round 2", "The label's code": for a label that is not in the given-up branch (its first pass was not given up on, or a person has transcribed it since with a resolved text) and whose transcription is unresolved, it gives no label's code where a field is drawn from the label and every drawn field whose work is terminal is supported and is grounded in a raw reading or a derived value. 105527313's flag existed
+`step.scientific_reasons` gives the label's code by the branches set out under "Review round 2", "The label's code": for a label that is not in the given-up branch (its first pass was not given up on, or it has a transcript and every transcript of it is a person's, resolved and with text) and whose transcription is unresolved, it gives no label's code where a field is drawn from the label and every drawn field whose work is terminal is supported and is grounded in a raw reading or a derived value. 105527313's flag existed
 because an unsettled Date Identified is drawn from the same label; with the Habitat the only field drawn, or drawn
 beside settled fields, a Habitat whose readers differ had no flag (the run-the-code reviewer's round 3, run through
 the workflow). Item M of "Review round 3" gives a Habitat settled over lines its flag from the label's unresolved
@@ -979,10 +979,11 @@ What remains, stated as limits, each with its direction.
   its text to review; here the retry's habitat answer claims through the guard (the same heading answer: the other
   field goes to review as on origin/main; no value: nothing is claimed).
 - The label's code. `step.scientific_reasons` gives `unresolved_transcription:<label>`, label by label: (1) for a label whose first pass
-  was given up on, unless every transcript of it is a person's, resolved and with text: whatever its fields (the
+  was given up on, unless it has a transcript and every transcript of it is a person's, resolved and with text:
+  whatever its fields (the
   run-the-code reviewer's round 5 ran one whose only drawn field is supported and grounded in a raw reading: the code
   is given, `reviews/g51_probes/g51_464/r5/out/r5_given_up_head.txt`); (2) otherwise, for a label with no
-  transcript or with one not resolved or with no text: (a) where no field is drawn from it; (b) where a drawn field
+  transcript or with one not resolved or with no text: (a) where no field is drawn from it (the determiner's IRN is not counted as drawn); (b) where a drawn field
   whose work is terminal is not supported, or is neither grounded in a raw reading nor a supported derived value,
   unless every drawn field has a review reason of its own (the strict-duplicate rule); (c) otherwise, that is where
   a field is drawn and every drawn field whose work is terminal is supported and is grounded or derived, no code. A
@@ -1078,9 +1079,9 @@ The rulings.
   (`silent`), and a stored Habitat, a person's or research's, claims its text there as any stored value does (the
   retry limit; the run-the-code reviewer's round 5 ran a person's Habitat in the guard,
   `reviews/g51_probes/g51_464/r5/out/r5_person_guard_*.txt`, and this lane ran its probe again on the fix:
-  `H4/fix5_g51_person_guard_fix5.txt`). The finding `step._over_lines` reads is per field, not per value: `step.py` drops it only for a place it makes
-  ambiguous again (`_corroborate`, `_only_a_place_above`), and a person's decision at the decision endpoint keeps it
-  (the two tests above), so before R4' a Habitat research read on one line and a person then changed to two lines was
+  `H4/fix5_g51_person_guard_fix5.txt`). The finding `step._over_lines` reads is per field, not per value: `step.py` drops it in two functions that take a
+  settled place back (`_corroborate`, `_only_a_place_above`), and a person's decision at the decision endpoint keeps it
+  (asserted in the first of the two tests above), so before R4' a Habitat research read on one line and a person then changed to two lines was
   named by it (the run-the-code reviewer's round 5, note 2).
 
 What was run first (three trees: origin/main 3eb37c11, 575367fe, and the working tree whose source 81a9944e

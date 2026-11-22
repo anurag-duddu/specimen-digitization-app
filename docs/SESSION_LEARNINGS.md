@@ -26858,3 +26858,8 @@ approvals were requested together; cloud setup remained unapplied when recorded.
 - Learning: when a reviewer shows that a sentence and the code disagree, decide which one states the intent before ruling "the code stands". Here the sentence ("not a person's") was the intent and the code had the gap; pinning the gap as behaviour cost one more round and a lost mark in a constructed sequence.
 - Learning: a test for "a person's field" must cover both records of a person's decision, and a sequence that orders the decision BEFORE the other field settles: the reviewer's three extent sequences settled the Precise Location first and showed no difference; Codex's settled it after and did.
 - Learning: a short form of a branching rule is a new claim. After two failed short forms of the same function, write the branches, or scope the sentence to the shapes that were measured and name their files.
+
+## 2026-11-21 - Autonomy H4, review round 5 on PR #464: two sentences of the entry above made exact
+
+- Correction to Correction 3 of the entry above. "Unless every transcript of it is a person's, resolved and with text" leaves out one condition of the given-up branch: the label must HAVE a transcript. A given-up label with no transcript gets the code. As the code has it (`step.scientific_reasons`): the code for a label whose first pass was given up on, unless it has a transcript and every transcript of it is a person's, resolved and with text. And "no field is drawn from it" does not count the determiner's IRN as a drawn field.
+- Learning: "unless every X is Y" reads as satisfied when there is no X; where the code also asks that an X exists, write that half.

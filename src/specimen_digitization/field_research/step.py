@@ -3637,7 +3637,7 @@ def _over_lines(run, key: str, value: FieldValue, human: frozenset[str]) -> bool
     transcript over consecutive lines (agreement.GIVES_WAY; lane H4), by this test: its literal
     holds a line break, the run keeps the finding of a literal read from the transcript for the
     field (_from_the_transcript), and no person holds authority over the field by the run's
-    durable record: not in `human` (the caller's human_keys) and not in second_opinion.authority(run),
+    durable record: not in `human` (the caller's set of a person's fields) and not in second_opinion.authority(run),
     called with no readings (a decision a move or a new run carried, a research selection a person
     locked, the location reassessment's protected fields, and a field a person decided at the
     decision endpoint, Run.person_decided_fields). A habitat research settles from a label whose
@@ -3651,9 +3651,10 @@ def _over_lines(run, key: str, value: FieldValue, human: frozenset[str]) -> bool
     code (tests/field_research/test_habitat_changes_no_other_field.py,
     test_habitat_over_lines_label_flag.py); for the other readers by this one test only. The
     finding is per field, not per value: it says the field took a literal read from the transcript
-    on this run, not that the stored value is that literal. This file drops it only for a place
-    it makes ambiguous again (_corroborate, _only_a_place_above); a person's decision at the
-    decision endpoint keeps it (the two tests named above).
+    on this run, not that the stored value is that literal. This file drops it in two functions
+    that take a settled place back (_corroborate, _only_a_place_above); a person's decision at
+    the decision endpoint keeps it (asserted in test_habitat_changes_no_other_field.py's test of
+    a Habitat a person extends).
     origin/main 3eb37c11 read a habitat from the
     transcript within one line only; a habitat with a line break settled there only as a whole
     organiser candidate, which leaves no such finding and is not such a value. In the readers
@@ -4793,8 +4794,8 @@ def label_attention(run, open_reasons: Sequence[str]) -> list[str]:
     readings: a carried decision, and a decision made on the run at the decision endpoint), so a
     Habitat a person confirmed or changed gets no code from this rule (ruling R4' of the same day,
     round 5, which replaces round 4's R4). For a label that is not in scientific_reasons' given-up
-    branch (its first pass was not given up on, or a person has transcribed it since with a
-    resolved text) and whose transcription is unresolved, scientific_reasons gives no label's code
+    branch (its first pass was not given up on, or it has a transcript and every transcript of it
+    is a person's, resolved and with text) and whose transcription is unresolved, scientific_reasons gives no label's code
     where a field is drawn from the label and every drawn field whose work is terminal is supported
     and is grounded in a raw reading or a derived value (its branches in full:
     docs/execution/autonomy/PLAN.md, "H4", "The label's code"), so such a
