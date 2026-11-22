@@ -191,7 +191,7 @@ def finalize(run: Run) -> None:
     # An optional field's doubt does not hold the record (field_research.step.split_reasons, the
     # same rule as field research's finalize_fields): it is kept in open_reasons.
     run.reasons, run.open_reasons = split_reasons(run, evaluate(run), mandatory=run.profile.mandatory_fields)
-    # The fields an open label doubt reaches, and a habitat settled over lines on a label whose
+    # The fields an open label doubt reaches, and a habitat step._over_lines names on a label whose
     # transcription is unresolved, as field research names them (step.label_attention);
     # and the holds derived from the run's state (application/standing_holds.py).
     run.open_reasons = [*run.open_reasons, *label_attention(run, run.open_reasons)]

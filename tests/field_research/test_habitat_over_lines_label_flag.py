@@ -1,4 +1,4 @@
-"""A Habitat settled over consecutive lines on a label whose transcription is unresolved carries
+"""A Habitat settled over consecutive lines (step._over_lines) on a label whose transcription is unresolved carries
 `label_unsettled:habitat` unless rule A lifts it (lane H4 of the autonomy program, fix round 3 of PR #464, 2026-11-21;
 the coordinator's ruling R3', not the owner's words).
 
@@ -22,8 +22,8 @@ Through the real workflow with the second opinion's step, its model scripted (th
 is the rig's label, both readers alike; label 2 is the host's label. What origin/main 3eb37c11 and 575367fe give for
 each shape was run on those trees: ~/specimen-golive/autonomy-program/H4/fix3_probe_label_*.txt. A habitat on ONE line
 keeps origin/main's rule (a one-line value the image backs settles with no flag there too): pinned here as a limit.
-So does a habitat that is a whole organiser candidate over two lines (no finding of a literal read from the
-transcript, so no step._over_lines value): not pinned here; the run-the-code reviewer's round 4 ran it on both trees
+So does a habitat that is a whole organiser candidate over two lines (step._settled does not mark it, so it is no
+step._over_lines value): not pinned here; the run-the-code reviewer's round 4 ran it on both trees
 (~/specimen-golive/autonomy-program/reviews/g51_probes/g51_464/r4/out/r4_label_cmp.txt, `candidate_two_lines`).
 """
 

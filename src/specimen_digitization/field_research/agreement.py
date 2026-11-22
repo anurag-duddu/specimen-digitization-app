@@ -483,12 +483,12 @@ def verbatim_runs(text: str, literal: str) -> list[tuple[int, int]]:
 # check refused the whole name and accepted one line of it). Every other
 # field, places among them, keeps its literal on one line.
 ACROSS_LINES = frozenset({"precise_location", "habitat"})
-# The field of ACROSS_LINES whose literal over consecutive lines gives way where it shares text
-# with another field's (step._taken): the habitat. origin/main 3eb37c11 read a habitat from the
-# transcript within one line only (a habitat literal with a line break settled there only as a
-# whole organiser candidate of each reading it names, and still does, with the claims it had),
-# so that accepting a host read over two lines changes no other field's outcome for the same
-# answers (the coordinator's ruling of 2026-11-21 on review round 1 of #464). The precise
+# The field of ACROSS_LINES whose answer read from the transcript over consecutive lines gives way
+# where it shares text with another field's (step._taken): the habitat. origin/main 3eb37c11 read a
+# habitat from the transcript within one line only (a habitat literal with a line break settled
+# there only as a whole organiser candidate of each reading it names, and still does, with the
+# claims it had), so that accepting a host read over two lines changes no other field's outcome for
+# the same answers (the coordinator's ruling of 2026-11-21 on review round 1 of #464). The precise
 # location keeps the rules it had.
 GIVES_WAY = frozenset({"habitat"})
 # What each of those fields' text is called where the check tells its expert so

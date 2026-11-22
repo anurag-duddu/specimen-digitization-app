@@ -21,7 +21,7 @@ FIELD_REASONS = frozenset(
         "raw_reading_grounding_unproved",
         "preserved_human_decision",
         # Plan WP K1: an optional field research could not finish; a field drawn from a label
-        # whose doubt is open, or a habitat settled over lines on a label whose transcription is
+        # whose doubt is open, or a habitat step._over_lines names on a label whose transcription is
         # unresolved (field_research.step.label_attention).
         "research_incomplete",
         "label_unsettled",

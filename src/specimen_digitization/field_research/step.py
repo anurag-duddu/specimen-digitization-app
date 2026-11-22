@@ -1402,7 +1402,7 @@ def _from_the_transcript(run, key: str, named: Sequence[Reading], rows: Sequence
 # VALUE: no per-field history (the finding transcript_literal:<field>, Run.person_decided_fields)
 # takes part, since each outlives the value it was written for.
 #
-# The entry's lifetime, stated once (every other sentence about it points here or says less):
+# The entry's lifetime:
 # - WRITTEN by _settled, for a field in agreement.GIVES_WAY, where it settles a literal read from
 #   the transcript that holds a line break: the field's entry is the digest of that value.
 # - REMOVED by _settled where it settles the field any other way (a literal on one line, a whole
@@ -3720,7 +3720,7 @@ def _over_lines(run, key: str, value: FieldValue, human: frozenset[str]) -> bool
 
     So: a value a person confirmed or changed at the decision endpoint is the person's, not such
     a value, whatever its text (second_opinion.decided withdraws the mark for the decided field);
-    a habitat research settles over lines after that, in a Retry or after a re-parse, is
+    a habitat research settles so after that, in a Retry or after a re-parse, is
     research's again, whatever Run.person_decided_fields still holds (_settled writes the mark
     anew); and a mark left behind by a value that was replaced with no withdrawal names no stored
     value unless literal and every verbatim are the same text again. Two records kept per FIELD
@@ -4833,8 +4833,8 @@ def code_confirmed(run) -> frozenset[str]:
     return frozenset({FIELD})
 
 
-# A field drawn from a label whose doubt is open, and a habitat research settled over consecutive
-# lines that is drawn from a label whose transcription is unresolved (label_attention):
+# A field drawn from a label whose doubt is open, and a habitat for which _over_lines is true
+# that is drawn from a label whose transcription is unresolved (label_attention):
 # `label_unsettled:<field>`.
 LABEL_UNSETTLED = "label_unsettled"
 
@@ -4868,7 +4868,7 @@ def label_attention(run, open_reasons: Sequence[str]) -> list[str]:
     transcription is unresolved (_unread_labels), on a run no person approved (lane H4, the
     coordinator's ruling R3' of 2026-11-21 on round 3 of #464's review). _over_lines is a test of
     the stored value: a Habitat a person confirmed or changed at the decision endpoint, or one
-    carried into the run, gets no code from this rule; a Habitat research settles over lines
+    carried into the run, gets no code from this rule; one research marks again (_settled)
     after a person's decision does (ruling R5 of the same day, round 6, which replaces R4').
     For a label that is not in scientific_reasons' given-up
     branch (its first pass was not given up on, or it has a transcript and every transcript of it

@@ -51,8 +51,8 @@ The checks:
 - precise_location_extent (`_extent_marks`, WP 2.3b): a settled precise location whose literal,
   wherever a reading of its label writes it, ends its line before a line that goes on with a
   settled province or country the literal does not write, and with nothing but other settled
-  fields' texts (a habitat research settled over consecutive lines is none of them: `stage`,
-  step._over_lines), place unit words and punctuation besides, is marked as cut short; otherwise the
+  fields' texts (a habitat for which step._over_lines is true is none of them: `stage`),
+  place unit words and punctuation besides, is marked as cut short; otherwise the
   check abstains.
 
 The stage also adds the sentence "Basis: derived, rule <id>." (DERIVED_RULES) to the reason of
@@ -935,8 +935,8 @@ def _extent_marks(fields: Mapping[str, FieldValue], readings: Sequence[Reading],
     of its labels (step._value_regions) writes it exactly; at every place each writes it, the
     literal ends its line (only white space follows on that line) and the reading's next line
     continues the locality with a settled province or country, with nothing but other settled
-    fields' texts (of `fields`, which stage passes without a habitat settled over consecutive
-    lines), place unit words and punctuation besides (_continues): "E. slope Mt.
+    fields' texts (of `fields`, which stage passes without a habitat for which step._over_lines
+    is true), place unit words and punctuation besides (_continues): "E. slope Mt.
     McKinley" before "Davao Prov.", the province settled. Otherwise the check abstains: "Los
     Banos, Philippines" before "University of the Philippines" and "Yepocapa, Chimaltenango,
     Guatemala" before "Guatemala Exped. 1948" (the literal writes the country already), a next
