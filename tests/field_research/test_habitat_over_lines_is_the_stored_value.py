@@ -198,8 +198,9 @@ def test_a_habitat_research_settles_over_lines_in_a_retry_after_a_persons_decisi
     Then the person confirms research's two lines (P2 after P3): the mark is withdrawn and the flag is gone. A second
     Retry asks the Collection Method again and its expert answers as before: the person's Habitat is then read as any
     settled value, it holds that organiser text, and the Collection Method is cleared as not on the label. (On
-    origin/main that Retry asks the person's Habitat again, refuses the answer and leaves it unresolved, so there the
-    Collection Method stays held: ~/specimen-golive/autonomy-program/H4/fix6_probe_b2_b4_b6u_main-3eb37c11.txt.)"""
+    origin/main, run for the unread label, that Retry asks the person's Habitat again, refuses the answer and leaves
+    it unresolved, so there the Collection Method stays held:
+    ~/specimen-golive/autonomy-program/H4/fix6_probe_b2_b4_b6u_main-3eb37c11.txt.)"""
     other = METHOD_GONE.replace("leg. J. Smith", "leg. J. Smyth") if unread else METHOD_GONE
     record = Rig(tmp_path, monkeypatch, METHOD_GONE, other, {"habitat": CANNOT, "collection_method": CANNOT},
         candidates=METHOD_CANDIDATES)
