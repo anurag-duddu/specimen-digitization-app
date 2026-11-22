@@ -566,8 +566,9 @@ requested run meanwhile, and waits for the retry when nothing else is due.
 
 **A reader's line breaks** (2026-10-11). An answer whose `verbatim_text` is its
 `lines` in order, with each break between two lines written as a newline, a
-space or `↵` (U+21B5), is not malformed: it is read as its lines joined with
-newlines. Novita's Qwen3-VL wrote breaks as spaces or `↵` in all 18 answers of
+space or `↵` (U+21B5), or, since the rule written on 2026-11-22, as any run of
+those, an empty run included, is not malformed: it is read as its lines joined
+with newlines. Novita's Qwen3-VL wrote breaks as spaces or `↵` in all 18 answers of
 run 0c7f52e1, so every handwriting-qwen reading of that run failed as
 `model_malformed_response` and each label had one reading. Text that differs
 from the lines in any other way is still malformed.

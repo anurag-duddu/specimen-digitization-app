@@ -10,32 +10,60 @@ from .model_gateway import HuggingFaceModelGateway
 from .provider_privacy import PrivateProviderModel, agent_instrumentation
 from .prompts import PromptName, ResolvedPrompt
 
-# How a reader may write the break between two of its `lines` in
-# `verbatim_text`. A newline is what the schema asks for. Novita's server for
+# The characters a reader may write, in `verbatim_text`, at the break between
+# two of its `lines`: any run of them, of any length and mix, or none at all
+# (_breaks_only). A newline is what the schema asks for. Novita's server for
 # Qwen/Qwen3-VL-30B-A3B-Instruct (the handwriting-qwen route) has also written
-# every break as a space (production, 2026-10-03 and 2026-10-11) or as the
-# newline symbol U+21B5 (production, 2026-10-11), with `lines` still split at
-# each break. tests/fixtures/qwen_reader_answers.json holds those answers.
+# every break as a space (production, 2026-10-03 and 2026-10-11), as the
+# newline symbol U+21B5 (production, 2026-10-11), as two spaces and as nothing,
+# the lines run together (production, 2026-11-22 08:24Z to 09:04Z), with `lines`
+# still split at each break. Before this rule (written 2026-11-22) exactly one
+# of these characters was accepted at each break, and by the count of the
+# autonomy program's coordinator in Logfire 15 of 104 reader runs were refused
+# on 2026-11-20, 3 of 6 on 2026-11-21 and 12 of 40 on 2026-11-22. The twelve
+# gave five distinct answers, two with two spaces at every break and three with
+# nothing; the answers of the two earlier days were not among the evidence for
+# this rule. tests/fixtures/qwen_reader_answers.json holds the answers named
+# here. None of them writes a tab or a carriage return at a break, so neither
+# is a form.
 LINE_BREAK_FORMS = frozenset({"\n", " ", "\u21b5"})
 
 
 def _breaks_only(text: str, lines: list[str]) -> bool:
-    """Whether `text` is `lines` in order, with one break form between each two.
+    """Whether `text` is `lines` in order with only break forms between them.
 
-    Every character of every line must be in `text`, in place; the only freedom
-    is how each break between two lines is written. Nothing may be added,
-    dropped or changed, so text that differs from `lines` is still refused.
+    `text` must begin with the first line and end with the last, and between
+    two lines there may stand any run of LINE_BREAK_FORMS characters, an empty
+    run included, and nothing else. Every character of every line must be in
+    `text`, in place and in order; the only freedom is how each break between
+    two lines is written. A character changed, or any character that is not a
+    break form added, dropped or moved, is refused. A line that is empty or
+    holds only break forms cannot be told from a break: lines "a", "" and "b"
+    are found in "ab", "a b" and "a  b" alike.
+
+    The search follows every place where the lines read so far can end, not
+    the first that fits: a line that is empty, or that begins or ends with a
+    break form, can sit in more than one place (lines "a" and " b" in "a b":
+    the space is the second line's and the break is empty). A regular
+    expression built from the lines says the same rule, but on text it refuses
+    it can try every way of sharing a run among empty lines; here a line is
+    tried once at each place in `text` at most.
     """
-    position = 0
-    for index, line in enumerate(lines):
-        if index:
-            if text[position : position + 1] not in LINE_BREAK_FORMS:
-                return False
-            position += 1
-        if not text.startswith(line, position):
-            return False
-        position += len(line)
-    return position == len(text)
+    ends = {len(lines[0])} if text.startswith(lines[0]) else set()
+    for line in lines[1:]:
+        # Every place the next line may start: where a line can end, and each
+        # place after it that only break forms lead to. A walk stops at a place
+        # an earlier walk reached, which went on from there to the run's end.
+        starts: set[int] = set()
+        for position in ends:
+            while position not in starts:
+                starts.add(position)
+                if text[position : position + 1] in LINE_BREAK_FORMS:
+                    position += 1
+        ends = {
+            start + len(line) for start in starts if text.startswith(line, start)
+        }
+    return len(text) in ends
 
 
 class LiteralTranscription(DeclarationCandidates):
@@ -63,12 +91,14 @@ class LiteralTranscription(DeclarationCandidates):
     @model_validator(mode="before")
     @classmethod
     def line_breaks_written_as_newlines(cls, data):
-        """Write each break between `lines` as a newline in `verbatim_text`.
+        """Write each break between `lines` as one newline in `verbatim_text`.
 
-        An answer whose `verbatim_text` is its `lines` with each break written
-        in one of LINE_BREAK_FORMS is the same transcription; `verbatim_text`
-        becomes the lines joined with newlines, as the schema asks. Anything
-        else is left as it came, for the exact rule below to judge.
+        An answer whose `verbatim_text` is its `lines` in order, with each
+        break between two lines written as any run of LINE_BREAK_FORMS
+        characters or as nothing (_breaks_only), is the same transcription;
+        `verbatim_text` becomes the lines joined with single newlines, as the
+        schema asks. Anything else is left as it came, for the exact rule
+        below to judge.
         """
         if not isinstance(data, dict):
             return data
