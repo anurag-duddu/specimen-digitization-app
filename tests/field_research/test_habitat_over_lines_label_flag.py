@@ -2,9 +2,11 @@
 `label_unsettled:habitat` unless rule A lifts it (lane H4 of the autonomy program, fix round 3 of PR #464, 2026-11-21;
 the coordinator's ruling R3', not the owner's words).
 
-Why. step.scientific_reasons gives no label's code (`unresolved_transcription:<label>`) where every field drawn from
-the label is supported and grounded in a raw reading (its other branches: docs/execution/autonomy/PLAN.md, "H4", "The
-label's code"), and step.label_attention gave `label_unsettled:<field>` for a field drawn from a label one of whose
+Why. For a label that is not in step.scientific_reasons' given-up branch (its first pass was not given up on, or a
+person has transcribed it since with a resolved text) and whose transcription is unresolved, that function gives no
+label's code (`unresolved_transcription:<label>`) where a field is drawn from the label and every drawn field whose
+work is terminal is supported and is grounded in a raw reading or a derived value (its branches in full:
+docs/execution/autonomy/PLAN.md, "H4", "The label's code"), and step.label_attention gave `label_unsettled:<field>` for a field drawn from a label one of whose
 own codes is an open reason, and for no other. A Habitat this
 lane settles over lines, the only field drawn from its label or drawn beside settled fields, therefore got no flag
 where its two readers write it differently and the image backs one of them: the shape of truth slide 105527313, whose
@@ -204,9 +206,10 @@ def test_a_label_both_readers_read_alike_gives_no_flag(tmp_path, monkeypatch):
 
 def test_an_approved_run_and_a_habitat_decision_carried_into_the_run_get_no_flag_from_this_rule(tmp_path, monkeypatch):
     """On the record of the first shape: once a person approved the run, this rule adds nothing; and it adds nothing
-    for a Habitat whose decision was CARRIED INTO the run by a reprocess (step.human_keys, which step._over_lines
-    tests). The carried decision is injected at step.human_keys here, not made by a reprocess. A decision a person
-    makes ON the run is another thing and keeps the flag: the next test."""
+    for a Habitat whose decision was CARRIED INTO the run by a reprocess (step.human_keys, one of the records
+    step._over_lines tests through second_opinion.authority). The carried decision is injected at step.human_keys
+    here, not made by a reprocess. A decision a person makes ON the run, through the decision endpoint: the next
+    test."""
     (first, other), scripts, image, _ = SHAPES["the-only-field-drawn"]
     run = finished(tmp_path, monkeypatch, first, other, scripts, image=image)
     assert field_step.label_attention(run, []) == [FLAG]
@@ -217,15 +220,17 @@ def test_an_approved_run_and_a_habitat_decision_carried_into_the_run_get_no_flag
     assert field_step.label_attention(run, []) == []
 
 
-def test_a_habitat_a_person_decides_on_the_run_keeps_the_flag_until_the_record_is_approved(tmp_path, monkeypatch):
+def test_a_habitat_a_person_decides_on_the_run_gets_no_flag_from_this_rule(tmp_path, monkeypatch):
     """Through the decision endpoint, nothing patched (the run-the-code reviewer's round 4 sequence, on the record of
-    the first shape). A decision made on the run is recorded in Run.person_decided_fields and is not one of
-    step.human_keys, so the Habitat is still a step._over_lines value while it keeps a line break and the run keeps
-    the finding: a person confirms it unchanged and the flag stays; a person changes it to the other reader's two
-    lines and the flag stays; the person approves the record and it is gone. The record waits for that approval
-    from the first decision on (`human_approval_required`). This pins behaviour the source of ad71a6dc already has:
-    the test passes there (~/specimen-golive/autonomy-program/H4/fix4_person_decision_on_ad71a6dc.txt), and is no fix's
-    test. The coordinator's ruling R4 of 2026-11-21 (not the owner's words): the code stands."""
+    the first shape). A decision made on the run is recorded in Run.person_decided_fields, which
+    second_opinion.authority(run) holds, and step._over_lines is false for a field a person holds authority over:
+    research's Habitat carries the flag; a person confirms it unchanged and the flag is gone; a person changes it to
+    the other reader's two lines and no flag is given; the person approves the record and none is given. The record
+    waits for that approval from the first decision on (`human_approval_required`). The coordinator's ruling R4' of
+    2026-11-21 on round 5 of #464's review (not the owner's words). In round 4 this test pinned the opposite, under
+    ruling R4, which R4' replaces: the flag stayed until approval, because step._over_lines looked at step.human_keys
+    only. Red on 61f3fdb8's source (the flag stays). On origin/main's source it cannot run as written: that source
+    has no step._over_lines, which this test calls. ~/specimen-golive/autonomy-program/H4/red_fix5_*.txt."""
     (first, other), scripts, image, _ = SHAPES["the-only-field-drawn"]
     rig = finished_rig(tmp_path, monkeypatch, first, other, scripts, image=image)
     client = test_step.review_client(rig)
@@ -248,13 +253,14 @@ def test_a_habitat_a_person_decides_on_the_run_keeps_the_flag_until_the_record_i
     run = rig.repository.get(rig.principal.scope, rig.specimen.id).run
     assert state(run) == (ValueState.SUPPORTED, HOST, [], frozenset(), True, [FLAG], [], False)
     run = decided("confirm-1")
-    assert state(run) == (ValueState.SUPPORTED, HOST, ["habitat"], frozenset(), True, [FLAG], held, False)
+    assert state(run) == (ValueState.SUPPORTED, HOST, ["habitat"], frozenset(), False, [], held, False)
+    assert "habitat" in so.authority(run) and field_step.label_attention(run, []) == []
     other_text = "Mus\nmuscalus"
     run = decided("change-1", literal=other_text, parsed=other_text, normalized=other_text)
-    assert state(run) == (ValueState.SUPPORTED, other_text, ["habitat"], frozenset(), True,
-        ["evidence_does_not_support_value:habitat", FLAG], held, False)
+    assert state(run) == (ValueState.SUPPORTED, other_text, ["habitat"], frozenset(), False,
+        ["evidence_does_not_support_value:habitat"], held, False)
     run = test_step.decide(client, rig, "approve-1", "approve")
-    assert state(run) == (ValueState.SUPPORTED, other_text, ["habitat"], frozenset(), True,
+    assert state(run) == (ValueState.SUPPORTED, other_text, ["habitat"], frozenset(), False,
         ["evidence_does_not_support_value:habitat"], [], True)
     assert field_step.label_attention(run, []) == []
 
@@ -326,8 +332,8 @@ def test_which_labels_count_as_unread(tmp_path, monkeypatch):
 
 def test_the_rule_needs_a_run_no_person_approved_and_a_value_research_settled_over_lines(tmp_path, monkeypatch):
     """`run.human_approved` true: nothing is added (an approval's own finalize decides what a person reviews). A
-    value that is no step._over_lines value gets nothing either: a literal on one line, a habitat whose decision was carried
-    into the run (step.human_keys; the test above), or one the run holds no transcript-literal finding for."""
+    value that is no step._over_lines value gets nothing either: a literal on one line, a habitat a person holds
+    authority over by the run's record (second_opinion.authority; the two tests above), or one the run holds no transcript-literal finding for."""
     (first, other), scripts, image, _ = SHAPES["the-only-field-drawn"]
     run = finished(tmp_path, monkeypatch, first, other, scripts, image=image)
     assert not run.human_approved and field_step.label_attention(run, []) == [FLAG]

@@ -7,9 +7,9 @@ The lane changes what a Habitat answer does in two ways, and round 2 of the revi
   either direction (the coordinator's ruling of round 3): a field whose decision reads a settled Habitat's text is
   decided beside a Habitat that did not settle, which can send it to review where origin/main settled it, or lose a
   refusal, reason or mark origin/main gives. On the resolver's path (production) the expert's own check refuses
-  such an answer and sends the expert back; where no later answer of that attempt passes the check (the expert
-  repeats the heading, or its later answers are refused for another reason, or it then answers that the sources
-  cannot resolve it) the Habitat does not settle and claims nothing in the guard. Where a RESOLVED heading answer
+  such an answer and sends the expert back; where no later RESOLVED answer of that attempt passes the check (the
+  expert repeats the heading, or its later resolved answers are refused for another reason, or it answers that the
+  sources cannot resolve it, which the check does not refuse and which stands as the outcome) the Habitat does not settle and claims nothing in the guard. Where a RESOLVED heading answer
   reaches the step directly (a recorded answer applied again; these tests; a rig's dry run), round 2 left the
   step's heading refusal out of the pass before the guard (step._first_pass, step._BEFORE_GUARD), so there the
   Habitat claims in the guard the text it claimed on origin/main and is refused at the application to the record.
@@ -339,6 +339,86 @@ def test_a_habitat_over_two_lines_blanks_no_text_from_the_line_after_the_localit
     assert extent_marks(run) == [field_step.marked_code("precise_location", run.regions[0].id, "precise_location_extent")]
 
 
+MUS_ON_THE_PROVINCES_LINE = "E. slope Mt. McKinley\nDavao Prov. Mus\nmusculus\nMindanao, P.I.\n3 Sept. '46\nF.G. Werner"
+
+
+def test_a_habitat_a_person_extends_over_two_lines_is_read_by_the_extent_check_as_any_settled_value(
+        tmp_path, monkeypatch):
+    """Codex's round-5 sequence, through the workflow, the decision endpoint and a Retry; nothing in the product is
+    patched but the API's queue, which here marks the run pending for the test's own workflow to drain. Two raw
+    readers write "E. slope Mt. McKinley" / "Davao Prov. Mus" / "musculus" and differ on the collector's line. Attempt
+    1: the province and the country settle, the Habitat answers "Mus" on ONE line naming both readers (read from the
+    transcript, so the run keeps that finding), the Precise Location answers that the sources cannot resolve it. A
+    person extends the Habitat to "Mus" over "musculus". Retry: the Precise Location answers its first line.
+    origin/main marks the Precise Location cut short before the province's line: the Habitat's verbatim "Mus" is
+    blanked from that line and the province stands alone on it. On 61f3fdb8 the person's value, with its line break
+    and the run's finding, was a step._over_lines value, the extent check left the whole Habitat out, "Mus" stayed
+    beside the province and the check abstained: the mark was lost (run on three trees:
+    ~/specimen-golive/autonomy-program/H4/fix5_probe_person_extent_*.txt). Now step._over_lines is false for a field
+    a person holds authority over (second_opinion.authority; the coordinator's ruling R4' of 2026-11-21, not the
+    owner's words), and the mark stands as on origin/main. Red on 61f3fdb8's source. On origin/main's source it
+    cannot run as written (no step._over_lines, which this test calls); the probe above shows the mark given there."""
+    from test_elevations_and_extent import DAVAO_AND_PI
+    from test_precise_location_extent import whole
+    from test_step import ORG, DavaoProvince, decide, mounted, review_client
+
+    from specimen_digitization.application import api as app_api
+    from specimen_digitization.application.domain import now
+    from specimen_digitization.field_research import second_opinion
+    from specimen_digitization.field_research.contracts import FIELD_TOOLS
+
+    def queue(specimen, registry, actor):
+        specimen.run.stage = "pending"
+        specimen.run.queued_at = now()
+
+    monkeypatch.setattr(app_api, "queue", queue)
+    rig = build_rig(tmp_path, MUS_ON_THE_PROVINCES_LINE,
+        MUS_ON_THE_PROVINCES_LINE.replace("F.G. Werner", "F.G. Wermer"), candidates=COLLECTORS)
+    fields = [key for key in FIELD_TOOLS if key != "identified_by_irn"]
+    script = Scripted({**{key: answering(LACKS) for key in fields}, **DAVAO_AND_PI,
+        "precise_location": answering(FieldAnswer(outcome="sources_cannot_resolve", explanation="Not this time.")),
+        "habitat": answering(resolved("Mus"))})
+    mounted(rig, script, sources=DavaoProvince)
+
+    def stored():
+        return rig.repository.get(rig.principal.scope, rig.specimen.id)
+
+    def over_lines(run):
+        return field_step._over_lines(run, "habitat", run.fields["habitat"], field_step.human_keys(run))
+
+    rig.workflow.drain(rig.principal, rig.specimen.id)
+    run = stored().run
+    habitat = run.fields["habitat"]
+    assert (habitat.state, habitat.literal) == (ValueState.SUPPORTED, "Mus")
+    assert any(finding.reason_code == field_step.transcript_code("habitat") for finding in run.findings)
+    assert run.fields["precise_location"].state == ValueState.UNRESOLVED and extent_marks(run) == []
+
+    client = review_client(rig)
+    extended = "Mus\nmusculus"
+    after = habitat.model_dump(mode="json", exclude={"evidence_ids"}) | {
+        "literal": extended, "parsed": extended, "normalized": extended}
+    run = decide(client, rig, "extend-1", "field", target_id="habitat", after=after,
+        evidence_ids=list(habitat.evidence_ids))
+    assert run.fields["habitat"].literal == extended and run.person_decided_fields == ["habitat"]
+    assert field_step.human_keys(run) == frozenset() and "habitat" in second_opinion.authority(run)
+    assert any(finding.reason_code == field_step.transcript_code("habitat") for finding in run.findings)
+    assert not over_lines(run)
+
+    script.scripts["precise_location"] = whole("E. slope Mt. McKinley")
+    current = stored()
+    response = client.post(f"/v1/organizations/{ORG}/runs/{current.run.id}/actions",
+        headers={"Authorization": "Bearer reviewer", "Idempotency-Key": "retry-1"},
+        json={"expected_revision": current.version, "action": "retry", "reason": "Again."})
+    assert response.status_code == 200, response.text
+    rig.workflow.drain(rig.principal, rig.specimen.id)
+    run = stored().run
+    assert script.calls.count("habitat") == 1
+    habitat, place = run.fields["habitat"], run.fields["precise_location"]
+    assert (habitat.state, habitat.literal) == (ValueState.SUPPORTED, extended)
+    assert (place.state, place.literal) == (ValueState.SUPPORTED, "E. slope Mt. McKinley")
+    assert extent_marks(run) == [field_step.marked_code("precise_location", run.regions[0].id, "precise_location_extent")]
+
+
 # ---- the heading as ONE stated limit: through the real resolver, and the extent mark ------------------------------
 
 def expert_answering(*literals):
@@ -383,8 +463,8 @@ def through_the_resolver(tmp_path, *habitat_answers):
 
 def test_limit_an_expert_that_repeats_the_heading_makes_no_claim_so_the_code_settles(tmp_path):
     """One case of the stated limit of the heading, on the resolver's path (Codex round 3, finding 1; the
-    coordinator's ruling R2: no code for it). The limit applies wherever no later answer of the attempt passes the
-    expert's check; repeating the heading is one way, a later answer refused for another reason is another (Codex
+    coordinator's ruling R2: no code for it). The limit applies wherever no later RESOLVED answer of the attempt passes
+    the expert's check; repeating the heading is one way, a later answer refused for another reason is another (Codex
     round 4; run, not pinned: ~/specimen-golive/autonomy-program/H4/fix4_probe_resolver_once.txt).
     Both readers write "Host: CNHM"; the code's model answers "CNHM"; the habitat's model
     answers "Host: CNHM" on every request. The expert's own check refuses each such answer and sends the expert
