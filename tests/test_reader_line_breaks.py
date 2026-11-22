@@ -669,8 +669,7 @@ def test_the_search_agrees_with_the_set_based_search_on_every_fixture_answer():
         expected = set_based_search(text, lines)
         assert _breaks_only(text, lines) == expected, (lines, text)
         accepted += expected
-    # Every one but the two answers whose words differ and the one already
-    # written with newlines, which is its lines too.
+    # All but the two answers whose words differ.
     assert accepted == 12
 
 
