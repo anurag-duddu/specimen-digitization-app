@@ -48,7 +48,7 @@ from specimen_digitization.field_research.contracts import FieldAnswer
 HOST = "Mus\nmusculus"
 HABITAT_LINE = f"habitat: {LABEL['habitat']}\n"
 FLAG = "label_unsettled:habitat"
-# The key of research's mark in run.dependencies (step.OVER_LINES), by its text: a stored record holds it.
+# The key of research's mark in run.dependencies (step.OVER_LINES), by its text, as a stored record spells it.
 MARK = "field_research_over_lines"
 CANNOT = answering(FieldAnswer(outcome="sources_cannot_resolve", explanation="Not this time."))
 # The label of Codex's round-6 sequence: the code "sp. 22" with no genus, "Mus" over "musculus" in the habitat's place.
@@ -288,9 +288,10 @@ def test_the_mark_is_withdrawn_for_the_decided_field_and_a_stale_one_names_no_va
 
 
 def test_a_record_with_no_habitat_over_lines_has_no_new_key(tmp_path, monkeypatch):
-    """Requirement P5. The rig's own label, whose habitat is a keyed line the organiser offers whole, through the
-    workflow: the Habitat settles and run.dependencies holds no key of the lane's; nor after a person's decision of
-    it and a Retry. (The 100 stored truth runs finalized again are compared byte for byte with origin/main's in
+    """Requirement P5: a record that NEVER held a Habitat research settled over lines has no key of the lane's. (A
+    record that held one can keep the key after the value is gone: the comment at step.OVER_LINES.) The rig's own
+    label, whose habitat is a keyed line the organiser offers whole, through the workflow: the Habitat settles and
+    run.dependencies holds no such key; nor after a person's decision of it and a Retry. (The 100 stored truth runs finalized again are compared byte for byte with origin/main's in
     ~/specimen-golive/autonomy-program/H4/replay_h4_fix6.txt.)"""
     record = Rig(tmp_path, monkeypatch, TEXT, TEXT, {"collection_method": CANNOT})
     run = record.run

@@ -1398,6 +1398,21 @@ def _from_the_transcript(run, key: str, named: Sequence[Reading], rows: Sequence
 # run.dependencies, per field, a digest of the value as _settled made it. A test of the stored
 # VALUE: no per-field history (the finding transcript_literal:<field>, Run.person_decided_fields)
 # takes part, since each outlives the value it was written for.
+#
+# The entry's lifetime, stated once (every other sentence about it points here or says less):
+# - WRITTEN by _settled, for a field in agreement.GIVES_WAY, where it settles a literal read from
+#   the transcript that holds a line break: the field's entry is the digest of that value.
+# - REMOVED by _settled where it settles the field any other way (a literal on one line, a whole
+#   organiser candidate), and by second_opinion.decided for the field a person decides at the
+#   decision endpoint (withdraw_over_lines).
+# - NOT removed where an attempt or a re-parse leaves the field with no _settled call: unsettled
+#   (unresolved, ambiguous), absent (the label lacks it) or taken by the guard. The entry then
+#   stays and is stale: it names no stored value unless literal and every verbatim are the same
+#   text again (_over_lines compares digests).
+# - The key itself is removed when its last entry is, and does not survive the pin of a run's
+#   dependencies (Workflow's step pin_dependencies replaces the whole mapping, before any field
+#   of the run is researched). A run that NEVER held such a habitat has no such key; a run that
+#   held one may keep the key after the value is gone, as above.
 OVER_LINES = "field_research_over_lines"
 
 
@@ -1416,8 +1431,9 @@ def _over_lines_marks(run) -> dict[str, str]:
 def _note_over_lines(run, key: str, value: FieldValue | None) -> None:
     """Set the field's entry of OVER_LINES to the digest of `value`, or remove it (`value` None).
     For a field in agreement.GIVES_WAY only. The mapping is replaced, never changed in place (a
-    copy of the run may share the old one), and the key is removed when it holds no entry, so a
-    run with no such value has no such key."""
+    copy of the run may share the old one), and the key is removed when its last entry is. When
+    this is called, and when it is not, so that an entry stays behind: the comment at
+    OVER_LINES."""
     from .agreement import GIVES_WAY
 
     if key not in GIVES_WAY:

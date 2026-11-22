@@ -1245,7 +1245,7 @@ source; 10 of the 13 fail on 575367fe's and 11 on origin/main's, the new test am
 endpoint and a Retry: both fail on 61f3fdb8's source and the other 28 of the two files pass there; on origin/main's
 source neither can run as written, each calls `step._over_lines`, which that source does not have
 (`H4/red_fix5_head-61f3fdb8.txt`, `H4/red_fix5_main-3eb37c11.txt`). Fix round 6 adds
-`tests/field_research/test_habitat_over_lines_is_the_stored_value.py` (5) and changes one assertion of
+`tests/field_research/test_habitat_over_lines_is_the_stored_value.py` (6 cases in 5 test functions) and changes one assertion of
 `test_habitat_over_lines_label_flag.py`: the counts are under "Review round 6". Program test spend after run 3, recomputed from every program ledger
 (`~/specimen-golive/runs/autonomy-habitat3-20261121/program_spend.py`): USD 35.9114 booked, USD 36.7314 with
 unanswered reader calls at their full reservation.
@@ -1334,8 +1334,12 @@ words: `H4/FIX_R6.md`). One behavioural finding, the same from both, and two sen
   the same text again. Every writer of the Habitat and every place that resets or copies `run.dependencies`, with
   what the mechanism does there and which were run, and what each way a person comes to hold a Habitat does to it:
   `H4/fix6_writers.txt` (written before the code).
-- What the stored record gains. A record whose Habitat research settled over lines holds one more key in
-  `run.dependencies`, `field_research_over_lines`, until a person decides the field. Run 3's recorded answers
+- What the stored record gains. A record whose Habitat research settles over lines holds one more key in
+  `run.dependencies`, `field_research_over_lines`. The entry is removed where a person decides the field and where
+  research settles the Habitat any other way (on one line, as a whole organiser candidate); it stays, stale and
+  naming no stored value, where a later attempt or a re-parse leaves the Habitat unsettled, absent or taken with no
+  call of `step._settled` (run in round 7: `H4/fix7_probe_stale_mark.txt`). A record that never held such a Habitat
+  has no such key. The lifetime in full: the comment at `step.OVER_LINES`. Run 3's recorded answers
   replayed: 24 of the 99 records gain it; run 2's: 23 of 99; no other `dependencies` key differs from the stored
   record's, and the 75 and 76 records without the mark hold the stored record's keys (`H4/fix6_marker_count.txt`).
   The API's detail read, the SQLite store and the stored JSON carry the key through the lane's tests; the full suite
@@ -1343,10 +1347,10 @@ words: `H4/FIX_R6.md`). One behavioural finding, the same from both, and two sen
   rigs' paid runs) holds no mark: its over-lines Habitat is not such a value until research settles it again. No
   such record is in production: the lane is not released.
 - Tests, through the workflow and the decision endpoint
-  (`tests/field_research/test_habitat_over_lines_is_the_stored_value.py`, 6): Codex's sequence with P2 after P3 and a
+  (`tests/field_research/test_habitat_over_lines_is_the_stored_value.py`, 6 cases in 5 test functions): Codex's sequence with P2 after P3 and a
   Retry; the reviewer's sequence on a label read alike and on an unread one, with P2 after P3 and a second Retry; the
   mark's withdrawal for the decided field, its durability and a stale mark; a re-parse with no decision; no new key
-  on a record with no such Habitat. A move to the units path and a reprocess are not run. One test of `test_habitat_over_lines_label_flag.py` made a value no such value by removing the finding;
+  on a record that never held such a Habitat. A move to the units path and a reprocess are not run. One test of `test_habitat_over_lines_label_flag.py` made a value no such value by removing the finding;
   it removes the mark now. On d4225535's source 6 of the 36 tests of the three changed files fail: the three sequence
   cases at the other field (the Taxon settled; the Collection Method cleared), and the three tests of the mark,
   which that source does not write; "no new key" passes there (`H4/red_fix6_head-d4225535.txt`). On origin/main's
