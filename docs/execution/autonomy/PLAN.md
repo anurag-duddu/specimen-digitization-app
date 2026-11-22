@@ -585,7 +585,7 @@ The change (`field_research/prompts/habitat.txt`, `agreement.py`, `experts.py`, 
   `step.scientific_reasons` gives one is set out under "Review round 2", "The label's code": in item M's measured
   shapes, `H4/fix3_probe_label_*.txt`, a label not given up on with the Habitat drawn from it and every drawn field settled, it gives none) and, since fix round 3, for a habitat settled over lines, from
   the label's unresolved transcription itself (next bullet); a habitat on one line keeps origin/main's rule, so
-  where its label's code is not given it has no flag to keep, and a habitat that is a whole organiser candidate over two lines keeps origin/main's rule too (it leaves no finding of a literal read from the transcript, so it is no `step._over_lines` value): in the run-the-code reviewer's round-4 record `candidate_two_lines`, its readers differing, it settles with no flag on ad71a6dc and on origin/main alike (`reviews/g51_probes/g51_464/r4/out/r4_label_cmp.txt` and `r4_label_head.txt`: its measurement, not this lane's). Rule A is unchanged for every other field.
+  where its label's code is not given it has no flag to keep, and a habitat that is a whole organiser candidate over two lines keeps origin/main's rule too (`step._settled` does not mark it, so it is no `step._over_lines` value): in the run-the-code reviewer's round-4 record `candidate_two_lines`, its readers differing, it settles with no flag on ad71a6dc and on origin/main alike (`reviews/g51_probes/g51_464/r4/out/r4_label_cmp.txt` and `r4_label_head.txt`: its measurement, not this lane's). Rule A is unchanged for every other field.
 - The Habitat's own label flag (fix round 3, item M; `step.label_attention`, `step._unread_labels`). After a finalize
   a habitat that `step._over_lines` names (research settled it on text read from the transcript over consecutive
   lines; the test, since fix round 6: the habitat; not in the caller's set of decisions carried into the run (`step.human_keys`); a literal with a line break; and research's mark of the value, `run.dependencies["field_research_over_lines"]`, which holds for the habitat the digest of this value's literal and of each reader's verbatim of it, is written where `step._settled` settles a habitat read from the transcript over consecutive lines, and is withdrawn where a person decides the field at the decision endpoint (`second_opinion.decided`): ruling R5 under
@@ -698,7 +698,7 @@ because an unsettled Date Identified is drawn from the same label; with the Habi
 beside settled fields, a Habitat whose readers differ had no flag (the run-the-code reviewer's round 3, run through
 the workflow). Item M of "Review round 3" gives a Habitat settled over lines its flag from the label's unresolved
 transcription itself. A habitat on ONE line keeps origin/main's rule: there as here a one-line value the image
-backs, its readers differing, can settle with no flag where no unsettled field is drawn from its label; a habitat that is a whole organiser candidate over two lines keeps origin/main's rule too (it leaves no finding of a literal read from the transcript, so it is no `step._over_lines` value): in the run-the-code reviewer's round-4 record `candidate_two_lines`, its readers differing, it settles with no flag on ad71a6dc and on origin/main alike (`reviews/g51_probes/g51_464/r4/out/r4_label_cmp.txt` and `r4_label_head.txt`: its measurement, not this lane's).
+backs, its readers differing, can settle with no flag where no unsettled field is drawn from its label; a habitat that is a whole organiser candidate over two lines keeps origin/main's rule too (`step._settled` does not mark it, so it is no `step._over_lines` value): in the run-the-code reviewer's round-4 record `candidate_two_lines`, its readers differing, it settles with no flag on ad71a6dc and on origin/main alike (`reviews/g51_probes/g51_464/r4/out/r4_label_cmp.txt` and `r4_label_head.txt`: its measurement, not this lane's).
 
 The free upper bound (`habitat_rig.py --oracle`, the truth's host answered exactly as a reading writes it, through
 the real check, step and second opinion step; `~/specimen-golive/runs/autonomy-habitat3-20261121/logs/check.txt`):
@@ -1090,6 +1090,14 @@ The rulings.
   `ontology_checks.stage`; the guard on shared text (`step._taken`) does not call it: within an attempt it goes by
   the answer (`silent`), and a stored Habitat, a person's or research's, claims its text there as any stored value
   does (the retry limit). What was run for each requirement is under "Review round 6" below.
+- R6, of 2026-11-22, on the hand-back of fix round 6 (the coordinator's ruling, not the owner's words; it is in the
+  PR body's "Review round 6" and in `H4/FIX_R7.md`). The one difference from origin/main that remains after a person
+  confirms a Habitat research settled over lines stands as a stated limit: this change's Retry does not ask that
+  Habitat again and reads it as any settled value, where origin/main's Retry asks a person's Habitat again and
+  unsettles it. The coordinator's reasons: the value is the one a person confirmed at the decision endpoint, so it
+  is read as any settled value (the intent of R4', kept by R5); the rule that a field an attempt of research settled
+  is not asked again is origin/main's and is unchanged; and the record still holds `human_approval_required` after
+  that Retry (`H4/fix6_probe_b2_b4_b6u_fix6.txt`). The limit reaches the disposition: "Review round 6" below.
 
 What was run first (three trees: origin/main 3eb37c11, 575367fe, and the working tree whose source 81a9944e
 commits; `H4/fix3_probe_extent_*.txt`, `H4/fix3_probe_resolver_*.txt`; pinned in
@@ -1325,6 +1333,8 @@ words: `H4/FIX_R6.md`). One behavioural finding, the same from both, and two sen
   In the last row the second Retry therefore clears the Collection Method as not on the label, where origin/main's
   Retry asks the person's Habitat again, leaves it unresolved, and holds the Collection Method. The two sources apply
   different habitat answers there; the difference follows from origin/main's Retry of a person's Habitat, above.
+  It stands as a stated limit by ruling R6 ("Review round 3", the rulings), and it reaches the disposition.
+  The run-the-code reviewer's round 7 ran that sequence to the approval on both profiles (`reviews/g51_probes/g51_464/r7/out/r7_r5_main.txt`, `r7_r5_head.txt`, its `limit_r6`; its run, not this lane's): after the person's confirmation and the Retry the record holds `human_approval_required` on each source and cannot clear with no person's approval; under the published profile both sources clear at the approval; under a profile where the Collection Method is mandatory (the rig's) the record then clears at the person's approval here and stays in review on origin/main (`mandatory_unresolved:collection_method`, `mandatory_unresolved:habitat`).
 - The mechanism (R5; the one the coordinator suggested). `step._settled`, the one function that makes a resolved
   answer a supported value, writes the mark for a field in `agreement.GIVES_WAY` where the literal was read from the
   transcript and holds a line break, and removes it where it settles the field any other way.

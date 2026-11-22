@@ -445,8 +445,9 @@ def authority(run, readings: Sequence[Reading] = ()) -> set[str]:
 
 def decided(run, key: str) -> None:
     """The decision endpoint: a person decided the field `key`; recorded on the run, durably. The
-    value is the person's from here on: research's mark of a habitat it settled over consecutive
-    lines is withdrawn for the field (step.withdraw_over_lines; lane H4)."""
+    value is the person's from here until research settles the field again: research's mark of a
+    habitat it settled over consecutive lines is withdrawn for the field
+    (step.withdraw_over_lines; lane H4)."""
     from .step import withdraw_over_lines
 
     if key not in run.person_decided_fields:

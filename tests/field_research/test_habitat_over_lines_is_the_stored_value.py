@@ -200,7 +200,11 @@ def test_a_habitat_research_settles_over_lines_in_a_retry_after_a_persons_decisi
     settled value, it holds that organiser text, and the Collection Method is cleared as not on the label. (On
     origin/main, run for the unread label, that Retry asks the person's Habitat again, refuses the answer and leaves
     it unresolved, so there the Collection Method stays held:
-    ~/specimen-golive/autonomy-program/H4/fix6_probe_b2_b4_b6u_main-3eb37c11.txt.)"""
+    ~/specimen-golive/autonomy-program/H4/fix6_probe_b2_b4_b6u_main-3eb37c11.txt.) That difference stands as a
+    stated limit (the coordinator's ruling R6 of 2026-11-22, not the owner's words), and it reaches the disposition:
+    under a profile where the Collection Method is mandatory the record then clears at the person's approval here
+    and stays in review on origin/main (the run-the-code reviewer's run, its `limit_r6`:
+    ~/specimen-golive/autonomy-program/reviews/g51_probes/g51_464/r7/out/r7_r5_main.txt, r7_r5_head.txt)."""
     other = METHOD_GONE.replace("leg. J. Smith", "leg. J. Smyth") if unread else METHOD_GONE
     record = Rig(tmp_path, monkeypatch, METHOD_GONE, other, {"habitat": CANNOT, "collection_method": CANNOT},
         candidates=METHOD_CANDIDATES)
