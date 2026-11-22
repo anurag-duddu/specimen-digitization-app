@@ -73,7 +73,22 @@ created_paths+=("${config_paths[2]}")
 cd "$app_root"
 flutter pub get --enforce-lockfile
 if [[ "$target" == "android" ]]; then
-  flutter build apk --debug
+  # Maven Central and the Gradle plugin portal sometimes refuse hosted runners
+  # with HTTP 429. Flutter retries once after 100 ms, which is too soon. Wait
+  # and retry only on that download failure, never on a compile error.
+  network_failure='Gradle threw an error while downloading artifacts from the network'
+  build_log="$(mktemp)"
+  created_paths+=("$build_log")
+  for wait_seconds in 60 180 stop; do
+    if flutter build apk --debug 2>&1 | tee "$build_log"; then
+      break
+    fi
+    if [[ "$wait_seconds" == stop ]] || ! grep -qF "$network_failure" "$build_log"; then
+      exit 1
+    fi
+    printf 'Gradle could not download dependencies; retrying in %s seconds.\n' "$wait_seconds" >&2
+    sleep "$wait_seconds"
+  done
 else
   flutter build ios --release --no-codesign
 fi

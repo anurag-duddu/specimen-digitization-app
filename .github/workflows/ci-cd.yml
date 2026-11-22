@@ -485,6 +485,20 @@ jobs:
           echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
           echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
 
+      # Without this cache every Android build downloads Gradle and all its
+      # dependencies from Maven Central, which answers hosted runners with
+      # HTTP 429 often enough to fail main (CI/CD runs 44804358046, 44810919947).
+      - name: Cache Gradle downloads for Android
+        if: matrix.target == 'android'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper/dists
+          key: gradle-${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-${{ hashFiles('apps/specimen_digitization/android/**/*.gradle.kts', 'apps/specimen_digitization/android/gradle/wrapper/gradle-wrapper.properties', 'apps/specimen_digitization/pubspec.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-flutter-${{ env.FLUTTER_VERSION }}-
+
       - name: Build with temporary synthetic native configuration
         run: scripts/ci/build_mobile.sh "${{ matrix.target }}"
 
