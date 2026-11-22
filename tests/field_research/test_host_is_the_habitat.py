@@ -222,8 +222,8 @@ def test_a_finalize_alone_leaves_a_stored_habitats_value_state_and_reason(tmp_pa
 
 def test_research_asks_the_habitat_expert_again_only_where_the_habitat_is_no_settled_value(tmp_path):
     """Which stored records get the new instructions without a new run: a research attempt (a Retry that requeues
-    field research, workflow.requeue_completed_field_research) makes a task for every field but a person's and one
-    an earlier attempt settled (step.build_tasks). A settled Habitat, right or wrong, is not asked again; a blank or
+    field research, workflow.requeue_completed_field_research) makes a task for every field but one whose decision was
+    carried into the run (step.human_keys) and one an earlier attempt settled (step.build_tasks). A settled Habitat, right or wrong, is not asked again; a blank or
     open one is. origin/main's rule, unchanged: pinned here because the release's effect on stored records rests on
     it."""
     rig = build_rig(tmp_path, HEADED_TEXT, HEADED_TEXT, candidates=COLLECTORS)

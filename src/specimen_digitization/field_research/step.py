@@ -3633,9 +3633,16 @@ def _organiser_texts(task: FieldTask, readings: Sequence[Reading]) -> list[tuple
 
 def _over_lines(run, key: str, value: FieldValue, human: frozenset[str]) -> bool:
     """Whether a stored value is a habitat research settled on text its expert read from the
-    transcript over consecutive lines (agreement.GIVES_WAY; lane H4): its literal holds a line
-    break, no person decided it, and the run keeps the finding of a literal read from the
-    transcript for the field (_from_the_transcript). origin/main 3eb37c11 read a habitat from the
+    transcript over consecutive lines (agreement.GIVES_WAY; lane H4), by this test: its literal
+    holds a line break, no decision of the field was carried into the run by a reprocess (`human`:
+    human_keys), and the run keeps the finding of a literal read from the transcript for the field
+    (_from_the_transcript). A decision a person makes ON the run (Run.person_decided_fields) is
+    not looked at: on a run that keeps the finding, a Habitat a person confirms, or changes to
+    another text with a line break, is still such a value, and keeps label_attention's code until
+    the record is approved (the coordinator's ruling R4 of 2026-11-21 on round 4 of #464's review:
+    the code stands; run through the decision endpoint in
+    tests/field_research/test_habitat_over_lines_label_flag.py). That such a Habitat also counts
+    for nothing in the readers named below is read from the code, not run. origin/main 3eb37c11 read a habitat from the
     transcript within one line only; a habitat with a line break settled there only as a whole
     organiser candidate, which leaves no such finding and is not such a value. In the readers
     found where a settled value's text relaxes another field's decision, such a habitat counts for
@@ -4766,7 +4773,10 @@ def label_attention(run, open_reasons: Sequence[str]) -> list[str]:
     And, whether or not the label's code is an open reason, for a habitat research settled on text
     read from the transcript over consecutive lines (_over_lines) that is drawn from a label whose
     transcription is unresolved (_unread_labels), on a run no person approved (lane H4, the
-    coordinator's ruling R3' of 2026-11-21 on round 3 of #464's review). scientific_reasons gives no
+    coordinator's ruling R3' of 2026-11-21 on round 3 of #464's review). _over_lines leaves out a
+    Habitat whose decision was carried into the run by a reprocess (human_keys), and not one a
+    person confirmed or changed on the run: that one keeps the code while it holds a line break,
+    until the record is approved (ruling R4 of the same day, round 4). scientific_reasons gives no
     label's code where every field drawn from the label is supported and grounded in a raw reading
     (its other branches: docs/execution/autonomy/PLAN.md, "H4", "The label's code"), so such a
     habitat, the only field drawn from its label or drawn beside settled fields, got no flag where

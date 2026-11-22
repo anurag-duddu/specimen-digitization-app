@@ -2841,8 +2841,8 @@ repeat it as for every field).
   round 1"). Tests: `tests/field_research/test_habitat_over_lines_gives_way.py`.
 - Other fields' decisions (fix rounds 2 and 3 of #464; the coordinator's rulings of 2026-11-21). The aim: for the
   same expert answers a field other than Habitat ends as on origin/main. It is enforced in code for a habitat
-  settled on text read from the transcript over consecutive lines (`step._over_lines`: a line break, not a person's,
-  and the run's finding of a literal read from the transcript): in the readers found where a settled value's text
+  settled on text read from the transcript over consecutive lines (`step._over_lines`: a line break, no decision of the field carried into the run by a reprocess (`step.human_keys`),
+  and the run's finding of a literal read from the transcript; that a Habitat a person decided on the run, still over lines, also counts for nothing in the readers found is read from the code, which uses the same test in each, and was not run): in the readers found where a settled value's text
   relaxes another field's decision, the whole value counts for nothing, its literal, each reader's verbatim of it
   and its label rows. The readers found, besides the guard and rule A's mark above: the text a line of places holds
   (`step._unplaced_text`: on 19761d59, in a retry, a settled "Canada" over "Marmota" let the Province/State and the
@@ -2916,7 +2916,7 @@ up on and no person has transcribed it since; or else it has no transcript, or a
 or has no text. Only this field's code is added, no label's and no other field's; the app flags the field from the
 code (`review_summary.attention_fields`). A habitat on ONE line keeps origin/main's rule: a one-line value the
 image backs, its readers differing, can settle with no flag where no unsettled field is drawn from its label, there
-as here. Tests, through the workflow with the second opinion's step:
+as here; a habitat that is a whole organiser candidate over two lines keeps origin/main's rule too (it leaves no finding of a literal read from the transcript, so it is no `step._over_lines` value): in the run-the-code reviewer's round-4 record `candidate_two_lines`, its readers differing, it settles with no flag on ad71a6dc and on origin/main alike (`reviews/g51_probes/g51_464/r4/out/r4_label_cmp.txt` and `r4_label_head.txt`: its measurement, not this lane's). A Habitat a person confirms or changes ON the run (`Run.person_decided_fields`) is not left out by `step._over_lines`: where it keeps a line break and the run keeps the finding it is still such a value, and it carries `label_unsettled:habitat` until the record is approved (the coordinator's ruling R4 of 2026-11-21, not the owner's words: the code stands; found by the run-the-code reviewer's round 4 through the API, `reviews/g51_probes/g51_464/r4/out/r4_person_head.txt`, and pinned through the decision endpoint by `test_a_habitat_a_person_decides_on_the_run_keeps_the_flag_until_the_record_is_approved`). The rule changes neither the person's value nor its state; the record waits for the approval from the first decision on (`human_approval_required`). Tests, through the workflow with the second opinion's step:
 `tests/field_research/test_habitat_over_lines_label_flag.py`.
 
 **Measured** (PLAN.md "H4" has the tables). Two paid habitat-only reruns on the 99 cleared records of the 100 truth
