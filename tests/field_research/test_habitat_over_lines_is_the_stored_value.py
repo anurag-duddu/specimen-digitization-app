@@ -48,6 +48,8 @@ from specimen_digitization.field_research.contracts import FieldAnswer
 HOST = "Mus\nmusculus"
 HABITAT_LINE = f"habitat: {LABEL['habitat']}\n"
 FLAG = "label_unsettled:habitat"
+# The key of research's mark in run.dependencies (step.OVER_LINES), by its text: a stored record holds it.
+MARK = "field_research_over_lines"
 CANNOT = answering(FieldAnswer(outcome="sources_cannot_resolve", explanation="Not this time."))
 # The label of Codex's round-6 sequence: the code "sp. 22" with no genus, "Mus" over "musculus" in the habitat's place.
 CODE_BESIDE = without_the_taxon_line("sp. 22").replace(HABITAT_LINE, HOST + "\n")
@@ -114,8 +116,8 @@ def over_lines(run):
 
 def marked(run):
     """Whether the run holds research's mark for the habitat, and the key it is kept under at all."""
-    marks = run.dependencies.get(field_step.OVER_LINES)
-    return (isinstance(marks, dict) and "habitat" in marks, field_step.OVER_LINES in run.dependencies)
+    marks = run.dependencies.get(MARK)
+    return (isinstance(marks, dict) and "habitat" in marks, MARK in run.dependencies)
 
 
 def habitat(run):
@@ -160,10 +162,11 @@ def test_research_settling_over_lines_after_a_persons_decision_is_researchs_valu
     assert record.script.calls.count("habitat") == 2 and run.person_decided_fields == ["habitat"]
     assert "habitat" in second_opinion.authority(run)
     assert habitat(run) == (ValueState.SUPPORTED, HOST)
-    assert over_lines(run) and marked(run) == (True, True)
+    # The other field first: the Taxon ends as on origin/main.
     taxon = run.fields["taxon"]
     assert (taxon.state, taxon.literal) == (ValueState.UNRESOLVED, "sp. 22")
     assert {"mandatory_unresolved:taxon", "taxonomy_unresolved"} <= set(run.reasons)
+    assert over_lines(run) and marked(run) == (True, True)
 
     # P2 after P3: the person confirms research's two lines. The value is the person's: no mark, no key.
     run = record.decide_habitat("confirm-2")
@@ -211,10 +214,11 @@ def test_a_habitat_research_settles_over_lines_in_a_retry_after_a_persons_decisi
     run = record.run
     assert record.script.calls.count("habitat") == 2
     assert habitat(run) == (ValueState.SUPPORTED, HOST) and "habitat" in second_opinion.authority(run)
-    assert over_lines(run) and marked(run) == (True, True)
+    # The other field first: the Collection Method is held as on origin/main.
     method = run.fields["collection_method"]
     assert method.state == ValueState.NOT_PRESENT and "collection_method" not in cleared_as_not_on_label(run)
     assert "mandatory_unresolved:collection_method" in run.reasons
+    assert over_lines(run) and marked(run) == (True, True)
     assert (FLAG in run.open_reasons) is unread
     assert same_after_a_second_finalize(run)
 
@@ -246,7 +250,12 @@ def test_the_mark_is_withdrawn_for_the_decided_field_and_a_stale_one_names_no_va
     run = record.run
     assert habitat(run) == (ValueState.SUPPORTED, HOST) and over_lines(run) and marked(run) == (True, True)
     assert FLAG in run.open_reasons
+    assert field_step.OVER_LINES == MARK
     assert over_lines(Run.model_validate(run.model_dump(mode="json")))
+    # The API's detail read of a record that holds the mark.
+    detail = record.client.get(f"/v1/organizations/{ORG}/specimens/{record.rig.specimen.id}",
+        headers={"Authorization": "Bearer reviewer"})
+    assert detail.status_code == 200, detail.text
 
     def changed(change):
         copy = run.model_copy(deep=True)
@@ -285,8 +294,32 @@ def test_a_record_with_no_habitat_over_lines_has_no_new_key(tmp_path, monkeypatc
     record = Rig(tmp_path, monkeypatch, TEXT, TEXT, {"collection_method": CANNOT})
     run = record.run
     assert habitat(run) == (ValueState.SUPPORTED, LABEL["habitat"])
-    assert field_step.OVER_LINES not in run.dependencies and not over_lines(run)
+    assert MARK not in run.dependencies and not over_lines(run)
     run = record.decide_habitat("confirm-1")
-    assert field_step.OVER_LINES not in run.dependencies
+    assert MARK not in run.dependencies
     record.retry("retry-1")
-    assert field_step.OVER_LINES not in record.run.dependencies
+    assert MARK not in record.run.dependencies
+
+
+def test_a_re_parse_sets_the_mark_by_what_research_settles_then(tmp_path, monkeypatch):
+    """Requirement P4 for a re-parse, with no decision of the field. Research settles the Habitat over two lines:
+    marked. A transcription decision keeps the label's text, parse and research run again, and research now settles
+    "Mus" on one line: the mark is removed, key and all (step._settled removes it where it settles the habitat any
+    other way). Once more, and research settles the two lines again: marked again. (A move to the units path and a
+    reprocess run parse and research again in the same way; they are not run here.)"""
+    record = Rig(tmp_path, monkeypatch, CODE_BESIDE, CODE_BESIDE,
+        {"taxon": cannot_resolve("sp. 22", asks=["sp. 22"]), "habitat": res(HOST)}, sources=NoGenus)
+    run = record.run
+    assert habitat(run) == (ValueState.SUPPORTED, HOST) and over_lines(run) and marked(run) == (True, True)
+
+    record.script.scripts["habitat"] = res("Mus")
+    record.transcribe("transcribe-1", CODE_BESIDE)
+    run = record.run
+    assert record.script.calls.count("habitat") == 2
+    assert habitat(run) == (ValueState.SUPPORTED, "Mus") and not over_lines(run) and marked(run) == (False, False)
+
+    record.script.scripts["habitat"] = res(HOST)
+    record.transcribe("transcribe-2", CODE_BESIDE)
+    run = record.run
+    assert record.script.calls.count("habitat") == 3 and run.person_decided_fields == []
+    assert habitat(run) == (ValueState.SUPPORTED, HOST) and over_lines(run) and marked(run) == (True, True)

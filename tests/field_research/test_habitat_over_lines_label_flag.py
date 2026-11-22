@@ -350,5 +350,5 @@ def test_the_rule_needs_a_run_no_person_approved_and_a_value_research_settled_ov
     assert changed(lambda copy: setattr(copy, "human_approved", True)) == []
     assert changed(lambda copy: setattr(copy.fields["habitat"], "literal", "Mus musculus")) == []
     assert any(finding.reason_code == field_step.transcript_code("habitat") for finding in run.findings)
-    assert "habitat" in run.dependencies[field_step.OVER_LINES]
+    assert field_step.label_attention(run, []) == [FLAG] and "habitat" in run.dependencies["field_research_over_lines"]
     assert changed(lambda copy: copy.dependencies.pop(field_step.OVER_LINES)) == []
