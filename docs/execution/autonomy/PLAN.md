@@ -1398,8 +1398,8 @@ changed: the rendered prompts equal origin/main's on 33 of 34, the habitat's `e4
 Review round 9 of #464 (Codex on 19c13fdd, three findings, each on sentences; the run-the-code reviewer approved
 19c13fdd; words only: `H4/fix9_ast_equal.txt`). Round 8's own words named the habitat a rule leaves out or flags as
 "settled over consecutive lines" where the code tests `step._over_lines`: the sentences found that name that class
-are listed with how each names it and what was corrected (`H4/fix9_over_lines_phrase.txt`). Descriptions of the two
-host comments that round 8 had changed were made true of the head. What else was read again and changed:
+are listed with how each names it and what was corrected (`H4/fix9_over_lines_phrase.txt`). Four descriptions in the tree, and one in the PR body, of the two
+host comments that round 8 had changed were corrected. They and what else was read again and changed:
 `H4/fix9_selfcheck.txt`.
 
 ### S1's replay (free, real code, wp26's 120 specimen-runs)

@@ -4869,7 +4869,7 @@ def label_attention(run, open_reasons: Sequence[str]) -> list[str]:
     coordinator's ruling R3' of 2026-11-21 on round 3 of #464's review). _over_lines is a test of
     the stored value: a Habitat a person confirmed or changed at the decision endpoint, or one
     carried into the run, gets no code from this rule; one research marks again (_settled)
-    after a person's decision does (ruling R5 of the same day, round 6, which replaces R4').
+    after a person's decision comes under it again (ruling R5 of the same day, round 6, which replaces R4').
     For a label that is not in scientific_reasons' given-up
     branch (its first pass was not given up on, or it has a transcript and every transcript of it
     is a person's, resolved and with text) and whose transcription is unresolved, scientific_reasons gives no label's code
