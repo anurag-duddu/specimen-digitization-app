@@ -128,5 +128,74 @@
         }
       ]
     }
+  },
+  "refused_20261122": {
+    "about": "Five handwriting-qwen reader answers (Qwen/Qwen3-VL-30B-A3B-Instruct through Hugging Face, provider novita) that production refused on 2026-11-22 between 08:24Z and 09:04Z: the distinct answers of the twelve reader runs refused that day, each run's two attempts giving the same answer. The coordinator of the autonomy program read them from Logfire (spans 'chat Qwen/Qwen3-VL-30B-A3B-Instruct' inside failed 'invoke_agent literal_transcriber_handwriting_qwen' runs) and handed lane RB1 each answer's `lines`, `verbatim_text`, trace id and time; those four are held here as handed over. The response ids, tool call ids, token counts and the answers' other arguments were not handed over, so these entries are not whole recorded tool calls as the entries of `answers` are: tests build a tool call around the two fields.",
+    "answers": {
+      "two_spaces_four_lines_coles": {
+        "shape": "lines split at each break; verbatim_text writes each break as two spaces",
+        "seen_at": "2026-11-22T08:24:36Z",
+        "trace_id": "01a2025b62728163d1a200ee5d6c1121",
+        "lines": [
+          "U.S.A. IL. Coles Co.",
+          "Korbidge State Park",
+          "1-9 June 1952, Malaise",
+          "N. A. Colanch"
+        ],
+        "verbatim_text": "U.S.A. IL. Coles Co.  Korbidge State Park  1-9 June 1952, Malaise  N. A. Colanch"
+      },
+      "nothing_two_lines": {
+        "shape": "lines split at each break; verbatim_text writes each break as nothing: the lines run together",
+        "seen_at": "2026-11-22T08:32:28Z",
+        "trace_id": "01a20262977eb2207a4a6fe2aac12ed1",
+        "lines": [
+          "Sp 22",
+          "\u2642 genitalia"
+        ],
+        "verbatim_text": "Sp 22\u2642 genitalia"
+      },
+      "nothing_eight_lines": {
+        "shape": "lines split at each break; verbatim_text writes each break as nothing: the lines run together",
+        "seen_at": "2026-11-22T08:48:51Z",
+        "trace_id": "01a2027194ac3f3824d6b3ec01bc61a9",
+        "lines": [
+          "IV-29-68-4",
+          "Yepocapa, 4800ft",
+          "Chimaltenango,",
+          "Guatemala",
+          "IV-23-48",
+          "R.D.mitchell",
+          "Sp#1 \u2642",
+          "head 4 legs"
+        ],
+        "verbatim_text": "IV-29-68-4Yepocapa, 4800ftChimaltenango,GuatemalaIV-23-48R.D.mitchellSp#1 \u2642head 4 legs"
+      },
+      "nothing_six_lines": {
+        "shape": "lines split at each break; verbatim_text writes each break as nothing: the lines run together",
+        "seen_at": "2026-11-22T08:50:08Z",
+        "trace_id": "01a20272c41510474517dfa981be8755",
+        "lines": [
+          "IV-29-68-a",
+          "Yepocapa,4800ft.",
+          "Chimaltenago",
+          "Guatemala,IV-25",
+          "1948, R.D. Mitchell",
+          "\u2640 legs Sp.#1"
+        ],
+        "verbatim_text": "IV-29-68-aYepocapa,4800ft.ChimaltenagoGuatemala,IV-251948, R.D. Mitchell\u2640 legs Sp.#1"
+      },
+      "two_spaces_four_lines_macoupin": {
+        "shape": "lines split at each break; verbatim_text writes each break as two spaces",
+        "seen_at": "2026-11-22T08:51:08Z",
+        "trace_id": "01a20273ad1c0d79b22628a1af77b5eb",
+        "lines": [
+          "Beaver Dam 5.7.",
+          "Macoupin Co., Ill.",
+          "VIII-22, 1974",
+          "B.W. Huson"
+        ],
+        "verbatim_text": "Beaver Dam 5.7.  Macoupin Co., Ill.  VIII-22, 1974  B.W. Huson"
+      }
+    }
   }
 }

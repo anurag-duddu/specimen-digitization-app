@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_ai import Agent
 
@@ -10,32 +12,85 @@ from .model_gateway import HuggingFaceModelGateway
 from .provider_privacy import PrivateProviderModel, agent_instrumentation
 from .prompts import PromptName, ResolvedPrompt
 
-# How a reader may write the break between two of its `lines` in
-# `verbatim_text`. A newline is what the schema asks for. Novita's server for
+# The characters a reader may write, in `verbatim_text`, at the break between
+# two of its `lines`: any run of them, of any length and mix, or none at all
+# (_breaks_only). A newline is what the schema asks for. Novita's server for
 # Qwen/Qwen3-VL-30B-A3B-Instruct (the handwriting-qwen route) has also written
-# every break as a space (production, 2026-10-03 and 2026-10-11) or as the
-# newline symbol U+21B5 (production, 2026-10-11), with `lines` still split at
-# each break. tests/fixtures/qwen_reader_answers.json holds those answers.
+# every break as a space (production, 2026-10-03 and 2026-10-11), as the
+# newline symbol U+21B5 (production, 2026-10-11), as two spaces and as nothing,
+# the lines run together (production, 2026-11-22 08:24Z to 09:04Z), with `lines`
+# still split at each break. Before this rule (written 2026-11-22) exactly one
+# of these characters was accepted at each break, and by the count of the
+# autonomy program's coordinator in Logfire 15 of 104 reader runs were refused
+# on 2026-11-20, 3 of 6 on 2026-11-21 and 12 of 40 on 2026-11-22. The twelve
+# gave five distinct answers, two with two spaces at every break and three with
+# nothing; the answers of the two earlier days were not among the evidence for
+# this rule. tests/fixtures/qwen_reader_answers.json holds six answers of
+# 2026-10-11 and the five of 2026-11-22. No answer in that file writes a tab or
+# a carriage return at a break, so neither is a form.
 LINE_BREAK_FORMS = frozenset({"\n", " ", "\u21b5"})
+_BREAKS = "".join(sorted(LINE_BREAK_FORMS))
+# The first character that is not a break form, or the end of the text.
+_RUN_END = re.compile(f"[^{re.escape(_BREAKS)}]|\\Z")
 
 
 def _breaks_only(text: str, lines: list[str]) -> bool:
-    """Whether `text` is `lines` in order, with one break form between each two.
+    """Whether `text` is `lines` in order with only break forms between them.
 
-    Every character of every line must be in `text`, in place; the only freedom
-    is how each break between two lines is written. Nothing may be added,
-    dropped or changed, so text that differs from `lines` is still refused.
+    `text` must begin with the first line and end with the last, and between
+    two lines there may stand any run of LINE_BREAK_FORMS characters, an empty
+    run included, and nothing else. Every character of every line must be in
+    `text`, in place and in order; the only freedom is how each break between
+    two lines is written. A character changed, or any character that is not a
+    break form added, dropped or moved, is refused. A line that is empty or
+    holds only break forms cannot be told from a break: lines "a", "" and "b"
+    are found in "ab", "a b" and "a  b" alike.
+
+    The places where the next line may start are one stretch of `text`: from
+    `low`, the leftmost place where the lines so far can end, to `high`, the
+    end of the run of break forms that begins there. A line that holds a
+    character that is not a break form can start at one place only: its
+    leading break forms are the last of the run, because the first character
+    that is not a break form stands at `high` (when `text` ends there, no such
+    line fits). A line that is empty or holds break forms only lies inside the
+    run, and its leftmost place there leaves every later place open to the
+    lines after it; when it is the last line it must be the end of `text`
+    instead.
+
+    A run is walked to its end once: the next walk starts after the line that
+    holds the character that ended it. Each line is compared with `text` once,
+    at the one place it can be, except a line of break forms only that is not
+    the last, which `str.find` looks for from `low` on. So apart from what
+    `str.find` costs on such a line, the work is in proportion to the length
+    of `text`, the lengths of the lines and their number.
     """
-    position = 0
-    for index, line in enumerate(lines):
-        if index:
-            if text[position : position + 1] not in LINE_BREAK_FORMS:
+    if not text.startswith(lines[0]):
+        return False
+    low = len(lines[0])
+    if len(lines) == 1:
+        return low == len(text)
+    high = _RUN_END.search(text, low).start()
+    for index in range(1, len(lines)):
+        line = lines[index]
+        lead = len(line) - len(line.lstrip(_BREAKS))
+        if lead < len(line):
+            start = high - lead
+            if start < low or not text.startswith(line, start):
                 return False
-            position += 1
-        if not text.startswith(line, position):
-            return False
-        position += len(line)
-    return position == len(text)
+            low = start + len(line)
+            high = _RUN_END.search(text, low).start()
+        elif index < len(lines) - 1:
+            start = text.find(line, low, high)
+            if start < 0:
+                return False
+            low = start + len(line)
+        else:
+            return (
+                high == len(text)
+                and len(text) - len(line) >= low
+                and text.endswith(line)
+            )
+    return low == len(text)
 
 
 class LiteralTranscription(DeclarationCandidates):
@@ -63,12 +118,14 @@ class LiteralTranscription(DeclarationCandidates):
     @model_validator(mode="before")
     @classmethod
     def line_breaks_written_as_newlines(cls, data):
-        """Write each break between `lines` as a newline in `verbatim_text`.
+        """Write each break between `lines` as one newline in `verbatim_text`.
 
-        An answer whose `verbatim_text` is its `lines` with each break written
-        in one of LINE_BREAK_FORMS is the same transcription; `verbatim_text`
-        becomes the lines joined with newlines, as the schema asks. Anything
-        else is left as it came, for the exact rule below to judge.
+        An answer whose `verbatim_text` is its `lines` in order, with each
+        break between two lines written as any run of LINE_BREAK_FORMS
+        characters or as nothing (_breaks_only), is the same transcription;
+        `verbatim_text` becomes the lines joined with single newlines, as the
+        schema asks. Anything else is left as it came, for the exact rule
+        below to judge.
         """
         if not isinstance(data, dict):
             return data

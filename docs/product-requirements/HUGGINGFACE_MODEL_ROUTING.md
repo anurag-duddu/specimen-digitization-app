@@ -45,15 +45,28 @@ Novita's server for `Qwen/Qwen3-VL-30B-A3B-Instruct` has also answered with
 space (three answers on 2026-10-03; 16 of the 18 answers of run 0c7f52e1 on
 2026-10-11) or as the newline symbol `↵`, U+21B5 (the other two). The exact
 rule refused all 18 of 2026-10-11, so every handwriting-qwen reading of that
-run failed as `model_malformed_response`. Such an answer is now read as its
-lines joined with newlines. The rule is exact: `verbatim_text` must be the lines
-in order with exactly one character between each two lines, that character a
-newline, a space or `↵`, and every other character the same as in the lines.
-Two spaces are therefore accepted only where the lines have two breaks, around
-an empty line (lines `["a", "", "b"]` with "a  b" read `"a\n\nb"`). Anything
-else is still refused: a word that differs (a recorded 2026-10-05 answer read
-"tap" in its text and "trap" in its lines), two characters at one break, a break
-the lines do not have, text added or dropped, lines out of order. A refused
+run failed as `model_malformed_response`. Such an answer is read as its lines
+joined with newlines; the rule written on 2026-10-11 (PR #310) accepted exactly
+one character between each two lines, a newline, a space or `↵`.
+
+On 2026-11-22 (08:24Z to 09:04Z) the same server wrote each break as two spaces,
+or as nothing, the lines run together, with `lines` still split at each break,
+and twelve reader runs were refused: five distinct answers, two with two spaces
+at every break and three with nothing. By the count of the autonomy program's
+coordinator in Logfire, 15 of 104 reader runs were refused on 2026-11-20, 3 of 6
+on 2026-11-21 and 12 of 40 on 2026-11-22; the answers of the two earlier days
+were not among the evidence for the change. The rule is now: `verbatim_text`
+must begin with the first line and end with the last, with the lines in order
+and, between each two lines, any run of newlines, spaces and `↵`, an empty run
+included; every other character must be the same as in the lines. A tab or a
+carriage return is not a break form: no answer in
+`tests/fixtures/qwen_reader_answers.json` writes one at a break.
+Anything else is still refused: a word that differs (a recorded 2026-10-05
+answer read "tap" in its text and "trap" in its lines), any other character
+between two lines, a break form added or changed inside a line, text before the
+first line or after the last, lines out of order. A line that is empty or holds only break
+forms cannot be told from a break: lines `["a", "", "b"]` are read `"a\n\nb"`
+from "a  b", "a b" and "ab" alike. A refused
 answer gets Pydantic AI's one output retry and then fails as
 `model_malformed_response`, which the workflow retries as a reader's failure
 (`docs/execution/golive/HARNESS.md` section 3).

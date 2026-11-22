@@ -276,9 +276,9 @@ new region set; deletes are tombstones, not erasure of historical geometry.
 Existing `LiteralTranscription` (`verbatim_text`, `lines`, `unreadable_spans`)
 remains supported. Wrap it in immutable observation provenance; do not replace
 its exact line-reconstruction invariant. Before the invariant is checked, a
-`verbatim_text` that is the lines in order with each break written as a space or
-`↵` (U+21B5) instead of a newline is rewritten with newlines; any other
-difference still fails it. The reader and the human-review release checker
+`verbatim_text` that is the lines in order with each break written as any run of
+newlines, spaces and `↵` (U+21B5), an empty run included, is rewritten with
+single newlines; any other difference still fails it. The reader and the human-review release checker
 (`scripts/qa/live/human_review.py`) both apply it through `LiteralTranscription`
 (`docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md`, "How a reader's answer
 is read"). Extend span evidence additively.
