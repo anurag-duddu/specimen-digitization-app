@@ -50,18 +50,19 @@ def _breaks_only(text: str, lines: list[str]) -> bool:
     `low`, the leftmost place where the lines so far can end, to `high`, the
     end of the run of break forms that begins there. A line that holds a
     character that is not a break form can start at one place only: its
-    leading break forms are the last of the run, because the character at
-    `high` is the first that is not a break form. A line that is empty or
-    holds break forms only lies inside the run, and its leftmost place there
-    leaves every later place open to the lines after it; when it is the last
-    line it must be the end of `text` instead.
+    leading break forms are the last of the run, because the first character
+    that is not a break form stands at `high` (when `text` ends there, no such
+    line fits). A line that is empty or holds break forms only lies inside the
+    run, and its leftmost place there leaves every later place open to the
+    lines after it; when it is the last line it must be the end of `text`
+    instead.
 
-    A run is walked once: the next walk starts after the line that holds the
-    character that ended it. Each line is compared with `text` once, at the one
-    place it can be, except a line of break forms only that is not the last,
-    which `str.find` looks for from `low` on. So apart from what `str.find`
-    costs on such a line, the work is in proportion to the length of `text`,
-    the lengths of the lines and their number.
+    A run is walked to its end once: the next walk starts after the line that
+    holds the character that ended it. Each line is compared with `text` once,
+    at the one place it can be, except a line of break forms only that is not
+    the last, which `str.find` looks for from `low` on. So apart from what
+    `str.find` costs on such a line, the work is in proportion to the length
+    of `text`, the lengths of the lines and their number.
     """
     if not text.startswith(lines[0]):
         return False
