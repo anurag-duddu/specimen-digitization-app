@@ -1,5 +1,5 @@
 """A Habitat settled over consecutive lines on a label whose transcription is unresolved carries
-`label_unsettled:habitat` unless rule A lifts it (lane H4 of the autonomy program, fix round 3 of PR #464, 2026-11-22;
+`label_unsettled:habitat` unless rule A lifts it (lane H4 of the autonomy program, fix round 3 of PR #464, 2026-11-21;
 the coordinator's ruling R3', not the owner's words).
 
 Why. step.scientific_reasons gives a label's code (`unresolved_transcription:<label>`) only where a field drawn from

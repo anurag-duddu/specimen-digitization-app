@@ -4764,7 +4764,7 @@ def label_attention(run, open_reasons: Sequence[str]) -> list[str]:
     And, whether or not the label's code is an open reason, for a habitat research settled on text
     read from the transcript over consecutive lines (_over_lines) that is drawn from a label whose
     transcription is unresolved (_unread_labels), on a run no person approved (lane H4, the
-    coordinator's ruling R3' of 2026-11-22 on round 3 of #464's review). scientific_reasons gives a
+    coordinator's ruling R3' of 2026-11-21 on round 3 of #464's review). scientific_reasons gives a
     label's code only where a field drawn from it is not settled, so such a habitat, the only
     field drawn from its label or drawn beside settled fields, got no flag where its readers
     differ, a value origin/main 3eb37c11 refused and flagged; only this field's code is added, no

@@ -1039,7 +1039,7 @@ The rulings.
   check refuses. The step's own heading refusal and `step._BEFORE_GUARD` (round 2) stay as built: they act where a
   resolved heading answer is applied to the step directly (a recorded answer applied again; tests that give the
   step outcomes; a rig's dry run), not on the resolver's path.
-- R3, replaced on 2026-11-22 by R3' after the run-the-code reviewer's round-3 verdict
+- R3, replaced on 2026-11-21 by R3' after the run-the-code reviewer's round-3 verdict
   (`reviews/verdict_464_g51_r3.md`). R3 said the label's code where a settled Habitat is the only field drawn from a
   label stands. R3': a Habitat settled over lines that is drawn from a label whose transcription is unresolved must
   carry `label_unsettled:habitat` after a finalize, whatever the other fields drawn from that label are, unless rule
@@ -1115,7 +1115,7 @@ predicted that a flag on a right Habitat would move none of the six numbers. Tha
 (49 / 7 / 2 / 35 / 6 / 0, unchanged) and not by exact text: one record moved, 105526658, in the direction of a flag.
 It is right by `same` and wrong by exact text (a full stop), a reading lacks its text, and it had no flag; by exact
 text the six are now 44 / 7 / 2 / 35 / 8 / 3 where they were 44 / 7 / 2 / 35 / 7 / 4. The builder stopped without
-pushing, as the brief's stop rule said, and the coordinator ruled on 2026-11-22 that the table is accepted: it is
+pushing, as the brief's stop rule said, and the coordinator ruled on 2026-11-21 that the table is accepted: it is
 the change item M asks for. The paid run's own record is the 7 / 4 one. The replay through a8e8a76d equals the paid
 run's record, whole dump, on 96 of 99; the three others differ by one added open reason each,
 `label_unsettled:habitat`, and in nothing else: 105526658 (no flag before), 105527285 and 105527297 (each already

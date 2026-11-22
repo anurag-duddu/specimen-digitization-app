@@ -2899,7 +2899,7 @@ gives that same text; the label's doubt is then about the value itself. It does 
 the second opinion read alike and wrongly.
 
 **The Habitat's own label flag** (`step.label_attention`, `step._unread_labels`; fix round 3 of #464, the
-coordinator's ruling of 2026-11-22). The condition above keeps a flag finalize gives, and finalize gave
+coordinator's ruling of 2026-11-21). The condition above keeps a flag finalize gives, and finalize gave
 `label_unsettled:habitat` only from the label's code, which `step.scientific_reasons` gives only where a field
 drawn from the label is not settled. So a Habitat settled over lines whose readers differ, the only field drawn
 from its label or drawn beside settled fields, had no flag (the run-the-code reviewer's round 3, through the
