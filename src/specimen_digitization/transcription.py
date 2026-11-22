@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_ai import Agent
 
@@ -23,10 +25,13 @@ from .prompts import PromptName, ResolvedPrompt
 # on 2026-11-20, 3 of 6 on 2026-11-21 and 12 of 40 on 2026-11-22. The twelve
 # gave five distinct answers, two with two spaces at every break and three with
 # nothing; the answers of the two earlier days were not among the evidence for
-# this rule. tests/fixtures/qwen_reader_answers.json holds the answers named
-# here. None of them writes a tab or a carriage return at a break, so neither
-# is a form.
+# this rule. tests/fixtures/qwen_reader_answers.json holds six answers of
+# 2026-10-11 and the five of 2026-11-22. No answer in that file writes a tab or
+# a carriage return at a break, so neither is a form.
 LINE_BREAK_FORMS = frozenset({"\n", " ", "\u21b5"})
+_BREAKS = "".join(sorted(LINE_BREAK_FORMS))
+# The first character that is not a break form, or the end of the text.
+_RUN_END = re.compile(f"[^{re.escape(_BREAKS)}]|\\Z")
 
 
 def _breaks_only(text: str, lines: list[str]) -> bool:
@@ -41,29 +46,50 @@ def _breaks_only(text: str, lines: list[str]) -> bool:
     holds only break forms cannot be told from a break: lines "a", "" and "b"
     are found in "ab", "a b" and "a  b" alike.
 
-    The search follows every place where the lines read so far can end, not
-    the first that fits: a line that is empty, or that begins or ends with a
-    break form, can sit in more than one place (lines "a" and " b" in "a b":
-    the space is the second line's and the break is empty). A regular
-    expression built from the lines says the same rule, but on text it refuses
-    it can try every way of sharing a run among empty lines; here a line is
-    tried once at each place in `text` at most.
+    The places where the next line may start are one stretch of `text`: from
+    `low`, the leftmost place where the lines so far can end, to `high`, the
+    end of the run of break forms that begins there. A line that holds a
+    character that is not a break form can start at one place only: its
+    leading break forms are the last of the run, because the character at
+    `high` is the first that is not a break form. A line that is empty or
+    holds break forms only lies inside the run, and its leftmost place there
+    leaves every later place open to the lines after it; when it is the last
+    line it must be the end of `text` instead.
+
+    A run is walked once: the next walk starts after the line that holds the
+    character that ended it. Each line is compared with `text` once, at the one
+    place it can be, except a line of break forms only that is not the last,
+    which `str.find` looks for from `low` on. So apart from what `str.find`
+    costs on such a line, the work is in proportion to the length of `text`,
+    the lengths of the lines and their number.
     """
-    ends = {len(lines[0])} if text.startswith(lines[0]) else set()
-    for line in lines[1:]:
-        # Every place the next line may start: where a line can end, and each
-        # place after it that only break forms lead to. A walk stops at a place
-        # an earlier walk reached, which went on from there to the run's end.
-        starts: set[int] = set()
-        for position in ends:
-            while position not in starts:
-                starts.add(position)
-                if text[position : position + 1] in LINE_BREAK_FORMS:
-                    position += 1
-        ends = {
-            start + len(line) for start in starts if text.startswith(line, start)
-        }
-    return len(text) in ends
+    if not text.startswith(lines[0]):
+        return False
+    low = len(lines[0])
+    if len(lines) == 1:
+        return low == len(text)
+    high = _RUN_END.search(text, low).start()
+    for index in range(1, len(lines)):
+        line = lines[index]
+        lead = len(line) - len(line.lstrip(_BREAKS))
+        if lead < len(line):
+            start = high - lead
+            if start < low or not text.startswith(line, start):
+                return False
+            low = start + len(line)
+            high = _RUN_END.search(text, low).start()
+        elif index < len(lines) - 1:
+            start = text.find(line, low, high)
+            if start < 0:
+                return False
+            low = start + len(line)
+        else:
+            return (
+                high == len(text)
+                and len(text) - len(line) >= low
+                and text.endswith(line)
+            )
+    return low == len(text)
 
 
 class LiteralTranscription(DeclarationCandidates):

@@ -15,7 +15,9 @@ each break, and twelve reader runs were refused: five distinct answers, held
 under `refused_20261122` in the same fixture file with the two fields, trace id
 and time the autonomy program's coordinator read from Logfire. A break may now
 be any run of the break forms, an empty run included; the tests from
-`sent_arguments` down are that rule's.
+`sent_arguments` down are that rule's. The search that applies the rule is
+compared with the set-based search it replaced (`set_based_search`, kept here
+as its oracle) and that with the rule as a regular expression.
 """
 
 from __future__ import annotations
@@ -46,7 +48,9 @@ from specimen_digitization.model_gateway import (
 )
 from specimen_digitization.prompts import PromptName, ResolvedPrompt
 from specimen_digitization.transcription import (
+    LINE_BREAK_FORMS,
     LiteralTranscription,
+    _breaks_only,
     build_literal_transcription_agent,
 )
 
@@ -514,8 +518,8 @@ SP_22 = ["Sp 22", "\u2642 genitalia"]  # refused_20261122: nothing_two_lines
         (SP_22, "Sp 22  \u2642 genitalia\n"),
         (SP_22, "Sp 22\u2642 genitalia\u21b5"),
         # A character between two lines that is not a break form, alone and
-        # inside a run of break forms. No answer was seen to write a tab or a
-        # carriage return at a break, so neither is a form.
+        # inside a run of break forms. No answer in the fixture writes a tab or
+        # a carriage return at a break, so neither is a form.
         (SP_22, "Sp 22\t\u2642 genitalia"),
         (SP_22, "Sp 22\r\u2642 genitalia"),
         (SP_22, "Sp 22\r\n\u2642 genitalia"),
@@ -535,15 +539,36 @@ def test_an_answer_with_no_lines_is_still_refused():
         LiteralTranscription(verbatim_text="Sp 22\u2642 genitalia", lines=[])
 
 
-def test_the_search_agrees_with_the_rule_on_every_small_answer():
+def set_based_search(text, lines):
+    """The search of this change's first head (8b1b1318), kept as it was: the
+    oracle of the search in use. It follows every place where the lines read
+    so far can end, so it tries no shortcut, and it costs a pass over the
+    reachable places for each line."""
+    ends = {len(lines[0])} if text.startswith(lines[0]) else set()
+    for line in lines[1:]:
+        # Every place the next line may start: where a line can end, and each
+        # place after it that only break forms lead to. A walk stops at a place
+        # an earlier walk reached, which went on from there to the run's end.
+        starts: set[int] = set()
+        for position in ends:
+            while position not in starts:
+                starts.add(position)
+                if text[position : position + 1] in LINE_BREAK_FORMS:
+                    position += 1
+        ends = {
+            start + len(line) for start in starts if text.startswith(line, start)
+        }
+    return len(text) in ends
+
+
+def test_the_searches_agree_with_the_rule_on_every_small_answer():
     """The rule as a regular expression (the lines in order, any run of the
-    break forms between two, nothing else) against the search that applies it,
-    for every answer of up to three lines of up to two characters and every
-    text of up to five, over a letter and two break forms."""
+    break forms between two, nothing else) against the set-based search, and
+    the set-based search against the search in use, for every answer of up to
+    three lines of up to two characters and every text of up to five, over a
+    letter and two break forms."""
     import itertools
     import re
-
-    from specimen_digitization.transcription import LINE_BREAK_FORMS, _breaks_only
 
     def strings(longest):
         return [
@@ -559,8 +584,196 @@ def test_the_search_agrees_with_the_rule_on_every_small_answer():
         for lines in itertools.product(strings(2), repeat=count):
             rule = re.compile(run.join(re.escape(line) for line in lines))
             for text in texts:
-                assert _breaks_only(text, list(lines)) == bool(
-                    rule.fullmatch(text)
-                ), (lines, text)
+                expected = bool(rule.fullmatch(text))
+                assert set_based_search(text, list(lines)) == expected, (lines, text)
+                assert _breaks_only(text, list(lines)) == expected, (lines, text)
                 compared += 1
     assert compared == (13 + 13**2 + 13**3) * 364
+
+
+def random_answer(rng):
+    """A text and lines over two letters and the three break forms. The lines:
+    empty ones, ones of break forms only, ones that begin or end with break
+    forms, a line repeated, a line the next one begins with, one line alone.
+    The text: the lines with a random run at each break, that with one or two
+    edits, or random characters."""
+    breaks = "".join(sorted(LINE_BREAK_FORMS))
+
+    def some(alphabet, least, most):
+        return "".join(
+            rng.choice(alphabet) for _ in range(rng.randint(least, most))
+        )
+
+    def a_line():
+        kind = rng.random()
+        if kind < 0.15:
+            return ""
+        if kind < 0.35:
+            return some(breaks, 1, 3)
+        before = some(breaks, 1, 2) if rng.random() < 0.3 else ""
+        after = some(breaks, 1, 2) if rng.random() < 0.3 else ""
+        return before + some("ab", 1, 3) + some("ab" + breaks, 0, 2) + after
+
+    lines = [a_line()]
+    for _ in range(rng.choice((0, 0, 1, 1, 2, 2, 3, 4, 5))):
+        kind = rng.random()
+        if kind < 0.15:
+            lines.append(lines[-1])
+        elif kind < 0.3:
+            lines.append(lines[-1] + a_line())
+        else:
+            lines.append(a_line())
+    kind = rng.random()
+    if kind >= 0.85:
+        return some("ab" + breaks, 0, 12), lines
+    text = lines[0]
+    for line in lines[1:]:
+        text += (some(breaks, 1, 3) if rng.random() < 0.7 else "") + line
+    if kind >= 0.45:
+        for _ in range(rng.randint(1, 2)):
+            at = rng.randint(0, len(text))
+            edit, other = rng.choice("idr"), rng.choice("ab\t" + breaks)
+            if edit == "i":
+                text = text[:at] + other + text[at:]
+            elif edit == "d":
+                text = text[:at] + text[at + 1 :]
+            else:
+                text = text[:at] + other + text[at + 1 :]
+    return text, lines
+
+
+def test_the_search_agrees_with_the_set_based_search_on_random_answers():
+    import random
+
+    rng = random.Random(465)
+    accepted = 0
+    for _ in range(20_000):
+        text, lines = random_answer(rng)
+        expected = set_based_search(text, lines)
+        assert _breaks_only(text, lines) == expected, (lines, text)
+        accepted += expected
+    # Both outcomes are well represented.
+    assert 4_000 < accepted < 16_000
+
+
+def test_the_search_agrees_with_the_set_based_search_on_every_fixture_answer():
+    answers = [
+        json.loads(response["arguments"])
+        for answer in ANSWERS.values()
+        for response in answer["responses"]
+    ] + list(REFUSED.values())
+    assert len(answers) == 14
+    accepted = 0
+    for answer in answers:
+        text, lines = answer["verbatim_text"], answer["lines"]
+        expected = set_based_search(text, lines)
+        assert _breaks_only(text, lines) == expected, (lines, text)
+        accepted += expected
+    # Every one but the two answers whose words differ and the one already
+    # written with newlines, which is its lines too.
+    assert accepted == 12
+
+
+class Asked:
+    """What a search asks of a text: one for each call, and one for each
+    character the call may read. Past `most` it stops the search, so a search
+    that asks too much fails at once and does not run on."""
+
+    def __init__(self, most=None):
+        self.count, self.most = 0, most
+
+    def more(self, asked):
+        self.count += asked
+        if self.most is not None and self.count > self.most:
+            raise AssertionError(f"asked {self.count}, more than {self.most}")
+
+
+class CountedText(str):
+    """A text that counts the `startswith`, `endswith` and `find` calls made on
+    it. A slice of it is a plain string and is not counted."""
+
+    asked: Asked
+
+    def startswith(self, prefix, start=0):
+        self.asked.more(1 + len(prefix))
+        return str.startswith(self, prefix, start)
+
+    def endswith(self, suffix):
+        self.asked.more(1 + len(suffix))
+        return str.endswith(self, suffix)
+
+    def find(self, sub, start, end):
+        found = str.find(self, sub, start, end)
+        searched = found - start + len(sub) if found >= 0 else end - start
+        self.asked.more(1 + searched)
+        return found
+
+
+class CountedRunEnd:
+    """transcription._RUN_END, counting the characters each search walks."""
+
+    def __init__(self, pattern, asked):
+        self.pattern, self.asked = pattern, asked
+
+    def search(self, text, start):
+        found = self.pattern.search(text, start)
+        self.asked.more(1 + found.start() - start)
+        return found
+
+
+def asked_of(search, monkeypatch, text, lines, most=None):
+    import specimen_digitization.transcription as transcription
+
+    asked = Asked(most)
+    counted = CountedText(text)
+    counted.asked = asked
+    with monkeypatch.context() as patch:
+        if hasattr(transcription, "_RUN_END"):
+            patch.setattr(
+                transcription,
+                "_RUN_END",
+                CountedRunEnd(transcription._RUN_END, asked),
+            )
+        accepted = search(counted, lines)
+    return accepted, asked.count
+
+
+def degenerate_answers(size):
+    """Answers whose lines are empty or hold break forms only, and one of
+    ordinary lines with two spaces at each break: each is accepted, and with
+    one more character at the end of its text each is refused."""
+    return [
+        ([""] * size, " " * size),
+        ([" " * 50] * (size // 50), " " * size),
+        (["\n"] * (size // 50), "\n" + (" " * 49 + "\n") * (size // 50 - 1)),
+        (["Sp 22"] * (size // 10), "  ".join(["Sp 22"] * (size // 10))),
+    ]
+
+
+@pytest.mark.parametrize("size", [900, 9_000, 90_000])
+def test_the_search_asks_of_a_text_in_proportion_to_its_length(monkeypatch, size):
+    # A count of what is asked of the text, not a time: the same on a loaded
+    # machine. Twice the answer's size is the most the search may ask: it
+    # walks each run once and compares or looks for each line once.
+    for lines, text in degenerate_answers(size):
+        most = 2 * (len(text) + 1 + sum(len(line) for line in lines) + len(lines))
+        accepted, asked = asked_of(_breaks_only, monkeypatch, text, lines, most)
+        assert accepted and asked <= most, (size, lines[0], asked, most)
+        accepted, asked = asked_of(_breaks_only, monkeypatch, text + "x", lines, most)
+        assert not accepted and asked <= most, (size, lines[0], asked, most)
+
+
+def test_the_set_based_search_asks_far_more_of_a_text_with_empty_lines(monkeypatch):
+    # What the count above is there to refuse: on 900 empty lines against 900
+    # spaces (3,630 bytes as compact JSON) the set-based search compares every
+    # line at every place.
+    lines, text = [""] * 900, " " * 900
+    accepted, asked = asked_of(set_based_search, monkeypatch, text, lines)
+    assert accepted and asked >= 899 * 901
+    accepted, asked = asked_of(_breaks_only, monkeypatch, text, lines)
+    assert accepted and asked <= 2 * (len(text) + 1 + len(lines))
+
+
+def test_an_answer_of_empty_lines_and_spaces_is_its_lines():
+    output = LiteralTranscription(verbatim_text=" " * 900, lines=[""] * 900)
+    assert output.verbatim_text == "\n" * 899
