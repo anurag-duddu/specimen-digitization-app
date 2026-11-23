@@ -8,7 +8,8 @@ it is accepted: the literal must occur in the readings it names and be a whole
 organiser candidate literal of each, or text each writes as whole words within
 one line (over consecutive lines for a field in agreement.ACROSS_LINES, the
 precise location and the habitat) that cuts no candidate, and a habitat's
-literal never starts with the heading "Host" (agreement.literal_refusal), a value that
+literal never starts with the heading "Host" nor a precise location's with a locality
+heading (agreement.literal_refusal), a value that
 differs from it must be a source candidate or a deterministic check's output, a
 taxon is GBIF's decision for the whole name that candidate writes, and the
 agreement rules hold (agreement.refusal). A field-level problem never raises;
