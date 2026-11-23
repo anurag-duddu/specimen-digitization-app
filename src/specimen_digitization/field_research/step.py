@@ -564,8 +564,9 @@ def _refusal(task, answer, *, readings, by_name, sources, elevations=None, date_
     by_id = {item.evidence.id: item for item in received if item.evidence is not None}
     cited = [by_id[i] for i in dict.fromkeys(answer.source_evidence_ids) if i in by_id]
     # Before the guard on shared text (_first_pass) a resolved habitat answer that starts with the
-    # heading "Host" is not refused for it: where its other checks pass it settles on the copy, as
-    # on origin/main 3eb37c11, and claims its text (_BEFORE_GUARD says where this applies).
+    # heading "Host", or a precise location answer that starts with a locality heading, is not refused
+    # for it: where its other checks pass it settles on the copy, as on origin/main 3eb37c11, and
+    # claims its text (_BEFORE_GUARD says where this applies).
     return refusal(task, readings, literal=literal, named=named, value=answer.value,
         authority_id=answer.authority_id, cited=cited, received=received, elevations=elevations,
         date_rules=date_rules, heading=not _BEFORE_GUARD.get())
@@ -1354,7 +1355,8 @@ TRANSCRIPT_RULES = "field-research-transcript-v1"
 # event is made for a value that pass settles (_from_the_transcript).
 _FIRST_PASS: ContextVar[bool] = ContextVar("field_research_first_pass", default=False)
 # True only inside _first_pass, the application on a copy whose settled values the guard on shared
-# text reads (_taken). There the habitat's heading refusal (agreement.HOST_HEADING) is left out, so
+# text reads (_taken). There the habitat's heading refusal (agreement.HOST_HEADING) is left out, and
+# the precise location's (agreement.LOCALITY_HEADING, lane LOC1) the same way, so
 # where a RESOLVED habitat answer that starts with the heading reaches the step (a recorded answer
 # applied again, a test, a rig's dry run), it settles on the copy as on origin/main 3eb37c11 and
 # claims in the guard the text it claimed there; the application to the record refuses it, so
@@ -2794,8 +2796,8 @@ def _first_pass(run, tasks_by_key: Mapping[str, FieldTask], ordered: Sequence[Fi
     event (_FIRST_PASS). The run itself is left as it was. Returns the values
     that settle: supported, in a settled layer (SETTLED_LAYERS). One check is
     left out here and made where the answers are applied to the record: the
-    habitat's heading refusal (_BEFORE_GUARD), which matters only where a
-    resolved answer with the heading reaches the step."""
+    habitat's heading refusal and the precise location's (_BEFORE_GUARD), which
+    matter only where a resolved answer with the heading reaches the step."""
     copy = run.model_copy(update={
         "fields": {key: value.model_copy(deep=True) for key, value in run.fields.items()},
         "evidence": list(run.evidence), "findings": list(run.findings), "lookups": list(run.lookups),
@@ -4331,7 +4333,7 @@ REFUSALS = ("DIFFER", "LABELS_DIFFER", "PERSON_DECIDED", "NOT_CANDIDATE", "PART_
     "HOST_NAME", "NO_PLACE", "EXPANSIONS_DIFFER", "NO_PARENTS", "NO_COUNTRY", "NOT_IN_COUNTRY", "NOT_IN_PROVINCE", "NEAR_UNFIT",
     "PART_OF_RANGE", "UNIT_DIFFERS", "NO_UNIT", "A_DISTANCE", "HOLDS_AN_ELEVATION",
     "HOLDS_A_DATE", "HOLDS_A_RANGE", "FIRST_LEVEL_TOO", "NO_PROVINCE", "IS_THE_PROVINCE", "ONE_READER",
-    "TEXTS_CONTESTED", "TIED", "ROLE_ONLY", "HOST_HEADING")
+    "TEXTS_CONTESTED", "TIED", "ROLE_ONLY", "HOST_HEADING", "LOCALITY_HEADING")
 # A lookup's status as a field's trace names it. Logfire's default scrubber
 # replaces any attribute whose value holds "auth" or "credential", so the two
 # refusals (HTTP 401 and 403) are renamed.
