@@ -2968,6 +2968,20 @@ profile is published, `zoology_insects_slides`): a follow-up before any other is
 `tests/field_research/test_host_is_the_habitat.py`, `tests/field_research/test_agreed_habitat_readers.py`,
 `tests/field_research/test_habitat_over_lines_gives_way.py`.
 
+## A locality's printed heading is not part of the Precise Location (2026-11-23, lane LOC1)
+
+The owner's words: "Yes, fix it" (2026-11-23). The rest is the coordinator's brief and this lane's reading.
+`literal_refusal` refuses a precise location literal that starts with a locality heading (`LOCALITY_HEADING`,
+`locality_heading`), by the habitat's mechanism above: the expert is sent back with the reason, where the step
+applies such an answer the Precise Location stays unresolved, the answer is never rewritten, and the step's pass
+before its guard on shared text leaves the check out (`step._BEFORE_GUARD`). The test is
+`re.match(r"[^\w]*(?:loc[.:]|locality(?![^\W_]))", literal, re.IGNORECASE)`: "Loc" right before a colon or a full
+stop, or the whole word "Locality", at the literal's start. "Loc Ninh", "Locust Grove" and "Kunduz, Loc: ..." are not
+refused. The same stated limit as the host heading's applies: where no later resolved answer of that attempt passes
+the check, the Precise Location does not settle, and a field whose
+decision reads a settled Precise Location's text is decided beside an unsettled one. A stored value is not checked again by a finalize. No
+prompt text changed. Tests: `tests/field_research/test_locality_heading.py`.
+
 ## Fields the label does not state (owner, 2026-10-09)
 
 The owner decided two cases in the schema session on 2026-10-09. On whether
