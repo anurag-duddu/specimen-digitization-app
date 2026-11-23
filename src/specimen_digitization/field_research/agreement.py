@@ -293,6 +293,8 @@ HOLDS_A_RANGE = "This text holds a range of dates or elevations, which is anothe
 # is a collected_by marker alone ("leg.") names no one.
 ROLE_ONLY = "This text is the collectors' role marker alone, which names no one."
 HOST_HEADING = "This text starts with the heading \"Host\", which is not part of the host's name."
+LOCALITY_HEADING = ("This text starts with a locality heading (\"Loc:\", \"Loc.\" or \"Locality\"), which is not "
+    "part of the locality.")
 HOLDS = {written.ELEVATION: HOLDS_AN_ELEVATION, written.DATE: HOLDS_A_DATE, written.RANGE: HOLDS_A_RANGE}
 # The unit each elevation field holds (application.derivations.UNITS), and
 # its name in the experts' retry.
@@ -715,6 +717,21 @@ def host_heading(literal: str | None) -> bool:
     return bool(literal) and _HOST_HEADING.match(literal) is not None
 
 
+# The field that holds the label's locality, and the heading a label may print or write before it,
+# which is not part of it (locality_heading; lane LOC1 of the autonomy program).
+LOCALITY_FIELD = "precise_location"
+_LOCALITY_HEADING = re.compile(r"[^\w]*(?:loc[.:]|locality(?![^\W_]))", re.IGNORECASE)
+
+
+def locality_heading(literal: str | None) -> bool:
+    """Whether a text starts with a locality heading: "Loc" right before a colon or a full stop, or
+    the whole word "Locality", letter case aside, after any marks ("Loc: <place>", "LOC. <place>",
+    "LOC.<place>", "Locality <place>", "Locality:" alone). "Loc" with no colon or full stop right
+    after it is none ("Loc Ninh"), nor is a word that only starts with "Loc" ("Locust", "Loch",
+    "Locarno", "Localities"), nor a heading after the first word ("Kunduz, Loc: <place>")."""
+    return bool(literal) and _LOCALITY_HEADING.match(literal) is not None
+
+
 def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: str,
         named: Sequence[Reading], elevations=None, date_rules=None, heading: bool = True) -> Refusal | None:
     """Why the answer's literal may not settle the field, or None: it must be
@@ -746,7 +763,9 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
     ontology_checks.without_role) settles nothing (ROLE_ONLY: the marker is the role the ontology's
     notation collected_by names, plan WP 2.3c). A habitat literal that starts with the heading
     "Host" settles nothing either (HOST_HEADING, host_heading: the answer is refused, never rewritten;
-    lane H4 of the autonomy program); `heading` false leaves that one check out, which only the
+    lane H4 of the autonomy program), nor does a precise location literal that starts with a locality
+    heading (LOCALITY_HEADING, locality_heading; lane LOC1); `heading` false leaves those two checks
+    out, which only the
     step's pass before its guard on shared text does (step._first_pass), for a resolved heading
     answer that reaches the step; the expert's own check (experts._Expert) takes the default and
     refuses. A date field's literal that
@@ -758,6 +777,10 @@ def literal_refusal(task: FieldTask, readings: Sequence[Reading], *, literal: st
             "host's name. Give the name written after the heading as the literal, whole (it may stand on the "
             "heading's line or on the lines below it), and leave the heading out; a written \"Ex.\", \"Ex:\", "
             "\"ex\" or \"On\" before the name stays. Answer label_lacks_value when no name follows the heading.")
+    if heading and task.key == LOCALITY_FIELD and locality_heading(literal):
+        return Refusal(LOCALITY_HEADING, f"{literal!r} starts with a locality heading (\"Loc:\", \"Loc.\" or "
+            "\"Locality\"), which is not part of the locality. Give the locality written after the heading as the "
+            "literal, whole, and leave the heading out. Answer label_lacks_value when no locality follows the heading.")
     if task.key == "collectors":
         from .ontology_checks import without_role
 
