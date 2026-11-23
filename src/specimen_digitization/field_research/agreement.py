@@ -725,7 +725,8 @@ _LOCALITY_HEADING = re.compile(r"[^\w]*(?:loc[.:]|locality(?![^\W_]))", re.IGNOR
 
 def locality_heading(literal: str | None) -> bool:
     """Whether a text starts with a locality heading: "Loc" right before a colon or a full stop, or
-    the whole word "Locality", letter case aside, after any marks ("Loc: <place>", "LOC. <place>",
+    the whole word "Locality", letter case aside, after any characters that are not word characters
+    (`[^\w]*`: spaces, line breaks and marks, but not "_", letters or digits) ("Loc: <place>", "LOC. <place>",
     "LOC.<place>", "Locality <place>", "Locality:" alone). "Loc" with no colon or full stop right
     after it is none ("Loc Ninh"), nor is a word that only starts with "Loc" ("Locust", "Loch",
     "Locarno", "Localities"), nor a heading after the first word ("Kunduz, Loc: <place>")."""

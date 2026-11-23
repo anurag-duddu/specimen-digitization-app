@@ -55,10 +55,12 @@ def resolved(literal, *names):
     ("Loc: AFGHANISTAN,", True), ("LOC: USA: NEBRASKA", True), ("LOC. PERU: Yura,", True),
     ("LOC.PERU: Yura, Arequipa 8200'", True), ("Loc:AFGHANISTAN", True), ("Loc.", True), ("Loc:", True),
     ("Locality Logan Canyon", True), ("LOCALITY: Logan Canyon", True), ("Locality", True), ("(Loc:) Kunduz", True),
-    (PRODUCTION_ANSWER, True),
+    (PRODUCTION_ANSWER, True), ("\nLoc: Kunduz", True), ("  Loc: Kunduz", True),
     (WITHOUT_HEADING, False), ("Loc Ninh, Binh Phuoc", False), ("Locust Grove", False), ("Loch Ness", False),
     ("Locarno", False), ("Localities near Kunduz", False), ("Kunduz, Loc: Afghanistan", False),
     ("27 km. north of Kunduz\nLoc: AFGHANISTAN", False), ("", False), (None, False),
+    # A space before the mark is not a form the data writes; "_" is a word character, so it is not skipped.
+    ("LOC : PERU", False), ("LOC . PERU", False), ("_Loc: Kunduz", False),
 ])
 def test_a_text_that_starts_with_a_locality_heading(literal, heading):
     assert agreement.locality_heading(literal) is heading
@@ -154,6 +156,27 @@ def test_the_locality_after_the_heading_settles_through_the_step(tmp_path):
     assert (value.state, value.literal) == (ValueState.SUPPORTED, "Synthetic\nteaching garden")
 
 
+LOC_CODE = TEXT.replace("collection_code: SYNTHETIC\n", "").replace(
+    "precise_location: Synthetic teaching garden\n", "Loc: CNHM\n")
+
+
+def test_a_heading_precise_location_still_takes_the_text_it_took_on_origin_main_from_the_collection_code(tmp_path):
+    """Codex's round-1 sequence on #467: both readers write "Loc: CNHM", neither field has a candidate, the code's
+    expert answers "CNHM" and the precise location's "Loc: CNHM", in one attempt. The pass before the guard leaves the
+    heading check out (step._BEFORE_GUARD), so the Precise Location claims its text there as on origin/main 681313a2:
+    the code goes to review naming it, and the Precise Location goes to review naming the code, both as on origin/main.
+    With the heading check made before the guard too, the code settles "CNHM" (LOC1/round2_guard_probe.txt)."""
+    rig = build_rig(tmp_path, LOC_CODE, LOC_CODE, candidates=COLLECTORS)
+    run = rig.specimen.run
+    settle(rig, Scripted({"collection_code": answering(resolved("CNHM")),
+        "precise_location": answering(resolved("Loc: CNHM"))}))
+    code, place = run.fields["collection_code"], run.fields["precise_location"]
+    assert (code.state, code.literal) == (ValueState.UNRESOLVED, None)
+    assert code.reason.startswith(field_step.TAKEN.format(other="Precise Location"))
+    assert (place.state, place.literal) == (ValueState.UNRESOLVED, None)
+    assert place.reason.startswith(field_step.TAKEN.format(other="Collection Code"))
+
+
 # ---- through the real resolver (experts.make_resolver: the expert's check and its retries) -----------------------
 
 def through_the_resolver(tmp_path, *answers):
@@ -176,9 +199,9 @@ def test_an_expert_sent_back_for_the_heading_that_leaves_it_out_settles_the_loca
 
 
 def test_limit_an_expert_that_repeats_the_heading_leaves_the_precise_location_unsettled(tmp_path):
-    """The stated limit, as the habitat's: where no later RESOLVED answer of the attempt passes the check, the
-    resolver's fallback is the outcome (sources_cannot_resolve, no literal) and the Precise Location does not settle,
-    where origin/main settles the first answer."""
+    """One case of the stated limit, as the habitat's: the expert answers with the heading again on each retry and
+    runs out of retries; the resolver's fallback (sources_cannot_resolve, no literal) is then the outcome and the
+    Precise Location does not settle, where origin/main settles the first answer."""
     run, received, asked = through_the_resolver(tmp_path, HEADED)
     assert len(asked) > 1 and set(asked) == {HEADED}
     assert (received.answer.outcome, received.answer.literal, received.fallback) == (

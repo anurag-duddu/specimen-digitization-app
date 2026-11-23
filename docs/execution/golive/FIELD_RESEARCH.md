@@ -2976,7 +2976,8 @@ The owner's words: "Yes, fix it" (2026-11-23). The rest is the coordinator's bri
 applies such an answer the Precise Location stays unresolved, the answer is never rewritten, and the step's pass
 before its guard on shared text leaves the check out (`step._BEFORE_GUARD`). The test is
 `re.match(r"[^\w]*(?:loc[.:]|locality(?![^\W_]))", literal, re.IGNORECASE)`: "Loc" right before a colon or a full
-stop, or the whole word "Locality", at the literal's start. "Loc Ninh", "Locust Grove" and "Kunduz, Loc: ..." are not
+stop, or the whole word "Locality", at the literal's start after any characters that are not word characters
+(spaces, line breaks and marks, but not "_"). "Loc Ninh", "Locust Grove" and "Kunduz, Loc: ..." are not
 refused. The same stated limit as the host heading's applies: where no later resolved answer of that attempt passes
 the check, the Precise Location does not settle, and a field whose
 decision reads a settled Precise Location's text is decided beside an unsettled one. A stored value is not checked again by a finalize. No
