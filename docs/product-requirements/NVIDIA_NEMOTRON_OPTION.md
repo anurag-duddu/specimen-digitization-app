@@ -1,8 +1,12 @@
 # NVIDIA Nemotron option
 
-Status: built behind a switch that is off. Production keeps today's models
-until the owner turns the option on, after the conversation with NVIDIA's
-Nemotron team. The owner asked for it on 2026-10-18, typed in the
+Status: the readers stage is on in production; the first-pass and
+field-research stages are off. On 2026-11-24, asked in a Claude Code session
+"Turn on NVIDIA Nemotron as a third reader (reader C) in production?", with the
+measurements below and the units path's of 2026-11-15 in front of him (three
+readers: fewer fields settled wrong, more left without a value), the owner
+answered "Yes, readers only". `scripts/ci/runtime_settings.py` sets
+`SPECIMEN_NVIDIA_STAGES=readers` for the API and the worker. The owner asked for it on 2026-10-18, typed in the
 coordinator session: "We have to enable Nvidia across the pipeline as
 another option also see how this impacts the UI and backend".
 
@@ -166,7 +170,7 @@ The production drain does not use it.
 
 ### Turning it on
 
-Production runs with the switch unset. Turning it on is a pull request that
+Production ran with the switch unset until 2026-11-24. Turning it on is a pull request that
 adds `SPECIMEN_NVIDIA_STAGES` with the same value to the API and worker
 environments in `scripts/ci/runtime_settings.py`. The runtime release
 deploys it. Runs already in progress keep their routes. A new run or a

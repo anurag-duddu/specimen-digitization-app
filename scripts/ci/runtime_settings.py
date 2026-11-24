@@ -95,6 +95,9 @@ def tracing_env(role):
             "LOGFIRE_SEND_TO_LOGFIRE": "true", "LOGFIRE_SERVICE_NAME": f"specimen-{role}",
             "LOGFIRE_HEAD_SAMPLE_RATE": "1.0", "LOGFIRE_DISTRIBUTED_TRACING": "true"}
 
+# The NVIDIA option the API and the worker both load the published profiles under.
+NVIDIA_OPTION = {"SPECIMEN_NVIDIA_STAGES": "readers"}
+
 # Each role's secret_env maps an environment variable to the Secret Manager secret it reads.
 API = {
     "service_account": f"specimen-api-runtime@{PROJECT}.iam.gserviceaccount.com",
@@ -108,6 +111,10 @@ API = {
         "SPECIMEN_CORS_ORIGINS": "https://specimen-digitization.web.app,https://specimen-digitization.firebaseapp.com",
         "SPECIMEN_READINESS_OBJECT": READINESS_OBJECT, "SPECIMEN_WORKER_JOB": WORKER_JOB,
         "SPECIMEN_INTAKE_JOB": INTAKE_JOB,
+        # The NVIDIA option's readers stage: Nemotron reads every label as reader C, after Qwen and Muse
+        # (application/model_option.py; docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md, "Turning it on").
+        # The worker carries the same value. The owner's yes of 2026-11-24 is quoted in that document.
+        **NVIDIA_OPTION,
     },
     "secret_env": {"LOGFIRE_TOKEN": "specimen-worker-logfire", "SPECIMEN_SOURCE_REGISTRY_JSON": "specimen-source-registry",
                    "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings",
@@ -140,6 +147,7 @@ WORKER = {
             # field_research/step.py; docs/execution/golive/FIELD_RESEARCH.md). "on" mounts the six-specialist
             # harness instead.
             "SPECIMEN_RESEARCH_HARNESS": "fields",
+            **NVIDIA_OPTION,  # The same NVIDIA option as the API (see API above).
             "SPECIMEN_WORKER_JOB": WORKER_JOB},  # The drain hands work left at its deadline to the next execution.
     "secret_env": {"HF_TOKEN": "huggingface-runtime-token", "LOGFIRE_TOKEN": "specimen-worker-logfire",
                    "SPECIMEN_WORKER_ACTOR_UID": "specimen-worker-actor-uid",
