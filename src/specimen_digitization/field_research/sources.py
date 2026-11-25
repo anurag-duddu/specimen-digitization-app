@@ -781,7 +781,8 @@ class ApprovedSources:
         )
         self._slots = SOURCE_SLOTS if slots is None else slots
         self._answers: dict[tuple[str, str], asyncio.Task[SourceAnswer]] = {}
-        self._responses: dict[str, asyncio.Task[_Fetched]] = {}
+        # A GET by its URL, a POST by its URL and form.
+        self._responses: dict[str | tuple[str, tuple[tuple[str, str], ...]], asyncio.Task[_Fetched]] = {}
         # verify_taxon's requests and waits on the loop, from its worker threads.
         self._running: set[concurrent.futures.Future] = set()
         # Per host, who sent verify_taxon's last response that was no answer,
