@@ -2538,8 +2538,20 @@ record clears or holds differently.
   (`not_present`, nothing shown) where the second opinion's own answer for
   the field is blank too: the stored `answer` keeps every one of the 20
   fields as `{value, evidence}`, and a blank is a null value whose text does
-  not start with UNSURE (`read_answer`'s rule). Verbatim D/T/S and Habitat
-  are excepted and keep their codes whatever the second opinion says.
+  not start with UNSURE (`read_answer`'s rule). Habitat is excepted and
+  keeps its codes whatever the second opinion says. Verbatim D/T/S is
+  excepted too (both missed values of lane H1's table, 105526336 "1916" and
+  105526564 "III.87", were dates with no day) except where nothing on the
+  labels needs it (`second_opinion._no_verbatim_date`, lane B of
+  2026-11-24): no text of the run writes a time of day
+  (`second_opinion.TIME_OF_DAY`: "am", "pm", "sunrise", "daylight" and
+  their kin, or a clock time, on one line), and either Date Visited From
+  and Date Visited To are both settled to the day, or both are blank, no
+  text could be a date (`date_lines.could_be_a_date`) and no part of any
+  label is unreadable. The field holds a collecting date or time only
+  where it is not exact (PRD.md, "Date and time semantics"); a date
+  settled as a month or a year, a range ending on a month, a date in doubt
+  or one date blank keeps the codes.
   `research_incomplete:<field>`, `taxonomy_unresolved` and every mark stay,
   so a blank field one of them names stays flagged: a blank Taxon the second
   opinion also leaves blank loses these two codes and keeps
@@ -3080,6 +3092,27 @@ elevation is derived first, and only for a field a person has not decided):
    Four or more periods outside brackets are a printed form's dot leader
    ("Det. ..........", "Loc. ......"), never a placeholder (N3 of #289's
    sixth review).
+   For the Habitat alone (`step.READ_WHOLE_BY_KIND`; lane B of the
+   waiting-fields program, the coordinator's brief of 2026-11-24) this is
+   asked label by label, and a label that holds no habitat is set aside
+   when its every unreadable part stands inside its own content
+   (`step._unreadable_inside_its_kind`): no transcript of it is marked
+   unreadable; it is a determination label (a line of one of its texts
+   writes a determination marker, `date_lines._determination`) or a
+   catalogue-number label (a line writes "FMNH-INS", "FMNH", "FIELD MUSEUM"
+   or "CNHM", and none a determination marker); no line of it names a
+   collector (`date_lines._collector`); no field of the run is drawn on it
+   (its source label, a reader's text of it, an evidence row of it) but
+   the Taxon, Date Identified and the IRN for a determination label, or
+   the catalogue number for a catalogue-number label; and every
+   placeholder and every reader's listed unreadable span stands, in the
+   text that has it, on a line that writes the kind's content (a
+   determination marker; the heading, the museum's name or a number of
+   five to nine digits). A span the reader's text does not hold, a label
+   of any other kind, and an unreadable part on another line still stop
+   the mark. Every other field keeps the whole-slide rule, and its code
+   stays `label_not_read_whole`. Production record d10333ff's
+   "J. [unreadable] det. 2021" is the case.
 5. The organiser found no text for it: no candidate, no literal, no
    reader's verbatim. This is judged after every value of the attempt is
    made, so against what settled (`step._organiser_texts`, each text with
@@ -3704,7 +3737,7 @@ or fallback, a spent per-field or per-specimen meter among them, is that field's
 | `unsupported_parsed`, `unsupported_normalized`, `unsupported_authority_id`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing` on `fmnh_ins_number` | holds |
 | `unresolved_transcription:<label>`, `independent_observations_missing:<label>`, a label's language rule `<reason>:<label>` | holds when the catalogue number is drawn from the label and the slide's QR code does not confirm it; otherwise (a label only optional fields are drawn from, a label no field is drawn from, a label whose first pass was given up) an optional field's doubt |
 | `raw_provenance_missing:<label>` | holds when the catalogue number is drawn from the label (the code does not stand in for a missing raw reading); otherwise an optional field's doubt |
-| the field codes above on an optional field (`mandatory_unresolved`, `unsupported_*`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing`, `marked`) | an optional field's doubt. Since work package F2, `mandatory_unresolved:<field>` is not given for a blank (`not_present`) optional field, Verbatim D/T/S and Habitat excepted, that the obtained, current second opinion also leaves blank ("The second opinion", rule B); on a run whose pinned profile makes the field mandatory it is given and holds as before |
+| the field codes above on an optional field (`mandatory_unresolved`, `unsupported_*`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing`, `marked`) | an optional field's doubt. Since work package F2, `mandatory_unresolved:<field>` is not given for a blank (`not_present`) optional field, Habitat excepted and Verbatim D/T/S excepted unless nothing on the labels needs it (lane B, 2026-11-24), that the obtained, current second opinion also leaves blank ("The second opinion", rule B); on a run whose pinned profile makes the field mandatory it is given and holds as before |
 | `research_incomplete:<optional field>` (new: a failure, a limit, a spent per-field or per-specimen meter, a request too large, an outage or deadline on the last attempt, or the expert's fallback) | an optional field's doubt; the field keeps its own reason (`FIELD_REASONS`) |
 | `taxonomy_unresolved`, `identified_by_irn_identity_unproved` | an optional field's doubt |
 | `elevation_invalid`, `elevation_range`, `elevation_units_conflict`, `date_precision_requires_review`, `date_order` | an optional field's doubt |
