@@ -3616,6 +3616,25 @@ def _placed_elsewhere(unit) -> bool:
         and getattr(unit, "role", "") not in NAME_ROLES)
 
 
+def _held_by_advice(run, unit) -> bool:
+    """Whether a field the first pass advised `unit` for holds the unit's text for some reader of it in
+    its stored value, in any state: the field's literal or a reader's verbatim writes that text as whole
+    words, its runs of white space aside (round 1 of #472's review: the first pass's advice alone does
+    not set a word aside; the field's own research must have taken the same text for that field).
+    "F.G. Werner" advised for the collectors is held where the collectors' literal is "F.G. Werner",
+    settled or not, and then so is the other reader's "F.G. wermer" of the same unit; a genus
+    "Epipsocus" the first pass wrongly advised for the collectors is not, unless the collectors' value
+    also writes it."""
+    texts = [span.text.split() for span in unit.readers.values() if span.text and span.text.split()]
+    patterns = [re.compile(r"(?<!\w)" + r"\s+".join(map(re.escape, words)) + r"(?!\w)") for words in texts]
+    for key in getattr(unit, "fields", None) or ():
+        value = run.fields.get(key)
+        if value is not None and any(written and pattern.search(written) for pattern in patterns
+                for written in (value.literal, *value.verbatim_by_observation.values())):
+            return True
+    return False
+
+
 def _genus_on_a_label(run, readings: Sequence[Reading]) -> str | None:
     """On the units path, for owner decision B (WP 2.T, the coordinator's rulings on rounds 1 and 2
     of #438's review): a word that may be a genus that some reading of some label of the specimen
@@ -3637,9 +3656,9 @@ def _genus_on_a_label(run, readings: Sequence[Reading]) -> str | None:
       keys and a colon at a line's start, as Workflow.parse reads "habitat: Mossy forest");
     - a reading unit (Reading.units) the first pass placed only in fields that never hold a scientific
       name (_placed_elsewhere), in each reader of it whose text there is the unit's own text for that
-      reader, whether or not those fields settled (lane D of the waiting-fields program, 2026-11-24:
-      an unsettled collector "F.G. Werner", a precise location left ambiguous and "Elev.6400'" held
-      the code back on truth slides whose labels write no genus).
+      reader, where one of those fields' stored values writes the unit's text for some reader of it
+      (_held_by_advice), whether or not that field settled (lane D of the waiting-fields program, 2026-11-24: an unsettled collector
+      "F.G. Werner" held the code back on production record 01b79931, whose label writes no genus).
     A word is accounted for only when one single span holds all of it: a word only partly inside
     one, or inside two that meet ("Epi" and "psocus" of two fields), is not. A unit
     (Reading.units) some reader's text of which one span holds whole is accounted for in every
@@ -3700,11 +3719,12 @@ def _genus_on_a_label(run, readings: Sequence[Reading]) -> str | None:
                     mark_text(reading, text)
     for reading in readings:
         # A unit the first pass placed only in fields that never hold a scientific name (_placed_elsewhere),
-        # where this reader's text there is the unit's own text for it.
+        # where this reader's text there is the unit's own text for it and one of those fields holds the
+        # unit's text for some reader (_held_by_advice).
         for unit in (reading.units.units if reading.units is not None else ()):
             own = unit.readers.get(reading.observation_id)
             if (own is not None and _placed_elsewhere(unit) and own.end <= len(reading.text)
-                    and reading.text[own.start:own.end] == own.text):
+                    and reading.text[own.start:own.end] == own.text and _held_by_advice(run, unit)):
                 mark(reading, own.start, own.end)
     for reading in readings:
         for unit in (reading.units.units if reading.units is not None else ()):
