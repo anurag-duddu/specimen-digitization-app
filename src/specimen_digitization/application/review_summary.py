@@ -124,6 +124,25 @@ def attention_fields(fields, reasons):
     return attention
 
 
+def _named(fields, reasons):
+    """The fields a reason names, whatever their state (attention_fields with every state settled)."""
+    return attention_fields({key: {"state": "supported", "has_value": True} for key in fields}, reasons)
+
+
+def no_source_fields(fields, reasons):
+    """The fields with no approved authority (field_research.contracts.NO_APPROVED_AUTHORITY: the
+    Identified by IRN) that research left as it always does, unknown with no value, and that no reason
+    names: no label carries them and no source looks them up, so they need no one's attention."""
+    from specimen_digitization.field_research.contracts import NO_APPROVED_AUTHORITY
+
+    named = _named(fields, reasons)
+    return {
+        key for key, value in fields.items()
+        if key in NO_APPROVED_AUTHORITY and value.get("state") == "unknown" and not value["has_value"]
+        and key not in named
+    }
+
+
 def review_summary(fields, reasons):
     """Return unknown for absent fields; count each materialized field once.
 
@@ -133,6 +152,8 @@ def review_summary(fields, reasons):
     A supported field with a `marked:` reason needs review.
     Warning/info findings and record/label/processing reasons do not inflate
     field counts. Pending edits are handled locally by the field presentation.
+    A field with no approved source that no reason names (no_source_fields) is
+    not counted for review.
     """
     if not isinstance(fields, dict) or not fields:
         return None
@@ -143,7 +164,7 @@ def review_summary(fields, reasons):
         for value in fields.values()
     ):
         return None
-    attention = attention_fields(fields, reasons)
+    attention = attention_fields(fields, reasons) - no_source_fields(fields, reasons)
     missing = 0
     for value in fields.values():
         state, has_value = value.get("state"), value["has_value"]
