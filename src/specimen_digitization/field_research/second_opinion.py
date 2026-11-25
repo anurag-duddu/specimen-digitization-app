@@ -39,7 +39,9 @@ rule marks: `marked:<field>:<label>:second_opinion_differs` when the recorded ve
 shown value is "differs"; `marked:<field>:<label>:second_opinion_not_checked` when there is no recorded
 verdict for its current shown value (not obtained, switched off, not run yet, or the value changed
 since it was judged); nothing when the recorded verdict for its current value is "agrees". Never
-the catalogue number (its own evidence is the slide's QR code) nor the determiner's IRN.
+the catalogue number (its own evidence is the slide's QR code) nor the determiner's IRN. Nothing, either,
+for owner decision B's unmatched taxon (a morphocode with no genus, as written) where the second opinion
+gave the taxon no value and no UNSURE (`_blank_on_unmatched`; lane D of the waiting-fields program).
 
 A BLANK THE SECOND OPINION FILLS IS FLAGGED (`filled`, called by step.finalize_fields on every finalize,
 after the reasons are split and the holds derived; lane H3, the coordinator's ruling of 2026-11-21).
@@ -97,7 +99,8 @@ else parsed, else literal) against the second opinion's value:
   folded, and every character that is not a letter or a digit is dropped, except a "." or ","
   between two digits and a "-" or "+" directly before a digit, which are kept (so "1.5 km" is not
   "15 km" and "-80" is not "80"). Province/State and County also set aside one trailing unit word
-  on either side (UNIT_WORDS), as the benchmark's comparison does.
+  on either side (UNIT_WORDS), as the benchmark's comparison does. The taxon also agrees where both
+  values give the same name once an author and year after it are set aside (`canonical_taxon`).
 """
 
 from __future__ import annotations
@@ -385,10 +388,45 @@ def kind(key: str) -> str:
     return "date" if key in DATES else "number" if key in NUMBERS else "identifier" if key in IDENTIFIERS else "text"
 
 
+# A taxon's author and year after its name (lane D of the waiting-fields program, 2026-11-24): a word of a
+# capital and a lower-case letter or more, perhaps after an opening parenthesis, then no digit and no
+# parenthesis but a four-digit year at the end, after a space or a comma, and at most a closing parenthesis
+# ("Hagen, 1861", "Hagen", "(Linnaeus, 1758)", "Say"). "sp. 30", "COXALIS", "L." and "de Geer" are none.
+_AUTHOR = re.compile(r"\(?[^\W\d_a-z][^\W\d_A-Z][^\d()]*?(?:[\s,]\s*\d{4})?\)?")
+# A species or subspecies epithet: lower-case letters, with a hyphen between two runs of them at most
+# ("strigosus", "novae-angliae").
+_EPITHET = re.compile(r"[^\W\d_A-Z]+(?:-[^\W\d_A-Z]+)*")
+
+
+def canonical_taxon(text: str) -> str | None:
+    """A taxon's name without its author and year, or None: the genus (the first word, letters only,
+    beginning with a capital) and the lower-case epithets after it (_EPITHET), where what follows them is
+    nothing or an author and year (_AUTHOR). "Bittacus strigosus Hagen, 1861" and "Bittacus strigosus
+    Hagen" give "Bittacus strigosus", "Panorpa" gives "Panorpa"; "Panorpa sp. 3", "Sp #1" and
+    "DELOSTICHUS COXALIS" give None. A lower-case particle of an author is read as an epithet ("Aus bus de
+    Geer" gives "Aus bus de"), so such a name agrees only with the same particle."""
+    words = text.split()
+    if not words or not re.fullmatch(r"[^\W\d_a-z][^\W\d_]*", words[0]):
+        return None
+    count = 1
+    while count < len(words) and _EPITHET.fullmatch(words[count]):
+        count += 1
+    rest = " ".join(words[count:])
+    if rest and not _AUTHOR.fullmatch(rest):
+        return None
+    return " ".join(words[:count])
+
+
 def same(key: str, first: str | None, second: str | None) -> bool:
-    """Whether two values of the field `key` agree under its kind's one rule (module docstring)."""
+    """Whether two values of the field `key` agree under its kind's one rule (module docstring). Two
+    taxa also agree where each gives a name without its author and year (canonical_taxon) and the two
+    names are equal by the text rule: "Bittacus strigosus Hagen, 1861" and "Bittacus strigosus Hagen"."""
     if not (first and first.strip() and second and second.strip()):
         return False
+    if key == "taxon":
+        names = canonical_taxon(first), canonical_taxon(second)
+        if None not in names and folded(names[0]) == folded(names[1]):
+            return True
     how = kind(key)
     if how == "date":
         a, b = _iso(first), _iso(second)
@@ -531,8 +569,23 @@ def derived(run, readings: Sequence[Reading] = ()) -> list[tuple[str, str]]:
         verdict = entry.get("verdict") if isinstance(entry, Mapping) and entry.get("compared") == shown(value) else None
         if verdict == AGREES_VERDICT:
             continue
+        if verdict == DIFFERS_VERDICT and key == "taxon" and _blank_on_unmatched(run, value, entry):
+            continue
         marks.append((key, DIFFERS if verdict == DIFFERS_VERDICT else NOT_CHECKED))
     return marks
+
+
+def _blank_on_unmatched(run, value: FieldValue, entry: Mapping) -> bool:
+    """Whether the recorded verdict on the taxon is a blank second opinion on owner decision B's
+    unmatched name (lane D of the waiting-fields program, 2026-11-24): the taxon is the name with no
+    genus as written (step.taxon_unmatched, the check of the stored value), and the second opinion gave
+    no value and did not say UNSURE (_blank_answer). The second opinion gives a morphocode with no genus
+    no scientific name, so its blank is no other reading of it; any value it gives, or an UNSURE, still
+    marks."""
+    from .step import taxon_unmatched
+
+    return (_blank_answer({"value": entry.get("value"), "evidence": entry.get("evidence")})
+        and taxon_unmatched(value, {item.id: item for item in run.evidence}, run.lookups, run=run))
 
 
 def _labels(run, key: str, readings: Sequence[Reading]) -> list[str]:
