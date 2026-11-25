@@ -143,7 +143,7 @@ def _location_ancestors(fields: Mapping[str, FieldValue],
 def _named_parents(candidate: SourceCandidate) -> bool:
     """Whether a candidate's parents say which place each is. A Getty TGN place read through
     the reconciliation service's data extension (georef_tgn.parse_extend) has its ancestors by
-    name only, to the continent: none is said to be its nation or its province, and derive reads
+    name only: none is said to be its nation or its province, and derive reads
     the last parent as the country and the one before as the province, so it reads none of them
     (Codex's review of #471, rounds 1 and 2). A TGN record of the SPARQL read has a record for
     every parent; any other source's parents are read as before."""

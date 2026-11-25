@@ -572,7 +572,8 @@ def _extension_place(record: str, row: dict) -> Place | None:
     read or has no name. The names its ancestors and place types have are all
     it knows of them (an empty id each). TGN's root is left out of the ancestors.
     A nation is its own country and has no parents, as `_place` reads one. Any other
-    place has all its ancestors as parents, nearest first, to the continent and no
+    place has the ancestors the service lists as parents, nearest first (the root
+    dropped; for most the last is a continent, for some there are none), and no
     country: the service types no ancestor, so which of them is the place's nation
     or its province is not said, and a reader that takes the last parent as the
     country (field_research.derive) must not read these (it reads none whose parents

@@ -62,7 +62,7 @@ async def test_refused_records_are_read_through_the_extension_and_settle_one_pla
     # Names, never ids, for its kinds and ancestors: the level types first, the ancestors
     # as Getty writes them, the nation with no record of its own.
     assert candidate.kind.split(", ")[:2] == ["inhabited places", "cities"]
-    # Its ancestors by name, nearest first, to the continent; no root; no record for any.
+    # Its ancestors by name, nearest first, the continent last; no root; no record for any.
     assert candidate.parents == (
         PlaceRef("Chimaltenango", None, None),
         PlaceRef("Guatemala", None, None),
@@ -221,7 +221,7 @@ async def test_the_identity_checks_abstain_on_a_place_read_through_the_extension
 )
 async def test_derive_reads_no_parent_of_a_place_read_through_the_extension(tmp_path, chain):
     """Review rounds 1 and 2 of #471: derive reads a candidate's last parent as its country and the
-    one before as its province. The extension names a place's ancestors to the continent and types
+    one before as its province. The extension names a place's ancestors and types
     none, so a settled city in Guatemala would have derived country "North and Central America" and
     province "Guatemala" (round 1), and a city on Vieques country "Puerto Rico" (round 2: a chain that
     ends in a continent does not say its last place below it is a nation), unflagged."""

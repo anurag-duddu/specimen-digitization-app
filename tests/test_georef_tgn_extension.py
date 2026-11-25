@@ -87,7 +87,7 @@ def test_the_recorded_answer_reads_into_the_places_sparql_reads():
 def test_a_place_below_a_nation_has_all_its_ancestors_as_names_and_no_country():
     mckinley = extension_places()["1105587"]
     assert mckinley.name == "McKinley, Mount"
-    # Nearest first, to the continent; the service types no ancestor, so none is said to be
+    # Nearest first, the continent last; the service types no ancestor, so none is said to be
     # the nation. No country; no root.
     assert [parent.name for parent in mckinley.parents] == [
         "Denali", "Alaska", "United States", "North and Central America"]
