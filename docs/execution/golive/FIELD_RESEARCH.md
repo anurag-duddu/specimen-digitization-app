@@ -250,16 +250,20 @@ handover runs field research instead of the six specialists:
    `historical_gazetteers._tgn_extension`). It gives names and no ids: a
    place's ancestors and place types are names (an empty id each), the
    level types come first among its kinds (`georef_tgn.LEVEL_TYPES`, the
-   ones `agreement.PLACE_LEVELS` reads), a nation is its own country, and any
+   ones `agreement.PLACE_LEVELS` reads), a place with the type "nations" is its own country, and any
    other place has the ancestors the service lists as parents, nearest
    first (the root dropped; for most the last is a continent, for some
    there are none), and no country: the service types no ancestor, so none
    is said to be the place's nation or province. Derive, which reads a
    candidate's last parent as its country and the one before as its
    province, therefore reads no parent of a TGN place whose parents name no
-   TGN record (`derive._named_parents`; a nation, whose own record is its
-   parent, is read as SPARQL's read of one is); the name checks a settled
-   place must pass (`agreement.lies_in`) are unchanged. No place has a point (the
+   TGN record (`derive._named_parents`; a place with the type "nations" is its own
+   country and its own record is its parent: SPARQL's read does so when
+   "nations" is the place's preferred type, which the service does not say,
+   and of the 755 places probed one differs, "United States of America", a
+   historical region also typed "nations", whose country SPARQL reads as
+   "United States"); the name checks a settled place must pass
+   (`agreement.lies_in`) are unchanged. No place has a point (the
    service writes some points wrong), and the name is the one the
    reconciliation search gave the place when that is one of its terms
    (`georef_tgn.with_hit_names`: "Philippines", where Getty's preferred

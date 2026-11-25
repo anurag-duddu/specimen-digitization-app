@@ -571,7 +571,10 @@ def _extension_place(record: str, row: dict) -> Place | None:
     """One place of a data extension's answer, or None when the row cannot be
     read or has no name. The names its ancestors and place types have are all
     it knows of them (an empty id each). TGN's root is left out of the ancestors.
-    A nation is its own country and has no parents, as `_place` reads one. Any other
+    A place with the place type "nations" is its own country and has no parents, as
+    `_place` reads a nation (it takes the preferred type, which the service does not
+    say: "United States of America", a historical region also typed "nations", is
+    read as a nation here and not by `_place`). Any other
     place has the ancestors the service lists as parents, nearest first (the root
     dropped; for most the last is a continent, for some there are none), and no
     country: the service types no ancestor, so which of them is the place's nation
