@@ -594,8 +594,9 @@ AGREED_BLANK_EXCEPT = frozenset({"verbatim_dts", "habitat"})
 AGREED_BLANK_WHEN_DATED = frozenset({"verbatim_dts"})
 # A time of day as a label writes it, on one line: the field prompt's "am", "pm", "sunrise" and
 # "daylight" and their kin in English, Spanish, French and German, as whole words in any case, accents
-# aside; or a clock time ("10:30", "22h", "10 hrs"), whose hour is no part of a date ("IX-14-46 H.
-# Hoogstraal" holds none). Deliberately wide: what it finds only keeps a flag.
+# aside; or a clock time ("10:30", "22h", "10 hrs") whose hour of one or two digits does not come right
+# after a digit, ".", "/" or "-" ("IX-14-46 H. Hoogstraal" holds none). Deliberately wide: what it
+# finds only keeps a flag.
 TIME_OF_DAY = re.compile(
     r"(?<![^\W\d_])(?:a\.?[^\S\n]?m|p\.?[^\S\n]?m|sunrise|sunset|daylight|dawn|dusk|night|nite|noon|midnight"
     r"|morning|evening|afternoon|nocturnal|noche|nocturno|madrugada|manana|tarde|nuit|matin|soir|nacht|abend"

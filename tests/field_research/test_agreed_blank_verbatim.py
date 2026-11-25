@@ -7,8 +7,8 @@ collecting date with no day. The field holds such a date, or a time of day (the 
 field 17). So rule B now lifts `mandatory_unresolved:verbatim_dts` and `label_unsettled:verbatim_dts` from a
 blank Verbatim D/T/S the current, obtained second opinion also leaves blank only where
 second_opinion._no_verbatim_date holds: no text of the run writes a time of day, and either both collecting
-dates are settled to the day, or both are blank and no text could be a date and nothing is unreadable. Every
-other case keeps the flag: a date with no day (the two misses' shape), a range ending on a month, a date in
+dates are settled to the day, or both are blank and no text could be a date and nothing is unreadable. Pinned
+here as keeping the flag: a date with no day (the two misses' shape), a range ending on a month, a date in
 doubt, a time of day. Habitat stays excepted (test_agreed_no_flag.py).
 
 The record is test_agreed_no_flag's (test_step's rig through the workflow with the second opinion mounted):

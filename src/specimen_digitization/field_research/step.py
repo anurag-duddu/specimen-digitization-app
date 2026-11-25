@@ -3528,13 +3528,14 @@ def _whole_label_read(run, readings: Sequence[Reading], *, by_kind: bool = False
 # whole, not the whole slide. A catalogue-number label and a determination
 # label carry none, so an unreadable word inside their own content does not
 # stop it (_whole_label_read's `by_kind`, _unreadable_inside_its_kind). On the
-# 19 cleared production records of 2026-11-24 an unreadable word kept 6 blank
-# Habitats flagged; one of them sat in a determiner's name.
+# 19 cleared production records of 2026-11-24, rule A found 6 blank Habitats'
+# labels not read whole: 5 for an unreadable part (one inside a determiner's
+# name, d10333ff) and 1 for a label one reader read.
 READ_WHOLE_BY_KIND = frozenset({"habitat"})
 # What a catalogue-number label writes: the Field Museum's insect heading
 # ("FMNH-INS", "FMNHINS", "FMNH"), the museum's name ("FIELD MUSEUM", and
 # "CNHM", Chicago Natural History Museum, its name from 1943 to 1966), in any
-# case; and its number, five to nine digits standing alone (checks.check_catalog_number).
+# case; and its number, five to nine digits with no digit beside them.
 CATALOGUE_HEADING = re.compile(r"(?<![^\W\d_])(?:FMNH\W*INS|FMNH|FIELD\s+MUSEUM|CNHM)(?![^\W\d_])", re.IGNORECASE)
 CATALOGUE_NUMBER = re.compile(r"(?<!\d)\d{5,9}(?!\d)")
 # The fields a label of each kind may be drawn on for, and no other.

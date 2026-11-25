@@ -3099,8 +3099,10 @@ elevation is derived first, and only for a field a person has not decided):
    (`step._unreadable_inside_its_kind`): no transcript of it is marked
    unreadable; it is a determination label (a line of one of its texts
    writes a determination marker, `date_lines._determination`) or a
-   catalogue-number label (a line writes "FMNH-INS", "FMNH", "FIELD MUSEUM"
-   or "CNHM", and none a determination marker); no line of it names a
+   catalogue-number label (a line writes the heading "FMNH", "FMNH-INS" or
+   "FMNHINS" or the museum's name "FIELD MUSEUM" or "CNHM", in any case and
+   with no letter right before or after it, and no line a determination
+   marker); no line of it names a
    collector (`date_lines._collector`); no field of the run is drawn on it
    (its source label, a reader's text of it, an evidence row of it) but
    the Taxon, Date Identified and the IRN for a determination label, or
