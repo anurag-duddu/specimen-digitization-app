@@ -573,8 +573,8 @@ def _extension_place(record: str, row: dict) -> Place | None:
     it knows of them (an empty id each). TGN's root is left out of the ancestors.
     A place with the place type "nations" is its own country and has no parents, as
     `_place` reads a nation (it takes the preferred type, which the service does not
-    say: "United States of America", a historical region also typed "nations", is
-    read as a nation here and not by `_place`). Any other
+    say: TGN 7024408, the Confederate States of America, a historical region also typed
+    "nations", is read as a nation here and not by `_place`). Any other
     place has the ancestors the service lists as parents, nearest first (the root
     dropped; for most the last is a continent, for some there are none), and no
     country: the service types no ancestor, so which of them is the place's nation

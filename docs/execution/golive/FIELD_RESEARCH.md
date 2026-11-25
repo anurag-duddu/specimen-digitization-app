@@ -260,9 +260,10 @@ handover runs field research instead of the six specialists:
    TGN record (`derive._named_parents`; a place with the type "nations" is its own
    country and its own record is its parent: SPARQL's read does so when
    "nations" is the place's preferred type, which the service does not say,
-   and of the 755 places probed one differs, "United States of America", a
-   historical region also typed "nations", whose country SPARQL reads as
-   "United States"); the name checks a settled place must pass
+   and of the 755 places probed one differs, TGN 7024408, the Confederate
+   States of America (a historical region also typed "nations", found by the
+   search "United States of America"), whose country SPARQL reads as "United
+   States"); the name checks a settled place must pass
    (`agreement.lies_in`) are unchanged. No place has a point (the
    service writes some points wrong), and the name is the one the
    reconciliation search gave the place when that is one of its terms
