@@ -40,8 +40,9 @@ shown value is "differs"; `marked:<field>:<label>:second_opinion_not_checked` wh
 verdict for its current shown value (not obtained, switched off, not run yet, or the value changed
 since it was judged); nothing when the recorded verdict for its current value is "agrees". Never
 the catalogue number (its own evidence is the slide's QR code) nor the determiner's IRN. Nothing, either,
-for owner decision B's unmatched taxon (a morphocode with no genus, as written) where the second opinion
-gave the taxon no value and no UNSURE (`_blank_on_unmatched`; lane D of the waiting-fields program).
+for owner decision B's unmatched taxon (a morphocode with no genus, as written) where decision B's genus
+scan finds no word on the labels and the second opinion gave the taxon no value and no UNSURE
+(`_blank_on_unmatched`; lane D of the waiting-fields program).
 
 A BLANK THE SECOND OPINION FILLS IS FLAGGED (`filled`, called by step.finalize_fields on every finalize,
 after the reasons are split and the holds derived; lane H3, the coordinator's ruling of 2026-11-21).
