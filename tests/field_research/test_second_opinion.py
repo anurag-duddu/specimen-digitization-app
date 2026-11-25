@@ -76,7 +76,10 @@ ROUTE = SECOND_OPINION_ROUTE
     ("precise_location", "Aisen-Chili", "Aisen Chili", True),
     ("habitat", "EX: Raccoon.", "Raccoon", False),
     ("habitat", "ex Peromyscus", "ex Peromyscus leucopus", False),
-    ("taxon", "Pulex irritans Linnaeus, 1758", "Pulex irritans", False),
+    # the taxon: the name without its author and year (lane D of the waiting-fields program, 2026-11-24;
+    # this row said False before)
+    ("taxon", "Pulex irritans Linnaeus, 1758", "Pulex irritans", True),
+    ("taxon", "Pulex irritans Linnaeus, 1758", "Pulex simulans", False),
     # Province/State and County: one trailing unit word set aside
     ("province_state", "Chimaltenango Department", "Chimaltenango", True),
     ("province_state", "Davao Prov.", "Davao", True),
