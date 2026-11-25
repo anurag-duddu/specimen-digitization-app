@@ -187,3 +187,21 @@ def _recorded_sparql(request):
             ]
         }
     }
+
+
+@pytest.mark.asyncio
+async def test_the_identity_checks_abstain_on_a_place_read_through_the_extension(tmp_path):
+    """Its ancestors have no ids, so ontology_checks.fits (a place's record inside the settled
+    place above it, by an identity both carry) abstains, as it does for NGA's places; the name
+    check a settled place must pass (agreement.lies_in) is unchanged."""
+    from specimen_digitization.field_research.agreement import PlaceField, lies_in
+    from specimen_digitization.field_research.ontology_checks import fits, tgn_nations
+
+    tools, _, _, _ = make(tmp_path, getty())
+    answer = await tools.lookup("tgn", READING, field_key="city")
+    [candidate] = answer.candidates
+    guatemala = PlaceField(("Guatemala",), "tgn:7005493", None)
+    assert fits(candidate, "country", guatemala, tgn_nations([answer], guatemala)) is None
+    assert fits(candidate, "province_state", PlaceField(("Chimaltenango",), "tgn:1000565", None)) is None
+    assert lies_in(candidate, "city", guatemala) and lies_in(candidate, "city", PlaceField(("Chimaltenango",)))
+    assert not lies_in(candidate, "city", PlaceField(("Honduras",)))
