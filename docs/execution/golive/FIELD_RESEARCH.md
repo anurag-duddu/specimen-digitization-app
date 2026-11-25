@@ -236,6 +236,51 @@ handover runs field research instead of the six specialists:
    stems." If the SPARQL endpoint fails too, the lookup is an outage as
    before.
 
+   **Getty TGN's records** are read through the SPARQL endpoint after a
+   reconciliation search that found places (their types, their ancestors, their
+   names). From Google Cloud the endpoint refuses that request: Cloud Logging
+   for 2026-11-16 to 2026-11-23 holds 142 unanswered Getty requests, every one
+   to vocab.getty.edu with HTTP 403 from an AWS load balancer's HTML page,
+   none to services.getty.edu, whose reconciliation service answered. When
+   the SPARQL endpoint answers the records request 401 or 403, the records
+   are read from the reconciliation service's data extension instead: one
+   form POSTed to the same, already approved URL (services.getty.edu
+   /vocab/reconcile/) that carries the TGN ids and four property names, never
+   a reading's words (`georef_tgn.extend_params`, `parse_extend`,
+   `historical_gazetteers._tgn_extension`). It gives names and no ids: a
+   place's ancestors and place types are names (an empty id each), the
+   level types come first among its kinds (`georef_tgn.LEVEL_TYPES`, the
+   ones `agreement.PLACE_LEVELS` reads), a place with the type "nations" is its own country, and any
+   other place has the ancestors the service lists as parents, nearest
+   first (the root dropped; for most the last is a continent, for some
+   there are none), and no country: the service types no ancestor, so none
+   is said to be the place's nation or province. Derive, which reads a
+   candidate's last parent as its country and the one before as its
+   province, therefore reads no parent of a TGN place whose parents name no
+   TGN record (`derive._named_parents`; a place with the type "nations" is its own
+   country and its own record is its parent: SPARQL's read does so when
+   "nations" is the place's preferred type, which the service does not say,
+   and of the 755 places probed one differs, TGN 7024408, the Confederate
+   States of America (a historical region also typed "nations", found by the
+   search "United States of America"), whose country SPARQL reads as "United
+   States"); the name checks a settled place must pass
+   (`agreement.lies_in`) are unchanged. No place has a point (the
+   service writes some points wrong), and the name is the one the
+   reconciliation search gave the place when that is one of its terms
+   (`georef_tgn.with_hit_names`: "Philippines", where Getty's preferred
+   term is "Pilipinas"). The chain keeps its cap of three calls
+   (`historical_gazetteers.MAX_CALLS`: the search, the refused SPARQL
+   request, the extension); each call is tried again as any request is
+   (`sources.ATTEMPTS`, three attempts), so a failing extension can send up
+   to three requests of its own. The evidence record lists the extension's
+   response with its form, and the note starts
+   "Getty TGN's SPARQL endpoint refused the request (HTTP 403); the places'
+   details were read from its reconciliation service instead, which names
+   their place types and ancestors but gives no ids for them." If the
+   extension gets no answer or refuses too, the lookup is the outage the
+   SPARQL refusal made it. The research harness's broker gives no post, so
+   its TGN lookups end as before.
+
    That index matches a name's words as written (the review of #303, note
    1; probed 2026-10-11): "Solola" finds a Somali Solola and a Solola Valley
    in North Carolina, not the Guatemalan city and department whose names
@@ -2538,8 +2583,26 @@ record clears or holds differently.
   (`not_present`, nothing shown) where the second opinion's own answer for
   the field is blank too: the stored `answer` keeps every one of the 20
   fields as `{value, evidence}`, and a blank is a null value whose text does
-  not start with UNSURE (`read_answer`'s rule). Verbatim D/T/S and Habitat
-  are excepted and keep their codes whatever the second opinion says.
+  not start with UNSURE (`read_answer`'s rule). Habitat is excepted and
+  keeps its codes whatever the second opinion says. Verbatim D/T/S is
+  excepted too (both missed values of lane H1's table, 105526336 "1916" and
+  105526564 "III.87", were dates with no day) except where the record
+  shows nothing on the labels needs it (`second_opinion._no_verbatim_date`,
+  lane B of 2026-11-24): Date Visited From and Date Visited To are both
+  settled to the day (`ontology_checks.date_parts` gives three parts); no
+  text of the run, its lines joined by a space, writes a time of day or a
+  season (`second_opinion.TIME_OR_SEASON`: "am", "pm", "sunrise",
+  "daylight", "Summer" and their kin in English, Spanish, French and
+  German, or a clock time; a capital "H" after a number of one or two
+  digits that ends a date and before a period and a capital is a name's
+  initial, as in "IX-14-46 H. Hoogstraal", while a dotted hour and minutes
+  with no digit or period right before them is a time, as in "15.VI.1950 -
+  22.30 H. UV trap"); and no part of a label either date is drawn on
+  is unreadable (a reader's unreadable span, a transcript marked
+  unreadable, a placeholder; every label when the dates name none). The
+  field holds a collecting date or time only where it is not exact (PRD.md,
+  "Date and time semantics"); a date settled as a month or a year, a range
+  ending on a month, a date in doubt, one date or both blank keep the codes.
   `research_incomplete:<field>`, `taxonomy_unresolved` and every mark stay,
   so a blank field one of them names stays flagged: a blank Taxon the second
   opinion also leaves blank loses these two codes and keeps
@@ -3080,6 +3143,41 @@ elevation is derived first, and only for a field a person has not decided):
    Four or more periods outside brackets are a printed form's dot leader
    ("Det. ..........", "Loc. ......"), never a placeholder (N3 of #289's
    sixth review).
+   For the Habitat alone (`step.READ_WHOLE_BY_KIND`; lane B of the
+   waiting-fields program, the coordinator's brief of 2026-11-24) this is
+   asked label by label, and a label that holds no habitat is set aside
+   when its every unreadable part stands inside its own content
+   (`step._unreadable_inside_its_kind`): no transcript of it is marked
+   unreadable; it is a determination label (a line of one of its texts
+   writes a determination marker, `date_lines._determination`) or a
+   catalogue-number label (a line writes the heading "FMNH", "FMNH-INS" or
+   "FMNHINS" or the museum's name "FIELD MUSEUM" or "CNHM", in any case and
+   with no letter or digit right before or after it, and no line a
+   determination marker); no line of it names a
+   collector (`date_lines._collector`); no field of the run is drawn on it
+   (its source label, a reading of it as the field's source, verbatim or
+   settling reading, an evidence row of it) but the Taxon, Date Identified
+   and the IRN for a determination label, or the catalogue number for a
+   catalogue-number label; and every placeholder and every reader's listed
+   unreadable span stands, in the text that has it, on a line that writes
+   only the kind's content (`step._content_line`): a determiner's line
+   writes a determination marker, no word of `step.HABITAT_MARKERS` ("ex",
+   "on", "host", "substrate", "plant", "leaf" and their kin), and no
+   lower-case word but determination and joining words, "by" and a
+   surname's particle; a catalogue line writes the heading, the museum's
+   name or a number of five to nine digits and no word but those of the
+   heading and the name (`step.CATALOGUE_WORDS`); and the part stands
+   inside the determiner's name (`step._after_a_name`): after a
+   determination marker with only initials between them ("det. R. E.
+   [unreadable]"), or before one with only a space or a comma between them
+   and only initials before the part ("J. [unreadable] det. 2021"), never
+   "Substrate: Q. [unreadable]; det. R. E. Lewis"; on a catalogue line,
+   right after the heading, the name or a digit of the number. Lines are
+   those `str.splitlines` gives. A span the reader's text does not hold, a span
+   that crosses a line break, a label of any other kind, and an unreadable
+   part on another line still stop the mark. Every other field keeps the whole-slide rule, and its code
+   stays `label_not_read_whole`. Production record d10333ff's
+   "J. [unreadable] det. 2021" is the case.
 5. The organiser found no text for it: no candidate, no literal, no
    reader's verbatim. This is judged after every value of the attempt is
    made, so against what settled (`step._organiser_texts`, each text with
@@ -3704,7 +3802,7 @@ or fallback, a spent per-field or per-specimen meter among them, is that field's
 | `unsupported_parsed`, `unsupported_normalized`, `unsupported_authority_id`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing` on `fmnh_ins_number` | holds |
 | `unresolved_transcription:<label>`, `independent_observations_missing:<label>`, a label's language rule `<reason>:<label>` | holds when the catalogue number is drawn from the label and the slide's QR code does not confirm it; otherwise (a label only optional fields are drawn from, a label no field is drawn from, a label whose first pass was given up) an optional field's doubt |
 | `raw_provenance_missing:<label>` | holds when the catalogue number is drawn from the label (the code does not stand in for a missing raw reading); otherwise an optional field's doubt |
-| the field codes above on an optional field (`mandatory_unresolved`, `unsupported_*`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing`, `marked`) | an optional field's doubt. Since work package F2, `mandatory_unresolved:<field>` is not given for a blank (`not_present`) optional field, Verbatim D/T/S and Habitat excepted, that the obtained, current second opinion also leaves blank ("The second opinion", rule B); on a run whose pinned profile makes the field mandatory it is given and holds as before |
+| the field codes above on an optional field (`mandatory_unresolved`, `unsupported_*`, `evidence_missing`, `evidence_does_not_support_value`, `raw_reading_grounding_unproved`, `pixel_lineage_missing`, `marked`) | an optional field's doubt. Since work package F2, `mandatory_unresolved:<field>` is not given for a blank (`not_present`) optional field, Habitat excepted and Verbatim D/T/S excepted unless nothing on the labels needs it (lane B, 2026-11-24), that the obtained, current second opinion also leaves blank ("The second opinion", rule B); on a run whose pinned profile makes the field mandatory it is given and holds as before |
 | `research_incomplete:<optional field>` (new: a failure, a limit, a spent per-field or per-specimen meter, a request too large, an outage or deadline on the last attempt, or the expert's fallback) | an optional field's doubt; the field keeps its own reason (`FIELD_REASONS`) |
 | `taxonomy_unresolved`, `identified_by_irn_identity_unproved` | an optional field's doubt |
 | `elevation_invalid`, `elevation_range`, `elevation_units_conflict`, `date_precision_requires_review`, `date_order` | an optional field's doubt |

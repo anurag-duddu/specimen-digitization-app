@@ -39,7 +39,10 @@ rule marks: `marked:<field>:<label>:second_opinion_differs` when the recorded ve
 shown value is "differs"; `marked:<field>:<label>:second_opinion_not_checked` when there is no recorded
 verdict for its current shown value (not obtained, switched off, not run yet, or the value changed
 since it was judged); nothing when the recorded verdict for its current value is "agrees". Never
-the catalogue number (its own evidence is the slide's QR code) nor the determiner's IRN.
+the catalogue number (its own evidence is the slide's QR code) nor the determiner's IRN. Nothing, either,
+for owner decision B's unmatched taxon (a morphocode with no genus, as written) where decision B's genus
+scan finds no word on the labels and the second opinion gave the taxon no value and no UNSURE
+(`_blank_on_unmatched`; lane D of the waiting-fields program).
 
 A BLANK THE SECOND OPINION FILLS IS FLAGGED (`filled`, called by step.finalize_fields on every finalize,
 after the reasons are split and the holds derived; lane H3, the coordinator's ruling of 2026-11-21).
@@ -83,7 +86,10 @@ approved, for a judged field no person holds authority over:
 - `mandatory_unresolved:<field>` and `label_unsettled:<field>` are not open reasons for a field that is
   blank (`not_present`, nothing shown) where the second opinion's own answer for it is blank too (a
   null value that does not say UNSURE) and that answer is current (`answer_current`), Verbatim D/T/S
-  and Habitat excepted (AGREED_BLANK_EXCEPT). A one-reader label does not stop this rule.
+  and Habitat excepted (AGREED_BLANK_EXCEPT); Verbatim D/T/S is not excepted where nothing on the
+  labels needs it (AGREED_BLANK_WHEN_DATED, `_no_verbatim_date`: both collecting dates settled to the day,
+  no text writes a time of day or a season, and no part of a label the dates are drawn on unreadable). A
+  one-reader label does not stop this rule.
 Every other code stays, every mark among them, and no field, finding or evidence row is touched.
 
 THE COMPARISON (`same`), one strict rule per kind of field, on the value the app shows (normalized,
@@ -97,7 +103,9 @@ else parsed, else literal) against the second opinion's value:
   folded, and every character that is not a letter or a digit is dropped, except a "." or ","
   between two digits and a "-" or "+" directly before a digit, which are kept (so "1.5 km" is not
   "15 km" and "-80" is not "80"). Province/State and County also set aside one trailing unit word
-  on either side (UNIT_WORDS), as the benchmark's comparison does.
+  on either side (UNIT_WORDS), as the benchmark's comparison does. The taxon also agrees where both
+  values give the same name with the same author once a year is set aside, or an author with a year
+  on one side only after a name with an epithet (`_same_taxon`, `canonical_taxon`).
 """
 
 from __future__ import annotations
@@ -385,10 +393,97 @@ def kind(key: str) -> str:
     return "date" if key in DATES else "number" if key in NUMBERS else "identifier" if key in IDENTIFIERS else "text"
 
 
+# A taxon's author and year (lane D of the waiting-fields program, 2026-11-24; round 1 of #472's review).
+# An author's words: each a name (a capital, then letters, at least one of them lower-case where there are
+# two or more; perhaps a "." or a "," after it: "Hagen", "L.", "Roths.,", "LeConte", "Ruiz-Pavon"), a
+# particle (_PARTICLES) or a joiner (_JOINERS); the first a name. A year: four digits at the end.
+_PARTICLES = frozenset({"de", "da", "del", "della", "der", "den", "di", "du", "la", "le", "van", "von", "y"})
+_JOINERS = frozenset({"&", "and", "et", "ex", "al.", "in"})
+_YEAR = re.compile(r"(.*?)[\s,]*(\d{4})")
+
+
+def _letters(text: str) -> bool:
+    return bool(text) and all(ch.isalpha() for ch in text)
+
+
+def _name_word(word: str) -> bool:
+    """A capitalised name, perhaps hyphenated and perhaps ending in "." or ",", never in capitals alone
+    beyond its first letter ("Hagen", "L.", "Roths.,", "LeConte"; not "COXALIS", "sp.", "x")."""
+    word = word.rstrip(",").removesuffix(".")
+    return bool(word) and all(_letters(part) and part[0].isupper() and (len(part) == 1 or not part.isupper())
+        for part in word.split("-"))
+
+
+def _epithet(word: str) -> bool:
+    """A species or subspecies epithet: lower-case letters, in one run or in runs joined by hyphens
+    ("strigosus", "novae-angliae")."""
+    return all(_letters(part) and part.islower() for part in word.split("-"))
+
+
+def _author(text: str) -> str | None:
+    """The author of `text`, an author and year after a taxon's name, without its year, parentheses and
+    punctuation (folded), or None where `text` is no author and year: "Hagen, 1861" and "Hagen" give
+    "hagen", "(Linnaeus, 1758)" gives "linnaeus", "J. & R., 1922" gives "jr"; "sp. 3", "x Aus cus",
+    "COXALIS" and "Smith x Aus cus Jones" give None."""
+    if text.startswith("(") and text.endswith(")"):
+        text = text[1:-1]
+    if "(" in text or ")" in text:
+        return None
+    dated = _YEAR.fullmatch(text)
+    words = (dated.group(1) if dated else text).split()
+    if not words or not _name_word(words[0]) or not all(
+            _name_word(word) or word.rstrip(",") in _PARTICLES or word.rstrip(",") in _JOINERS for word in words):
+        return None
+    return folded(" ".join(word for word in words if word.rstrip(",") not in _JOINERS))
+
+
+def canonical_taxon(text: str) -> tuple[str, str, bool] | None:
+    """A taxon's name, its author without the year (_author, "" for none) and whether a four-digit year
+    ends what follows the name, or None. The name is the
+    genus (the first word, letters only, beginning with a capital) and the lower-case epithets after it
+    (_epithet), where what follows them is nothing or an author and year (_author).
+    "Bittacus strigosus Hagen, 1861" gives ("Bittacus strigosus", "hagen", True), "Panorpa" gives
+    ("Panorpa", "", False), "Aus (Bus)" gives ("Aus", "bus", False): a bracketed word is read as an author;
+    "Panorpa sp. 3", "Sp #1", "DELOSTICHUS COXALIS (ROTHS., 1909)" and "Aus bus Smith x Aus cus Jones"
+    give None. A lower-case particle of an author is read as an epithet ("Aus bus de
+    Geer" gives "Aus bus de"), so such a name agrees only with the same particle."""
+    words = text.split()
+    if not words or not (_letters(words[0]) and words[0][0].isupper()):
+        return None
+    count = 1
+    while count < len(words) and _epithet(words[count]):
+        count += 1
+    rest = " ".join(words[count:])
+    author = _author(rest) if rest else ""
+    if author is None:
+        return None
+    return " ".join(words[:count]), author, bool(rest and _YEAR.fullmatch(rest.removesuffix(")")))
+
+
+def _same_taxon(first: str, second: str) -> bool:
+    """Whether two taxa give the same name (canonical_taxon, folded) and either the same author once a
+    year is set aside ("Bittacus strigosus Hagen, 1861" and "Bittacus strigosus Hagen"), or an author
+    with a year on one side only where the name holds an epithet ("Pulex irritans Linnaeus, 1758" and
+    "Pulex irritans"). By this rule two different authors do not agree ("Aus bus Smith", "Aus bus
+    Jones"), nor a capitalised word with no year after a name and the name alone ("Aus bus Cus" and "Aus
+    bus", "Pulex Irritans" and "Pulex"), where that word may be an epithet, not an author; same() then
+    applies the text rule, as for any other field."""
+    a, b = canonical_taxon(first), canonical_taxon(second)
+    if a is None or b is None or folded(a[0]) != folded(b[0]):
+        return False
+    if a[1] == b[1]:
+        return True
+    lone = a if b[1] == "" else b if a[1] == "" else None
+    return lone is not None and lone[2] and len(a[0].split()) > 1
+
+
 def same(key: str, first: str | None, second: str | None) -> bool:
-    """Whether two values of the field `key` agree under its kind's one rule (module docstring)."""
+    """Whether two values of the field `key` agree under its kind's one rule (module docstring). Two
+    taxa also agree under _same_taxon: "Bittacus strigosus Hagen, 1861" and "Bittacus strigosus Hagen"."""
     if not (first and first.strip() and second and second.strip()):
         return False
+    if key == "taxon" and _same_taxon(first, second):
+        return True
     how = kind(key)
     if how == "date":
         a, b = _iso(first), _iso(second)
@@ -531,8 +626,25 @@ def derived(run, readings: Sequence[Reading] = ()) -> list[tuple[str, str]]:
         verdict = entry.get("verdict") if isinstance(entry, Mapping) and entry.get("compared") == shown(value) else None
         if verdict == AGREES_VERDICT:
             continue
+        if verdict == DIFFERS_VERDICT and key == "taxon" and _blank_on_unmatched(run, value, entry):
+            continue
         marks.append((key, DIFFERS if verdict == DIFFERS_VERDICT else NOT_CHECKED))
     return marks
+
+
+def _blank_on_unmatched(run, value: FieldValue, entry: Mapping) -> bool:
+    """Whether the recorded verdict on the taxon is a blank second opinion on owner decision B's
+    unmatched name (lane D of the waiting-fields program, 2026-11-24): the taxon is the name with no
+    genus as written (step.taxon_unmatched, the check of the stored value), no label of the specimen
+    writes a word that may be a genus (step._genus_on_a_label on the run's readings, the scan decision B
+    itself makes; round 1 of #472's review), and the second opinion gave no value and did not say
+    UNSURE (_blank_answer). The second opinion gives a morphocode with no genus no scientific name, so
+    its blank is no other reading of it; any value it gives, or an UNSURE, still marks."""
+    from .step import _genus_on_a_label, run_readings, taxon_unmatched
+
+    return (_blank_answer({"value": entry.get("value"), "evidence": entry.get("evidence")})
+        and taxon_unmatched(value, {item.id: item for item in run.evidence}, run.lookups, run=run)
+        and _genus_on_a_label(run, run_readings(run)) is None)
 
 
 def _labels(run, key: str, readings: Sequence[Reading]) -> list[str]:
@@ -580,6 +692,40 @@ READERS_MUST_WRITE = frozenset({"habitat"})
 # has a host; live row 105526418, "CALLOSPERMOPHILUS", blank, agreed blank, and missed), so their
 # agreement on a blank Habitat proves nothing until hosts are filled.
 AGREED_BLANK_EXCEPT = frozenset({"verbatim_dts", "habitat"})
+# Verbatim D/T/S, narrowed (lane B of the waiting-fields program, the coordinator's brief of 2026-11-24
+# under the owner's ruling of 2026-11-18): the field holds the collecting date only where the label
+# writes it with no exact day, or a season or a time of day (the second opinion's instruction, field 17;
+# the field's prompt). Both missed values that put it on the list above wrote a date with no day (lane
+# H1: 105526336 "1916", 105526564 "III.87"). So an agreed blank Verbatim D/T/S is rule B's after all
+# where the record shows nothing on the labels needs it (_no_verbatim_date): both collecting dates are
+# settled to the day, no text writes a time of day or a season, and no part of a label the dates are
+# drawn on is unreadable.
+AGREED_BLANK_WHEN_DATED = frozenset({"verbatim_dts"})
+# A time of day or a season as a label writes it: the field prompt's "am", "pm", "sunrise", "daylight"
+# and "Summer" and their kin in English, Spanish, French and German, as whole words in any case, accents
+# aside; or a clock time ("10:30", "22h", "10  hrs", "22.30 h", "22.30 h. UV trap", "9-11 h", "10 o'clock")
+# whose hour of one or two digits has no digit right before it. A dotted clock ("22.30 h", "15.VI.1950 -
+# 22.30 H. UV trap") needs only no digit and no period right before its hour, so "14.46" of "IX.14.46" is
+# none. One exception for an hour with no minutes: where a number of one or two digits ends a date (a
+# ".", "/" or "-" right before it, or before up to two spaces before it), a capital "H" after it followed
+# by a period and a capital is a name's initial, no hour ("IX-14-46 H. Hoogstraal", "1X - 14 - 46 H.
+# Hoogstraal", "IV-23-48 H.R. Goodrich"); "22 h" before "Light trap" and "15.VI.1950 - 22 h. Light trap"
+# are hours. Deliberately wide ("Spring Creek" and "S. Am." match): what it finds only keeps a flag. Each text is searched with its lines (str.splitlines) joined by one space,
+# so a time broken over two lines ("10" above "hrs") counts.
+_UNITS = r"hr|hrs|hours?|horas?|heures?|uhr|o\W?\s*clock"
+_AFTER_A_DATE = r"(?:(?<=[./-])|(?<=[./-]\s)|(?<=[./-]\s\s))"
+_NOT_AFTER_A_DATE = r"(?<![./-])(?<![./-]\s)(?<![./-]\s\s)"
+TIME_OR_SEASON = re.compile(
+    r"(?<![^\W\d_])(?:a\.?\s*m|p\.?\s*m|sunrise|sunset|daylight|dawn|dusk|night|nite|noon|midnight|morning"
+    r"|evening|afternoon|nocturnal|diurnal|noche|nocturno|madrugada|manana|tarde|mediodia|medianoche|amanecer"
+    r"|atardecer|anochecer|alba|nuit|matin|soir|midi|minuit|aube|crepuscule|nacht|abend|morgen|mittag"
+    r"|mitternacht|summer|winter|autumn|spring|fall|verano|invierno|otono|primavera|ete|hiver|automne"
+    r"|printemps|sommer|herbst|fruhling|fruehling)\.?(?![^\W\d_])"
+    r"|(?<!\d)\d{1,2}\s*[:h]\s*\d{2}(?!\d)"
+    r"|(?<![\d.])\d{1,2}\.\d{2}\s*(?:h|" + _UNITS + r")(?![^\W\d_])"
+    r"|(?<!\d)" + _NOT_AFTER_A_DATE + r"\d{1,2}\s*(?:h|" + _UNITS + r")(?![^\W\d_])"
+    r"|(?<!\d)" + _AFTER_A_DATE + r"\d{1,2}\s*(?:(?-i:h|H(?!\.\s*[A-Z]))|" + _UNITS + r")(?![^\W\d_])",
+    re.IGNORECASE)
 MANDATORY_UNRESOLVED = "mandatory_unresolved"
 # The coordinator's rulings of 2026-11-20 on the live confirmation rows: an agreed VALUE needs two
 # independent readings behind it. A label one reader read (step.scientific_reasons' code) gave the
@@ -663,6 +809,65 @@ def _a_reader_differs(run, key: str, readings: Sequence[Reading]) -> bool:
     return any(not reader_writes(reading.text, literal) for reading in readings if reading.region_id in labels)
 
 
+def _no_verbatim_date(run, readings: Sequence[Reading]) -> bool:
+    """Whether the record shows nothing on the labels needs a Verbatim D/T/S (AGREED_BLANK_WHEN_DATED):
+    - Date Visited From and Date Visited To are both settled (ontology_checks.settled: supported, in a
+      checked layer) as dates to the day (ontology_checks.date_parts gives three parts: "1948-04-23",
+      never "1946-11" or "1916");
+    - no text of the run (`readings`, step.run_readings', each reader's text and each transcript's),
+      its lines joined by a space, writes a time of day or a season (TIME_OR_SEASON, accents aside); and
+    - no part of a label either date is drawn on is unreadable (_date_labels_unreadable), since an
+      unreadable word beside the date may be a time.
+    False otherwise: a date settled with no day, a date in doubt or blank (a label with no date at all
+    keeps the flag too)."""
+    from .ontology_checks import date_parts, settled
+
+    start, end = run.fields.get("date_visited_from"), run.fields.get("date_visited_to")
+    if not (settled(start) and settled(end)) or len(date_parts(start) or ()) != 3 or len(date_parts(end) or ()) != 3:
+        return False
+    texts = [*(reading.text for reading in readings),
+        *(observation.literal_text for observation in getattr(run, "observations", None) or ()),
+        *(transcript.text or "" for transcript in getattr(run, "transcripts", None) or ())]
+    if any(TIME_OR_SEASON.search(" ".join(_unaccented(text).splitlines())) for text in texts):
+        return False
+    return not _date_labels_unreadable(run, readings, (start, end))
+
+
+def _date_labels_unreadable(run, readings: Sequence[Reading], values) -> bool:
+    """Whether part of a label the `values` are drawn on is unreadable: a reader's unreadable span, a
+    transcript marked unreadable, or a placeholder (checks.shows_placeholder) in a reading's, a
+    reader's or a transcript's text of it. A value is drawn on a label it names as its source label,
+    whose reading it holds as its source, verbatim or settling reading, or whose evidence row it cites;
+    where the values name no label, every label is asked."""
+    from .checks import shows_placeholder
+
+    observations = list(getattr(run, "observations", None) or ())
+    transcripts = list(getattr(run, "transcripts", None) or ())
+    region_of = {observation.id: observation.region_id for observation in observations}
+    rows = {row.id: row for row in getattr(run, "evidence", None) or ()}
+    labels = set()
+    for value in values:
+        labels.add(value.source_region_id)
+        labels.update(region_of.get(i) for i in (value.source_observation_id, *value.verbatim_by_observation,
+            *value.settled_observation_ids))
+        labels.update(rows[i].region_id for i in value.evidence_ids if i in rows)
+    labels.discard(None)
+
+    def asked(region_id) -> bool:
+        return not labels or region_id in labels
+
+    return (any(o.unreadable_spans for o in observations if asked(o.region_id))
+        or any(t.value_state == ValueState.UNREADABLE for t in transcripts if asked(t.region_id))
+        or any(shows_placeholder(text) for text in (*(o.literal_text for o in observations if asked(o.region_id)),
+            *(r.text for r in readings if asked(r.region_id)),
+            *(t.text or "" for t in transcripts if asked(t.region_id)))))
+
+
+def _unaccented(text: str) -> str:
+    """The text with its accents removed (NFKD, combining marks dropped): "mañana" reads "manana"."""
+    return "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
+
+
 def agreed(run, readings: Sequence[Reading] = (), *, mandatory=(),
         reasons: Sequence[str] = ()) -> tuple[frozenset[str], frozenset[str]]:
     """(the fields settled with a value the second opinion agrees with, the blank fields it leaves blank
@@ -671,7 +876,9 @@ def agreed(run, readings: Sequence[Reading] = (), *, mandatory=(),
     obtained and nothing the step answers for is unjudged (`due`). No value when one of the run's
     `reasons` (this finalize's, holding and open) says one reader read a label (`one_reader`); the
     blanks do not depend on it. No Habitat value (READERS_MUST_WRITE) where a reading of a label it
-    rests on does not hold the value's text anywhere in it (_a_reader_differs). Never a field the run's profile makes mandatory (`mandatory`), a field
+    rests on does not hold the value's text anywhere in it (_a_reader_differs). No blank Habitat, and
+    no blank Verbatim D/T/S unless nothing on the labels needs one (AGREED_BLANK_EXCEPT,
+    _no_verbatim_date). Never a field the run's profile makes mandatory (`mandatory`), a field
     the step does not judge (the catalogue number, the IRN), or one a person holds authority over
     (`authority`)."""
     from .step import units_path
@@ -696,8 +903,9 @@ def agreed(run, readings: Sequence[Reading] = (), *, mandatory=(),
                     and entry.get("compared") == shown(value) and entry.get("verdict") == AGREES_VERDICT
                     and not (key in READERS_MUST_WRITE and _a_reader_differs(run, key, readings))):
                 values.add(key)
-        elif (current and key not in AGREED_BLANK_EXCEPT and value.state == ValueState.NOT_PRESENT
-                and shown(value) is None and _blank_answer(answer.get(key))):
+        elif (current and value.state == ValueState.NOT_PRESENT and shown(value) is None
+                and _blank_answer(answer.get(key)) and (key not in AGREED_BLANK_EXCEPT
+                    or key in AGREED_BLANK_WHEN_DATED and _no_verbatim_date(run, readings))):
             blanks.add(key)
     return frozenset(values), frozenset(blanks)
 
