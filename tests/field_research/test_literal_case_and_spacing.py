@@ -34,6 +34,7 @@ from specimen_digitization.application.domain import Evidence, FieldValue, Looku
 from specimen_digitization.application.integrity import verify_evidence
 from specimen_digitization.field_research import budget, experts
 from specimen_digitization.field_research.contracts import (
+    Candidate,
     FieldAnswer,
     FieldOutcome,
     FieldTask,
@@ -118,6 +119,26 @@ def test_another_text_is_still_refused(first, second, given):
     assert refused_by(made, resolved(given, "2A", "2B")) == "literal_not_in_reading"
 
 
+def test_a_text_inside_a_word_is_never_found_even_where_an_organiser_candidate_is_that_piece():
+    """Round 1 of #474's review, finding 2: both readers write "leg. STARK" and the organiser's candidate is "STAR",
+    quoting it. The answer "Star" is not read as the candidate: "STAR" cuts the word "STARK"."""
+    label = "Synthetic Museum\nleg. STARK\n10-IV-1975"
+    readings = two_readers_of(label, label)
+    candidates = tuple(Candidate(name, "leg. STARK", "STAR", f"row-{name}") for name in ("2A", "2B"))
+    made = experts._Expert(FieldTask("collectors", False, FieldValue(), candidates, ()), readings,
+        SimpleNamespace(sources=()), None)
+    assert experts.written_as(readings, "Star") is None
+    assert refused_by(made, resolved("Star", "2A", "2B", value="Star")) == "literal_not_in_reading"
+    assert experts.written_as(readings, "stark") == "STARK"
+
+
+def test_two_texts_found_at_overlapping_places_are_two_texts():
+    """Round 1 of #474's review, finding 3: "a a" in "A A a" is "A A" and, overlapping it, "A a"."""
+    readings = two_readers_of("Synthetic A A a", "Synthetic A A a")
+    assert experts.written_as(readings, "a a") is None
+    assert refused_by(expert("collection_method", readings), resolved("a a", "2A", "2B")) == "literal_not_in_reading"
+
+
 def test_a_value_a_source_names_is_kept_and_only_a_value_that_was_the_literal_follows_it():
     """The value follows the literal only where it was the literal and names no source candidate the expert
     received: a source's spelling is the source's (here GBIF's candidate "Aus bus", the value the decided
@@ -146,19 +167,37 @@ def test_a_one_line_name_in_capitals_resolves_on_gbifs_answer_for_the_name_given
     assert (checked.literal, checked.value, checked.authority_id) == ("AUS BUS", "Aus bus Linnaeus, 1758", "gbif:7")
 
 
+SMITHI_CUS = gbif("Smithi cus", "Smithi cus Synther, 1901", "gbif:9")
+
+
 @pytest.mark.parametrize(("label", "given", "found"), [
     # The genus alone of a name in capitals, on its line or over two: never the whole name.
     (ONE_LINE, "Aus", AUS),
     ("SYNTHETIC MUSEUM\nAUS\nBUS\nL., 1758", "Aus", AUS),
     # A species where the label writes a subspecies after it.
     ("SYNTHETIC MUSEUM\nAUS BUS CUS\n(L., 1758)", "Aus bus", AUS_BUS),
+    # Round 1 of #474's review, finding 1: the species and subspecies of "AUS" given as a genus and species, a word
+    # that may be the genus before them on their line or alone on the line above.
+    ("SYNTHETIC MUSEUM\nAUS Smithi cus", "smithi cus", SMITHI_CUS),
+    ("SYNTHETIC MUSEUM\nAUS SMITHI CUS", "Smithi cus", SMITHI_CUS),
+    ("SYNTHETIC MUSEUM\nAUS\nSMITHI CUS", "Smithi cus", SMITHI_CUS),
+    ("SYNTHETIC MUSEUM\nAUS\n\u2640\nSMITHI CUS", "Smithi cus", SMITHI_CUS),
 ])
 def test_a_piece_of_a_name_in_capitals_is_still_refused(label, given, found):
+    """Each passes GBIF's whole-name check on the name given ("Smithi cus" parses as a genus and species, and so
+    does the readers' "Smithi cus"); the check that the spelling names the whole name there refuses it."""
     made = expert("taxon", two_readers_of(label, label), found)
     decided = found.candidates[0]
     assert refused_by(made, resolved(given, "2A", "2B", value=decided.name, authority_id=decided.authority_id,
-        source_evidence_ids=[found.evidence.id])) == "taxon_query_not_whole_name"
-    assert not experts.whole_as_given(made.readings, given.upper(), given)
+        source_evidence_ids=[found.evidence.id])) == "part_of_name"
+    literal = experts.written_as(made.readings, given)
+    assert literal is not None and literal != given
+    assert not experts.whole_as_given(made.readings, literal, given)
+
+
+def test_a_word_alone_on_the_line_above_that_is_no_genus_or_a_heading_of_two_words_lets_it_stand():
+    for label in ("SYNTHETIC MUSEUM\nAUS BUS", "14727 \u2640\nAUS BUS", "AUS BUS"):
+        assert experts.whole_as_given(two_readers_of(label, label), "AUS BUS", "Aus bus"), label
 
 
 def test_the_name_given_exactly_keeps_origin_mains_check():
