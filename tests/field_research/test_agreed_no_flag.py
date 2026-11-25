@@ -9,7 +9,10 @@ step.finalize_fields), and they only shorten the optional fields' doubts (run.op
   agrees with, the three date fields excepted (and, since lane H4, for Habitat only where every reading of the
   labels the value rests on holds the value's text: test_agreed_habitat_readers.py);
 - rule B: `mandatory_unresolved:<field>` and `label_unsettled:<field>` are not open reasons for a blank field
-  the current, obtained second opinion also leaves blank, Verbatim D/T/S and Habitat excepted.
+  the current, obtained second opinion also leaves blank, Habitat excepted, and Verbatim D/T/S excepted where
+  something on the labels may need it (lane B of 2026-11-24: test_agreed_blank_verbatim.py). The rig's label
+  writes its collecting date to the day ("2020-06-01") and no time of day, so here a blank Verbatim D/T/S is
+  rule B's like any other field.
 
 Rule A is skipped on a run any label of which one reader read (`independent_observations_missing:<label>`); rule
 B is not (the coordinator's rulings of 2026-11-20 on the live confirmation rows).
@@ -60,9 +63,10 @@ USES_SECOND_OPINION = True
 CATALOGUE = "fmnh_ins_number"
 # The step's clock, after the readings' (Observation.created_at is the wall clock; the rig's clock is fixed).
 AHEAD = datetime(2031, 1, 1, tzinfo=timezone.utc)
-# The fields the experts leave blank in the rule B record; the rule's own exception among them.
+# The fields the experts leave blank in the rule B record; the rule's own exception among them. Verbatim D/T/S
+# is not excepted on the rig's record: its collecting date is settled to the day (second_opinion._no_verbatim_date).
 BLANKS = ("taxon", "habitat", "verbatim_dts", "collection_code", "date_identified", "collection_method", "country")
-EXCEPTED_BLANKS = frozenset({"verbatim_dts", "habitat"})
+EXCEPTED_BLANKS = frozenset({"habitat"})
 AGREED_BLANKS = frozenset(BLANKS) - EXCEPTED_BLANKS
 MEADOW = {"value": "Synthetic meadow", "evidence": "L1: meadow"}
 LABEL_UNSETTLED, UNRESOLVED = field_step.LABEL_UNSETTLED, "mandatory_unresolved"
@@ -263,13 +267,17 @@ def test_a_blank_field_the_second_opinion_also_leaves_blank_carries_no_flag(tmp_
     assert run.fields["city"].state == ValueState.UNRESOLVED and f"{UNRESOLVED}:city" in run.open_reasons
 
 
-def test_a_blank_habitat_and_a_blank_verbatim_dts_keep_their_flags_though_the_second_opinion_agrees(tmp_path):
-    """The rule's two exceptions. Verbatim D/T/S: both missed values in lane H1's table. Habitat: a bare host
-    name is a known miss of field research and of the second opinion alike (the live row 105526418,
-    "CALLOSPERMOPHILUS": blank, agreed blank, and missed), so their agreement on a blank Habitat proves nothing."""
+def test_a_blank_habitat_keeps_its_flags_though_the_second_opinion_agrees(tmp_path):
+    """The rule's exceptions. Habitat: a bare host name is a known miss of field research and of the second
+    opinion alike (the live row 105526418, "CALLOSPERMOPHILUS": blank, agreed blank, and missed), so their
+    agreement on a blank Habitat proves nothing. Verbatim D/T/S: both missed values in lane H1's table wrote
+    a date with no day; on the rig's record, whose date is written to the day, it is lifted
+    (test_agreed_blank_verbatim.py)."""
     run = to_end(rig_of(tmp_path, BLANKS, opinion=Opinion(answer_of(BLANKS)))).run
     answer = run.second_opinion["answer"]
-    assert so.AGREED_BLANK_EXCEPT == EXCEPTED_BLANKS
+    assert so.AGREED_BLANK_EXCEPT == EXCEPTED_BLANKS | {"verbatim_dts"}
+    assert so.AGREED_BLANK_WHEN_DATED == {"verbatim_dts"}
+    assert blank_codes({"verbatim_dts"}) <= lifted(run)
     for key in EXCEPTED_BLANKS:
         assert run.fields[key].state == ValueState.NOT_PRESENT and so._blank_answer(answer[key])
     assert so.answer_current(run) and not so.due(run)
@@ -488,7 +496,7 @@ def test_a_value_on_a_label_one_reader_read_keeps_its_flag_though_the_second_opi
 
 def test_on_a_run_with_a_one_reader_label_an_agreed_blank_loses_its_flags_and_an_agreed_value_keeps_its(tmp_path):
     """Rule B does not need two readers: a blank is no wrong value shown as settled, and the second opinion reads
-    the crops itself (63 of 63 truly absent on the base replay's one-reader records). Its two exceptions stand.
+    the crops itself (63 of 63 truly absent on the base replay's one-reader records). Its Habitat exception stands.
     Rule A is skipped: every agreed value keeps its flag."""
     run = to_end(read_by_one_reader(rig_of(tmp_path, BLANKS, opinion=Opinion(answer_of(BLANKS))))).run
     assert so.answer_current(run) and not so.due(run) and run.disposition == Disposition.CLEARED
