@@ -4,9 +4,9 @@ Every call builds a fresh agent, `field_<key>`, with the shared rules, the field
 brief and only the tools that field may use, so each record and field starts
 with fresh context and shows in Logfire as its own agent. An answer is checked
 against the readings and against what this expert's own tools returned before
-it is accepted: the literal must occur in the readings it names (one every
-reading it names writes as one text, letter case and white space aside, is read
-as that text, theirs: _as_written) and be a whole
+it is accepted: the literal must occur in the readings it names (for any field
+but the taxon, one every reading it names writes as one text, letter case and
+white space aside, is read as that text, theirs: _as_written) and be a whole
 organiser candidate literal of each, or text each writes as whole words within
 one line (over consecutive lines for a field in agreement.ACROSS_LINES, the
 precise location and the habitat) that cuts no candidate, and a habitat's
@@ -169,7 +169,7 @@ def written_as(readings: Sequence[Reading], literal: str) -> str | None:
     (the waiting-fields program's lane C2, 2026-11-25): each run of white space in the literal
     (a space, a line break, several) as one run of any white space, every other character itself
     in either letter case (re.IGNORECASE), the literal's white space at either end left out.
-    "Delostichus coxalis" is "DELOSTICHUS\\nCOXALIS" where the readings write that. A text is
+    "Bob Synther" is "BOB\\nSYNTHER" where the readings write that. A text is
     found at every place it starts, overlapping ones too, and only where it cuts no word
     (_cuts_no_word: "Star" is not found in "STARK", nor "Van-" in "VAN-DYKE"). None when a
     reading writes no such text, or two different ones ("a a" in "A A a" is "A A" and "A a"),
@@ -202,38 +202,6 @@ def _cuts_no_word(text: str, start: int, end: int) -> bool:
     while last < len(text) and not text[last].isspace():
         last += 1
     return not any(char.isalnum() for char in text[first:start] + text[end:last])
-
-
-def whole_as_given(readings: Sequence[Reading], literal: str, given: str) -> bool:
-    """For a taxon literal the readings write as `given` up to letter case and white space
-    (written_as), whether `given`, the expert's spelling, names the whole name the readings write
-    there. The scientific-name parser reads no name in capitals ("DELOSTICHUS\\nCOXALIS"), so on
-    such a label the checks that keep a piece of a name from settling (agreement._longer_written,
-    _part_of_name) find none. It holds when `given` is a name at species rank or below as the
-    parser reads it, and, at each place a reading writes the literal:
-    - the word the reading writes immediately before it (checks.word_before: the last word before
-      it on its line, or, when none is, the last word of the nearest line above that has one; a
-      bracket aside, a qualifier passed over) is no word that may be a genus (checks.GENUS_SHAPED,
-      as checks.longer_name reads a genus before a literal that names none): "AUS" before or over
-      "SMITHI CUS", "XUS" of "AUS (XUS)" over "Smithi cus", given "Smithi cus";
-    - the reading writes no longer name from it on (checks.longer_name), read with its text after
-      the literal in lower case ("Aus bus" of "AUS BUS CUS" is not the whole name).
-    A genus alone is never taken so. It errs toward refusal: in capitals any word may be a genus,
-    so a heading's last word on the line above ("SYNTHETIC MUSEUM"), "Det." before the name, or an
-    author with no year after it read as an epithet ("SAY") refuses it."""
-    name = checks.taxonomy_scientific_name(given)
-    if name is None or not name.genus or not name.epithets:
-        return False
-    for reading in readings:
-        text = reading.text
-        at = text.find(literal)
-        while at >= 0:
-            before = checks.word_before(text, at)
-            if ((before is not None and checks.GENUS_SHAPED.fullmatch(before))
-                    or checks.longer_name(given + text[at + len(literal):].lower(), given) is not None):
-                return False
-            at = text.find(literal, at + 1)
-    return True
 
 
 def _candidate_view(answer: SourceAnswer) -> dict[str, Any]:
@@ -604,9 +572,8 @@ class _Expert:
             )
         names = answer.reading_names
         if answer.outcome == "resolved":
-            given = self._across_lines(answer)
-            answer = self._without_role(self._as_written(given))
-            names = self._validate_resolved(answer, received, given=given.literal)
+            answer = self._as_written(self._without_role(self._across_lines(answer)))
+            names = self._validate_resolved(answer, received)
         elif answer.outcome == "label_lacks_value":
             if answer.literal or answer.value or answer.authority_id:
                 raise Refused("lacks_value_with_text",
@@ -655,27 +622,45 @@ class _Expert:
         the coordinator's ruling for lane C2 of 2026-11-25): its literal is that text, the
         readings' own, never the expert's spelling of it, and so is its value when the value was
         the literal and names no candidate of a source answer the expert received (as
-        _without_role keeps a value that was the literal). "Delostichus coxalis" given for
-        "DELOSTICHUS\\nCOXALIS" is "DELOSTICHUS\\nCOXALIS", which the checks below then accept or
-        refuse as written. The answer as it is otherwise, and the literal check refuses it
-        (literal_not_in_reading)."""
+        _without_role keeps a value that was the literal). "Bob Synther" given where the readers
+        write "BOB SYNTHER" is "BOB SYNTHER", which the checks below then accept or refuse as
+        written, as for that answer given so. The answer as it is otherwise, and the literal check
+        refuses it (literal_not_in_reading):
+        - for the taxon. The scientific-name parser reads no name in capitals, so the checks that
+          keep a piece of a name from settling read the readers' text in another way than the
+          expert's spelling of it, and they look at no word before a literal that names a genus
+          ("Smithi cus" after "AUS (XUS)"): three review rounds of #474 found pieces of names
+          that a guard on the readers' text let through. A taxon keeps origin/main's check;
+        - for the collectors, where the readers' text holds a role word in any letter case, its
+          period or a comma aside (ontology_checks.role_words: "LEG." of "LEG. J. SMITH", "COLL"
+          of "J. SMITH COLL"; ontology_checks.without_role reads a marker only as the notation
+          spells it). _without_role has run on the answer as
+          given first, so "leg. J. Smith" is "J. Smith" here, which "LEG. J. SMITH" writes as
+          "J. SMITH";
+        - where the answer as given holds a date or an elevation, for a place field or the
+          collection code (agreement._holds_another_kind; written.other_kind reads a Roman month
+          only in capitals, so "SYNTH, IV-24-48" given where the readers write "SYNTH, iv-24-48"
+          would pass it read as the readers write it)."""
+        from .ontology_checks import ROLE_FIELD, role_words
+
         literal = answer.literal
         named = [self.by_label[_label(n)] for n in answer.reading_names if _label(n) in self.by_label]
-        if (not literal or not named or len(named) != len(answer.reading_names)
+        if (self.task.key == "taxon" or not literal or not named or len(named) != len(answer.reading_names)
                 or all(literal in reading.text for reading in named)):
             return answer
         found = written_as(named, literal)
-        if found is None:
+        roles = {word.strip(".").casefold() for word in role_words()}
+        if (found is None or agreement._holds_another_kind(self.task, literal) is not None
+                or (self.task.key == ROLE_FIELD
+                    and any(token.strip(",;.").casefold() in roles for token in found.split()))):
             return answer
         sourced = {candidate.name for source in self.received for candidate in source.candidates}
         return answer.model_copy(update={"literal": found,
             **({"value": found} if answer.value == literal and literal not in sourced else {})})
 
     def _validate_resolved(
-        self, answer: FieldAnswer, received: Mapping[str, SourceAnswer], *, given: str | None = None
+        self, answer: FieldAnswer, received: Mapping[str, SourceAnswer]
     ) -> list[str]:
-        """The readings a resolved answer names, once every check lets it stand; `given` is its
-        literal as the expert gave it, before _as_written read it as the readings write it."""
         key = self.task.key
         if key in NO_APPROVED_AUTHORITY:
             raise Refused("no_approved_authority",
@@ -750,22 +735,9 @@ class _Expert:
                 )
         if key == "taxon":
             # The whole name the label writes is the candidate's, not the answer's;
-            # text read from the transcript passed literal_refusal as a whole name. A literal
-            # read as the readings write it (_as_written) settles only where the expert's
-            # spelling names the whole name there (whole_as_given), and that spelling may then
-            # ground GBIF's answer too.
-            as_given = given if given is not None and given != literal else None
-            if as_given is not None and not whole_as_given(named, literal, as_given):
-                raise Refused("part_of_name",
-                    f"Read as the readings write it, {literal!r} may be only part of the name the label "
-                    f"writes: {as_given!r} is no name with its species, or the word written right before it "
-                    "may be its genus, or the label writes more of the name after it. A taxon settles only "
-                    "on the whole name its reading writes: give "
-                    "that whole name, or answer several_possibilities or sources_cannot_resolve."
-                )
+            # text read from the transcript passed literal_refusal as a whole name.
             self._validate_taxon(answer, cited,
-                agreement.candidate_literal(self.task, self.readings, literal, named) or literal,
-                as_given=as_given)
+                agreement.candidate_literal(self.task, self.readings, literal, named) or literal)
         refused = agreement.refusal(
             self.task,
             self.readings,
@@ -783,15 +755,11 @@ class _Expert:
         return names
 
     @staticmethod
-    def _validate_taxon(answer: FieldAnswer, cited: Sequence[SourceAnswer], whole: str, *,
-            as_given: str | None = None) -> None:
+    def _validate_taxon(answer: FieldAnswer, cited: Sequence[SourceAnswer], whole: str) -> None:
         """A taxon is GBIF's decision for the whole name the label writes: a
         cited success whose query is the name `whole`, the organiser's
         candidate literal the answer's literal is, writes
-        (checks.taxon_query_grounded), or the name `as_given` writes, the
-        expert's spelling of a literal it gave in another letter case or white
-        space (_as_written, whole_as_given: the parser reads no name in
-        capitals), and the candidate GBIF decided, the one
+        (checks.taxon_query_grounded), and the candidate GBIF decided, the one
         its evidence's locator names (sources.py _evidence), as the value and
         authority_id."""
         decided = [
@@ -804,8 +772,7 @@ class _Expert:
                 "A taxon resolves only on a GBIF answer with status success: cite its "
                 "evidence_id. Otherwise answer several_possibilities or sources_cannot_resolve."
             )
-        grounded = [a for a in decided if checks.taxon_query_grounded(a.query, whole)
-            or (as_given is not None and checks.taxon_query_grounded(a.query, as_given))]
+        grounded = [a for a in decided if checks.taxon_query_grounded(a.query, whole)]
         if not grounded:
             raise Refused("taxon_query_not_whole_name",
                 f"Cite the GBIF answer for the whole name {whole!r} writes: its query must be "

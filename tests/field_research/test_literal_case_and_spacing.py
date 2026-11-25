@@ -1,20 +1,18 @@
 """The expert's literal check reads an answer in another letter case or white space as the readings write it (lane C2
-of the waiting-fields fix program, 2026-11-25).
+of the waiting-fields fix program, 2026-11-25), for every field but the taxon.
 
 The coordinator's ruling for the lane (the coordinator's, the Claude session local_5b5f071c; not the owner's): the
 expert's literal check (`literal_not_in_reading`, and the taxon's query check) accepts an answer equal to a reading's
 text up to letter case and line breaks or spacing; the settled literal is the reading's own text, never the expert's;
 no other comparison changes (agreement keys, rival grouping and the rest of agreement.py stay origin/main's).
 
-The read-only audit of 2026-11-24 found experts' answers refused for letter case or a line break alone: "Delostichus
-coxalis" and "DELOSTICHUS COXALIS" where both readers write "DELOSTICHUS" over "COXALIS" (production records 1d84dd11
-and 36b7d593), "Bittacus stigmaterus Say" where they write "Bittacus" over "stigmaterus Say" (a1efc490). Those three
-stay unsettled: read as the readers write it, the name holds a line break, and a taxon's literal is one line of a
-reading or a whole organiser candidate (agreement.literal_refusal, unchanged). They are refused by `not_candidate` now.
-
-experts.written_as finds the one text every named reading writes; experts.whole_as_given keeps the taxon's query check
-from taking a piece of a name in capitals, which the scientific-name parser cannot read (it reads "DELOSTICHUS" as no
-name, so agreement._longer_written finds no longer name around it).
+The taxon keeps origin/main's check. Three rounds of #474's review found taxon answers that, read as the readers write
+them, settle a piece of the name the label writes: the scientific-name parser reads no name in capitals, and the checks
+that keep a piece of a name from settling look at no word before a literal that names a genus ("Smithi cus" after
+"AUS (XUS)"). The audit's taxon examples ("Delostichus coxalis" where both readers write "DELOSTICHUS" over "COXALIS",
+production records 1d84dd11 and 36b7d593; "Bittacus stigmaterus Say" over two lines, a1efc490) would stay unsettled
+either way: read as the readers write it, the name holds a line break, and a taxon's literal is one line of a reading
+or a whole organiser candidate (agreement.literal_refusal, unchanged).
 
 The label texts here are made up.
 """
@@ -28,7 +26,7 @@ from pydantic_ai import ModelRetry
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 from test_first_pass_advice import with_units
-from test_step import GBIF_KEY, GBIF_NAME, TEXT, Scripted, build_rig, field_checks, settle
+from test_step import TEXT, Scripted, build_rig, field_checks, settle
 
 from specimen_digitization.application.domain import Evidence, FieldValue, LookupStatus, ValueState
 from specimen_digitization.application.integrity import verify_evidence
@@ -36,7 +34,6 @@ from specimen_digitization.field_research import budget, experts
 from specimen_digitization.field_research.contracts import (
     Candidate,
     FieldAnswer,
-    FieldOutcome,
     FieldTask,
     Reading,
     SourceAnswer,
@@ -155,94 +152,82 @@ def test_two_texts_found_at_overlapping_places_are_two_texts():
 
 
 def test_a_value_a_source_names_is_kept_and_only_a_value_that_was_the_literal_follows_it():
-    """The value follows the literal only where it was the literal and names no source candidate the expert
-    received: a source's spelling is the source's (here GBIF's candidate "Aus bus", the value the decided
-    candidate needs)."""
-    label = "SYNTHETIC MUSEUM\n14727\nAUS BUS\ndet. J. Synther"
-    decided = gbif("Aus bus", "Aus bus", "gbif:7")
-    checked = expert("taxon", two_readers_of(label, label), decided).validate(
-        resolved("Aus bus", "2A", "2B", value="Aus bus", authority_id="gbif:7", source_evidence_ids=["ev-gbif:7"]))
-    assert (checked.literal, checked.value) == ("AUS BUS", "Aus bus")
+    """The value follows the literal only where it was the literal and names no candidate of a source answer the
+    expert received: a source's spelling is the source's."""
+    label = "Synthetic Museum\nLOC: SANTIAGO PROV.\n10-IV-1975"
+    readings = two_readers_of(label, label)
+    place = SourceAnswer("tgn", "Santiago", LookupStatus.SUCCESS, (SourceCandidate("Santiago", "tgn:1", "province"),),
+        Evidence(id="ev-tgn-1", kind="authority", source="tgn", locator="tgn:1", excerpt="Santiago | tgn:1 |"),
+        note="match")
+    made = expert("province_state", readings, place)
+    assert made._as_written(resolved("Santiago", "2A", "2B", value="Santiago")).value == "Santiago"
+    unsourced = expert("province_state", readings)
+    assert (unsourced._as_written(resolved("Santiago", "2A", "2B", value="Santiago")).model_dump(
+        include={"literal", "value"}) == {"literal": "SANTIAGO", "value": "SANTIAGO"})
+    other = unsourced._as_written(resolved("Santiago", "2A", "2B", value="Santiago Metropolitan"))
+    assert (other.literal, other.value) == ("SANTIAGO", "Santiago Metropolitan")
 
 
-# ---- the taxon's query check ----------------------------------------------------------------------------------
+# ---- the collectors' role words ---------------------------------------------------------------------------------
 
-ONE_LINE = "SYNTHETIC MUSEUM\nRT 6519\nAUS BUS L., 1758\nDET. J. SYNTHER 1949"
-AUS_BUS = gbif("Aus bus", "Aus bus Linnaeus, 1758", "gbif:7")
-AUS = gbif("Aus", "Aus Linnaeus, 1758", "gbif:8")
+@pytest.mark.parametrize(("label", "given", "settled"), [
+    # The marker as the notation spells it is left off the answer first (_without_role), then the name is read.
+    ("Synthetic Museum\nleg. J. SYNTHER", "leg. J. Synther", "J. SYNTHER"),
+    ("Synthetic Museum\nLEG. J. SYNTHER", "leg. J. Synther", "J. SYNTHER"),
+    ("Synthetic Museum\nJ. SYNTHER LEG.", "J. Synther leg.", "J. SYNTHER"),
+    # A role word the readers' text would hold in another letter case: never read so.
+    ("Synthetic Museum\nLEG. J. SYNTHER", "Leg. J. Synther", None),
+    ("Synthetic Museum\nJ. SYNTHER COLL.", "J. Synther Coll", None),
+    ("Synthetic Museum\nDET. J. SYNTHER", "det. J. Synther", None),
+])
+def test_a_collectors_answer_is_read_without_its_role_word(label, given, settled):
+    made = expert("collectors", two_readers_of(label, label))
+    if settled is None:
+        assert refused_by(made, resolved(given, "2A", "2B", value=given)) == "literal_not_in_reading"
+        return
+    checked = made.validate(resolved(given, "2A", "2B", value=given))
+    assert (checked.literal, checked.value) == (settled, settled)
 
 
-def test_a_one_line_name_in_capitals_resolves_on_gbifs_answer_for_the_name_given():
-    """The parser reads no name in "AUS BUS", so on origin/main no query grounds it (taxon_queries is empty) and the
-    answer "Aus bus" is refused before that (literal_not_in_reading). The literal is now the label's "AUS BUS", the
-    value GBIF's decided candidate."""
-    checked = expert("taxon", two_readers_of(ONE_LINE, ONE_LINE), AUS_BUS, AUS).validate(
-        resolved("Aus bus", "2A", "2B", value="Aus bus Linnaeus, 1758", authority_id="gbif:7",
-            source_evidence_ids=["ev-gbif:7"]))
-    assert (checked.literal, checked.value, checked.authority_id) == ("AUS BUS", "Aus bus Linnaeus, 1758", "gbif:7")
+def test_a_place_answer_that_holds_a_date_or_an_elevation_as_given_is_never_read_again():
+    """The date parser reads a Roman month only in capitals: read as the readers write it, "SYNTH, iv-24-48" holds no
+    date it reads, but the answer as given does, and is refused as on origin/main."""
+    from specimen_digitization.field_research import agreement
 
+    label = "Synthetic Museum\nSYNTH, iv-24-48\nleg. J. Synther"
+    task = FieldTask("collection_code", False, FieldValue(), (), ())
+    assert agreement._holds_another_kind(task, "SYNTH, iv-24-48") is None
+    assert agreement._holds_another_kind(task, "SYNTH, IV-24-48") is not None
+    made = expert("collection_code", two_readers_of(label, label))
+    assert refused_by(made, resolved("SYNTH, IV-24-48", "2A", "2B")) == "literal_not_in_reading"
+    for key, given in (("city", "Yepocapa, 4800 ft"), ("precise_location", "Yepocapa, 4800 ft")):
+        caps = "Synthetic Museum\nYEPOCAPA, 4800 FT\n10-IV-1975"
+        assert refused_by(expert(key, two_readers_of(caps, caps)), resolved(given, "2A", "2B")) == (
+            "literal_not_in_reading"), key
+
+
+# ---- the taxon keeps origin/main's check ------------------------------------------------------------------------
 
 SMITHI_CUS = gbif("Smithi cus", "Smithi cus Synther, 1901", "gbif:9")
+AUS_BUS = gbif("Aus bus", "Aus bus Linnaeus, 1758", "gbif:7")
 
 
 @pytest.mark.parametrize(("label", "given", "found"), [
-    # The genus alone of a name in capitals, on its line or over two: never the whole name.
-    (ONE_LINE, "Aus", AUS),
-    ("SYNTHETIC MUSEUM\nAUS\nBUS\nL., 1758", "Aus", AUS),
-    # A species where the label writes a subspecies after it.
-    ("SYNTHETIC MUSEUM\nAUS BUS CUS\n(L., 1758)", "Aus bus", AUS_BUS),
-    # Round 1 of #474's review, finding 1: the species and subspecies of "AUS" given as a genus and species, a word
-    # that may be the genus right before them on their line or on a line above.
+    # A one-line name in capitals, and the audit's name over two lines.
+    ("SYNTHETIC MUSEUM\nRT 6519\nAUS BUS L., 1758", "Aus bus", AUS_BUS),
+    ("SYNTHETIC MUSEUM\nAUS\nBUS\n(L., 1758)", "Aus bus", AUS_BUS),
+    # Rounds 1 to 3 of #474's review: pieces of a name a re-read would settle.
     ("SYNTHETIC MUSEUM\nAUS Smithi cus", "smithi cus", SMITHI_CUS),
-    ("SYNTHETIC MUSEUM\nAUS SMITHI CUS", "Smithi cus", SMITHI_CUS),
-    ("SYNTHETIC MUSEUM\nAUS\nSMITHI CUS", "Smithi cus", SMITHI_CUS),
-    ("SYNTHETIC MUSEUM\nAUS\n\u2640\nSMITHI CUS", "Smithi cus", SMITHI_CUS),
-    # Round 2 of #474's review, finding 2: a genus and its subgenus before them, on the line above (given with two
-    # spaces) or on their line; an abbreviated genus.
     ("SYNTHETIC MUSEUM\nAUS (XUS)\nSmithi cus", "Smithi  cus", SMITHI_CUS),
-    ("SYNTHETIC MUSEUM\nAUS (XUS) SMITHI CUS", "Smithi cus", SMITHI_CUS),
-    ("SYNTHETIC MUSEUM\nA. SMITHI CUS", "Smithi cus", SMITHI_CUS),
-    # It errs toward refusal: in capitals a heading's last word over the name may be a genus too.
-    ("SYNTHETIC MUSEUM\nSMITHI CUS", "Smithi cus", SMITHI_CUS),
+    ("SYNTHETIC MUSEUM\nAUS (XUS)\u2640\nSmithi cus", "Smithi  cus", SMITHI_CUS),
+    ("SYNTHETIC MUSEUM\nAUS (XUS) male\nSmithi cus", "Smithi\ncus", SMITHI_CUS),
 ])
-def test_a_piece_of_a_name_in_capitals_is_still_refused(label, given, found):
-    """Read as the readers write it, each answer is refused by part_of_name, the check that the expert's spelling
-    names the whole name there (experts.whole_as_given). Without it, those given "Smithi cus" would ground on
-    GBIF's answer for that name ("Smithi cus" parses as a genus and species, and so does the readers' "Smithi cus"
-    on the subgenus's label)."""
+def test_a_taxon_in_another_letter_case_or_white_space_is_refused_as_on_origin_main(label, given, found):
     made = expert("taxon", two_readers_of(label, label), found)
     decided = found.candidates[0]
+    assert experts.written_as(made.readings, given) is not None
     assert refused_by(made, resolved(given, "2A", "2B", value=decided.name, authority_id=decided.authority_id,
-        source_evidence_ids=[found.evidence.id])) == "part_of_name"
-    literal = experts.written_as(made.readings, given)
-    assert literal is not None and literal != given
-    assert not experts.whole_as_given(made.readings, literal, given)
-
-
-def test_a_name_with_no_word_that_may_be_a_genus_right_before_it_stands():
-    """The word written right before the name is a number, a lower-case word, or none: the name stands."""
-    for label in ("SYNTHETIC MUSEUM\n14727 \u2640\nAUS BUS", "SYNTHETIC MUSEUM\nRT 6519\nAUS BUS L., 1758", "AUS BUS",
-            "taxon: AUS BUS", "\u2640\nAUS BUS\n(L., 1758)"):
-        assert experts.whole_as_given(two_readers_of(label, label), "AUS BUS", "Aus bus"), label
-
-
-def test_the_name_given_exactly_keeps_origin_mains_check():
-    """Where the readings write the literal as given, only the label's own name grounds a query, as on origin/main:
-    "AUS" given as the readers write it is refused on GBIF's answer for "Aus"."""
-    made = expert("taxon", two_readers_of(ONE_LINE, ONE_LINE), AUS)
-    assert refused_by(made, resolved("AUS", "2A", "2B", value="Aus Linnaeus, 1758", authority_id="gbif:8",
-        source_evidence_ids=["ev-gbif:8"])) == "taxon_query_not_whole_name"
-
-
-def test_a_name_over_two_lines_stays_refused_now_as_no_candidate():
-    """1d84dd11 and 36b7d593: "Delostichus coxalis" given for "DELOSTICHUS" over "COXALIS" (here "AUS" over "BUS").
-    Read as the readers write it, the literal holds their line break, and a taxon's literal is one line of each
-    reading or a whole organiser candidate (agreement.literal_refusal, unchanged): refused by not_candidate where
-    origin/main refused it by literal_not_in_reading."""
-    label = "SYNTHETIC MUSEUM\nAUS\nBUS\n(L., 1758)"
-    made = expert("taxon", two_readers_of(label, label), AUS_BUS)
-    assert refused_by(made, resolved("Aus bus", "2A", "2B", value="Aus bus Linnaeus, 1758", authority_id="gbif:7",
-        source_evidence_ids=["ev-gbif:7"])) == "not_candidate"
+        source_evidence_ids=[found.evidence.id])) == "literal_not_in_reading"
 
 
 # ---- through the resolver and the step -----------------------------------------------------------------------
@@ -312,29 +297,3 @@ def test_an_answer_the_readings_hold_as_given_is_never_read_again():
     label = "Synthetic Museum\nBob Synther\nBOB SYNTHER"
     checked = expert("collectors", two_readers_of(label, label)).validate(resolved("Bob Synther", "2A", "2B"))
     assert checked.literal == "Bob Synther"
-
-
-def test_a_name_in_capitals_the_check_takes_settles_and_its_record_keeps_taxonomy_unresolved(tmp_path):
-    """The stated limit: a taxon the expert's check takes on the name as given ("Danaus plexippus" where both readers
-    write "DANAUS PLEXIPPUS") settles through the step, the label's text its literal and GBIF's decided candidate
-    its value, and its record keeps the reason taxonomy_unresolved: the step's check of the settling query at
-    finalize (step.taxon_decided, checks.taxon_query_grounded on the literal) is origin/main's and reads no name in
-    capitals. The flag stays."""
-    capitals = TEXT.replace("taxon: Danaus plexippus", "taxon: DANAUS PLEXIPPUS")
-    rig = build_rig(tmp_path, capitals, capitals)
-
-    async def script(task, readings, tools):
-        found = await tools.lookup("gbif", "Danaus plexippus", field_key="taxon")
-        made = experts._Expert(task, readings, tools, None)
-        made.calls.append(experts._Call("gbif", found.query, found.status, found))
-        checked = made.validate(resolved("Danaus plexippus", "1A", "1B", value=GBIF_NAME, authority_id=GBIF_KEY,
-            source_evidence_ids=[found.evidence.id]))
-        assert checked.literal == "DANAUS PLEXIPPUS"
-        return FieldOutcome("taxon", checked, evidence=[found.evidence], lookups=[found.taxonomy_lookup],
-            model_calls=1)
-
-    settle(rig, Scripted({"taxon": script}))
-    run = rig.specimen.run
-    value = run.fields["taxon"]
-    assert (value.state, value.literal, value.normalized) == (ValueState.SUPPORTED, "DANAUS PLEXIPPUS", GBIF_NAME)
-    assert "taxonomy_unresolved" in [*run.reasons, *run.open_reasons]
