@@ -252,8 +252,9 @@ handover runs field research instead of the six specialists:
    level types come first among its kinds (`georef_tgn.LEVEL_TYPES`, the
    ones `agreement.PLACE_LEVELS` reads), a nation is its own country and any
    other place has no country, none has a point (the service writes some
-   points wrong), and the name is Getty's preferred term, which is in the
-   place's own language for a few ("Pilipinas"). The chain keeps its cap of
+   points wrong), and the name is the one the reconciliation search gave the
+   place when that is one of its terms (`georef_tgn.with_hit_names`: "Philippines",
+   where Getty's preferred term is "Pilipinas"). The chain keeps its cap of
    three responses (the search, the refusal, the extension). The evidence
    record lists the extension's response with its form, and the note starts
    "Getty TGN's SPARQL endpoint refused the request (HTTP 403); the places'

@@ -117,11 +117,10 @@ async def test_a_nation_read_through_the_extension_settles_the_country_level(tmp
     [candidate] = answer.candidates
     assert answer.status is LookupStatus.SUCCESS
     assert candidate.authority_id == "tgn:1000135" and candidate.kind.split(", ")[0] == "nations"
-    # Its own country, as SPARQL reads a nation. Its name is Getty's preferred term, "Pilipinas",
-    # where the SPARQL read names it by its English term: a label that writes "Pilipinas"
-    # confirms it, one that writes "Philippines" does not (agreement compares the name).
-    assert candidate.name == "Pilipinas"
-    assert candidate.parents == (PlaceRef("Pilipinas", "tgn:1000135", None),)
+    # Its own country, as SPARQL reads a nation, named as the reconciliation service names it
+    # ("Philippines"), not by Getty's preferred term in the place's own language ("Pilipinas").
+    assert candidate.name == "Philippines"
+    assert candidate.parents == (PlaceRef("Philippines", "tgn:1000135", None),)
 
 
 @pytest.mark.asyncio

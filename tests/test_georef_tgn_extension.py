@@ -184,3 +184,33 @@ def test_a_point_the_service_writes_is_not_read():
     for text in ("[-0.2.5833,35.5667]", "[-0.0,-0.1]", "[-82.5833,35.5667]"):
         _, [place] = tgn.parse_extend(200, answer(**{"7": row(**{"/tgn_prefterm": ["A"], "/tgn_coordinates": [text]})}))
         assert place.point is None
+
+
+def test_a_place_is_named_as_the_reconciliation_service_names_it_when_that_is_one_of_its_terms():
+    new = extension_places()
+    philippines = tgn.with_hit_names(new.values(), [tgn.Hit("1000135", "Philippines", 100.0)])
+    [named] = [place for place in philippines if place.record_id == "1000135"]
+    assert named.name == "Philippines" and named.names[0] == "Pilipinas"
+    assert (named.country.id, named.country.name) == ("1000135", "Philippines")
+    assert set(named.names) == (set(new["1000135"].names) | {"Pilipinas"}) - {"Philippines"}
+    # Every other place keeps what it was, and so does one whose hit name is none of its terms.
+    assert [place for place in philippines if place.record_id != "1000135"] == [
+        place for place in new.values() if place.record_id != "1000135"]
+    strange = tgn.with_hit_names(new.values(), [tgn.Hit("1000135", "Not a term of it"), tgn.Hit("1000621", None)])
+    assert tuple(new.values()) == strange
+
+
+def test_with_hit_names_reads_the_recorded_places_as_sparql_names_them():
+    # Over the 24 recorded records, naming each as the recorded reconciliation names it leaves one
+    # difference from the names SPARQL gives, none for an English preferred term.
+    old = sparql_places()
+    hits = [
+        tgn.Hit(hit["id"].split("/")[1], hit["name"], hit["score"])
+        for hits in fixture_hits().values() for hit in hits if hit["id"].split("/")[1] in old
+    ]
+    named = {place.record_id: place for place in tgn.with_hit_names(extension_places().values(), hits)}
+    assert {record for record in named if named[record].name != old[record].name} == set()
+
+
+def fixture_hits():
+    return recorded("tgn_reconcile.json")["responses"]

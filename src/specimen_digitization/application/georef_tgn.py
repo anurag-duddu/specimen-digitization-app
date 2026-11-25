@@ -408,6 +408,26 @@ def with_names(places: Iterable[Place], names: Mapping[str, Iterable[Term]]) -> 
     return tuple(named)
 
 
+def with_hit_names(places: Iterable[Place], hits: Iterable[Hit]) -> tuple[Place, ...]:
+    """The places of a data extension named as the reconciliation service names
+    them, where that name is one of the place's other terms: the service names
+    Getty's English term ("Philippines") where the extension's preferred term is
+    the place's own language ("Pilipinas"), as `with_names` prefers an English
+    term. A place whose hit name is none of its terms keeps its preferred term."""
+    wanted = {hit.id: hit.name for hit in hits if hit.name}
+    named = []
+    for place in places:
+        name = wanted.get(place.record_id)
+        if name and name != place.name and name in place.names:
+            others = (place.name, *(other for other in place.names if other != name))
+            country = place.country
+            if country is not None and country.id == place.record_id:
+                country = Ref(place.record_id, name)  # a nation names itself as it is named
+            place = replace(place, name=name, names=others, country=country)
+        named.append(place)
+    return tuple(named)
+
+
 def _values(ids: Iterable[str]) -> str:
     ids = list(ids)
     if not all(isinstance(record, str) and RECORD_ID.fullmatch(record) for record in ids):
@@ -555,8 +575,7 @@ def _extension_place(record: str, row: dict) -> Place | None:
     other place has no country, since the extension does not say which of its
     ancestors is the nation, and none has a point (EXTENSION_PROPERTIES). Its
     name is the preferred term, which Getty may give in the place's own language
-    where `with_names` reads an English term of the record when it has one
-    ("Afghānestān" for Afghanistan, 12 of 755 places probed 2026-11-24)."""
+    ("Pilipinas"); `with_hit_names` names it as the reconciliation service does."""
     terms, others, ancestors, types = (
         _extension_strings(row, name)
         for name in ("/tgn_prefterm", "/tgn_varterms", "/tgn_hier", "/tgn_placetypes")

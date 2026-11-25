@@ -226,7 +226,9 @@ async def _tgn(
     outcome, places = _source_value(tgn.parse_records, status, body)
     if outcome != LookupStatus.SUCCESS:
         if status in SEARCH_REFUSALS and post is not None:
-            return await _tgn_extension(ids, post, calls, outcome, f"refused the request (HTTP {status})")
+            return await _tgn_extension(
+                hits, post, calls, outcome, f"refused the request (HTTP {status})"
+            )
         return _later(outcome, calls, "record")
     returned = {place.record_id for place in places}
     if len(places) > tgn.LIMIT or returned - set(ids):
@@ -248,7 +250,7 @@ async def _tgn(
 
 
 async def _tgn_extension(
-    ids: tuple[str, ...],
+    hits: tuple[tgn.Hit, ...],
     post: Post,
     calls: list[Exchange],
     refused: LookupStatus,
@@ -260,7 +262,9 @@ async def _tgn_extension(
     what it said). One request, so the chain stays within MAX_CALLS. When the
     extension gets no response at all (SearchUnanswered), the lookup ends as the
     refusal left it; any other reply that gives no place ends as `_later` ends it.
-    The places carry names where SPARQL gave ids (`georef_tgn.parse_extend`)."""
+    The places carry names where SPARQL gave ids (`georef_tgn.parse_extend`),
+    named as the reconciliation service names them (`georef_tgn.with_hit_names`)."""
+    ids = tuple(dict.fromkeys(hit.id for hit in hits))
     try:
         failure, status, body = await _request(
             tgn.RECONCILE, _source_value(tgn.extend_params, ids), post, calls
@@ -277,6 +281,7 @@ async def _tgn_extension(
         return _result(LookupStatus.MALFORMED, calls, reason="records exceeded requested TGN ids")
     if returned != set(ids):
         return _result(LookupStatus.AMBIGUOUS, calls, reason="requested TGN records were incomplete")
+    places = _source_value(tgn.with_hit_names, places, hits)
     return HistoricalLookup(LookupStatus.SUCCESS, places, tuple(calls), extension=why)
 
 
