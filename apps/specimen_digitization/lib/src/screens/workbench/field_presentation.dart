@@ -128,16 +128,29 @@ const Set<String> noApprovedAuthorityFields = <String>{'identified_by_irn'};
 
 /// Whether [field] is one no approved source can fill
 /// ([noApprovedAuthorityFields]) and research left it as it always does:
-/// unknown, with no value. The server leaves the same field out of its review
-/// count when no reason names it (`review_summary.no_source_fields`).
-bool fieldHasNoApprovedSource(Json field) =>
-    noApprovedAuthorityFields.contains(field['field_key']) &&
-    field['state'] == 'unknown' &&
-    !<Object?>[
-      field['normalized'],
-      field['parsed_value'],
-      field['literal_value'],
-    ].any((value) => value is String && value.trim().isNotEmpty);
+/// unknown, with no text in any value layer and no authority match. The
+/// server leaves the same field out of its review count when no reason names
+/// it (`review_summary.no_source_fields`). The server's count cannot see an
+/// authority match (its projection holds only the state and whether a text
+/// layer is present), so an unknown field holding only an authority match
+/// keeps "Review needed" here while the count leaves it out. The value field
+/// research writes for this field carries none (`step.py`, the branch that
+/// sets `IRN_REASON`).
+bool fieldHasNoApprovedSource(Json field) {
+  final Object? authorityId = field['authority_id'];
+  final Object? authorityIdentity = field['authority_identity'];
+  return noApprovedAuthorityFields.contains(field['field_key']) &&
+      field['state'] == 'unknown' &&
+      !<Object?>[
+        field['normalized'],
+        field['parsed_value'],
+        field['literal_value'],
+      ].any((value) => value is String && value.trim().isNotEmpty) &&
+      (authorityId == null ||
+          (authorityId is String && authorityId.trim().isEmpty)) &&
+      (authorityIdentity == null ||
+          (authorityIdentity is Map && authorityIdentity.isEmpty));
+}
 
 /// The state a field with no approved source reads as, in place of
 /// "Unknown": no label carries it.

@@ -2,8 +2,10 @@
 // (tests/fixtures/field_review_words.json; the waiting-fields program, fix
 // 1). The server's side is tests/test_field_review_words.py. The field rows
 // are drawn and read by their words: "Review needed", "Not on labels", the
-// settled check or none. The queue row's count is the server's summary the
-// fixture names, and it must agree with the rows.
+// settled check or none. The queue row shows the server's `review` count as
+// it comes (queue_screen.dart); here the drawn rows reading "Review needed"
+// are counted against the summary the fixture names, which the server's side
+// checks the server computes.
 
 import 'dart:convert';
 import 'dart:io';
@@ -79,6 +81,30 @@ void main() {
       expect(status.needsReview, isTrue);
     });
 
+    for (final MapEntry<String, Object> authority in <String, Object>{
+      'authority_id': '12345',
+      'authority_identity': <String, dynamic>{'source': 'emu_parties'},
+    }.entries) {
+      test('needs review when it holds an ${authority.key}', () {
+        final FieldReviewStatus status = fieldReviewStatus(<String, dynamic>{
+          ...irn,
+          authority.key: authority.value,
+        });
+        expect(status.hasNoApprovedSource, isFalse);
+        expect(status.needsReview, isTrue);
+      });
+    }
+
+    test('an empty authority match is no match', () {
+      final FieldReviewStatus status = fieldReviewStatus(<String, dynamic>{
+        ...irn,
+        'authority_id': ' ',
+        'authority_identity': <String, dynamic>{},
+      });
+      expect(status.hasNoApprovedSource, isTrue);
+      expect(status.needsReview, isFalse);
+    });
+
     test('another field left unknown still needs review', () {
       final FieldReviewStatus status = fieldReviewStatus(<String, dynamic>{
         ...irn,
@@ -139,14 +165,13 @@ void main() {
           ),
       };
       expect(words, status);
-      expect(tester.takeException(), isNull);
-    });
-
-    test('${item['name']}: the queue row counts what the rows show', () {
+      // The queue row's count is the summary's; it counts the drawn rows
+      // that read "Review needed".
       expect(
         specimen.reviewSummary?.review,
-        status.values.where((Object? word) => word == 'review').length,
+        words.values.where((String word) => word == 'review').length,
       );
+      expect(tester.takeException(), isNull);
     });
   }
 }

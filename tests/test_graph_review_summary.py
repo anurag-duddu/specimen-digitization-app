@@ -278,6 +278,34 @@ def test_live_state_pattern_has_two_review_and_twelve_missing(tmp_path):
     assert row["review_summary"] == {"review": 2, "missing": 12}
 
 
+@pytest.mark.parametrize(("open_reasons", "review"), [
+    (["identified_by_irn_identity_unproved"], 1),
+    (["research_incomplete:identified_by_irn"], 1),
+    ([], 0),
+])
+def test_an_open_reason_naming_the_irn_keeps_it_counted_on_both_graph_paths(tmp_path, open_reasons, review):
+    """The waiting-fields program, fix 1: an unknown, empty identified_by_irn leaves the review count
+    only while no reason names it. The current graph path reads the row's open reasons; the legacy
+    path reads the verified run's own open reasons, so the two agree."""
+    source = specimen()
+    source.run.fields = {"city": FieldValue(state="supported", literal="Chicago"),
+                         "identified_by_irn": FieldValue(state="unknown")}
+    source.run.reasons = []
+    source.run.open_reasons = open_reasons
+    blobs = LocalBlobs(tmp_path)
+    payload = pack(source, blobs)
+    metadata = payload["active_graph"]
+    current = sql_item({"id": payload["id"], "revision": payload["version"],
+                        "activeRunId": payload["run"]["id"], "reasonCodes": [],
+                        "openReasonCodes": open_reasons, "activeGraph": metadata,
+                        "fieldReviewStates": metadata["field_review"]["fields"]}, SCOPE)
+    assert current["review_summary"] == {"review": review, "missing": 1}
+    payload["active_graph"].pop("field_review")
+    row = row_for(payload)
+    GraphReviewCache().hydrate([row], [payload["active_graph"]], blobs)
+    assert row["review_summary"] == {"review": review, "missing": 1}
+
+
 @pytest.mark.parametrize("packed", ["new", "legacy"])
 def test_sqlite_projection_and_opt_in_do_not_fetch_snapshots(tmp_path, monkeypatch, packed):
     repo = SQLiteRepository(tmp_path / "graph.db")

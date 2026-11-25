@@ -2,8 +2,9 @@
 
 The waiting-fields program, fix 1 (2026-11-24): the Identified by IRN, which no label carries and no approved
 source looks up, is not counted for review while research leaves it unknown with no value and no reason names it.
-The app's side is test/field_review_words_contract_test.dart; both read the same fixture, so the queue row's
-count and the field rows cannot disagree."""
+The app's side is test/field_review_words_contract_test.dart; both read the same fixture: this side checks the
+server's summary for each case, and the app's side checks that its drawn rows reading "Review needed" number the
+summary's `review`, on the cases the fixture holds."""
 
 import json
 from pathlib import Path

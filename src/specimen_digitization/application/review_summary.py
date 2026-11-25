@@ -131,8 +131,11 @@ def _named(fields, reasons):
 
 def no_source_fields(fields, reasons):
     """The fields with no approved authority (field_research.contracts.NO_APPROVED_AUTHORITY: the
-    Identified by IRN) that research left as it always does, unknown with no value, and that no reason
-    names: no label carries them and no source looks them up, so they need no one's attention."""
+    Identified by IRN) that research left as it always does, unknown with no text in a value layer, and
+    that no reason names: no label carries them and no source looks them up, so they need no one's
+    attention. `fields` are projected (project_fields: state and text presence only), so an authority
+    match without text is not seen here. The value field research writes for this field carries none
+    (field_research.step, the branch that sets IRN_REASON); the app keeps such a field for review."""
     from specimen_digitization.field_research.contracts import NO_APPROVED_AUTHORITY
 
     named = _named(fields, reasons)
