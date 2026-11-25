@@ -60,13 +60,11 @@ async def test_refused_records_are_read_through_the_extension_and_settle_one_pla
     [candidate] = answer.candidates
     assert (candidate.name, candidate.authority_id) == ("Chimaltenango", "tgn:1016636")
     # Names, never ids, for its kinds and ancestors: the level types first, the ancestors
-    # as Getty writes them, the nation among them with no record of its own.
+    # as Getty writes them, the nation with no record of its own.
     assert candidate.kind.split(", ")[:2] == ["inhabited places", "cities"]
-    assert candidate.parents == (
-        PlaceRef("Chimaltenango", None, None),
-        PlaceRef("Guatemala", None, None),
-        PlaceRef("North and Central America", None, None),
-    )
+    # As the SPARQL read leaves it: the places below the nation, nearest first, and the nation
+    # last (derive reads the last parent as the country); no continent, no root.
+    assert candidate.parents == (PlaceRef("Chimaltenango", None, None), PlaceRef("Guatemala", None, None))
     assert answer.note == (
         "Getty TGN's SPARQL endpoint refused the request (HTTP 403); the places' details were "
         "read from its reconciliation service instead, which names their place types and "
@@ -205,3 +203,29 @@ async def test_the_identity_checks_abstain_on_a_place_read_through_the_extension
     assert fits(candidate, "province_state", PlaceField(("Chimaltenango",), "tgn:1000565", None)) is None
     assert lies_in(candidate, "city", guatemala) and lies_in(candidate, "city", PlaceField(("Chimaltenango",)))
     assert not lies_in(candidate, "city", PlaceField(("Honduras",)))
+
+
+@pytest.mark.asyncio
+async def test_a_settled_place_derives_its_province_and_country_from_the_parents_it_reads(tmp_path):
+    """Review round 1 of #471: derive reads a candidate's last parent as its country and the one
+    before as its province. A chain that ran on to the continent made the derived country "North
+    and Central America" and the province "Guatemala", unflagged."""
+    from types import SimpleNamespace
+
+    from specimen_digitization.application.domain import ValueState
+    from specimen_digitization.field_research import derive
+    from specimen_digitization.field_research.contracts import FieldValue
+
+    tools, _, _, _ = make(tmp_path, getty())
+    answer = await tools.lookup("tgn", READING, field_key="city")
+    [candidate] = answer.candidates
+    city = FieldValue(state=ValueState.SUPPORTED, literal=READING, normalized=READING,
+        authority_id=candidate.authority_id, evidence_ids=[answer.evidence.id], layer="settled")
+    fields = {"country": FieldValue(state=ValueState.NOT_PRESENT),
+        "province_state": FieldValue(state=ValueState.NOT_PRESENT),
+        "county": FieldValue(state=ValueState.NOT_PRESENT), "city": city}
+    run = SimpleNamespace(evidence=[], fields=fields)
+    filled = derive.fill(run, eligible=["country", "province_state", "county"], asset_id=None,
+        received={"city": [answer]})
+    # The candidate has two parents, so its province and country, never a county (derive's rule).
+    assert {key: fields[key].parsed for key in filled} == {"province_state": "Chimaltenango", "country": "Guatemala"}

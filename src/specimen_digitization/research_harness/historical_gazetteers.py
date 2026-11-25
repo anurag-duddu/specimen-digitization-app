@@ -259,7 +259,8 @@ async def _tgn_extension(
     """The records of the places the reconciliation found, read through its data
     extension (tgn.extend_params, POSTed to tgn.RECONCILE) once the SPARQL
     endpoint refused to give them (`refused` is its refusal's outcome, `why` says
-    what it said). One request, so the chain stays within MAX_CALLS. When the
+    what it said). One call, so the chain stays within MAX_CALLS (the caller's post may
+    send it again, as any request is sent again: field_research.sources.ATTEMPTS). When the
     extension gets no response at all (SearchUnanswered), the lookup ends as the
     refusal left it; any other reply that gives no place ends as `_later` ends it.
     The places carry names where SPARQL gave ids (`georef_tgn.parse_extend`),

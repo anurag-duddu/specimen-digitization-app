@@ -250,13 +250,23 @@ handover runs field research instead of the six specialists:
    `historical_gazetteers._tgn_extension`). It gives names and no ids: a
    place's ancestors and place types are names (an empty id each), the
    level types come first among its kinds (`georef_tgn.LEVEL_TYPES`, the
-   ones `agreement.PLACE_LEVELS` reads), a nation is its own country and any
-   other place has no country, none has a point (the service writes some
-   points wrong), and the name is the one the reconciliation search gave the
-   place when that is one of its terms (`georef_tgn.with_hit_names`: "Philippines",
-   where Getty's preferred term is "Pilipinas"). The chain keeps its cap of
-   three responses (the search, the refusal, the extension). The evidence
-   record lists the extension's response with its form, and the note starts
+   ones `agreement.PLACE_LEVELS` reads), a nation is its own country, and any
+   other place has the ancestors below its nation as parents and the nation
+   as its country, both by name, when its chain of ancestors ends in a
+   continent (`georef_tgn.CONTINENTS`: the service types no ancestor, so the
+   nation is the one right below the continent, which held for 729 of the
+   730 probed places a nation is read for); a place whose chain ends in
+   anything else has no parents and no country, since derive reads a
+   candidate's last parent as its country. No place has a point (the service
+   writes some points wrong), and the name is the one the reconciliation
+   search gave the place when that is one of its terms
+   (`georef_tgn.with_hit_names`: "Philippines", where Getty's preferred term
+   is "Pilipinas"). The chain keeps its cap of three calls
+   (`historical_gazetteers.MAX_CALLS`: the search, the refused SPARQL
+   request, the extension); each call is tried again as any request is
+   (`sources.ATTEMPTS`, three attempts), so a failing extension can send up
+   to three requests of its own. The evidence record lists the extension's
+   response with its form, and the note starts
    "Getty TGN's SPARQL endpoint refused the request (HTTP 403); the places'
    details were read from its reconciliation service instead, which names
    their place types and ancestors but gives no ids for them." If the
