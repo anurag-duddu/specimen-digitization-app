@@ -8,6 +8,16 @@ returns it (PLAN 4.8); so does the SPARQL name search that stands in for it
 (`search_params`), and every other SPARQL query carries TGN ids only. Both
 services answer anonymously, and Getty's token-gated gateway is not used
 (PLAN 2.3).
+
+The reconciliation service also reads the records of TGN ids itself, through
+its data extension (`extend_params`, `parse_extend`): a form POSTed to the same
+URL that carries TGN ids and property names only. It is the way to read a
+record when the SPARQL endpoint refuses the request, which it does for Google
+Cloud's addresses while the reconciliation service answers them (Cloud Logging,
+2026-11-16 to 2026-11-23: every one of 142 unanswered Getty requests was to
+vocab.getty.edu, none to services.getty.edu). It gives names, not records: an
+ancestor or a place type has no id of its own, so a place read this way has
+`Ref`s with an empty id.
 """
 
 from __future__ import annotations
@@ -26,6 +36,30 @@ SOURCE = "tgn"
 RECONCILE = "https://services.getty.edu/vocab/reconcile/"
 SPARQL = "https://vocab.getty.edu/sparql.json"
 LICENSE = "ODC-By-1.0"
+# The properties the data extension is asked for, as the service names them
+# (its /extend/properties, probed 2026-11-24): the preferred term, every term,
+# the ancestors' names and the place types' names. Not its "/tgn_coordinates":
+# the service writes some points wrong ("[-0.2.5833,35.5667]" for West
+# Asheville, "[-0.0,-0.1]" for Chile), so a place read through it has no point.
+EXTENSION_PROPERTIES = ("/tgn_prefterm", "/tgn_varterms", "/tgn_hier", "/tgn_placetypes")
+# The last name of an extension's ancestors: TGN's root, which is no place a
+# reading can write. The place types' name for a nation (aat:300128207).
+ROOT = "World"
+NATION_TYPE = "nations"
+# The place types a place field's level is read from (agreement.PLACE_LEVELS),
+# first among a place's kinds in this order: only the first kinds reach an
+# expert, and the extension does not say which type is a place's preferred one,
+# as `_place` puts it first.
+LEVEL_TYPES = (
+    NATION_TYPE,
+    "first level subdivisions (political entities)",
+    "second level subdivisions (political entities)",
+    "counties",
+    "inhabited places",
+    "cities",
+    "towns",
+    "villages",
+)
 # The credit line Getty's data-services page asks for (checked 2026-09-24).
 CREDIT = (
     "Contains information from the J. Paul Getty Trust, Getty Research Institute, "
@@ -154,6 +188,23 @@ def records_params(ids: Iterable[str]) -> dict[str, str]:
     return {"query": RECORDS % _values(ids)}
 
 
+def extend_params(ids: Iterable[str]) -> dict[str, str]:
+    """The form for reading up to 50 records through the reconciliation
+    service's data extension (EXTENSION_PROPERTIES): TGN ids and property names
+    only, never a reading's words. It is POSTed to RECONCILE."""
+    ids = list(ids)
+    if not all(isinstance(record, str) and RECORD_ID.fullmatch(record) for record in ids):
+        raise ValueError("a TGN id is digits only")
+    ids = list(dict.fromkeys(ids))
+    if not ids or len(ids) > MAX_IDS:
+        raise ValueError(f"a TGN query reads 1 to {MAX_IDS} records, not {len(ids)}")
+    request = {
+        "ids": [f"tgn/{record}" for record in ids],
+        "properties": [{"id": name} for name in EXTENSION_PROPERTIES],
+    }
+    return {"extend": json.dumps(request, separators=(",", ":"))}
+
+
 def names_params(ids: Iterable[str]) -> dict[str, str]:
     """Parameters for reading every name of up to 50 records."""
     return {"query": NAMES % _values(ids)}
@@ -246,6 +297,29 @@ def parse_records(status: int, body: bytes) -> tuple[LookupStatus, tuple[Place, 
     return (LookupStatus.SUCCESS if places else LookupStatus.NO_MATCH), tuple(places)
 
 
+def parse_extend(status: int, body: bytes) -> tuple[LookupStatus, tuple[Place, ...]]:
+    """Places from a data extension's answer (`extend_params`), each with its
+    preferred term, every other term, its place types and its ancestors, all
+    as names (`_extension_place`). As `parse_records` reads its answer: an id TGN
+    does not hold has no row, so no place; a row that is not a TGN place's or
+    that has no name makes the answer MALFORMED, even beside rows that can be
+    read; an answer with no rows is no match."""
+    outcome, data = _answer(status, body)
+    rows = data.get("rows") if isinstance(data.get("rows"), dict) else None
+    if outcome is None and rows is None:
+        outcome = LookupStatus.MALFORMED
+    if outcome is not None:
+        return outcome, ()
+    places = []
+    for key, row in rows.items():
+        match = re.fullmatch(r"tgn/([0-9]{1,10})", key) if isinstance(key, str) else None
+        place = _extension_place(match[1], row) if match and isinstance(row, dict) else None
+        if place is None:
+            return LookupStatus.MALFORMED, ()
+        places.append(place)
+    return (LookupStatus.SUCCESS if places else LookupStatus.NO_MATCH), tuple(places)
+
+
 def parse_names(status: int, body: bytes) -> tuple[LookupStatus, dict[str, tuple[Term, ...]]]:
     """Every term of each record a names answer lists. A row that is not of a
     TGN place or has no name makes the answer MALFORMED, even beside rows that
@@ -331,6 +405,26 @@ def with_names(places: Iterable[Place], names: Mapping[str, Iterable[Term]]) -> 
                 country=country,
             )
         )
+    return tuple(named)
+
+
+def with_hit_names(places: Iterable[Place], hits: Iterable[Hit]) -> tuple[Place, ...]:
+    """The places of a data extension named as the reconciliation service names
+    them, where that name is one of the place's other terms: the service names
+    Getty's English term ("Philippines") where the extension's preferred term is
+    the place's own language ("Pilipinas"), as `with_names` prefers an English
+    term. A place whose hit name is none of its terms keeps its preferred term."""
+    wanted = {hit.id: hit.name for hit in hits if hit.name}
+    named = []
+    for place in places:
+        name = wanted.get(place.record_id)
+        if name and name != place.name and name in place.names:
+            others = (place.name, *(other for other in place.names if other != name))
+            country = place.country
+            if country is not None and country.id == place.record_id:
+                country = Ref(place.record_id, name)  # a nation names itself as it is named
+            place = replace(place, name=name, names=others, country=country)
+        named.append(place)
     return tuple(named)
 
 
@@ -457,6 +551,68 @@ def _place(record: str, rows: list[dict[str, str]]) -> Place | None:
         point=point,
         license=LICENSE,
     )
+
+
+def _extension_strings(row: dict, name: str) -> list[str] | None:
+    """The strings of one property of an extension's row: [] when the row has
+    none, None when it has the property in a form that is not a list of
+    {"str": text}."""
+    values = row.get(name)
+    if values is None:
+        return []
+    if not isinstance(values, list) or not all(
+        isinstance(value, dict) and isinstance(value.get("str"), str) for value in values
+    ):
+        return None
+    return [value["str"].strip() for value in values if value["str"].strip()]
+
+
+def _extension_place(record: str, row: dict) -> Place | None:
+    """One place of a data extension's answer, or None when the row cannot be
+    read or has no name. The names its ancestors and place types have are all
+    it knows of them (an empty id each). TGN's root is left out of the ancestors.
+    A place with the place type "nations" is its own country and has no parents, as
+    `_place` reads a nation (it takes the preferred type, which the service does not
+    say: TGN 7024408, the Confederate States of America, a historical region also typed
+    "nations", is read as a nation here and not by `_place`). Any other
+    place has the ancestors the service lists as parents, nearest first (the root
+    dropped; for most the last is a continent, for some there are none), and no
+    country: the service types no ancestor, so which of them is the place's nation
+    or its province is not said, and a reader that takes the last parent as the
+    country (field_research.derive) must not read these (it reads none whose parents
+    have no TGN record: derive._named_parents). None has a point
+    (EXTENSION_PROPERTIES). Its
+    name is the preferred term, which Getty may give in the place's own language
+    ("Pilipinas"); `with_hit_names` names it as the reconciliation service does."""
+    terms, others, ancestors, types = (
+        _extension_strings(row, name)
+        for name in ("/tgn_prefterm", "/tgn_varterms", "/tgn_hier", "/tgn_placetypes")
+    )
+    if None in (terms, others, ancestors, types) or not terms:
+        return None
+    name = terms[0]
+    if ancestors and ancestors[-1] == ROOT:
+        ancestors = ancestors[:-1]
+    kinds = tuple(Ref("", kind) for kind in sorted(dict.fromkeys(types), key=_kind_order))
+    country, parents = None, tuple(Ref("", ancestor) for ancestor in ancestors)
+    if NATION_TYPE in types:
+        country, parents = Ref(record, name), ()
+    return Place(
+        source=SOURCE,
+        record_id=record,
+        name=name,
+        names=tuple(dict.fromkeys(other for other in [*terms[1:], *others] if other != name)),
+        kinds=kinds,
+        country=country,
+        parents=parents,
+        license=LICENSE,
+    )
+
+
+def _kind_order(kind: str) -> tuple[int, str]:
+    """A place type's place in a place's kinds: LEVEL_TYPES first, in their order,
+    then the others by name."""
+    return (LEVEL_TYPES.index(kind) if kind in LEVEL_TYPES else len(LEVEL_TYPES), kind.casefold())
 
 
 def _point(row: dict[str, str]) -> tuple[float, float] | None:

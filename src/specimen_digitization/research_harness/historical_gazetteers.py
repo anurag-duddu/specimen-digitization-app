@@ -22,10 +22,14 @@ from specimen_digitization.application import georef_tgn as tgn
 from specimen_digitization.application import georef_wikidata as wikidata
 
 Fetch = Callable[[str, dict[str, str]], Awaitable[tuple[int, bytes]]]
+# Sends a form to a URL (a POST) and answers as a Fetch does. The caller gives
+# one for Getty TGN's data extension (`_tgn_extension`) only.
+Post = Fetch
 MAX_CALLS = 3
 MAX_BODY_BYTES = 2_000_000
 SOURCES = frozenset({tgn.SOURCE, wikidata.SOURCE, nga.SOURCE})
-# Getty TGN reconciliation answers that send its search to the SPARQL endpoint.
+# Getty TGN reconciliation answers that send its search to the SPARQL endpoint,
+# and SPARQL answers that send the records' reading to the data extension.
 SEARCH_REFUSALS = frozenset({401, 403})
 # What a later request's parser says of a reply that holds nothing it can use:
 # no body (EMPTY), no row or none to use (NO_MATCH), or a body that is not the
@@ -50,11 +54,13 @@ class _MalformedSource(Exception):
 
 
 class SearchUnanswered(Exception):
-    """Raised by a caller's fetch for Getty TGN's reconciliation request only,
-    when that request got no response at all, so nothing came back to capture.
-    The TGN search then goes through the SPARQL endpoint instead. Every other
-    fetch exception still reaches the owning broker unchanged. `reason` says
-    what happened in a few plain words ("did not answer after 3 attempts")."""
+    """Raised by a caller's fetch for Getty TGN's reconciliation request, or by
+    its post for Getty TGN's data extension request, when that request got no
+    response at all, so nothing came back to capture. The TGN search then goes
+    through the SPARQL endpoint instead; the records' reading ends as the SPARQL
+    endpoint's refusal left it. Every other fetch exception still reaches the
+    owning broker unchanged. `reason` says what happened in a few plain words
+    ("did not answer after 3 attempts")."""
 
     def __init__(self, reason: str):
         super().__init__(reason)
@@ -95,9 +101,16 @@ class HistoricalLookup:
     # something, when the lookup is MALFORMED for it (`_later`): "record" or
     # "name" (Getty TGN), "entity" or "label" (Wikidata), "feature" or "unit" (NGA).
     unread: str | None = None
+    # Why Getty TGN's records were read through its reconciliation service's data
+    # extension, when they were: the SPARQL endpoint's refusal, "refused the
+    # request (HTTP 403)". Those places have the names of their ancestors and
+    # place types but no ids for them (`georef_tgn.parse_extend`).
+    extension: str | None = None
 
 
-async def lookup(source_id: str, filtered_name: str, fetch: Fetch) -> HistoricalLookup:
+async def lookup(
+    source_id: str, filtered_name: str, fetch: Fetch, post: Post | None = None
+) -> HistoricalLookup:
     """Search one source by filtered place text, then read only its returned IDs.
 
     Every stage is capped and a non-success result ends the chain. Only the
@@ -110,6 +123,11 @@ async def lookup(source_id: str, filtered_name: str, fetch: Fetch) -> Historical
     One exception is the fetch's own signal: when Getty TGN's reconciliation
     request is refused (SEARCH_REFUSALS) or the fetch raises SearchUnanswered
     for it, TGN is searched through its SPARQL endpoint instead (`_tgn_search`).
+    The other is the caller's post: when the SPARQL endpoint refuses (SEARCH_REFUSALS)
+    the request for the records of the places the reconciliation found, and the
+    caller gave a post, those records are read through the reconciliation service's
+    data extension instead (`_tgn_extension`). A caller with no post leaves such a
+    refusal as it is.
     """
     if source_id not in SOURCES:
         raise ValueError("unknown historical gazetteer source")
@@ -124,7 +142,7 @@ async def lookup(source_id: str, filtered_name: str, fetch: Fetch) -> Historical
         return _result(LookupStatus.POLICY, calls, reason="invalid filtered place text")
     try:
         if source_id == tgn.SOURCE:
-            return await _tgn(filtered_name, fetch, calls)
+            return await _tgn(filtered_name, fetch, calls, post)
         if source_id == wikidata.SOURCE:
             return await _wikidata(filtered_name, fetch, calls)
         return await _nga(filtered_name, fetch, calls)
@@ -179,7 +197,9 @@ async def _request(
     return None, status, body
 
 
-async def _tgn(filtered_name: str, fetch: Fetch, calls: list[Exchange]) -> HistoricalLookup:
+async def _tgn(
+    filtered_name: str, fetch: Fetch, calls: list[Exchange], post: Post | None = None
+) -> HistoricalLookup:
     try:
         failure, status, body = await _request(
             tgn.RECONCILE, tgn.reconcile_params(filtered_name), fetch, calls
@@ -205,6 +225,10 @@ async def _tgn(filtered_name: str, fetch: Fetch, calls: list[Exchange]) -> Histo
         return _result(failure, calls)
     outcome, places = _source_value(tgn.parse_records, status, body)
     if outcome != LookupStatus.SUCCESS:
+        if status in SEARCH_REFUSALS and post is not None:
+            return await _tgn_extension(
+                hits, post, calls, outcome, f"refused the request (HTTP {status})"
+            )
         return _later(outcome, calls, "record")
     returned = {place.record_id for place in places}
     if len(places) > tgn.LIMIT or returned - set(ids):
@@ -223,6 +247,43 @@ async def _tgn(filtered_name: str, fetch: Fetch, calls: list[Exchange]) -> Histo
     if set(names) - set(place_ids):
         return _result(LookupStatus.MALFORMED, calls, reason="names exceeded requested TGN ids")
     return _result(LookupStatus.SUCCESS, calls, _source_value(tgn.with_names, places, names))
+
+
+async def _tgn_extension(
+    hits: tuple[tgn.Hit, ...],
+    post: Post,
+    calls: list[Exchange],
+    refused: LookupStatus,
+    why: str,
+) -> HistoricalLookup:
+    """The records of the places the reconciliation found, read through its data
+    extension (tgn.extend_params, POSTed to tgn.RECONCILE) once the SPARQL
+    endpoint refused to give them (`refused` is its refusal's outcome, `why` says
+    what it said). One call, so the chain stays within MAX_CALLS (the caller's post may
+    send it again, as any request is sent again: field_research.sources.ATTEMPTS). When the
+    extension gets no response at all (SearchUnanswered), the lookup ends as the
+    refusal left it; any other reply that gives no place ends as `_later` ends it.
+    The places carry names where SPARQL gave ids (`georef_tgn.parse_extend`),
+    named as the reconciliation service names them (`georef_tgn.with_hit_names`)."""
+    ids = tuple(dict.fromkeys(hit.id for hit in hits))
+    try:
+        failure, status, body = await _request(
+            tgn.RECONCILE, _source_value(tgn.extend_params, ids), post, calls
+        )
+    except SearchUnanswered:
+        return _later(refused, calls, "record")
+    if failure is not None:
+        return _result(failure, calls)
+    outcome, places = _source_value(tgn.parse_extend, status, body)
+    if outcome != LookupStatus.SUCCESS:
+        return _later(outcome, calls, "record")
+    returned = {place.record_id for place in places}
+    if len(places) > tgn.LIMIT or returned - set(ids):
+        return _result(LookupStatus.MALFORMED, calls, reason="records exceeded requested TGN ids")
+    if returned != set(ids):
+        return _result(LookupStatus.AMBIGUOUS, calls, reason="requested TGN records were incomplete")
+    places = _source_value(tgn.with_hit_names, places, hits)
+    return HistoricalLookup(LookupStatus.SUCCESS, places, tuple(calls), extension=why)
 
 
 async def _tgn_search(
