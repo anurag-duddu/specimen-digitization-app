@@ -2541,17 +2541,19 @@ record clears or holds differently.
   not start with UNSURE (`read_answer`'s rule). Habitat is excepted and
   keeps its codes whatever the second opinion says. Verbatim D/T/S is
   excepted too (both missed values of lane H1's table, 105526336 "1916" and
-  105526564 "III.87", were dates with no day) except where nothing on the
-  labels needs it (`second_opinion._no_verbatim_date`, lane B of
-  2026-11-24): no text of the run writes a time of day or a season
-  (`second_opinion.TIME_OR_SEASON`: "am", "pm", "sunrise", "daylight",
-  "Summer" and their kin, or a clock time, on one line), and either Date Visited From
-  and Date Visited To are both settled to the day, or both are blank, no
-  text could be a date (`date_lines.could_be_a_date`) and no part of any
-  label is unreadable. The field holds a collecting date or time only
-  where it is not exact (PRD.md, "Date and time semantics"); a date
-  settled as a month or a year, a range ending on a month, a date in doubt
-  or one date blank keeps the codes.
+  105526564 "III.87", were dates with no day) except where the record
+  shows nothing on the labels needs it (`second_opinion._no_verbatim_date`,
+  lane B of 2026-11-24): Date Visited From and Date Visited To are both
+  settled to the day (`ontology_checks.date_parts` gives three parts); no
+  text of the run, its lines joined by a space, writes a time of day or a
+  season (`second_opinion.TIME_OR_SEASON`: "am", "pm", "sunrise",
+  "daylight", "Summer" and their kin in English, Spanish, French and
+  German, or a clock time); and no part of a label either date is drawn on
+  is unreadable (a reader's unreadable span, a transcript marked
+  unreadable, a placeholder; every label when the dates name none). The
+  field holds a collecting date or time only where it is not exact (PRD.md,
+  "Date and time semantics"); a date settled as a month or a year, a range
+  ending on a month, a date in doubt, one date or both blank keep the codes.
   `research_incomplete:<field>`, `taxonomy_unresolved` and every mark stay,
   so a blank field one of them names stays flagged: a blank Taxon the second
   opinion also leaves blank loses these two codes and keeps
@@ -3101,8 +3103,8 @@ elevation is derived first, and only for a field a person has not decided):
    writes a determination marker, `date_lines._determination`) or a
    catalogue-number label (a line writes the heading "FMNH", "FMNH-INS" or
    "FMNHINS" or the museum's name "FIELD MUSEUM" or "CNHM", in any case and
-   with no letter right before or after it, and no line a determination
-   marker); no line of it names a
+   with no letter or digit right before or after it, and no line a
+   determination marker); no line of it names a
    collector (`date_lines._collector`); no field of the run is drawn on it
    (its source label, a reading of it as the field's source, verbatim or
    settling reading, an evidence row of it) but the Taxon, Date Identified
@@ -3115,9 +3117,10 @@ elevation is derived first, and only for a field a person has not decided):
    lower-case word but determination and joining words, "by" and a
    surname's particle; a catalogue line writes the heading, the museum's
    name or a number of five to nine digits and no word but those of the
-   heading and the name (`step.CATALOGUE_WORDS`). A span the reader's text
-   does not hold, a label of any other kind, and an unreadable part on
-   another line still stop the mark. Every other field keeps the whole-slide rule, and its code
+   heading and the name (`step.CATALOGUE_WORDS`). Lines are those
+   `str.splitlines` gives. A span the reader's text does not hold, a span
+   that crosses a line break, a label of any other kind, and an unreadable
+   part on another line still stop the mark. Every other field keeps the whole-slide rule, and its code
    stays `label_not_read_whole`. Production record d10333ff's
    "J. [unreadable] det. 2021" is the case.
 5. The organiser found no text for it: no candidate, no literal, no

@@ -3525,9 +3525,11 @@ def _whole_label_read(run, readings: Sequence[Reading], *, by_kind: bool = False
 
 # Habitat (lane B of the waiting-fields program, the coordinator's brief of
 # 2026-11-24): its blank needs every label that could carry a habitat read
-# whole, not the whole slide. A catalogue-number label and a determination
-# label carry none, so an unreadable word inside their own content does not
-# stop it (_whole_label_read's `by_kind`, _unreadable_inside_its_kind). On the
+# whole, not the whole slide. A catalogue-number label's and a determination
+# label's own content (its heading, number and museum name; its determiner's
+# line) names no habitat, so an unreadable word on a line that writes only
+# that content does not stop it (_whole_label_read's `by_kind`,
+# _unreadable_inside_its_kind, _content_line). On the
 # 19 cleared production records of 2026-11-24, rule A found 6 blank Habitats'
 # labels not read whole: 5 for an unreadable part (one inside a determiner's
 # name, d10333ff) and 1 for a label one reader read.
@@ -3535,8 +3537,9 @@ READ_WHOLE_BY_KIND = frozenset({"habitat"})
 # What a catalogue-number label writes: the Field Museum's insect heading
 # ("FMNH-INS", "FMNHINS", "FMNH"), the museum's name ("FIELD MUSEUM", and
 # "CNHM", Chicago Natural History Museum, its name from 1943 to 1966), in any
-# case; and its number, five to nine digits with no digit beside them.
-CATALOGUE_HEADING = re.compile(r"(?<![^\W\d_])(?:FMNH\W*INS|FMNH|FIELD\s+MUSEUM|CNHM)(?![^\W\d_])", re.IGNORECASE)
+# case, with no letter or digit right before or after it ("FMNH123" is none);
+# and its number, five to nine digits with no digit beside them.
+CATALOGUE_HEADING = re.compile(r"(?<![^\W_])(?:FMNH\W*INS|FMNH|FIELD\s+MUSEUM|CNHM)(?![^\W_])", re.IGNORECASE)
 CATALOGUE_NUMBER = re.compile(r"(?<!\d)\d{5,9}(?!\d)")
 # The fields a label of each kind may be drawn on for, and no other.
 KIND_FIELDS = {"catalogue": frozenset({"fmnh_ins_number"}),
@@ -3591,8 +3594,9 @@ def _unreadable_inside_its_kind(run, readings: Sequence[Reading], region_id: str
       writes only its kind's content (_content_line: a determiner's line, or
       the heading, the museum's name or the number). A placeholder (checks.shows_placeholder)
       is found line by line; a reader's listed unreadable span is found as
-      written in that reader's text, at every place it stands, and a span the
-      text does not hold is outside.
+      written in each line (str.splitlines) of that reader's text, and every
+      line that holds it must be such a line; a span the text does not hold,
+      or that crosses a line break, is outside.
     A label of no such kind, or with an unreadable part anywhere else, is
     False: it must be read whole."""
     from .checks import shows_placeholder
@@ -3630,9 +3634,12 @@ def _unreadable_inside_its_kind(run, readings: Sequence[Reading], region_id: str
         if any(shows_placeholder(line) and not inside(line) for line in held):
             return False
         for span in spans:
-            places = [found.start() for found in re.finditer(re.escape(span), text)] if span.strip() else []
-            if not places or "\n" in span or any(not inside(text[text.rfind("\n", 0, at) + 1:].split("\n", 1)[0])
-                    for at in places):
+            # Found line by line (str.splitlines, every line break): a span on two lines, or one more often in
+            # the text than in its lines, crosses a line break.
+            within = [line for line in held if span in line]
+            if (not span.strip() or len(span.splitlines()) != 1 or not within
+                    or sum(line.count(span) for line in held) != text.count(span)
+                    or any(not inside(line) for line in within)):
                 return False
     return True
 

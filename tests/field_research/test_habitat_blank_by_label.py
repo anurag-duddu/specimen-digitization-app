@@ -125,8 +125,8 @@ def test_an_unreadable_part_of_the_catalogue_heading_does_not_stop_a_blank_habit
 
 
 def test_every_other_field_still_needs_the_whole_slide_read(tmp_path, monkeypatch):
-    """The collecting method answered label_lacks_value too: it keeps its expert's reason and no mark, with the
-    rule's code for why (A_declined:label_not_read_whole), while the Habitat is marked."""
+    """The collecting method answered label_lacks_value too: it keeps its expert's reason and no mark, while the
+    Habitat is marked."""
     run = researched(tmp_path, monkeypatch, {UPPER: same(CATALOGUE),
         LOWER: (DETERMINATION, DETERMINER_UNREAD, ("[unreadable]",))},
         script={"habitat": LACKS, "collection_method": LACKS_METHOD})
@@ -147,11 +147,17 @@ def test_every_other_field_still_needs_the_whole_slide_read(tmp_path, monkeypatc
     {UPPER: same(CATALOGUE), LOWER: same("Panorpa speciosa\nHost: [unreadable] det. R. E. Lewis")},
     {UPPER: same(CATALOGUE), LOWER: same("Panorpa speciosa\ndet. R. E. Lewis, oak [unreadable]")},
     {UPPER: same("FMNH-INS [unreadable] meadow\n4313642"), LOWER: same("det. R. E. Lewis")},
+    {UPPER: same(CATALOGUE), LOWER: ("Host: Quercus\rdet. R. E. Lewis", "Host: Quercus\rdet. R. E. Lewis",
+        ("Quercus",))},
+    {UPPER: same(CATALOGUE), LOWER: ("det. R. E. Lewis\rHost: oak", "det. R. E. Lewis\rHost: oak",
+        ("Lewis\rHost",))},
+    {UPPER: same("FMNH123 [unreadable]\nFIELD MUSEUM"), LOWER: same("det. R. E. Lewis")},
 ], ids=["another-line-of-a-determination-label", "a-collector-on-it-too", "a-label-of-no-such-kind",
     "a-line-of-the-catalogue-label-without-its-content", "beside-a-heading-on-another-line",
     "a-span-the-text-does-not-hold", "a-label-wholly-unreadable", "a-host-on-the-determiners-line",
     "a-host-heading-on-the-determiners-line", "a-lower-case-word-on-the-determiners-line",
-    "another-word-on-the-catalogue-heading-line"])
+    "another-word-on-the-catalogue-heading-line", "a-span-on-a-line-a-carriage-return-ends",
+    "a-span-across-a-carriage-return", "a-heading-run-into-digits"])
 def test_an_unreadable_part_anywhere_else_still_stops_the_mark(tmp_path, monkeypatch, labels):
     run = researched(tmp_path, monkeypatch, labels)
     assert by_kind(run) == (False, False)

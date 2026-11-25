@@ -3,13 +3,14 @@ cleared production records): an agreed blank Verbatim D/T/S where nothing on the
 
 Work package F2 left Verbatim D/T/S out of rule B (second_opinion.AGREED_BLANK_EXCEPT) because both missed
 values of lane H1's table were Verbatim D/T/S: 105526336 (truth "1916") and 105526564 (truth "III.87"), each a
-collecting date with no day. The field holds such a date, or a time of day (the second opinion's instruction,
+collecting date with no day. The field holds such a date, a season or a time of day (the second opinion's instruction,
 field 17). So rule B now lifts `mandatory_unresolved:verbatim_dts` and `label_unsettled:verbatim_dts` from a
 blank Verbatim D/T/S the current, obtained second opinion also leaves blank only where
-second_opinion._no_verbatim_date holds: no text of the run writes a time of day or a season, and either both collecting
-dates are settled to the day, or both are blank and no text could be a date and nothing is unreadable. Pinned
-here as keeping the flag: a date with no day (the two misses' shape), a range ending on a month, a date in
-doubt, a time of day or a season. Habitat stays excepted (test_agreed_no_flag.py).
+second_opinion._no_verbatim_date holds: both collecting dates are settled to the day, no text of the run writes
+a time of day or a season, and no part of a label the dates are drawn on is unreadable. Pinned here as keeping
+the flag: a date with no day (the two misses' shape), a range ending on a month, a date in doubt, no date at
+all, a time of day or a season, an unreadable part of the date's label. Habitat stays excepted
+(test_agreed_no_flag.py).
 
 The record is test_agreed_no_flag's (test_step's rig through the workflow with the second opinion mounted):
 its label writes the collecting date to the day, "2020-06-01".
@@ -100,38 +101,51 @@ def test_a_second_opinion_that_reads_a_verbatim_dts_keeps_the_flag(tmp_path):
 
 # ---- second_opinion._no_verbatim_date, case by case -----------------------------------------------------------
 
-def value(state=ValueState.SUPPORTED, text=None, layer="settled"):
-    return FieldValue(state=state, parsed=text, layer=layer if state == ValueState.SUPPORTED else None)
+DATE_LABEL, OTHER_LABEL = "label-date", "label-other"
+
+
+def value(state=ValueState.SUPPORTED, text=None, layer="settled", label=DATE_LABEL):
+    return FieldValue(state=state, parsed=text, layer=layer if state == ValueState.SUPPORTED else None,
+        source_region_id=label if state == ValueState.SUPPORTED else None)
 
 
 BLANK = FieldValue(state=ValueState.NOT_PRESENT)
-
-
-def run_of(start, end, texts, *, spans=(), unreadable=False):
-    """A run as the rule reads it: its two collecting dates, one reader's text per entry of `texts` (with
-    `spans` listed on the first), and a transcript (marked unreadable or not)."""
-    observations = [SimpleNamespace(literal_text=text, unreadable_spans=list(spans) if index == 0 else [])
-        for index, text in enumerate(texts)]
-    transcripts = [SimpleNamespace(text=texts[0], value_state=ValueState.UNREADABLE if unreadable else None)]
-    return SimpleNamespace(fields={"date_visited_from": start, "date_visited_to": end},
-        observations=observations, transcripts=transcripts)
-
-
-def readings_of(texts):
-    return [SimpleNamespace(text=text) for text in texts]
-
-
 DAY = ("IV-23-48\nYepocapa, 4800ft\nR.D.mitchell", "IV-23-48\nYepocapa, 4800ft.\nR.D. Mitchell")
+DETERMINATION = ("Panorpa\nsp. IVa\nJ. Kustermop det. 2021", "Panorpa\nsp. IVa\nJ. Kustermop det. 2021")
+
+
+def run_of(start, end, texts=DAY, *, other=DETERMINATION, spans=(), unreadable=None):
+    """A run as the rule reads it: its two collecting dates, the date's label read by two readers (`texts`,
+    with `spans` listed by the first) and another label (`other`), each with a transcript; `unreadable` names
+    the label whose transcript is marked unreadable."""
+    observations, transcripts = [], []
+    for label, written in ((DATE_LABEL, texts), (OTHER_LABEL, other)):
+        for index, text in enumerate(written):
+            observations.append(SimpleNamespace(id=f"{label}-{index}", region_id=label, literal_text=text,
+                unreadable_spans=list(spans) if label == DATE_LABEL and index == 0 else []))
+        transcripts.append(SimpleNamespace(region_id=label, text=written[0],
+            value_state=ValueState.UNREADABLE if unreadable == label else None))
+    return SimpleNamespace(fields={"date_visited_from": start, "date_visited_to": end},
+        observations=observations, transcripts=transcripts, evidence=[])
+
+
+def readings_of(texts=DAY, other=DETERMINATION):
+    return [SimpleNamespace(text=text, region_id=label) for label, written in ((DATE_LABEL, texts),
+        (OTHER_LABEL, other)) for text in written]
+
+
+DAYS = (value(text="1948-04-23"), value(text="1948-04-23", layer="derived"))
 
 
 @pytest.mark.parametrize("time", ["10 am", "3 p.m.", "Sunrise", "at night", "22h", "10:30", "mañana", "Summer",
-    "verano", "Été"])
+    "verano", "Été", "10  hrs", "midi", "22.30 h", "10 o'clock", "10\nhrs", "10\rhrs"])
 def test_a_time_of_day_or_a_season_keeps_the_flag(time):
-    day, settled_to = value(text="1948-04-23"), value(text="1948-04-23", layer="derived")
-    assert so._no_verbatim_date(run_of(day, settled_to, DAY), readings_of(DAY)) is True
+    assert so._no_verbatim_date(run_of(*DAYS), readings_of()) is True
     timed = (DAY[0] + "\n" + time, DAY[1])
-    assert so._no_verbatim_date(run_of(day, settled_to, timed), readings_of(DAY)) is False
-    assert so._no_verbatim_date(run_of(day, settled_to, DAY), readings_of(timed)) is False
+    assert so._no_verbatim_date(run_of(*DAYS, timed), readings_of()) is False
+    assert so._no_verbatim_date(run_of(*DAYS), readings_of(timed)) is False
+    assert so._no_verbatim_date(run_of(*DAYS, other=(DETERMINATION[0] + " " + time, DETERMINATION[1])),
+        readings_of()) is False
 
 
 @pytest.mark.parametrize(("start", "end", "expected"), [
@@ -142,45 +156,45 @@ def test_a_time_of_day_or_a_season_keeps_the_flag(time):
     (value(text="1948-04-23"), BLANK, False),
     (value(state=ValueState.AMBIGUOUS), value(state=ValueState.AMBIGUOUS), False),
     (value(text="1948-04-23", layer=None), value(text="1948-04-23"), False),
-], ids=["days", "month", "year", "to-a-month", "end-blank", "in-doubt", "unchecked-layer"])
+    (BLANK, BLANK, False),
+], ids=["days", "month", "year", "to-a-month", "end-blank", "in-doubt", "unchecked-layer", "no-date-at-all"])
 def test_the_dates_settled_to_the_day(start, end, expected):
-    assert so._no_verbatim_date(run_of(start, end, DAY), readings_of(DAY)) is expected
+    assert so._no_verbatim_date(run_of(start, end), readings_of()) is expected
 
 
-NO_DATE = ("Bittacus strigosus\nHagen\nDet. D. W. Webb", "FMNH-INS\n4363881\nFIELD MUSEUM")
-
-
-def test_no_date_on_the_labels_and_nothing_unreadable_carries_no_flag():
-    assert so._no_verbatim_date(run_of(BLANK, BLANK, NO_DATE), readings_of(NO_DATE)) is True
-    assert so._no_verbatim_date(run_of(BLANK, None, NO_DATE), readings_of(NO_DATE)) is True
-
-
-@pytest.mark.parametrize("change", ["a-year", "a-roman-month", "a-month-word", "a-placeholder", "a-span",
-    "a-transcript-unreadable", "a-date-in-doubt"])
-def test_no_date_settled_but_one_may_be_written_keeps_the_flag(change):
-    texts, kwargs, start = list(NO_DATE), {}, BLANK
-    if change == "a-year":
-        texts[0] += "\n1916"
-    elif change == "a-roman-month":
-        texts[0] += "\nIII.87"
-    elif change == "a-month-word":
-        texts[0] += "\nAvril"
-    elif change == "a-placeholder":
-        texts[0] += "\n[unreadable]"
+@pytest.mark.parametrize("change", ["a-placeholder", "a-span", "a-transcript-unreadable", "a-reading-placeholder"])
+def test_an_unreadable_part_of_the_dates_label_keeps_the_flag(change):
+    """An unreadable word beside the date may be a time; on another label it does not stop the rule."""
+    texts, other, kwargs, readings = list(DAY), list(DETERMINATION), {}, None
+    if change == "a-placeholder":
+        texts[0] += "\nTime: [unreadable]"
+        other[0] = other[0].replace("Kustermop", "[unreadable]")
     elif change == "a-span":
         kwargs["spans"] = ["a faint word"]
     elif change == "a-transcript-unreadable":
-        kwargs["unreadable"] = True
+        kwargs["unreadable"] = DATE_LABEL
     else:
-        start = value(state=ValueState.AMBIGUOUS)
-    assert so._no_verbatim_date(run_of(start, BLANK, texts, **kwargs), readings_of(texts)) is False
+        readings = readings_of((DAY[0] + " [unreadable]", DAY[1]))
+    assert so._no_verbatim_date(run_of(*DAYS, tuple(texts), other=tuple(other), **kwargs),
+        readings or readings_of(tuple(texts), tuple(other))) is False
+    # The same part on the other label only.
+    elsewhere = run_of(*DAYS, other=(DETERMINATION[0].replace("Kustermop", "[unreadable]"), DETERMINATION[1]),
+        unreadable=OTHER_LABEL)
+    assert so._no_verbatim_date(elsewhere, readings_of(other=(DETERMINATION[0] + " [unreadable]",
+        DETERMINATION[1]))) is True
+
+
+def test_dates_drawn_on_no_label_ask_every_label():
+    start, end = (FieldValue(state=ValueState.SUPPORTED, parsed="1948-04-23", layer="settled") for _ in range(2))
+    assert so._no_verbatim_date(run_of(start, end), readings_of()) is True
+    other = (DETERMINATION[0].replace("Kustermop", "[unreadable]"), DETERMINATION[1])
+    assert so._no_verbatim_date(run_of(start, end, other=other), readings_of(other=other)) is False
 
 
 @pytest.mark.parametrize("text", ["IX-14-46\nH. Hoogstraal", "IX-14-46 H. Hoogstraal", "Elev. 4800 ft.", "Mt. McKinley",
-    "Malaise Trap", "Hamburg"], ids=["a-name-on-the-next-line", "a-name-after-the-date", "feet", "mount", "trap",
-    "a-place"])
+    "Malaise Trap", "Hamburg", "Hagen, 1861"], ids=["a-name-on-the-next-line", "a-name-after-the-date", "feet",
+    "mount", "trap", "a-place", "an-author-and-year"])
 def test_a_date_and_a_name_or_a_measure_are_no_time_of_day(text):
     """Production records 48a71d53 and f35af3a5 write "IX-14-46" above "H. Hoogstraal": no clock time."""
     texts = (text + "\n" + DAY[0], DAY[1])
-    day, settled_to = value(text="1948-04-23"), value(text="1948-04-23", layer="derived")
-    assert so._no_verbatim_date(run_of(day, settled_to, texts), readings_of(texts)) is True
+    assert so._no_verbatim_date(run_of(*DAYS, texts), readings_of(texts)) is True
