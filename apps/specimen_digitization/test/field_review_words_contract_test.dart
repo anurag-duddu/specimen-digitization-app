@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/workbench/field_presentation.dart';
 import 'package:specimen_digitization/src/screens/workbench/fields_panel.dart';
+import 'package:specimen_digitization/src/screens/workbench/pending_changes.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'ui_finders.dart';
@@ -41,6 +42,51 @@ void main() {
       for (final Object? key in fixture['no_approved_authority'] as List)
         key.toString(),
     ]);
+  });
+
+  group('an unknown IRN with no value', () {
+    final Json irn = <String, dynamic>{
+      'field_key': 'identified_by_irn',
+      'state': 'unknown',
+      'literal_value': ' ',
+    };
+
+    test('is not for review, and is missing', () {
+      final FieldReviewStatus status = fieldReviewStatus(irn);
+      expect(status.hasNoApprovedSource, isTrue);
+      expect(status.needsReview, isFalse);
+      expect(status.isMissing, isTrue);
+      expect(status.isSettledValue, isFalse);
+    });
+
+    test('needs review when an issue names it', () {
+      final FieldReviewStatus status = fieldReviewStatus(irn, hasIssues: true);
+      expect(status.hasNoApprovedSource, isFalse);
+      expect(status.needsReview, isTrue);
+    });
+
+    test('needs review while an edit to it is unsaved', () {
+      final FieldReviewStatus status = fieldReviewStatus(
+        irn,
+        pending: const PendingFieldChange(
+          fieldKey: 'identified_by_irn',
+          displayName: 'Identified by IRN',
+          state: 'supported',
+          literal: '12345',
+        ),
+      );
+      expect(status.hasNoApprovedSource, isFalse);
+      expect(status.needsReview, isTrue);
+    });
+
+    test('another field left unknown still needs review', () {
+      final FieldReviewStatus status = fieldReviewStatus(<String, dynamic>{
+        ...irn,
+        'field_key': 'date_identified',
+      });
+      expect(status.hasNoApprovedSource, isFalse);
+      expect(status.needsReview, isTrue);
+    });
   });
 
   for (final Object? raw in fixture['cases'] as List) {
