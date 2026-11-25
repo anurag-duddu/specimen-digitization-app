@@ -17,8 +17,7 @@ Cloud's addresses while the reconciliation service answers them (Cloud Logging,
 2026-11-16 to 2026-11-23: every one of 142 unanswered Getty requests was to
 vocab.getty.edu, none to services.getty.edu). It gives names, not records: an
 ancestor or a place type has no id of its own, so a place read this way has
-`Ref`s with an empty id, and its nation is the ancestor right below the
-continent that ends its chain (`_extension_place`).
+`Ref`s with an empty id.
 """
 
 from __future__ import annotations
@@ -47,16 +46,6 @@ EXTENSION_PROPERTIES = ("/tgn_prefterm", "/tgn_varterms", "/tgn_hier", "/tgn_pla
 # reading can write. The place types' name for a nation (aat:300128207).
 ROOT = "World"
 NATION_TYPE = "nations"
-# TGN's continents (type "continents"), the children of its root that nations are
-# filed under: the ancestor right below the continent that ends a place's chain is
-# its nation. Probed 2026-11-24 over 755 places of 94 names: of the 730 places the
-# SPARQL read puts in a nation other than themselves, 729 have a continent as the
-# last ancestor of their extension chain with the nation's place right below it, at
-# the position SPARQL's chain gives it; the 730th ("United States of America", a
-# former political entity) has no ancestor but the root.
-CONTINENTS = frozenset(
-    {"Africa", "Antarctica", "Asia", "Europe", "North and Central America", "Oceania", "South America"}
-)
 # The place types a place field's level is read from (agreement.PLACE_LEVELS),
 # first among a place's kinds in this order: only the first kinds reach an
 # expert, and the extension does not say which type is a place's preferred one,
@@ -583,10 +572,11 @@ def _extension_place(record: str, row: dict) -> Place | None:
     read or has no name. The names its ancestors and place types have are all
     it knows of them (an empty id each). TGN's root is left out of the ancestors.
     A nation is its own country and has no parents, as `_place` reads one. Any other
-    place has the ancestors below its nation as parents and the nation as its
-    country, both by name, when its chain ends in a continent (CONTINENTS: the
-    service types no ancestor, so the nation is the one right below it); a place
-    whose chain ends in anything else has neither, and none has a point
+    place has all its ancestors as parents, nearest first, to the continent and no
+    country: the service types no ancestor, so which of them is the place's nation
+    or its province is not said, and a reader that takes the last parent as the
+    country (field_research.derive) must not read these (it reads none whose parents
+    have no TGN record: derive._named_parents). None has a point
     (EXTENSION_PROPERTIES). Its
     name is the preferred term, which Getty may give in the place's own language
     ("Pilipinas"); `with_hit_names` names it as the reconciliation service does."""
@@ -600,15 +590,9 @@ def _extension_place(record: str, row: dict) -> Place | None:
     if ancestors and ancestors[-1] == ROOT:
         ancestors = ancestors[:-1]
     kinds = tuple(Ref("", kind) for kind in sorted(dict.fromkeys(types), key=_kind_order))
-    country, parents = None, ()
+    country, parents = None, tuple(Ref("", ancestor) for ancestor in ancestors)
     if NATION_TYPE in types:
-        country = Ref(record, name)
-    elif len(ancestors) >= 2 and ancestors[-1] in CONTINENTS:
-        # As `_place` leaves a chain: the places below the nation, nearest first, and the nation
-        # as the country, by name. A chain that does not end in a continent names no nation: such
-        # a place has no parents rather than parents that end in something that is no country
-        # (derive reads the last of a candidate's parents as its country).
-        country, parents = Ref("", ancestors[-2]), tuple(Ref("", ancestor) for ancestor in ancestors[:-2])
+        country, parents = Ref(record, name), ()
     return Place(
         source=SOURCE,
         record_id=record,

@@ -114,7 +114,7 @@ def _location_ancestors(fields: Mapping[str, FieldValue],
         if value is None or value.state != ValueState.SUPPORTED:
             continue
         candidate = _settling_candidate(value, received.get(source_key, ()))
-        if candidate is None or not candidate.parents:
+        if candidate is None or not candidate.parents or not _named_parents(candidate):
             continue
         parents = list(candidate.parents)
         for key, index in targets:
@@ -138,6 +138,17 @@ def _location_ancestors(fields: Mapping[str, FieldValue],
             parent, source_key = items[0]
             derived.append((key, parent, source_key))
     return derived
+
+
+def _named_parents(candidate: SourceCandidate) -> bool:
+    """Whether a candidate's parents say which place each is. A Getty TGN place read through
+    the reconciliation service's data extension (georef_tgn.parse_extend) has its ancestors by
+    name only, to the continent: none is said to be its nation or its province, and derive reads
+    the last parent as the country and the one before as the province, so it reads none of them
+    (Codex's review of #471, rounds 1 and 2). A TGN record of the SPARQL read has a record for
+    every parent; any other source's parents are read as before."""
+    return not (candidate.authority_id or "").startswith("tgn:") or all(
+        parent.authority_id for parent in candidate.parents)
 
 
 def _can_derive_place(fields: Mapping[str, FieldValue], key: str, source_key: str) -> bool:

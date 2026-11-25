@@ -84,52 +84,30 @@ def test_the_recorded_answer_reads_into_the_places_sparql_reads():
     assert new["1000135"].name == "Pilipinas" and "Philippines" in new["1000135"].names
 
 
-def test_a_place_below_a_nation_has_the_places_below_it_as_parents_and_the_nation_as_country():
+def test_a_place_below_a_nation_has_all_its_ancestors_as_names_and_no_country():
     mckinley = extension_places()["1105587"]
     assert mckinley.name == "McKinley, Mount"
-    # As SPARQL reads it: the places below the nation, nearest first, and the nation as the
-    # country; no continent, no root. derive reads the last parent as the country.
-    assert [parent.name for parent in mckinley.parents] == ["Denali", "Alaska"]
-    assert (mckinley.country.id, mckinley.country.name) == ("", "United States")
-    old = sparql_places()["1105587"]
-    assert [parent.name for parent in mckinley.parents] == [parent.name for parent in old.parents]
-    assert mckinley.country.name == old.country.name
+    # Nearest first, to the continent; the service types no ancestor, so none is said to be
+    # the nation. No country; no root.
+    assert [parent.name for parent in mckinley.parents] == [
+        "Denali", "Alaska", "United States", "North and Central America"]
+    assert mckinley.country is None
     # No id for an ancestor or a type: names are all the service gives.
     assert {parent.id for parent in mckinley.parents} == {""} and {kind.id for kind in mckinley.kinds} == {""}
-    for place in extension_places().values():
-        assert all(parent.name not in tgn.CONTINENTS | {tgn.ROOT} for parent in place.parents)
+    assert all(parent.name != tgn.ROOT for place in extension_places().values() for parent in place.parents)
 
 
-def test_the_recorded_places_have_the_parents_sparql_gives_them_up_to_the_names_language():
+def test_the_recorded_places_have_the_ancestors_sparql_gives_them_and_the_continent():
     old, new = sparql_places(), extension_places()
     for record, place in new.items():
         other = old[record]
-        assert len(place.parents) == len(other.parents), record
-        assert (place.country is None) == (other.country is None), record
-        assert (place.country.id == record) == (other.country.id == record) if place.country else True
-
-
-@pytest.mark.parametrize(
-    ("ancestors", "parents", "country"),
-    [
-        (["Denali", "Alaska", "United States", "North and Central America", "World"], ["Denali", "Alaska"], "United States"),
-        (["Guatemala", "North and Central America", "World"], [], "Guatemala"),
-        # A chain that does not end in a continent names no nation: no parents, no country.
-        (["Atlantic Ocean", "World"], [], None),
-        (["Somewhere", "Elsewhere"], [], None),
-        (["Asia", "World"], [], None),
-        (["World"], [], None),
-        ([], [], None),
-        # A continent's name inside the chain is a place's name there, not its end.
-        (["Asia", "Bohol", "Philippines", "Asia", "World"], ["Asia", "Bohol"], "Philippines"),
-        (["Bohol", "Asia", "Philippines"], [], None),
-    ],
-)
-def test_the_nation_is_the_ancestor_right_below_the_continent_that_ends_the_chain(ancestors, parents, country):
-    _, [place] = tgn.parse_extend(200, answer(**{"7": row(**{"/tgn_prefterm": ["A"], "/tgn_hier": ancestors})}))
-    assert [parent.name for parent in place.parents] == parents
-    assert (place.country.name if place.country else None) == country
-    assert place.country is None or place.country.id == ""
+        if other.country is not None and other.country.id == record:  # a nation: itself, no parents
+            assert (place.country.id, place.parents) == (record, ())
+            continue
+        # SPARQL's chain stops below the nation and names it as the country; the extension's chain
+        # runs on to the continent: the same ancestors, the nation among them, and the continent.
+        assert len(place.parents) == len(other.parents) + 2, record
+        assert place.country is None
 
 
 def test_a_nation_is_its_own_country_and_has_no_parents():
@@ -209,7 +187,7 @@ def test_a_row_with_only_a_name_is_a_place_with_nothing_else():
         "Somewhere", (), (), (), None, None)
 
 
-def test_a_continent_has_no_parents_and_no_country():
+def test_the_root_is_left_out_of_the_ancestors():
     _, [place] = tgn.parse_extend(200, answer(**{"1000007": row(**{
         "/tgn_prefterm": ["Antarctica"], "/tgn_hier": ["World"], "/tgn_placetypes": ["continents"]})}))
     assert place.parents == () and place.country is None

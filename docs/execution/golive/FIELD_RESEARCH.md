@@ -251,17 +251,17 @@ handover runs field research instead of the six specialists:
    place's ancestors and place types are names (an empty id each), the
    level types come first among its kinds (`georef_tgn.LEVEL_TYPES`, the
    ones `agreement.PLACE_LEVELS` reads), a nation is its own country, and any
-   other place has the ancestors below its nation as parents and the nation
-   as its country, both by name, when its chain of ancestors ends in a
-   continent (`georef_tgn.CONTINENTS`: the service types no ancestor, so the
-   nation is the one right below the continent, which held for 729 of the
-   730 probed places a nation is read for); a place whose chain ends in
-   anything else has no parents and no country, since derive reads a
-   candidate's last parent as its country. No place has a point (the service
-   writes some points wrong), and the name is the one the reconciliation
-   search gave the place when that is one of its terms
-   (`georef_tgn.with_hit_names`: "Philippines", where Getty's preferred term
-   is "Pilipinas"). The chain keeps its cap of three calls
+   other place has all its ancestors as parents, nearest first, to the
+   continent, and no country: the service types no ancestor, so none is
+   said to be the place's nation or province. Derive, which reads a
+   candidate's last parent as its country and the one before as its
+   province, therefore reads no parent of a TGN place whose parents name no
+   TGN record (`derive._named_parents`); the name checks a settled place
+   must pass (`agreement.lies_in`) are unchanged. No place has a point (the
+   service writes some points wrong), and the name is the one the
+   reconciliation search gave the place when that is one of its terms
+   (`georef_tgn.with_hit_names`: "Philippines", where Getty's preferred
+   term is "Pilipinas"). The chain keeps its cap of three calls
    (`historical_gazetteers.MAX_CALLS`: the search, the refused SPARQL
    request, the extension); each call is tried again as any request is
    (`sources.ATTEMPTS`, three attempts), so a failing extension can send up

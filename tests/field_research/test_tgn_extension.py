@@ -62,9 +62,12 @@ async def test_refused_records_are_read_through_the_extension_and_settle_one_pla
     # Names, never ids, for its kinds and ancestors: the level types first, the ancestors
     # as Getty writes them, the nation with no record of its own.
     assert candidate.kind.split(", ")[:2] == ["inhabited places", "cities"]
-    # As the SPARQL read leaves it: the places below the nation, nearest first, and the nation
-    # last (derive reads the last parent as the country); no continent, no root.
-    assert candidate.parents == (PlaceRef("Chimaltenango", None, None), PlaceRef("Guatemala", None, None))
+    # Its ancestors by name, nearest first, to the continent; no root; no record for any.
+    assert candidate.parents == (
+        PlaceRef("Chimaltenango", None, None),
+        PlaceRef("Guatemala", None, None),
+        PlaceRef("North and Central America", None, None),
+    )
     assert answer.note == (
         "Getty TGN's SPARQL endpoint refused the request (HTTP 403); the places' details were "
         "read from its reconciliation service instead, which names their place types and "
@@ -206,19 +209,34 @@ async def test_the_identity_checks_abstain_on_a_place_read_through_the_extension
 
 
 @pytest.mark.asyncio
-async def test_a_settled_place_derives_its_province_and_country_from_the_parents_it_reads(tmp_path):
-    """Review round 1 of #471: derive reads a candidate's last parent as its country and the one
-    before as its province. A chain that ran on to the continent made the derived country "North
-    and Central America" and the province "Guatemala", unflagged."""
+@pytest.mark.parametrize(
+    "chain",
+    [
+        ["Chimaltenango", "Guatemala", "North and Central America", "World"],
+        # SPARQL found no nation for these (E/differential_live.json): a chain that ends in a continent
+        # does not say that the place right below it is one.
+        ["Vieques", "Puerto Rico", "North and Central America", "World"],
+        ["Hawaiian Islands", "Oceania", "World"],
+    ],
+)
+async def test_derive_reads_no_parent_of_a_place_read_through_the_extension(tmp_path, chain):
+    """Review rounds 1 and 2 of #471: derive reads a candidate's last parent as its country and the
+    one before as its province. The extension names a place's ancestors to the continent and types
+    none, so a settled city in Guatemala would have derived country "North and Central America" and
+    province "Guatemala" (round 1), and a city on Vieques country "Puerto Rico" (round 2: a chain that
+    ends in a continent does not say its last place below it is a nation), unflagged."""
     from types import SimpleNamespace
 
     from specimen_digitization.application.domain import ValueState
     from specimen_digitization.field_research import derive
     from specimen_digitization.field_research.contracts import FieldValue
 
-    tools, _, _, _ = make(tmp_path, getty())
+    rows = {"tgn/1016636": {"/tgn_prefterm": [{"str": READING}], "/tgn_placetypes": [{"str": "inhabited places"}],
+        "/tgn_hier": [{"str": name} for name in chain]}}
+    tools, _, _, _ = make(tmp_path, getty(extension={"rows": rows}))
     answer = await tools.lookup("tgn", READING, field_key="city")
     [candidate] = answer.candidates
+    assert [parent.name for parent in candidate.parents] == chain[:-1]
     city = FieldValue(state=ValueState.SUPPORTED, literal=READING, normalized=READING,
         authority_id=candidate.authority_id, evidence_ids=[answer.evidence.id], layer="settled")
     fields = {"country": FieldValue(state=ValueState.NOT_PRESENT),
@@ -227,5 +245,48 @@ async def test_a_settled_place_derives_its_province_and_country_from_the_parents
     run = SimpleNamespace(evidence=[], fields=fields)
     filled = derive.fill(run, eligible=["country", "province_state", "county"], asset_id=None,
         received={"city": [answer]})
-    # The candidate has two parents, so its province and country, never a county (derive's rule).
-    assert {key: fields[key].parsed for key in filled} == {"province_state": "Chimaltenango", "country": "Guatemala"}
+    assert filled == []
+    assert all(fields[key].state is ValueState.NOT_PRESENT for key in ("country", "province_state", "county"))
+
+
+def _city(parents, authority_id="tgn:1"):
+    """A settled city and the answer whose one candidate names `parents` (name, record), nearest first."""
+    from specimen_digitization.application.domain import Evidence, ValueState
+    from specimen_digitization.field_research.contracts import FieldValue, SourceAnswer, SourceCandidate
+
+    source = authority_id.partition(":")[0]
+    evidence = Evidence(id="ev", kind="authority", source=source, locator=authority_id, excerpt="X")
+    answer = SourceAnswer(source, "X", LookupStatus.SUCCESS,
+        (SourceCandidate("X", authority_id, "inhabited places", None, tuple(PlaceRef(*parent) for parent in parents)),),
+        evidence, note="match")
+    value = FieldValue(state=ValueState.SUPPORTED, literal="X", normalized="X", authority_id=authority_id,
+        evidence_ids=["ev"], layer="settled")
+    return value, answer
+
+
+@pytest.mark.parametrize(
+    ("authority_id", "parents", "derived"),
+    [
+        # A TGN record whose parents are all TGN records (the SPARQL read): derived, as before.
+        ("tgn:1", (("Indiana", "tgn:in"), ("United States", "tgn:us")), {"province_state": "Indiana", "country": "United States"}),
+        # A TGN record with a parent that names no record (the extension): nothing is derived.
+        ("tgn:1", (("Indiana", None), ("United States", None)), {}),
+        ("tgn:1", (("Indiana", "tgn:in"), ("United States", None)), {}),
+        # Another source's parents are read as before, with or without a record.
+        ("wikidata:Q1", (("Indiana", None), ("United States", None)), {"province_state": "Indiana", "country": "United States"}),
+        ("nga:1", (("Indiana", None), ("United States", None)), {"province_state": "Indiana", "country": "United States"}),
+    ],
+)
+def test_a_tgn_candidates_parents_are_read_only_when_each_names_a_record(authority_id, parents, derived):
+    from types import SimpleNamespace
+
+    from specimen_digitization.application.domain import ValueState
+    from specimen_digitization.field_research import derive
+    from specimen_digitization.field_research.contracts import FieldValue
+
+    city, answer = _city(parents, authority_id)
+    open_keys = ["country", "province_state", "county"]
+    run = SimpleNamespace(evidence=[], fields={key: FieldValue(state=ValueState.NOT_PRESENT) for key in open_keys}
+        | {"city": city})
+    filled = derive.fill(run, eligible=open_keys, asset_id=None, received={"city": [answer]})
+    assert {key: run.fields[key].parsed for key in filled} == derived
