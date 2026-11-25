@@ -6,9 +6,10 @@ Owner decision A's mark (step.mark_not_on_label) needed every label of the slide
 (step._whole_label_read), so one unreadable word anywhere kept a blank Habitat flagged; on record d10333ff it
 was a word of the determiner's name ("J. [unreadable] det. 2021"). For the Habitat alone
 (step.READ_WHOLE_BY_KIND), an unreadable part that stands inside a catalogue-number label's or a determination
-label's own content no longer stops the mark (step._unreadable_inside_its_kind); a label of any other kind, an
-unreadable part on another line, a label that also names a collector, a label another field is drawn on, and
-every other field keep the whole-slide rule.
+label's own content no longer stops the mark (step._unreadable_inside_its_kind, step._content_line); a label of any
+other kind, an unreadable part on another line or on a line that writes more than that content (a host, a
+lower-case word), a label that also names a collector, a label another field is drawn on, and every other field
+keep the whole-slide rule.
 
 The rig is test_thin_region_coverage's: test_step's slide and label (which writes no habitat), two more labels
 read by both readers, the segment step's real coverage check, the real field-research step with a scripted
@@ -142,9 +143,15 @@ def test_every_other_field_still_needs_the_whole_slide_read(tmp_path, monkeypatc
     {UPPER: same("FMNH-INS 4313642\n[unreadable] meadow"), LOWER: same("det. R. E. Lewis")},
     {UPPER: same(CATALOGUE), LOWER: same("det. R. E. Lewis", ["a faint word after Lewis"])},
     {UPPER: same(CATALOGUE), LOWER: same("[unreadable]")},
+    {UPPER: same(CATALOGUE), LOWER: same("Panorpa speciosa\ndet. R. E. Lewis on Quercus [unreadable]")},
+    {UPPER: same(CATALOGUE), LOWER: same("Panorpa speciosa\nHost: [unreadable] det. R. E. Lewis")},
+    {UPPER: same(CATALOGUE), LOWER: same("Panorpa speciosa\ndet. R. E. Lewis, oak [unreadable]")},
+    {UPPER: same("FMNH-INS [unreadable] meadow\n4313642"), LOWER: same("det. R. E. Lewis")},
 ], ids=["another-line-of-a-determination-label", "a-collector-on-it-too", "a-label-of-no-such-kind",
     "a-line-of-the-catalogue-label-without-its-content", "beside-a-heading-on-another-line",
-    "a-span-the-text-does-not-hold", "a-label-wholly-unreadable"])
+    "a-span-the-text-does-not-hold", "a-label-wholly-unreadable", "a-host-on-the-determiners-line",
+    "a-host-heading-on-the-determiners-line", "a-lower-case-word-on-the-determiners-line",
+    "another-word-on-the-catalogue-heading-line"])
 def test_an_unreadable_part_anywhere_else_still_stops_the_mark(tmp_path, monkeypatch, labels):
     run = researched(tmp_path, monkeypatch, labels)
     assert by_kind(run) == (False, False)
@@ -163,6 +170,14 @@ def test_a_transcript_marked_unreadable_or_a_field_drawn_on_the_label_still_stop
     assert field_step._unreadable_inside_its_kind(run, readings, determination) is False
     assert by_kind(run) == (False, False)
     run.fields["collectors"].source_region_id = None
+    # Or one of its readings settling a collecting field, or as that field's source reading.
+    reading = next(o.id for o in run.observations if o.region_id == determination)
+    run.fields["collectors"].settled_observation_ids = [reading]
+    assert field_step._unreadable_inside_its_kind(run, readings, determination) is False
+    run.fields["collectors"].settled_observation_ids = []
+    run.fields["collectors"].source_observation_id = reading
+    assert field_step._unreadable_inside_its_kind(run, readings, determination) is False
+    run.fields["collectors"].source_observation_id = None
     # The determination's own fields may be drawn on it.
     run.fields["date_identified"].source_region_id = determination
     assert field_step._unreadable_inside_its_kind(run, readings, determination) is True

@@ -3541,6 +3541,34 @@ CATALOGUE_NUMBER = re.compile(r"(?<!\d)\d{5,9}(?!\d)")
 # The fields a label of each kind may be drawn on for, and no other.
 KIND_FIELDS = {"catalogue": frozenset({"fmnh_ins_number"}),
     "determination": frozenset({"taxon", "date_identified", IRN})}
+# The words of a catalogue-number label's heading and name, folded.
+CATALOGUE_WORDS = frozenset({"fmnh", "ins", "fmnhins", "field", "museum", "cnhm", "chicago", "natural", "history",
+    "of"})
+# Words that place a host or a habitat ("ex Quercus", "on oak", "Host:"), folded: a line that writes one is no
+# determiner's line, whatever else it writes.
+HABITAT_MARKERS = frozenset({"host", "hosts", "ex", "on", "in", "from", "under", "at", "hab", "habitat", "sobre",
+    "en", "sur", "auf", "bei"})
+# The words checks.shows_placeholder reads as a placeholder, folded.
+PLACEHOLDER_TOKENS = frozenset({"unreadable", "illegible", "illeg", "unclear"})
+
+
+def _content_line(kind: str, line: str) -> bool:
+    """Whether a line writes only a label kind's own content (_unreadable_inside_its_kind), its placeholder
+    words aside (PLACEHOLDER_TOKENS; words are date_lines' tokens, folded, their periods dropped):
+    - a determination label's line writes a determination marker (date_lines._determination), no word of
+      HABITAT_MARKERS in any case, and every lower-case word is a determination or joining word, "by" or
+      its kin, or a surname's particle ("van", "de"); a capitalised word, an initial or a number may be a
+      name or a year;
+    - a catalogue-number label's line writes the heading or the museum's name (CATALOGUE_HEADING) or the
+      number (CATALOGUE_NUMBER), and every word is one of CATALOGUE_WORDS."""
+    from .date_lines import _BY_WORDS, _JOINED, _PARTICLES, _TOKEN, _determination, _word
+
+    tokens = [token for token in _TOKEN.findall(line) if _word(token) not in PLACEHOLDER_TOKENS]
+    if kind == "catalogue":
+        return bool(CATALOGUE_HEADING.search(line) or CATALOGUE_NUMBER.search(line)) and all(
+            _word(token) in CATALOGUE_WORDS for token in tokens)
+    return _determination(line) and not any(_word(token) in HABITAT_MARKERS for token in tokens) and all(
+        token[:1].isupper() or _word(token) in _JOINED | _BY_WORDS | _PARTICLES for token in tokens)
 
 
 def _unreadable_inside_its_kind(run, readings: Sequence[Reading], region_id: str) -> bool:
@@ -3555,13 +3583,13 @@ def _unreadable_inside_its_kind(run, readings: Sequence[Reading], region_id: str
       museum's name, CATALOGUE_HEADING, and no line a determination marker);
       no line of any of its texts names a collector (date_lines._collector:
       leg., coll. before a name and the others); and no field of the run is
-      drawn on it (as step.scientific_reasons reads a drawn field: its source
-      label, a reader's text it holds, or an evidence row of the label it
-      cites) but its kind's own (KIND_FIELDS);
+      drawn on it but its kind's own (KIND_FIELDS): no other field names it
+      as its source label, or holds a reading of it as its source, verbatim
+      or settling reading (step.scientific_reasons reads the source label and
+      the verbatim), or cites an evidence row of it;
     - every unreadable part of every text stands on a line of that text that
-      writes its kind's content: for a determination label, a determination
-      marker; for a catalogue-number label, the heading, the museum's name or
-      the number (CATALOGUE_NUMBER). A placeholder (checks.shows_placeholder)
+      writes only its kind's content (_content_line: a determiner's line, or
+      the heading, the museum's name or the number). A placeholder (checks.shows_placeholder)
       is found line by line; a reader's listed unreadable span is found as
       written in that reader's text, at every place it stands, and a span the
       text does not hold is outside.
@@ -3579,15 +3607,20 @@ def _unreadable_inside_its_kind(run, readings: Sequence[Reading], region_id: str
     if any(_collector(line, True) for line in lines):
         return False
     if any(_determination(line) for line in lines):
-        kind, inside = "determination", _determination
+        kind = "determination"
     elif any(CATALOGUE_HEADING.search(line) for line in lines):
-        kind, inside = "catalogue", lambda line: bool(CATALOGUE_HEADING.search(line) or CATALOGUE_NUMBER.search(line))
+        kind = "catalogue"
     else:
         return False
+
+    def inside(line: str) -> bool:
+        return _content_line(kind, line)
+
     ids = {o.id for o in run.observations if o.region_id == region_id} | {r.observation_id for r in readings
         if r.region_id == region_id}
     cited = {item.id for item in run.evidence if item.region_id == region_id}
-    if any(value.source_region_id == region_id or ids & set(value.verbatim_by_observation)
+    if any(value.source_region_id == region_id or value.source_observation_id in ids
+            or ids & {*value.verbatim_by_observation, *value.settled_observation_ids}
             or cited & set(value.evidence_ids) for key, value in run.fields.items() if key not in KIND_FIELDS[kind]):
         return False
     for text, spans in texts:

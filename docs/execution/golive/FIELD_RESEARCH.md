@@ -2543,9 +2543,9 @@ record clears or holds differently.
   excepted too (both missed values of lane H1's table, 105526336 "1916" and
   105526564 "III.87", were dates with no day) except where nothing on the
   labels needs it (`second_opinion._no_verbatim_date`, lane B of
-  2026-11-24): no text of the run writes a time of day
-  (`second_opinion.TIME_OF_DAY`: "am", "pm", "sunrise", "daylight" and
-  their kin, or a clock time, on one line), and either Date Visited From
+  2026-11-24): no text of the run writes a time of day or a season
+  (`second_opinion.TIME_OR_SEASON`: "am", "pm", "sunrise", "daylight",
+  "Summer" and their kin, or a clock time, on one line), and either Date Visited From
   and Date Visited To are both settled to the day, or both are blank, no
   text could be a date (`date_lines.could_be_a_date`) and no part of any
   label is unreadable. The field holds a collecting date or time only
@@ -3104,15 +3104,20 @@ elevation is derived first, and only for a field a person has not decided):
    with no letter right before or after it, and no line a determination
    marker); no line of it names a
    collector (`date_lines._collector`); no field of the run is drawn on it
-   (its source label, a reader's text of it, an evidence row of it) but
-   the Taxon, Date Identified and the IRN for a determination label, or
-   the catalogue number for a catalogue-number label; and every
-   placeholder and every reader's listed unreadable span stands, in the
-   text that has it, on a line that writes the kind's content (a
-   determination marker; the heading, the museum's name or a number of
-   five to nine digits). A span the reader's text does not hold, a label
-   of any other kind, and an unreadable part on another line still stop
-   the mark. Every other field keeps the whole-slide rule, and its code
+   (its source label, a reading of it as the field's source, verbatim or
+   settling reading, an evidence row of it) but the Taxon, Date Identified
+   and the IRN for a determination label, or the catalogue number for a
+   catalogue-number label; and every placeholder and every reader's listed
+   unreadable span stands, in the text that has it, on a line that writes
+   only the kind's content (`step._content_line`): a determiner's line
+   writes a determination marker, no host or habitat word
+   (`step.HABITAT_MARKERS`: "ex", "on", "host" and their kin), and no
+   lower-case word but determination and joining words, "by" and a
+   surname's particle; a catalogue line writes the heading, the museum's
+   name or a number of five to nine digits and no word but those of the
+   heading and the name (`step.CATALOGUE_WORDS`). A span the reader's text
+   does not hold, a label of any other kind, and an unreadable part on
+   another line still stop the mark. Every other field keeps the whole-slide rule, and its code
    stays `label_not_read_whole`. Production record d10333ff's
    "J. [unreadable] det. 2021" is the case.
 5. The organiser found no text for it: no candidate, no literal, no

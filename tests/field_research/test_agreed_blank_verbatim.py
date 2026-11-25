@@ -6,10 +6,10 @@ values of lane H1's table were Verbatim D/T/S: 105526336 (truth "1916") and 1055
 collecting date with no day. The field holds such a date, or a time of day (the second opinion's instruction,
 field 17). So rule B now lifts `mandatory_unresolved:verbatim_dts` and `label_unsettled:verbatim_dts` from a
 blank Verbatim D/T/S the current, obtained second opinion also leaves blank only where
-second_opinion._no_verbatim_date holds: no text of the run writes a time of day, and either both collecting
+second_opinion._no_verbatim_date holds: no text of the run writes a time of day or a season, and either both collecting
 dates are settled to the day, or both are blank and no text could be a date and nothing is unreadable. Pinned
 here as keeping the flag: a date with no day (the two misses' shape), a range ending on a month, a date in
-doubt, a time of day. Habitat stays excepted (test_agreed_no_flag.py).
+doubt, a time of day or a season. Habitat stays excepted (test_agreed_no_flag.py).
 
 The record is test_agreed_no_flag's (test_step's rig through the workflow with the second opinion mounted):
 its label writes the collecting date to the day, "2020-06-01".
@@ -124,8 +124,9 @@ def readings_of(texts):
 DAY = ("IV-23-48\nYepocapa, 4800ft\nR.D.mitchell", "IV-23-48\nYepocapa, 4800ft.\nR.D. Mitchell")
 
 
-@pytest.mark.parametrize("time", ["10 am", "3 p.m.", "Sunrise", "at night", "22h", "10:30", "mañana"])
-def test_a_time_of_day_keeps_the_flag(time):
+@pytest.mark.parametrize("time", ["10 am", "3 p.m.", "Sunrise", "at night", "22h", "10:30", "mañana", "Summer",
+    "verano", "Été"])
+def test_a_time_of_day_or_a_season_keeps_the_flag(time):
     day, settled_to = value(text="1948-04-23"), value(text="1948-04-23", layer="derived")
     assert so._no_verbatim_date(run_of(day, settled_to, DAY), readings_of(DAY)) is True
     timed = (DAY[0] + "\n" + time, DAY[1])

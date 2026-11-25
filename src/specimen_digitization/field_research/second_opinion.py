@@ -84,7 +84,7 @@ approved, for a judged field no person holds authority over:
   blank (`not_present`, nothing shown) where the second opinion's own answer for it is blank too (a
   null value that does not say UNSURE) and that answer is current (`answer_current`), Verbatim D/T/S
   and Habitat excepted (AGREED_BLANK_EXCEPT); Verbatim D/T/S is not excepted where nothing on the
-  labels needs it (AGREED_BLANK_WHEN_DATED, `_no_verbatim_date`: no reading writes a time of day, and
+  labels needs it (AGREED_BLANK_WHEN_DATED, `_no_verbatim_date`: no text writes a time of day or a season, and
   the collecting dates are settled to the day, or there is no date and nothing unreadable). A
   one-reader label does not stop this rule.
 Every other code stays, every mark among them, and no field, finding or evidence row is touched.
@@ -585,22 +585,23 @@ READERS_MUST_WRITE = frozenset({"habitat"})
 AGREED_BLANK_EXCEPT = frozenset({"verbatim_dts", "habitat"})
 # Verbatim D/T/S, narrowed (lane B of the waiting-fields program, the coordinator's brief of 2026-11-24
 # under the owner's ruling of 2026-11-18): the field holds the collecting date only where the label
-# writes it with no exact day, or a time of day (the second opinion's instruction, field 17; the field's
-# prompt). Both missed values that put it on the list above wrote a date with no day (lane H1: 105526336
-# "1916", 105526564 "III.87"). So an agreed blank Verbatim D/T/S is rule B's after all where nothing on
-# the labels needs it (_no_verbatim_date): no reading writes a time of day, and either the record shows
-# the collecting dates settled to the day, or there is no date to write (no text could be a date, none
-# is unreadable, and both dates are blank).
+# writes it with no exact day, or a season or a time of day (the second opinion's instruction, field 17;
+# the field's prompt). Both missed values that put it on the list above wrote a date with no day (lane
+# H1: 105526336 "1916", 105526564 "III.87"). So an agreed blank Verbatim D/T/S is rule B's after all
+# where nothing on the labels needs it (_no_verbatim_date): no text writes a time of day or a season,
+# and either the record shows the collecting dates settled to the day, or there is no date to write (no
+# text could be a date, none is unreadable, and both dates are blank).
 AGREED_BLANK_WHEN_DATED = frozenset({"verbatim_dts"})
-# A time of day as a label writes it, on one line: the field prompt's "am", "pm", "sunrise" and
-# "daylight" and their kin in English, Spanish, French and German, as whole words in any case, accents
-# aside; or a clock time ("10:30", "22h", "10 hrs") whose hour of one or two digits does not come right
-# after a digit, ".", "/" or "-" ("IX-14-46 H. Hoogstraal" holds none). Deliberately wide: what it
-# finds only keeps a flag.
-TIME_OF_DAY = re.compile(
+# A time of day or a season as a label writes it, on one line: the field prompt's "am", "pm", "sunrise",
+# "daylight" and "Summer" and their kin in English, Spanish, French and German, as whole words in any
+# case, accents aside; or a clock time ("10:30", "22h", "10 hrs") whose hour of one or two digits does
+# not come right after a digit, ".", "/" or "-" ("IX-14-46 H. Hoogstraal" holds none). Deliberately wide
+# ("Spring Creek" and "S. Am." match): what it finds only keeps a flag.
+TIME_OR_SEASON = re.compile(
     r"(?<![^\W\d_])(?:a\.?[^\S\n]?m|p\.?[^\S\n]?m|sunrise|sunset|daylight|dawn|dusk|night|nite|noon|midnight"
     r"|morning|evening|afternoon|nocturnal|noche|nocturno|madrugada|manana|tarde|nuit|matin|soir|nacht|abend"
-    r"|morgen)\.?(?![^\W\d_])|(?<![\d./-])\d{1,2}[^\S\n]?[:h][^\S\n]?\d{2}(?!\d)"
+    r"|morgen|summer|winter|autumn|spring|fall|verano|invierno|otono|primavera|ete|hiver|automne|printemps"
+    r"|sommer|herbst|fruhling|fruehling)\.?(?![^\W\d_])|(?<![\d./-])\d{1,2}[^\S\n]?[:h][^\S\n]?\d{2}(?!\d)"
     r"|(?<![\d./-])\d{1,2}[^\S\n]?(?:h|hr|hrs|hours?|uhr)(?![^\W\d_])",
     re.IGNORECASE)
 MANDATORY_UNRESOLVED = "mandatory_unresolved"
@@ -689,7 +690,7 @@ def _a_reader_differs(run, key: str, readings: Sequence[Reading]) -> bool:
 def _no_verbatim_date(run, readings: Sequence[Reading]) -> bool:
     """Whether nothing on the labels needs a Verbatim D/T/S (AGREED_BLANK_WHEN_DATED), on every text of
     the run: `readings` (step.run_readings'), each reader's text and each transcript's. False where any
-    of them writes a time of day (TIME_OF_DAY, accents aside). Otherwise true where Date Visited From and
+    of them writes a time of day or a season (TIME_OR_SEASON, accents aside). Otherwise true where Date Visited From and
     Date Visited To are both settled (ontology_checks.settled: supported, in a checked layer) as dates to
     the day (ontology_checks.date_parts gives three parts: "1948-04-23", never "1946-11" or "1916"); or
     where both are blank (not present, nothing shown), no text could be a date or part of one
@@ -704,7 +705,7 @@ def _no_verbatim_date(run, readings: Sequence[Reading]) -> bool:
     texts = [*(reading.text for reading in readings),
         *(observation.literal_text for observation in getattr(run, "observations", None) or ()),
         *(transcript.text or "" for transcript in getattr(run, "transcripts", None) or ())]
-    if any(TIME_OF_DAY.search(_unaccented(text)) for text in texts):
+    if any(TIME_OR_SEASON.search(_unaccented(text)) for text in texts):
         return False
     start, end = run.fields.get("date_visited_from"), run.fields.get("date_visited_to")
     if settled(start) and settled(end):
