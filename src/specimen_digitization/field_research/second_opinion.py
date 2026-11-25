@@ -86,7 +86,10 @@ approved, for a judged field no person holds authority over:
 - `mandatory_unresolved:<field>` and `label_unsettled:<field>` are not open reasons for a field that is
   blank (`not_present`, nothing shown) where the second opinion's own answer for it is blank too (a
   null value that does not say UNSURE) and that answer is current (`answer_current`), Verbatim D/T/S
-  and Habitat excepted (AGREED_BLANK_EXCEPT). A one-reader label does not stop this rule.
+  and Habitat excepted (AGREED_BLANK_EXCEPT); Verbatim D/T/S is not excepted where nothing on the
+  labels needs it (AGREED_BLANK_WHEN_DATED, `_no_verbatim_date`: both collecting dates settled to the day,
+  no text writes a time of day or a season, and no part of a label the dates are drawn on unreadable). A
+  one-reader label does not stop this rule.
 Every other code stays, every mark among them, and no field, finding or evidence row is touched.
 
 THE COMPARISON (`same`), one strict rule per kind of field, on the value the app shows (normalized,
@@ -689,6 +692,40 @@ READERS_MUST_WRITE = frozenset({"habitat"})
 # has a host; live row 105526418, "CALLOSPERMOPHILUS", blank, agreed blank, and missed), so their
 # agreement on a blank Habitat proves nothing until hosts are filled.
 AGREED_BLANK_EXCEPT = frozenset({"verbatim_dts", "habitat"})
+# Verbatim D/T/S, narrowed (lane B of the waiting-fields program, the coordinator's brief of 2026-11-24
+# under the owner's ruling of 2026-11-18): the field holds the collecting date only where the label
+# writes it with no exact day, or a season or a time of day (the second opinion's instruction, field 17;
+# the field's prompt). Both missed values that put it on the list above wrote a date with no day (lane
+# H1: 105526336 "1916", 105526564 "III.87"). So an agreed blank Verbatim D/T/S is rule B's after all
+# where the record shows nothing on the labels needs it (_no_verbatim_date): both collecting dates are
+# settled to the day, no text writes a time of day or a season, and no part of a label the dates are
+# drawn on is unreadable.
+AGREED_BLANK_WHEN_DATED = frozenset({"verbatim_dts"})
+# A time of day or a season as a label writes it: the field prompt's "am", "pm", "sunrise", "daylight"
+# and "Summer" and their kin in English, Spanish, French and German, as whole words in any case, accents
+# aside; or a clock time ("10:30", "22h", "10  hrs", "22.30 h", "22.30 h. UV trap", "9-11 h", "10 o'clock")
+# whose hour of one or two digits has no digit right before it. A dotted clock ("22.30 h", "15.VI.1950 -
+# 22.30 H. UV trap") needs only no digit and no period right before its hour, so "14.46" of "IX.14.46" is
+# none. One exception for an hour with no minutes: where a number of one or two digits ends a date (a
+# ".", "/" or "-" right before it, or before up to two spaces before it), a capital "H" after it followed
+# by a period and a capital is a name's initial, no hour ("IX-14-46 H. Hoogstraal", "1X - 14 - 46 H.
+# Hoogstraal", "IV-23-48 H.R. Goodrich"); "22 h" before "Light trap" and "15.VI.1950 - 22 h. Light trap"
+# are hours. Deliberately wide ("Spring Creek" and "S. Am." match): what it finds only keeps a flag. Each text is searched with its lines (str.splitlines) joined by one space,
+# so a time broken over two lines ("10" above "hrs") counts.
+_UNITS = r"hr|hrs|hours?|horas?|heures?|uhr|o\W?\s*clock"
+_AFTER_A_DATE = r"(?:(?<=[./-])|(?<=[./-]\s)|(?<=[./-]\s\s))"
+_NOT_AFTER_A_DATE = r"(?<![./-])(?<![./-]\s)(?<![./-]\s\s)"
+TIME_OR_SEASON = re.compile(
+    r"(?<![^\W\d_])(?:a\.?\s*m|p\.?\s*m|sunrise|sunset|daylight|dawn|dusk|night|nite|noon|midnight|morning"
+    r"|evening|afternoon|nocturnal|diurnal|noche|nocturno|madrugada|manana|tarde|mediodia|medianoche|amanecer"
+    r"|atardecer|anochecer|alba|nuit|matin|soir|midi|minuit|aube|crepuscule|nacht|abend|morgen|mittag"
+    r"|mitternacht|summer|winter|autumn|spring|fall|verano|invierno|otono|primavera|ete|hiver|automne"
+    r"|printemps|sommer|herbst|fruhling|fruehling)\.?(?![^\W\d_])"
+    r"|(?<!\d)\d{1,2}\s*[:h]\s*\d{2}(?!\d)"
+    r"|(?<![\d.])\d{1,2}\.\d{2}\s*(?:h|" + _UNITS + r")(?![^\W\d_])"
+    r"|(?<!\d)" + _NOT_AFTER_A_DATE + r"\d{1,2}\s*(?:h|" + _UNITS + r")(?![^\W\d_])"
+    r"|(?<!\d)" + _AFTER_A_DATE + r"\d{1,2}\s*(?:(?-i:h|H(?!\.\s*[A-Z]))|" + _UNITS + r")(?![^\W\d_])",
+    re.IGNORECASE)
 MANDATORY_UNRESOLVED = "mandatory_unresolved"
 # The coordinator's rulings of 2026-11-20 on the live confirmation rows: an agreed VALUE needs two
 # independent readings behind it. A label one reader read (step.scientific_reasons' code) gave the
@@ -772,6 +809,65 @@ def _a_reader_differs(run, key: str, readings: Sequence[Reading]) -> bool:
     return any(not reader_writes(reading.text, literal) for reading in readings if reading.region_id in labels)
 
 
+def _no_verbatim_date(run, readings: Sequence[Reading]) -> bool:
+    """Whether the record shows nothing on the labels needs a Verbatim D/T/S (AGREED_BLANK_WHEN_DATED):
+    - Date Visited From and Date Visited To are both settled (ontology_checks.settled: supported, in a
+      checked layer) as dates to the day (ontology_checks.date_parts gives three parts: "1948-04-23",
+      never "1946-11" or "1916");
+    - no text of the run (`readings`, step.run_readings', each reader's text and each transcript's),
+      its lines joined by a space, writes a time of day or a season (TIME_OR_SEASON, accents aside); and
+    - no part of a label either date is drawn on is unreadable (_date_labels_unreadable), since an
+      unreadable word beside the date may be a time.
+    False otherwise: a date settled with no day, a date in doubt or blank (a label with no date at all
+    keeps the flag too)."""
+    from .ontology_checks import date_parts, settled
+
+    start, end = run.fields.get("date_visited_from"), run.fields.get("date_visited_to")
+    if not (settled(start) and settled(end)) or len(date_parts(start) or ()) != 3 or len(date_parts(end) or ()) != 3:
+        return False
+    texts = [*(reading.text for reading in readings),
+        *(observation.literal_text for observation in getattr(run, "observations", None) or ()),
+        *(transcript.text or "" for transcript in getattr(run, "transcripts", None) or ())]
+    if any(TIME_OR_SEASON.search(" ".join(_unaccented(text).splitlines())) for text in texts):
+        return False
+    return not _date_labels_unreadable(run, readings, (start, end))
+
+
+def _date_labels_unreadable(run, readings: Sequence[Reading], values) -> bool:
+    """Whether part of a label the `values` are drawn on is unreadable: a reader's unreadable span, a
+    transcript marked unreadable, or a placeholder (checks.shows_placeholder) in a reading's, a
+    reader's or a transcript's text of it. A value is drawn on a label it names as its source label,
+    whose reading it holds as its source, verbatim or settling reading, or whose evidence row it cites;
+    where the values name no label, every label is asked."""
+    from .checks import shows_placeholder
+
+    observations = list(getattr(run, "observations", None) or ())
+    transcripts = list(getattr(run, "transcripts", None) or ())
+    region_of = {observation.id: observation.region_id for observation in observations}
+    rows = {row.id: row for row in getattr(run, "evidence", None) or ()}
+    labels = set()
+    for value in values:
+        labels.add(value.source_region_id)
+        labels.update(region_of.get(i) for i in (value.source_observation_id, *value.verbatim_by_observation,
+            *value.settled_observation_ids))
+        labels.update(rows[i].region_id for i in value.evidence_ids if i in rows)
+    labels.discard(None)
+
+    def asked(region_id) -> bool:
+        return not labels or region_id in labels
+
+    return (any(o.unreadable_spans for o in observations if asked(o.region_id))
+        or any(t.value_state == ValueState.UNREADABLE for t in transcripts if asked(t.region_id))
+        or any(shows_placeholder(text) for text in (*(o.literal_text for o in observations if asked(o.region_id)),
+            *(r.text for r in readings if asked(r.region_id)),
+            *(t.text or "" for t in transcripts if asked(t.region_id)))))
+
+
+def _unaccented(text: str) -> str:
+    """The text with its accents removed (NFKD, combining marks dropped): "mañana" reads "manana"."""
+    return "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
+
+
 def agreed(run, readings: Sequence[Reading] = (), *, mandatory=(),
         reasons: Sequence[str] = ()) -> tuple[frozenset[str], frozenset[str]]:
     """(the fields settled with a value the second opinion agrees with, the blank fields it leaves blank
@@ -780,7 +876,9 @@ def agreed(run, readings: Sequence[Reading] = (), *, mandatory=(),
     obtained and nothing the step answers for is unjudged (`due`). No value when one of the run's
     `reasons` (this finalize's, holding and open) says one reader read a label (`one_reader`); the
     blanks do not depend on it. No Habitat value (READERS_MUST_WRITE) where a reading of a label it
-    rests on does not hold the value's text anywhere in it (_a_reader_differs). Never a field the run's profile makes mandatory (`mandatory`), a field
+    rests on does not hold the value's text anywhere in it (_a_reader_differs). No blank Habitat, and
+    no blank Verbatim D/T/S unless nothing on the labels needs one (AGREED_BLANK_EXCEPT,
+    _no_verbatim_date). Never a field the run's profile makes mandatory (`mandatory`), a field
     the step does not judge (the catalogue number, the IRN), or one a person holds authority over
     (`authority`)."""
     from .step import units_path
@@ -805,8 +903,9 @@ def agreed(run, readings: Sequence[Reading] = (), *, mandatory=(),
                     and entry.get("compared") == shown(value) and entry.get("verdict") == AGREES_VERDICT
                     and not (key in READERS_MUST_WRITE and _a_reader_differs(run, key, readings))):
                 values.add(key)
-        elif (current and key not in AGREED_BLANK_EXCEPT and value.state == ValueState.NOT_PRESENT
-                and shown(value) is None and _blank_answer(answer.get(key))):
+        elif (current and value.state == ValueState.NOT_PRESENT and shown(value) is None
+                and _blank_answer(answer.get(key)) and (key not in AGREED_BLANK_EXCEPT
+                    or key in AGREED_BLANK_WHEN_DATED and _no_verbatim_date(run, readings))):
             blanks.add(key)
     return frozenset(values), frozenset(blanks)
 

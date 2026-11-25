@@ -255,8 +255,10 @@ def test_failed_singleflight_does_not_repeat_within_page(tmp_path, monkeypatch):
     assert len(calls) == 2 and not cache._inflight
 
 
-def test_live_state_pattern_has_three_review_and_twelve_missing(tmp_path):
-    """Controlled state-only analogue; it contains no production field content."""
+def test_live_state_pattern_has_two_review_and_twelve_missing(tmp_path):
+    """Controlled state-only analogue; it contains no production field content. The unknown
+    identified_by_irn, which no approved source can fill and no reason names, is missing but not
+    for review (the waiting-fields program, fix 1; tests/test_field_review_words.py)."""
     source = specimen()
     fields = {key: FieldValue(state="not_present") for key in source.run.profile.mandatory_fields}
     for key in ["fmnh_ins_number", "country", "province_state", "city", "precise_location",
@@ -269,11 +271,39 @@ def test_live_state_pattern_has_three_review_and_twelve_missing(tmp_path):
     source.run.reasons = ["mandatory_unresolved:taxon", "mandatory_unresolved:verbatim_dts"]
     blobs = LocalBlobs(tmp_path)
     payload = pack(source, blobs)
-    assert row_for(payload)["review_summary"] == {"review": 3, "missing": 12}
+    assert row_for(payload)["review_summary"] == {"review": 2, "missing": 12}
     payload["active_graph"].pop("field_review")
     row = row_for(payload)
     GraphReviewCache().hydrate([row], [payload["active_graph"]], blobs)
-    assert row["review_summary"] == {"review": 3, "missing": 12}
+    assert row["review_summary"] == {"review": 2, "missing": 12}
+
+
+@pytest.mark.parametrize(("open_reasons", "review"), [
+    (["identified_by_irn_identity_unproved"], 1),
+    (["research_incomplete:identified_by_irn"], 1),
+    ([], 0),
+])
+def test_an_open_reason_naming_the_irn_keeps_it_counted_on_both_graph_paths(tmp_path, open_reasons, review):
+    """The waiting-fields program, fix 1: an unknown, empty identified_by_irn leaves the review count
+    only while no reason names it. The current graph path reads the row's open reasons; the legacy
+    path reads the verified run's own open reasons, so the two agree."""
+    source = specimen()
+    source.run.fields = {"city": FieldValue(state="supported", literal="Chicago"),
+                         "identified_by_irn": FieldValue(state="unknown")}
+    source.run.reasons = []
+    source.run.open_reasons = open_reasons
+    blobs = LocalBlobs(tmp_path)
+    payload = pack(source, blobs)
+    metadata = payload["active_graph"]
+    current = sql_item({"id": payload["id"], "revision": payload["version"],
+                        "activeRunId": payload["run"]["id"], "reasonCodes": [],
+                        "openReasonCodes": open_reasons, "activeGraph": metadata,
+                        "fieldReviewStates": metadata["field_review"]["fields"]}, SCOPE)
+    assert current["review_summary"] == {"review": review, "missing": 1}
+    payload["active_graph"].pop("field_review")
+    row = row_for(payload)
+    GraphReviewCache().hydrate([row], [payload["active_graph"]], blobs)
+    assert row["review_summary"] == {"review": review, "missing": 1}
 
 
 @pytest.mark.parametrize("packed", ["new", "legacy"])

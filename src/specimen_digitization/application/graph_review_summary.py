@@ -113,7 +113,12 @@ class GraphReviewCache:
             run = verified_graph_run(raw, metadata)
             if digest(run.get("reasons", [])) != digest(row["reason_codes"]):
                 return None
-            result = review_summary(project_fields(run.get("fields")), row["reason_codes"])
+            # A field's attention reads the optional fields' doubts too (compact_summary, api.summary):
+            # the verified run's own open reasons, so an open reason naming the Identified by IRN keeps
+            # it counted (review_summary.no_source_fields).
+            open_reasons = run.get("open_reasons")
+            result = review_summary(project_fields(run.get("fields")), [
+                *row["reason_codes"], *(open_reasons if isinstance(open_reasons, list) else [])])
             if result is not None:
                 with self._lock:
                     self._values[key] = dict(result)

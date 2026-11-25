@@ -272,7 +272,10 @@ void main() {
     await show(tester);
 
     expect(find.text('Philippines'), findsOneWidget);
-    expect(find.text('Unknown'), findsNWidgets(7));
+    expect(find.text('Unknown'), findsNWidgets(6));
+    // No approved source can fill the Identified by IRN, and no label
+    // carries it (the waiting-fields program, fix 1).
+    expect(find.text('Not on labels'), findsOneWidget);
     expect(find.text('Ambiguous · F.G. Werner'), findsOneWidget);
     expect(find.text('Carabidae'), findsOneWidget);
     expect(find.textContaining('to review'), findsNothing);
@@ -287,7 +290,8 @@ void main() {
       ('IDs', '0 review · 0 missing'),
       ('Collection', '5 review · 4 missing'),
       ('Date', '2 review · 2 missing'),
-      ('Taxa', '1 review · 1 missing'),
+      // The unknown Identified by IRN is missing, not for review.
+      ('Taxa', '0 review · 1 missing'),
     ]) {
       expect(
         tester

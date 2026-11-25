@@ -3486,7 +3486,7 @@ def not_on_label_keys(profile: CollectionProfile) -> frozenset[str]:
     return not_on_label_fields(profile.id, profile.version)
 
 
-def _whole_label_read(run, readings: Sequence[Reading]) -> bool:
+def _whole_label_read(run, readings: Sequence[Reading], *, by_kind: bool = False) -> bool:
     """Every label was read whole: label coverage confirmed; each label has
     two or more readers, each with text, and two or more named readings; and
     no part of any label is unreadable: no reader's unreadable span, no
@@ -3495,7 +3495,12 @@ def _whole_label_read(run, readings: Sequence[Reading]) -> bool:
     (checks.shows_placeholder, rule B's own test: the "[unreadable]" marker
     the reader prompt asks for in place of each unreadable span, prompts.py,
     and the other placeholders a transcriber writes, whether or not the
-    reader also listed the span; N1 of #289's fifth review)."""
+    reader also listed the span; N1 of #289's fifth review).
+
+    With `by_kind` (READ_WHOLE_BY_KIND's fields only), the last condition is
+    asked of each label but one whose unreadable parts all stand inside a
+    catalogue-number label's or a determination label's own content
+    (_unreadable_inside_its_kind); every other condition stays."""
     from .checks import shows_placeholder
 
     if not run.coverage_confirmed or not run.regions:
@@ -3507,11 +3512,194 @@ def _whole_label_read(run, readings: Sequence[Reading]) -> bool:
             return False
     if any(not r.text.strip() for r in readings):
         return False
-    texts = [*(o.literal_text for o in run.observations), *(r.text for r in readings),
-        *(t.text or "" for t in run.transcripts)]
-    if any(o.unreadable_spans for o in run.observations) or any(shows_placeholder(t) for t in texts):
+    aside = frozenset(region.id for region in run.regions
+        if _unreadable_inside_its_kind(run, readings, region.id)) if by_kind else frozenset()
+    observations = [o for o in run.observations if o.region_id not in aside]
+    transcripts = [t for t in run.transcripts if t.region_id not in aside]
+    texts = [*(o.literal_text for o in observations), *(r.text for r in readings if r.region_id not in aside),
+        *(t.text or "" for t in transcripts)]
+    if any(o.unreadable_spans for o in observations) or any(shows_placeholder(t) for t in texts):
         return False
-    return not any(t.value_state == ValueState.UNREADABLE for t in run.transcripts)
+    return not any(t.value_state == ValueState.UNREADABLE for t in transcripts)
+
+
+# Habitat (lane B of the waiting-fields program, the coordinator's brief of
+# 2026-11-24): its blank needs every label that could carry a habitat read
+# whole, not the whole slide. A catalogue-number label's and a determination
+# label's own content (its heading, number and museum name; its determiner's
+# line) names no habitat, so an unreadable word on a line that writes only
+# that content does not stop it (_whole_label_read's `by_kind`,
+# _unreadable_inside_its_kind, _content_line). On the
+# 19 cleared production records of 2026-11-24, rule A found 6 blank Habitats'
+# labels not read whole: 5 for an unreadable part (one inside a determiner's
+# name, d10333ff) and 1 for a label one reader read.
+READ_WHOLE_BY_KIND = frozenset({"habitat"})
+# What a catalogue-number label writes: the Field Museum's insect heading
+# ("FMNH-INS", "FMNHINS", "FMNH"), the museum's name ("FIELD MUSEUM", and
+# "CNHM", Chicago Natural History Museum, its name from 1943 to 1966), in any
+# case, with no letter or digit right before or after it ("FMNH123" is none);
+# and its number, five to nine digits with no digit beside them.
+CATALOGUE_HEADING = re.compile(r"(?<![^\W_])(?:FMNH\W*INS|FMNH|FIELD\s+MUSEUM|CNHM)(?![^\W_])", re.IGNORECASE)
+CATALOGUE_NUMBER = re.compile(r"(?<!\d)\d{5,9}(?!\d)")
+# The fields a label of each kind may be drawn on for, and no other.
+KIND_FIELDS = {"catalogue": frozenset({"fmnh_ins_number"}),
+    "determination": frozenset({"taxon", "date_identified", IRN})}
+# The words of a catalogue-number label's heading and name, folded.
+CATALOGUE_WORDS = frozenset({"fmnh", "ins", "fmnhins", "field", "museum", "cnhm", "chicago", "natural", "history",
+    "of"})
+# Words that place or name a host, a substrate or a habitat ("ex Quercus", "on oak", "Host:", "Substrate:"),
+# folded: a line that writes one is no determiner's line, whatever else it writes.
+HABITAT_MARKERS = frozenset({"host", "hosts", "ex", "on", "in", "from", "under", "at", "hab", "habitat", "habitats",
+    "sobre", "en", "sur", "auf", "bei", "unter", "bajo", "sous", "substrate", "substrates", "substrat", "sustrato",
+    "substrato", "hospedero", "hospedante", "huesped", "hote", "wirt", "plant", "plants", "planta", "plante",
+    "pflanze", "tree", "arbol", "arbre", "baum", "leaf", "leaves", "hoja", "feuille", "blatt", "flower", "flowers",
+    "flor", "fleur", "nest", "nido", "soil", "suelo", "litter", "bark", "corteza", "dung", "log", "moss", "fungus",
+    "fungi", "hongo", "grass", "cave", "cueva", "water", "agua"})
+# The words checks.shows_placeholder reads as a placeholder, folded.
+PLACEHOLDER_TOKENS = frozenset({"unreadable", "illegible", "illeg", "unclear"})
+
+
+def _content_line(kind: str, line: str) -> bool:
+    """Whether a line writes only a label kind's own content (_unreadable_inside_its_kind), its placeholder
+    words aside (PLACEHOLDER_TOKENS; words are date_lines' tokens, folded, their periods dropped):
+    - a determination label's line writes a determination marker (date_lines._determination), no word of
+      HABITAT_MARKERS in any case, and every lower-case word is a determination or joining word, "by" or
+      its kin, or a surname's particle ("van", "de"); a capitalised word, an initial or a number may be a
+      name or a year;
+    - a catalogue-number label's line writes the heading or the museum's name (CATALOGUE_HEADING) or the
+      number (CATALOGUE_NUMBER), and every word is one of CATALOGUE_WORDS."""
+    from .date_lines import _BY_WORDS, _JOINED, _PARTICLES, _TOKEN, _determination, _word
+
+    tokens = [token for token in _TOKEN.findall(line) if _word(token) not in PLACEHOLDER_TOKENS]
+    if kind == "catalogue":
+        return bool(CATALOGUE_HEADING.search(line) or CATALOGUE_NUMBER.search(line)) and all(
+            _word(token) in CATALOGUE_WORDS for token in tokens)
+    return _determination(line) and not any(_word(token) in HABITAT_MARKERS for token in tokens) and all(
+        token[:1].isupper() or _word(token) in _JOINED | _BY_WORDS | _PARTICLES for token in tokens)
+
+
+def _unreadable_inside_its_kind(run, readings: Sequence[Reading], region_id: str) -> bool:
+    """Whether every unreadable part of a label stands inside the content of a
+    label that holds no habitat, judged on each of its texts (its readers'
+    texts with their unreadable spans, its readings' and its transcripts'):
+    - no transcript of it is marked unreadable;
+    - it is one of two kinds, by its texts and the run's fields:
+      a determination label (a line of one of its texts writes a determination
+      marker, date_lines._determination: det., determ., determinavit and the
+      others), or a catalogue-number label (a line writes the heading or the
+      museum's name, CATALOGUE_HEADING, and no line a determination marker);
+      no line of any of its texts names a collector (date_lines._collector:
+      leg., coll. before a name and the others); and no field of the run is
+      drawn on it but its kind's own (KIND_FIELDS): no other field names it
+      as its source label, or holds a reading of it as its source, verbatim
+      or settling reading (step.scientific_reasons reads the source label and
+      the verbatim), or cites an evidence row of it;
+    - every unreadable part of every text stands on a line of that text that
+      writes only its kind's content (_content_line: a determiner's line, or
+      the heading, the museum's name or the number), inside the determiner's
+      name (after a marker with only initials between, or before one with only
+      initials before it), or right after the heading, the name or a digit of
+      the number (_after_a_name). A placeholder (checks.shows_placeholder) is found
+      line by line (_placeholder_starts); a reader's listed unreadable span is
+      found as written in each line (str.splitlines) of that reader's text, at
+      every place it stands; a span the text does not hold, or that crosses a
+      line break, is outside.
+    A label of no such kind, or with an unreadable part anywhere else, is
+    False: it must be read whole."""
+    from .checks import shows_placeholder
+    from .date_lines import _collector, _determination
+
+    if any(t.value_state == ValueState.UNREADABLE for t in run.transcripts if t.region_id == region_id):
+        return False
+    texts = [*((o.literal_text, tuple(o.unreadable_spans)) for o in run.observations if o.region_id == region_id),
+        *((r.text, ()) for r in readings if r.region_id == region_id),
+        *((t.text, ()) for t in run.transcripts if t.region_id == region_id and t.text)]
+    lines = [line for text, _ in texts for line in text.splitlines()]
+    if any(_collector(line, True) for line in lines):
+        return False
+    if any(_determination(line) for line in lines):
+        kind = "determination"
+    elif any(CATALOGUE_HEADING.search(line) for line in lines):
+        kind = "catalogue"
+    else:
+        return False
+
+    def inside(line: str) -> bool:
+        return _content_line(kind, line)
+
+    ids = {o.id for o in run.observations if o.region_id == region_id} | {r.observation_id for r in readings
+        if r.region_id == region_id}
+    cited = {item.id for item in run.evidence if item.region_id == region_id}
+    if any(value.source_region_id == region_id or value.source_observation_id in ids
+            or ids & {*value.verbatim_by_observation, *value.settled_observation_ids}
+            or cited & set(value.evidence_ids) for key, value in run.fields.items() if key not in KIND_FIELDS[kind]):
+        return False
+    for text, spans in texts:
+        held = text.splitlines()
+        if shows_placeholder(text) and not any(shows_placeholder(line) for line in held):
+            return False
+        for line in held:
+            starts = _placeholder_starts(line) if shows_placeholder(line) else []
+            if shows_placeholder(line) and not starts:
+                return False
+            if starts and not (inside(line) and all(_after_a_name(kind, line, at, end) for at, end in starts)):
+                return False
+        for span in spans:
+            # Found line by line (str.splitlines, every line break): a span on two lines, or one more often in
+            # the text than in its lines, crosses a line break.
+            within = [line for line in held if span in line]
+            if (not span.strip() or len(span.splitlines()) != 1 or not within
+                    or sum(line.count(span) for line in held) != text.count(span)
+                    or any(not inside(line) or not all(_after_a_name(kind, line, found.start(), found.end())
+                        for found in re.finditer(re.escape(span), line)) for line in within)):
+                return False
+    return True
+
+
+def _placeholder_starts(line: str) -> list[tuple[int, int]]:
+    """Where each placeholder of a line starts and ends, by the parts of checks.shows_placeholder's test: a
+    DOUBT_PLACEHOLDERS text in any case, a PLACEHOLDER_WORDS word, bracketed periods, and three periods not
+    right after "etc". A match inside another ("unreadable" inside "[unreadable]") is that one."""
+    from .checks import _BRACKETED_PERIODS, _ELLIPSIS, _PLACEHOLDER_WORD, DOUBT_PLACEHOLDERS, _after_etc
+
+    found = [(match.start(), match.end()) for placeholder in DOUBT_PLACEHOLDERS
+        for match in re.finditer(re.escape(placeholder), line, re.IGNORECASE)]
+    found += [(match.start(), match.end()) for match in (*_PLACEHOLDER_WORD.finditer(line),
+        *_BRACKETED_PERIODS.finditer(line))]
+    found += [(match.start(), match.end()) for match in _ELLIPSIS.finditer(line) if not _after_etc(line, match.start())]
+    return sorted({(start, end) for start, end in found if not any(
+        (other, last) != (start, end) and other <= start and end <= last for other, last in found)})
+
+
+# Initials only: one letter and its period each ("R. E.", "R.D."), with spaces, commas and "&" between
+# them; and what may stand between an unreadable part and the determination marker after it.
+_ONLY_INITIALS = re.compile(r"(?:[\s,&]|(?<![^\W\d_])[^\W\d_]\.)*")
+_ONLY_SPACES = re.compile(r"[\s,]*")
+
+
+def _after_a_name(kind: str, line: str, at: int, end: int) -> bool:
+    """Whether an unreadable part of a line of a label of `kind`, from `at` to `end`, stands where that kind's
+    own content goes. For a determination label, inside the determiner's name, judged by the determination
+    markers (date_lines._determination: det., determ. and the others; their spans from date_lines' tokens):
+    - after a marker, with nothing but initials between them (_ONLY_INITIALS: "det. [unreadable]",
+      "det. R. E. [unreadable]"; never "det. J. Smith [unreadable]"); or
+    - before a marker, with nothing but spaces or a comma between them (_ONLY_SPACES) and one or more
+      initials and nothing else from the line's start to the part ("J. [unreadable] det. 2021"; never
+      "[unreadable] det. 2021" or "Substrate: Q. [unreadable]; det. R. E. Lewis").
+    For a catalogue-number label, right after the heading or the museum's name (CATALOGUE_HEADING) or a
+    digit of the number, spaces aside; never at the line's start."""
+    from .date_lines import _TOKEN, _determination_ends, _word, _DETERMINATION_WORDS
+
+    if kind == "catalogue":
+        before = line[:at].rstrip()
+        return bool(before) and (before[-1].isdigit()
+            or any(found.end() == len(before) for found in CATALOGUE_HEADING.finditer(before)))
+    ends = set(_determination_ends(line))
+    markers = [token for token in _TOKEN.finditer(line) if token.end() in ends and _word(token.group())
+        in _DETERMINATION_WORDS]
+    return any(marker.end() <= at and _ONLY_INITIALS.fullmatch(line, marker.end(), at) for marker in markers) or any(
+        end <= marker.start() and _ONLY_SPACES.fullmatch(line, end, marker.start())
+        and line[:at].strip() and _ONLY_INITIALS.fullmatch(line, 0, at) for marker in markers)
 
 
 def _code_label_unreadable(run, readings: Sequence[Reading], code: str) -> bool:
@@ -4183,7 +4371,11 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
     2. its value is still not present (a value derive.fill derived is kept);
     3. label coverage is confirmed, every label has two or more readings and
        every reading has text (_whole_label_read);
-    4. no part of any label is unreadable (_whole_label_read);
+    4. no part of any label is unreadable (_whole_label_read); for the
+       Habitat (READ_WHOLE_BY_KIND), no part of any label but a
+       catalogue-number or a determination label's own content
+       (_unreadable_inside_its_kind), every other field's reason code staying
+       "label_not_read_whole" where only that holds;
     5. the organiser found no text for it (_organiser_texts), judged after
        every value of this attempt is made: a text counts as absent when it
        is, where it stands, the literal a field of another kind settled
@@ -4237,13 +4429,21 @@ def mark_not_on_label(run, profile: CollectionProfile, tasks: Sequence[FieldTask
             value.evidence_ids.remove(stale)
             value.evidence_relations.pop(stale, None)
     allowed = not_on_label_keys(profile)
-    if not allowed or not _whole_label_read(run, readings):
+    whole = bool(allowed) and _whole_label_read(run, readings)
+    # Read whole label by label (READ_WHOLE_BY_KIND): only those fields may be marked.
+    by_kind = (allowed & READ_WHOLE_BY_KIND if allowed and not whole and allowed & READ_WHOLE_BY_KIND & lacking
+        and _whole_label_read(run, readings, by_kind=True) else frozenset())
+    if not allowed or not (whole or by_kind):
         why.update(dict.fromkeys(lacking, "label_not_read_whole" if allowed else "not_listed"))
         return []
+    if not whole:
+        why.update(dict.fromkeys(lacking - by_kind, "label_not_read_whole"))
     elevation = claims = None
     places_above: dict[str, list] = {}
     marked = []
     for key in field_keys(profile):
+        if not whole and key not in by_kind:
+            continue
         outcome, value = by_key.get(key), run.fields.get(key)
         if key not in allowed or key in human or outcome is None or value is None:
             if key in lacking:
