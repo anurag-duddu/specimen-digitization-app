@@ -400,10 +400,14 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
         .firstOrNull;
     final value = currentLayer == null ? null : layers[currentLayer];
     final reviewStatus = _reviewStatus(field);
+    // A field no label carries and no approved source looks up reads as that,
+    // not as "Unknown".
+    final noSource = reviewStatus.hasNoApprovedSource;
+    final stateLabel = noSource ? notOnLabelsLabel : state.label;
     // The value leads. Other states qualify it explicitly; detailed findings
     // are disclosed with the evidence instead of repeating them in every row.
     final summary = <String>[
-      if (state != SpecimenStatus.supported) state.label,
+      if (state != SpecimenStatus.supported) stateLabel,
       ?value,
       if (state == SpecimenStatus.supported && value == null)
         'No value recorded',
@@ -473,7 +477,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Text(
-                '${field['required'] == true ? 'Required field' : 'Optional field'} · ${state.label}',
+                '${field['required'] == true ? 'Required field' : 'Optional field'} · $stateLabel',
                 style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
               ),
               SizedBox(height: ui.space.s3),
@@ -498,19 +502,21 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
                 SizedBox(height: ui.space.s2),
               ] else ...<Widget>[
                 Text(
-                  switch (state) {
-                    SpecimenStatus.notPresent =>
-                      'This field is not present on the label.',
-                    SpecimenStatus.notApplicable =>
-                      'This field does not apply to the specimen.',
-                    SpecimenStatus.unreadable =>
-                      'The label text could not be read.',
-                    SpecimenStatus.ambiguous =>
-                      'More than one interpretation remains possible.',
-                    SpecimenStatus.unresolved =>
-                      'The available evidence has not settled this field.',
-                    _ => 'No value has been recorded for this field.',
-                  },
+                  noSource
+                      ? notOnLabelsWords
+                      : switch (state) {
+                          SpecimenStatus.notPresent =>
+                            'This field is not present on the label.',
+                          SpecimenStatus.notApplicable =>
+                            'This field does not apply to the specimen.',
+                          SpecimenStatus.unreadable =>
+                            'The label text could not be read.',
+                          SpecimenStatus.ambiguous =>
+                            'More than one interpretation remains possible.',
+                          SpecimenStatus.unresolved =>
+                            'The available evidence has not settled this field.',
+                          _ => 'No value has been recorded for this field.',
+                        },
                   style: ui.type.bodySmall.copyWith(
                     color: ui.color.inkSecondary,
                   ),

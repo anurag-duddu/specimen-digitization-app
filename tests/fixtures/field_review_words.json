@@ -1,0 +1,240 @@
+{
+  "about": "The waiting-fields program, fix 1 (2026-11-24, lane A2). How the Identified by IRN reads when no label carries it and no approved source looks it up. The server's counts (application/review_summary.review_summary and no_source_fields, tests/test_field_review_words.py) and the app's field rows (field_presentation.fieldReviewStatus, test/field_review_words_contract_test.dart) both read this file. `no_approved_authority` is the server's field_research.contracts.NO_APPROVED_AUTHORITY: such a field that research left unknown with no value, and that no reason names, is not counted for review and reads 'Not on labels' (`no_source`). An unknown one with text in a value layer, or with a reason naming it, needs review as before; in any other state it follows the ordinary rule (an unresolved one needs review, a supported value or a settled absence does not). The app also keeps an unknown one holding an authority match for review, which the server's projected fields cannot show. Each case: the fields (state, has_value), the reason codes, the disposition, the server's summary (the queue row's counts) and each field row's word (review, no_source, settled, or none for a settled absence).",
+  "no_approved_authority": [
+    "identified_by_irn"
+  ],
+  "cases": [
+    {
+      "name": "a cleared record: the IRN no source fills is not for review",
+      "disposition": "cleared",
+      "fields": {
+        "fmnh_ins_number": {
+          "state": "supported",
+          "has_value": true
+        },
+        "identified_by_irn": {
+          "state": "unknown",
+          "has_value": false
+        },
+        "county": {
+          "state": "supported",
+          "has_value": true
+        },
+        "precise_location": {
+          "state": "ambiguous",
+          "has_value": true
+        },
+        "habitat": {
+          "state": "not_present",
+          "has_value": false
+        },
+        "collectors": {
+          "state": "supported",
+          "has_value": false
+        }
+      },
+      "codes": [
+        "marked:county:L1:second_opinion_differs",
+        "mandatory_unresolved:precise_location"
+      ],
+      "summary": {
+        "review": 3,
+        "missing": 3
+      },
+      "status": {
+        "fmnh_ins_number": "settled",
+        "identified_by_irn": "no_source",
+        "county": "review",
+        "precise_location": "review",
+        "habitat": "none",
+        "collectors": "review"
+      }
+    },
+    {
+      "name": "a record in Needs review reads the IRN the same way",
+      "disposition": "needs_human_review",
+      "fields": {
+        "fmnh_ins_number": {
+          "state": "supported",
+          "has_value": true
+        },
+        "identified_by_irn": {
+          "state": "unknown",
+          "has_value": false
+        },
+        "county": {
+          "state": "supported",
+          "has_value": true
+        },
+        "precise_location": {
+          "state": "ambiguous",
+          "has_value": true
+        },
+        "habitat": {
+          "state": "not_present",
+          "has_value": false
+        },
+        "collectors": {
+          "state": "supported",
+          "has_value": false
+        }
+      },
+      "codes": [
+        "marked:county:L1:second_opinion_differs",
+        "mandatory_unresolved:precise_location"
+      ],
+      "summary": {
+        "review": 3,
+        "missing": 3
+      },
+      "status": {
+        "fmnh_ins_number": "settled",
+        "identified_by_irn": "no_source",
+        "county": "review",
+        "precise_location": "review",
+        "habitat": "none",
+        "collectors": "review"
+      }
+    },
+    {
+      "name": "the IRN with no value and no reason, nothing else open",
+      "disposition": "cleared",
+      "fields": {
+        "fmnh_ins_number": {
+          "state": "supported",
+          "has_value": true
+        },
+        "identified_by_irn": {
+          "state": "unknown",
+          "has_value": false
+        },
+        "habitat": {
+          "state": "not_present",
+          "has_value": false
+        }
+      },
+      "codes": [],
+      "summary": {
+        "review": 0,
+        "missing": 2
+      },
+      "status": {
+        "fmnh_ins_number": "settled",
+        "identified_by_irn": "no_source",
+        "habitat": "none"
+      }
+    },
+    {
+      "name": "an IRN a field reason names still needs review",
+      "disposition": "cleared",
+      "fields": {
+        "identified_by_irn": {
+          "state": "unknown",
+          "has_value": false
+        }
+      },
+      "codes": [
+        "research_incomplete:identified_by_irn"
+      ],
+      "summary": {
+        "review": 1,
+        "missing": 1
+      },
+      "status": {
+        "identified_by_irn": "review"
+      }
+    },
+    {
+      "name": "an IRN the identity check names still needs review",
+      "disposition": "cleared",
+      "fields": {
+        "identified_by_irn": {
+          "state": "unknown",
+          "has_value": false
+        }
+      },
+      "codes": [
+        "identified_by_irn_identity_unproved"
+      ],
+      "summary": {
+        "review": 1,
+        "missing": 1
+      },
+      "status": {
+        "identified_by_irn": "review"
+      }
+    },
+    {
+      "name": "an IRN in another state still needs review",
+      "disposition": "cleared",
+      "fields": {
+        "identified_by_irn": {
+          "state": "unresolved",
+          "has_value": false
+        }
+      },
+      "codes": [],
+      "summary": {
+        "review": 1,
+        "missing": 1
+      },
+      "status": {
+        "identified_by_irn": "review"
+      }
+    },
+    {
+      "name": "an unknown IRN with a value still needs review",
+      "disposition": "cleared",
+      "fields": {
+        "identified_by_irn": {
+          "state": "unknown",
+          "has_value": true
+        }
+      },
+      "codes": [],
+      "summary": {
+        "review": 1,
+        "missing": 0
+      },
+      "status": {
+        "identified_by_irn": "review"
+      }
+    },
+    {
+      "name": "a supported IRN reads as any settled value",
+      "disposition": "cleared",
+      "fields": {
+        "identified_by_irn": {
+          "state": "supported",
+          "has_value": true
+        }
+      },
+      "codes": [],
+      "summary": {
+        "review": 0,
+        "missing": 0
+      },
+      "status": {
+        "identified_by_irn": "settled"
+      }
+    },
+    {
+      "name": "another field left unknown still needs review",
+      "disposition": "cleared",
+      "fields": {
+        "date_identified": {
+          "state": "unknown",
+          "has_value": false
+        }
+      },
+      "codes": [],
+      "summary": {
+        "review": 1,
+        "missing": 1
+      },
+      "status": {
+        "date_identified": "review"
+      }
+    }
+  ]
+}

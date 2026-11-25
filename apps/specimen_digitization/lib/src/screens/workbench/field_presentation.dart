@@ -119,6 +119,47 @@ bool fieldNeedsReview(
       'not_applicable',
     }.contains(state);
 
+/// The fields no approved source can fill: the server's
+/// `field_research.contracts.NO_APPROVED_AUTHORITY`, under which research
+/// gives the field no model call and keeps its nonblocking exception (the
+/// Identified by IRN: a museum person record no label carries).
+/// tests/fixtures/field_review_words.json pins this set to the server's.
+const Set<String> noApprovedAuthorityFields = <String>{'identified_by_irn'};
+
+/// Whether [field] is one no approved source can fill
+/// ([noApprovedAuthorityFields]) and research left it as it always does:
+/// unknown, with no text in any value layer and no authority match. The
+/// server leaves the same field out of its review count when no reason names
+/// it (`review_summary.no_source_fields`). The server's count cannot see an
+/// authority match (its projection holds only the state and whether a text
+/// layer is present), so an unknown field holding only an authority match
+/// keeps "Review needed" here while the count leaves it out. The value field
+/// research writes for this field carries none (`step.py`, the branch that
+/// sets `IRN_REASON`).
+bool fieldHasNoApprovedSource(Json field) {
+  final Object? authorityId = field['authority_id'];
+  final Object? authorityIdentity = field['authority_identity'];
+  return noApprovedAuthorityFields.contains(field['field_key']) &&
+      field['state'] == 'unknown' &&
+      !<Object?>[
+        field['normalized'],
+        field['parsed_value'],
+        field['literal_value'],
+      ].any((value) => value is String && value.trim().isNotEmpty) &&
+      (authorityId == null ||
+          (authorityId is String && authorityId.trim().isEmpty)) &&
+      (authorityIdentity == null ||
+          (authorityIdentity is Map && authorityIdentity.isEmpty));
+}
+
+/// The state a field with no approved source reads as, in place of
+/// "Unknown": no label carries it.
+const String notOnLabelsLabel = 'Not on labels';
+
+/// Why a field with no approved source has no value.
+const String notOnLabelsWords =
+    'No label carries this number, and no approved source looks it up.';
+
 /// Presentation counts never change the record's clearance or lifecycle.
 ///
 /// Missing is absence of a current value, including an explicit `not_present`
@@ -129,6 +170,7 @@ class FieldReviewStatus {
     required this.needsReview,
     required this.isMissing,
     required this.isSettledValue,
+    this.hasNoApprovedSource = false,
   });
 
   /// An unresolved state, empty supported value, finding or unsaved change.
@@ -140,10 +182,17 @@ class FieldReviewStatus {
   /// A supported, present value without findings or unsaved changes.
   /// This is a review affordance, independent of the stored value's layer.
   final bool isSettledValue;
+
+  /// A field no label carries and no approved source looks up
+  /// ([fieldHasNoApprovedSource]). It is missing, and not for review.
+  final bool hasNoApprovedSource;
 }
 
 /// Uses exactly the same value layers as the field row, highest layer first.
 /// Observation transcripts are evidence, not a substitute for a field value.
+///
+/// A field with no approved source ([fieldHasNoApprovedSource]) that no issue
+/// names and no unsaved change touches is not for review.
 FieldReviewStatus fieldReviewStatus(
   Json field, {
   bool hasIssues = false,
@@ -162,17 +211,22 @@ FieldReviewStatus fieldReviewStatus(
   final hasValue = values.any(
     (value) => value is String && value.trim().isNotEmpty,
   );
-  final needsReview = fieldNeedsReview(
-    state,
-    hasIssues: hasIssues,
-    hasValue: hasValue,
-    isPending: pending != null,
-  );
+  final noSource =
+      pending == null && !hasIssues && fieldHasNoApprovedSource(field);
+  final needsReview =
+      !noSource &&
+      fieldNeedsReview(
+        state,
+        hasIssues: hasIssues,
+        hasValue: hasValue,
+        isPending: pending != null,
+      );
   return FieldReviewStatus(
     needsReview: needsReview,
     isMissing:
         state != 'not_applicable' && (state == 'not_present' || !hasValue),
     isSettledValue: state == 'supported' && hasValue && !needsReview,
+    hasNoApprovedSource: noSource,
   );
 }
 
