@@ -1,22 +1,20 @@
-"""Lane D of the waiting-fields program (2026-11-24): owner decision B's genus scan reads the first pass's
-advice, and the taxon's second opinion is compared on the name without its author and year.
+"""Lane D of the waiting-fields program (2026-11-24): the taxon's second opinion is compared on the name
+without its author and year, and a blank second opinion on owner decision B's unmatched taxon marks nothing.
 
-- step._genus_on_a_label: a reading unit the first pass placed only in fields that never hold a scientific
-  name (step._placed_elsewhere: not the taxon, not the habitat) accounts for its words where one of those
-  fields' stored values writes the unit's text (step._held_by_advice; round 1 of #472's review), settled or
-  not. On production record 01b79931 the collector "F.G. Werner", left unsettled, held the morphocode
-  "Sp. 30" back.
 - second_opinion.same: "Bittacus strigosus Hagen, 1861" (GBIF's accepted name) and the second opinion's
   "Bittacus strigosus Hagen" agree (production record 13c99e90).
 - second_opinion.derived: a blank second opinion on owner decision B's unmatched taxon marks nothing
   (production records 93e61763 "Sp #1", 66a72095 "sp 22", f35af3a5 "sp. 22"), where no label writes a word
-  that may be a genus (step._genus_on_a_label)."""
+  that may be a genus (step._genus_on_a_label).
+
+Round 1's change to decision B's genus scan (the first pass's advice) was taken out after round 2 of #472's
+review: a field's value, settled or not, can write a genus the first pass advised for that field."""
 
 from __future__ import annotations
 
 import pytest
 import test_step
-from test_step import FieldAnswer, NoGenus, Scripted, answering, build_rig, cannot_resolve, settle
+from test_step import NoGenus, Scripted, build_rig, cannot_resolve, settle
 
 from specimen_digitization.application.domain import FieldValue, ValueState
 from specimen_digitization.field_research import second_opinion as so
@@ -24,11 +22,6 @@ from specimen_digitization.field_research import step as field_step
 
 # The second opinion's marks are derived here (tests/conftest.py, without_second_opinion_marks).
 USES_SECOND_OPINION = True
-TAXON_REASONS = ("mandatory_unresolved:taxon", "taxonomy_unresolved")
-CODE = "sp. 30 \N{FEMALE SIGN}"
-PERSON = "F.G. Werner"
-
-
 IRN_LINE = "identified_by_irn: synthetic:eparties:1\n"
 
 
@@ -38,20 +31,6 @@ def without_the_taxon_line(line):
     second opinion's marks are derived)."""
     assert IRN_LINE in test_step.TEXT
     return line + "\n" + test_step.TEXT.replace("taxon: " + test_step.LABEL["taxon"] + "\n", "").replace(IRN_LINE, "")
-
-
-def without_a_collector(line):
-    """without_the_taxon_line's label with no collectors line ("leg. J. Smith"): the collectors' expert
-    then names the only person on the specimen."""
-    text = without_the_taxon_line(line)
-    assert text.endswith("\nleg. J. Smith")
-    return text.removesuffix("\nleg. J. Smith")
-
-
-def collectors_quoting(literal):
-    """A collectors' expert that finds no collecting marker and quotes `literal` (label 2's first reader)."""
-    return answering(FieldAnswer(outcome="sources_cannot_resolve", literal=literal, reading_names=["2A"],
-        explanation="No collecting marker stands beside the name."))
 
 
 def advising(text, fields, role=""):
@@ -66,99 +45,6 @@ def advising(text, fields, role=""):
             if any(span.text and span.text in text for span in unit.readers.values()) else unit
             for unit in units.units]})
     return seen
-
-
-def taxon_after(tmp_path, monkeypatch, second, fields, role="", collectors=None):
-    """Label 1 writes the code and no person; label 2 `second`, whose units the first pass advises
-    `fields`. The taxon's expert asks GBIF the code and quotes it; the collectors' expert quotes
-    `collectors` (`second` by default), finding no collecting marker."""
-    monkeypatch.setattr(test_step, "seen_units", advising(second, fields, role))
-    test_step.a_second_label(monkeypatch, second)
-    rig = build_rig(tmp_path, without_a_collector(CODE))
-    run = rig.specimen.run
-    settle(rig, Scripted({"taxon": cannot_resolve(CODE, asks=[CODE]),
-        "collectors": collectors_quoting(second if collectors is None else collectors)}), tools=NoGenus(rig.blobs))
-    return run
-
-
-# ---- owner decision B: the first pass's advice --------------------------------------------------------
-
-@pytest.mark.parametrize("fields", [["collectors"], ["collectors", "identified_by_irn"]])
-def test_a_persons_name_the_first_pass_places_with_the_collectors_does_not_hold_the_code_back(
-        tmp_path, monkeypatch, fields):
-    """01b79931: label 2's "F.G. Werner", advised for the collectors, which the collectors' expert quotes
-    and does not settle, is no possible genus: the code clears unmatched (origin/main: unresolved, its
-    "F")."""
-    run = taxon_after(tmp_path, monkeypatch, PERSON, fields)
-    collectors = run.fields["collectors"]
-    assert (collectors.state, collectors.literal) == (ValueState.UNRESOLVED, PERSON)
-    taxon = run.fields["taxon"]
-    assert (taxon.state, taxon.literal, taxon.reason) == (ValueState.SUPPORTED, CODE, field_step.UNMATCHED)
-    assert [reason for reason in run.reasons if reason in TAXON_REASONS] == []
-
-
-@pytest.mark.parametrize(("second", "fields", "role"), [
-    (PERSON, [], ""),
-    (PERSON, ["taxon"], ""),
-    (PERSON, ["collectors", "taxon"], ""),
-    (PERSON, ["habitat"], ""),
-    (PERSON, ["collectors"], "genus"),
-    (PERSON, ["not_a_field"], ""),
-    ("Epipsocus", ["taxon"], "genus"),
-])
-def test_a_unit_with_no_advice_or_advised_for_a_name_still_holds_the_code_back(
-        tmp_path, monkeypatch, second, fields, role):
-    """No advice, advice naming the taxon or the habitat (a host's name), a name's role, or advice that
-    names no field leaves the word a possible genus: the taxon stays unresolved, as on origin/main."""
-    run = taxon_after(tmp_path, monkeypatch, second, fields, role)
-    assert run.fields["taxon"].state == ValueState.UNRESOLVED
-    assert [reason for reason in run.reasons if reason in TAXON_REASONS] == list(TAXON_REASONS)
-
-
-def test_a_genus_the_first_pass_advises_for_the_collectors_still_holds_the_code_back(tmp_path, monkeypatch):
-    """Round 1 of #472's review: a genus "Epipsocus" the first pass wrongly advised for the collectors,
-    which the collectors' value does not write, may still be the genus. The taxon stays unresolved
-    (round 1's head: unmatched)."""
-    run = taxon_after(tmp_path, monkeypatch, "Epipsocus", ["collectors"], collectors="R. D. Mitchell")
-    assert run.fields["collectors"].literal is None
-    assert run.fields["taxon"].state == ValueState.UNRESOLVED
-    assert [reason for reason in run.reasons if reason in TAXON_REASONS] == list(TAXON_REASONS)
-
-
-@pytest.mark.parametrize(("collectors", "word"), [
-    (FieldValue(state=ValueState.UNRESOLVED, literal=PERSON), None),
-    (FieldValue(state=ValueState.AMBIGUOUS, verbatim_by_observation={"any": "x\n" + PERSON}), None),
-    (FieldValue(state=ValueState.UNRESOLVED, literal="F.G. Wernerson"), "Werner"),
-    (FieldValue(state=ValueState.UNRESOLVED, literal="J. Smith"), "F"),
-    (FieldValue(), "F"),
-])
-def test_the_advised_fields_value_must_write_the_units_text(tmp_path, monkeypatch, collectors, word):
-    """A unit advised for the collectors is set aside only where the collectors' literal or a reader's
-    verbatim writes its text as whole words (step._held_by_advice): "Werner" inside "Wernerson" is not."""
-    monkeypatch.setattr(test_step, "seen_units", advising(PERSON, ["collectors"]))
-    test_step.a_second_label(monkeypatch, PERSON)
-    rig = build_rig(tmp_path, without_a_collector(CODE))
-    run = rig.specimen.run
-    run.fields["collectors"] = collectors
-    assert field_step._genus_on_a_label(run, list(field_step.run_readings(run))) == word
-
-
-def test_the_advice_accounts_only_for_a_readers_own_text_at_the_unit(tmp_path, monkeypatch):
-    """A reader whose text at the unit's span is not the unit's text for it (a changed reading) gains
-    nothing from the advice: its word may still be a genus."""
-    import dataclasses
-
-    monkeypatch.setattr(test_step, "seen_units", advising(PERSON, ["collectors"]))
-    test_step.a_second_label(monkeypatch, PERSON)
-    rig = build_rig(tmp_path, without_a_collector(CODE))
-    run = rig.specimen.run
-    run.fields["collectors"] = FieldValue(state=ValueState.UNRESOLVED, literal=PERSON)
-    readings = list(field_step.run_readings(run))
-    second = [reading for reading in readings if reading.region_id == run.regions[1].id]
-    assert second and field_step._genus_on_a_label(run, readings) is None
-    changed = [dataclasses.replace(reading, text="F.G. Wernex") if reading in second else reading
-        for reading in readings]
-    assert field_step._genus_on_a_label(run, changed) == "Wernex"
 
 
 # ---- the taxon's second opinion: the name without its author and year ---------------------------------
@@ -177,6 +63,11 @@ def test_the_advice_accounts_only_for_a_readers_own_text_at_the_unit(tmp_path, m
     ("Pulex Irritans", "Pulex", False),
     ("Aus bus Smith", "Aus bus Jones", False),
     ("Panorpa Linnaeus, 1758", "Panorpa", False),
+    # round 2 of #472's review: a capitalised word with no year after a name is no author against the name
+    ("Aus bus Cus", "Aus bus", False),
+    ("Pulex irritans Linnaeus", "Pulex irritans", False),
+    ("Aus bus (Linnaeus)", "Aus bus", False),
+    ("Aus bus Cus", "Aus bus Cus", True),
     ("Panorpa", "Panorpa speciosa", False),
     ("Panorpa speciosa Carpenter", "Panorpa nuptialis Carpenter", False),
     ("Panorpa sp. 3", "Panorpa sp. 5", False),

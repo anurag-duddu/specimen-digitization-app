@@ -100,8 +100,8 @@ else parsed, else literal) against the second opinion's value:
   between two digits and a "-" or "+" directly before a digit, which are kept (so "1.5 km" is not
   "15 km" and "-80" is not "80"). Province/State and County also set aside one trailing unit word
   on either side (UNIT_WORDS), as the benchmark's comparison does. The taxon also agrees where both
-  values give the same name with the same author once a year is set aside, or an author on one side
-  only after a name with an epithet (`_same_taxon`, `canonical_taxon`).
+  values give the same name with the same author once a year is set aside, or an author with a year
+  on one side only after a name with an epithet (`_same_taxon`, `canonical_taxon`).
 """
 
 from __future__ import annotations
@@ -433,13 +433,15 @@ def _author(text: str) -> str | None:
     return folded(" ".join(word for word in words if word.rstrip(",") not in _JOINERS))
 
 
-def canonical_taxon(text: str) -> tuple[str, str] | None:
-    """A taxon's name and its author without the year (_author, "" for none), or None. The name is the
+def canonical_taxon(text: str) -> tuple[str, str, bool] | None:
+    """A taxon's name, its author without the year (_author, "" for none) and whether a four-digit year
+    ends what follows the name, or None. The name is the
     genus (the first word, letters only, beginning with a capital) and the lower-case epithets after it
     (_epithet), where what follows them is nothing or an author and year (_author).
-    "Bittacus strigosus Hagen, 1861" gives ("Bittacus strigosus", "hagen"), "Panorpa" gives
-    ("Panorpa", ""); "Panorpa sp. 3", "Sp #1", "DELOSTICHUS COXALIS (ROTHS., 1909)" and "Aus bus
-    Smith x Aus cus Jones" give None. A lower-case particle of an author is read as an epithet ("Aus bus de
+    "Bittacus strigosus Hagen, 1861" gives ("Bittacus strigosus", "hagen", True), "Panorpa" gives
+    ("Panorpa", "", False), "Aus (Bus)" gives ("Aus", "bus", False): a bracketed word is read as an author;
+    "Panorpa sp. 3", "Sp #1", "DELOSTICHUS COXALIS (ROTHS., 1909)" and "Aus bus Smith x Aus cus Jones"
+    give None. A lower-case particle of an author is read as an epithet ("Aus bus de
     Geer" gives "Aus bus de"), so such a name agrees only with the same particle."""
     words = text.split()
     if not words or not (_letters(words[0]) and words[0][0].isupper()):
@@ -451,22 +453,24 @@ def canonical_taxon(text: str) -> tuple[str, str] | None:
     author = _author(rest) if rest else ""
     if author is None:
         return None
-    return " ".join(words[:count]), author
+    return " ".join(words[:count]), author, bool(rest and _YEAR.fullmatch(rest.removesuffix(")")))
 
 
 def _same_taxon(first: str, second: str) -> bool:
     """Whether two taxa give the same name (canonical_taxon, folded) and either the same author once a
-    year is set aside, or an author on one side only where the name holds an epithet ("Bittacus
-    strigosus Hagen, 1861" and "Bittacus strigosus Hagen"; "Pulex irritans Linnaeus, 1758" and "Pulex
-    irritans"). By this rule two different authors do not agree ("Aus bus Smith", "Aus bus Jones"), nor
-    a genus with a capitalised word after it and the genus alone ("Pulex Irritans", "Pulex"), where that
-    word may be an epithet, not an author; same() then applies the text rule, as for any other field."""
+    year is set aside ("Bittacus strigosus Hagen, 1861" and "Bittacus strigosus Hagen"), or an author
+    with a year on one side only where the name holds an epithet ("Pulex irritans Linnaeus, 1758" and
+    "Pulex irritans"). By this rule two different authors do not agree ("Aus bus Smith", "Aus bus
+    Jones"), nor a capitalised word with no year after a name and the name alone ("Aus bus Cus" and "Aus
+    bus", "Pulex Irritans" and "Pulex"), where that word may be an epithet, not an author; same() then
+    applies the text rule, as for any other field."""
     a, b = canonical_taxon(first), canonical_taxon(second)
     if a is None or b is None or folded(a[0]) != folded(b[0]):
         return False
     if a[1] == b[1]:
         return True
-    return "" in (a[1], b[1]) and len(a[0].split()) > 1
+    lone = a if b[1] == "" else b if a[1] == "" else None
+    return lone is not None and lone[2] and len(a[0].split()) > 1
 
 
 def same(key: str, first: str | None, second: str | None) -> bool:
