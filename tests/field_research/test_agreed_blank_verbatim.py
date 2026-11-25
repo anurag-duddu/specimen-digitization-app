@@ -200,3 +200,10 @@ def test_a_date_and_a_name_or_a_measure_are_no_time_of_day(text):
     time."""
     texts = (text + "\n" + DAY[0], DAY[1])
     assert so._no_verbatim_date(run_of(*DAYS, texts), readings_of(texts)) is True
+
+
+@pytest.mark.parametrize("written", ["Collecting season: Summer", "VI–VIII", "VI-VIII"])
+def test_a_label_with_no_date_the_checks_read_keeps_the_flag(written):
+    """Codex's round-1 cases: a season or a range of Roman months, with both dates blank."""
+    texts = (written, written)
+    assert so._no_verbatim_date(run_of(BLANK, BLANK, texts), readings_of(texts)) is False
