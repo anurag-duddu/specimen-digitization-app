@@ -173,3 +173,13 @@ def test_no_date_settled_but_one_may_be_written_keeps_the_flag(change):
     else:
         start = value(state=ValueState.AMBIGUOUS)
     assert so._no_verbatim_date(run_of(start, BLANK, texts, **kwargs), readings_of(texts)) is False
+
+
+@pytest.mark.parametrize("text", ["IX-14-46\nH. Hoogstraal", "IX-14-46 H. Hoogstraal", "Elev. 4800 ft.", "Mt. McKinley",
+    "Malaise Trap", "Hamburg"], ids=["a-name-on-the-next-line", "a-name-after-the-date", "feet", "mount", "trap",
+    "a-place"])
+def test_a_date_and_a_name_or_a_measure_are_no_time_of_day(text):
+    """Production records 48a71d53 and f35af3a5 write "IX-14-46" above "H. Hoogstraal": no clock time."""
+    texts = (text + "\n" + DAY[0], DAY[1])
+    day, settled_to = value(text="1948-04-23"), value(text="1948-04-23", layer="derived")
+    assert so._no_verbatim_date(run_of(day, settled_to, texts), readings_of(texts)) is True

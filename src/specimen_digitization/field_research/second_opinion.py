@@ -592,13 +592,15 @@ AGREED_BLANK_EXCEPT = frozenset({"verbatim_dts", "habitat"})
 # the collecting dates settled to the day, or there is no date to write (no text could be a date, none
 # is unreadable, and both dates are blank).
 AGREED_BLANK_WHEN_DATED = frozenset({"verbatim_dts"})
-# A time of day as a label writes it: the field prompt's "am", "pm", "sunrise" and "daylight" and their
-# kin in English, Spanish, French and German, as whole words in any case, accents aside; or a clock time
-# ("10:30", "22h", "10 hrs"). Deliberately wide: what it finds only keeps a flag.
+# A time of day as a label writes it, on one line: the field prompt's "am", "pm", "sunrise" and
+# "daylight" and their kin in English, Spanish, French and German, as whole words in any case, accents
+# aside; or a clock time ("10:30", "22h", "10 hrs"), whose hour is no part of a date ("IX-14-46 H.
+# Hoogstraal" holds none). Deliberately wide: what it finds only keeps a flag.
 TIME_OF_DAY = re.compile(
-    r"(?<![^\W\d_])(?:a\.?\s?m|p\.?\s?m|sunrise|sunset|daylight|dawn|dusk|night|nite|noon|midnight|morning"
-    r"|evening|afternoon|nocturnal|noche|nocturno|madrugada|manana|tarde|nuit|matin|soir|nacht|abend|morgen)"
-    r"\.?(?![^\W\d_])|\d{1,2}\s?[:h]\s?\d{2}(?!\d)|(?<![\d.])\d{1,2}\s?(?:h|hr|hrs|hours?|uhr)(?![^\W\d_])",
+    r"(?<![^\W\d_])(?:a\.?[^\S\n]?m|p\.?[^\S\n]?m|sunrise|sunset|daylight|dawn|dusk|night|nite|noon|midnight"
+    r"|morning|evening|afternoon|nocturnal|noche|nocturno|madrugada|manana|tarde|nuit|matin|soir|nacht|abend"
+    r"|morgen)\.?(?![^\W\d_])|(?<![\d./-])\d{1,2}[^\S\n]?[:h][^\S\n]?\d{2}(?!\d)"
+    r"|(?<![\d./-])\d{1,2}[^\S\n]?(?:h|hr|hrs|hours?|uhr)(?![^\W\d_])",
     re.IGNORECASE)
 MANDATORY_UNRESOLVED = "mandatory_unresolved"
 # The coordinator's rulings of 2026-11-20 on the live confirmation rows: an agreed VALUE needs two
