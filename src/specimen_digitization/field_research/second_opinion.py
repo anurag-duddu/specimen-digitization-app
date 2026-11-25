@@ -592,21 +592,22 @@ AGREED_BLANK_EXCEPT = frozenset({"verbatim_dts", "habitat"})
 # settled to the day, no text writes a time of day or a season, and no part of a label the dates are
 # drawn on is unreadable.
 AGREED_BLANK_WHEN_DATED = frozenset({"verbatim_dts"})
-# A time of day or a season as a label writes it: the field prompt's "am", "pm", "sunrise",
-# "daylight" and "Summer" and their kin in English, Spanish, French and German, as whole words in any
-# case, accents aside; or a clock time ("10:30", "22h", "10  hrs", "22.30 h", "10 o'clock") whose hour of
-# one or two digits does not come right after a digit, ".", "/" or "-" ("IX-14-46 H. Hoogstraal" holds
-# none). Deliberately wide ("Spring Creek" and "S. Am." match): what it finds only keeps a flag. Each
-# text is searched with its lines (str.splitlines) joined by one space, so a time broken over two lines
-# ("10" above "hrs") counts too.
+# A time of day or a season as a label writes it: the field prompt's "am", "pm", "sunrise", "daylight"
+# and "Summer" and their kin in English, Spanish, French and German, as whole words in any case, accents
+# aside; or a clock time ("10:30", "22h", "10  hrs", "22.30 h", "9-11 h", "10 o'clock") whose hour of one
+# or two digits has no digit right before it. An "h" or "H" before a capitalised word or an initial is a
+# name's initial, no hour ("IX-14-46 H. Hoogstraal", "IV-23-48 H.R. Goodrich"). Deliberately wide
+# ("Spring Creek" and "S. Am." match): what it finds only keeps a flag. Each text is searched with its
+# lines (str.splitlines) joined by one space, so a time broken over two lines ("10" above "hrs") counts.
+_HOUR = r"h(?!(?-i:\.?\s*[A-Z][a-z]|\.\s*[A-Z]\.))"
 TIME_OR_SEASON = re.compile(
     r"(?<![^\W\d_])(?:a\.?\s*m|p\.?\s*m|sunrise|sunset|daylight|dawn|dusk|night|nite|noon|midnight|morning"
     r"|evening|afternoon|nocturnal|diurnal|noche|nocturno|madrugada|manana|tarde|mediodia|medianoche|amanecer"
     r"|atardecer|anochecer|alba|nuit|matin|soir|midi|minuit|aube|crepuscule|nacht|abend|morgen|mittag"
     r"|mitternacht|summer|winter|autumn|spring|fall|verano|invierno|otono|primavera|ete|hiver|automne"
     r"|printemps|sommer|herbst|fruhling|fruehling)\.?(?![^\W\d_])"
-    r"|(?<![\d./-])\d{1,2}\s*(?:[:h]\s*\d{2}(?!\d)|\.\d{2}\s*(?:h|hrs?|uhr)(?![^\W\d_]))"
-    r"|(?<![\d./-])\d{1,2}\s*(?:h|hr|hrs|hours?|horas?|heures?|uhr|o\W?\s*clock)(?![^\W\d_])",
+    r"|(?<!\d)\d{1,2}\s*(?:[:h]\s*\d{2}(?!\d)|\.\d{2}\s*(?:" + _HOUR + r"|hrs?|uhr)(?![^\W\d_]))"
+    r"|(?<!\d)\d{1,2}\s*(?:" + _HOUR + r"|hr|hrs|hours?|horas?|heures?|uhr|o\W?\s*clock)(?![^\W\d_])",
     re.IGNORECASE)
 MANDATORY_UNRESOLVED = "mandatory_unresolved"
 # The coordinator's rulings of 2026-11-20 on the live confirmation rows: an agreed VALUE needs two

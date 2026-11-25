@@ -138,7 +138,7 @@ DAYS = (value(text="1948-04-23"), value(text="1948-04-23", layer="derived"))
 
 
 @pytest.mark.parametrize("time", ["10 am", "3 p.m.", "Sunrise", "at night", "22h", "10:30", "mañana", "Summer",
-    "verano", "Été", "10  hrs", "midi", "22.30 h", "10 o'clock", "10\nhrs", "10\rhrs"])
+    "verano", "Été", "10  hrs", "midi", "22.30 h", "10 o'clock", "10\nhrs", "10\rhrs", "9-11 h", "10 h."])
 def test_a_time_of_day_or_a_season_keeps_the_flag(time):
     assert so._no_verbatim_date(run_of(*DAYS), readings_of()) is True
     timed = (DAY[0] + "\n" + time, DAY[1])
@@ -191,10 +191,12 @@ def test_dates_drawn_on_no_label_ask_every_label():
     assert so._no_verbatim_date(run_of(start, end, other=other), readings_of(other=other)) is False
 
 
-@pytest.mark.parametrize("text", ["IX-14-46\nH. Hoogstraal", "IX-14-46 H. Hoogstraal", "Elev. 4800 ft.", "Mt. McKinley",
-    "Malaise Trap", "Hamburg", "Hagen, 1861"], ids=["a-name-on-the-next-line", "a-name-after-the-date", "feet",
-    "mount", "trap", "a-place", "an-author-and-year"])
+@pytest.mark.parametrize("text", ["IX-14-46\nH. Hoogstraal", "IX-14-46 H. Hoogstraal", "1X - 14 - 46\nH. Hoogstraal",
+    "IX.14.46 H. Hoogstraal", "IV-23-48\nH.R. Goodrich", "Elev. 4800 ft.", "Mt. McKinley", "Malaise Trap", "Hamburg",
+    "Hagen, 1861"], ids=["a-name-on-the-next-line", "a-name-after-the-date", "a-spaced-date", "a-dotted-date",
+    "two-initials", "feet", "mount", "trap", "a-place", "an-author-and-year"])
 def test_a_date_and_a_name_or_a_measure_are_no_time_of_day(text):
-    """Production records 48a71d53 and f35af3a5 write "IX-14-46" above "H. Hoogstraal": no clock time."""
+    """Production records 48a71d53 and f35af3a5 write "IX-14-46" and "1X - 14 - 46" above "H. Hoogstraal": no clock
+    time."""
     texts = (text + "\n" + DAY[0], DAY[1])
     assert so._no_verbatim_date(run_of(*DAYS, texts), readings_of(texts)) is True
