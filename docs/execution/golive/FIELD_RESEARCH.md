@@ -2548,7 +2548,9 @@ record clears or holds differently.
   text of the run, its lines joined by a space, writes a time of day or a
   season (`second_opinion.TIME_OR_SEASON`: "am", "pm", "sunrise",
   "daylight", "Summer" and their kin in English, Spanish, French and
-  German, or a clock time); and no part of a label either date is drawn on
+  German, or a clock time; an "h" after a number that ends a date and
+  before a period and a capital is a name's initial, as in "IX-14-46 H.
+  Hoogstraal"); and no part of a label either date is drawn on
   is unreadable (a reader's unreadable span, a transcript marked
   unreadable, a placeholder; every label when the dates name none). The
   field holds a collecting date or time only where it is not exact (PRD.md,
@@ -3117,8 +3119,12 @@ elevation is derived first, and only for a field a person has not decided):
    lower-case word but determination and joining words, "by" and a
    surname's particle; a catalogue line writes the heading, the museum's
    name or a number of five to nine digits and no word but those of the
-   heading and the name (`step.CATALOGUE_WORDS`). Lines are those
-   `str.splitlines` gives. A span the reader's text does not hold, a span
+   heading and the name (`step.CATALOGUE_WORDS`); and the part comes right
+   after an initial or a determination marker ("J. [unreadable] det.
+   2021", "det. R. E. [unreadable]"), or after the heading, the name or a
+   digit of the number (`step._after_a_name`), never at a line's start or
+   after another word ("Substrate: [unreadable]; det. R. E. Lewis"). Lines
+   are those `str.splitlines` gives. A span the reader's text does not hold, a span
    that crosses a line break, a label of any other kind, and an unreadable
    part on another line still stop the mark. Every other field keeps the whole-slide rule, and its code
    stays `label_not_read_whole`. Production record d10333ff's

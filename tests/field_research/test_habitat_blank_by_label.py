@@ -152,12 +152,17 @@ def test_every_other_field_still_needs_the_whole_slide_read(tmp_path, monkeypatc
     {UPPER: same(CATALOGUE), LOWER: ("det. R. E. Lewis\rHost: oak", "det. R. E. Lewis\rHost: oak",
         ("Lewis\rHost",))},
     {UPPER: same("FMNH123 [unreadable]\nFIELD MUSEUM"), LOWER: same("det. R. E. Lewis")},
+    {UPPER: same(CATALOGUE), LOWER: same("Panorpa speciosa\nSubstrate: [unreadable]; det. R. E. Lewis")},
+    {UPPER: same(CATALOGUE), LOWER: same("Panorpa speciosa\n[unreadable] det. R. E. Lewis")},
+    {UPPER: same(CATALOGUE), LOWER: ("Panorpa speciosa\nLeaf det. R. E. Lewis", "Panorpa speciosa\nLeaf det. R. E. Lewis",
+        ("Leaf",))},
 ], ids=["another-line-of-a-determination-label", "a-collector-on-it-too", "a-label-of-no-such-kind",
     "a-line-of-the-catalogue-label-without-its-content", "beside-a-heading-on-another-line",
     "a-span-the-text-does-not-hold", "a-label-wholly-unreadable", "a-host-on-the-determiners-line",
     "a-host-heading-on-the-determiners-line", "a-lower-case-word-on-the-determiners-line",
     "another-word-on-the-catalogue-heading-line", "a-span-on-a-line-a-carriage-return-ends",
-    "a-span-across-a-carriage-return", "a-heading-run-into-digits"])
+    "a-span-across-a-carriage-return", "a-heading-run-into-digits", "after-a-capitalised-heading",
+    "at-the-line-start", "a-span-after-no-initial"])
 def test_an_unreadable_part_anywhere_else_still_stops_the_mark(tmp_path, monkeypatch, labels):
     run = researched(tmp_path, monkeypatch, labels)
     assert by_kind(run) == (False, False)

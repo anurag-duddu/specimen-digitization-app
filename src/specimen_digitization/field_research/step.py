@@ -3592,11 +3592,13 @@ def _unreadable_inside_its_kind(run, readings: Sequence[Reading], region_id: str
       the verbatim), or cites an evidence row of it;
     - every unreadable part of every text stands on a line of that text that
       writes only its kind's content (_content_line: a determiner's line, or
-      the heading, the museum's name or the number). A placeholder (checks.shows_placeholder)
-      is found line by line; a reader's listed unreadable span is found as
-      written in each line (str.splitlines) of that reader's text, and every
-      line that holds it must be such a line; a span the text does not hold,
-      or that crosses a line break, is outside.
+      the heading, the museum's name or the number), right after an initial or
+      a determination marker, or after the heading, the name or a digit of the
+      number (_after_a_name). A placeholder (checks.shows_placeholder) is found
+      line by line (_placeholder_starts); a reader's listed unreadable span is
+      found as written in each line (str.splitlines) of that reader's text, at
+      every place it stands; a span the text does not hold, or that crosses a
+      line break, is outside.
     A label of no such kind, or with an unreadable part anywhere else, is
     False: it must be read whole."""
     from .checks import shows_placeholder
@@ -3631,17 +3633,60 @@ def _unreadable_inside_its_kind(run, readings: Sequence[Reading], region_id: str
         held = text.splitlines()
         if shows_placeholder(text) and not any(shows_placeholder(line) for line in held):
             return False
-        if any(shows_placeholder(line) and not inside(line) for line in held):
-            return False
+        for line in held:
+            starts = _placeholder_starts(line) if shows_placeholder(line) else []
+            if shows_placeholder(line) and not starts:
+                return False
+            if starts and not (inside(line) and all(_after_a_name(kind, line, at) for at in starts)):
+                return False
         for span in spans:
             # Found line by line (str.splitlines, every line break): a span on two lines, or one more often in
             # the text than in its lines, crosses a line break.
             within = [line for line in held if span in line]
             if (not span.strip() or len(span.splitlines()) != 1 or not within
                     or sum(line.count(span) for line in held) != text.count(span)
-                    or any(not inside(line) for line in within)):
+                    or any(not inside(line) or not all(_after_a_name(kind, line, found.start())
+                        for found in re.finditer(re.escape(span), line)) for line in within)):
                 return False
     return True
+
+
+def _placeholder_starts(line: str) -> list[int]:
+    """Where each placeholder of a line starts, by the parts of checks.shows_placeholder's test: a
+    DOUBT_PLACEHOLDERS text in any case, a PLACEHOLDER_WORDS word, bracketed periods, and three periods not
+    right after "etc". A match inside another ("unreadable" inside "[unreadable]") is that one."""
+    from .checks import _BRACKETED_PERIODS, _ELLIPSIS, _PLACEHOLDER_WORD, DOUBT_PLACEHOLDERS, _after_etc
+
+    found = [(match.start(), match.end()) for placeholder in DOUBT_PLACEHOLDERS
+        for match in re.finditer(re.escape(placeholder), line, re.IGNORECASE)]
+    found += [(match.start(), match.end()) for match in (*_PLACEHOLDER_WORD.finditer(line),
+        *_BRACKETED_PERIODS.finditer(line))]
+    found += [(match.start(), match.end()) for match in _ELLIPSIS.finditer(line) if not _after_etc(line, match.start())]
+    return sorted({start for start, end in found if not any(
+        (other, last) != (start, end) and other <= start and end <= last for other, last in found)})
+
+
+# An initial at the end of a text: one letter and its period, with no letter right before it ("J.", the
+# "D." of "R.D.").
+_INITIAL_AT_END = re.compile(r"(?<![^\W\d_])[^\W\d_]\.$")
+
+
+def _after_a_name(kind: str, line: str, at: int) -> bool:
+    """Whether an unreadable part that starts at `at` in a line of a label of `kind` stands where that kind's
+    own content goes, by what comes right before it, spaces aside: for a determination label, an initial
+    (_INITIAL_AT_END: "J. [unreadable] det. 2021", "det. R. E. [unreadable]") or a determination marker
+    (date_lines._determination_ends: "det. [unreadable]"), so the part is (part of) the determiner's name;
+    for a catalogue-number label, the heading or the museum's name (CATALOGUE_HEADING) or a digit of the
+    number. Anything else before it ("Substrate: [unreadable]; det. R. E. Lewis") is outside, as is a part
+    at the line's start."""
+    from .date_lines import _determination_ends
+
+    before = line[:at].rstrip()
+    if not before:
+        return False
+    if kind == "catalogue":
+        return before[-1].isdigit() or any(found.end() == len(before) for found in CATALOGUE_HEADING.finditer(before))
+    return _INITIAL_AT_END.search(before) is not None or len(before) in _determination_ends(line)
 
 
 def _code_label_unreadable(run, readings: Sequence[Reading], code: str) -> bool:
