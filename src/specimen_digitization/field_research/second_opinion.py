@@ -594,10 +594,10 @@ AGREED_BLANK_EXCEPT = frozenset({"verbatim_dts", "habitat"})
 AGREED_BLANK_WHEN_DATED = frozenset({"verbatim_dts"})
 # A time of day or a season as a label writes it: the field prompt's "am", "pm", "sunrise", "daylight"
 # and "Summer" and their kin in English, Spanish, French and German, as whole words in any case, accents
-# aside; or a clock time ("10:30", "22h", "10  hrs", "22.30 h", "9-11 h", "10 o'clock") whose hour of one
-# or two digits has no digit right before it. One exception: where the number ends a date (a ".", "/" or
-# "-" right before it, or before up to two spaces before it), an "h" or "H" followed by a period and a
-# capital is a name's initial, no hour ("IX-14-46 H. Hoogstraal", "1X - 14 - 46 H. Hoogstraal",
+# aside; or a clock time ("10:30", "22h", "10  hrs", "22.30 h", "22.30 h. UV trap", "9-11 h", "10 o'clock")
+# whose hour of one or two digits has no digit right before it. One exception: where a number of one or
+# two digits ends a date (a ".", "/" or "-" right before it, or before up to two spaces before it), an
+# "h" or "H" after it followed by a period and a capital is a name's initial, no hour ("IX-14-46 H. Hoogstraal", "1X - 14 - 46 H. Hoogstraal",
 # "IV-23-48 H.R. Goodrich"); "22 h" before "Light trap" is an hour. Deliberately wide ("Spring Creek" and
 # "S. Am." match): what it finds only keeps a flag. Each text is searched with its lines
 # (str.splitlines) joined by one space, so a time broken over two lines ("10" above "hrs") counts.
@@ -611,6 +611,7 @@ TIME_OR_SEASON = re.compile(
     r"|mitternacht|summer|winter|autumn|spring|fall|verano|invierno|otono|primavera|ete|hiver|automne"
     r"|printemps|sommer|herbst|fruhling|fruehling)\.?(?![^\W\d_])"
     r"|(?<!\d)\d{1,2}\s*[:h]\s*\d{2}(?!\d)"
+    r"|(?<!\d)" + _NOT_AFTER_A_DATE + r"\d{1,2}\.\d{2}\s*(?:h|" + _UNITS + r")(?![^\W\d_])"
     r"|(?<!\d)" + _NOT_AFTER_A_DATE + r"\d{1,2}\s*(?:h|" + _UNITS + r")(?![^\W\d_])"
     r"|(?<!\d)" + _AFTER_A_DATE + r"\d{1,2}\s*(?:h(?!(?-i:\.\s*[A-Z]))|" + _UNITS + r")(?![^\W\d_])",
     re.IGNORECASE)

@@ -117,6 +117,14 @@ def test_an_unreadable_word_in_a_determiners_name_does_not_stop_a_blank_habitat(
     assert marked(run)
 
 
+@pytest.mark.parametrize("line", ["det. R. E. [unreadable]", "det. [unreadable] 1950", "J.W. [unreadable], det. 1950"])
+def test_an_unreadable_part_inside_a_determiners_name_does_not_stop_a_blank_habitat(tmp_path, monkeypatch, line):
+    """After the marker with only initials between, or before it with only initials before the part."""
+    run = researched(tmp_path, monkeypatch, {UPPER: same(CATALOGUE), LOWER: same("Panorpa speciosa\n" + line)})
+    assert by_kind(run) == (False, True)
+    assert marked(run)
+
+
 def test_an_unreadable_part_of_the_catalogue_heading_does_not_stop_a_blank_habitat(tmp_path, monkeypatch):
     run = researched(tmp_path, monkeypatch, {UPPER: same("FMNH-INS [unreadable]\n4313642\nFIELD MUSEUM"),
         LOWER: same("Panorpa speciosa\ndet. J.W. Griffiths")})
@@ -156,13 +164,17 @@ def test_every_other_field_still_needs_the_whole_slide_read(tmp_path, monkeypatc
     {UPPER: same(CATALOGUE), LOWER: same("Panorpa speciosa\n[unreadable] det. R. E. Lewis")},
     {UPPER: same(CATALOGUE), LOWER: ("Panorpa speciosa\nLeaf det. R. E. Lewis", "Panorpa speciosa\nLeaf det. R. E. Lewis",
         ("Leaf",))},
+    {UPPER: same(CATALOGUE), LOWER: same("Panorpa speciosa\nSubstrate: Q. [unreadable]; det. R. E. Lewis")},
+    {UPPER: same(CATALOGUE), LOWER: same("Panorpa speciosa\nSubstrate Q. [unreadable] det. 2021")},
+    {UPPER: same(CATALOGUE), LOWER: same("Panorpa speciosa\ndet. J. Smith [unreadable]")},
 ], ids=["another-line-of-a-determination-label", "a-collector-on-it-too", "a-label-of-no-such-kind",
     "a-line-of-the-catalogue-label-without-its-content", "beside-a-heading-on-another-line",
     "a-span-the-text-does-not-hold", "a-label-wholly-unreadable", "a-host-on-the-determiners-line",
     "a-host-heading-on-the-determiners-line", "a-lower-case-word-on-the-determiners-line",
     "another-word-on-the-catalogue-heading-line", "a-span-on-a-line-a-carriage-return-ends",
     "a-span-across-a-carriage-return", "a-heading-run-into-digits", "after-a-capitalised-heading",
-    "at-the-line-start", "a-span-after-no-initial"])
+    "at-the-line-start", "a-span-after-no-initial", "a-genus-initial-after-a-heading",
+    "a-genus-initial-after-a-word", "after-a-whole-surname"])
 def test_an_unreadable_part_anywhere_else_still_stops_the_mark(tmp_path, monkeypatch, labels):
     run = researched(tmp_path, monkeypatch, labels)
     assert by_kind(run) == (False, False)

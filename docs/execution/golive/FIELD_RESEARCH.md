@@ -3114,17 +3114,19 @@ elevation is derived first, and only for a field a person has not decided):
    catalogue-number label; and every placeholder and every reader's listed
    unreadable span stands, in the text that has it, on a line that writes
    only the kind's content (`step._content_line`): a determiner's line
-   writes a determination marker, no host or habitat word
-   (`step.HABITAT_MARKERS`: "ex", "on", "host" and their kin), and no
+   writes a determination marker, no word of `step.HABITAT_MARKERS` ("ex",
+   "on", "host", "substrate", "plant", "leaf" and their kin), and no
    lower-case word but determination and joining words, "by" and a
    surname's particle; a catalogue line writes the heading, the museum's
    name or a number of five to nine digits and no word but those of the
-   heading and the name (`step.CATALOGUE_WORDS`); and the part comes right
-   after an initial or a determination marker ("J. [unreadable] det.
-   2021", "det. R. E. [unreadable]"), or after the heading, the name or a
-   digit of the number (`step._after_a_name`), never at a line's start or
-   after another word ("Substrate: [unreadable]; det. R. E. Lewis"). Lines
-   are those `str.splitlines` gives. A span the reader's text does not hold, a span
+   heading and the name (`step.CATALOGUE_WORDS`); and the part stands
+   inside the determiner's name (`step._after_a_name`): after a
+   determination marker with only initials between them ("det. R. E.
+   [unreadable]"), or before one with only a space or a comma between them
+   and only initials before the part ("J. [unreadable] det. 2021"), never
+   "Substrate: Q. [unreadable]; det. R. E. Lewis"; on a catalogue line,
+   right after the heading, the name or a digit of the number. Lines are
+   those `str.splitlines` gives. A span the reader's text does not hold, a span
    that crosses a line break, a label of any other kind, and an unreadable
    part on another line still stop the mark. Every other field keeps the whole-slide rule, and its code
    stays `label_not_read_whole`. Production record d10333ff's
