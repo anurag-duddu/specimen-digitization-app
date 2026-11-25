@@ -138,7 +138,8 @@ DAYS = (value(text="1948-04-23"), value(text="1948-04-23", layer="derived"))
 
 
 @pytest.mark.parametrize("time", ["10 am", "3 p.m.", "Sunrise", "at night", "22h", "10:30", "mañana", "Summer",
-    "verano", "Été", "10  hrs", "midi", "22.30 h", "10 o'clock", "10\nhrs", "10\rhrs", "9-11 h", "10 h.", "22 h\nLight trap", "22 h. Light trap", "22.30 h. UV trap"])
+    "verano", "Été", "10  hrs", "midi", "22.30 h", "10 o'clock", "10\nhrs", "10\rhrs", "9-11 h", "10 h.", "22 h\nLight trap", "22 h. Light trap", "22.30 h. UV trap",
+    "15.VI.1950 - 22 h. Light trap"])
 def test_a_time_of_day_or_a_season_keeps_the_flag(time):
     assert so._no_verbatim_date(run_of(*DAYS), readings_of()) is True
     timed = (DAY[0] + "\n" + time, DAY[1])

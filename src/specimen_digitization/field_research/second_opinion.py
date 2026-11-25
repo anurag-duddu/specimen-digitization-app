@@ -596,11 +596,12 @@ AGREED_BLANK_WHEN_DATED = frozenset({"verbatim_dts"})
 # and "Summer" and their kin in English, Spanish, French and German, as whole words in any case, accents
 # aside; or a clock time ("10:30", "22h", "10  hrs", "22.30 h", "22.30 h. UV trap", "9-11 h", "10 o'clock")
 # whose hour of one or two digits has no digit right before it. One exception: where a number of one or
-# two digits ends a date (a ".", "/" or "-" right before it, or before up to two spaces before it), an
-# "h" or "H" after it followed by a period and a capital is a name's initial, no hour ("IX-14-46 H. Hoogstraal", "1X - 14 - 46 H. Hoogstraal",
-# "IV-23-48 H.R. Goodrich"); "22 h" before "Light trap" is an hour. Deliberately wide ("Spring Creek" and
-# "S. Am." match): what it finds only keeps a flag. Each text is searched with its lines
-# (str.splitlines) joined by one space, so a time broken over two lines ("10" above "hrs") counts.
+# two digits ends a date (a ".", "/" or "-" right before it, or before up to two spaces before it), a
+# capital "H" after it followed by a period and a capital is a name's initial, no hour ("IX-14-46 H.
+# Hoogstraal", "1X - 14 - 46 H. Hoogstraal", "IV-23-48 H.R. Goodrich"); "22 h" before "Light trap" and
+# "15.VI.1950 - 22 h. Light trap" are hours. Deliberately wide ("Spring Creek" and "S. Am." match): what
+# it finds only keeps a flag. Each text is searched with its lines (str.splitlines) joined by one space,
+# so a time broken over two lines ("10" above "hrs") counts.
 _UNITS = r"hr|hrs|hours?|horas?|heures?|uhr|o\W?\s*clock"
 _AFTER_A_DATE = r"(?:(?<=[./-])|(?<=[./-]\s)|(?<=[./-]\s\s))"
 _NOT_AFTER_A_DATE = r"(?<![./-])(?<![./-]\s)(?<![./-]\s\s)"
@@ -613,7 +614,7 @@ TIME_OR_SEASON = re.compile(
     r"|(?<!\d)\d{1,2}\s*[:h]\s*\d{2}(?!\d)"
     r"|(?<!\d)" + _NOT_AFTER_A_DATE + r"\d{1,2}\.\d{2}\s*(?:h|" + _UNITS + r")(?![^\W\d_])"
     r"|(?<!\d)" + _NOT_AFTER_A_DATE + r"\d{1,2}\s*(?:h|" + _UNITS + r")(?![^\W\d_])"
-    r"|(?<!\d)" + _AFTER_A_DATE + r"\d{1,2}\s*(?:h(?!(?-i:\.\s*[A-Z]))|" + _UNITS + r")(?![^\W\d_])",
+    r"|(?<!\d)" + _AFTER_A_DATE + r"\d{1,2}\s*(?:(?-i:h|H(?!\.\s*[A-Z]))|" + _UNITS + r")(?![^\W\d_])",
     re.IGNORECASE)
 MANDATORY_UNRESOLVED = "mandatory_unresolved"
 # The coordinator's rulings of 2026-11-20 on the live confirmation rows: an agreed VALUE needs two

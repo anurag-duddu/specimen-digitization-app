@@ -2548,9 +2548,9 @@ record clears or holds differently.
   text of the run, its lines joined by a space, writes a time of day or a
   season (`second_opinion.TIME_OR_SEASON`: "am", "pm", "sunrise",
   "daylight", "Summer" and their kin in English, Spanish, French and
-  German, or a clock time; an "h" after a number that ends a date and
-  before a period and a capital is a name's initial, as in "IX-14-46 H.
-  Hoogstraal"); and no part of a label either date is drawn on
+  German, or a clock time; a capital "H" after a number that ends a date
+  and before a period and a capital is a name's initial, as in "IX-14-46
+  H. Hoogstraal"); and no part of a label either date is drawn on
   is unreadable (a reader's unreadable span, a transcript marked
   unreadable, a placeholder; every label when the dates name none). The
   field holds a collecting date or time only where it is not exact (PRD.md,
