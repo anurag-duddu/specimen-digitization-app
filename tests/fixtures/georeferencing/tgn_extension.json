@@ -1,0 +1,1903 @@
+{
+ "_note": "Getty's reconciliation service data extension (POST of georef_tgn.extend_params to georef_tgn.RECONCILE) for the 24 records tgn_records.json holds, answered as received on 2026-11-24",
+ "request": {
+  "extend": "{\"ids\":[\"tgn/1000135\",\"tgn/1000565\",\"tgn/1000621\",\"tgn/1001216\",\"tgn/1001217\",\"tgn/1001218\",\"tgn/1016636\",\"tgn/1084177\",\"tgn/1101719\",\"tgn/1103742\",\"tgn/1105587\",\"tgn/2004330\",\"tgn/2044423\",\"tgn/2098264\",\"tgn/2502167\",\"tgn/2502168\",\"tgn/2502235\",\"tgn/2502236\",\"tgn/2502237\",\"tgn/2502238\",\"tgn/2578581\",\"tgn/7005493\",\"tgn/7016744\",\"tgn/7668798\"],\"properties\":[{\"id\":\"/tgn_prefterm\"},{\"id\":\"/tgn_varterms\"},{\"id\":\"/tgn_hier\"},{\"id\":\"/tgn_placetypes\"}]}"
+ },
+ "response": {
+  "meta": [
+   {
+    "id": "/tgn_prefterm",
+    "name": "Preferred Term"
+   },
+   {
+    "id": "/tgn_varterms",
+    "name": "Variant Terms"
+   },
+   {
+    "id": "/tgn_hier",
+    "name": "Parent Hierarchy"
+   },
+   {
+    "id": "/tgn_placetypes",
+    "name": "Place Types"
+   }
+  ],
+  "rows": {
+   "tgn/1000135": {
+    "/tgn_hier": [
+     {
+      "str": "Asia"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "primary political entities"
+     },
+     {
+      "str": "republics"
+     },
+     {
+      "str": "nations"
+     },
+     {
+      "str": "independent political entities"
+     },
+     {
+      "str": "independent sovereign nations"
+     },
+     {
+      "str": "commonwealths"
+     },
+     {
+      "str": "controlled regions"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Pilipinas"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Filipinas"
+     },
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Pilipinas"
+     },
+     {
+      "str": "Филиппины"
+     },
+     {
+      "str": "菲律宾"
+     },
+     {
+      "str": "ا فًبَين"
+     },
+     {
+      "str": "Republika ng Pilipinas"
+     },
+     {
+      "str": "República de Filipinas"
+     },
+     {
+      "str": "República de Filipinas"
+     },
+     {
+      "str": "Islas Filipinas"
+     },
+     {
+      "str": "Republic of the Philippines"
+     },
+     {
+      "str": "Philippine Islands"
+     },
+     {
+      "str": "Republika ñg Pilipinas"
+     },
+     {
+      "str": "Filipinas"
+     },
+     {
+      "str": "Filipinas"
+     },
+     {
+      "str": "Filipinas"
+     },
+     {
+      "str": "Filipinas"
+     },
+     {
+      "str": "Filipinas"
+     },
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Pilipinas"
+     },
+     {
+      "str": "Pilipinas"
+     },
+     {
+      "str": "Pilipinas"
+     },
+     {
+      "str": "Pilipinas"
+     },
+     {
+      "str": "République des Philippines"
+     },
+     {
+      "str": "Filippijnen"
+     },
+     {
+      "str": "Philippinen"
+     },
+     {
+      "str": "Philippinen"
+     },
+     {
+      "str": "Республика Филиппины"
+     },
+     {
+      "str": "菲律宾共和国"
+     },
+     {
+      "str": "جُهور ةً ا فًبَين"
+     },
+     {
+      "str": "PHL"
+     },
+     {
+      "str": "PH"
+     },
+     {
+      "str": "ISO608"
+     },
+     {
+      "str": "RP"
+     },
+     {
+      "str": "Filipino"
+     },
+     {
+      "str": "Filipino"
+     },
+     {
+      "str": "Philippine"
+     },
+     {
+      "str": "הפיליפינים"
+     },
+     {
+      "str": "Amazinga ya Filipine"
+     },
+     {
+      "str": "Bizinga bya Firipino"
+     },
+     {
+      "str": "Felipines"
+     },
+     {
+      "str": "Filibiin"
+     },
+     {
+      "str": "Filipaina"
+     },
+     {
+      "str": "Filipaini"
+     },
+     {
+      "str": "Filipiene"
+     },
+     {
+      "str": "Filipiin"
+     },
+     {
+      "str": "Filipiinid"
+     },
+     {
+      "str": "Filipijnen"
+     },
+     {
+      "str": "Filîpîn"
+     },
+     {
+      "str": "Filipin"
+     },
+     {
+      "str": "Filipin"
+     },
+     {
+      "str": "Filipin"
+     },
+     {
+      "str": "Filipinɛ"
+     },
+     {
+      "str": "Filipina"
+     },
+     {
+      "str": "Filipina"
+     },
+     {
+      "str": "Filipina"
+     },
+     {
+      "str": "Filipinai"
+     },
+     {
+      "str": "Filipinak"
+     },
+     {
+      "str": "Filipīnas"
+     },
+     {
+      "str": "Filipinas - Pilipinas"
+     },
+     {
+      "str": "Filipine"
+     },
+     {
+      "str": "Filipine"
+     },
+     {
+      "str": "Filipinen"
+     },
+     {
+      "str": "Filipines"
+     },
+     {
+      "str": "Filipines"
+     },
+     {
+      "str": "Filipinet"
+     },
+     {
+      "str": "Filipinez"
+     },
+     {
+      "str": "Filipini"
+     },
+     {
+      "str": "Filipini"
+     },
+     {
+      "str": "Filipini"
+     },
+     {
+      "str": "Filipini"
+     },
+     {
+      "str": "Filipini"
+     },
+     {
+      "str": "Filipîni"
+     },
+     {
+      "str": "Filipini nutome"
+     },
+     {
+      "str": "Filipinler"
+     },
+     {
+      "str": "Filipinler Cumhuriyeti"
+     },
+     {
+      "str": "Filipinoj"
+     },
+     {
+      "str": "Filipiny"
+     },
+     {
+      "str": "Filipiny"
+     },
+     {
+      "str": "Filipíny"
+     },
+     {
+      "str": "Filipíny"
+     },
+     {
+      "str": "Filipinys"
+     },
+     {
+      "str": "Filippiinit"
+     },
+     {
+      "str": "Filippiinnat"
+     },
+     {
+      "str": "Filippinane"
+     },
+     {
+      "str": "Filippinas"
+     },
+     {
+      "str": "Filippine"
+     },
+     {
+      "str": "Filippinene"
+     },
+     {
+      "str": "Filippinene"
+     },
+     {
+      "str": "Filippinene"
+     },
+     {
+      "str": "Filippinerna"
+     },
+     {
+      "str": "Filippinerne"
+     },
+     {
+      "str": "Filippini"
+     },
+     {
+      "str": "Filippseyjar"
+     },
+     {
+      "str": "Filippyne"
+     },
+     {
+      "str": "Filipsoyggjar"
+     },
+     {
+      "str": "Filipuäns"
+     },
+     {
+      "str": "Fülöp-szigetek"
+     },
+     {
+      "str": "i-Philippines"
+     },
+     {
+      "str": "Las Islas Felipenas"
+     },
+     {
+      "str": "Na hOileáin Fhilipíneacha"
+     },
+     {
+      "str": "Nfilipi"
+     },
+     {
+      "str": "Orílẹ́ède filipini"
+     },
+     {
+      "str": "Philipinau"
+     },
+     {
+      "str": "Phi-lip-pin"
+     },
+     {
+      "str": "Philippinae"
+     },
+     {
+      "str": "Philippinas"
+     },
+     {
+      "str": "Philippinnen"
+     },
+     {
+      "str": "Phi-líp-pin (Phi Luật Tân)"
+     },
+     {
+      "str": "República de las Filipinas"
+     },
+     {
+      "str": "República de las Islas Filipinas"
+     },
+     {
+      "str": "Y Philipinau"
+     },
+     {
+      "str": "பிலிப்பைன்ஸ்"
+     },
+     {
+      "str": "Филипини"
+     },
+     {
+      "str": "Филипини"
+     },
+     {
+      "str": "Филипини"
+     },
+     {
+      "str": "ফিলিপাইন"
+     },
+     {
+      "str": "ಫಿಲಿಪ್ಪೀನ್ಸ್"
+     },
+     {
+      "str": "ហ្វ៉ីលីពីន"
+     },
+     {
+      "str": "Філіппіни"
+     },
+     {
+      "str": "Φιλιππίνες"
+     },
+     {
+      "str": "フィリピン"
+     },
+     {
+      "str": "الفلبين"
+     },
+     {
+      "str": "ฟิลิปปินส์"
+     },
+     {
+      "str": "ፊሊፒንስ"
+     },
+     {
+      "str": "ፊሊፒንስ"
+     },
+     {
+      "str": "फिलिपिन्स"
+     },
+     {
+      "str": "फिलिपिन्स"
+     },
+     {
+      "str": "فیلیپین"
+     },
+     {
+      "str": "פיליפינים"
+     },
+     {
+      "str": "Ֆիլիպիններ"
+     },
+     {
+      "str": "필리핀"
+     },
+     {
+      "str": "الفيلبين"
+     },
+     {
+      "str": "فىلىپپىن"
+     },
+     {
+      "str": "फिलीपिंस"
+     },
+     {
+      "str": "פיליפינען"
+     },
+     {
+      "str": "ფილიპინები"
+     },
+     {
+      "str": "ຟິລິປິນ"
+     },
+     {
+      "str": "Філіпіны"
+     },
+     {
+      "str": "ประเทศฟิลิปปินส์"
+     },
+     {
+      "str": "ফিলিপিন্স"
+     },
+     {
+      "str": "ಫಿಲಿಫೈನ್ಸ್"
+     },
+     {
+      "str": "ဖိလစ်ပိုင်"
+     },
+     {
+      "str": "ફિલિપિન્સ"
+     },
+     {
+      "str": "Філіпіни"
+     },
+     {
+      "str": "පිලිපීනය"
+     },
+     {
+      "str": "फिलिपींस"
+     },
+     {
+      "str": "ཕི་ལི་པིནས྄།"
+     },
+     {
+      "str": "फिलीपिन्स"
+     },
+     {
+      "str": "ଫିଲିପାଇନସ୍"
+     },
+     {
+      "str": "ഫിലിപ്പൈന്‍സ്"
+     },
+     {
+      "str": "ఫిలి పైన్స్"
+     },
+     {
+      "str": "フィリピン共和国"
+     },
+     {
+      "str": "فلیپین"
+     },
+     {
+      "str": "فلپائنی"
+     },
+     {
+      "str": "Commonwealth of the Philippines"
+     }
+    ]
+   },
+   "tgn/1000565": {
+    "/tgn_hier": [
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "agricultural land"
+     },
+     {
+      "str": "first level subdivisions (political entities)"
+     },
+     {
+      "str": "departments (political divisions)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Chimaltenango"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Chimaltenango"
+     },
+     {
+      "str": "Chimaltenango, Departamento de"
+     },
+     {
+      "str": "Departamento de Chimaltenango"
+     },
+     {
+      "str": "Chimaltenango department"
+     },
+     {
+      "str": "GT03"
+     }
+    ]
+   },
+   "tgn/1000621": {
+    "/tgn_hier": [
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "agricultural land"
+     },
+     {
+      "str": "first level subdivisions (political entities)"
+     },
+     {
+      "str": "departments (political divisions)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Guatemala"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala, Departamento de"
+     },
+     {
+      "str": "Departamento de Guatemala"
+     },
+     {
+      "str": "Guatemala department"
+     },
+     {
+      "str": "GT07"
+     }
+    ]
+   },
+   "tgn/1001216": {
+    "/tgn_hier": [
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Asia"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "first level subdivisions (political entities)"
+     },
+     {
+      "str": "provinces"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Davao del Norte"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Davao City"
+     },
+     {
+      "str": "Davao del Norte"
+     },
+     {
+      "str": "Davao"
+     },
+     {
+      "str": "City of Davao"
+     },
+     {
+      "str": "RPC3"
+     }
+    ]
+   },
+   "tgn/1001217": {
+    "/tgn_hier": [
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Asia"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "first level subdivisions (political entities)"
+     },
+     {
+      "str": "provinces"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Davao Oriental"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Province of Davao Oriental"
+     },
+     {
+      "str": "Davao Oriental"
+     },
+     {
+      "str": "RP26"
+     }
+    ]
+   },
+   "tgn/1001218": {
+    "/tgn_hier": [
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Asia"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "first level subdivisions (political entities)"
+     },
+     {
+      "str": "provinces"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Davao del Sur"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Province of Davao del Sur"
+     },
+     {
+      "str": "Davao del Sur"
+     },
+     {
+      "str": "RP25"
+     }
+    ]
+   },
+   "tgn/1016636": {
+    "/tgn_hier": [
+     {
+      "str": "Chimaltenango"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "inhabited places"
+     },
+     {
+      "str": "department capitals"
+     },
+     {
+      "str": "cities"
+     },
+     {
+      "str": "industrial centers (inhabited places)"
+     },
+     {
+      "str": "market centers (inhabited places)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Chimaltenango"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Chimaltenango"
+     }
+    ]
+   },
+   "tgn/1084177": {
+    "/tgn_hier": [
+     {
+      "str": "Davao"
+     },
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Asia"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "inhabited places"
+     },
+     {
+      "str": "administrative centers"
+     },
+     {
+      "str": "cities"
+     },
+     {
+      "str": "educational centers (buildings)"
+     },
+     {
+      "str": "commercial centers (inhabited places)"
+     },
+     {
+      "str": "transportation centers (inhabited places)"
+     },
+     {
+      "str": "ports (settlements)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Davao"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Davao"
+     },
+     {
+      "str": "Davao City"
+     }
+    ]
+   },
+   "tgn/1101719": {
+    "/tgn_hier": [
+     {
+      "str": "Cotabato"
+     },
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Asia"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "national parks"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Mount Apo National Park"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Mount Apo National Park"
+     }
+    ]
+   },
+   "tgn/1103742": {
+    "/tgn_hier": [
+     {
+      "str": "Cotabato"
+     },
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Asia"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "mountains (landforms)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Apo, Mount"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Apo, Mount"
+     },
+     {
+      "str": "Mount Apo"
+     }
+    ]
+   },
+   "tgn/1105587": {
+    "/tgn_hier": [
+     {
+      "str": "Denali"
+     },
+     {
+      "str": "Alaska"
+     },
+     {
+      "str": "United States"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "mountains (landforms)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "McKinley, Mount"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "McKinley, Mount"
+     },
+     {
+      "str": "Mount McKinley"
+     },
+     {
+      "str": "Mt. McKinley"
+     },
+     {
+      "str": "Denali"
+     }
+    ]
+   },
+   "tgn/2004330": {
+    "/tgn_hier": [
+     {
+      "str": "Marengo"
+     },
+     {
+      "str": "Alabama"
+     },
+     {
+      "str": "United States"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "inhabited places"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "McKinley"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "McKinley"
+     },
+     {
+      "str": "New Ruin"
+     }
+    ]
+   },
+   "tgn/2044423": {
+    "/tgn_hier": [
+     {
+      "str": "Mount Desert Island"
+     },
+     {
+      "str": "Hancock"
+     },
+     {
+      "str": "Maine"
+     },
+     {
+      "str": "United States"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "inhabited places"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Bass Harbor"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Bass Harbor"
+     },
+     {
+      "str": "Mckinley"
+     }
+    ]
+   },
+   "tgn/2098264": {
+    "/tgn_hier": [
+     {
+      "str": "Blount"
+     },
+     {
+      "str": "Tennessee"
+     },
+     {
+      "str": "United States"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "inhabited places"
+     },
+     {
+      "str": "rural communities"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Carpenter Campground"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Carpenter Campground"
+     },
+     {
+      "str": "Carpenters Campground"
+     },
+     {
+      "str": "Huffstetlers Store"
+     },
+     {
+      "str": "Hufstetlers Store"
+     },
+     {
+      "str": "McKinley"
+     },
+     {
+      "str": "Montvale Station"
+     }
+    ]
+   },
+   "tgn/2502167": {
+    "/tgn_hier": [
+     {
+      "str": "Sierra"
+     },
+     {
+      "str": "New Mexico"
+     },
+     {
+      "str": "United States"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "mines (extracting complexes)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "McKinley"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "McKinley"
+     }
+    ]
+   },
+   "tgn/2502168": {
+    "/tgn_hier": [
+     {
+      "str": "Santa Fe"
+     },
+     {
+      "str": "New Mexico"
+     },
+     {
+      "str": "United States"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "mines (extracting complexes)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "McKinley"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "McKinley"
+     }
+    ]
+   },
+   "tgn/2502235": {
+    "/tgn_hier": [
+     {
+      "str": "Los Angeles"
+     },
+     {
+      "str": "California"
+     },
+     {
+      "str": "United States"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "peaks (landforms)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "McKinley, Mount"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "McKinley, Mount"
+     },
+     {
+      "str": "Mount McKinley"
+     }
+    ]
+   },
+   "tgn/2502236": {
+    "/tgn_hier": [
+     {
+      "str": "Wibaux"
+     },
+     {
+      "str": "Montana"
+     },
+     {
+      "str": "United States"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "peaks (landforms)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "McKinley, Mount"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "McKinley, Mount"
+     },
+     {
+      "str": "Mount McKinley"
+     }
+    ]
+   },
+   "tgn/2502237": {
+    "/tgn_hier": [
+     {
+      "str": "Comanche"
+     },
+     {
+      "str": "Oklahoma"
+     },
+     {
+      "str": "United States"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "peaks (landforms)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "McKinley, Mount"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "McKinley, Mount"
+     },
+     {
+      "str": "Mount McKinley"
+     }
+    ]
+   },
+   "tgn/2502238": {
+    "/tgn_hier": [
+     {
+      "str": "Harding"
+     },
+     {
+      "str": "South Dakota"
+     },
+     {
+      "str": "United States"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "peaks (landforms)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "McKinley, Mount"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "McKinley, Mount"
+     },
+     {
+      "str": "Mount McKinley"
+     }
+    ]
+   },
+   "tgn/2578581": {
+    "/tgn_hier": [
+     {
+      "str": "Portage"
+     },
+     {
+      "str": "Wisconsin"
+     },
+     {
+      "str": "United States"
+     },
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "ridges (landforms)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Philippine Islands"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Philippine Islands"
+     }
+    ]
+   },
+   "tgn/7005493": {
+    "/tgn_hier": [
+     {
+      "str": "North and Central America"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "primary political entities"
+     },
+     {
+      "str": "colonies"
+     },
+     {
+      "str": "republics"
+     },
+     {
+      "str": "nations"
+     },
+     {
+      "str": "independent political entities"
+     },
+     {
+      "str": "independent sovereign nations"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Guatemala"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Гватемала"
+     },
+     {
+      "str": "危地马拉"
+     },
+     {
+      "str": "غواثيمالا"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "Guatemala"
+     },
+     {
+      "str": "República de Guatemala"
+     },
+     {
+      "str": "Republic of Guatemala"
+     },
+     {
+      "str": "République de Guatemala"
+     },
+     {
+      "str": "Гватемала"
+     },
+     {
+      "str": "Гватемала"
+     },
+     {
+      "str": "Гватемала"
+     },
+     {
+      "str": "Гватемала"
+     },
+     {
+      "str": "Республика Гватемала"
+     },
+     {
+      "str": "危地马拉共和国"
+     },
+     {
+      "str": "جُهور ةً غواثيمالا"
+     },
+     {
+      "str": "GTM"
+     },
+     {
+      "str": "GT"
+     },
+     {
+      "str": "ISO320"
+     },
+     {
+      "str": "Guatemalan"
+     },
+     {
+      "str": "גואטמלה"
+     },
+     {
+      "str": "Cuauhtemallan"
+     },
+     {
+      "str": "Cuauhtemallān"
+     },
+     {
+      "str": "Goatemala"
+     },
+     {
+      "str": "Goa-tê-ma-la"
+     },
+     {
+      "str": "Goatemalà"
+     },
+     {
+      "str": "Guatamala"
+     },
+     {
+      "str": "Gûatemala"
+     },
+     {
+      "str": "Guatêmälä"
+     },
+     {
+      "str": "Guatemala nutome"
+     },
+     {
+      "str": "Guatemalë"
+     },
+     {
+      "str": "Guwaatamaala"
+     },
+     {
+      "str": "Guwatemala"
+     },
+     {
+      "str": "Gvatemala"
+     },
+     {
+      "str": "Gvatemala"
+     },
+     {
+      "str": "Gvatemala"
+     },
+     {
+      "str": "Gvatemala"
+     },
+     {
+      "str": "Gvatemala"
+     },
+     {
+      "str": "Gvatemala"
+     },
+     {
+      "str": "Gvatemalän"
+     },
+     {
+      "str": "Gvatemalo"
+     },
+     {
+      "str": "Gwaatemalaa"
+     },
+     {
+      "str": "Gwatamala"
+     },
+     {
+      "str": "Gwatemala"
+     },
+     {
+      "str": "Gwatemala"
+     },
+     {
+      "str": "Gwatemala"
+     },
+     {
+      "str": "Gwatemala"
+     },
+     {
+      "str": "Gwatemala"
+     },
+     {
+      "str": "Gwatemala"
+     },
+     {
+      "str": "Gwatemala"
+     },
+     {
+      "str": "Gwatemala"
+     },
+     {
+      "str": "Gwatemala"
+     },
+     {
+      "str": "Gwatémala"
+     },
+     {
+      "str": "i-Guatemala"
+     },
+     {
+      "str": "Kuatamala"
+     },
+     {
+      "str": "Ngwatemala"
+     },
+     {
+      "str": "Orílẹ́ède Guatemala"
+     },
+     {
+      "str": "Qvatemala"
+     },
+     {
+      "str": "Watimala"
+     },
+     {
+      "str": "Гуатемала"
+     },
+     {
+      "str": "グアテマラ"
+     },
+     {
+      "str": "גוואטמלה"
+     },
+     {
+      "str": "Γουατεμάλα"
+     },
+     {
+      "str": "گواتمالا"
+     },
+     {
+      "str": "গোয়াটিমালা"
+     },
+     {
+      "str": "གྭ་ཏེ་མ་ལ"
+     },
+     {
+      "str": "גוואטמאלה"
+     },
+     {
+      "str": "غواتيمالا"
+     },
+     {
+      "str": "ประเทศกัวเตมาลา"
+     },
+     {
+      "str": "गोतेदाला"
+     },
+     {
+      "str": "குவாத்தாமாலா"
+     },
+     {
+      "str": "Գվատեմալա"
+     },
+     {
+      "str": "Ґватемала"
+     },
+     {
+      "str": "ហ្គាតេម៉ាឡា"
+     },
+     {
+      "str": "과테말라"
+     },
+     {
+      "str": "گۋاتېمالا"
+     },
+     {
+      "str": "ګواتمالا"
+     },
+     {
+      "str": "ګواتیمالا"
+     },
+     {
+      "str": "ጉዋቲማላ"
+     },
+     {
+      "str": "ጉዋቲማላ"
+     },
+     {
+      "str": "გვატემალა"
+     },
+     {
+      "str": "สาธารณรัฐกัวเตมาลา"
+     },
+     {
+      "str": "กัวเตมาลา"
+     },
+     {
+      "str": "ກົວເຕມາລາ"
+     },
+     {
+      "str": "ଗୁଏତମାଲା"
+     },
+     {
+      "str": "Гватэмала"
+     },
+     {
+      "str": "ഗ്വാട്ടിമാലാ"
+     },
+     {
+      "str": "ဂွာတီမာလာ"
+     },
+     {
+      "str": "جواتيمالا"
+     },
+     {
+      "str": "གྷོ་ཊེ་མ་ལ།"
+     },
+     {
+      "str": "ग्वाटेमाला"
+     },
+     {
+      "str": "ग्वाटेमाला"
+     },
+     {
+      "str": "گواتیمالا"
+     },
+     {
+      "str": "ಗ್ವಾಟೆಮಾಲಾ"
+     },
+     {
+      "str": "গোয়াতিমালা"
+     },
+     {
+      "str": "ગ્વાટેમાલા"
+     },
+     {
+      "str": "گواٹے مالا"
+     },
+     {
+      "str": "గ్వాటిమాల"
+     },
+     {
+      "str": "גווטמלה"
+     }
+    ]
+   },
+   "tgn/7016744": {
+    "/tgn_hier": [
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Asia"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "inhabited places"
+     },
+     {
+      "str": "islands (landforms)"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Mindanao"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Mindanao"
+     },
+     {
+      "str": "Mindanao island"
+     },
+     {
+      "str": "מינדנאו"
+     }
+    ]
+   },
+   "tgn/7668798": {
+    "/tgn_hier": [
+     {
+      "str": "Philippines"
+     },
+     {
+      "str": "Asia"
+     },
+     {
+      "str": "World"
+     }
+    ],
+    "/tgn_placetypes": [
+     {
+      "str": "first level subdivisions (political entities)"
+     },
+     {
+      "str": "special cities"
+     }
+    ],
+    "/tgn_prefterm": [
+     {
+      "str": "Davao"
+     }
+    ],
+    "/tgn_varterms": [
+     {
+      "str": "Davao del Norte"
+     },
+     {
+      "str": "Davao"
+     },
+     {
+      "str": "Davao City"
+     },
+     {
+      "str": "City of Davao"
+     },
+     {
+      "str": "Davao Del Norte Province"
+     },
+     {
+      "str": "Davao Province"
+     },
+     {
+      "str": "Province of Davao"
+     },
+     {
+      "str": "Province of Davao del Norte"
+     },
+     {
+      "str": "RPI7"
+     }
+    ]
+   }
+  }
+ }
+}

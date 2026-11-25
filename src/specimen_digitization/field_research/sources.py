@@ -18,7 +18,10 @@ subclass chains of its places' classes, and a place whose chains reach
 Wikidata's second-level administrative division (and not its first-level
 one) has that class among its kinds, one whose chains reach the first-level
 one that class (ApprovedSources._levels); that answer is cached apart from
-other fields' answers to the same query. When Getty TGN's reconciliation service refuses a
+other fields' answers to the same query. When Getty TGN's SPARQL endpoint refuses (401, 403)
+the request for the records of the places its reconciliation service found, those records
+are read from the reconciliation service's data extension, a form POSTed to its approved URL
+(georef_tgn.extend_params), and the note says so. When Getty TGN's reconciliation service refuses a
 request or cannot be reached, TGN is searched through Getty's SPARQL endpoint
 instead (historical_gazetteers), and the note says so and that this search
 does not match accents or word stems; its answer is then never a success, and
@@ -568,6 +571,8 @@ class _Fetched:
     body: bytes
     raw_ref: str | None = None
     digest: str | None = None
+    # The form of a POST (only Getty TGN's data extension is one), None for a GET.
+    form: tuple[tuple[str, str], ...] | None = None
 
 
 def _forget_failure(cache: dict, key, task: asyncio.Future, keep: tuple = ()) -> None:
@@ -1072,8 +1077,20 @@ class ApprovedSources:
                 fallback.append(f"refused the request (HTTP {response.status_code})")
             return response.status_code, response.body
 
+        async def post(url: str, params: dict[str, str]) -> tuple[int, bytes]:
+            # Getty TGN's data extension (historical_gazetteers._tgn_extension):
+            # a request that got no response ends the records' reading as the
+            # SPARQL endpoint's refusal left it.
+            try:
+                response = await self._response(policy, url, form=tuple(params.items()))
+            except _Unanswered as failure:
+                reason = failure.note.removeprefix(f"{name} ")
+                raise historical_gazetteers.SearchUnanswered(reason) from failure
+            fetched.append(response)
+            return response.status_code, response.body
+
         try:
-            outcome = await historical_gazetteers.lookup(source_id, searched, fetch)
+            outcome = await historical_gazetteers.lookup(source_id, searched, fetch, post)
         except _Unanswered as failure:
             note = _searched_instead(name, fallback[0] if fallback else None, failure.note)
             return _answer(source_id, query, failure.status, note)
@@ -1093,6 +1110,7 @@ class ApprovedSources:
         note = _searched_instead(
             name, outcome.fallback, _gazetteer_note(name, searched, status, outcome, fetched)
         )
+        note = _records_instead(name, outcome.extension, note)
         if status not in ANSWERED or not fetched:
             return _answer(source_id, query, status, note)
         levels: Mapping[str, frozenset[str]] = {}
@@ -1116,6 +1134,9 @@ class ApprovedSources:
                         "http_status": item.status_code,
                         "raw_ref": item.raw_ref,
                         "sha256": item.digest,
+                        # A POST's form (TGN ids and property names only) is part of
+                        # what was asked; a GET's url holds all of it.
+                        **({} if item.form is None else {"form": dict(item.form)}),
                     }
                     for item in fetched
                 ],
@@ -1169,10 +1190,16 @@ class ApprovedSources:
 
     # --- HTTP ---
 
-    async def _response(self, policy: SourcePolicy, url: str, attempts: int = ATTEMPTS) -> _Fetched:
-        """The final response to a GET of `url`, shared by every query of this
-        record that needs it, sent at most `attempts` times (_get). Raises
-        _Unanswered when none came back."""
+    async def _response(
+        self,
+        policy: SourcePolicy,
+        url: str,
+        attempts: int = ATTEMPTS,
+        form: tuple[tuple[str, str], ...] | None = None,
+    ) -> _Fetched:
+        """The final response to a GET of `url`, or to a POST of `form` to it,
+        shared by every query of this record that needs it, sent at most
+        `attempts` times (_get). Raises _Unanswered when none came back."""
         try:
             validate_destination(policy, url)
         except ValueError:
@@ -1180,17 +1207,24 @@ class ApprovedSources:
                 LookupStatus.POLICY,
                 f"The request is outside {NAMES[policy.id]}'s approval; nothing was sent",
             ) from None
-        task = self._responses.get(url)
+        key = url if form is None else (url, form)
+        task = self._responses.get(key)
         if task is None:
-            task = asyncio.ensure_future(self._fetch(policy, url, attempts))
-            self._responses[url] = task
+            task = asyncio.ensure_future(self._fetch(policy, url, attempts, form))
+            self._responses[key] = task
             task.add_done_callback(
-                lambda done: _forget_failure(self._responses, url, done, keep=(_Unanswered,))
+                lambda done: _forget_failure(self._responses, key, done, keep=(_Unanswered,))
             )
         return await asyncio.shield(task)
 
-    async def _fetch(self, policy: SourcePolicy, url: str, attempts: int = ATTEMPTS) -> _Fetched:
-        response = await self._get(policy, url, attempts)
+    async def _fetch(
+        self,
+        policy: SourcePolicy,
+        url: str,
+        attempts: int = ATTEMPTS,
+        form: tuple[tuple[str, str], ...] | None = None,
+    ) -> _Fetched:
+        response = await self._get(policy, url, attempts, form)
         if response.status_code != 200:
             return response
         raw_ref = await asyncio.to_thread(self.blobs.put, response.body)
@@ -1198,8 +1232,14 @@ class ApprovedSources:
             response, raw_ref=raw_ref, digest=hashlib.sha256(response.body).hexdigest()
         )
 
-    async def _get(self, policy: SourcePolicy, url: str, attempts: int = ATTEMPTS) -> _Fetched:
-        """One GET with retries: a rate limit, a server error, a timeout or a
+    async def _get(
+        self,
+        policy: SourcePolicy,
+        url: str,
+        attempts: int = ATTEMPTS,
+        form: tuple[tuple[str, str], ...] | None = None,
+    ) -> _Fetched:
+        """One GET (a POST of `form` when there is one) with retries: a rate limit, a server error, a timeout or a
         transport error is tried again, `attempts` times in all (ATTEMPTS
         unless the caller sends fewer), with backoff and
         jitter and never sooner than the provider's Retry-After. A Retry-After
@@ -1217,7 +1257,7 @@ class ApprovedSources:
                 if not await self._pacer.wait(policy.id, limit=SLOT_WAIT_SECONDS):
                     raise SlotBusy(policy.id)
                 async with self._slots.slot(policy.id):
-                    code, body, headers = await self._read(url, policy.max_response_bytes, name)
+                    code, body, headers = await self._read(url, policy.max_response_bytes, name, form)
                 retry = headers.get("retry-after", "")
             except _Unanswered:
                 _log_unanswered(policy.id, url, attempt=attempt, error="response_too_large")
@@ -1248,7 +1288,7 @@ class ApprovedSources:
                             policy.id, url, attempt=attempt, http_status=code,
                             retry_after=bool(retry), sender=sender,
                         )
-                    return _Fetched(url, code, body)
+                    return _Fetched(url, code, body, form=form)
                 status = LookupStatus.RATE_LIMITED if code == 429 else LookupStatus.PROVIDER
                 note = (
                     f"{name} was still rate limiting after {tries}"
@@ -1274,12 +1314,19 @@ class ApprovedSources:
         )
         raise _Unanswered(status, note)
 
-    async def _read(self, url: str, limit: int, name: str) -> tuple[int, bytes, dict[str, str]]:
-        """A GET's status, body and KEPT_HEADERS."""
+    async def _read(
+        self,
+        url: str,
+        limit: int,
+        name: str,
+        form: tuple[tuple[str, str], ...] | None = None,
+    ) -> tuple[int, bytes, dict[str, str]]:
+        """A GET's status, body and KEPT_HEADERS; a POST's of `form` when there is one."""
         async with asyncio.timeout(REQUEST_TIMEOUT_SECONDS):
             async with self.client.stream(
-                "GET",
+                "GET" if form is None else "POST",
                 url,
+                data=None if form is None else dict(form),
                 headers=HEADERS,
                 timeout=REQUEST_TIMEOUT_SECONDS,
                 follow_redirects=False,
@@ -1482,6 +1529,20 @@ def _searched_instead(name: str, fallback: str | None, note: str) -> str:
     return (
         f"{name}'s search {fallback}; searched Getty's SPARQL endpoint instead, "
         f"whose search does not match accents or word stems. {note}"
+    )
+
+
+def _records_instead(name: str, why: str | None, note: str) -> str:
+    """The note of a Getty TGN lookup whose places were read through the
+    reconciliation service's data extension because the SPARQL endpoint
+    refused the request (`why`): that comes first, with what the places lack,
+    then what the lookup found."""
+    if why is None:
+        return note
+    return (
+        f"{name}'s SPARQL endpoint {why}; the places' details were read from its "
+        f"reconciliation service instead, which names their place types and "
+        f"ancestors but gives no ids for them. {note}"
     )
 
 
