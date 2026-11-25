@@ -365,7 +365,28 @@ handover runs field research instead of the six specialists:
    is sent back for correction) and, again, the step before a resolved answer
    becomes a value apply these rules (`field_research/agreement.py`, on the
    source answers the field received):
-   - The literal appears exactly in each reading the answer names.
+   - The literal appears exactly in each reading the answer names. In the
+     expert's check only (lane C2 of the waiting-fields program, the
+     coordinator's ruling of 2026-11-25, not the owner's), an answer that
+     every reading it names writes as one text up to letter case and white
+     space (a space for a line break, two spaces for one;
+     `experts.written_as`) is read as that text, the readings' own
+     (`experts._Expert._as_written`): its literal, and its value too when
+     the value was the literal and names no candidate of a source answer
+     the expert received. "Delostichus coxalis" given where both readers
+     write "DELOSTICHUS" over "COXALIS" is "DELOSTICHUS\nCOXALIS", which
+     the rules below then take or refuse as written (a taxon stays on one
+     line or a whole candidate, so this one is refused as no candidate). A
+     space, a letter, a digit or a mark more or less is another text, and
+     readers who write it in different letter case write no one text. For
+     the taxon, GBIF's answer for the expert's spelling grounds such a
+     literal too ("The taxon" below; check `taxon_query_not_whole_name`), where that spelling
+     names the whole name there (`experts.whole_as_given`: a name at species
+     rank or below, and no longer name from it on, read with the label's
+     text after it in lower case), since the scientific-name parser reads no
+     name in capitals. The step's own check of the settling query at
+     finalize (`step.taxon_decided`) is unchanged, so such a taxon's record
+     keeps `taxonomy_unresolved`.
    - **A whole candidate.** The literal is one of the field's candidate
      literals, whole, for each reading the answer names, whichever reader
      that is: the organiser's candidates,

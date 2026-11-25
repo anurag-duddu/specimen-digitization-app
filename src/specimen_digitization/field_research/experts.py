@@ -4,7 +4,9 @@ Every call builds a fresh agent, `field_<key>`, with the shared rules, the field
 brief and only the tools that field may use, so each record and field starts
 with fresh context and shows in Logfire as its own agent. An answer is checked
 against the readings and against what this expert's own tools returned before
-it is accepted: the literal must occur in the readings it names and be a whole
+it is accepted: the literal must occur in the readings it names (one every
+reading it names writes as one text, letter case and white space aside, is read
+as that text, theirs: _as_written) and be a whole
 organiser candidate literal of each, or text each writes as whole words within
 one line (over consecutive lines for a field in agreement.ACROSS_LINES, the
 precise location and the habitat) that cuts no candidate, and a habitat's
@@ -160,6 +162,49 @@ def _refusal_code(reason: str) -> str:
 def _label(name: str) -> str:
     """A reading's name as a model may write it: `1a`, ` 1A ` and `Reading 1A`."""
     return re.sub(r"^reading\s+", "", name.strip(), flags=re.IGNORECASE).upper()
+
+
+def written_as(readings: Sequence[Reading], literal: str) -> str | None:
+    """The one text all these readings write for the literal, letter case and white space aside
+    (the waiting-fields program's lane C2, 2026-11-25): each run of white space in the literal
+    (a space, a line break, several) as one run of any white space, every other character itself
+    in either letter case (re.IGNORECASE), the literal's white space at either end left out.
+    "Delostichus coxalis" is "DELOSTICHUS\\nCOXALIS" where the readings write that. None when a
+    reading writes no such text, or two such texts, or two readings write different ones ("Mus"
+    and "MUS"). A space more or less ("Sp.30" and "Sp. 30"), a letter, a digit or a mark more or
+    less ("Star" and "Stark", "4800ft" and "4800ft.") is never such a text."""
+    words = literal.split()
+    if not words:
+        return None
+    pattern = re.compile(r"\s+".join(re.escape(word) for word in words), re.IGNORECASE)
+    found: set[str] = set()
+    for reading in readings:
+        texts = {match.group() for match in pattern.finditer(reading.text)}
+        if not texts:
+            return None
+        found |= texts
+    return found.pop() if len(found) == 1 else None
+
+
+def whole_as_given(readings: Sequence[Reading], literal: str, given: str) -> bool:
+    """For a taxon literal the readings write as `given` up to letter case and white space
+    (written_as), whether `given`, the expert's spelling, names the whole name the readings write
+    there: a name at species rank or below as the scientific-name parser reads it, and no reading
+    writes a longer name from the literal on (checks.longer_name), read with the reading's text after
+    the literal in lower case. The parser reads no name in capitals ("DELOSTICHUS\\nCOXALIS"), so on
+    such a label the checks that keep a piece of a name from settling (agreement._longer_written)
+    find none; a genus alone, or a species where the label writes a subspecies after it, is not
+    the whole name."""
+    name = checks.taxonomy_scientific_name(given)
+    if name is None or not name.genus or not name.epithets:
+        return False
+    for reading in readings:
+        at = reading.text.find(literal)
+        while at >= 0:
+            if checks.longer_name(given + reading.text[at + len(literal):].lower(), given) is not None:
+                return False
+            at = reading.text.find(literal, at + 1)
+    return True
 
 
 def _candidate_view(answer: SourceAnswer) -> dict[str, Any]:
@@ -530,8 +575,9 @@ class _Expert:
             )
         names = answer.reading_names
         if answer.outcome == "resolved":
-            answer = self._without_role(self._across_lines(answer))
-            names = self._validate_resolved(answer, received)
+            given = self._across_lines(answer)
+            answer = self._without_role(self._as_written(given))
+            names = self._validate_resolved(answer, received, given=given.literal)
         elif answer.outcome == "label_lacks_value":
             if answer.literal or answer.value or answer.authority_id:
                 raise Refused("lacks_value_with_text",
@@ -574,9 +620,33 @@ class _Expert:
         found = agreement.across_lines(self.task.key, named, literal)
         return answer.model_copy(update={"literal": found}) if found is not None else answer
 
+    def _as_written(self, answer: FieldAnswer) -> FieldAnswer:
+        """A resolved answer whose literal a reading it names does not hold as given, but which
+        every reading it names writes as one text, letter case and white space aside (written_as;
+        the coordinator's ruling for lane C2 of 2026-11-25): its literal is that text, the
+        readings' own, never the expert's spelling of it, and so is its value when the value was
+        the literal and names no candidate of a source answer the expert received (as
+        _without_role keeps a value that was the literal). "Delostichus coxalis" given for
+        "DELOSTICHUS\\nCOXALIS" is "DELOSTICHUS\\nCOXALIS", which the checks below then accept or
+        refuse as written. The answer as it is otherwise, and the literal check refuses it
+        (literal_not_in_reading)."""
+        literal = answer.literal
+        named = [self.by_label[_label(n)] for n in answer.reading_names if _label(n) in self.by_label]
+        if (not literal or not named or len(named) != len(answer.reading_names)
+                or all(literal in reading.text for reading in named)):
+            return answer
+        found = written_as(named, literal)
+        if found is None:
+            return answer
+        sourced = {candidate.name for source in self.received for candidate in source.candidates}
+        return answer.model_copy(update={"literal": found,
+            **({"value": found} if answer.value == literal and literal not in sourced else {})})
+
     def _validate_resolved(
-        self, answer: FieldAnswer, received: Mapping[str, SourceAnswer]
+        self, answer: FieldAnswer, received: Mapping[str, SourceAnswer], *, given: str | None = None
     ) -> list[str]:
+        """The readings a resolved answer names, once every check lets it stand; `given` is its
+        literal as the expert gave it, before _as_written read it as the readings write it."""
         key = self.task.key
         if key in NO_APPROVED_AUTHORITY:
             raise Refused("no_approved_authority",
@@ -651,9 +721,14 @@ class _Expert:
                 )
         if key == "taxon":
             # The whole name the label writes is the candidate's, not the answer's;
-            # text read from the transcript passed literal_refusal as a whole name.
+            # text read from the transcript passed literal_refusal as a whole name. A literal
+            # read as the readings write it (_as_written) may be grounded on the expert's
+            # spelling of it too, where that spelling names the whole name there.
+            as_given = (given if given is not None and given != literal
+                and whole_as_given(named, literal, given) else None)
             self._validate_taxon(answer, cited,
-                agreement.candidate_literal(self.task, self.readings, literal, named) or literal)
+                agreement.candidate_literal(self.task, self.readings, literal, named) or literal,
+                as_given=as_given)
         refused = agreement.refusal(
             self.task,
             self.readings,
@@ -671,11 +746,15 @@ class _Expert:
         return names
 
     @staticmethod
-    def _validate_taxon(answer: FieldAnswer, cited: Sequence[SourceAnswer], whole: str) -> None:
+    def _validate_taxon(answer: FieldAnswer, cited: Sequence[SourceAnswer], whole: str, *,
+            as_given: str | None = None) -> None:
         """A taxon is GBIF's decision for the whole name the label writes: a
         cited success whose query is the name `whole`, the organiser's
         candidate literal the answer's literal is, writes
-        (checks.taxon_query_grounded), and the candidate GBIF decided, the one
+        (checks.taxon_query_grounded), or the name `as_given` writes, the
+        expert's spelling of a literal it gave in another letter case or white
+        space (_as_written, whole_as_given: the parser reads no name in
+        capitals), and the candidate GBIF decided, the one
         its evidence's locator names (sources.py _evidence), as the value and
         authority_id."""
         decided = [
@@ -688,7 +767,8 @@ class _Expert:
                 "A taxon resolves only on a GBIF answer with status success: cite its "
                 "evidence_id. Otherwise answer several_possibilities or sources_cannot_resolve."
             )
-        grounded = [a for a in decided if checks.taxon_query_grounded(a.query, whole)]
+        grounded = [a for a in decided if checks.taxon_query_grounded(a.query, whole)
+            or (as_given is not None and checks.taxon_query_grounded(a.query, as_given))]
         if not grounded:
             raise Refused("taxon_query_not_whole_name",
                 f"Cite the GBIF answer for the whole name {whole!r} writes: its query must be "
