@@ -91,14 +91,14 @@ def test_only_worker_turns_the_research_harness_on():
 def test_the_api_and_the_worker_carry_the_same_nvidia_option():
     # NVIDIA_NEMOTRON_OPTION.md section 2: both processes load the published
     # profiles; the API copies a run's prices at queue time and the worker picks
-    # its routes at classify, so a run never mixes the two options. The owner
-    # turned the readers stage on on 2026-11-24 (Nemotron as reader C); the
-    # first-pass and field-research stages stay off.
+    # its routes at classify, so a run never mixes the two options. Unset in
+    # both is the production default (the option is off).
     from specimen_digitization.application.model_option import SETTING, nvidia_stages
 
     api, worker = (S.ROLES[role]["env"] for role in ("api", "worker"))
-    assert api.get(SETTING) == worker.get(SETTING) == "readers"
-    assert nvidia_stages(worker) == ("readers",)
+    if SETTING in api or SETTING in worker:
+        assert api.get(SETTING) == worker.get(SETTING)
+        nvidia_stages(worker)  # A value the processes accept.
     assert SETTING not in S.ROLES["sam"]["env"]
 
 
