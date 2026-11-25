@@ -132,6 +132,21 @@ def test_a_text_inside_a_word_is_never_found_even_where_an_organiser_candidate_i
     assert experts.written_as(readings, "stark") == "STARK"
 
 
+def test_a_text_that_ends_in_a_mark_inside_a_word_is_never_found():
+    """Round 2 of #474's review, finding 1: both readers write "leg. VAN-DYKE" and the organiser's candidate is
+    "VAN-". The answer "Van-" is not read as it: the token "VAN-DYKE" holds "DYKE" after it."""
+    label = "Synthetic Museum\nleg. VAN-DYKE\n10-IV-1975"
+    readings = two_readers_of(label, label)
+    candidates = tuple(Candidate(name, "leg. VAN-DYKE", "VAN-", f"row-{name}") for name in ("2A", "2B"))
+    made = experts._Expert(FieldTask("collectors", False, FieldValue(), candidates, ()), readings,
+        SimpleNamespace(sources=()), None)
+    assert experts.written_as(readings, "Van-") is None
+    assert refused_by(made, resolved("Van-", "2A", "2B", value="Van-")) == "literal_not_in_reading"
+    # A mark at a token's edge may be left off, as an answer given exactly may leave it off.
+    assert experts.written_as(two_readers_of("LOC: YEPOCAPA, 4800FT", "LOC: YEPOCAPA, 4800FT"), "Yepocapa") == "YEPOCAPA"
+    assert experts.written_as(two_readers_of("LOC: YEPOCAPA,4800FT", "LOC: YEPOCAPA,4800FT"), "Yepocapa") is None
+
+
 def test_two_texts_found_at_overlapping_places_are_two_texts():
     """Round 1 of #474's review, finding 3: "a a" in "A A a" is "A A" and, overlapping it, "A a"."""
     readings = two_readers_of("Synthetic A A a", "Synthetic A A a")
@@ -143,7 +158,7 @@ def test_a_value_a_source_names_is_kept_and_only_a_value_that_was_the_literal_fo
     """The value follows the literal only where it was the literal and names no source candidate the expert
     received: a source's spelling is the source's (here GBIF's candidate "Aus bus", the value the decided
     candidate needs)."""
-    label = "SYNTHETIC MUSEUM\nAUS BUS\ndet. J. Synther"
+    label = "SYNTHETIC MUSEUM\n14727\nAUS BUS\ndet. J. Synther"
     decided = gbif("Aus bus", "Aus bus", "gbif:7")
     checked = expert("taxon", two_readers_of(label, label), decided).validate(
         resolved("Aus bus", "2A", "2B", value="Aus bus", authority_id="gbif:7", source_evidence_ids=["ev-gbif:7"]))
@@ -152,7 +167,7 @@ def test_a_value_a_source_names_is_kept_and_only_a_value_that_was_the_literal_fo
 
 # ---- the taxon's query check ----------------------------------------------------------------------------------
 
-ONE_LINE = "SYNTHETIC MUSEUM\nAUS BUS L., 1758\nDET. J. SYNTHER 1949"
+ONE_LINE = "SYNTHETIC MUSEUM\nRT 6519\nAUS BUS L., 1758\nDET. J. SYNTHER 1949"
 AUS_BUS = gbif("Aus bus", "Aus bus Linnaeus, 1758", "gbif:7")
 AUS = gbif("Aus", "Aus Linnaeus, 1758", "gbif:8")
 
@@ -177,15 +192,24 @@ SMITHI_CUS = gbif("Smithi cus", "Smithi cus Synther, 1901", "gbif:9")
     # A species where the label writes a subspecies after it.
     ("SYNTHETIC MUSEUM\nAUS BUS CUS\n(L., 1758)", "Aus bus", AUS_BUS),
     # Round 1 of #474's review, finding 1: the species and subspecies of "AUS" given as a genus and species, a word
-    # that may be the genus before them on their line or alone on the line above.
+    # that may be the genus right before them on their line or on a line above.
     ("SYNTHETIC MUSEUM\nAUS Smithi cus", "smithi cus", SMITHI_CUS),
     ("SYNTHETIC MUSEUM\nAUS SMITHI CUS", "Smithi cus", SMITHI_CUS),
     ("SYNTHETIC MUSEUM\nAUS\nSMITHI CUS", "Smithi cus", SMITHI_CUS),
     ("SYNTHETIC MUSEUM\nAUS\n\u2640\nSMITHI CUS", "Smithi cus", SMITHI_CUS),
+    # Round 2 of #474's review, finding 2: a genus and its subgenus before them, on the line above (given with two
+    # spaces) or on their line; an abbreviated genus.
+    ("SYNTHETIC MUSEUM\nAUS (XUS)\nSmithi cus", "Smithi  cus", SMITHI_CUS),
+    ("SYNTHETIC MUSEUM\nAUS (XUS) SMITHI CUS", "Smithi cus", SMITHI_CUS),
+    ("SYNTHETIC MUSEUM\nA. SMITHI CUS", "Smithi cus", SMITHI_CUS),
+    # It errs toward refusal: in capitals a heading's last word over the name may be a genus too.
+    ("SYNTHETIC MUSEUM\nSMITHI CUS", "Smithi cus", SMITHI_CUS),
 ])
 def test_a_piece_of_a_name_in_capitals_is_still_refused(label, given, found):
-    """Each passes GBIF's whole-name check on the name given ("Smithi cus" parses as a genus and species, and so
-    does the readers' "Smithi cus"); the check that the spelling names the whole name there refuses it."""
+    """Read as the readers write it, each answer is refused by part_of_name, the check that the expert's spelling
+    names the whole name there (experts.whole_as_given). Without it, those given "Smithi cus" would ground on
+    GBIF's answer for that name ("Smithi cus" parses as a genus and species, and so does the readers' "Smithi cus"
+    on the subgenus's label)."""
     made = expert("taxon", two_readers_of(label, label), found)
     decided = found.candidates[0]
     assert refused_by(made, resolved(given, "2A", "2B", value=decided.name, authority_id=decided.authority_id,
@@ -195,8 +219,10 @@ def test_a_piece_of_a_name_in_capitals_is_still_refused(label, given, found):
     assert not experts.whole_as_given(made.readings, literal, given)
 
 
-def test_a_word_alone_on_the_line_above_that_is_no_genus_or_a_heading_of_two_words_lets_it_stand():
-    for label in ("SYNTHETIC MUSEUM\nAUS BUS", "14727 \u2640\nAUS BUS", "AUS BUS"):
+def test_a_name_with_no_word_that_may_be_a_genus_right_before_it_stands():
+    """The word written right before the name is a number, a lower-case word, or none: the name stands."""
+    for label in ("SYNTHETIC MUSEUM\n14727 \u2640\nAUS BUS", "SYNTHETIC MUSEUM\nRT 6519\nAUS BUS L., 1758", "AUS BUS",
+            "taxon: AUS BUS", "\u2640\nAUS BUS\n(L., 1758)"):
         assert experts.whole_as_given(two_readers_of(label, label), "AUS BUS", "Aus bus"), label
 
 

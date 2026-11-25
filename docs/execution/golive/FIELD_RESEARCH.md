@@ -370,8 +370,9 @@ handover runs field research instead of the six specialists:
      coordinator's ruling of 2026-11-25, not the owner's), an answer that
      every reading it names writes as one text up to letter case and white
      space (a space for a line break, two spaces for one;
-     `experts.written_as`, which finds a text only where it cuts no word,
-     overlapping places included) is read as that text, the readings' own
+     `experts.written_as`, which finds a text only where it cuts no word, a
+     mark at a word's edge aside, overlapping places included) is read as
+     that text, the readings' own
      (`experts._Expert._as_written`): its literal, and its value too when
      the value was the literal and names no candidate of a source answer
      the expert received. "Delostichus coxalis" given where both readers
@@ -383,9 +384,11 @@ handover runs field research instead of the six specialists:
      or a reading that writes two such texts, write no one text. A taxon
      read so settles only where the expert's spelling names the whole name
      there (`experts.whole_as_given`, else `part_of_name`): a name at species
-     rank or below; no word that may be a genus before it on its line, nor
-     alone on the line above; and no longer name from it on, the label's
-     text after it read in lower case. The scientific-name parser reads no
+     rank or below; the word written right before it (`checks.word_before`:
+     on its line, else the last word of the nearest line above) no word that
+     may be a genus (`checks.GENUS_SHAPED`, so in capitals a heading's last
+     word refuses it too); and no longer name from it on, the label's text
+     after it read in lower case. The scientific-name parser reads no
      name in capitals, so the checks below that keep a piece of a name from
      settling find none there. GBIF's answer for that spelling then grounds
      the literal too ("The taxon" below; check

@@ -170,12 +170,12 @@ def written_as(readings: Sequence[Reading], literal: str) -> str | None:
     (a space, a line break, several) as one run of any white space, every other character itself
     in either letter case (re.IGNORECASE), the literal's white space at either end left out.
     "Delostichus coxalis" is "DELOSTICHUS\\nCOXALIS" where the readings write that. A text is
-    found at every place it starts, overlapping ones too, and only where it cuts no word: a
-    letter or digit at either end of it is not next to another (_at_word_edges; "Star" is not
-    found in "STARK"). None when a reading writes no such text, or two different ones ("a a" in
-    "A A a" is "A A" and "A a"), or two readings write different ones ("Mus" and "MUS"). A
-    literal with a letter, a digit, a mark or a space the reading does not write ("Stark" where
-    it writes "Star", "Sp. 30" where it writes "Sp.30") is found nowhere."""
+    found at every place it starts, overlapping ones too, and only where it cuts no word
+    (_cuts_no_word: "Star" is not found in "STARK", nor "Van-" in "VAN-DYKE"). None when a
+    reading writes no such text, or two different ones ("a a" in "A A a" is "A A" and "A a"),
+    or two readings write different ones ("Mus" and "MUS"). A literal with a letter, a digit, a
+    mark or a space the reading does not write ("Stark" where it writes "Star", "Sp. 30" where
+    it writes "Sp.30") is found nowhere."""
     words = literal.split()
     if not words:
         return None
@@ -184,18 +184,24 @@ def written_as(readings: Sequence[Reading], literal: str) -> str | None:
     for reading in readings:
         text = reading.text
         texts = {match.group() for at in range(len(text)) if (match := pattern.match(text, at)) is not None
-            and _at_word_edges(text, match.start(), match.end())}
+            and _cuts_no_word(text, match.start(), match.end())}
         if not texts:
             return None
         found |= texts
     return found.pop() if len(found) == 1 else None
 
 
-def _at_word_edges(text: str, start: int, end: int) -> bool:
-    """Whether text[start:end] cuts no word: its first character, when a letter or a digit, does
-    not follow one, and its last, when a letter or a digit, is not followed by one."""
-    return (not (text[start].isalnum() and start > 0 and text[start - 1].isalnum())
-        and not (text[end - 1].isalnum() and end < len(text) and text[end].isalnum()))
+def _cuts_no_word(text: str, start: int, end: int) -> bool:
+    """Whether text[start:end] cuts no word: what the white-space-separated token it starts in
+    holds before it, and what the token it ends in holds after it, is no letter or digit (a mark,
+    a bracket or a quote at a token's edge may be left off: "Yepocapa" of "Yepocapa,")."""
+    first = start
+    while first > 0 and not text[first - 1].isspace():
+        first -= 1
+    last = end
+    while last < len(text) and not text[last].isspace():
+        last += 1
+    return not any(char.isalnum() for char in text[first:start] + text[end:last])
 
 
 def whole_as_given(readings: Sequence[Reading], literal: str, given: str) -> bool:
@@ -205,13 +211,16 @@ def whole_as_given(readings: Sequence[Reading], literal: str, given: str) -> boo
     such a label the checks that keep a piece of a name from settling (agreement._longer_written,
     _part_of_name) find none. It holds when `given` is a name at species rank or below as the
     parser reads it, and, at each place a reading writes the literal:
-    - no word that may be a genus (checks.GENUS_SHAPED: a capital first, "AUS" or "Det.") stands
-      before it on its line, nor, where none does, alone on the nearest line above that holds a
-      word, as a label writes a genus over its species ("AUS" over "SMITHI CUS", given "Smithi cus");
+    - the word the reading writes immediately before it (checks.word_before: the last word before
+      it on its line, or, when none is, the last word of the nearest line above that has one; a
+      bracket aside, a qualifier passed over) is no word that may be a genus (checks.GENUS_SHAPED,
+      as checks.longer_name reads a genus before a literal that names none): "AUS" before or over
+      "SMITHI CUS", "XUS" of "AUS (XUS)" over "Smithi cus", given "Smithi cus";
     - the reading writes no longer name from it on (checks.longer_name), read with its text after
       the literal in lower case ("Aus bus" of "AUS BUS CUS" is not the whole name).
-    A genus alone is never taken so. It errs toward refusal: "Det." before the name, or an author
-    with no year after it read as an epithet ("SAY"), refuses it."""
+    A genus alone is never taken so. It errs toward refusal: in capitals any word may be a genus,
+    so a heading's last word on the line above ("SYNTHETIC MUSEUM"), "Det." before the name, or an
+    author with no year after it read as an epithet ("SAY") refuses it."""
     name = checks.taxonomy_scientific_name(given)
     if name is None or not name.genus or not name.epithets:
         return False
@@ -219,13 +228,8 @@ def whole_as_given(readings: Sequence[Reading], literal: str, given: str) -> boo
         text = reading.text
         at = text.find(literal)
         while at >= 0:
-            line_start = text.rfind("\n", 0, at) + 1
-            before = checks._words(text[line_start:at])
-            if not before:
-                above = next((words for line in reversed(text[:line_start].splitlines())
-                    if (words := checks._words(line))), [])
-                before = above if len(above) == 1 else []
-            if ((before and checks.GENUS_SHAPED.fullmatch(before[-1]))
+            before = checks.word_before(text, at)
+            if ((before is not None and checks.GENUS_SHAPED.fullmatch(before))
                     or checks.longer_name(given + text[at + len(literal):].lower(), given) is not None):
                 return False
             at = text.find(literal, at + 1)
@@ -754,9 +758,9 @@ class _Expert:
             if as_given is not None and not whole_as_given(named, literal, as_given):
                 raise Refused("part_of_name",
                     f"Read as the readings write it, {literal!r} may be only part of the name the label "
-                    f"writes: {as_given!r} is no name with its species, or a word that may be its genus "
-                    "stands before it (on its line, or alone on the line above), or the label writes more "
-                    "of the name after it. A taxon settles only on the whole name its reading writes: give "
+                    f"writes: {as_given!r} is no name with its species, or the word written right before it "
+                    "may be its genus, or the label writes more of the name after it. A taxon settles only "
+                    "on the whole name its reading writes: give "
                     "that whole name, or answer several_possibilities or sources_cannot_resolve."
                 )
             self._validate_taxon(answer, cited,
