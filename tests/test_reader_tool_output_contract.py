@@ -101,5 +101,5 @@ def test_actual_hf_reader_sends_tool_schema_and_validates_literal_retry(monkeypa
     earlier = [call for message in sent[1]["messages"] for call in message.get("tool_calls") or []]
     assert len(earlier) == 1
     assert json.loads(earlier[0]["function"]["arguments"]) == {"verbatim_text": "synthetic alpha", "lines": ["wrong"]}
-    assert (route.model_id, route.provider) == (("Qwen/Qwen3-VL-30B-A3B-Instruct", "novita") if route_id == "handwriting-qwen"
+    assert (route.model_id, route.provider) == (("Qwen/Qwen3-VL-30B-A3B-Instruct", "deepinfra") if route_id == "handwriting-qwen"
                                               else ("meta-models/Muse-Glimmer-30B", "deepinfra"))

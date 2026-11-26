@@ -33,8 +33,9 @@ from test_lane_routes import FIRST_PASS_RESERVATION, SAM_RESERVATION
 from test_rate_limit_refusal import requests
 
 ROUTE = "first-pass-glm"
-NOVITA = {"model_id": HUGGINGFACE_ROUTES[ROUTE].model_id, "provider": "novita"}
-DEEPINFRA = {**NOVITA, "provider": "deepinfra"}
+# The route's current pin: on Baseten since 2026-11-25 (Novita left the router).
+CURRENT = {"model_id": HUGGINGFACE_ROUTES[ROUTE].model_id, "provider": "baseten"}
+DEEPINFRA = {**CURRENT, "provider": "deepinfra"}
 
 
 def later(workflow, hours):
@@ -84,8 +85,8 @@ def one_failed_comparison(tmp_path, monkeypatch, attempts=1, **lab):
 def assert_compared(run, adapter, step):
     assert (run.stage, run.blocker) == ("finalized", None)
     assert len(run.first_pass_decisions) == 1 and not given_up_findings(run)
-    assert run.dependencies["routes"][ROUTE] == NOVITA
-    assert adapter.pins[-1] == NOVITA
+    assert run.dependencies["routes"][ROUTE] == CURRENT
+    assert adapter.pins[-1] == CURRENT
 
 
 def test_a_waiting_retry_pinned_to_the_old_provider_is_repinned_and_sent(tmp_path, monkeypatch):
@@ -103,11 +104,11 @@ def test_a_waiting_retry_pinned_to_the_old_provider_is_repinned_and_sent(tmp_pat
     # The re-pinned retry reached the provider (still failing here), not a block.
     assert (retried.stage, retried.blocker) == ("retry_scheduled", "model_provider_error")
     assert requests(tmp_path, "first_pass") == 2
-    assert retried.dependencies["routes"][ROUTE] == NOVITA
+    assert retried.dependencies["routes"][ROUTE] == CURRENT
     (repin,) = retried.dependencies["route_repins"]
     assert {k: repin[k] for k in ("route_id", "model_id", "from_provider", "to_provider")} == {
-        "route_id": ROUTE, "model_id": NOVITA["model_id"],
-        "from_provider": "deepinfra", "to_provider": "novita",
+        "route_id": ROUTE, "model_id": CURRENT["model_id"],
+        "from_provider": "deepinfra", "to_provider": "baseten",
     }
     assert datetime.fromisoformat(repin["at"])
     later(workflow, 2)

@@ -37,11 +37,11 @@ def test_the_nvidia_reader_is_pinned_at_its_provider(tmp_path):
 
     pins = production.ProductionAdapters(LocalBlobs(tmp_path)).pin_dependencies(run)
 
-    nemotron = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
+    nemotron = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16"
     assert pins["routes"] == {
         "handwriting-qwen": {
             "model_id": "Qwen/Qwen3-VL-30B-A3B-Instruct",
-            "provider": "novita",
+            "provider": "deepinfra",
         },
         "handwriting-muse": {
             "model_id": "meta-models/Muse-Glimmer-30B",

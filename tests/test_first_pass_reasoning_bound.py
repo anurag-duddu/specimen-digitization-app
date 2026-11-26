@@ -1,4 +1,4 @@
-"""The first-pass route bounds GLM-5.3-Flash's hidden reasoning on Novita.
+"""The first-pass route bounds GLM-5.3-Flash's hidden reasoning.
 
 From 2026-10-12 03:00 to 2026-10-18 14:45 UTC, 29 of the 141 `chat
 zai-org/GLM-5.3-Flash` spans in Logfire stopped at the 4,096-token output cap
@@ -9,7 +9,8 @@ the 2026-10-18 probes no first pass sent with "medium" or "low" stopped at the
 cap, and scored against reference readings "medium" decided the most labels
 rightly (HARNESS.md section 5, "The first pass's reasoning bound"). The route
 carries `reasoning_effort: medium` as its request option, through the gateway's
-model settings. The units path's first pass, since WP 1.8 the only one, sends its
+model settings. Since 2026-11-25 the route is on Baseten (Novita left Hugging
+Face's router) with the same option, not yet re-measured there. The units path's first pass, since WP 1.8 the only one, sends its
 own options over it (first_pass.UNITS_REQUEST_OPTIONS: low reasoning and
 temperature 0; test_first_pass_units.py tests its requests). These tests drive
 the real gateway over an offline HTTP transport: no live model request is made.
@@ -84,8 +85,8 @@ def offline_provider(monkeypatch, route, answers):
     return sent
 
 
-def test_the_first_pass_route_asks_novita_for_medium_reasoning():
-    assert (ROUTE.model_id, ROUTE.provider) == ("zai-org/GLM-5.3-Flash", "novita")
+def test_the_first_pass_route_asks_baseten_for_medium_reasoning():
+    assert (ROUTE.model_id, ROUTE.provider) == ("zai-org/GLM-5.3-Flash", "baseten")
     assert dict(ROUTE.request_options) == BOUND
     # Only the first pass's route carries a request option.
     for route_id in (*INITIAL_HUGGINGFACE_ROUTES, "harness-deepseek"):

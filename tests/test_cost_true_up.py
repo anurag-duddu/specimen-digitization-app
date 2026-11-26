@@ -46,7 +46,10 @@ def one(paid_call):
 
 def test_the_bills_are_tenant_free_days_of_registered_models():
     bills = provider_bills()
+    from specimen_digitization.model_gateway import PREVIOUS_MODEL_IDS
+
     models = {route.model_id for route in HUGGINGFACE_ROUTES.values()}
+    models |= {model for previous in PREVIOUS_MODEL_IDS.values() for model in previous}
     for day, cells in bills["huggingface"]["days"].items():
         assert len(day) == 10 and day.startswith("2026-10-")
         assert set(cells) <= models
@@ -101,6 +104,16 @@ def test_a_call_on_a_day_or_route_the_bills_do_not_cover_stays_held():
         row = one(call("first_pass:region-1", "model", route, basis="reserved", cost=9_000, reserved=9_000, at=at))
         assert (row["cost_basis"], row["cost_micros"]) == ("reserved", 9_000)
         assert (row["allocation_method_id"], row["allocation_method_details"]) == (None, None)
+
+
+def test_a_held_call_is_matched_to_the_model_its_route_was_served_as_that_day():
+    # Nemotron's routes moved from the NVFP4 to the BF16 repository on 2026-11-25; the
+    # bills name NVFP4 on 2026-10-19: 990,411,700 nano-USD over 1,550 requests =
+    # 638.98 micro-USD a request, rounded up.
+    row = one(call("transcribe:region-1:handwriting-nemotron", "model", "handwriting-nemotron", basis="reserved",
+                   cost=9_000, reserved=9_000, at="2026-10-19T12:00:00+00:00"))
+    assert (row["cost_basis"], row["cost_micros"]) == (TRUED_UP, 639)
+    assert row["allocation_method_details"]["model"] == "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
 
 
 def test_a_legacy_held_parse_call_is_matched_to_the_route_parse_calls_and_trued_up():
