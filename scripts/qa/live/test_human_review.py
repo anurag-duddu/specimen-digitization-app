@@ -20,13 +20,13 @@ MANUAL = (
     "HUMAN-NO-AUTOMATIC-CLEARANCE", "HUMAN-ACCESSIBLE-REVIEW",
 )
 ROUTES = {
-    "handwriting-qwen": ("Qwen/Qwen3-VL-30B-A3B-Instruct", "novita"),
+    "handwriting-qwen": ("Qwen/Qwen3-VL-30B-A3B-Instruct", "deepinfra"),
     "handwriting-muse": ("meta-models/Muse-Glimmer-30B", "deepinfra"),
 }
 # The NVIDIA option's reader C (docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md).
 THREE_ROUTES = {
     **ROUTES,
-    "handwriting-nemotron": ("nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4", "baseten"),
+    "handwriting-nemotron": ("nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16", "baseten"),
 }
 
 
@@ -180,7 +180,7 @@ def test_a_three_reader_run_cannot_drop_or_repeat_a_reader(tmp_path, edit):
         check(tmp_path, source, report)
 
 
-@pytest.mark.parametrize("model,provider", [("nvidia/other", "baseten"), ("nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4", "novita")])
+@pytest.mark.parametrize("model,provider", [("nvidia/other", "baseten"), ("nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16", "novita")])
 def test_the_third_reader_must_be_the_approved_model_and_provider(tmp_path, model, provider):
     source, report = packet(tmp_path, THREE_ROUTES)
     def edit(payload):

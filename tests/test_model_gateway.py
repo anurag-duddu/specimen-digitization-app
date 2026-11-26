@@ -23,12 +23,16 @@ from specimen_digitization.model_gateway import (
 )
 
 
-def test_initial_routes_are_explicit_and_independent() -> None:
+def test_initial_routes_are_explicit_and_read_with_different_models() -> None:
     qwen = INITIAL_HUGGINGFACE_ROUTES["handwriting-qwen"]
     muse = INITIAL_HUGGINGFACE_ROUTES["handwriting-muse"]
 
     assert qwen.model_id != muse.model_id
-    assert qwen.provider != muse.provider
+    # Since 2026-11-25 both readers are pinned on DeepInfra through the router:
+    # Novita left Hugging Face's router, and DeepInfra is Qwen's only live
+    # provider there. The readers stay independent models, not providers.
+    assert (qwen.provider, qwen.transport) == ("deepinfra", "router")
+    assert (muse.provider, muse.transport) == ("deepinfra", "router")
     assert qwen.logical_capability == muse.logical_capability
     assert qwen.required_input_modalities == ("text", "image")
     assert muse.requires_structured_output is True
@@ -77,12 +81,13 @@ def test_gateway_builds_model_with_pinned_provider_and_org_billing(
     gateway = HuggingFaceModelGateway(token="hf_do_not_log", bill_to="field-museum")
     gateway.model_for("handwriting-muse")
 
+    # A router route pins its provider in the model name, not the client.
     assert captured["client"] == {
-        "provider": "deepinfra",
+        "base_url": "https://router.huggingface.co/v1",
         "api_key": "hf_do_not_log",  # pragma: allowlist secret
         "bill_to": "field-museum",
     }
-    assert captured["model_name"] == "meta-models/Muse-Glimmer-30B"
+    assert captured["model_name"] == "meta-models/Muse-Glimmer-30B:deepinfra"
     assert captured["model"]["profile"] == {
         "supports_tools": True,
         "supports_json_schema_output": False,
@@ -114,7 +119,7 @@ def test_explicit_gateway_credential_does_not_require_environment(monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
     gateway = HuggingFaceModelGateway(token="synthetic-test-credential")
     model = gateway.model_for("handwriting-qwen")
-    assert model.model_name == "Qwen/Qwen3-VL-30B-A3B-Instruct"
+    assert model.model_name == "Qwen/Qwen3-VL-30B-A3B-Instruct:deepinfra"
     import os
 
     assert "HF_TOKEN" not in os.environ
@@ -212,20 +217,24 @@ def test_pydantic_ai_still_maps_tool_calls_through_the_overridden_hook() -> None
     assert isinstance(vars(HuggingFaceModel)["_map_tool_call"], staticmethod)
 
 
-def test_first_pass_and_harness_routes_are_pinned_on_reader_providers() -> None:
+def test_first_pass_and_harness_routes_are_pinned_on_concrete_providers() -> None:
     gateway = HuggingFaceModelGateway(token="hf_test")
 
     first_pass = gateway.route("first-pass-glm")
     harness = gateway.route("harness-deepseek")
 
-    assert (first_pass.model_id, first_pass.provider) == (
+    # Since 2026-11-25 the first pass is on Baseten, off the readers' DeepInfra;
+    # the harness shares DeepInfra with both readers. Both go through the router.
+    assert (first_pass.model_id, first_pass.provider, first_pass.transport) == (
         "zai-org/GLM-5.3-Flash",
-        "novita",
+        "baseten",
+        "router",
     )
     assert first_pass.required_input_modalities == ("text", "image")
-    assert (harness.model_id, harness.provider) == (
+    assert (harness.model_id, harness.provider, harness.transport) == (
         "deepseek-ai/DeepSeek-V4.1-Flash",
         "deepinfra",
+        "router",
     )
     assert harness.required_input_modalities == ("text",)
     readers = {
@@ -271,7 +280,7 @@ def test_preflight_accepts_the_new_routes_when_the_catalog_serves_them() -> None
         }
 
     catalog = [
-        served("zai-org/GLM-5.3-Flash", ("text", "image"), "novita"),
+        served("zai-org/GLM-5.3-Flash", ("text", "image"), "baseten"),
         served("deepseek-ai/DeepSeek-V4.1-Flash", ("text", "image"), "deepinfra"),
     ]
 
@@ -337,11 +346,22 @@ def test_a_provider_route_still_goes_through_the_provider_client(
         lambda name, **kwargs: captured.setdefault("model_name", name),
     )
 
-    HuggingFaceModelGateway(token="hf_test").model_for("handwriting-qwen")
+    # No registered route uses the provider transport since 2026-11-25; a
+    # synthetic one keeps that transport working for a later move back.
+    route = HuggingFaceInferenceRoute(
+        route_id="provider-example",
+        logical_capability="handwriting_transcriber",
+        model_id="example/vision-model",
+        provider="deepinfra",
+        transport="provider",
+    )
+    HuggingFaceModelGateway(
+        token="hf_test", routes={route.route_id: route}
+    ).model_for(route.route_id)
 
-    assert captured["client"]["provider"] == "novita"
+    assert captured["client"]["provider"] == "deepinfra"
     assert "base_url" not in captured["client"]
-    assert captured["model_name"] == "Qwen/Qwen3-VL-30B-A3B-Instruct"
+    assert captured["model_name"] == "example/vision-model"
 
 
 @pytest.mark.parametrize("transport", ["", "auto", "openai"])
@@ -440,7 +460,7 @@ def test_pydantic_ai_still_resolves_tool_choice_through_the_overridden_hook() ->
     assert isinstance(vars(HuggingFaceModel)["_get_tool_choice"], staticmethod)
 
 
-NEMOTRON = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
+NEMOTRON = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16"
 
 
 def test_the_nvidia_option_serves_one_model_on_baseten_through_the_router() -> None:
