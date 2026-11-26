@@ -107,13 +107,22 @@ INITIAL_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingPro
             route_id="handwriting-qwen",
             logical_capability="handwriting_transcriber",
             model_id="Qwen/Qwen3-VL-30B-A3B-Instruct",
-            provider="novita",
+            # Moved from Novita on 2026-11-25: Novita left Hugging Face's
+            # router (its /v1/models catalog lists no Novita provider) and
+            # DeepInfra is the model's only live provider there. The router
+            # transport: huggingface_hub 1.18 resolves a "provider" route
+            # through the Hub's inferenceProviderMapping, which returned {}
+            # for every model that day, so every provider-transport call
+            # failed before it was sent.
+            provider="deepinfra",
+            transport="router",
         ),
         "handwriting-muse": HuggingFaceInferenceRoute(
             route_id="handwriting-muse",
             logical_capability="handwriting_transcriber",
             model_id="meta-models/Muse-Glimmer-30B",
             provider="deepinfra",
+            transport="router",  # See handwriting-qwen (2026-11-25).
         ),
     }
 )
@@ -130,13 +139,18 @@ STAGE_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxy
             model_id="zai-org/GLM-5.3-Flash",
             # Moved from DeepInfra on 2026-10-12: it refused 22 of 29 live
             # first-pass calls (HTTP 429/503); Novita answered 8 of 8 at the
-            # same price and already serves the handwriting-qwen reader.
-            provider="novita",
+            # same price. Moved from Novita to Baseten on 2026-11-25: Novita
+            # left Hugging Face's router (see handwriting-qwen). Baseten
+            # answered 3 of 3 forced tool calls with reasoning_effort
+            # "medium" at the published price, and keeps the first pass off
+            # DeepInfra, which now serves both readers and the harness.
+            provider="baseten",
+            transport="router",
             # Novita runs the model's hidden reasoning in full, which stopped
             # about a fifth of first passes at the 4,096-token cap. "medium"
             # ended the cap stops and scored best against the reference
-            # readings (HARNESS.md 5). Measured on Novita only: a provider
-            # move re-measures it or clears it.
+            # readings (HARNESS.md 5). Measured on Novita; on Baseten not yet
+            # re-measured against the reference readings.
             request_options=(("reasoning_effort", "medium"),),
         ),
         "harness-deepseek": HuggingFaceInferenceRoute(
@@ -144,15 +158,18 @@ STAGE_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxy
             logical_capability="field_harness",
             model_id="deepseek-ai/DeepSeek-V4.1-Flash",
             provider="deepinfra",
+            transport="router",  # See handwriting-qwen (2026-11-25).
             required_input_modalities=("text",),
         ),
     }
 )
 # The NVIDIA option (docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md): one
 # model, Nemotron 3.5 Super VL, for each stage SPECIMEN_NVIDIA_STAGES turns on
-# (application/model_option.py). Baseten is its only Hugging Face provider, and
-# huggingface_hub 1.18 has no helper for it, so the router serves these routes.
-NEMOTRON_MODEL_ID = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
+# (application/model_option.py). huggingface_hub 1.18 has no Baseten helper, so
+# the router serves these routes. On 2026-11-25 the router no longer served the
+# NVFP4 repository at any provider; it serves the BF16 one at nine, Baseten
+# among them, at the same Baseten list price.
+NEMOTRON_MODEL_ID = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16"
 NVIDIA_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
     {
         "handwriting-nemotron": HuggingFaceInferenceRoute(
@@ -221,6 +238,15 @@ HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
         **SECOND_OPINION_HUGGINGFACE_ROUTES,
     }
 )
+# The model ids a route was served as before its current one. The committed
+# provider bills (application/profiles/provider_bills.json) name the model
+# billed that day, so a call is matched to its day's bill under any of them.
+PREVIOUS_MODEL_IDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        route_id: ("nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4",)
+        for route_id in NVIDIA_HUGGINGFACE_ROUTES
+    }
+)
 
 
 class ArgumentPreservingHuggingFaceModel(HuggingFaceModel):
@@ -232,13 +258,22 @@ class ArgumentPreservingHuggingFaceModel(HuggingFaceModel):
     this override every turn after a tool call or an invalid-output retry goes
     out without arguments: DeepInfra rejects it with HTTP 422 and Novita hands
     the model an empty call.
+
+    The call keeps only the fields a chat completion's tool call carries (id,
+    type, and the function's name and arguments). The provider transport drops
+    the unset ``parameters`` and ``description`` itself; the router transport
+    (huggingface_hub 1.18, ``_prepare_payload_as_dict``) sends messages as
+    they are, so they would go out as nulls.
     """
 
     @staticmethod
     def _map_tool_call(t: ToolCallPart) -> ChatCompletionInputToolCall:
         call = HuggingFaceModel._map_tool_call(t)
-        call["function"]["arguments"] = t.args_as_json_str()
-        return call
+        return {
+            "id": call["id"],
+            "type": call["type"],
+            "function": {"name": call["function"]["name"], "arguments": t.args_as_json_str()},
+        }
 
     def _process_response(self, response):  # type: ignore[override]
         """Keep the input tokens the provider served from its prompt cache.

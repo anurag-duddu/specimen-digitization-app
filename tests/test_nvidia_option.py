@@ -38,10 +38,10 @@ from test_lane_trigger import specimen_with
 
 ALL = "readers,first_pass,field_research"
 VARIANT = "1.0.0+nvidia.readers.first-pass.field-research"
-NEMOTRON = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
+NEMOTRON = "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16"
 BASETEN = {"model_id": NEMOTRON, "provider": "baseten"}
 MUSE = {"model_id": "meta-models/Muse-Glimmer-30B", "provider": "deepinfra"}
-QWEN = {"model_id": "Qwen/Qwen3-VL-30B-A3B-Instruct", "provider": "novita"}
+QWEN = {"model_id": "Qwen/Qwen3-VL-30B-A3B-Instruct", "provider": "deepinfra"}
 # Nemotron is reader C, after today's Qwen (A) and Muse (B).
 THREE_READERS = ["handwriting-qwen", "handwriting-muse", "handwriting-nemotron"]
 # The published limits, 480,000 tokens and 96 weighted calls, x 3/2 for three
@@ -398,11 +398,11 @@ def test_variant_circuits_are_keyed_by_baseten(tmp_path, monkeypatch):
     }
 
     assert providers == {
-        "transcribe:r:handwriting-qwen": "novita",
+        "transcribe:r:handwriting-qwen": "deepinfra",
         "transcribe:r:handwriting-muse": "deepinfra",
         "transcribe:r:handwriting-nemotron": "baseten",
         "first_pass:r": "baseten",
-        "parse": "novita",
+        "parse": "deepinfra",
     }
 
 
@@ -514,7 +514,7 @@ def test_the_readers_stage_adds_nemotron_as_reader_c_and_parse_stays_on_reader_a
         "handwriting-qwen": QWEN,
         "handwriting-muse": MUSE,
         "handwriting-nemotron": BASETEN,
-        "first-pass-glm": {"model_id": "zai-org/GLM-5.3-Flash", "provider": "novita"},
+        "first-pass-glm": {"model_id": "zai-org/GLM-5.3-Flash", "provider": "baseten"},
     }
     # One reading per label per reader, in route order (Workflow.next_step).
     from specimen_digitization.application.workflow import Workflow

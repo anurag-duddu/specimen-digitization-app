@@ -56,11 +56,11 @@ MANUAL_CASES = (
 )
 REQUIRED_CASES = set(JOURNEY_CASES + LIVE_CASES)
 ROUTES = {
-    "handwriting-qwen": ("Qwen/Qwen3-VL-30B-A3B-Instruct", "novita"),
+    "handwriting-qwen": ("Qwen/Qwen3-VL-30B-A3B-Instruct", "deepinfra"),
     "handwriting-muse": ("meta-models/Muse-Glimmer-30B", "deepinfra"),
     # Reader C when the NVIDIA option's readers stage is on
     # (docs/product-requirements/NVIDIA_NEMOTRON_OPTION.md).
-    "handwriting-nemotron": ("nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4", "baseten"),
+    "handwriting-nemotron": ("nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16", "baseten"),
 }
 # The readers a retained region may carry: the pair, or the pair with Nemotron.
 # A run reads every region with the same one of them.
