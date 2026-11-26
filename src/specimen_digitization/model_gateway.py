@@ -238,6 +238,15 @@ HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
         **SECOND_OPINION_HUGGINGFACE_ROUTES,
     }
 )
+# The model ids a route was served as before its current one. The committed
+# provider bills (application/profiles/provider_bills.json) name the model
+# billed that day, so a call is matched to its day's bill under any of them.
+PREVIOUS_MODEL_IDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        route_id: ("nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-NVFP4",)
+        for route_id in NVIDIA_HUGGINGFACE_ROUTES
+    }
+)
 
 
 class ArgumentPreservingHuggingFaceModel(HuggingFaceModel):

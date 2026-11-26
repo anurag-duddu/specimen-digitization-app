@@ -190,10 +190,16 @@ def _day_mean(resource, occurred_at, requests):
 
     None when the committed bills hold no request of that model that day.
     """
-    model = _route_models().get(resource)
+    from ..model_gateway import PREVIOUS_MODEL_IDS
+
+    current = _route_models().get(resource)
     bills = provider_bills()
     day = occurred_at[:10]
-    cell = bills["huggingface"]["days"].get(day, {}).get(model)
+    cells = bills["huggingface"]["days"].get(day, {})
+    # The route's current model, else a model it was served as before that the
+    # day's bill names (model_gateway.PREVIOUS_MODEL_IDS).
+    model = next((m for m in (current, *PREVIOUS_MODEL_IDS.get(resource, ())) if m in cells), current)
+    cell = cells.get(model)
     if model is None or cell is None or not cell["requests"] > 0:
         return None
     estimate = _ceil(Decimal(cell["nano_usd"]) * requests / (Decimal(cell["requests"]) * 1000))

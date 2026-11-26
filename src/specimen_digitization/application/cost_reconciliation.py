@@ -1258,7 +1258,8 @@ def bills_with_month(committed: dict, huggingface, month: str, as_of: str,
                      route_models: dict[str, str] | None = None) -> dict:
     """``profiles/provider_bills.json`` with ``month``'s Hugging Face days replaced by this bill's.
 
-    Only the models the route registry names are kept, and only days with
+    Only the models the route registry names, now or before
+    (model_gateway.PREVIOUS_MODEL_IDS), are kept, and only days with
     requests; other months stay as they were. The version becomes
     ``provider-bills-<as_of>``, so the next sweep rewrites the rows
     (cost_ledger.rules_version). Days, model ids, counts and nano-USD only: no
@@ -1266,8 +1267,12 @@ def bills_with_month(committed: dict, huggingface, month: str, as_of: str,
     """
     month_of(month)
     date.fromisoformat(as_of)
+    from ..model_gateway import PREVIOUS_MODEL_IDS
+
     bill = parse_huggingface(huggingface)
     models = {_model_key(model): model for model in (route_models or default_route_models()).values()}
+    # A model a route was served as before keeps its days (model_gateway.PREVIOUS_MODEL_IDS).
+    models.update({_model_key(model): model for previous in PREVIOUS_MODEL_IDS.values() for model in previous})
     days = {day: cells for day, cells in committed["huggingface"]["days"].items() if not day.startswith(month + "-")}
     for day, cells in sorted(bill.days.items()):
         if day.strftime("%Y-%m") != month:
